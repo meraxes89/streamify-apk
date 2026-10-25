@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1044,6 +1045,126 @@ static void test_rate_configuration() {
 }
 
 // ---------------------------------------------------------------------------
+// Section 9.6 — [PERF] audio-RT hot-path micro-benchmarks (audit #22 item 9 /
+// #23 B3 measurement gate)
+// ---------------------------------------------------------------------------
+// The standing measurement harness for the limiter/saturate hot paths —
+// the gate infrastructure B3's "audio-thread us per 10ms buffer" budget
+// and any future pow/tanh change (precompute, approximation, NEON lane)
+// must be measured against. Wall-clock NUMBERS ONLY (no timing asserts —
+// host-flaky per item 10's own triage): best-of-5 rounds, 200 iters each,
+// ns/frame + the phase_lock benchmark's 1.4 GHz little-core A55 estimate.
+//
+// Baseline (libm paths, this host, x86-64 glibc — see issue #23 for the
+// full table and the item-9c swap attempt it blocked):
+//   SoftKneeLimiter 2048f stereo hot   ~123 ns/frame  (plain -O3)
+//   PeerMixPool::saturate 4096 hot     ~7 ns/sample   (std::tanh)
+//   std::tanh / std::pow(10,*) refs    ~5 ns/call each
+static double g_benchSink = 0.0;   // defeats dead-code elimination
+
+static void benchPrint(const char* label, double ns, int frames) {
+    const double nsPerFrame = ns / frames;
+    const double cpuA55 = nsPerFrame * 48000.0 / 1.4e9 * 100.0;
+    std::printf("    %-34s %8.1f ns/block  %6.2f ns/frame  (~%.2f%% of an A55 core, est.)\n",
+                label, ns, nsPerFrame, cpuA55);
+}
+
+static void benchmarkLimiterHotPath() {
+    std::cout << "  - Phase1/perf: limiter hot-path benchmark" << std::endl;
+    // +6 dBFS 997 Hz stereo: the true-peak sidechain engages curveLin (tanh)
+    // every frame, the ballistics drive the per-frame pow10, and satStage
+    // guards the residual — the worst-case libm load of the shipped chain.
+    const int frames = 2048;
+    SoftKneeLimiter lim(-1.0f, 4.0f);
+    std::vector<float> buf;
+    double best = 1e30;
+    for (int round = 0; round < 5; ++round) {
+        fillSineStereo(buf, frames, 2.0f, 997.0);
+        for (int i = 0; i < 20; ++i)   // warm-up to steady-state limiting
+            lim.processFrames(buf.data(), frames, 2);
+        fillSineStereo(buf, frames, 2.0f, 997.0);
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < 200; ++i)
+            lim.processFrames(buf.data(), frames, 2);
+        const auto t1 = std::chrono::steady_clock::now();
+        const double ns =
+            std::chrono::duration<double, std::nano>(t1 - t0).count() / 200;
+        best = std::min(best, ns);
+    }
+    benchPrint("SoftKneeLimiter 2048f stereo hot", best, frames);
+}
+
+static void benchmarkMixSaturate() {
+    // PeerMixPool::saturate on above-knee material (the 32-peer worst case:
+    // in-phase full-scale contributions push every summed sample past the
+    // knee into tanh).
+    const int n = 4096;
+    std::vector<float> buf(n);
+    for (int i = 0; i < n; ++i)
+        buf[i] = 0.95f + 0.05f * std::sin(static_cast<double>(i));
+    double best = 1e30;
+    double sink = 0.0;
+    for (int round = 0; round < 5; ++round) {
+        const auto t0 = std::chrono::steady_clock::now();
+        double acc = 0.0;
+        for (int i = 0; i < 200; ++i)
+            for (int j = 0; j < n; ++j)
+                acc += mix::PeerMixPool::saturate(buf[j]);
+        const auto t1 = std::chrono::steady_clock::now();
+        sink = acc;
+        best = std::min(best,
+                        std::chrono::duration<double, std::nano>(t1 - t0).count() / 200);
+    }
+    g_benchSink += sink;
+    benchPrint("PeerMixPool::saturate 4096 hot", best, n);
+}
+
+static void benchmarkLibmScale() {
+    // Raw per-call cost reference for the two libm calls under test (same
+    // argument distributions the audio paths produce).
+    const int n = 4096;
+    std::vector<float> args(n), dbs(n);
+    for (int i = 0; i < n; ++i) {
+        args[i] = 9.0f * static_cast<float>(i) / static_cast<float>(n);
+        dbs[i] = -24.0f + 24.0f * static_cast<float>(i) / static_cast<float>(n);
+    }
+    double bestTanh = 1e30, bestPow = 1e30;
+    double sink = 0.0;
+    for (int round = 0; round < 5; ++round) {
+        auto t0 = std::chrono::steady_clock::now();
+        double acc = 0.0;
+        for (int i = 0; i < 200; ++i)
+            for (int j = 0; j < n; ++j) acc += std::tanh(args[j]);
+        auto t1 = std::chrono::steady_clock::now();
+        sink = acc;
+        bestTanh = std::min(bestTanh,
+                            std::chrono::duration<double, std::nano>(t1 - t0).count() / 200);
+
+        t0 = std::chrono::steady_clock::now();
+        acc = 0.0;
+        for (int i = 0; i < 200; ++i)
+            for (int j = 0; j < n; ++j) acc += std::pow(10.0f, dbs[j] * 0.05f);
+        t1 = std::chrono::steady_clock::now();
+        sink += acc;
+        bestPow = std::min(bestPow,
+                           std::chrono::duration<double, std::nano>(t1 - t0).count() / 200);
+    }
+    g_benchSink += sink;
+    benchPrint("std::tanh x4096 (arg 0..9)", bestTanh, n);
+    benchPrint("std::pow(10,x*0.05) x4096", bestPow, n);
+}
+
+static void test_pow_tanh_benchmarks() {
+    benchmarkLimiterHotPath();
+    benchmarkMixSaturate();
+    benchmarkLibmScale();
+    // The sink must stay finite and huge — proves the loops above did real
+    // work (and nothing got dead-code-eliminated).
+    check(std::isfinite(g_benchSink) && g_benchSink > 1e6,
+          "benchmark sinks did real work");
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 int run_dsp_phase1_tests() {
@@ -1059,6 +1180,7 @@ int run_dsp_phase1_tests() {
     test_silent_pll();
     test_master_chain();
     test_rate_configuration();
+    test_pow_tanh_benchmarks();
     test_zero_allocation();
     std::cout << "[TEST] Phase 1: all " << g_passed << " checks passed" << std::endl;
     return 0;
