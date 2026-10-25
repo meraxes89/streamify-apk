@@ -488,6 +488,24 @@ impl GroupBlendScorer {
     /// seed array in, ranked blend JSON out. Malformed input yields a
     /// human-readable `Err` — never a panic across the FFI boundary.
     pub fn score_json(candidate_json: &str, member_seeds_json: &str) -> Result<String, String> {
+        // Audit #22 item 10: the wall-clock read lived inline here, making
+        // the freshness decay impure and untestable through the JSON
+        // boundary. The seam below pins it; this fn keeps wall semantics.
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        Self::score_json_at(candidate_json, member_seeds_json, now_ms)
+    }
+
+    /// Deterministic variant of [`Self::score_json`]: the caller supplies
+    /// the freshness-decay clock (ms since UNIX_EPOCH). The JNI boundary
+    /// keeps the wall-clock wrapper; tests inject fixed epochs.
+    pub fn score_json_at(
+        candidate_json: &str,
+        member_seeds_json: &str,
+        now_ms: i64,
+    ) -> Result<String, String> {
         let candidates: Vec<BlendCandidate> = serde_json::from_str(candidate_json)
             .map_err(|e| format!("candidateJson: {e}"))?;
         let seeds: Vec<BlendMemberSeed> = serde_json::from_str(member_seeds_json)
@@ -495,10 +513,6 @@ impl GroupBlendScorer {
         if seeds.is_empty() {
             return Err("memberSeedsJson: at least one member seed required".to_string());
         }
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0);
         let result = Self::score(&candidates, &seeds, now_ms);
         serde_json::to_string(&result).map_err(|e| format!("serialize: {e}"))
     }
@@ -658,14 +672,58 @@ mod blend_tests {
 
         let res = GroupBlendScorer::score(&cands, &seeds, NOW);
         assert_eq!(res.candidates_in, 500);
-        // Warm run (cold run pays HashMap growth + page faults).
-        let started = std::time::Instant::now();
-        let res = GroupBlendScorer::score(&cands, &seeds, NOW);
-        let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
+        // Warm best-of-3 (audit #22 item 10: a single-shot wall-clock assert
+        // is host-flaky on loaded CI runners — the minimum filters scheduler
+        // noise while keeping the directive budget meaningful).
+        let mut best_ms = f32::INFINITY;
+        for _ in 0..3 {
+            let started = std::time::Instant::now();
+            let res = GroupBlendScorer::score(&cands, &seeds, NOW);
+            best_ms = best_ms.min(started.elapsed().as_secs_f32() * 1000.0);
+            assert!(!res.ranked.is_empty());
+        }
         assert!(
-            elapsed_ms < 5.0,
-            "blend pipeline must rank 500 candidates in < 5ms (took {elapsed_ms:.2}ms)"
+            best_ms < 5.0,
+            "blend pipeline must rank 500 candidates in < 5ms best-of-3 (took {best_ms:.2}ms)"
         );
-        assert!(!res.ranked.is_empty());
     }
 }
+
+    #[test]
+    fn score_json_at_pins_the_freshness_clock() {
+        // Audit #22 item 10 regression lock: the JSON boundary used to read
+        // the wall clock inline — pinned epochs must now be deterministic
+        // and agree with the direct engine call at the same epoch.
+        let cj = serde_json::json!([{
+            "id": 1, "title": "T", "artist": "A", "durationSec": 200,
+            "addedAtMs": 0, "coOccurrenceCount": 0
+        }])
+        .to_string();
+        let sj = serde_json::json!([{
+            "memberId": "m", "artists": ["A"], "genres": ["pop"], "recentTracks": []
+        }])
+        .to_string();
+        // `tookMs` is engine self-timing telemetry (wall-clock noise by
+        // design); everything else must be bit-stable under a pinned epoch.
+        let strip_took = |s: &str| {
+            let mut v: serde_json::Value = serde_json::from_str(s).unwrap();
+            v["tookMs"].take();
+            v
+        };
+        let at_hour = GroupBlendScorer::score_json_at(&cj, &sj, 3_600_000).unwrap();
+        let at_hour_again = GroupBlendScorer::score_json_at(&cj, &sj, 3_600_000).unwrap();
+        assert_eq!(
+            strip_took(&at_hour),
+            strip_took(&at_hour_again),
+            "pinned epoch is deterministic (modulo tookMs telemetry)"
+        );
+        let cands: Vec<BlendCandidate> = serde_json::from_str(&cj).unwrap();
+        let seeds: Vec<BlendMemberSeed> = serde_json::from_str(&sj).unwrap();
+        let direct =
+            serde_json::to_string(&GroupBlendScorer::score(&cands, &seeds, 3_600_000)).unwrap();
+        assert_eq!(
+            strip_took(&at_hour),
+            strip_took(&direct),
+            "seam delegates to the engine unchanged"
+        );
+    }
