@@ -49,6 +49,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
 
 use crate::p2p_mesh::{P2pPacketHeader, MSG_GOSSIP_GRAFT, MSG_GOSSIP_IHAVE, MSG_GOSSIP_PRUNE};
+use crate::wire_le::{le_u16, le_u32, le_u64};
 
 /// Identity of one gossip message: (origin sender, broadcast sequence).
 /// Dense per origin — that density is what makes gap healing (R1) work.
@@ -1253,22 +1254,29 @@ pub fn build_ihave_payload(ids: &[MsgId]) -> Vec<u8> {
     p
 }
 
+/// Decodes one IHAVE/GRAFT id record at `base` (12 bytes: u64 sender +
+/// u32 seq). `None` on any bounds drift — callers drop the record,
+/// never panic (audit #22 item 6 sweep).
+fn msg_id_at(payload: &[u8], base: usize) -> Option<MsgId> {
+    Some(MsgId {
+        sender: le_u64(payload.get(base..base + 8)?)?,
+        seq: le_u32(payload.get(base + 8..base + 12)?)?,
+    })
+}
+
 /// Parses an IHAVE payload; malformed trailing bytes are dropped, never
 /// fatal (a half-read announcement still heals most of the tree).
 pub fn parse_ihave_payload(payload: &[u8]) -> Vec<MsgId> {
     if payload.len() < 2 {
         return Vec::new();
     }
-    let count = u16::from_le_bytes(payload[0..2].try_into().unwrap()) as usize;
+    let count = le_u16(&payload[0..2]).map(|v| v as usize).unwrap_or(0);
     let entries = (payload.len() - 2) / 12;
     let n = count.min(entries);
     let mut ids = Vec::with_capacity(n);
     for i in 0..n {
         let base = 2 + i * 12;
-        ids.push(MsgId {
-            sender: u64::from_le_bytes(payload[base..base + 8].try_into().unwrap()),
-            seq: u32::from_le_bytes(payload[base + 8..base + 12].try_into().unwrap()),
-        });
+        ids.extend(msg_id_at(payload, base));
     }
     ids
 }
@@ -1286,10 +1294,7 @@ pub fn parse_graft_payload(payload: &[u8]) -> Option<MsgId> {
     if payload.len() != 12 {
         return None;
     }
-    Some(MsgId {
-        sender: u64::from_le_bytes(payload[0..8].try_into().unwrap()),
-        seq: u32::from_le_bytes(payload[8..12].try_into().unwrap()),
-    })
+    msg_id_at(payload, 0)
 }
 
 // ───────────────────────────────────────────── Phase 1 batched grafts
@@ -1319,25 +1324,22 @@ pub fn build_graft_batch_payload(ids: &[MsgId]) -> Vec<u8> {
 pub fn parse_graft_payload_multi(payload: &[u8]) -> Vec<MsgId> {
     // Legacy single-id form.
     if payload.len() == 12 {
-        return vec![MsgId {
-            sender: u64::from_le_bytes(payload[0..8].try_into().unwrap()),
-            seq: u32::from_le_bytes(payload[8..12].try_into().unwrap()),
-        }];
+        return parse_graft_payload(payload).into_iter().collect();
     }
     if payload.len() < 2 {
         return Vec::new();
     }
-    let count = u16::from_le_bytes(payload[0..2].try_into().unwrap()) as usize;
-    if payload.len() != 2 + count * 12 || count == 0 {
+    let count = match le_u16(&payload[0..2]) {
+        Some(c) if c > 0 => c as usize,
+        _ => return Vec::new(),
+    };
+    if payload.len() != 2 + count * 12 {
         return Vec::new(); // malformed: drop the frame entirely
     }
     let mut out = Vec::with_capacity(count);
     for i in 0..count {
         let base = 2 + i * 12;
-        out.push(MsgId {
-            sender: u64::from_le_bytes(payload[base..base + 8].try_into().unwrap()),
-            seq: u32::from_le_bytes(payload[base + 8..base + 12].try_into().unwrap()),
-        });
+        out.extend(msg_id_at(payload, base));
     }
     out
 }
@@ -1720,5 +1722,38 @@ mod tests {
         assert!(parse_ihave_payload(&[]).is_empty());
         assert!(parse_ihave_payload(&[0xFF, 0xFF]).is_empty());
         assert!(parse_ihave_payload(&[0x02, 0x00, 0x01]).is_empty());
+    }
+
+    #[test]
+    fn ihave_graft_parsers_never_panic_on_hostile_bytes() {
+        // Audit #22 item 6 regression lock: every truncation and every
+        // length-lying header of a valid batch must degrade to dropped
+        // records — the recv path must never panic.
+        let ids: Vec<MsgId> = (0..5)
+            .map(|i| MsgId { sender: 0x1000 + i, seq: i as u32 * 7 })
+            .collect();
+        let payload = build_graft_batch_payload(&ids);
+        for end in 0..=payload.len() {
+            let truncated = &payload[..end];
+            let _ = parse_graft_payload_multi(truncated);
+            let _ = parse_ihave_payload(truncated);
+        }
+        // Header claims 65535 records the body does not carry.
+        let mut lying = payload.clone();
+        lying[0] = 0xFF;
+        lying[1] = 0xFF;
+        assert!(parse_graft_payload_multi(&lying).is_empty());
+        // Every single-byte corruption of a valid single-id GRAFT.
+        let one = build_graft_payload(&MsgId { sender: 42, seq: 7 });
+        for i in 0..one.len() {
+            let mut corrupted = one.clone();
+            corrupted[i] ^= 0xFF;
+            let _ = parse_graft_payload(&corrupted);
+        }
+        // Degenerate frames.
+        assert!(parse_graft_payload_multi(&[]).is_empty());
+        assert!(parse_ihave_payload(&[0x01]).is_empty());
+        // Sanity: the valid batch still round-trips.
+        assert_eq!(parse_graft_payload_multi(&payload), ids);
     }
 }

@@ -74,8 +74,9 @@ pub const MAX_VOTE_TARGETS: usize = 4096;
 /// When a track's net upvotes cross the effective threshold it is
 /// auto-promoted into the active playback queue. Two knobs compose:
 ///   • default quorum: ⌊N/2⌋ + 1 (N = `member_count`) — a strict majority;
-///   • host-configured `ratio` (0.25..=1.0) — `ceil(ratio · N)`, e.g.
-///     0.75 with N=8 → 6 votes.
+///   • host-configured `ratio`, clamped to (0, 1] at read time —
+///     `ceil(ratio · N)`, e.g. 0.75 with N=8 → 6 votes; values above
+///     1.0 clamp to 1.0 so the threshold is always achievable.
 /// `min_votes` floors the result (solo rooms stay usable), and the final
 /// value is clamped to at least 1.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -102,10 +103,14 @@ impl PromotionPolicy {
     /// Effective promotion threshold in net upvotes.
     pub fn effective_threshold(&self) -> u32 {
         let quorum = (self.member_count / 2) + 1;
+        // Audit #22 item 7: clamp the host ratio into (0, 1] — a
+        // hostile or buggy ratio > 1.0 used to mint ceil(r · N) > N,
+        // an unachievable threshold that deadlocked promotion. NaN
+        // and non-positive ratios keep the majority fallback.
         let ratio_based = self
             .ratio
             .filter(|r| *r > 0.0)
-            .map(|r| ((r as f64) * self.member_count as f64).ceil() as u32)
+            .map(|r| (r.clamp(0.0, 1.0) as f64 * self.member_count as f64).ceil() as u32)
             .unwrap_or(quorum);
         ratio_based.max(self.min_votes).max(1)
     }
@@ -1381,5 +1386,25 @@ mod tests {
         ));
         assert!(st.apply_op(&future), "late Add after its votes");
         assert!(matches!(st.promotion_status(future.op_id), PromotionStatus::Committed { votes: 2 }));
+    }
+
+    #[test]
+    fn promotion_ratio_clamped_to_achievable_range() {
+        // Audit #22 item 7 regression lock: ratio > 1.0 used to mint
+        // ceil(r · N) > N — unachievable, promotion deadlocked. Now it
+        // clamps to 1.0 (everyone-must-vote); NaN / zero / negative
+        // keep the majority fallback.
+        let hostile = PromotionPolicy { member_count: 8, ratio: Some(5.0), min_votes: 1 };
+        assert_eq!(hostile.effective_threshold(), 8);
+        let just_above = PromotionPolicy { member_count: 8, ratio: Some(1.5), min_votes: 1 };
+        assert_eq!(just_above.effective_threshold(), 8);
+        let upper_edge = PromotionPolicy { member_count: 8, ratio: Some(1.0), min_votes: 1 };
+        assert_eq!(upper_edge.effective_threshold(), 8);
+        let nan = PromotionPolicy { member_count: 8, ratio: Some(f32::NAN), min_votes: 1 };
+        assert_eq!(nan.effective_threshold(), 5);
+        let zero = PromotionPolicy { member_count: 8, ratio: Some(0.0), min_votes: 1 };
+        assert_eq!(zero.effective_threshold(), 5);
+        let neg = PromotionPolicy { member_count: 8, ratio: Some(-0.75), min_votes: 1 };
+        assert_eq!(neg.effective_threshold(), 5);
     }
 }

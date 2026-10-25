@@ -106,6 +106,7 @@ use crate::jam_crdt::{
 use crate::jam_governor::{
     GovernanceEvent, IntentKind, KickKind, RejectReason, RoomGovernor, Topology,
 };
+use crate::wire_le::{fixed, le_i64, le_u16, le_u32, le_u64};
 
 // ─────────────────────────────────────────────────────────── protocol consts
 
@@ -258,6 +259,14 @@ pub struct BeaconPayload {
     pub room: Option<LanRoomEntry>,
 }
 
+/// Infallible unspecified-address constant (audit #22 item 6: replaced
+/// three `"0.0.0.0:0".parse().unwrap()` sites — a panic-on-typo
+/// landmine standing in for a plain constant).
+#[inline]
+fn unspecified_addr() -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
+}
+
 /// Parses a beacon payload with strict slice bounds. Returns `None` only
 /// for sub-legacy lengths; unknown trailing bytes are tolerated.
 pub fn parse_beacon(payload: &[u8]) -> Option<BeaconPayload> {
@@ -295,7 +304,7 @@ pub fn parse_beacon(payload: &[u8]) -> Option<BeaconPayload> {
             member_count,
             sender_pubkey,
             topology,
-            from_addr: "0.0.0.0:0".parse().unwrap(),
+            from_addr: unspecified_addr(),
             port,
             last_seen_ns: 0,
         })
@@ -620,15 +629,15 @@ impl P2pPacketHeader {
             return Err(MeshError::Truncated);
         }
         let hdr = P2pPacketHeader {
-            magic: u16::from_le_bytes(b[0..2].try_into().unwrap()),
+            magic: le_u16(&b[0..2]).ok_or(MeshError::Truncated)?,
             version: b[2],
             msg_type: b[3],
-            sender_id: b[4..12].try_into().unwrap(),
-            session_id: b[12..28].try_into().unwrap(),
-            sequence: u32::from_le_bytes(b[28..32].try_into().unwrap()),
-            timestamp_mono_ns: i64::from_le_bytes(b[32..40].try_into().unwrap()),
-            payload_len: u16::from_le_bytes(b[40..42].try_into().unwrap()),
-            checksum_fnv1a: u32::from_le_bytes(b[42..46].try_into().unwrap()),
+            sender_id: fixed::<8>(&b[4..12]).ok_or(MeshError::Truncated)?,
+            session_id: fixed::<16>(&b[12..28]).ok_or(MeshError::Truncated)?,
+            sequence: le_u32(&b[28..32]).ok_or(MeshError::Truncated)?,
+            timestamp_mono_ns: le_i64(&b[32..40]).ok_or(MeshError::Truncated)?,
+            payload_len: le_u16(&b[40..42]).ok_or(MeshError::Truncated)?,
+            checksum_fnv1a: le_u32(&b[42..46]).ok_or(MeshError::Truncated)?,
         };
         if hdr.magic != MAGIC {
             return Err(MeshError::BadMagic);
@@ -1060,7 +1069,11 @@ pub struct MeshNode {
     id: PeerId,
     session: SessionId,
     sock: Arc<UdpSocket>,
-    outbound_txs: [mpsc::UnboundedSender<Outbound>; SENDER_SHARDS],
+    /// Outbound senders, one per shard. `Vec` rather than a fixed
+    /// array: construction then needs no fallible Vec-to-array
+    /// conversion (audit #22 item 6 removed the `expect` that stood
+    /// in for plain index-wise building); lookups stay shard-indexed.
+    outbound_txs: Vec<mpsc::UnboundedSender<Outbound>>,
     stop_tx: watch::Sender<bool>,
     broadcast_target: Option<SocketAddr>,
     peers: RwLock<HashMap<PeerId, PeerEntry>>,
@@ -1144,8 +1157,6 @@ impl MeshNode {
             outbound_txs.push(tx);
             outbound_rxs.push(rx);
         }
-        let outbound_txs: [mpsc::UnboundedSender<Outbound>; SENDER_SHARDS] =
-            outbound_txs.try_into().expect("shard count literal");
         let (stop_tx, stop_rx) = watch::channel(false);
 
         let gossip_engine = GossipEngine::new(id.0, cfg.gossip.clone());
@@ -1286,7 +1297,7 @@ impl MeshNode {
     pub fn local_addr(&self) -> SocketAddr {
         self.sock
             .local_addr()
-            .unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap())
+            .unwrap_or_else(|_| unspecified_addr())
     }
 
     pub fn peer_count(&self) -> usize {
@@ -1413,7 +1424,7 @@ impl MeshNode {
         let mut map = heal(self.peers.write());
         map.entry(peer).or_insert_with(|| {
             PeerEntry::new(
-                "0.0.0.0:0".parse().unwrap(),
+                unspecified_addr(),
                 RouteDomain::Remote,
                 CAP_WEBRTC,
                 now,
@@ -2788,7 +2799,9 @@ impl MeshNode {
             return;
         }
         let mode = payload[0];
-        let t1 = u64::from_le_bytes(payload[1..9].try_into().unwrap());
+        let Some(t1) = le_u64(&payload[1..9]) else {
+            return;
+        };
         match mode {
             0 => {
                 // Echo the probe back so the originator can compute RTT.
@@ -3018,7 +3031,7 @@ fn parse_beacon_caps(payload: &[u8]) -> Option<u16> {
     if payload.len() < 12 {
         return None;
     }
-    Some(u16::from_le_bytes(payload[8..10].try_into().unwrap()))
+    le_u16(&payload[8..10])
 }
 
 // ─────────────────────────────────────────────────────── background loops
@@ -3300,5 +3313,27 @@ mod tests {
         assert!(P2pPacketHeader::is_gossip_routed(MSG_TRACK_MANIFEST));
         assert!(!P2pPacketHeader::is_gossip_routed(MSG_CHUNK_DATA));
         assert!(!P2pPacketHeader::is_gossip_routed(MSG_GOSSIP_IHAVE));
+    }
+
+    #[test]
+    fn header_and_caps_parsers_reject_truncations_cleanly() {
+        // Audit #22 item 6 sweep lock: every prefix of a valid header
+        // must reject cleanly (never panic); the full header parses.
+        let hdr = sample_header(MSG_CRDT_OP, 7);
+        let full = hdr.to_bytes();
+        for end in 0..full.len() {
+            assert_eq!(
+                P2pPacketHeader::from_bytes(&full[..end]),
+                Err(MeshError::Truncated)
+            );
+        }
+        assert!(P2pPacketHeader::from_bytes(&full).is_ok());
+        assert_eq!(P2pPacketHeader::from_bytes(&[]), Err(MeshError::Truncated));
+        // Beacon caps: every truncation is None; the full frame reads.
+        let caps_frame = [0u8; 12];
+        for end in 0..12 {
+            assert_eq!(parse_beacon_caps(&caps_frame[..end]), None);
+        }
+        assert_eq!(parse_beacon_caps(&caps_frame), Some(0));
     }
 }

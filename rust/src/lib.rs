@@ -65,6 +65,9 @@ pub mod spotify_ingest;
 pub mod tagger;
 pub mod task_orchestrator;
 pub mod tick_matrix;
+// Audit #22 item 6: shared little-endian wire-field readers —
+// panic-free ingress parsing for every wire codec.
+pub mod wire_le;
 
 pub use airdrop::{AirdropPhysicsEngine, AirdropState};
 pub use aligner::{AlignedLine, AlignedSyllable, LyricAlignerEngine};
