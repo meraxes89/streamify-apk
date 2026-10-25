@@ -68,8 +68,9 @@ pub enum JniStatus {
     /// Non-finite (NaN/Inf) float argument.
     NonFiniteInput = -1,
     /// Invalid parameter: stiffness <= 0, damping ratio < 0,
-    /// friction <= 0, inverted bounds, or bucket count outside
-    /// `[MIN_BUCKETS, MAX_BUCKETS]`.
+    /// friction <= 0, inverted bounds, bucket count outside
+    /// `[MIN_BUCKETS, MAX_BUCKETS]`, or params so extreme that
+    /// derived quantities (k/m, ζ²) overflow f32.
     InvalidParameter = -2,
     /// Invalid output buffer: null array, zero length, or capacity
     /// mismatch against the requested bucket count.

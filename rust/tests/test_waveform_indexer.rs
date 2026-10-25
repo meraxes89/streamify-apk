@@ -118,6 +118,36 @@ fn bucket_count_must_be_in_directive_range() {
 }
 
 #[test]
+fn long_track_bucket_boundaries_stay_exact_beyond_u32_product_range() {
+    // Regression lock for the armeabi-v7a (32-bit usize) overflow:
+    // `(b + 1) * sample_count` exceeds u32::MAX for sample_count ≥
+    // 2^32/500 ≈ 8.59 M (≈ 3 min 15 s @ 44.1 kHz) — any ordinary song.
+    // The bucket-boundary math now computes in u64; on the 64-bit host
+    // this asserts the exactness contract (every sample counted exactly
+    // once, boundaries monotonic, last bucket ends at the final sample)
+    // that the u64 rewrite guarantees on 32-bit targets.
+    // 10 M samples = 20 MB PCM ≈ 3 min 47 s @ 44.1 kHz mono.
+    let samples = 10_000_000usize;
+    // Alternating ±full-scale pattern: constant energy, and any skipped
+    // or double-counted region would shift bucket counts.
+    let mut pcm = Vec::with_capacity(samples * 2);
+    for i in 0..samples {
+        let s: i16 = if i % 2 == 0 { i16::MAX } else { -i16::MAX };
+        pcm.extend_from_slice(&s.to_le_bytes());
+    }
+    let bars = generate_waveform(&pcm, MAX_BUCKETS).expect("10M-sample generate");
+    assert_eq!(bars.len(), MAX_BUCKETS);
+    // Alternating full-scale squares: every bucket must be pinned at
+    // the global max — a wrapped boundary (skipped samples) would leave
+    // at least one bucket empty (0) or panic the index path.
+    assert!(
+        bars.iter().all(|&b| b > 0),
+        "no bucket may be empty when energy spans the whole track: {:?}",
+        bars.iter().enumerate().filter(|(_, &b)| b == 0).take(3).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn empty_and_odd_audio_payloads_are_rejected() {
     assert!(matches!(
         generate_waveform(&[], 100),

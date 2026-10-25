@@ -308,6 +308,22 @@ fn physics_input_validation_rejects_degenerate_values() {
     );
     assert!(SpringSpec::new(100.0, 0.8, 1.0).is_ok());
 
+    // Extreme-but-FINITE params whose derived quantities overflow f32
+    // (ζ² = +Inf, ωₙ² = k/m = +Inf) must be rejected at the door —
+    // the closed forms would silently degrade to NaN via Inf·0 terms.
+    // ζ = 1.84e19: ζ² ≈ 3.4e38 overflows f32::MAX ≈ 3.4e38 boundary.
+    assert_eq!(
+        SpringSpec::new(100.0, 1.9e19, 1.0),
+        Err(PhysicsError::DegenerateParameterRange)
+    );
+    // k/m overflows: stiffness = f32::MAX, mass = 1e-30.
+    assert_eq!(
+        SpringSpec::new(f32::MAX, 0.8, 1e-30),
+        Err(PhysicsError::DegenerateParameterRange)
+    );
+    // Boundary sanity: values just inside the finite-derived range pass.
+    assert!(SpringSpec::new(100.0, 1.0e19, 1.0).is_ok());
+
     assert_eq!(
         fling_landing(0.0, 100.0, 0.0, 1.0, 0.0).unwrap_err(),
         PhysicsError::InvalidFriction

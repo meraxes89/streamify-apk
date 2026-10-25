@@ -163,7 +163,13 @@ pub fn generate_waveform(pcm_bytes: &[u8], bucket_count: usize) -> Result<Vec<u8
     for (b, acc) in buckets.iter_mut().enumerate() {
         // Bucket b covers samples [b·n/N, (b+1)·n/N) — integer math,
         // no per-sample division, even distribution of the remainder.
-        let end = (b + 1) * sample_count / bucket_count;
+        // Compute in u64: on 32-bit targets (armeabi-v7a) `(b+1) * n`
+        // overflows usize for any track longer than ~3 min @ 44.1 kHz
+        // (n ≥ 2^32/500), silently wrapping in release and skipping or
+        // overrunning bucket boundaries — invisible to the 64-bit host
+        // test runner. u64 keeps the math exact for any pcm_bytes length
+        // addressable in memory (≤ 2^32 samples ⇒ product ≤ 2^41).
+        let end = ((b as u64 + 1) * sample_count as u64 / bucket_count as u64) as usize;
         while offset < end {
             let s = i16::from_le_bytes([pcm_bytes[2 * offset], pcm_bytes[2 * offset + 1]]);
             let s_f = s as f32;

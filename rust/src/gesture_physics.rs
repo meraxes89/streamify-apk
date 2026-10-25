@@ -25,8 +25,9 @@
 //! fills a caller-owned sample buffer with one position per animation
 //! frame using recurrence stepping — the same analytical solution
 //! restated as a rotation + decay step, so there is no step-size error,
-//! only f32 rounding (≤ 1e-5 relative over 10⁴ frames, asserted
-//! against the closed form by the unit suite). Three transcendentals
+//! only f32 rounding (the unit suite asserts recurrence-vs-closed-form
+//! agreement to 5e-2 absolute over 240 frames and finiteness + bounded
+//! tail over 10⁴ frames). Three transcendentals
 //! seed the recurrence instead of three per frame, keeping a full
 //! 120-frame trajectory far below the 5 µs budget. The whole hot path
 //! is allocation-free: positions are written straight into the
@@ -61,9 +62,11 @@ pub const RUBBERBAND_RESISTANCE: f32 = 0.55;
 pub const FRAME_INTERVAL_120HZ: f32 = 1.0 / 120.0;
 
 /// Damping-ratio band around ζ = 1 routed to the critically-damped
-/// closed form. Inside this band the closed forms agree to
-/// O((ζ−1)²), while the overdamped branch would lose ~4 f32 mantissa
-/// digits to catastrophic cancellation (`r₁ − r₂ → 0`).
+/// closed form. The exact solution is analytic in ζ around 1, but the
+/// overdamped branch loses ~4 f32 mantissa digits to catastrophic
+/// cancellation (`r₁ − r₂ → 0`) as ζ → 1, while the critically-damped
+/// form stays well-conditioned — inside this band the routing error is
+/// far below perception (sub-milli-pixel at the band edge).
 const CRITICAL_EPSILON: f32 = 1.0e-4;
 
 /// Validation failure for physics inputs.
@@ -81,6 +84,9 @@ pub enum PhysicsError {
     InvalidFriction,
     /// Bounds must satisfy min < max.
     InvalidBounds,
+    /// Finite params whose derived quantities (ωₙ² = k/m, ζ²) overflow
+    /// f32 — the closed forms would degrade to NaN via Inf·0.
+    DegenerateParameterRange,
 }
 
 impl core::fmt::Display for PhysicsError {
@@ -92,6 +98,9 @@ impl core::fmt::Display for PhysicsError {
             PhysicsError::InvalidMass => "mass must be > 0",
             PhysicsError::InvalidFriction => "friction coefficient must be > 0",
             PhysicsError::InvalidBounds => "bounds must satisfy min < max",
+            PhysicsError::DegenerateParameterRange => {
+                "parameter range too extreme: k/m or ζ² overflows f32"
+            }
         };
         f.write_str(msg)
     }
@@ -126,6 +135,15 @@ impl SpringSpec {
         }
         if mass <= 0.0 {
             return Err(PhysicsError::InvalidMass);
+        }
+        // Derived quantities must stay finite. Extreme-but-finite params
+        // (ζ ≳ 1.84e19 squares to +Inf; k/m > f32::MAX overflows ωₙ²)
+        // would degrade every closed form to NaN through Inf·0 terms —
+        // violating the "NaN in → NaN out" contract from the STATE side.
+        // Params are UI-chosen constants; reject the degenerate range
+        // instead of letting Inf leak in through the back door.
+        if !(stiffness / mass).is_finite() || !(damping_ratio * damping_ratio).is_finite() {
+            return Err(PhysicsError::DegenerateParameterRange);
         }
         Ok(Self {
             stiffness,
@@ -219,9 +237,10 @@ pub fn spring_trajectory(
 }
 
 /// [`spring_trajectory`] continued at an absolute frame offset:
-/// `out[i]` is the position at `t = (start_frame + i)·dt`. The JNI
-/// layer streams long trajectories through a fixed stack buffer in
-/// chunks using this entry point without re-deriving per-frame state.
+/// `out[i]` is the position at `t = (start_frame + i)·dt`. Exists so a
+/// future streaming caller can resume a long trajectory in chunks
+/// without re-deriving per-frame state (the current JNI bridge fills
+/// whole buffers in one shot from frame 0).
 pub fn spring_trajectory_from(
     spec: &SpringSpec,
     current: f32,
