@@ -75,6 +75,8 @@ object JamEngine {
 
     // ═══════════════ Types ═══════════════
 
+    /** [androidx.compose.runtime.Immutable] — pure value row for the roster UI. */
+    @androidx.compose.runtime.Immutable
     data class Member(
         val userId: String,
         val name: String,
@@ -95,7 +97,9 @@ object JamEngine {
     /**
      * Serverless room descriptor — replaces the Supabase listening_sessions
      * row. Lives only on the mesh; the pairing key is handed out offline.
+     * [androidx.compose.runtime.Immutable] — pure value row for the UI.
      */
+    @androidx.compose.runtime.Immutable
     data class JamSession(
         val id: String,
         val sessionCode: String,
@@ -104,7 +108,9 @@ object JamEngine {
         val createdAtMs: Long
     )
 
-    /** One node on the mesh radar (UI topology view). */
+    /** One node on the mesh radar (UI topology view).
+     * [androidx.compose.runtime.Immutable] — pure value row for the radar UI. */
+    @androidx.compose.runtime.Immutable
     data class MeshPeer(
         val peerIdHex: String,
         val nonce: String,
@@ -116,7 +122,9 @@ object JamEngine {
         val lastSeenMs: Long
     )
 
-    /** Live sync health surfaced to the acoustic gauge UI. */
+    /** Live sync health surfaced to the acoustic gauge UI.
+     * [androidx.compose.runtime.Immutable] — pure value row for the gauge UI. */
+    @androidx.compose.runtime.Immutable
     data class SyncTelemetry(
         val clockDriftNanos: Long = 0L,
         val rttNanos: Long = 0L,

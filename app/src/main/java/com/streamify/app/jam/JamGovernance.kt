@@ -54,7 +54,9 @@ object JamGovernance {
     /**
      * Per-member permission row. The HOST row is implicit (always allowed);
      * the table stores guest rows only.
+     * [androidx.compose.runtime.Immutable] — pure value row for the governance UI.
      */
+    @androidx.compose.runtime.Immutable
     data class MemberAcl(
         val nonce: String,
         val role: Role = Role.MEMBER,
@@ -66,7 +68,9 @@ object JamGovernance {
 
     /**
      * One guest report, relayed to the host surface (Governance sheet).
+     * [androidx.compose.runtime.Immutable] — pure value row for the report list.
      */
+    @androidx.compose.runtime.Immutable
     data class MemberReport(
         val reporterNonce: String,
         val targetNonce: String,

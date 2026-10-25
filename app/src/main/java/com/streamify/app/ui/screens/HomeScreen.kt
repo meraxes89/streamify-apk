@@ -193,13 +193,13 @@ fun HomeScreen(
 
                         // DAILY MIXES 1–6 (Gap #26): artist-cluster carousels.
                         if (dailyMixes.isNotEmpty()) {
-                            item(key = "header_daily_mixes") {
+                            item(key = "header_daily_mixes", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Daily Mixes",
                                     kicker = "Your artist clusters • 1–6"
                                 )
                             }
-                            item(key = "rail_daily_mixes") {
+                            item(key = "rail_daily_mixes", contentType = "rail") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -207,7 +207,8 @@ fun HomeScreen(
                                 ) {
                                     items(
                                         items = dailyMixes,
-                                        key = { "daily_mix_${it.number}_${it.seedArtist}" }
+                                        key = { "daily_mix_${it.number}_${it.seedArtist}" },
+                                        contentType = { "dailyMixCard" }
                                     ) { mix ->
                                         YtDailyMixCard(
                                             mix = mix,
@@ -246,7 +247,7 @@ fun HomeScreen(
 
                         // Optional Broadcast Banner
                         if (communityState.activeBroadcasts.isNotEmpty()) {
-                            item(key = "broadcast_banner") {
+                            item(key = "broadcast_banner", contentType = "broadcastBanner") {
                                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                     BroadcastBanner(broadcasts = communityState.activeBroadcasts)
                                 }
@@ -257,13 +258,13 @@ fun HomeScreen(
                         // rail with one-tap Listen Along / Join Jam / Blend and a
                         // tap-through to the friend's public profile.
                         if (communityState.friendsActivity.isNotEmpty()) {
-                            item(key = "header_friends") {
+                            item(key = "header_friends", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Friends",
                                     kicker = "Listening Now"
                                 )
                             }
-                            item(key = "row_friends") {
+                            item(key = "row_friends", contentType = "rail") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -271,7 +272,8 @@ fun HomeScreen(
                                 ) {
                                     items(
                                         communityState.friendsActivity,
-                                        key = { "home_friend_${it.userId}" }
+                                        key = { "home_friend_${it.userId}" },
+                                        contentType = { "friendActivityCard" }
                                     ) { friend ->
                                         FriendActivityCard(
                                             friend = friend,
@@ -303,13 +305,13 @@ fun HomeScreen(
 
                         // SHELF 1: LISTEN AGAIN
                         if (listenAgainColumns.isNotEmpty() && listenAgainColumns.first().isNotEmpty()) {
-                            item(key = "header_listen_again") {
+                            item(key = "header_listen_again", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Listen Again",
                                     kicker = "Past Heavy Rotations"
                                 )
                             }
-                            item(key = "grid_listen_again") {
+                            item(key = "grid_listen_again", contentType = "grid") {
                                 YtListenAgainGrid(
                                     columns = listenAgainColumns,
                                     currentPlayingTrack = currentTrack,
@@ -321,13 +323,13 @@ fun HomeScreen(
 
                         // SHELF 2: QUICK PICKS
                         if (quickPickColumns.isNotEmpty() && quickPickColumns.first().isNotEmpty()) {
-                            item(key = "header_quick_picks") {
+                            item(key = "header_quick_picks", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Quick Picks",
                                     kicker = if (selectedMood != "All") "$selectedMood Mix" else "Start radio for"
                                 )
                             }
-                            item(key = "carousel_quick_picks") {
+                            item(key = "carousel_quick_picks", contentType = "carousel") {
                                 YtQuickPicksCarousel(
                                     columns = quickPickColumns,
                                     currentPlayingTrack = currentTrack,
@@ -339,13 +341,13 @@ fun HomeScreen(
 
                         // SHELF 3: MY SUPERMIX & DYNAMIC STATIONS
                         if (supermixPool.isNotEmpty()) {
-                            item(key = "header_supermix") {
+                            item(key = "header_supermix", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Mixed For You",
                                     kicker = "Personalized Stations"
                                 )
                             }
-                            item(key = "row_supermix") {
+                            item(key = "row_supermix", contentType = "rail") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -353,7 +355,8 @@ fun HomeScreen(
                                 ) {
                                     items(
                                         items = supermixPool.take(8),
-                                        key = { "supermix_${it.id}" }
+                                        key = { "supermix_${it.id}" },
+                                        contentType = { "supermixCard" }
                                     ) { track ->
                                         val isCardBuffering = isBuffering && currentTrack != null && (
                                             (currentTrack?.id ?: 0) > 0 && currentTrack?.id == track.id ||
@@ -377,13 +380,13 @@ fun HomeScreen(
 
                         // SHELF 4: CIRCADIAN DAYPARTING RHYTHM
                         if (state.circadianRecommendations.isNotEmpty()) {
-                            item(key = "header_circadian") {
+                            item(key = "header_circadian", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = state.circadianSlotTitle,
                                     kicker = "Circadian Acoustic Tuning"
                                 )
                             }
-                            item(key = "grid_circadian") {
+                            item(key = "grid_circadian", contentType = "grid") {
                                 YtListenAgainGrid(
                                     columns = circadianColumns,
                                     currentPlayingTrack = currentTrack,
@@ -395,13 +398,13 @@ fun HomeScreen(
 
                         // SHELF 5: HYBRID ASYMMETRIC RADAR
                         if (state.hybridRecommendations.isNotEmpty()) {
-                            item(key = "header_hybrid") {
+                            item(key = "header_hybrid", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Hybrid Radar",
                                     kicker = "Last.fm Graph × On-Device SIMD"
                                 )
                             }
-                            item(key = "grid_hybrid") {
+                            item(key = "grid_hybrid", contentType = "grid") {
                                 YtListenAgainGrid(
                                     columns = hybridColumns,
                                     currentPlayingTrack = currentTrack,
@@ -413,7 +416,7 @@ fun HomeScreen(
 
                         // SHELF 6: COMMUNITY TRENDING PLAYLISTS
                         if (communityState.communityPlaylists.isNotEmpty()) {
-                            item(key = "header_community") {
+                            item(key = "header_community", contentType = "sectionHeader") {
                                 YtSectionHeader(
                                     title = "Community Trending",
                                     kicker = "Curated by Streamify Listeners",
@@ -421,13 +424,13 @@ fun HomeScreen(
                                     onActionClick = onNavigateToCommunity
                                 )
                             }
-                            item(key = "row_community") {
+                            item(key = "row_community", contentType = "rail") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    items(communityState.communityPlaylists, key = { it.id }) { playlist ->
+                                    items(communityState.communityPlaylists, key = { it.id }, contentType = { "communityPlaylistCard" }) { playlist ->
                                         YtSupermixCard(
                                             title = playlist.name,
                                             subtitle = "by ${playlist.creatorName}",

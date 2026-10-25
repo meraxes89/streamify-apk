@@ -1,5 +1,6 @@
 package com.streamify.app.data.models
 
+@androidx.compose.runtime.Stable
 data class TrackNative(
     val id: Int,
     val filepath: String,
@@ -17,7 +18,14 @@ data class TrackNative(
     val downloadQuality: String
 )
 
-@androidx.compose.runtime.Stable
+/**
+ * [Immutable]: every field is a val of an immutable type (String / Int /
+ * Float / Boolean / nullable String) and instances are replaced, never
+ * mutated. The Compose compiler can therefore treat [Track] as an immutable
+ * value and mark every composable that only takes a [Track] as skippable —
+ * the foundation of the 120Hz zero-jank recomposition architecture.
+ */
+@androidx.compose.runtime.Immutable
 data class Track(
     val id: Int = 0,
     val filepath: String = "",

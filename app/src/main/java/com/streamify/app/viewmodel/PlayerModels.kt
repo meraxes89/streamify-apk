@@ -38,6 +38,14 @@ enum class PlaybackButtonState {
     PAUSED
 }
 
+/**
+ * [Immutable]: holds only immutable vals — [Track] is itself @Immutable and
+ * the queue list is replaced wholesale (copy-on-write) by the viewmodel, never
+ * mutated in place. The Compose compiler treats this state as immutable, so
+ * every composable taking it (or a [Track] from it) becomes skippable and
+ * parent containers never recompose just because a field advanced.
+ */
+@androidx.compose.runtime.Immutable
 data class PlayerState(
     val currentTrack: Track? = null,
     val queue: List<Track> = emptyList(),

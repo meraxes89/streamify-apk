@@ -156,6 +156,18 @@ object AppGraph {
             com.streamify.app.util.SLog.e("StreamifyApp", "Failed to initialize StreamifyHapticEngine", e)
         }
 
+        // Phase 5 — centralized multi-sensory haptic engine (throttle-aware,
+        // actuator-seamed for JVM tests).
+        try {
+            com.streamify.app.ui.util.HapticFeedbackManager.instance =
+                com.streamify.app.ui.util.HapticFeedbackManager(
+                    actuator = com.streamify.app.ui.util.AndroidHapticActuator(appContext),
+                    clock = com.streamify.app.ui.util.UptimeHapticClock()
+                )
+        } catch (e: Throwable) {
+            com.streamify.app.util.SLog.e("StreamifyApp", "Failed to initialize HapticFeedbackManager", e)
+        }
+
         try {
             com.streamify.app.media.ingestion.LibrarySyncWorker.schedulePeriodicSync(appContext)
         } catch (e: Throwable) {

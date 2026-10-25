@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +70,9 @@ import com.streamify.app.media.lyrics.LyricOffsetStore
 import com.streamify.app.media.lyrics.LyricPlaybackController
 import com.streamify.app.ui.components.*
 import com.streamify.app.ui.components.yt.*
+import com.streamify.app.ui.motion.LiquidMorphController
+import com.streamify.app.ui.motion.LiquidMorphGeometry
+import com.streamify.app.ui.motion.reportBoundsTo
 import com.streamify.app.ui.theme.*
 import com.streamify.app.viewmodel.CommunityViewModel
 import com.streamify.app.viewmodel.UiEvent
@@ -89,43 +93,60 @@ enum class LandscapePlayerTab {
  * from every pane that needs it.
  */
 private fun Modifier.collapseDragZone(
+    morphController: LiquidMorphController?,
     collapseDragY: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
     sheetGestureScope: kotlinx.coroutines.CoroutineScope,
     onCollapse: () -> Unit
-): Modifier = Modifier.pointerInput(Unit) {
+): Modifier = Modifier.pointerInput(morphController) {
     val velocityTracker = VelocityTracker()
     detectVerticalDragGestures(
         onDragStart = { velocityTracker.resetTracking() },
         onVerticalDrag = { change, dragAmount ->
             change.consume()
             velocityTracker.addPosition(change.uptimeMillis, change.position)
-            sheetGestureScope.launch {
-                collapseDragY.snapTo((collapseDragY.value + dragAmount).coerceAtLeast(0f))
+            if (morphController != null) {
+                // Drag down collapses: negate dy so progress falls 1:1 with
+                // the finger; the shared cover morphs back to the dock.
+                morphController.dragBy(-dragAmount)
+            } else {
+                sheetGestureScope.launch {
+                    collapseDragY.snapTo((collapseDragY.value + dragAmount).coerceAtLeast(0f))
+                }
             }
         },
         onDragEnd = {
             val velocityY = velocityTracker.calculateVelocity().y
-            sheetGestureScope.launch {
-                val dismissPx = 140.dp.toPx()
-                if (collapseDragY.value > dismissPx || velocityY > 2400f) {
-                    com.streamify.app.util.StreamifyHapticEngine.tokenImpactDetent()
-                    onCollapse()
-                    kotlinx.coroutines.delay(500)
-                    collapseDragY.snapTo(0f)
-                } else {
+            if (morphController != null) {
+                // Downward release velocity is positive -> toward collapse;
+                // the controller settles the landing and disposes the sheet.
+                morphController.endGesture(velocityPxPerSec = -velocityY)
+            } else {
+                sheetGestureScope.launch {
+                    val dismissPx = 140.dp.toPx()
+                    if (collapseDragY.value > dismissPx || velocityY > 2400f) {
+                        com.streamify.app.util.StreamifyHapticEngine.tokenImpactDetent()
+                        onCollapse()
+                        kotlinx.coroutines.delay(500)
+                        collapseDragY.snapTo(0f)
+                    } else {
+                        collapseDragY.animateTo(
+                            0f,
+                            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+                        )
+                    }
+                }
+            }
+        },
+        onDragCancel = {
+            if (morphController != null) {
+                morphController.cancelGesture()
+            } else {
+                sheetGestureScope.launch {
                     collapseDragY.animateTo(
                         0f,
                         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
                     )
                 }
-            }
-        },
-        onDragCancel = {
-            sheetGestureScope.launch {
-                collapseDragY.animateTo(
-                    0f,
-                    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-                )
             }
         }
     )
@@ -159,7 +180,11 @@ fun FullPlayerSheet(
     onRadioClick: (() -> Unit)? = null,
     onJamClick: (() -> Unit)? = null,
     isAutoPlayEnabled: Boolean = false,
-    onAutoPlayToggle: (() -> Unit)? = null
+    onAutoPlayToggle: (() -> Unit)? = null,
+    /** Liquid morph driver: when present, the sheet's entrance transform and
+     *  collapse gestures route through the shared MiniPlayer <-> FullPlayer
+     *  morph instead of the legacy local drag offset. */
+    morphController: LiquidMorphController? = null
 ) {
     if (track == null) return
 
@@ -218,6 +243,49 @@ fun FullPlayerSheet(
         if (!canvasReady) canvasEnabled = false
     }
 
+    // ── Android 14+ Predictive Back (Gap: gesture navigation polish) ──────
+    // The system edge-swipe drives the liquid morph 1:1: the sheet scales
+    // down and translates toward the mini dock proportionally with the
+    // gesture. Completing the gesture pops into the mini player (controller
+    // collapse); cancelling springs the sheet back to fully expanded.
+    // Registered BEFORE the sub-sheet handlers so an open sub-sheet (added
+    // later = higher dispatcher priority) still wins the back event.
+    //
+    // sheetAlive disambiguates gesture-cancel from composition teardown:
+    // CancellationException fires for BOTH, but DisposableEffect.onDispose
+    // runs synchronously during the disposal pass while the coroutine's
+    // catch handler is dispatched — so a torn-down sheet observes
+    // sheetAlive == false and skips the re-expand (otherwise disposal
+    // mid-gesture — e.g. the track ending — silently re-armed expansion
+    // and popped the sheet back in when the next track arrived).
+    val sheetAlive = remember { mutableStateOf(true) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { sheetAlive.value = false }
+    }
+    if (morphController != null) {
+        androidx.activity.compose.PredictiveBackHandler(
+            enabled = !showUpNextSheet && !showLyricsSheet &&
+                    !showCommentsSheet && !showRelatedSheet
+        ) { progress ->
+            try {
+                progress.collect { event ->
+                    // System progress 0..1 -> morph progress 1..0: the sheet
+                    // container transform (scale/translate/alpha) responds in
+                    // the draw phase; the shared cover morphs toward the dock.
+                    morphController.snapProgressTo(1f - event.progress)
+                }
+                // Flow completed normally: the system back gesture COMMITTED.
+                morphController.collapse()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Gesture cancelled (finger returned to the edge): spring back
+                // — only while this sheet is still the composed surface.
+                if (sheetAlive.value) {
+                    morphController.expand()
+                }
+            }
+        }
+    }
+
     // --- PILLAR 2: LIFO Sub-Sheet Back Trapping ---
     BackHandler(enabled = showUpNextSheet) {
         showUpNextSheet = false
@@ -273,8 +341,24 @@ fun FullPlayerSheet(
             .fillMaxSize()
             .background(BgBase)
             .graphicsLayer {
-                translationY = collapseDragY.value
-                alpha = 1f - (collapseDragY.value / 1000f).coerceIn(0f, 0.4f)
+                if (morphController != null) {
+                    // Liquid morph: the sheet rises from just above the dock,
+                    // bottom-anchored scale growth, S-curve opacity — every
+                    // value derived from the controller's progress INSIDE this
+                    // lambda: the 120Hz morph stream invalidates layer
+                    // properties only, never a composition.
+                    val p = morphController.progress.value
+                    translationY =
+                        LiquidMorphGeometry.sheetTranslationFraction(p) * size.height
+                    val s = LiquidMorphGeometry.sheetScale(p)
+                    scaleX = s
+                    scaleY = s
+                    alpha = LiquidMorphGeometry.sheetAlpha(p)
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                } else {
+                    translationY = collapseDragY.value
+                    alpha = 1f - (collapseDragY.value / 1000f).coerceIn(0f, 0.4f)
+                }
             }
     ) {
         // 1. Extreme Performance: GPU Radial Gradient Ambient Glow (0.01ms Single Draw Call)
@@ -332,7 +416,7 @@ fun FullPlayerSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .collapseDragZone(collapseDragY, sheetGestureScope, onCollapse),
+                            .collapseDragZone(morphController, collapseDragY, sheetGestureScope, onCollapse),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -379,7 +463,12 @@ fun FullPlayerSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
-                            .clip(LocalAppShapes.current.thumbnailLarge)
+                            .clip(RoundedCornerShape(24.dp))
+                            .then(
+                                if (morphController != null) {
+                                    Modifier.reportBoundsTo(morphController.heroCoverRect)
+                                } else Modifier
+                            )
                             .background(androidx.compose.ui.graphics.Color.Black)
                             .graphicsLayer {
                                 if (isBuffering && !isVideoMode) {
@@ -446,7 +535,8 @@ fun FullPlayerSheet(
                         }
 
                         IconButton(onClick = {
-                            com.streamify.app.util.StreamifyHapticEngine.heartbeatFlutter()
+                            com.streamify.app.ui.util.HapticFeedbackManager.get()?.likeHeartbeat()
+                                ?: com.streamify.app.util.StreamifyHapticEngine.heartbeatFlutter()
                             onToggleLike()
                         }) {
                             Icon(
@@ -464,7 +554,8 @@ fun FullPlayerSheet(
                     YtPlayerActionPills(
                         isLiked = track.isLiked,
                         onToggleLike = {
-                            com.streamify.app.util.StreamifyHapticEngine.heartbeatFlutter()
+                            com.streamify.app.ui.util.HapticFeedbackManager.get()?.likeHeartbeat()
+                                ?: com.streamify.app.util.StreamifyHapticEngine.heartbeatFlutter()
                             onToggleLike()
                         },
                         onCommentsClick = { showCommentsSheet = true },
@@ -695,7 +786,7 @@ fun FullPlayerSheet(
                         .fillMaxWidth()
                         .graphicsLayer { alpha = chromeAlpha }
                         .padding(vertical = 4.dp)
-                        .collapseDragZone(collapseDragY, sheetGestureScope, onCollapse),
+                        .collapseDragZone(morphController, collapseDragY, sheetGestureScope, onCollapse),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -751,7 +842,12 @@ fun FullPlayerSheet(
                         .fillMaxWidth(if (isVideoMode) 1f else 0.88f)
                         .heightIn(max = if (isVideoMode) 240.dp else 320.dp)
                         .aspectRatio(if (isVideoMode) 16f / 9f else 1f)
-                        .clip(LocalAppShapes.current.thumbnailLarge)
+                        .clip(RoundedCornerShape(24.dp))
+                        .then(
+                            if (morphController != null) {
+                                Modifier.reportBoundsTo(morphController.heroCoverRect)
+                            } else Modifier
+                        )
                         .background(androidx.compose.ui.graphics.Color.Black)
                         .graphicsLayer {
                             if (isBuffering && !isVideoMode) {
@@ -761,7 +857,7 @@ fun FullPlayerSheet(
                                 scaleY = 0.98f + (pulse * 0.02f)
                             }
                         }
-                        .collapseDragZone(collapseDragY, sheetGestureScope, onCollapse)
+                        .collapseDragZone(morphController, collapseDragY, sheetGestureScope, onCollapse)
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { chromeDimmed = !chromeDimmed },
@@ -954,7 +1050,8 @@ fun FullPlayerSheet(
                             )
                         }
 
-                        // 64dp YouTube Music White Play Button
+                        // 64dp YouTube Music White Play Button — crisp
+                        // confirmation click (Phase 5 haptic engine).
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
@@ -963,7 +1060,8 @@ fun FullPlayerSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             IconButton(onClick = {
-                                com.streamify.app.util.StreamifyHapticEngine.playbackPulse()
+                                com.streamify.app.ui.util.HapticFeedbackManager.get()?.playPauseClick()
+                                    ?: com.streamify.app.util.StreamifyHapticEngine.playbackPulse()
                                 onPlayPause()
                             }) {
                                 AnimatedContent(

@@ -22,7 +22,10 @@ import org.json.JSONObject
 sealed class JamUiState {
     object Idle : JamUiState()
     object Loading : JamUiState()
+    /** [androidx.compose.runtime.Immutable] — pure value state for the jam surface. */
+    @androidx.compose.runtime.Immutable
     data class Active(val session: JamEngine.JamSession, val isHost: Boolean) : JamUiState()
+    @androidx.compose.runtime.Immutable
     data class Error(val message: String) : JamUiState()
 }
 

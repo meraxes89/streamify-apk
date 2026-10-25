@@ -202,7 +202,7 @@ fun QueueScreen(
                     if (historyExpanded || history.size <= 3) history
                     else history.take(3)
 
-                item(key = "header_history") {
+                item(key = "header_history", contentType = "sectionHeader") {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -270,7 +270,7 @@ fun QueueScreen(
                 }
 
                 if (history.size > 3 && !historyExpanded) {
-                    item(key = "history_show_all") {
+                    item(key = "history_show_all", contentType = "textAction") {
                         Text(
                             text = "SHOW ${history.size - 3} EARLIER",
                             style = LocalAppTypography.current.songArtist.copy(
@@ -290,7 +290,7 @@ fun QueueScreen(
 
                         // Section A: Now Playing Active Track
             if (nowPlaying != null) {
-                item(key = "header_now_playing") {
+                item(key = "header_now_playing", contentType = "sectionHeader") {
                     Text(
                         text = "NOW PLAYING",
                         style = LocalAppTypography.current.songArtist.copy(
@@ -317,7 +317,7 @@ fun QueueScreen(
 
             // Section B: Up Next Queue Items (Guaranteed zero played song repetition)
             if (upNext.isNotEmpty()) {
-                item(key = "header_up_next") {
+                item(key = "header_up_next", contentType = "sectionHeader") {
                     Text(
                         text = "UP NEXT (${upNext.size})",
                         style = LocalAppTypography.current.songArtist.copy(
@@ -348,7 +348,9 @@ fun QueueScreen(
                         onDragStart = {
                             draggedItemIndex = index
                             draggedItemOffset = 0f
-                            com.streamify.app.util.StreamifyHapticEngine.queueGrab()
+                            // Phase 5 — firm grab click on long-press pickup.
+                            com.streamify.app.ui.util.HapticFeedbackManager.get()?.queueGrab()
+                                ?: com.streamify.app.util.StreamifyHapticEngine.queueGrab()
                         },
                         onDragMove = { deltaY ->
                             draggedItemOffset += deltaY
@@ -360,12 +362,16 @@ fun QueueScreen(
                                 playerViewModel.reorderQueue(absFrom, absTo)
                                 draggedItemIndex = targetIndex
                                 draggedItemOffset = 0f
-                                com.streamify.app.util.StreamifyHapticEngine.magneticDetent()
+                                // Phase 5 — subtle tick across index boundaries.
+                                com.streamify.app.ui.util.HapticFeedbackManager.get()?.queueBoundaryTick()
+                                    ?: com.streamify.app.util.StreamifyHapticEngine.magneticDetent()
                             }
                         },
                         onDragEnd = {
                             draggedItemIndex = null
                             draggedItemOffset = 0f
+                            // Phase 5 — soft drop thud on release.
+                            com.streamify.app.ui.util.HapticFeedbackManager.get()?.queueDrop()
                         },
                         onClick = {
                             onTrackClick(track.id)
@@ -375,7 +381,7 @@ fun QueueScreen(
                     )
                 }
             } else if (nowPlaying == null) {
-                item(key = "empty_queue") {
+                item(key = "empty_queue", contentType = "emptyState") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -614,7 +614,13 @@ fun JamSessionScreen(
                                 onRemove = { track -> jamViewModel.removeFromJamQueue(track) },
                                 voteCountFor = { track -> jamViewModel.voteCountFor(track) },
                                 hasVotedFor = { track -> jamViewModel.hasVotedFor(track) },
-                                onUpvote = { track -> jamViewModel.castUpvote(track) }
+                                onUpvote = { track ->
+                                    // Phase 5 — energetic rising tactile pitch as
+                                    // the vote promotes the track.
+                                    com.streamify.app.ui.util.HapticFeedbackManager.get()
+                                        ?.jamUpvoteRising()
+                                    jamViewModel.castUpvote(track)
+                                }
                             )
                             if (jamQueue.size > maxCollapsedJamRows) {
                                 Text(
@@ -688,7 +694,7 @@ fun JamSessionScreen(
                     // never this screen, never the root scaffold. Tap any avatar
                     // for the governance / report surface (Gaps #14 & #18).
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        items(roster, key = { it.userId + it.nonce }) { m ->
+                        items(roster, key = { it.userId + it.nonce }, contentType = { "rosterAvatar" }) { m ->
                             RosterStripAvatar(member = m, onOpen = { showRosterSheet = true })
                         }
                     }
@@ -947,7 +953,13 @@ private fun JamAddSongModalBottomSheet(
                     // LazyColumn's item reuse + reorder animation. The roster
                     // strip below (userId+nonce) is the reference pattern;
                     // displayTracks is deduped by the same key upstream.
-                    items(displayTracks, key = { trackKey(it) }) { track ->
+                    // contentType (Phase 5 120Hz): one stable reuse class for
+                    // every row — identical layout shape, pooled reuse.
+                    items(
+                        displayTracks,
+                        key = { trackKey(it) },
+                        contentType = { "trackRow" }
+                    ) { track ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

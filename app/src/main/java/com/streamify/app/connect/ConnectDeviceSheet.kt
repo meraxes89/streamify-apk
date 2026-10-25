@@ -226,6 +226,10 @@ private fun DeviceRow(
                 value = sliderValue,
                 onValueChange = { v ->
                     sliderValue = v
+                    // Phase 5 — micro-tick on each crossed 10% volume
+                    // increment (throttle-guarded).
+                    com.streamify.app.ui.util.HapticFeedbackManager.get()
+                        ?.onVolumeFractionChanged(v)
                     onVolumeChange(v)
                 },
                 colors = SliderDefaults.colors(

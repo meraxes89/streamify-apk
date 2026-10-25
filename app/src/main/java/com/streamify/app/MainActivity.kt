@@ -8,9 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -30,6 +28,8 @@ import coil.Coil
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.streamify.app.data.supabase.AuthManager
+import com.streamify.app.ui.motion.LiquidMorphController
+import com.streamify.app.ui.motion.SharedCoverMorphLayer
 import com.streamify.app.data.supabase.AuthState
 import com.streamify.app.navigation.AppNavGraph
 import androidx.compose.ui.geometry.Offset
@@ -78,7 +78,8 @@ class MainActivity : ComponentActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    override fun onNewIntent(intent: android.content.Intent?) {
+    // activity 1.9.x: ComponentActivity.onNewIntent takes a non-null Intent.
+    override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleSpotifyCallback(intent)
@@ -327,6 +328,19 @@ class MainActivity : ComponentActivity() {
                 // Dynamic Full-Player Overlay & Dock State
                 var isPlayerExpanded by remember { mutableStateOf(false) }
 
+                // ── Liquid morph controller (MiniPlayer <-> FullPlayer) ──────
+                // Single funnel for the shared-element sheet morph: dock
+                // drag-up, sheet drag-down (and Android 14+ predictive back in
+                // the next commit) all drive the same progress Animatable; the
+                // composition target flips ONLY at settle boundaries so the
+                // 120Hz morph stream never recomposes this activity tree.
+                val morphScope = rememberCoroutineScope()
+                val morphController = remember {
+                    LiquidMorphController(scope = morphScope) { expanded ->
+                        isPlayerExpanded = expanded
+                    }
+                }
+
                 // Quantum Sonic Token 3D Physics Engine
                 val quantumController = remember { QuantumSonicTokenController() }
                 // Weft plane teardown (I6): revoke the Triad channels when the
@@ -348,6 +362,11 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     val dm = this@MainActivity.resources.displayMetrics
                     quantumController.initMetrics(dm.widthPixels.toFloat(), dm.heightPixels.toFloat(), dm.density)
+                    morphController.calibrate(
+                        screenW = dm.widthPixels.toFloat(),
+                        screenH = dm.heightPixels.toFloat(),
+                        density = dm.density
+                    )
                 }
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -355,7 +374,7 @@ class MainActivity : ComponentActivity() {
 
                 BackHandler(enabled = true) {
                     when {
-                        isPlayerExpanded -> isPlayerExpanded = false
+                        isPlayerExpanded -> morphController.collapse()
                         navController.previousBackStackEntry != null -> navController.popBackStack()
                         else -> {
                             val now = System.currentTimeMillis()
@@ -545,12 +564,19 @@ class MainActivity : ComponentActivity() {
                                                     onPlayPause = { playerViewModel.togglePlayPause() },
                                                     onNext = { playerViewModel.skipNext() },
                                                     onPrevious = { playerViewModel.skipPrevious() },
-                                                    onExpand = { isPlayerExpanded = true },
+                                                    onExpand = { morphController.expand() },
                                                     onToggleLike = { playerViewModel.toggleLike() },
                                                     onSwipeDown = {
                                                         miniDockDismissedForTrack = playerState.currentTrack?.id
                                                     },
-                                                    tokenController = quantumController
+                                                    tokenController = quantumController,
+                                                    morphController = morphController,
+                                                    nextTrackTitle = playerState.queue.getOrNull(
+                                                        playerState.currentIndex + 1
+                                                    )?.title,
+                                                    previousTrackTitle = playerState.queue.getOrNull(
+                                                        playerState.currentIndex - 1
+                                                    )?.title
                                                 )
                                                 }
                                             }
@@ -603,28 +629,23 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
 
-                            // --- LAYER 3: 120 FPS Spring Full-Player Overlay ---
-                            AnimatedVisibility(
-                                visible = isPlayerExpanded && hasTrack,
-                                enter = slideInVertically(
-                                    initialOffsetY = { it },
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                ) + fadeIn(animationSpec = tween(220)),
-                                exit = slideOutVertically(
-                                    targetOffsetY = { it },
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                ) + fadeOut(animationSpec = tween(220)),
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .zIndex(10f)
-                            ) {
-                                Box(modifier = Modifier.fillMaxSize()) {
+                            // --- LAYER 3: Liquid-Morph Full-Player Overlay (120Hz) ---
+                            // Composition gate flips only at settle boundaries
+                            // (controller callback). While composed, the sheet's
+                            // transform + the shared cover morph run entirely in
+                            // the layout/draw phases via lambda state reads.
+                            // NOTE: the morph transform (translation/scale/alpha)
+                            // is applied ONCE, inside FullPlayerSheet's root —
+                            // the wrapper here must stay transform-free or the
+                            // two nested graphicsLayers compound (2× translation,
+                            // s² scale, α² alpha) and diverge from the geometry
+                            // spec mid-morph. zIndex only.
+                            if (isPlayerExpanded && hasTrack) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .zIndex(10f)
+                                ) {
                                     FullPlayerSheet(
                                 track = playerState.currentTrack,
                                 isPlaying = playerState.isPlaying,
@@ -635,7 +656,7 @@ class MainActivity : ComponentActivity() {
                                 isShuffleActive = playerState.isShuffleActive,
                                 isRepeatActive = playerState.isRepeatActive,
                                 dominantColor = dominantColor,
-                                onCollapse = { isPlayerExpanded = false },
+                                onCollapse = { morphController.collapse() },
                                 onPlayPause = { playerViewModel.togglePlayPause() },
                                 onNext = { playerViewModel.skipNext() },
                                 onPrevious = { playerViewModel.skipPrevious() },
@@ -653,19 +674,28 @@ class MainActivity : ComponentActivity() {
                                     playerViewModel.startSongRadio(playerState.currentTrack)
                                 },
                                 onJamClick = {
-                                    isPlayerExpanded = false
+                                    // Route through the controller (NOT a direct
+                                    // isPlayerExpanded = false): the gate must flip
+                                    // at the collapse-settle boundary so the morph
+                                    // progress and the composition stay in sync.
+                                    // Setting the flag directly left progress at 1f
+                                    // while the sheet was gone → the mini dock
+                                    // computed alpha 0 and stayed invisible until
+                                    // the next expand/collapse cycle.
+                                    morphController.collapse()
                                     navController.navigate("jam")
                                 },
                                 onQueueClick = {
-                                    isPlayerExpanded = false
+                                    morphController.collapse()
                                     navController.navigate("queue")
                                 },
                                 onLyricsClick = {
-                                    isPlayerExpanded = false
+                                    morphController.collapse()
                                     navController.navigate("lyrics")
                                 },
                                 isAutoPlayEnabled = playerState.isAutoPlayEnabled,
-                                onAutoPlayToggle = { playerViewModel.toggleAutoPlay() }
+                                onAutoPlayToggle = { playerViewModel.toggleAutoPlay() },
+                                morphController = morphController
                                     )
                                     // Active-device pill pinned over the full player's
                                     // top edge — same one-tap picker entry as the dock.
@@ -678,6 +708,20 @@ class MainActivity : ComponentActivity() {
                                         com.streamify.app.connect.ConnectStatusPill()
                                     }
                                 }
+                            }
+
+                            // ── LAYER 3b: Shared-element cover morph (Gap: liquid
+                            // sheet morphing) — renders the artwork once at hero
+                            // resolution above everything while the morph is in
+                            // flight; self-hides at both stable endpoints. ──
+                            if (isPlayerExpanded && hasTrack) {
+                                SharedCoverMorphLayer(
+                                    controller = morphController,
+                                    coverArtPath = playerState.currentTrack?.coverArtPath,
+                                    title = playerState.currentTrack?.title ?: "",
+                                    artist = playerState.currentTrack?.artist ?: "",
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
 
                             // ── LAYER 4: Connect device picker (Gap #52) ─────────────

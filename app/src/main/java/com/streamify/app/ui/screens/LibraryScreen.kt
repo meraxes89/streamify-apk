@@ -713,7 +713,7 @@ fun LibraryScreen(
                             }
 
                             // Create Playlist Quick Row
-                            item(key = "create_new_playlist_row") {
+                            item(key = "create_new_playlist_row", contentType = "createPlaylistRow") {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -759,7 +759,7 @@ fun LibraryScreen(
 
                                 // Pinned section (across folders — pin always floats)
                                 if (pinnedPlaylists.isNotEmpty()) {
-                                    item(key = "pinned_section_header") {
+                                    item(key = "pinned_section_header", contentType = "sectionHeader") {
                                         Text(
                                             text = "PINNED",
                                             style = LocalAppTypography.current.songArtist.copy(
@@ -803,7 +803,7 @@ fun LibraryScreen(
                                                 if (idx >= 0) idx else Int.MAX_VALUE
                                             }
                                         }
-                                    item(key = "folder_${folder.id}") {
+                                    item(key = "folder_${folder.id}", contentType = "folderRow") {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -888,7 +888,7 @@ fun LibraryScreen(
                                 }
 
                                 // Create Folder row
-                                item(key = "create_folder_row") {
+                                item(key = "create_folder_row", contentType = "createFolderRow") {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -953,7 +953,8 @@ fun LibraryScreen(
                             } else {
                                 items(
                                     items = allTracks,
-                                    key = { "lib_track_${it.id}" }
+                                    key = { "lib_track_${it.id}" },
+                                    contentType = { "trackRow" }
                                 ) { track ->
                                     YtQueueTrackItem(
                                         track = track,
@@ -981,7 +982,8 @@ fun LibraryScreen(
                             } else {
                                 items(
                                     items = albumKeys,
-                                    key = { "album_$it" }
+                                    key = { "album_$it" },
+                                    contentType = { "albumRow" }
                                 ) { albumName ->
                                     val albumTrackList = albums[albumName] ?: emptyList()
                                     val firstTrack = albumTrackList.firstOrNull()
@@ -1033,7 +1035,8 @@ fun LibraryScreen(
                             } else {
                                 items(
                                     items = artistKeys,
-                                    key = { "artist_$it" }
+                                    key = { "artist_$it" },
+                                    contentType = { "artistRow" }
                                 ) { artistName ->
                                     val artistTrackList = artists[artistName] ?: emptyList()
                                     val firstTrack = artistTrackList.firstOrNull()
@@ -1085,7 +1088,8 @@ fun LibraryScreen(
                             } else {
                                 items(
                                     items = downloaded,
-                                    key = { "dl_${it.id}" }
+                                    key = { "dl_${it.id}" },
+                                    contentType = { "trackRow" }
                                 ) { track ->
                                     YtQueueTrackItem(
                                         track = track,
@@ -1113,7 +1117,8 @@ fun LibraryScreen(
                             } else {
                                 items(
                                     items = folderKeys,
-                                    key = { "folder_$it" }
+                                    key = { "folder_$it" },
+                                    contentType = { "folderRow" }
                                 ) { folderPath ->
                                     val folderTracks = folders[folderPath] ?: emptyList()
                                     val folderName = folderPath.substringAfterLast('/')
