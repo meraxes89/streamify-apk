@@ -48,6 +48,13 @@ pub mod device_registry;
 pub mod jni_bridge_connect;
 pub mod remote_intent_engine;
 pub mod wear_sync;
+// Phase 5 — kinetic gesture physics & waveform indexer
+// (feat/phase5-rust-gesture-physics-waveform): analytical 2nd-order
+// spring/fling solver with edge rubberbanding, peak-preserving RMS
+// waveform downsampling with a compact binary cache.
+pub mod gesture_physics;
+pub mod jni_bridge_physics_waveform;
+pub mod waveform_indexer;
 pub mod queue_optimizer;
 pub mod radio_scorer;
 pub mod repository;
