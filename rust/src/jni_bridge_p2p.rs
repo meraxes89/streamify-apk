@@ -76,6 +76,7 @@
 //! (0x01) and CRDT_OP (0x02), plus future app-level extensions ≥ 0x20.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use jni::objects::{JByteArray, JClass, JString, ReleaseMode};
@@ -115,15 +116,54 @@ fn with_node<T>(f: impl FnOnce(&Arc<MeshNode>) -> T) -> Option<T> {
 }
 
 /// Phase 2: singleton collaborative playlist replica (the frozen
-/// applyPlaylistOp / exportPlaylistDelta surface binds here). Author id 1
-/// = this device; role grants flow through SetRole ops and the host-side
-/// set-role extension.
+/// applyPlaylistOp / exportPlaylistDelta surface binds here). The
+/// author id is per-device (audit #22 P0-1): bound from the mesh
+/// PeerId at start; role grants flow through SetRole ops and the
+/// host-side set-role extension.
 static PLAYLIST: Mutex<Option<CollabPlaylistState>> = Mutex::new(None);
+
+/// Per-device CRDT author id, folded from the mesh PeerId (Blake3 of
+/// the device string). 0 = not yet bound (before the first mesh
+/// start); the legacy constant 1 applies only inside that pre-start
+/// window and is adopted away at start — see [`bind_playlist_author`].
+static PLAYLIST_AUTHOR: AtomicU32 = AtomicU32::new(0);
+
+#[inline]
+fn playlist_author() -> u32 {
+    match PLAYLIST_AUTHOR.load(Ordering::Relaxed) {
+        0 => 1, // pre-start lazy init only; replaced at mesh start
+        a => a,
+    }
+}
+
+/// Binds the per-device author at mesh start (audit #22 P0-1).
+///
+/// Previously every device minted ops as author 1: two devices hitting
+/// the same local counter produced identical `(author<<32)|counter`
+/// item ids on different songs — an author-namespace collision the
+/// CRDT design assumes impossible. Deriving from `PeerId` (Blake3 of
+/// the device string, stable per device) gives distinct devices
+/// distinct authors (collision odds ~2^-32 on the 64→32 fold, vs the
+/// previous certainty of collision). An already-live singleton
+/// (pre-start lazy init, or a restart under a new device id) adopts
+/// the new author with its historical item identities untouched —
+/// namespaces are disjoint, so convergence and tombstones are
+/// unaffected.
+fn bind_playlist_author(device: &str) {
+    let raw = PeerId::from_device_str(device).0;
+    let folded = ((raw >> 32) as u32) ^ (raw as u32);
+    let author = if folded == 0 { u32::MAX } else { folded };
+    PLAYLIST_AUTHOR.store(author, Ordering::Relaxed);
+    let mut guard = heal(PLAYLIST.lock());
+    if let Some(pl) = guard.as_mut() {
+        pl.adopt_author(author);
+    }
+}
 
 #[inline]
 fn playlist_with<T>(f: impl FnOnce(&mut CollabPlaylistState) -> T) -> Option<T> {
     let mut guard = heal(PLAYLIST.lock());
-    let pl = guard.get_or_insert_with(|| CollabPlaylistState::new(1));
+    let pl = guard.get_or_insert_with(|| CollabPlaylistState::new(playlist_author()));
     Some(f(pl))
 }
 
@@ -195,6 +235,10 @@ pub extern "system" fn Java_com_streamify_app_data_NativeBridge_nativeP2pStart(
             Ok(n) => n,
             Err(_) => return JNI_FALSE,
         };
+
+        // Bind the per-device CRDT author BEFORE the node goes live so
+        // no playlist op can be minted under the legacy shared author.
+        bind_playlist_author(&device);
 
         *heal(P2P.lock()) = Some(P2pRuntime { _rt: rt, node });
         JNI_TRUE

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -872,14 +871,24 @@ private fun JamAddSongModalBottomSheet(
         }
     }
 
+    // Key derivation: identity = id + source URL (local DB ids are unique;
+    // online ids are title+uploader hashes that CAN duplicate across
+    // distinct videos — e.g. "Track - Remastered" vs "Track - Live").
+    // Deduping by the composite guarantees LazyColumn key uniqueness (a
+    // duplicate key is a hard crash) without embedding the POSITION, which
+    // would shift on every reorder and defeat item reuse (audit #22 item 5).
+    fun trackKey(t: com.streamify.app.data.models.Track) = "${t.id}:${t.filepath}"
+
     val displayTracks = remember(searchQuery, onlineResults, allLocalTracks) {
-        if (searchQuery.isNotBlank()) {
+        val raw = if (searchQuery.isNotBlank()) {
             if (onlineResults.isNotEmpty()) onlineResults else allLocalTracks.filter {
                 it.title.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true)
             }
         } else {
             allLocalTracks.take(20)
         }
+        val seen = HashSet<String>(raw.size)
+        raw.filter { seen.add(trackKey(it)) }
     }
 
     ModalBottomSheet(
@@ -938,7 +947,19 @@ private fun JamAddSongModalBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    itemsIndexed(displayTracks, key = { i, t -> "jam_${i}_${t.id}" }, contentType = { _, _ -> "trackRow" }) { _, track ->
+                    // Key by track identity ONLY (audit #22 item 5): the old
+                    // "jam_${i}_${t.id}" embedded the LIST INDEX, so any
+                    // reorder/remove shifted every subsequent key and defeated
+                    // LazyColumn's item reuse + reorder animation. The roster
+                    // strip below (userId+nonce) is the reference pattern;
+                    // displayTracks is deduped by the same key upstream.
+                    // contentType (Phase 5 120Hz): one stable reuse class for
+                    // every row — identical layout shape, pooled reuse.
+                    items(
+                        displayTracks,
+                        key = { trackKey(it) },
+                        contentType = { "trackRow" }
+                    ) { track ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

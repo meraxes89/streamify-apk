@@ -379,6 +379,22 @@ static void test_channel_ops() {
     std::cout << "  - Phase1/channels: constant-power balance + mono" << std::endl;
     ChannelOps ops;
 
+    // Audit #22 item 4 regression lock: a freshly-constructed instance
+    // (no setBalance call) must be a BIT-EXACT no-op at center — the
+    // member gains used to initialize to kInvSqrt2 (-3.01 dB) and any
+    // standalone use silently attenuated. MasterChain masked it by
+    // folding setBalance() into every block.
+    {
+        ChannelOps fresh;
+        float gL = -1.0f, gR = -1.0f;
+        fresh.gains(&gL, &gR);
+        check(gL == 1.0f && gR == 1.0f, "ChannelOps default gains are unity");
+        std::vector<float> f = {0.5f, -0.25f};
+        fresh.processInterleaved(f.data(), 1);
+        check(f[0] == 0.5f && f[1] == -0.25f,
+              "ChannelOps default is a bit-exact no-op (stereo)");
+    }
+
     // Constant power across the sweep for mono content (L == R == 0.7):
     // with the sqrt(2)-scaled law the OUTPUT total equals the DUAL-CHANNEL
     // input total (2*0.7^2) at EVERY balance point — zero volume dips —
