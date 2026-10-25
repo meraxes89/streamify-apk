@@ -6,7 +6,7 @@
 use reqwest::Client;
 use std::ffi::CStr;
 use std::panic::catch_unwind;
-use rusqlite::Connection;
+use crate::db_pool::{self, Lane};
 use crate::repository::TrackRepository;
 use crate::resolver::{get_client, get_runtime};
 
@@ -266,7 +266,63 @@ async fn fetch_user_playlists(
     Ok(playlists)
 }
 
-/// Recursively fetches Spotify track pages and commits them to SQLite.
+/// Commits fetched Spotify tracks in one short pooled-write-lane transaction.
+///
+/// Tier 0 B1 (#23): shared by both ingest fetchers. The old flow opened a
+/// connection per call and held an open write transaction across every
+/// paged `.await` — seconds of pinned write lock for one commit's worth of
+/// work. Now the fetchers drain pages first (network phase), and this helper
+/// runs the whole batch under the pooled write lane with a single cached
+/// prepared statement re-executed per row.
+fn commit_spotify_tracks(db_path: &str, tracks: &[SpotifyTrack]) -> u32 {
+    if tracks.is_empty() {
+        return 0;
+    }
+    let pooled = match db_pool::get(db_path, Lane::Write) {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+    let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
+
+    let tx = match conn.unchecked_transaction() {
+        Ok(t) => t,
+        Err(_) => return 0,
+    };
+
+    let mut stmt = match conn.prepare_cached(
+        "INSERT INTO universal_tracks 
+         (cad_id, title, artist, duration_sec, artwork_url, isrc_code, spotify_id, source_platform)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'SPOTIFY')
+         ON CONFLICT(cad_id) DO UPDATE SET 
+            spotify_id = COALESCE(excluded.spotify_id, universal_tracks.spotify_id),
+            isrc_code = COALESCE(excluded.isrc_code, universal_tracks.isrc_code),
+            artwork_url = COALESCE(excluded.artwork_url, universal_tracks.artwork_url)",
+    ) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    let mut count = 0u32;
+    for track in tracks {
+        let duration_sec = track.duration_ms / 1000;
+        let artwork_url = track.album.as_ref().and_then(|a| a.images.first()).map(|i| i.url.clone());
+        let isrc = track.external_ids.as_ref().and_then(|e| e.isrc.clone());
+        let artist = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
+        let cad_id = TrackRepository::generate_cad_id(&track.name, &artist, duration_sec);
+
+        let res = stmt.execute(rusqlite::params![
+            cad_id, track.name, artist, duration_sec,
+            artwork_url, isrc, track.id
+        ]);
+        if res.is_ok() {
+            count += 1;
+        }
+    }
+
+    let _ = tx.commit();
+    count
+}
+
 async fn fetch_and_commit_spotify_pages(
     client: &Client,
     token: &str,
@@ -274,72 +330,32 @@ async fn fetch_and_commit_spotify_pages(
     db_path: &str,
 ) -> u32 {
     let mut current_url = Some(start_url.to_string());
-    let mut total_count = 0u32;
+    let mut tracks: Vec<SpotifyTrack> = Vec::new();
 
-    let conn = match Connection::open(db_path) {
-        Ok(c) => c,
-        Err(_) => return 0,
-    };
-
-    let _ = TrackRepository::apply_performance_pragmas(&conn);
-
-    let tx = match conn.unchecked_transaction() {
-        Ok(t) => t,
-        Err(_) => return 0,
-    };
-
+    // Phase 1 — network only: drain every page before touching the database
+    // so no lock is held across an `.await` (see `commit_spotify_tracks`).
     while let Some(url) = current_url {
-        let resp = client.get(&url)
-            .bearer_auth(token)
-            .send()
-            .await
-            .ok();
+        let resp = client.get(&url).bearer_auth(token).send().await.ok();
+        let Some(resp) = resp else { break };
+        if !resp.status().is_success() { break; }
 
-        if let Some(resp) = resp {
-            if !resp.status().is_success() { break; }
+        let data: SpotifyPagingResponse<SpotifyTrackItem> = match resp.json().await {
+            Ok(d) => d,
+            Err(_) => break,
+        };
 
-            let data: SpotifyPagingResponse<SpotifyTrackItem> = match resp.json().await {
-                Ok(d) => d,
-                Err(_) => break,
-            };
-
-            for item in data.items {
-                if let Some(track) = item.track {
-                    if track.name.is_empty() { continue; }
-                    let duration_sec = track.duration_ms / 1000;
-                    let artwork_url = track.album.as_ref().and_then(|a| a.images.first()).map(|i| i.url.clone());
-                    let isrc = track.external_ids.and_then(|e| e.isrc);
-                    let artist = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
-
-                    let cad_id = TrackRepository::generate_cad_id(&track.name, &artist, duration_sec);
-
-                    let res = tx.execute(
-                        "INSERT INTO universal_tracks 
-                         (cad_id, title, artist, duration_sec, artwork_url, isrc_code, spotify_id, source_platform)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'SPOTIFY')
-                         ON CONFLICT(cad_id) DO UPDATE SET 
-                            spotify_id = COALESCE(excluded.spotify_id, universal_tracks.spotify_id),
-                            isrc_code = COALESCE(excluded.isrc_code, universal_tracks.isrc_code),
-                            artwork_url = COALESCE(excluded.artwork_url, universal_tracks.artwork_url)",
-                        rusqlite::params![
-                            cad_id, track.name, artist, duration_sec,
-                            artwork_url, isrc, track.id
-                        ]
-                    );
-
-                    if res.is_ok() {
-                        total_count += 1;
-                    }
+        for item in data.items {
+            if let Some(track) = item.track {
+                if !track.name.is_empty() {
+                    tracks.push(track);
                 }
             }
-            current_url = data.next;
-        } else {
-            break;
         }
+        current_url = data.next;
     }
 
-    let _ = tx.commit();
-    total_count
+    // Phase 2 — database only: one short pooled-write-lane transaction.
+    commit_spotify_tracks(db_path, &tracks)
 }
 
 /// Recursively fetches Spotify direct tracks (e.g., top tracks endpoint where items are tracks directly).
@@ -350,68 +366,27 @@ async fn fetch_and_commit_spotify_top_tracks(
     db_path: &str,
 ) -> u32 {
     let mut current_url = Some(start_url.to_string());
-    let mut total_count = 0u32;
+    let mut tracks: Vec<SpotifyTrack> = Vec::new();
 
-    let conn = match Connection::open(db_path) {
-        Ok(c) => c,
-        Err(_) => return 0,
-    };
-
-    let _ = TrackRepository::apply_performance_pragmas(&conn);
-
-    let tx = match conn.unchecked_transaction() {
-        Ok(t) => t,
-        Err(_) => return 0,
-    };
-
+    // Phase 1 — network only (top-tracks endpoints paginate too).
     while let Some(url) = current_url {
-        let resp = client.get(&url)
-            .bearer_auth(token)
-            .send()
-            .await
-            .ok();
+        let resp = client.get(&url).bearer_auth(token).send().await.ok();
+        let Some(resp) = resp else { break };
+        if !resp.status().is_success() { break; }
 
-        if let Some(resp) = resp {
-            if !resp.status().is_success() { break; }
+        let data: SpotifyPagingResponse<SpotifyTrack> = match resp.json().await {
+            Ok(d) => d,
+            Err(_) => break,
+        };
 
-            let data: SpotifyPagingResponse<SpotifyTrack> = match resp.json().await {
-                Ok(d) => d,
-                Err(_) => break,
-            };
-
-            for track in data.items {
-                if track.name.is_empty() { continue; }
-                let duration_sec = track.duration_ms / 1000;
-                let artwork_url = track.album.as_ref().and_then(|a| a.images.first()).map(|i| i.url.clone());
-                let isrc = track.external_ids.and_then(|e| e.isrc);
-                let artist = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
-
-                let cad_id = TrackRepository::generate_cad_id(&track.name, &artist, duration_sec);
-
-                let res = tx.execute(
-                    "INSERT INTO universal_tracks 
-                     (cad_id, title, artist, duration_sec, artwork_url, isrc_code, spotify_id, source_platform)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'SPOTIFY')
-                     ON CONFLICT(cad_id) DO UPDATE SET 
-                        spotify_id = COALESCE(excluded.spotify_id, universal_tracks.spotify_id),
-                        isrc_code = COALESCE(excluded.isrc_code, universal_tracks.isrc_code),
-                        artwork_url = COALESCE(excluded.artwork_url, universal_tracks.artwork_url)",
-                    rusqlite::params![
-                        cad_id, track.name, artist, duration_sec,
-                        artwork_url, isrc, track.id
-                    ]
-                );
-
-                if res.is_ok() {
-                    total_count += 1;
-                }
+        for track in data.items {
+            if !track.name.is_empty() {
+                tracks.push(track);
             }
-            current_url = data.next;
-        } else {
-            break;
         }
+        current_url = data.next;
     }
 
-    let _ = tx.commit();
-    total_count
+    // Phase 2 — database only.
+    commit_spotify_tracks(db_path, &tracks)
 }

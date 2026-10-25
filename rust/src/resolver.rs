@@ -10,8 +10,8 @@ use std::panic::catch_unwind;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use rusqlite::Connection;
 
+use crate::db_pool::{self, Lane};
 use crate::json::{ParsedCandidate, ResolvedStreamFormat};
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -146,7 +146,10 @@ pub async fn execute_resolution(
 ) -> Result<String, ()> {
     // Self-heal legacy databases (re-key old DefaultHasher CAD-IDs onto the
     // canonical FNV scheme) before trusting any cached lookup.
-    crate::repository::ensure_db_migrated(db_path);
+    // Tier 0 B1 (#23): the pool's once-per-path bootstrap (DDL + rekey at
+    // first checkout) replaces the per-resolve `ensure_db_migrated` open;
+    // every cache access below goes through the pool, so the schema is
+    // guaranteed by construction before any query runs.
 
     // TIER 1: Check Local SQLite Cache (Zero network cost)
     if !db_path.is_empty() && !cad_id.is_empty() {
@@ -471,10 +474,17 @@ fn artists_match(query_artist: &str, candidate_artist: &str) -> bool {
 
 // --- SQLite Cache Helpers ---
 fn check_local_cache(db_path: &str, cad_id: &str) -> Option<String> {
-    let conn = Connection::open(db_path).ok()?;
-    let _ = crate::repository::TrackRepository::apply_performance_pragmas(&conn);
-    let mut stmt = conn.prepare("SELECT ytm_video_id FROM universal_tracks WHERE cad_id = ?1").ok()?;
-    let result = stmt.query_map([cad_id], |row| row.get::<_, String>(0)).ok()?.next()?.ok();
+    // Tier 0 B1 (#23): pooled read-lane connection + cached prepared
+    // statement — this runs on every resolve, and the old path paid
+    // open + five pragmas per call. The pool bootstrap guarantees the
+    // schema/rekey once per path, so a miss here is a real miss.
+    let pooled = db_pool::get(db_path, Lane::Read).ok()?;
+    let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
+    let mut stmt = conn
+        .prepare_cached("SELECT ytm_video_id FROM universal_tracks WHERE cad_id = ?1")
+        .ok()?;
+    let mut rows = stmt.query_map([cad_id], |row| row.get::<_, String>(0)).ok()?;
+    let result = rows.next()?.ok();
     result.filter(|s| !s.is_empty())
 }
 
@@ -483,15 +493,24 @@ fn check_local_cache(db_path: &str, cad_id: &str) -> Option<String> {
 /// exist — meaning correct resolutions were never cached and every play re-ran
 /// the fuzzy lottery. Now the row is created on first binding.
 fn bind_video_id_to_db(db_path: &str, cad_id: &str, title: &str, artist: &str, video_id: &str) {
-    if let Ok(conn) = Connection::open(db_path) {
-        let _ = crate::repository::TrackRepository::apply_performance_pragmas(&conn);
-        let _ = conn.execute(
-            "INSERT INTO universal_tracks (cad_id, title, artist, duration_sec, ytm_video_id, source_platform)
-             VALUES (?1, ?2, ?3, 0, ?4, 'resolver')
-             ON CONFLICT(cad_id) DO UPDATE SET
-                ytm_video_id = COALESCE(NULLIF(universal_tracks.ytm_video_id, ''), excluded.ytm_video_id)",
-            rusqlite::params![cad_id, title, artist, video_id],
-        );
+    // Tier 0 B1 (#23): pooled write lane. Two fixes ride along with the
+    // pooling: (1) the once-per-path bootstrap guarantees the table exists
+    // even on a fresh install's first binding, and (2) serializing writers
+    // in userspace means a binding racing an ingest transaction now WAITS
+    // instead of hitting SQLITE_BUSY and silently vanishing (the old
+    // `let _ = conn.execute` swallow-path).
+    if let Ok(pooled) = db_pool::get(db_path, Lane::Write) {
+        let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = conn
+            .prepare_cached(
+                "INSERT INTO universal_tracks (cad_id, title, artist, duration_sec, ytm_video_id, source_platform)
+                 VALUES (?1, ?2, ?3, 0, ?4, 'resolver')
+                 ON CONFLICT(cad_id) DO UPDATE SET
+                    ytm_video_id = COALESCE(NULLIF(universal_tracks.ytm_video_id, ''), excluded.ytm_video_id)",
+            )
+            .and_then(|mut stmt| {
+                stmt.execute(rusqlite::params![cad_id, title, artist, video_id])
+            });
     }
 }
 

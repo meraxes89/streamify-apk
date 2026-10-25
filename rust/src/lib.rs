@@ -8,6 +8,7 @@ pub mod consensus;
 pub mod continuum_engine;
 pub mod crossfade;
 pub mod crypto;
+pub mod db_pool;
 
 pub mod downloader;
 pub mod dsp;

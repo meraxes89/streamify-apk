@@ -3,10 +3,11 @@
 // boundary — see the module docs); per-function `# Safety` boilerplate
 // would be copy-paste.
 #![allow(clippy::missing_safety_doc)]
-use rusqlite::Connection;
 use std::ffi::CStr;
 use std::panic::catch_unwind;
 use std::sync::atomic::{AtomicI32, Ordering};
+
+use crate::db_pool::{self, Lane};
 
 static THERMAL_STATUS: AtomicI32 = AtomicI32::new(0); // 0 = None, 1 = Light, 2 = Moderate, 3 = Severe, 4 = Critical, 5 = Emergency
 
@@ -35,11 +36,17 @@ pub unsafe extern "C" fn flush_database_wal(db_path_ptr: *const std::os::raw::c_
             return -1;
         }
 
-        if let Ok(conn) = Connection::open(db_path) {
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA shrink_memory;");
-            0
-        } else {
-            -2
+        // Tier 0 B1 (#23): pooled write-lane connection — periodic WAL
+        // maintenance no longer pays open + pragmas per flush. TRUNCATE
+        // checkpoints succeed because pooled read-lane conns idle in
+        // autocommit hold no WAL pin between statements.
+        match db_pool::get(db_path, Lane::Write) {
+            Ok(pooled) => {
+                let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
+                let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA shrink_memory;");
+                0
+            }
+            Err(_) => -2,
         }
     });
     result.unwrap_or(-3)
