@@ -158,36 +158,41 @@ pub async fn execute_resolution(
         }
     }
 
-    // TIER 2: Innertube ISRC Exact Match (authoritative catalog query)
-    if let Some(isrc_code) = isrc {
-        let clean_isrc = isrc_code.trim();
-        if !clean_isrc.is_empty() {
-            let query = format!("isrc:{}", clean_isrc);
-            if let Some(candidate) =
-                innertube_search_candidates(&query, auth_header, cookies)
-                    .await
-                    .into_iter()
-                    .find(|c| is_valid_video_id(&c.video_id))
-            {
-                if !db_path.is_empty() && !cad_id.is_empty() {
-                    bind_video_id_to_db(
-                        db_path,
-                        cad_id,
-                        title,
-                        artist,
-                        &candidate.video_id.clone(),
-                    );
-                }
-                return Ok(candidate.video_id);
-            }
+    // TIER 2+3 (Tier 0 B1, issue #23): when the track carries an ISRC,
+    // fire the authoritative catalog query AND the fuzzy search
+    // CONCURRENTLY — the ISRC-miss case used to pay two sequential network
+    // RTTs before the fuzzy tier even started. Both searches hit the same
+    // endpoint, so the extra concurrent request on the ISRC-hit path is
+    // one discarded response; correctness is unchanged (ISRC stays
+    // authoritative on arrival, exactly ONE cache bind happens below).
+    let isrc_query = isrc
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|clean| format!("isrc:{clean}"));
+    let fuzzy_query = format!("{} - {}", title.trim(), artist.trim());
+
+    let (isrc_candidates, candidates) = match &isrc_query {
+        Some(q) => tokio::join!(
+            innertube_search_candidates(q, auth_header, cookies),
+            innertube_search_candidates(&fuzzy_query, auth_header, cookies),
+        ),
+        None => (Vec::new(), innertube_search_candidates(&fuzzy_query, auth_header, cookies).await),
+    };
+
+    // TIER 2 verdict: Innertube ISRC Exact Match (authoritative catalog query)
+    if let Some(candidate) = isrc_candidates
+        .into_iter()
+        .find(|c| is_valid_video_id(&c.video_id))
+    {
+        if !db_path.is_empty() && !cad_id.is_empty() {
+            bind_video_id_to_db(db_path, cad_id, title, artist, &candidate.video_id);
         }
+        return Ok(candidate.video_id);
     }
 
-    // TIER 3: Verified Fuzzy Match (Title + Artist).
+    // TIER 3 verdict: Verified Fuzzy Match (Title + Artist).
     // Every candidate must prove same-song identity before its videoId is
     // accepted or persisted. Blind first-result acceptance is forbidden.
-    let query = format!("{} - {}", title.trim(), artist.trim());
-    let candidates = innertube_search_candidates(&query, auth_header, cookies).await;
     for candidate in &candidates {
         if !is_valid_video_id(&candidate.video_id) {
             continue;
