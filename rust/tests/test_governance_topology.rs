@@ -398,10 +398,22 @@ async fn single_render_routes_guest_intents_through_host_commit() {
     // The HOST receives the uncommitted intent (unicast), commits it, and
     // gossips the committed frame: every node's app layer sees exactly one
     // delivery of the COMMITTED frame.
+    //
+    // Poll budget 5 s (was 2 s): a patience budget for the commit +
+    // PlumTree fanout under runner load, NOT a protocol contract — the
+    // same rationale as the 32-peer formation window 5 s → 15 s in PR #33
+    // (setup budget, not protocol). Observed once on CI (PR #36 run,
+    // 2026-10-25): host_seen >= 1 held (the unicast arrived and the host
+    // dispatched it) but the committed frame had not reached node 2 within
+    // 2 s. Not reproducible locally under CPU saturation (8/8 green);
+    // mesh-family timing flakes have prior form (runs #288, #300). The
+    // enriched assert below prints the reject/commit telemetry so any
+    // future occurrence distinguishes "slow fanout" from "commit rejected
+    // → frame never gossiped" at a glance.
     let t0 = std::time::Instant::now();
     let mut host_seen = 0;
     let mut guest_seen = 0;
-    while t0.elapsed() < Duration::from_secs(2) {
+    while t0.elapsed() < Duration::from_secs(5) {
         while rx_host.try_recv().is_ok() {
             host_seen += 1;
         }
@@ -414,7 +426,24 @@ async fn single_render_routes_guest_intents_through_host_commit() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     assert!(host_seen >= 1, "host applied the intent");
-    assert!(guest_seen >= 1, "committed frame reached the guest mesh-wide");
+    if guest_seen < 1 {
+        let m0 = nodes[0].stats();
+        let m2 = nodes[2].stats();
+        panic!(
+            "committed frame reached the guest mesh-wide (host_seen={host_seen}, \
+             guest_seen={guest_seen}; host committed={}, host sig/epoch/acl/rate \
+             rejects={}/{}/{}/{}, guest2 sig/epoch/acl/rate rejects={}/{}/{}/{})",
+            m0.gov_intents_committed,
+            m0.gov_sig_rejects,
+            m0.gov_epoch_rejects,
+            m0.gov_acl_rejects,
+            m0.gov_rate_limited,
+            m2.gov_sig_rejects,
+            m2.gov_epoch_rejects,
+            m2.gov_acl_rejects,
+            m2.gov_rate_limited
+        );
+    }
 
     // Commit telemetry on the host.
     let m0 = nodes[0].stats();
