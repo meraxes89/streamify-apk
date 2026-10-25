@@ -448,15 +448,26 @@ impl InnertubeParser {
     }
 
     pub fn extract_session_tokens(html: &str) -> Option<ExtractedSessionTokens> {
-        let visitor_id = regex::Regex::new(r#""visitorData"\s*:\s*"([^"]+)""#)
-            .ok()?
+        // Tier 0 B1 (#23): both patterns are compile-time constants — cache
+        // them in `OnceLock` instead of recompiling on every warm-session
+        // scan. `OnceLock<Option<Regex>>` keeps the old `.ok()?` semantics
+        // (a compile failure still yields `None`, never a panic).
+        static VISITOR_DATA_RE: std::sync::OnceLock<Option<regex::Regex>> =
+            std::sync::OnceLock::new();
+        static SIGNATURE_TS_RE: std::sync::OnceLock<Option<regex::Regex>> =
+            std::sync::OnceLock::new();
+
+        let visitor_id = VISITOR_DATA_RE
+            .get_or_init(|| regex::Regex::new(r#""visitorData"\s*:\s*"([^"]+)""#).ok())
+            .as_ref()?
             .captures(html)
             .and_then(|cap| cap.get(1))
             .map(|m| m.as_str().to_string())
             .unwrap_or_default();
 
-        let sts = regex::Regex::new(r#""signatureTimestamp"\s*:\s*(\d+)"#)
-            .ok()?
+        let sts = SIGNATURE_TS_RE
+            .get_or_init(|| regex::Regex::new(r#""signatureTimestamp"\s*:\s*(\d+)"#).ok())
+            .as_ref()?
             .captures(html)
             .and_then(|cap| cap.get(1))
             .and_then(|m| m.as_str().parse::<u32>().ok());
@@ -500,4 +511,34 @@ pub struct ExtractedStreamInfo {
 pub struct ExtractedSessionTokens {
     pub visitor_id: String,
     pub signature_timestamp: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tier 0 B1 (#23) regression lock: the OnceLock-cached session-token
+    /// extraction must behave exactly like the per-call-compiled version —
+    /// presence, absence, and repeated-call stability (the cached path runs
+    /// on every warm-session scan).
+    #[test]
+    fn extract_session_tokens_presence_and_absence() {
+        let html = r#"<script>"visitorData":"abc123XYZ","signatureTimestamp":19789}</script>"#;
+        let tokens = InnertubeParser::extract_session_tokens(html).expect("tokens");
+        assert_eq!(tokens.visitor_id, "abc123XYZ");
+        assert_eq!(tokens.signature_timestamp, Some(19789));
+
+        // Absence: empty visitor id, no sts — not an error.
+        let none = InnertubeParser::extract_session_tokens("<html>no tokens here</html>")
+            .expect("tokens still Some");
+        assert!(none.visitor_id.is_empty());
+        assert_eq!(none.signature_timestamp, None);
+
+        // Repeated calls must be stable through the cached statics.
+        for _ in 0..3 {
+            let again = InnertubeParser::extract_session_tokens(html).expect("tokens");
+            assert_eq!(again.visitor_id, "abc123XYZ");
+            assert_eq!(again.signature_timestamp, Some(19789));
+        }
+    }
 }
