@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "updated": "2026-08-26",
-  "note": "Remote fleet adaptation for Streamify's Innertube resolver. Values merge over baked-in defaults; validated clientName/length/STS guards apply. Updated automatically by resolver-canary CI when drift is detected.",
+  "version": 20261025,
+  "updated": "2026-10-25",
+  "note": "Auto-maintained by resolver-canary CI. Merged over baked defaults by FleetConfig. Survivorship = standard-content resolution (bot-wall aware since 2026-11); licensedProbe is informational (CI datacenter IPs are bot-walled by YouTube).",
   "signatureTimestamp": 19850,
   "searchClients": {
     "musicVersion": "1.20240101.01.00",
@@ -36,5 +36,13 @@
       "osName": "iPhone",
       "osVersion": "18.3.2.22D82"
     }
-  ]
+  ],
+  "licensedProbe": {
+    "verdict": "bot-gated (datacenter-IP wall, environmental)",
+    "perClient": {
+      "ANDROID": "bot-gated",
+      "VR_1.60.19": "bot-gated",
+      "IOS": "bot-gated"
+    }
+  }
 }
