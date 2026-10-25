@@ -6,6 +6,8 @@
 use rusqlite::{params, Connection};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+use crate::db_pool::{self, Lane};
+
 #[derive(serde::Deserialize)]
 pub struct RawSpotifyTrack {
     pub title: String,
@@ -20,7 +22,14 @@ pub struct RawSpotifyTrack {
 }
 
 pub struct TrackRepository {
-    conn: Connection,
+    /// Pooled write-lane connection (Tier 0 B1, #23): `new()` used to pay
+    /// open + pragmas + DDL + rekey on every call; the pool amortizes all of
+    /// it to once per path, and serializing writers in userspace removes the
+    /// silent `SQLITE_BUSY` write-loss class.
+    conn: db_pool::PooledConn,
+    /// Retained so read-shaped methods can check out the read lane (WAL
+    /// readers never queue behind a writer's transaction).
+    db_path: String,
 }
 
 /// Canonical schema for universal_tracks, shared by TrackRepository::new and
@@ -49,11 +58,14 @@ const REKEY_SCHEMA_VERSION: i32 = 2;
 
 impl TrackRepository {
     pub fn new(path: &str) -> Result<Self, rusqlite::Error> {
-        let conn = Connection::open(path)?;
-        Self::apply_performance_pragmas(&conn)?;
-        conn.execute_batch(UNIVERSAL_TRACKS_DDL)?;
-        ensure_cad_rekey(&conn);
-        Ok(TrackRepository { conn })
+        // Pool checkout subsumes the old per-call bootstrap: open, performance
+        // pragmas, canonical DDL, and the once-per-file CAD-ID rekey all run
+        // at first checkout (see `db_pool`).
+        let conn = db_pool::get(path, Lane::Write)?;
+        Ok(TrackRepository {
+            conn,
+            db_path: path.to_string(),
+        })
     }
 
     /// Applies RAM-Native Memory-Mapped I/O, WAL, and 64MB Cache to the SQLite connection
@@ -126,8 +138,25 @@ impl TrackRepository {
                 Err(_) => return -1,
             };
 
-            let tx = match self.conn.unchecked_transaction() {
+            // One write-lane critical section for the whole batch — the
+            // pooled statement is prepared once and re-executed per row
+            // (the old `tx.execute` re-prepared per row).
+            let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+            let tx = match conn.unchecked_transaction() {
                 Ok(t) => t,
+                Err(_) => return -1,
+            };
+
+            let mut stmt = match conn.prepare_cached(
+                "INSERT INTO universal_tracks 
+                 (cad_id, title, artist, duration_sec, artwork_url, isrc_code, spotify_id, source_platform)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'SPOTIFY')
+                 ON CONFLICT(cad_id) DO UPDATE SET 
+                    spotify_id = COALESCE(excluded.spotify_id, universal_tracks.spotify_id),
+                    isrc_code = COALESCE(excluded.isrc_code, universal_tracks.isrc_code),
+                    artwork_url = COALESCE(excluded.artwork_url, universal_tracks.artwork_url)",
+            ) {
+                Ok(s) => s,
                 Err(_) => return -1,
             };
 
@@ -135,24 +164,15 @@ impl TrackRepository {
             for track in tracks {
                 let cad_id = Self::generate_cad_id(&track.title, &track.artist, track.duration_sec);
 
-                let res = tx.execute(
-                    "INSERT INTO universal_tracks 
-                     (cad_id, title, artist, duration_sec, artwork_url, isrc_code, spotify_id, source_platform)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'SPOTIFY')
-                     ON CONFLICT(cad_id) DO UPDATE SET 
-                        spotify_id = COALESCE(excluded.spotify_id, universal_tracks.spotify_id),
-                        isrc_code = COALESCE(excluded.isrc_code, universal_tracks.isrc_code),
-                        artwork_url = COALESCE(excluded.artwork_url, universal_tracks.artwork_url)",
-                    params![
-                        cad_id,
-                        track.title,
-                        track.artist,
-                        track.duration_sec,
-                        track.artwork_url,
-                        track.isrc,
-                        track.spotify_id
-                    ],
-                );
+                let res = stmt.execute(params![
+                    cad_id,
+                    track.title,
+                    track.artist,
+                    track.duration_sec,
+                    track.artwork_url,
+                    track.isrc,
+                    track.spotify_id
+                ]);
                 if res.is_ok() {
                     count += 1;
                 }
@@ -179,7 +199,15 @@ impl TrackRepository {
                 return -1;
             }
 
-            let mut stmt = match self.conn.prepare(
+            // Read lane: the shelf scan must not queue behind an ingest
+            // transaction on the write lane (WAL readers proceed).
+            let pooled = match db_pool::get(&self.db_path, Lane::Read) {
+                Ok(c) => c,
+                Err(_) => return -1,
+            };
+            let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
+
+            let mut stmt = match conn.prepare_cached(
                 "SELECT cad_id, title, artist, COALESCE(artwork_url, '') FROM universal_tracks LIMIT 500",
             ) {
                 Ok(s) => s,
@@ -360,18 +388,15 @@ pub fn ensure_cad_rekey(conn: &Connection) {
     }
 }
 
-/// Bootstrap helper for read-only entry points (e.g. the stream resolver): opens
-/// the database, guarantees the schema exists, and applies pending migrations.
+/// Bootstrap helper for read-only entry points (e.g. the stream resolver):
+/// guarantees the schema exists and pending migrations have run.
+/// Tier 0 B1 (#23): now a pool warm-up — open + pragmas + DDL + rekey happen
+/// once per path at first checkout; repeat calls are a registry hit.
 pub fn ensure_db_migrated(db_path: &str) {
     if db_path.is_empty() {
         return;
     }
-    if let Ok(conn) = Connection::open(db_path) {
-        let _ = TrackRepository::apply_performance_pragmas(&conn);
-        if conn.execute_batch(UNIVERSAL_TRACKS_DDL).is_ok() {
-            ensure_cad_rekey(&conn);
-        }
-    }
+    let _ = db_pool::get(db_path, Lane::Read);
 }
 
 pub fn generate_cad_id(title: &str, artist: &str, duration_sec: u32) -> String {

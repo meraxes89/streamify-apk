@@ -6,6 +6,8 @@
 use rusqlite::Connection;
 use std::ffi::CStr;
 use std::panic::catch_unwind;
+use std::sync::Arc;
+use crate::db_pool::{self, Lane};
 use crate::repository::TrackRepository;
 use crate::resolver::{get_client, get_runtime};
 
@@ -77,12 +79,16 @@ pub unsafe extern "C" fn get_next_track(
         let db_path = CStr::from_ptr(db_path_ptr).to_str().unwrap_or("");
         let current_cad_id = CStr::from_ptr(current_cad_id_ptr).to_str().unwrap_or("");
 
-        let conn = match Connection::open(db_path) {
+        // Tier 0 B1 (#23): pooled read-lane connection — the old per-call
+        // `Connection::open` + five lock-taking pragmas cost 2-15 ms of the
+        // 16 ms gapless budget on every track skip; the read lane also never
+        // waits behind a writer's transaction (WAL readers proceed).
+        // Pragmas + DDL + rekey run once per path at first checkout.
+        let pooled: Arc<std::sync::Mutex<Connection>> = match db_pool::get(db_path, Lane::Read) {
             Ok(c) => c,
             Err(_) => return -1,
         };
-
-        let _ = TrackRepository::apply_performance_pragmas(&conn);
+        let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
 
         // 1. Find the rowid of the current track
         let current_rowid: i64 = conn.query_row(
@@ -196,12 +202,14 @@ pub unsafe extern "C" fn spotify_delta_sync(
                 Err(_) => return 0,
             };
 
-            let conn = match Connection::open(db_path) {
+            // Tier 0 B1 (#23): pooled write-lane connection — one userspace
+            // writer per path. The lock is not held across any `.await`
+            // (fetch and JSON parse complete above), only across the tx.
+            let pooled = match db_pool::get(db_path, Lane::Write) {
                 Ok(c) => c,
                 Err(_) => return 0,
             };
-
-            let _ = TrackRepository::apply_performance_pragmas(&conn);
+            let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
 
             let tx = match conn.unchecked_transaction() {
                 Ok(t) => t,
@@ -256,7 +264,11 @@ pub unsafe extern "C" fn shutdown_engine(db_path_ptr: *const std::os::raw::c_cha
         }
         let db_path = CStr::from_ptr(db_path_ptr).to_str().unwrap_or("");
         if !db_path.is_empty() {
-            if let Ok(conn) = Connection::open(db_path) {
+            // Pooled write lane: checkpoint from the writer itself. Read-lane
+            // conns idle in autocommit hold no WAL pin, so TRUNCATE proceeds
+            // exactly as it did from the old one-shot connection.
+            if let Ok(pooled) = db_pool::get(db_path, Lane::Write) {
+                let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
             }
         }
@@ -293,6 +305,13 @@ mod tests {
             )
             .expect("insert");
         }
+        // The pooled connections now bootstrap DDL + CAD-ID rekey at first
+        // checkout (Tier 0 B1, #23). These fixtures use synthetic cad_XXXX
+        // ids, so mark the file as already-migrated (user_version = 2, the
+        // state of every real device DB) — otherwise the bootstrap rekey
+        // would rewrite the synthetic ids to canonical FNV hashes before
+        // the first query and the lookups below would miss.
+        conn.execute_batch("PRAGMA user_version = 2;").expect("stamp version");
         path_str
     }
 
