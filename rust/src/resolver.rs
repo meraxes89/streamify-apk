@@ -959,8 +959,20 @@ impl StreamResolver {
             .into_string()
             .map_err(|e| format!("Failed to read embed HTML: {}", e))?;
 
-        let re = regex::Regex::new(r#"<script id="(?:session|__NEXT_DATA__|resource)" type="application/json">([^<]+)</script>"#)
-            .map_err(|e| e.to_string())?;
+        // Tier 0 B1 (#23): constant pattern — compiled once per process
+        // instead of per warm-session scan (the watch-HTML span scan runs on
+        // every cold resolve).
+        static EMBED_SCRIPT_RE: std::sync::OnceLock<Option<regex::Regex>> =
+            std::sync::OnceLock::new();
+        let re = EMBED_SCRIPT_RE
+            .get_or_init(|| {
+                regex::Regex::new(
+                    r#"<script id="(?:session|__NEXT_DATA__|resource)" type="application/json">([^<]+)</script>"#,
+                )
+                .ok()
+            })
+            .as_ref()
+            .ok_or_else(|| "Failed to compile embed script regex".to_string())?;
 
         let mut tracks = Vec::new();
         if let Some(captures) = re.captures(&html) {

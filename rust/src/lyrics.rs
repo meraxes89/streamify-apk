@@ -5,6 +5,15 @@
 #![allow(clippy::missing_safety_doc)]
 use serde::{Deserialize, Serialize};
 
+// Tier 0 B1 (#23): LRC patterns are compile-time constants — one shared
+// compiled instance per pattern for the whole process. Previously every
+// parse call recompiled its own `Regex`, and the identical line pattern was
+// compiled separately in three functions. `Option` inside keeps the
+// failure path (a pattern that fails to compile) returning empty results
+// instead of panicking — the `.ok()` site's discipline, applied uniformly.
+static LRC_LINE_RE: std::sync::OnceLock<Option<regex::Regex>> = std::sync::OnceLock::new();
+static LRC_WORD_RE: std::sync::OnceLock<Option<regex::Regex>> = std::sync::OnceLock::new();
+
 pub const SLYR_MAGIC: u32 = 0x534C5952; // "SLYR" (big-endian reading)
 /// On-disk/pinned magic MUST be the literal ASCII bytes regardless of host
 /// endianness — the u32 constant above serializes LE ("RYLS") via struct cast.
@@ -179,8 +188,14 @@ pub struct LyricCompiler;
 impl LyricCompiler {
     pub fn compile_to_slyr(lrc_text: &str) -> Vec<u8> {
         let mut raw_lines = Vec::new();
-        let re_line = regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").unwrap();
-        let re_word = regex::Regex::new(r"<(\d{2}):(\d{2})\.(\d{2,3})>([^<\[]*)").unwrap();
+        let re_line = LRC_LINE_RE
+            .get_or_init(|| regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").ok());
+        let re_word = LRC_WORD_RE
+            .get_or_init(|| regex::Regex::new(r"<(\d{2}):(\d{2})\.(\d{2,3})>([^<\[]*)").ok());
+        let (re_line, re_word) = match (re_line.as_ref(), re_word.as_ref()) {
+            (Some(l), Some(w)) => (l, w),
+            _ => return SlyrCompiler::compile(&raw_lines, 0),
+        };
 
         for line_str in lrc_text.lines() {
             let trimmed = line_str.trim();
@@ -269,7 +284,11 @@ impl LyricCompiler {
 
     pub fn compile_lrc(lrc_text: &str) -> CompiledLyrics {
         let mut entries = Vec::new();
-        let re_line = regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").unwrap();
+        let re_line = LRC_LINE_RE
+            .get_or_init(|| regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").ok());
+        let Some(re_line) = re_line.as_ref() else {
+            return CompiledLyrics { entries };
+        };
 
         for line_str in lrc_text.lines() {
             let trimmed = line_str.trim();
@@ -400,27 +419,26 @@ pub unsafe extern "C" fn parse_lrc_file(lrc_ptr: *const std::os::raw::c_char, lr
     let lrc_str = std::str::from_utf8(lrc_slice).unwrap_or("");
 
     let mut lines = Vec::new();
-    let re_line = regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").ok();
+    let re_line = LRC_LINE_RE
+        .get_or_init(|| regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").ok());
 
     for line in lrc_str.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with("[ti:") || trimmed.starts_with("[ar:") || trimmed.starts_with("[al:") {
             continue;
         }
-        if let Some(ref re) = re_line {
-            if let Some(caps) = re.captures(trimmed) {
-                let m: u64 = caps[1].parse().unwrap_or(0);
-                let s: u64 = caps[2].parse().unwrap_or(0);
-                let ms: u64 = if caps[3].len() == 2 {
-                    caps[3].parse::<u64>().unwrap_or(0) * 10
-                } else {
-                    caps[3].parse().unwrap_or(0)
-                };
-                let time_ms = (m * 60 + s) * 1000 + ms;
-                let text = caps[4].trim().to_string();
-                if !text.is_empty() {
-                    lines.push((time_ms, text));
-                }
+        if let Some(caps) = re_line.as_ref().and_then(|re| re.captures(trimmed)) {
+            let m: u64 = caps[1].parse().unwrap_or(0);
+            let s: u64 = caps[2].parse().unwrap_or(0);
+            let ms: u64 = if caps[3].len() == 2 {
+                caps[3].parse::<u64>().unwrap_or(0) * 10
+            } else {
+                caps[3].parse().unwrap_or(0)
+            };
+            let time_ms = (m * 60 + s) * 1000 + ms;
+            let text = caps[4].trim().to_string();
+            if !text.is_empty() {
+                lines.push((time_ms, text));
             }
         }
     }
@@ -442,5 +460,29 @@ pub unsafe extern "C" fn get_lyric_index(map_ptr: *mut LyricMap, current_time_ms
 pub unsafe extern "C" fn free_lyric_map(map_ptr: *mut LyricMap) {
     if !map_ptr.is_null() {
         let _ = Box::from_raw(map_ptr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tier 0 B1 (#23) regression lock: the shared OnceLock LRC patterns
+    /// must parse exactly like the per-call-compiled originals — timestamp
+    /// scaling (2-digit vs 3-digit centiseconds), metadata-line skipping,
+    /// and word-timing extraction.
+    #[test]
+    fn lrc_line_pattern_parses_timestamps_and_skips_metadata() {
+        let lrc = "[ti:Title]\n[ar:Artist]\n[al:Album]\n[01:23.45]hello world\n[00:05.789]wordy <00:06.100>tim <00:07.200>ings\n";
+        let compiled = LyricCompiler::compile_to_slyr(lrc);
+        assert!(!compiled.is_empty(), "compiled output should not be empty");
+
+        let parsed = LyricCompiler::compile_lrc(lrc);
+        // Two timestamped lines survive (metadata skipped).
+        assert_eq!(parsed.entries.len(), 2, "entries: {:?}", parsed.entries.len());
+        // First line: 01:23.45 -> (1*60+23)*1000 + 450ms (2-digit centis x10).
+        assert_eq!(parsed.entries[0].start_time_ms, 83_450);
+        // Second line: 00:05.789 -> 5789ms (3-digit millis pass through).
+        assert_eq!(parsed.entries[1].start_time_ms, 5_789);
     }
 }
