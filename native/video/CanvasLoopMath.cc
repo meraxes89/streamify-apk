@@ -6,6 +6,8 @@
 
 #include <cmath>
 
+#include "../util/Finite.h"
+
 namespace streamify::video {
 
 namespace {
@@ -17,8 +19,11 @@ constexpr float kTau = 6.28318530717958647692f;
 // astronomically-dominated quotient is unknowable at float precision, and
 // NaN would poison every derived frame field. Found by the hostile-float
 // fuzz section (t ~ 1e27 s against a denormal period).
+// Bit-pattern check (audit #22 item 2 follow-up): std::isfinite folds to
+// `true` under the prod -ffinite-math-only build — the fuzz-found guard
+// was elided in exactly the build that ships. See util/Finite.h.
 inline float frac01(float x) {
-    if (!std::isfinite(x)) {
+    if (!streamify::util::f32_is_finite(x)) {
         return 0.0f;
     }
     float f = x - std::floor(x);
@@ -29,10 +34,10 @@ inline float frac01(float x) {
 }  // namespace
 
 float CanvasLoopMath::pingPongPhase(float tSec, float periodSec) {
-    if (!(periodSec > 0.0f) || !std::isfinite(periodSec)) {
+    if (!(periodSec > 0.0f) || !streamify::util::f32_is_finite(periodSec)) {
         return 0.0f;
     }
-    if (!std::isfinite(tSec)) {
+    if (!streamify::util::f32_is_finite(tSec)) {
         return 0.0f;
     }
     const float x = frac01(tSec / periodSec);
@@ -41,10 +46,10 @@ float CanvasLoopMath::pingPongPhase(float tSec, float periodSec) {
 }
 
 float CanvasLoopMath::wraparoundPhase(float tSec, float periodSec) {
-    if (!(periodSec > 0.0f) || !std::isfinite(periodSec)) {
+    if (!(periodSec > 0.0f) || !streamify::util::f32_is_finite(periodSec)) {
         return 0.0f;
     }
-    if (!std::isfinite(tSec)) {
+    if (!streamify::util::f32_is_finite(tSec)) {
         return 0.0f;
     }
     return frac01(tSec / periodSec);
@@ -71,7 +76,7 @@ float CanvasLoopMath::boundaryCrossfadeWeight(float phase01, float blendFrac) {
     }
     // Normalize the phase into [0,1).
     float p = phase01;
-    if (!std::isfinite(p)) {
+    if (!streamify::util::f32_is_finite(p)) {
         return 0.0f;
     }
     p = p - std::floor(p);
@@ -96,7 +101,8 @@ void CanvasLoopMath::computeFrame(float tSec, const CanvasLoopConfig& cfg,
     }
     // Degenerate config -> static frame (never NaN, never garbage).
     float period = cfg.periodSec;
-    if (!(period > 0.0f) || !std::isfinite(period) || !std::isfinite(tSec)) {
+    if (!(period > 0.0f) || !streamify::util::f32_is_finite(period) ||
+        !streamify::util::f32_is_finite(tSec)) {
         out->phase = 0.0f;
         out->lagPhase = 0.0f;
         out->crossfadeWeight = 0.0f;
@@ -120,7 +126,7 @@ void CanvasLoopMath::computeFrame(float tSec, const CanvasLoopConfig& cfg,
     if (cfg.strategy == LoopStrategy::kWraparoundCrossfade) {
         lagPhase = phase - 1.0f;
         float blend = cfg.blendSec;
-        if (!std::isfinite(blend) || blend <= 0.0f) {
+        if (!streamify::util::f32_is_finite(blend) || blend <= 0.0f) {
             blend = 0.0f;  // degenerate window: pure hard wrap
         }
         crossfade = boundaryCrossfadeWeight(phase, blend / period);

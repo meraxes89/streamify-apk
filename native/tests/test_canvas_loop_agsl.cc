@@ -197,6 +197,20 @@ int run_canvas_loop_agsl_tests() {
         CanvasLoopFrame sought{};
         r.advanceTo(9000, &sought);
         checkNear(sought.phase, 0.5f, 1e-4f, "seek lands on the target phase");
+        // Hostile seek phases (audit #22 item 2 follow-up): NaN/Inf must
+        // fall back to 0 instead of poisoning the anchor — the guard uses
+        // the bit-pattern check so it survives the prod fast-math build.
+        r.seek(9500, std::nanf(""));
+        CanvasLoopFrame hostile{};
+        r.advanceTo(9500, &hostile);
+        check(hostile.phase >= 0.0f && hostile.phase < 1.0f &&
+                  std::isfinite(hostile.phase),
+              "seek(NaN) keeps phase finite in [0,1)");
+        r.seek(9800, INFINITY);
+        r.advanceTo(9800, &hostile);
+        check(hostile.phase >= 0.0f && hostile.phase < 1.0f &&
+                  std::isfinite(hostile.phase),
+              "seek(+Inf) keeps phase finite in [0,1)");
         // Matrix composition: identity-ish at rest (rotation 0, scale ~1).
         float m6[6] = {0, 0, 0, 0, 0, 0};
         CanvasLoopRenderer::composeCanvasMatrix(sought, motion.translateAmp,

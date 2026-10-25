@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "../util/Finite.h"
+
 namespace streamify::agsl {
 
 // ---------------------------------------------------------------------------
@@ -149,11 +151,13 @@ static_assert(kExpectedFloats == GlowShaderParams::kFloatCount,
 static_assert(kUniformCount == 14, "uniform table size is frozen");
 
 float clamp01(float v) {
-    if (!std::isfinite(v)) return 0.0f;
+    // Bit-pattern check (audit #22 item 2 follow-up): the prod
+    // -ffinite-math-only build folds std::isfinite to `true` here.
+    if (!streamify::util::f32_is_finite(v)) return 0.0f;
     return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
 }
 float clampRange(float v, float lo, float hi, float dflt) {
-    if (!std::isfinite(v)) return dflt;
+    if (!streamify::util::f32_is_finite(v)) return dflt;
     return v < lo ? lo : (v > hi ? hi : v);
 }
 }  // namespace
@@ -266,10 +270,11 @@ void AmbientGlowRuntime::computeFrameParams(int64_t monotonicMs,
 
     // Final hostile-input sweep: every slot must be finite (defensive — the
     // paths above are already finite; this keeps the contract cheap to
-    // prove for the fuzzer).
+    // prove for the fuzzer). Bit-pattern check (audit #22 item 2 follow-up):
+    // std::isfinite folds to `true` in the prod -ffinite-math-only build.
     float* f = reinterpret_cast<float*>(out);
     for (int i = 0; i < GlowShaderParams::kFloatCount; ++i) {
-        if (!std::isfinite(f[static_cast<size_t>(i)])) {
+        if (!streamify::util::f32_is_finite(f[static_cast<size_t>(i)])) {
             *out = neutral;
             return;
         }
@@ -309,8 +314,10 @@ void AmbientGlowRuntime::floatsToConfig(const float in[kConfigFloatCount],
     AmbientGlowConfig c;
     // Guard lround BEFORE the call: lround(NaN/Inf) raises FE_INVALID
     // (hostile config floats hit this directly via the fuzz surface).
+    // Bit-pattern check (audit #22 item 2 follow-up): prod fast-math folds
+    // std::isfinite to `true`, sending NaN straight into lround (UB).
     const int32_t strat =
-        (std::isfinite(in[0]) && std::fabs(in[0]) < 16.0f)
+        (streamify::util::f32_is_finite(in[0]) && std::fabs(in[0]) < 16.0f)
             ? static_cast<int32_t>(std::lround(in[0]))
             : -1;
     c.strategy = (strat == static_cast<int32_t>(video::LoopStrategy::kPingPong))
