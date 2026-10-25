@@ -494,6 +494,13 @@ pub struct CollabPlaylistState {
     logged: std::collections::HashSet<(u32, u64)>,
     /// Role roster (local trust state; LWW-merged via SetRole ops).
     roster: HashMap<u32, PlaylistRole>,
+    /// LWW watermark per roster entry — the (lamport, author) of
+    /// the last merged SetRole op or local trust grant (audit #22
+    /// item 7: the roster used to merge last-ARRIVAL-wins, which
+    /// diverged replicas observing the same op set in different
+    /// orders; every other register was already keyed by the
+    /// (lamport, author) total order).
+    roster_ts: HashMap<u32, (u64, u32)>,
     /// Vector clock: highest op_seq applied per author.
     clock: HashMap<u32, u64>,
     /// Strict mode: cross-check header role claims against `roster`
@@ -520,6 +527,7 @@ impl CollabPlaylistState {
             log: Vec::new(),
             logged: std::collections::HashSet::new(),
             roster,
+            roster_ts: HashMap::new(),
             clock: HashMap::new(),
             strict_roster: false,
             rejects: [0; 7],
@@ -571,9 +579,13 @@ impl CollabPlaylistState {
     }
 
     /// Local (host-side) roster mutation — the trust root besides Admin
-    /// SetRole ops.
+    /// SetRole ops. Stamped at the current lamport watermark under the
+    /// reserved pseudo-author `u32::MAX`, so concurrent same-lamport
+    /// remote ops lose and only strictly-later ops override (audit
+    /// #22 item 7 LWW discipline).
     pub fn set_role_local(&mut self, author: u32, role: PlaylistRole) {
         self.roster.insert(author, role);
+        self.roster_ts.insert(author, (self.lamport, u32::MAX));
     }
 
     pub fn title(&self) -> &str {
@@ -834,9 +846,16 @@ impl CollabPlaylistState {
             }
             PlaylistOpKind::SetRole => {
                 if let Some(role) = PlaylistRole::from_u8(op.track_cad_id as u8) {
-                    // LWW roster merge keyed by the op's lamport (Admin-only
-                    // issuance, so last-grant-wins is safe).
-                    self.roster.insert(op.item_id as u32, role);
+                    // LWW roster merge keyed by (lamport, author) — the
+                    // same total-order register key as every other
+                    // register. Ties are same-op replays (idempotent);
+                    // arrival order no longer decides (audit #22 item 7).
+                    let target = op.item_id as u32;
+                    let ts = (op.lamport, op.author_id);
+                    if ts >= self.roster_ts.get(&target).copied().unwrap_or((0, 0)) {
+                        self.roster.insert(target, role);
+                        self.roster_ts.insert(target, ts);
+                    }
                 }
             }
         }
@@ -1387,5 +1406,107 @@ mod collab_playlist_tests {
         assert_eq!(s.apply_op(&resurrect), PlaylistApplyResult::Applied);
         assert_eq!(s.snapshot_items().len(), 1);
         assert_eq!(s.snapshot_items()[0].frac, 0.9);
+    }
+
+    #[test]
+    fn set_role_lww_converges_regardless_of_arrival_order() {
+        // Audit #22 item 7 regression lock: the roster used to merge
+        // last-ARRIVAL-wins; replicas observing the same op set in
+        // different orders diverged on the granted role.
+        let grant_editor = PlaylistOp::new(
+            PlaylistOpKind::SetRole,
+            PlaylistRole::Admin,
+            1,
+            1,
+            10,
+            5,
+            PlaylistRole::Editor as u64,
+            0.0,
+            "",
+        );
+        let grant_viewer = PlaylistOp::new(
+            PlaylistOpKind::SetRole,
+            PlaylistRole::Admin,
+            1,
+            2,
+            20,
+            5,
+            PlaylistRole::Viewer as u64,
+            0.0,
+            "",
+        );
+        let late_admin_grant = PlaylistOp::new(
+            PlaylistOpKind::SetRole,
+            PlaylistRole::Admin,
+            9,
+            1,
+            25,
+            5,
+            PlaylistRole::Admin as u64,
+            0.0,
+            "",
+        );
+
+        let mut a = CollabPlaylistState::new(1);
+        let mut b = CollabPlaylistState::new(2);
+        for op in [&grant_editor, &grant_viewer, &late_admin_grant] {
+            a.apply_op(op);
+        }
+        for op in [&late_admin_grant, &grant_viewer, &grant_editor] {
+            b.apply_op(op);
+        }
+        // Highest (lamport, author) wins on BOTH replicas.
+        assert_eq!(a.role_of(5), PlaylistRole::Admin);
+        assert_eq!(b.role_of(5), PlaylistRole::Admin);
+
+        // Stale re-delivery never regresses the register.
+        a.apply_op(&grant_viewer);
+        assert_eq!(a.role_of(5), PlaylistRole::Admin);
+
+        // Same-lamport grants from different authors tie-break by author
+        // id — order-independent on both replicas.
+        let g7 = PlaylistOp::new(
+            PlaylistOpKind::SetRole,
+            PlaylistRole::Admin,
+            7,
+            1,
+            30,
+            6,
+            PlaylistRole::Viewer as u64,
+            0.0,
+            "",
+        );
+        let g8 = PlaylistOp::new(
+            PlaylistOpKind::SetRole,
+            PlaylistRole::Admin,
+            8,
+            1,
+            30,
+            6,
+            PlaylistRole::Editor as u64,
+            0.0,
+            "",
+        );
+        let mut c = CollabPlaylistState::new(1);
+        let mut d = CollabPlaylistState::new(1);
+        c.apply_op(&g7);
+        c.apply_op(&g8);
+        d.apply_op(&g8);
+        d.apply_op(&g7);
+        assert_eq!(c.role_of(6), PlaylistRole::Editor);
+        assert_eq!(d.role_of(6), PlaylistRole::Editor);
+
+        // A local trust grant yields to strictly-later remote grants…
+        let mut e = CollabPlaylistState::new(1);
+        e.apply_op(&grant_editor);
+        e.set_role_local(5, PlaylistRole::Admin);
+        e.apply_op(&grant_viewer); // ts (20, 1) > stamp (10, MAX)
+        assert_eq!(e.role_of(5), PlaylistRole::Viewer);
+        // …and survives stale ones.
+        let mut f = CollabPlaylistState::new(1);
+        f.apply_op(&grant_viewer);
+        f.set_role_local(5, PlaylistRole::Admin); // stamped (20, MAX)
+        f.apply_op(&grant_editor); // ts (10, 1) < (20, MAX) — rejected
+        assert_eq!(f.role_of(5), PlaylistRole::Admin);
     }
 }

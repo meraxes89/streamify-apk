@@ -42,6 +42,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
 use crate::jam_crdt::{JamOp, VOTE_FLAG_UP};
+use crate::wire_le::{le_u32, le_u64};
 
 /// Permission bits embedded in peer presence tokens (directive D).
 pub const ALLOW_PLAYBACK_CONTROL: u8 = 0x01;
@@ -258,6 +259,35 @@ mod tests {
             JamGovernor::extrapolate_pivot(0, 0, 0, duration, false),
             PivotResult::Mismatch
         );
+    }
+
+    #[test]
+    fn wire_field_reads_degrade_to_malformed_not_panic() {
+        // Audit #22 item 6 sweep lock: every truncation of every frame
+        // kind (and a full-length zero frame, which exercises the wire
+        // field reads themselves) must produce a clean reject — the
+        // verify paths must never panic on hostile bytes.
+        let mut gov = RoomGovernor::from_seed([7u8; 32]);
+        for len in 0..=INTENT_FRAME_LEN {
+            let frame = vec![0u8; len];
+            let _ = gov.verify_intent(&frame, 0);
+        }
+        for len in 0..=VOTE_FRAME_LEN {
+            let frame = vec![0u8; len];
+            let _ = gov.verify_vote(&frame, 0);
+        }
+        for len in 0..=KICK_FRAME_LEN {
+            let frame = vec![0u8; len];
+            let _ = gov.verify_kick(&frame);
+        }
+        for len in 0..=ACL_FRAME_LEN {
+            let frame = vec![0u8; len];
+            let _ = gov.verify_acl_update(&frame);
+        }
+        // A full-length zero INTENT is rejected (not a valid kind and/or
+        // bad key material) but — critically — does not panic.
+        let zero = vec![0u8; INTENT_FRAME_LEN];
+        assert!(gov.verify_intent(&zero, 0).is_err());
     }
 }
 
@@ -761,8 +791,8 @@ impl RoomGovernor {
             return Err(RejectReason::Malformed);
         }
         let kind = IntentKind::from_u8(frame[0]).ok_or(RejectReason::UnknownKind)?;
-        let epoch = u64::from_le_bytes(frame[1..9].try_into().unwrap());
-        let nonce = u32::from_le_bytes(frame[9..13].try_into().unwrap());
+        let epoch = le_u64(&frame[1..9]).ok_or(RejectReason::Malformed)?;
+        let nonce = le_u32(&frame[9..13]).ok_or(RejectReason::Malformed)?;
         let mut origin = [0u8; 32];
         origin.copy_from_slice(&frame[13..45]);
         let mut body = [0u8; 16];
@@ -882,7 +912,7 @@ impl RoomGovernor {
         }
         let mut voter = [0u8; 32];
         voter.copy_from_slice(&frame[48..80]);
-        let epoch = u64::from_le_bytes(frame[80..88].try_into().unwrap());
+        let epoch = le_u64(&frame[80..88]).ok_or(RejectReason::Malformed)?;
         let mut sig_bytes = [0u8; 64];
         sig_bytes.copy_from_slice(&frame[88..152]);
 
@@ -949,7 +979,7 @@ impl RoomGovernor {
         }
 
         // 6. Host countersignature (commit) check.
-        let flags = u32::from_le_bytes(frame[125..129].try_into().unwrap());
+        let flags = le_u32(&frame[125..129]).ok_or(RejectReason::Malformed)?;
         let mut host_pk = [0u8; 32];
         host_pk.copy_from_slice(&frame[129..161]);
         let mut cosig = [0u8; 64];
@@ -1009,8 +1039,8 @@ impl RoomGovernor {
             1 => KickKind::KickAndBan,
             _ => return Err(RejectReason::UnknownKind),
         };
-        let reason_code = u32::from_le_bytes(frame[1..5].try_into().unwrap());
-        let epoch = u64::from_le_bytes(frame[5..13].try_into().unwrap());
+        let reason_code = le_u32(&frame[1..5]).ok_or(RejectReason::Malformed)?;
+        let epoch = le_u64(&frame[5..13]).ok_or(RejectReason::Malformed)?;
         let mut target = [0u8; 32];
         target.copy_from_slice(&frame[13..45]);
         let mut host_pk = [0u8; 32];
@@ -1049,8 +1079,8 @@ impl RoomGovernor {
         if frame.len() != ACL_FRAME_LEN {
             return Err(RejectReason::Malformed);
         }
-        let acl_version = u32::from_le_bytes(frame[1..5].try_into().unwrap());
-        let epoch = u64::from_le_bytes(frame[5..13].try_into().unwrap());
+        let acl_version = le_u32(&frame[1..5]).ok_or(RejectReason::Malformed)?;
+        let epoch = le_u64(&frame[5..13]).ok_or(RejectReason::Malformed)?;
         let mut target = [0u8; 32];
         target.copy_from_slice(&frame[13..45]);
         let bits = frame[45];
