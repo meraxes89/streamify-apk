@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::ffi::CStr;
 use std::panic::catch_unwind;
 use std::sync::OnceLock;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 use rusqlite::Connection;
 
@@ -18,8 +19,23 @@ static TOKIO_RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
 pub fn get_runtime() -> &'static Runtime {
     TOKIO_RUNTIME.get_or_init(|| {
+        // Tier-0 B1 (#23 triage, "safe, immediate" item): the fixed
+        // 2-worker pool saturated at 2 concurrent resolves and left the
+        // nested block_on callers (resolver / queue_engine /
+        // spotify_ingest / p2p mesh start) one starvation step away from
+        // the deadlock class the audit flagged. Scale with the device:
+        // available_parallelism() = big-core count on Android (4-8),
+        // CPU count on CI. Floor of 4 keeps concurrent resolve + mesh +
+        // ingest headroom on 2-core runners (FFI block_on callers park
+        // their own threads — workers mostly run spawned IO tasks, so
+        // the floor is cheap); ceiling of 8 caps tokio's 2 MB stacks at
+        // 16 MB on big phones.
+        let workers = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .clamp(4, 8);
         tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(workers)
             .enable_all()
             .build()
             .expect("Failed to initialize Streamify Tokio Runtime")
@@ -30,7 +46,15 @@ pub fn get_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .user_agent("Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36")
-            .pool_idle_timeout(Some(std::time::Duration::from_secs(30)))
+            // Tier-0 B1 hang guards (#23 triage): the pooled client had
+            // idle-pool settings but NO request deadlines — a stalled
+            // CDN socket (bot-wall hold, dead keepalive peer) parked the
+            // resolve indefinitely. 30 s total / 10 s connect kills true
+            // hangs while leaving >10x headroom over the 1-3 s cold-miss
+            // budget (and mobile slow-roaming tails) untouched.
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
+            .pool_idle_timeout(Some(Duration::from_secs(30)))
             .pool_max_idle_per_host(10)
             .tcp_nodelay(true)
             .build()
@@ -874,7 +898,13 @@ impl StreamResolver {
             "params": "egWKAQIIAWoMEAMQBBAJEAoQBRAV"
         });
 
+        // Tier-0 B1 hang guard (#23 triage): one-shot ureq calls had no
+        // deadline — same stall class as the pooled client (a held-open
+        // socket parks the FFI thread forever). 20 s overall matches the
+        // downloader agent's 8 s connect + 15 s read discipline with a
+        // little headroom for the ~1 MB response body.
         let resp = ureq::post(Self::INNERTUBE_SEARCH_URL)
+            .timeout(Duration::from_secs(20))
             .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .set("Content-Type", "application/json")
             .send_json(body)
@@ -898,7 +928,10 @@ impl StreamResolver {
             .ok_or_else(|| "Invalid Spotify URL or URI".to_string())?;
 
         let embed_url = format!("https://open.spotify.com/embed/{}/{}", item_type, item_id);
+        // Tier-0 B1 hang guard (#23 triage): see the search_music note —
+        // 20 s deadline on the one-shot embed fetch.
         let resp = ureq::get(&embed_url)
+            .timeout(Duration::from_secs(20))
             .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .call()
             .map_err(|e| format!("Spotify embed request failed: {}", e))?;
