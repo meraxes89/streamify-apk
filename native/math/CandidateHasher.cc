@@ -259,6 +259,15 @@ inline bool buildKeyTable(KeyTable& tab, const uint64_t* hashes, int32_t n) {
 // 12 KB clear costs more than it saves.
 constexpr int32_t kTableCrossover = 64;
 
+// Audit #22 item 9: KeyTable is 12 KB (8 KB keys + 4 KB firstIdx); the
+// union fast path used to stack TWO of them (24 KB) inside the JNI
+// ranking call chain, whose threads run small stacks. Thread-local
+// scratch removes the stack-overflow risk with zero per-call
+// allocation (first touch per thread only; every caller clear()s
+// before use, so no state crosses calls).
+thread_local KeyTable tlsKeyTableA;
+thread_local KeyTable tlsKeyTableB;
+
 }  // namespace
 
 uint64_t hashCandidateIdReference(const char* bytes, uint32_t length,
@@ -359,7 +368,7 @@ int32_t computeIntersectionMasks(const uint64_t* hashesA, int32_t countA,
     // Falls through to the NEON/branchless brute scans when the distinct-key
     // count overflows the table or the streams are tiny.
     if (nA + nB >= kTableCrossover) {
-        KeyTable tab;
+        KeyTable& tab = tlsKeyTableA;
         tab.clear();
         if (buildKeyTable(tab, hashesB, nB)) {
             int32_t commonA = 0;
@@ -429,8 +438,8 @@ int32_t computeUniqueUnion(const uint64_t* hashesA, int32_t countA,
     // Fast path: stack tables give O(1) expected membership AND first-index
     // (dup detection) for both streams. tableA over A, tableB over B.
     if (nA + nB >= kTableCrossover) {
-        KeyTable tabA;
-        KeyTable tabB;
+        KeyTable& tabA = tlsKeyTableA;
+        KeyTable& tabB = tlsKeyTableB;
         tabA.clear();
         tabB.clear();
         if (buildKeyTable(tabA, hashesA, nA) &&

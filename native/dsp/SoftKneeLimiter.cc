@@ -271,7 +271,7 @@ void SoftKneeLimiter::dqClear() {
     dqTail_ = 0;
 }
 
-void SoftKneeLimiter::dqPush(int32_t idx, float g) {
+void SoftKneeLimiter::dqPush(int64_t idx, float g) {
     while (dqHead_ != dqTail_) {
         const int last = (dqTail_ + dqCap_ - 1) % dqCap_;
         if (deque_[last].g >= g) {
@@ -318,7 +318,11 @@ void SoftKneeLimiter::processFrames(float* io, int frames, int channels) {
         // Feed the sliding window: it must cover [t, t + windowFrames_].
         // Pushes read only slots >= t (windowFrames_ >= 32 > kSideHist), so
         // they never touch already-written output samples.
-        const int needUpTo = std::min(t + windowFrames_, frames - 1);
+        // int64 window arithmetic (audit #22 item 9): removes the
+        // only signed-overflow path (t + windowFrames_ near INT_MAX).
+        const int64_t needUpTo =
+            std::min<int64_t>(static_cast<int64_t>(t) + windowFrames_,
+                              static_cast<int64_t>(frames) - 1);
         while (pushed <= needUpTo) {
             float tp = 0.0f;
             if (pushed <= lastComputable) {

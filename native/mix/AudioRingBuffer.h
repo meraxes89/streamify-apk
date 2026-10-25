@@ -21,8 +21,9 @@
 //    interleaved floats, posix_memalign'ed (Bionic minSdk-26 mandate).
 //  * ZERO allocation after init(); the copy/memcpy paths are branch-free
 //    two-segment transfers across the wrap point.
-//  * overflowEvents_ is written by the producer only; the read accessor is
-//    for diagnostics from the producer side (documented single-writer).
+//  * overflowEvents_ is a RELAXED atomic (audit #22 item 9): written by
+//    the producer only, but read cross-thread by mix()/stats callers —
+//    a plain uint64_t tore on 32-bit and was a data race by the letter.
 // ============================================================================
 
 namespace streamify::mix {
@@ -50,7 +51,7 @@ public:
         std::memset(storage_, 0, capacity_ * channels_ * sizeof(float));
         head_.store(0, std::memory_order_relaxed);
         tail_.store(0, std::memory_order_relaxed);
-        overflowEvents_ = 0;
+        overflowEvents_.store(0, std::memory_order_relaxed);
         return true;
     }
 
@@ -64,7 +65,9 @@ public:
 
     int channels() const { return channels_; }
     size_t capacityFrames() const { return capacity_; }
-    uint64_t overflowEvents() const { return overflowEvents_; }
+    uint64_t overflowEvents() const {
+        return overflowEvents_.load(std::memory_order_relaxed);
+    }
 
     // ---- producer side (single writer) -------------------------------------
     size_t writable() const {
@@ -78,7 +81,7 @@ public:
     bool write(const float* src, size_t frames) {
         if (src == nullptr || frames == 0) return true;
         if (frames > writable()) {
-            ++overflowEvents_;
+            overflowEvents_.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
         const uint64_t h = head_.load(std::memory_order_relaxed);
@@ -188,7 +191,7 @@ private:
 
     alignas(64) std::atomic<uint64_t> head_{0};   // producer-owned
     alignas(64) std::atomic<uint64_t> tail_{0};   // consumer-owned
-    uint64_t overflowEvents_ = 0;                 // producer-side only
+    std::atomic<uint64_t> overflowEvents_{0};     // producer-written, relaxed
 };
 
 }  // namespace streamify::mix
