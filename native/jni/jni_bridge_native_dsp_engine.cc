@@ -32,6 +32,11 @@
 //  ADDITIVE EXTENSIONS (stable, not part of the freeze):
 //    getIntegratedLufs(): Float    // gated running integrated, LUFS
 //    getAppliedGainDb(): Float     // current normalization glide setpoint
+//    configure(sampleRate: Int, channels: Int): Boolean
+//      Rebuilds K-filters + limiter time constants for the ACTUAL output
+//      geometry (audit #22 item 9 — the chain was pinned at 48 kHz
+//      stereo; 44.1 kHz content got wrong K-weighting). Idempotent:
+//      returns false when the geometry did not change.
 //
 //  THREADING: setters are control-thread; processFloatPcm is the audio
 //  callback. All settings publish through atomics (see MasterChain).
@@ -124,6 +129,15 @@ JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_audio_NativeDspEngine_getAppliedGainDb(
     JNIEnv* /* env */, jclass /* clazz */) {
     return chainInstance().appliedGainDb();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_streamify_app_audio_NativeDspEngine_configure(
+    JNIEnv* /* env */, jclass /* clazz */, jint sampleRate, jint channels) {
+    // Audit #22 item 9: let the audio path tell the chain its real
+    // geometry (clamps + change-detection live in MasterChain).
+    return chainInstance().configure(sampleRate, channels) ? JNI_TRUE
+                                                           : JNI_FALSE;
 }
 
 }  // extern "C"

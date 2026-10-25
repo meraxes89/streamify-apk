@@ -321,7 +321,8 @@ void LufsNormalizer::processChannelSIMD(float* samples, size_t count) {
 
 float LufsNormalizer::computeIntegratedLufs(const float* const* channel_data,
                                             size_t num_channels,
-                                            size_t num_samples) {
+                                            size_t num_samples,
+                                            int sampleRateHz) {
     if (channel_data == nullptr || num_channels == 0 || num_samples == 0) {
         return -70.0f;
     }
@@ -338,7 +339,10 @@ float LufsNormalizer::computeIntegratedLufs(const float* const* channel_data,
         }
     }
     LufsNormalizer meter;
-    meter.configure(48000, static_cast<int>(num_channels));
+    // Audit #22 item 9: design the one-shot meter at the CALLER's rate,
+    // not a hardcoded 48 kHz — the K-weighting and the 100 ms hop
+    // ladder are both rate-dependent.
+    meter.configure(sampleRateHz, static_cast<int>(num_channels));
     // Feed in hop-sized chunks so blocks finalize exactly as in streaming.
     const int hop = meter.hopFrames_;
     size_t fed = 0;
@@ -376,7 +380,8 @@ void LufsNormalizer::processFloats(float* pcm, int length, float targetLufs) {
     if (pcm == nullptr || length <= 0) return;
     const float* channels[] = {pcm};
     const float lufs = computeIntegratedLufs(channels, 1,
-                                             static_cast<size_t>(length));
+                                             static_cast<size_t>(length),
+                                             sampleRateHz_);
     const float gain = calculateNormalizationGain(lufs, targetLufs);
     for (int i = 0; i < length; ++i) {
         pcm[i] = softGuard099(pcm[i] * gain);
