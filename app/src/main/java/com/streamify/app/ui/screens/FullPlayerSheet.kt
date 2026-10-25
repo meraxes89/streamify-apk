@@ -250,6 +250,18 @@ fun FullPlayerSheet(
     // collapse); cancelling springs the sheet back to fully expanded.
     // Registered BEFORE the sub-sheet handlers so an open sub-sheet (added
     // later = higher dispatcher priority) still wins the back event.
+    //
+    // sheetAlive disambiguates gesture-cancel from composition teardown:
+    // CancellationException fires for BOTH, but DisposableEffect.onDispose
+    // runs synchronously during the disposal pass while the coroutine's
+    // catch handler is dispatched — so a torn-down sheet observes
+    // sheetAlive == false and skips the re-expand (otherwise disposal
+    // mid-gesture — e.g. the track ending — silently re-armed expansion
+    // and popped the sheet back in when the next track arrived).
+    val sheetAlive = remember { mutableStateOf(true) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { sheetAlive.value = false }
+    }
     if (morphController != null) {
         androidx.activity.compose.PredictiveBackHandler(
             enabled = !showUpNextSheet && !showLyricsSheet &&
@@ -265,8 +277,11 @@ fun FullPlayerSheet(
                 // Flow completed normally: the system back gesture COMMITTED.
                 morphController.collapse()
             } catch (e: kotlinx.coroutines.CancellationException) {
-                // Gesture cancelled (finger returned to the edge): spring back.
-                morphController.expand()
+                // Gesture cancelled (finger returned to the edge): spring back
+                // — only while this sheet is still the composed surface.
+                if (sheetAlive.value) {
+                    morphController.expand()
+                }
             }
         }
     }

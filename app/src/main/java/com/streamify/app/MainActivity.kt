@@ -29,7 +29,6 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.streamify.app.data.supabase.AuthManager
 import com.streamify.app.ui.motion.LiquidMorphController
-import com.streamify.app.ui.motion.LiquidMorphGeometry
 import com.streamify.app.ui.motion.SharedCoverMorphLayer
 import com.streamify.app.data.supabase.AuthState
 import com.streamify.app.navigation.AppNavGraph
@@ -635,21 +634,17 @@ class MainActivity : ComponentActivity() {
                             // (controller callback). While composed, the sheet's
                             // transform + the shared cover morph run entirely in
                             // the layout/draw phases via lambda state reads.
+                            // NOTE: the morph transform (translation/scale/alpha)
+                            // is applied ONCE, inside FullPlayerSheet's root —
+                            // the wrapper here must stay transform-free or the
+                            // two nested graphicsLayers compound (2× translation,
+                            // s² scale, α² alpha) and diverge from the geometry
+                            // spec mid-morph. zIndex only.
                             if (isPlayerExpanded && hasTrack) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .zIndex(10f)
-                                        .graphicsLayer {
-                                            val p = morphController.progress.value
-                                            translationY = LiquidMorphGeometry.sheetTranslationFraction(p) * size.height
-                                            val s = LiquidMorphGeometry.sheetScale(p)
-                                            scaleX = s
-                                            scaleY = s
-                                            alpha = LiquidMorphGeometry.sheetAlpha(p)
-                                            transformOrigin =
-                                                androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
-                                        }
                                 ) {
                                     FullPlayerSheet(
                                 track = playerState.currentTrack,
@@ -679,15 +674,23 @@ class MainActivity : ComponentActivity() {
                                     playerViewModel.startSongRadio(playerState.currentTrack)
                                 },
                                 onJamClick = {
-                                    isPlayerExpanded = false
+                                    // Route through the controller (NOT a direct
+                                    // isPlayerExpanded = false): the gate must flip
+                                    // at the collapse-settle boundary so the morph
+                                    // progress and the composition stay in sync.
+                                    // Setting the flag directly left progress at 1f
+                                    // while the sheet was gone → the mini dock
+                                    // computed alpha 0 and stayed invisible until
+                                    // the next expand/collapse cycle.
+                                    morphController.collapse()
                                     navController.navigate("jam")
                                 },
                                 onQueueClick = {
-                                    isPlayerExpanded = false
+                                    morphController.collapse()
                                     navController.navigate("queue")
                                 },
                                 onLyricsClick = {
-                                    isPlayerExpanded = false
+                                    morphController.collapse()
                                     navController.navigate("lyrics")
                                 },
                                 isAutoPlayEnabled = playerState.isAutoPlayEnabled,

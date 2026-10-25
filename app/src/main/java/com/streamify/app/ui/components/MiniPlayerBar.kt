@@ -198,6 +198,10 @@ fun MiniPlayerBar(
                     // peek-preview of the destination track title.
                     var rawDrag = 0f
                     var armed = false
+                    // Hysteresis band: retreating inside 75% of the trigger
+                    // distance disarms the skip — release after a retreat is
+                    // a no-op, not a surprise track change.
+                    val disarmThresholdPx = swipeThresholdPx * 0.75f
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
@@ -213,12 +217,28 @@ fun MiniPlayerBar(
                                 // Trigger haptic at the 80dp drag threshold.
                                 com.streamify.app.ui.util.HapticFeedbackManager.get()?.skipTrigger()
                                     ?: com.streamify.app.util.StreamifyHapticEngine.tokenImpactDetent()
+                            } else if (armed && kotlin.math.abs(rawDrag) < disarmThresholdPx) {
+                                // Finger came most of the way back: cancel the
+                                // armed skip. Without this the trigger stuck
+                                // once armed, and release after a retreat
+                                // still skipped — reading direction from the
+                                // SATURATED resisted offset, which can even
+                                // flip sign on a retreat past zero.
+                                armed = false
                             }
                         },
                         onDragEnd = {
+                            // Capture BEFORE the launch: rawDrag/armed reset
+                            // synchronously right after, and the coroutine is
+                            // queued behind them on the same main dispatcher.
+                            val totalRawDrag = rawDrag
+                            val skipArmed = armed
                             coroutineScope.launch {
-                                if (armed) {
-                                    if (dragOffsetX.value < 0f) onNext() else onPrevious()
+                                if (skipArmed) {
+                                    // Direction from the raw finger displacement,
+                                    // not the resisted dragOffsetX (saturating
+                                    // resistance tail can't express intent).
+                                    if (totalRawDrag < 0f) onNext() else onPrevious()
                                 }
                                 dragOffsetX.animateTo(
                                     targetValue = 0f,
