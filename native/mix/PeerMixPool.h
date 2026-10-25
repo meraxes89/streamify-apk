@@ -77,7 +77,7 @@ public:
                     expected, true, std::memory_order_acq_rel)) {
                 peers_[i].ring.reset();
                 peers_[i].gain.store(1.0f, std::memory_order_relaxed);
-                peers_[i].underruns = 0;
+                peers_[i].underruns.store(0, std::memory_order_relaxed);
                 return i;
             }
         }
@@ -153,12 +153,12 @@ public:
                 if (got > 0) ++stats->activePeers;
                 if (got < outFrames) {
                     ++stats->underruns;
-                    ++peers_[i].underruns;
+                    peers_[i].underruns.fetch_add(1, std::memory_order_relaxed);
                     stats->totalUnderruns = lifetimeUnderruns();
                 }
                 stats->overflowEvents += peers_[i].ring.overflowEvents();
             } else if (got < outFrames) {
-                ++peers_[i].underruns;
+                peers_[i].underruns.fetch_add(1, std::memory_order_relaxed);
             }
         }
 
@@ -169,7 +169,7 @@ public:
 
     uint64_t peerUnderruns(int slot) const {
         if (slot < 0 || slot >= kMaxPeers) return 0;
-        return peers_[slot].underruns;   // consumer-side counter
+        return peers_[slot].underruns.load(std::memory_order_relaxed);
     }
 
     // ---- saturation guard -----------------------------------------------------
@@ -193,12 +193,15 @@ private:
         AudioRingBuffer ring;                 // 64-B aligned, per-peer SPSC
         std::atomic<bool> attached{false};
         std::atomic<float> gain{1.0f};
-        uint64_t underruns = 0;               // consumer-side (mix thread)
+        // Relaxed atomic (audit #22 item 9): written on the mix thread,
+        // read cross-thread by peerUnderruns()/lifetimeUnderruns().
+        std::atomic<uint64_t> underruns{0};   // consumer-side (mix thread)
     };
 
     uint64_t lifetimeUnderruns() const {
         uint64_t total = 0;
-        for (int i = 0; i < kMaxPeers; ++i) total += peers_[i].underruns;
+        for (int i = 0; i < kMaxPeers; ++i)
+            total += peers_[i].underruns.load(std::memory_order_relaxed);
         return total;
     }
 

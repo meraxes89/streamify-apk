@@ -95,12 +95,16 @@ private:
 
     // Monotonic deque over (idx, schedule value in dB):
     // greqDb(idx) + rampDbPerFrame_*idx — see the schedule note in processFrames.
+    // int64 index (audit #22 item 9 hardening): per-call frame
+    // indices (dqClear() resets every processFrames call — no
+    // cross-call accumulation), widened so no arithmetic path can
+    // approach signed overflow even for pathological frame counts.
     struct GainPoint {
-        int32_t idx;
+        int64_t idx;
         float g;
     };
     void dqClear();
-    void dqPush(int32_t idx, float g);
+    void dqPush(int64_t idx, float g);
 
     // Configuration.
     float ceilingDb_ = -1.0f;
