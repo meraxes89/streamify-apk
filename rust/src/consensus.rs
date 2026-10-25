@@ -315,6 +315,28 @@ pub struct PlaylistOp {
 }
 
 impl PlaylistOp {
+    /// Truncates `text` to at most [`PLAYLIST_OP_MAX_TEXT_LEN`] **bytes**
+    /// on a UTF-8 char boundary (audit #22 item 8).
+    ///
+    /// The old `chars().take(96)` sealed ops with up to 96 *chars* of
+    /// multibyte text (96 emoji = 384 bytes) whose `text_len` header
+    /// field then exceeded [`PLAYLIST_OP_MAX_TEXT_LEN`] — a self-created
+    /// op rejected by its own [`PlaylistOp::from_bytes`]. The wire
+    /// contract is BYTES; this makes the constructor agree with it.
+    /// Backing off at most 3 bytes (UTF-8 chars are ≤ 4 bytes long)
+    /// lands on the boundary; an all-padding edge simply yields a
+    /// shorter tail, which the exact-length parser accepts.
+    fn truncate_text(text: &str) -> String {
+        if text.len() <= PLAYLIST_OP_MAX_TEXT_LEN {
+            return text.to_string();
+        }
+        let mut end = PLAYLIST_OP_MAX_TEXT_LEN;
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text[..end].to_string()
+    }
+
     /// Seals an op (checksum computed over the exact header span).
     #[allow(clippy::too_many_arguments)] // one arg per op-header field
     pub fn new(
@@ -337,7 +359,7 @@ impl PlaylistOp {
             item_id,
             track_cad_id,
             frac,
-            text: text.chars().take(96).collect(),
+            text: Self::truncate_text(text),
             checksum: 0,
         };
         op.checksum = op.compute_checksum();
@@ -969,6 +991,88 @@ mod collab_playlist_tests {
     fn adopt_author_rejects_reserved_zero() {
         let mut c = CollabPlaylistState::new(3);
         c.adopt_author(0);
+    }
+
+    #[test]
+    fn multibyte_text_truncates_on_char_boundary_and_round_trips() {
+        // Audit #22 item 8 regression lock: `chars().take(96)` used to
+        // seal a 384-byte op for 96 emoji that its own `from_bytes`
+        // rejected (text_len header > PLAYLIST_OP_MAX_TEXT_LEN bytes).
+        let emoji = "🎨".repeat(96); // 384 bytes, 96 chars
+        let op = PlaylistOp::new(
+            PlaylistOpKind::Rename,
+            PlaylistRole::Admin,
+            7,
+            5,
+            44,
+            0,
+            0,
+            0.5,
+            &emoji,
+        );
+        // Sealed op now honors the byte budget...
+        assert!(op.text.len() <= PLAYLIST_OP_MAX_TEXT_LEN);
+        // ...landed on a char boundary (whole emoji only, none sliced)...
+        assert_eq!(op.text.chars().count(), 24); // 96 bytes / 4B per emoji
+        assert!(op.text.chars().all(|c| c == '🎨'));
+        // ...and survives its own wire parser — the self-reject repro.
+        let back = PlaylistOp::from_bytes(&op.to_bytes()).expect("multibyte round-trip");
+        assert_eq!(back, op);
+
+        // Boundary case: 94 ASCII + one 4-byte emoji = 98 bytes — the
+        // emoji does not fit, truncation backs off to the 94 ASCII
+        // prefix rather than slicing the emoji mid-sequence.
+        let mixed = "a".repeat(94) + "🎨";
+        let op2 = PlaylistOp::new(
+            PlaylistOpKind::Rename,
+            PlaylistRole::Admin,
+            7,
+            6,
+            45,
+            0,
+            0,
+            0.5,
+            &mixed,
+        );
+        assert_eq!(op2.text, "a".repeat(94));
+        assert_eq!(
+            PlaylistOp::from_bytes(&op2.to_bytes()).unwrap(),
+            op2,
+            "backed-off truncation round-trips"
+        );
+
+        // Exact fit: 96 bytes of 3-byte CJK (32 chars) passes untouched.
+        let cjk = "乐".repeat(32); // 3 bytes each = 96 bytes exactly
+        let op3 = PlaylistOp::new(
+            PlaylistOpKind::Rename,
+            PlaylistRole::Admin,
+            7,
+            7,
+            46,
+            0,
+            0,
+            0.5,
+            &cjk,
+        );
+        assert_eq!(op3.text.len(), PLAYLIST_OP_MAX_TEXT_LEN);
+        assert_eq!(op3.text.chars().count(), 32);
+        assert_eq!(PlaylistOp::from_bytes(&op3.to_bytes()).unwrap(), op3);
+
+        // Pure ASCII unaffected (the historical behavior).
+        let ascii = "x".repeat(200);
+        let op4 = PlaylistOp::new(
+            PlaylistOpKind::Rename,
+            PlaylistRole::Admin,
+            7,
+            8,
+            47,
+            0,
+            0,
+            0.5,
+            &ascii,
+        );
+        assert_eq!(op4.text.len(), PLAYLIST_OP_MAX_TEXT_LEN);
+        assert_eq!(PlaylistOp::from_bytes(&op4.to_bytes()).unwrap(), op4);
     }
 
     #[test]
