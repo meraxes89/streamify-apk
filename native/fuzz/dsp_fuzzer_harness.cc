@@ -16,6 +16,11 @@
 #include "../math/CandidateHasher.h"
 #include "../math/CircadianCurves.h"
 #include "../math/HarmonicTransitionEngine.h"
+// Phase-5 additions: SIMD palette clustering + WCAG contrast engine,
+// lock-free frame pacer (composed from tests/fuzz_palette.cpp).
+namespace streamify {
+int StreamifyFuzzPaletteFrame(const uint8_t* data, size_t size);
+}
 // Phase-3 additions (BEHIND.md #45/#38/#44/#57).
 #include "../agsl/AmbientGlowShader.h"
 #include "../audio/AdtsFrameParser.h"
@@ -658,6 +663,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             }
         }
     }
+
+    // Phase-5 additions: arbitrary image bitstreams through the SIMD palette
+    // extractor (corrupt dimensions/strides/buffers, extreme RGB, the WCAG
+    // >= 4.5:1 text-surface contract, determinism) and corrupted frame
+    // histograms through the lock-free pacer (exact counters, percentile
+    // monotonicity, wire-layout capacity guards). Lives in
+    // tests/fuzz_palette.cpp (STREAMIFY_FUZZ_COMPOSED build).
+    streamify::StreamifyFuzzPaletteFrame(data, size);
 
     return 0;
 }

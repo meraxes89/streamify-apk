@@ -1,13 +1,33 @@
 #!/usr/bin/env python3
 """tools/write_fleet_config.py — turn canary probe output into fleet-config.json.
 
-Reads probe-clients.sh tabular output and writes a fleet-config.json containing
-the surviving clients (OK on both standard + licensed probes), preserving the
-app's ladder order (ANDROID, ANDROID_VR, IOS). Exits non-zero when no survivor
-exists so CI surfaces the rot instead of shipping an empty fleet.
+Reads probe-clients.sh tabular output (single pass, both content classes) and
+writes fleet-config.json for the surviving fleet-ladder clients.
+
+Survivorship policy (since 2026-11, bot-wall aware):
+  * A survivor = ladder client that resolves STANDARD content (dQw4w9WgXcQ)
+    with audio formats (OK + itag 251/140 present). Standard-content health
+    is the gating signal — it is IP-reputation-independent on CI runners.
+  * Licensed/official content (4NRXx6U8ABQ) is recorded per-client under
+    `licensedProbe` but is NOT part of survivorship: YouTube bot-walls
+    licensed content for entire datacenter IP ranges (LOGIN_REQUIRED
+    "Sign in to confirm you're not a bot") regardless of client identity,
+    so a licensed miss on CI says nothing about the registry. Residential
+    users are unaffected; a real client-side licensed regression surfaces
+    first as standard-content rot, which gates.
+  * Preserves all other keys already present in fleet-config.json
+    (searchClients, signatureTimestamp, ...) — the rotation only touches
+    what it owns.
+
+Exits non-zero when no ladder client resolves standard content (true
+registry rot — CI must surface it, not ship an empty fleet).
 """
+import datetime
 import json
 import sys
+
+STANDARD_VIDEO = "dQw4w9WgXcQ"
+LICENSED_VIDEO = "4NRXx6U8ABQ"
 
 # label in probe table -> full Innertube client spec (must mirror baked defaults)
 KNOWN_SPECS = {
@@ -41,49 +61,97 @@ KNOWN_SPECS = {
     },
 }
 
+# Fleet ladder order: the app's fallback preference.
 ORDER = ["ANDROID", "VR_1.60.19", "IOS"]
 
 
-def survivors(probe_path):
-    ok_rows = {}
+def parse_probe(probe_path):
+    """Return {label: {video: (status, audio_count, reason)}}."""
+    rows = {}
     with open(probe_path) as f:
         for line in f:
             parts = line.split()
             # CLIENT VIDEO STATUS AUDIO FMTS CIPHERED [REASON...]
-            if len(parts) < 6 or parts[0] in ("CLIENT",):
+            if len(parts) < 6 or parts[0] == "CLIENT":
                 continue
-            label, _vid, status, audio = parts[0], parts[1], parts[2], parts[3]
-            if status == "OK" and audio.split("/")[0].isdigit() and int(audio.split("/")[0]) > 0:
-                ok_rows.setdefault(label, 0)
-                ok_rows[label] += 1
-    # a survivor must pass BOTH probe videos
-    return [label for label in ORDER if ok_rows.get(label, 0) >= 2]
+            label, vid, status, audio = parts[0], parts[1], parts[2], parts[3]
+            reason = " ".join(parts[6:]) if len(parts) > 6 else "-"
+            try:
+                audio_n = int(audio.split("/")[0])
+            except (ValueError, IndexError):
+                audio_n = 0
+            rows.setdefault(label, {})[vid] = (status, audio_n, reason)
+    return rows
+
+
+def classify_licensed(entry):
+    """Map a licensed probe row to a stable verdict token."""
+    status, audio_n, reason = entry
+    if status == "OK" and audio_n > 0:
+        return "ok"
+    if status == "LOGIN_REQUIRED":
+        return "bot-gated" if "bot" in reason.lower() else "login-required"
+    return "degraded:{}".format(status.lower())
 
 
 def main():
     probe_path, out_path = sys.argv[1], sys.argv[2]
-    winners = survivors(probe_path)
+    rows = parse_probe(probe_path)
+
+    # Survivors: ladder clients OK-with-audio on STANDARD content.
+    winners = [
+        label
+        for label in ORDER
+        if rows.get(label, {}).get(STANDARD_VIDEO, ("", 0, ""))[0] == "OK"
+        and rows[label][STANDARD_VIDEO][1] > 0
+    ]
     if not winners:
-        print("::error::no surviving clients — refusing to write an empty fleet")
+        print("::error::no ladder client resolves standard content — refusing to write an empty fleet (true registry rot)")
         sys.exit(1)
 
-    config = {
-        "version": int(time_now_stamp()),
-        "updated": __import__("datetime").date.today().isoformat(),
-        "note": "Auto-maintained by resolver-canary CI. Merged over baked defaults by FleetConfig.",
-        "signatureTimestamp": 19850,
-        "audioClients": [KNOWN_SPECS[w] for w in winners],
-    }
+    # Licensed verdict per winning client (informational, non-gating).
+    licensed = {label: classify_licensed(rows[label][LICENSED_VIDEO]) for label in winners if LICENSED_VIDEO in rows.get(label, {})}
+    if licensed and all(v == "ok" for v in licensed.values()):
+        licensed_verdict = "ok"
+    elif licensed and all(v == "bot-gated" for v in licensed.values()):
+        licensed_verdict = "bot-gated (datacenter-IP wall, environmental)"
+    elif licensed:
+        licensed_verdict = "degraded"
+    else:
+        licensed_verdict = "unknown"
+
+    # Rotation owns only its keys; preserve everything else (searchClients, ...).
+    try:
+        with open(out_path) as f:
+            config = json.load(f)
+    except (OSError, ValueError):
+        config = {}
+    config.update(
+        {
+            "version": int(datetime.datetime.now().strftime("%Y%m%d")),
+            "updated": datetime.date.today().isoformat(),
+            "note": (
+                "Auto-maintained by resolver-canary CI. Merged over baked defaults by FleetConfig. "
+                "Survivorship = standard-content resolution (bot-wall aware since 2026-11); "
+                "licensedProbe is informational (CI datacenter IPs are bot-walled by YouTube)."
+            ),
+            "audioClients": [KNOWN_SPECS[w] for w in winners],
+            "licensedProbe": {"verdict": licensed_verdict, "perClient": licensed},
+        }
+    )
     with open(out_path, "w") as f:
         json.dump(config, f, indent=2)
         f.write("\n")
-    print(f"fleet-config.json written with winners: {winners}")
-
-
-def time_now_stamp():
-    import time
-
-    return time.strftime("%Y%m%d")
+    print(
+        "fleet-config.json written with winners: {} (licensed: {} — {})".format(
+            winners, licensed_verdict, licensed
+        )
+    )
+    if licensed_verdict != "ok":
+        print(
+            "::warning::licensed content probe degraded ({}) — recorded, not gating "
+            "(datacenter-IP bot wall; see workflow comment)".format(licensed_verdict)
+        )
 
 
 if __name__ == "__main__":
