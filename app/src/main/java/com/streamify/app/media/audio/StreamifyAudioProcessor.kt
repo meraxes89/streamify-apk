@@ -140,6 +140,17 @@ class StreamifyAudioProcessor : BaseAudioProcessor() {
         // coefficients are designed at 44.1k).
         activeEqEngine =
             if (inputAudioFormat.sampleRate == 44_100) "RUST" else "SYSTEM"
+        // Audit #22 item 9: pin the native float-DSP singletons (LUFS
+        // K-filters + limiter time constants) to the ACTUAL stream
+        // geometry — they were hardcoded at 48 kHz, so 44.1 kHz content
+        // measured and limited through the wrong math. Native-side
+        // change-detection makes re-configure a no-op.
+        runCatching {
+            NativeBridge.nativeConfigureAudioDSP(
+                inputAudioFormat.sampleRate,
+                inputAudioFormat.channelCount
+            )
+        }
         // OUTPUT = INPUT encoding. media3 1.2.1's internal silence-skip/sonic
         // processors downstream are 16-bit-only and throw on float regardless
         // of whether they are active. f32 mastering happens internally; the

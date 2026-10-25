@@ -72,8 +72,13 @@ public:
     // One-shot gated integrated LUFS over non-interleaved channel pointers.
     // Buffers shorter than 400 ms fall back to the ungated mean (documented;
     // BS.1770 defines no block shorter than 400 ms).
+    // sampleRateHz designs the measurement K-filters and paces the block
+    // ladder at the caller's ACTUAL rate (audit #22 item 9: the legacy
+    // default of 48000 measured 44.1 kHz content through the wrong
+    // K-weighting; default kept for ABI stability of existing callers).
     float computeIntegratedLufs(const float* const* channel_data,
-                                size_t num_channels, size_t num_samples);
+                                size_t num_channels, size_t num_samples,
+                                int sampleRateHz = 48000);
 
     // Static gain for a measured integrated value (legacy: clamp +-12 dB).
     float calculateNormalizationGain(float integrated_lufs,

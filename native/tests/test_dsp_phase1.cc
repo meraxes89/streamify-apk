@@ -922,6 +922,127 @@ static void test_zero_allocation() {
     std::cout << "  - Phase1/perf: zero-alloc audit PASSED" << std::endl;
 }
 
+
+// ---------------------------------------------------------------------------
+// Section 9.5 — rate-aware legacy surface (audit #22 item 9)
+// ---------------------------------------------------------------------------
+// The legacy one-shot path measured EVERYTHING at a hardcoded 48 kHz: the
+// meter inside computeIntegratedLufs, the processFloats convenience path,
+// and (via the JNI bridge) every float-DSP singleton. 44.1 kHz content —
+// the most common Android output rate — ran through K-filters designed
+// for the wrong rate and a mis-paced 100 ms block ladder. These tests
+// lock the rate-aware behavior.
+static void test_rate_configuration() {
+    std::cout << "  - Phase1/rate: legacy paths honor the configured fs" << std::endl;
+
+    const float amp = std::sqrt(2.0f) * std::pow(10.0f, -23.0f / 20.0f);
+
+    // 997 Hz sine generated natively at fs (fillSineStereo fixes its time
+    // base at 48 kHz, so generate inline for other rates).
+    auto fillSineAt = [](std::vector<float>& buf, int frames, double fs,
+                         float a, bool stereo) {
+        buf.assign(static_cast<size_t>(frames) * (stereo ? 2 : 1), 0.0f);
+        for (int i = 0; i < frames; ++i) {
+            const double t = static_cast<double>(i) / fs;
+            const float v = static_cast<float>(a * std::sin(2.0 * M_PI * 997.0 * t));
+            if (stereo) {
+                buf[static_cast<size_t>(i) * 2] = v;
+                buf[static_cast<size_t>(i) * 2 + 1] = v;
+            } else {
+                buf[static_cast<size_t>(i)] = v;
+            }
+        }
+    };
+
+    // (a) Streaming anchor at 44.1 kHz: stereo -23 dBFS sine -> -20 LUFS.
+    {
+        LufsNormalizer n;
+        n.configure(44100, 2);
+        std::vector<float> data;
+        fillSineAt(data, 44100 * 12, 44100.0, amp, true);
+        feedInBlocks(n, data, 44100 * 12, 441);
+        check(std::fabs(n.integratedLufs() - -20.0f) < 0.15f,
+              "stereo -23 dBFS sine @44.1k -> -20 LUFS");
+    }
+    // (b) Streaming mono anchor at 44.1 kHz -> -23 LUFS.
+    {
+        LufsNormalizer n;
+        n.configure(44100, 1);
+        std::vector<float> mono;
+        fillSineAt(mono, 44100 * 12, 44100.0, amp, false);
+        int fed = 0;
+        while (fed < 44100 * 12) {
+            const int n2 = std::min(441, 44100 * 12 - fed);
+            n.processStream(mono.data() + fed, n2);
+            fed += n2;
+        }
+        check(std::fabs(n.integratedLufs() - -23.0f) < 0.15f,
+              "mono -23 dBFS sine @44.1k -> -23 LUFS");
+    }
+    // (c) The one-shot surface takes the rate: explicit 44.1 kHz on the
+    //     mono anchor hits -23 LUFS, while the legacy 48 kHz default on
+    //     the same bytes measurably disagrees.
+    {
+        std::vector<float> mono;
+        fillSineAt(mono, 44100 * 12, 44100.0, amp, false);
+        const float* chans[1] = {mono.data()};
+        LufsNormalizer n;
+        const float one44 = n.computeIntegratedLufs(chans, 1, mono.size(), 44100);
+        check(std::fabs(one44 - -23.0f) < 0.15f,
+              "one-shot mono @44.1k (rate param) -> -23 LUFS");
+        const float one48 = n.computeIntegratedLufs(chans, 1, mono.size());
+        check(std::fabs(one44 - one48) > 0.005f,
+              "rate parameter changes the one-shot measurement");
+    }
+    // (d) processFloats threads the INSTANCE rate: two copies of the same
+    //     broadband buffer, instances configured at 44.1k vs 48k. The
+    //     applied gains must differ (the rate flows), and the 44.1k gain
+    //     must match the explicit-44.1k one-shot derivation. Broadband
+    //     noise integrates the K-filter differences across the spectrum,
+    //     where the 48k-vs-44.1k designs clearly diverge.
+    {
+        std::vector<float> pristine;
+        Rng rng(0x9E37);
+        pristine.assign(static_cast<size_t>(44100 * 6), 0.0f);
+        for (auto& v : pristine) v = rng.sym() * 0.05f;
+
+        std::vector<float> a = pristine, b = pristine;
+        LufsNormalizer n44;
+        n44.configure(44100, 1);
+        LufsNormalizer n48;
+        n48.configure(48000, 1);
+        // Target -20 (not -14): this noise sits near -30 LUFS, so -14
+        // would clamp BOTH rates to the same +12 dB ceiling and mask the
+        // rate difference entirely.
+        n44.processFloats(a.data(), static_cast<int>(a.size()), -20.0f);
+        n48.processFloats(b.data(), static_cast<int>(b.size()), -20.0f);
+
+        // Average output/input ratio over spread points; the soft guard
+        // is identity here (|gain * 0.05| stays far below 0.99).
+        double ra = 0.0, rb = 0.0;
+        int m = 0;
+        for (size_t i = 3; i < pristine.size(); i += 97) {
+            if (std::fabs(pristine[i]) < 1e-4f) continue;
+            ra += static_cast<double>(a[i]) / pristine[i];
+            rb += static_cast<double>(b[i]) / pristine[i];
+            ++m;
+        }
+        check(m > 100, "ratio sampling points");
+        const double gain44 = ra / m;
+        const double gain48 = rb / m;
+        check(std::fabs(gain44 - gain48) > 1e-4,
+              "instance rate flows into processFloats gain");
+        const float* chans[1] = {pristine.data()};
+        LufsNormalizer probe;
+        const float lufs44 =
+            probe.computeIntegratedLufs(chans, 1, pristine.size(), 44100);
+        const double want = probe.calculateNormalizationGain(lufs44, -20.0f);
+        check(std::fabs(gain44 - static_cast<double>(want)) < 1e-3,
+              "processFloats gain == explicit-44.1k derivation");
+    }
+    std::cout << "  - Phase1/rate: rate-aware legacy surface PASSED" << std::endl;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -937,6 +1058,7 @@ int run_dsp_phase1_tests() {
     test_peer_mix_pool();
     test_silent_pll();
     test_master_chain();
+    test_rate_configuration();
     test_zero_allocation();
     std::cout << "[TEST] Phase 1: all " << g_passed << " checks passed" << std::endl;
     return 0;

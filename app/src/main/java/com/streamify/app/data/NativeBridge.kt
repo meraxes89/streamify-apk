@@ -1108,6 +1108,15 @@ object NativeBridge {
 
     external fun nativeInitAudioDSP()
     external fun nativeResetAudioDSP()
+
+    /**
+     * Audit #22 item 9: configure the native float-DSP singletons (LUFS
+     * K-weighting + soft-knee limiter, plus the PCM-tap pair) for the
+     * ACTUAL stream geometry. They were pinned at 48 kHz, so 44.1 kHz
+     * content (the most common Android rate) measured and limited
+     * through the wrong filters. Idempotent; false = nothing changed.
+     */
+    external fun nativeConfigureAudioDSP(sampleRate: Int, channels: Int): Boolean
     external fun nativeProcessFloatAudio(
         byteBuffer: java.nio.ByteBuffer,
         numFrames: Int,

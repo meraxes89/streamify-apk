@@ -1180,6 +1180,10 @@ Java_com_streamify_app_data_NativeBridge_rustProcessEqualizerFrame(
 }
 
 // 1. Thread-safe persistent DSP instances for float mastering (EQ -> LUFS -> Limiter)
+//    ADDITIVE EXTENSION (audit #22 item 9): nativeConfigureAudioDSP(
+//    sampleRate, channels) -> Boolean re-configures the float DSP
+//    singletons (and the PCM-tap pair) for the ACTUAL stream geometry
+//    — they were pinned at 48 kHz, wrong for 44.1 kHz content.
 static SoftKneeLimiter* g_floatLimiter = nullptr;
 static LufsNormalizer* g_floatLufs = nullptr;
 static std::mutex g_floatDspMutex;
@@ -1542,11 +1546,39 @@ Java_com_streamify_app_data_NativeBridge_nativeProcessPcmTap(
     // 1. In-Place Soft Knee Limiting
     g_soft_knee_limiter.processInterleavedSIMD(pcm_data, sample_count);
 
-    // 2. K-Weighting Analysis
+    // 2. K-Weighting Analysis (at the CONFIGURED rate — audit #22 item 9;
+    //    nativeConfigureAudioDSP rebuilds these filters per geometry).
     g_lufs_normalizer.processChannelSIMD(pcm_data, sample_count);
     const float* channels[] = { pcm_data };
-    float lufs = g_lufs_normalizer.computeIntegratedLufs(channels, 1, sample_count);
+    float lufs = g_lufs_normalizer.computeIntegratedLufs(
+        channels, 1, sample_count, g_lufs_normalizer.sampleRate());
     return g_lufs_normalizer.calculateNormalizationGain(lufs, -14.0f);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_streamify_app_data_NativeBridge_nativeConfigureAudioDSP(
+        JNIEnv* /* env */, jobject /* this */, jint sampleRate, jint channels) {
+    // Audit #22 item 9: the legacy float-DSP singletons were pinned at
+    // 48 kHz / hard-coded channel math; 44.1 kHz content (the most common
+    // Android output rate) measured and limited through the wrong
+    // K-weighting and time constants. Configure ALL four legacy DSP
+    // singletons from one knob. Idempotent: every sub-engine
+    // change-detects and early-returns on a repeat geometry.
+    if (sampleRate < 8000 || sampleRate > 192000) return JNI_FALSE;
+    if (channels < 1 || channels > LufsNormalizer::kMaxChannels) return JNI_FALSE;
+    {
+        std::lock_guard<std::mutex> lock(g_floatDspMutex);
+        if (!g_floatLimiter) g_floatLimiter = new SoftKneeLimiter(-1.0f, 2.0f, 20.0f);
+        if (!g_floatLufs) g_floatLufs = new LufsNormalizer();
+        g_floatLufs->configure(sampleRate, channels);
+        g_floatLimiter->setSampleRate(sampleRate);
+        g_floatLimiter->reset();
+    }
+    // The PCM-tap pair (nativeProcessPcmTap) shares the same discipline.
+    g_lufs_normalizer.configure(sampleRate, 1);
+    g_soft_knee_limiter.setSampleRate(sampleRate);
+    g_soft_knee_limiter.reset();
+    return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL
