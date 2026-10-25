@@ -509,6 +509,39 @@ impl CollabPlaylistState {
         self.strict_roster = strict;
     }
 
+    /// Adopts a per-device author id (audit #22 P0-1 fix).
+    ///
+    /// The JNI singleton used to mint every op as author 1 on every
+    /// device, so two devices' `(author<<32)|counter` item identities
+    /// could collide across replicas — voiding the author-scoped
+    /// collision-free guarantee this CRDT's design relies on. The bridge
+    /// now derives the author from the mesh `PeerId` (Blake3 of the
+    /// device string — stable per device) and calls this at mesh start.
+    ///
+    /// Convergence-safety of the swap: item identity is
+    /// `(author, counter)`; old and new namespaces are disjoint, so
+    /// historical items/tombstones keep their minted ids and merge
+    /// exactly as before. The per-author delta-sync clock and the
+    /// strictly-monotonic per-author seq also key on author, so the new
+    /// namespace starts fresh — no retransmission ambiguity.
+    ///
+    /// The previous author's locally-held role carries across (normally
+    /// the creator's Admin from [`CollabPlaylistState::new`], or the
+    /// host-granted role after a delta sync): a bare swap would silently
+    /// demote this replica to the unknown-author default (Editor) and
+    /// break host-side SetRole mints. An existing roster entry for the
+    /// new author (host grant / prior stint under the same stable id)
+    /// wins over the carried role.
+    pub fn adopt_author(&mut self, new_author: u32) {
+        assert!(new_author >= 1, "author id 0 is reserved/invalid");
+        if new_author == self.author_id {
+            return;
+        }
+        let carried_role = self.role_of(self.author_id);
+        self.roster.entry(new_author).or_insert(carried_role);
+        self.author_id = new_author;
+    }
+
     /// Current local role of an author (strict-mode lookups).
     pub fn role_of(&self, author: u32) -> PlaylistRole {
         self.roster.get(&author).copied().unwrap_or(PlaylistRole::Editor)
@@ -894,6 +927,44 @@ impl CollabPlaylistState {
 #[cfg(test)]
 mod collab_playlist_tests {
     use super::*;
+
+    #[test]
+    fn adopt_author_moves_namespace_and_carries_role() {
+        // Audit #22 P0-1 regression lock. Device A (legacy author 1) has
+        // already minted items when the mesh starts and binds its
+        // per-device author 0xA11CE.
+        let mut a = CollabPlaylistState::new(1);
+        let add_a = a.build_add(111, 0.25).expect("pre-adoption add");
+        assert_eq!(add_a.item_id >> 32, 1); // minted in the legacy namespace
+
+        a.adopt_author(0x00A1_1CE);
+        // Historical item identity is untouched (namespaces disjoint).
+        assert_eq!(add_a.item_id >> 32, 1);
+        assert_eq!(a.role_of(0x00A1_1CE), PlaylistRole::Admin); // carried
+        // New mints land in the adopted namespace — distinct devices can
+        // no longer collide on the same (author, counter) identity.
+        let add_b = a.build_add(222, 0.5).expect("post-adoption add");
+        assert_eq!(add_b.item_id >> 32, 0x00A1_1CE);
+        assert_eq!(add_b.item_id & 0xFFFF_FFFF, 1); // fresh counter space
+
+        // Idempotent re-adoption of the same author is a no-op.
+        a.adopt_author(0x00A1_1CE);
+
+        // An existing roster entry for the new author (host grant) wins
+        // over the carried role: a viewer stays a viewer.
+        let mut b = CollabPlaylistState::new(2);
+        b.set_role_local(0x0BEE_F, PlaylistRole::Viewer);
+        b.adopt_author(0x0BEE_F);
+        assert_eq!(b.role_of(0x0BEE_F), PlaylistRole::Viewer);
+        assert!(b.build_add(1, 0.5).is_none()); // viewer cannot add
+    }
+
+    #[test]
+    #[should_panic(expected = "author id 0 is reserved")]
+    fn adopt_author_rejects_reserved_zero() {
+        let mut c = CollabPlaylistState::new(3);
+        c.adopt_author(0);
+    }
 
     #[test]
     fn playlist_op_wire_round_trip_and_hostile_frames() {

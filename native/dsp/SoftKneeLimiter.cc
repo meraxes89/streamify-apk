@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 
+#include "../util/Finite.h"
 #include "../util/NeonCompat.h"
 
 // ============================================================================
@@ -62,14 +63,17 @@ void SoftKneeLimiter::setParameters(float ceilingDb, float kneeDb) {
 }
 
 void SoftKneeLimiter::setCeilingDb(float ceilingDb) {
-    ceilingDb_ = std::clamp(ceilingDb, -12.0f, 0.0f);
-    if (!(ceilingDb_ <= 0.0f)) ceilingDb_ = -1.0f;   // NaN guard
+    // Bit-pattern NaN guard on the INPUT (audit #22 item 2): clamp() is
+    // UB on NaN and the `!(x <= hi)` backstop elides under prod
+    // -ffinite-math-only.
+    ceilingDb_ = std::clamp(
+        streamify::util::f32_finite_or(ceilingDb, -1.0f), -12.0f, 0.0f);
     rebuildDerived();
 }
 
 void SoftKneeLimiter::setKneeDb(float kneeDb) {
-    kneeWidthDb_ = std::clamp(kneeDb, 0.5f, 12.0f);
-    if (!(kneeWidthDb_ >= 0.5f)) kneeWidthDb_ = 4.0f;   // NaN guard
+    kneeWidthDb_ = std::clamp(
+        streamify::util::f32_finite_or(kneeDb, 4.0f), 0.5f, 12.0f);
     rebuildDerived();
 }
 
@@ -182,7 +186,9 @@ float SoftKneeLimiter::curveLin(float x) const {
 }
 
 float SoftKneeLimiter::satStage(float v) const {
-    if (!std::isfinite(v)) return 0.0f;
+    // Bit-pattern finite check (audit #22 item 2): std::isfinite folds to
+    // `true` under prod -ffinite-math-only — see util/Finite.h.
+    if (!streamify::util::f32_is_finite(v)) return 0.0f;
     if (v <= ceilLin_ && v >= -ceilLin_) return v;   // bit-exact identity
     const float a = (v > 0.0f) ? ceilLin_ : -ceilLin_;
     const float d = 0.004f * ceilLin_;
@@ -322,12 +328,15 @@ void SoftKneeLimiter::processFrames(float* io, int frames, int channels) {
             } else {
                 tp = haveTp ? heldTp : 0.0f;     // conservative hold near the tail
             }
-            if (!(tp >= 0.0f)) tp = 0.0f;        // NaN guard
-            if (tp > 1e30f) tp = 1e30f;          // Inf guard
+            // Bit-pattern NaN/Inf guards on the true-peak estimate
+            // (audit #22 item 2): `!(tp >= 0)` elides under prod
+            // -ffinite-math-only; the bit check cannot be folded.
+            if (!streamify::util::f32_is_finite(tp)) tp = 0.0f;
+            if (tp > 1e30f) tp = 1e30f;          // Inf guard (bit-safe above)
             float g = 1.0f;
             if (tp > 1e-9f) {
                 g = curveLin(tp) / tp;
-                if (!(g >= 0.0f)) g = 0.0f;
+                if (!streamify::util::f32_is_finite(g) || !(g >= 0.0f)) g = 0.0f;
                 if (g > 1.0f) g = 1.0f;
             }
             // Schedule form: store greq(dB) + ramp*idx. The readout then is

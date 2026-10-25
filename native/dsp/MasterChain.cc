@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "../util/Finite.h"
+
 namespace streamify::dsp {
 
 bool MasterChain::configure(int sampleRate, int channels) {
@@ -17,15 +19,18 @@ bool MasterChain::configure(int sampleRate, int channels) {
 }
 
 void MasterChain::setLufsTarget(float lufs) {
-    lufs = std::clamp(lufs, LufsNormalizer::kMinTargetLufs,
-                      LufsNormalizer::kMaxTargetLufs);
-    if (!(lufs >= LufsNormalizer::kMinTargetLufs)) lufs = -14.0f;   // NaN guard
+    // Bit-pattern NaN guard on the INPUT (audit #22 item 2): clamp() is
+    // UB on NaN and the `!(x >= lo)` backstop elides under prod
+    // -ffinite-math-only.
+    lufs = std::clamp(
+        util::f32_finite_or(lufs, -14.0f),
+        LufsNormalizer::kMinTargetLufs, LufsNormalizer::kMaxTargetLufs);
     lufsTarget_.store(lufs, std::memory_order_relaxed);
 }
 
 void MasterChain::setLimiterCeiling(float ceilingDb) {
-    ceilingDb = std::clamp(ceilingDb, -12.0f, 0.0f);
-    if (!(ceilingDb <= 0.0f)) ceilingDb = -1.0f;   // NaN guard
+    ceilingDb = std::clamp(
+        util::f32_finite_or(ceilingDb, -1.0f), -12.0f, 0.0f);
     ceilingDb_.store(ceilingDb, std::memory_order_relaxed);
 }
 
@@ -34,8 +39,8 @@ void MasterChain::setMonoDownmix(bool on) {
 }
 
 void MasterChain::setBalance(float balance) {
-    balance = std::clamp(balance, -1.0f, 1.0f);
-    if (!(balance >= -1.0f)) balance = 0.0f;   // NaN guard
+    balance = std::clamp(
+        util::f32_finite_or(balance, 0.0f), -1.0f, 1.0f);
     balance_.store(balance, std::memory_order_relaxed);
 }
 

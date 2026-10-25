@@ -63,10 +63,15 @@ public:
 private:
     void recomputeGains();
 
+    // Gains initialize to the CENTER of the balance law — (1, 1), a
+    // bit-exact no-op — NOT kInvSqrt2 (audit #22 item 4): a standalone
+    // instance that never calls setBalance() used to silently attenuate
+    // every frame by -3.01 dB. MasterChain masked the bug by folding a
+    // setBalance() into every process block.
     float balance_ = 0.0f;
     bool mono_ = false;
-    float gL_ = kInvSqrt2;
-    float gR_ = kInvSqrt2;
+    float gL_ = 1.0f;
+    float gR_ = 1.0f;
 };
 
 }  // namespace streamify::dsp

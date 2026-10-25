@@ -4,6 +4,8 @@
 #include <cmath>
 #include <vector>
 
+#include "../util/Finite.h"
+
 // ============================================================================
 //  ITU-R BS.1770-4 / EBU R128 loudness engine — implementation
 // ============================================================================
@@ -20,8 +22,10 @@ inline double luFromSum(double sum) {              // -0.691 + 10*log10(sum)
 constexpr double kChannelWeight[8] = {1.0, 1.0, 1.0, 1.41, 1.41, 1.41, 1.41, 1.0};
 
 // Identity-below-threshold C1 tanh guard used by the legacy one-shot path.
+// NaN/Inf check via bit pattern: std::isfinite folds to `true` under the
+// prod -ffinite-math-only build (audit #22 item 2) — see util/Finite.h.
 inline float softGuard099(float x) {
-    if (!std::isfinite(x)) return 0.0f;
+    if (!streamify::util::f32_is_finite(x)) return 0.0f;
     constexpr float T = 0.99f, D = 0.004f * T;
     if (x <= T && x >= -T) return x;
     const float a = (x > 0.0f) ? T : -T;
@@ -122,13 +126,17 @@ void LufsNormalizer::configure(int sampleRateHz, int channels) {
 }
 
 void LufsNormalizer::setTargetLufs(float targetLufs) {
-    targetLufs_ = std::clamp(targetLufs, kMinTargetLufs, kMaxTargetLufs);
-    if (!(targetLufs_ >= kMinTargetLufs)) targetLufs_ = -14.0f;   // NaN guard
+    // Bit-pattern NaN guard FIRST (audit #22 item 2): clamp() is UB on
+    // NaN under prod -ffinite-math-only, and the old `!(x >= lo)`
+    // backstop elides — sanitize the INPUT, then clamp.
+    targetLufs_ = std::clamp(
+        streamify::util::f32_finite_or(targetLufs, -14.0f),
+        kMinTargetLufs, kMaxTargetLufs);
 }
 
 void LufsNormalizer::setMaxCorrectionDb(float maxDb) {
-    maxCorrectionDb_ = std::clamp(maxDb, 0.5f, 24.0f);
-    if (!(maxCorrectionDb_ >= 0.5f)) maxCorrectionDb_ = 12.0f;   // NaN guard
+    maxCorrectionDb_ = std::clamp(
+        streamify::util::f32_finite_or(maxDb, 12.0f), 0.5f, 24.0f);
 }
 
 void LufsNormalizer::reset() {
@@ -349,7 +357,7 @@ float LufsNormalizer::computeIntegratedLufs(const float* const* channel_data,
         double e = 0.0;
         for (size_t i = 0; i < num_samples; ++i) {
             const float x = channel_data[c][i];
-            if (std::isfinite(x)) e += static_cast<double>(x) * static_cast<double>(x);
+            if (streamify::util::f32_is_finite(x)) e += static_cast<double>(x) * static_cast<double>(x);
         }
         sum += kChannelWeight[c] * (e / static_cast<double>(num_samples));
     }
