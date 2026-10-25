@@ -152,7 +152,14 @@ object BleJoinPayload {
     fun decode(bytes: ByteArray?): Decoded? {
         if (bytes == null) return null
         if (bytes.size < OFFSET_HOST_NAME) return null
-        if (bytes[OFFSET_MAGIC] != MAGIC_0 || bytes[OFFSET_VERSION] != VERSION) return null
+        // BOTH magic bytes (audit #22 item 3): the decode used to check
+        // bytes[0] ('S') and bytes[2] (version) but never bytes[1] ('F'),
+        // so any `0x53 ?? 0x01…` foreign payload passed the magic gate.
+        // Encode has always written both; decode now enforces both.
+        if (bytes[OFFSET_MAGIC] != MAGIC_0 ||
+            bytes[OFFSET_MAGIC + 1] != MAGIC_1 ||
+            bytes[OFFSET_VERSION] != VERSION
+        ) return null
 
         val flags = bytes[OFFSET_FLAGS].toInt() and 0xFF
         if (flags and FLAGS_KNOWN_MASK.inv() != 0) return null // reserved bits must be zero

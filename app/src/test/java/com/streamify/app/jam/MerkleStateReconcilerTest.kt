@@ -28,6 +28,12 @@ class MerkleStateReconcilerTest {
 
     private lateinit var scope: CoroutineScope
 
+    /**
+     * Report collectors run here, on Dispatchers.Unconfined — see the
+     * comment in [makePair] for why this MUST NOT be a pooled dispatcher.
+     */
+    private lateinit var reportScope: CoroutineScope
+
     @Volatile private var virtualNanos: Long = 5_000_000_000L
 
     /** Transport hops counter — asserts the round-trip bound. */
@@ -89,14 +95,26 @@ class MerkleStateReconcilerTest {
         routing["aaaa0001"] = a
         routing["bbbb0002"] = b
 
-        // UNDISPATCHED: report subscriptions latch synchronously before any
-        // sync exchange runs — the whole protocol is synchronous, so a plain
-        // launch() collector would race its own subscription and drop the
-        // emission into the replay-0 window.
-        scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        // UNCONFINED collectors, UNDISPATCHED start (CI flake runs #281,
+        // #287, #309 — NoSuchElementException from `first { it.converged }`):
+        // the whole protocol is synchronous on the test thread and ends in
+        // `_reports.tryEmit(...)` inside complete(). A collector on a pooled
+        // dispatcher (Dispatchers.Default) is resumed asynchronously on a
+        // worker thread, so the test thread's immediate
+        // `reportsA.first { it.converged }` can execute before the
+        // resumption adds the report — most likely under Gradle's parallel
+        // test load. Unconfined makes tryEmit resume the collector inline
+        // on the emitting (test) thread, so the report is in the list
+        // BEFORE onPeerJoined() returns. UNDISPATCHED additionally latches
+        // the subscription itself synchronously (replay-0 window guard).
+        // Verified standalone (kotlin 1.9.22 / coroutines 1.7.3, harness
+        // mirroring this exact pattern): pooled collector 480/3000
+        // NoSuchElementException; Unconfined collector 0/50000 under
+        // 2-thread CPU load.
+        reportScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             a.reports.collect { reportsA.add(it) }
         }
-        scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        reportScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             b.reports.collect { reportsB.add(it) }
         }
     }
@@ -107,6 +125,7 @@ class MerkleStateReconcilerTest {
     @Before
     fun setUp() {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        reportScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         virtualNanos = 5_000_000_000L
         hops.set(0)
         reportsA.clear()
@@ -118,6 +137,7 @@ class MerkleStateReconcilerTest {
     @After
     fun tearDown() {
         scope.cancel()
+        reportScope.cancel()
     }
 
     // ── Zero-byte fast path ────────────────────────────────────────────────

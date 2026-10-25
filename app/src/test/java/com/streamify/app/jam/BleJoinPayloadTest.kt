@@ -126,6 +126,14 @@ class BleJoinPayloadTest {
         assertNull(BleJoinPayload.decode(badMagic))
         val badVersion = good.copyOf().also { it[BleJoinPayload.OFFSET_VERSION] = 2 }
         assertNull(BleJoinPayload.decode(badVersion))
+        // Audit #22 item 3 regression lock: byte[1] must be 'F' too —
+        // decode used to skip it, so `0x53 ?? 0x01…` foreign payloads
+        // passed the magic gate.
+        val badMagic1 = good.copyOf().also { it[1] = 0x00 }
+        assertNull(BleJoinPayload.decode(badMagic1))
+        // Test vector: 'S','X',version 1 — valid byte 0, invalid byte 1.
+        val sneaky = good.copyOf().also { it[1] = 'X'.code.toByte() }
+        assertNull(BleJoinPayload.decode(sneaky))
     }
 
     @Test

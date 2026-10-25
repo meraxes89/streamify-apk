@@ -4,7 +4,7 @@
 Reads probe-clients.sh tabular output (single pass, both content classes) and
 writes fleet-config.json for the surviving fleet-ladder clients.
 
-Survivorship policy (since 2026-11, bot-wall aware):
+Survivorship policy (since 2026-10, bot-wall aware):
   * A survivor = ladder client that resolves STANDARD content (dQw4w9WgXcQ)
     with audio formats (OK + itag 251/140 present). Standard-content health
     is the gating signal — it is IP-reputation-independent on CI runners.
@@ -132,7 +132,7 @@ def main():
             "updated": datetime.date.today().isoformat(),
             "note": (
                 "Auto-maintained by resolver-canary CI. Merged over baked defaults by FleetConfig. "
-                "Survivorship = standard-content resolution (bot-wall aware since 2026-11); "
+                "Survivorship = standard-content resolution (bot-wall aware since 2026-10); "
                 "licensedProbe is informational (CI datacenter IPs are bot-walled by YouTube)."
             ),
             "audioClients": [KNOWN_SPECS[w] for w in winners],

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../util/Finite.h"
 #include "../util/NeonCompat.h"
 
 namespace streamify::dsp {
@@ -26,8 +27,12 @@ void ChannelOps::recomputeGains() {
 }
 
 void ChannelOps::setBalance(float balance) {
-    balance_ = std::clamp(balance, -1.0f, 1.0f);
-    if (!(balance_ >= -1.0f)) balance_ = 0.0f;   // NaN guard
+    // Bit-pattern NaN guard on the INPUT (audit #22 item 2): the old
+    // `if (!(balance_ >= -1.0f))` backstop elides under prod
+    // -ffinite-math-only, and clamp() alone is UB on NaN — sanitize
+    // first, then clamp.
+    balance_ = std::clamp(
+        util::f32_finite_or(balance, 0.0f), -1.0f, 1.0f);
     recomputeGains();
 }
 
