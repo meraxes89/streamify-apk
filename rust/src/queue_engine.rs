@@ -93,11 +93,27 @@ pub unsafe extern "C" fn get_next_track(
 
         // 2. Get the next track (Linear sequential or Random shuffle)
         let next_rowid: i64 = if is_shuffle == 1 {
-            conn.query_row(
-                "SELECT rowid FROM universal_tracks WHERE rowid != ?1 ORDER BY RANDOM() LIMIT 1",
+            // Tier 0 B1 (#23): ORDER BY RANDOM() materialized + sorted the
+            // whole table on every shuffle skip (~80 ms+ @ 20k tracks),
+            // blowing the 16 ms gapless budget. COUNT + uniform OFFSET is
+            // an O(offset) rowid-index walk with no materialization and the
+            // same uniform distribution over the non-current candidates.
+            let candidates: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM universal_tracks WHERE rowid != ?1",
                 [current_rowid],
                 |row| row.get(0),
-            ).unwrap_or(current_rowid)
+            ).unwrap_or(0);
+            if candidates <= 0 {
+                current_rowid
+            } else {
+                use rand::Rng;
+                let offset = rand::thread_rng().gen_range(0..candidates);
+                conn.query_row(
+                    "SELECT rowid FROM universal_tracks WHERE rowid != ?1 LIMIT 1 OFFSET ?2",
+                    rusqlite::params![current_rowid, offset],
+                    |row| row.get(0),
+                ).unwrap_or(current_rowid)
+            }
         } else {
             conn.query_row(
                 "SELECT rowid FROM universal_tracks WHERE rowid > ?1 ORDER BY rowid ASC LIMIT 1",
@@ -247,4 +263,113 @@ pub unsafe extern "C" fn shutdown_engine(db_path_ptr: *const std::os::raw::c_cha
         0
     });
     result.unwrap_or(-1)
+}
+
+// ─────────────────────────────────────────────────────── tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    /// Creates a temp DB with `n` tracks and returns its path.
+    fn temp_db(n: usize) -> String {
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let id = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let pid = std::process::id();
+        let path = std::env::temp_dir().join(format!("qe_shuffle_test_{pid}_{id}.db"));
+        let path_str = path.to_str().unwrap().to_string();
+        let _ = std::fs::remove_file(&path);
+        let conn = Connection::open(&path_str).expect("open temp db");
+        conn.execute_batch(crate::repository::UNIVERSAL_TRACKS_DDL)
+            .expect("create schema");
+        for i in 0..n {
+            let cad = format!("cad_{:04}", i);
+            let title = format!("Track {i}");
+            conn.execute(
+                "INSERT INTO universal_tracks (cad_id, title, artist, duration_sec, source_platform)
+                 VALUES (?1, ?2, 'Art', 100, 'TEST')",
+                rusqlite::params![cad, title],
+            )
+            .expect("insert");
+        }
+        path_str
+    }
+
+    /// Calls the FFI entry exactly like the Kotlin bridge does.
+    fn next_track(db: &str, current: &str, shuffle: bool) -> (i32, String) {
+        let db_c = CString::new(db).unwrap();
+        let cur_c = CString::new(current).unwrap();
+        let mut cad_buf = [0u8; 64];
+        let mut vid_buf = [0u8; 64];
+        let rc = unsafe {
+            get_next_track(
+                db_c.as_ptr(),
+                cur_c.as_ptr(),
+                if shuffle { 1 } else { 0 },
+                cad_buf.as_mut_ptr(),
+                cad_buf.len(),
+                vid_buf.as_mut_ptr(),
+                vid_buf.len(),
+            )
+        };
+        let cad = cad_buf[..rc.max(0) as usize]
+            .iter()
+            .map(|&b| b as char)
+            .collect();
+        (rc, cad)
+    }
+
+    #[test]
+    fn shuffle_never_returns_current_and_covers_candidates() {
+        // Tier 0 B1 regression lock (#23): the shuffle pick must (a) always
+        // avoid the current track, (b) be uniform enough to cover the
+        // candidate space, (c) never fall out of the table.
+        let db = temp_db(50);
+        let (rc, _) = next_track(&db, "cad_0000", false); // sanity: linear works
+        assert!(rc > 0);
+
+        let mut distinct = std::collections::HashSet::new();
+        for draw in 0..600 {
+            let current = format!("cad_{:04}", draw % 50);
+            let (rc, cad) = next_track(&db, &current, true);
+            assert!(rc > 0, "shuffle return code {rc}");
+            assert_ne!(cad, current, "shuffle returned the current track");
+            assert!(cad.starts_with("cad_"), "out-of-table pick: {cad:?}");
+            distinct.insert(cad);
+        }
+        // Coupon-collector over 49 candidates in 600 draws: expecting full
+        // coverage (~218 draws mean); 30 is a fail-proof floor.
+        assert!(distinct.len() >= 30, "shuffle not covering: {}", distinct.len());
+        std::fs::remove_file(&db).ok();
+    }
+
+    #[test]
+    fn shuffle_fallbacks_match_legacy_behavior() {
+        // Single-track table: candidates == 0 -> stays on the current track
+        // (legacy ORDER BY RANDOM() also returned unwrap_or(current)).
+        let db = temp_db(1);
+        let (rc, cad) = next_track(&db, "cad_0000", true);
+        assert_eq!(cad, "cad_0000");
+        assert!(rc > 0);
+        std::fs::remove_file(&db).ok();
+
+        // Empty table: no row for rowid 0 -> empty strings, rc == 0
+        // (legacy behavior preserved).
+        let empty = temp_db(0);
+        let (rc, cad) = next_track(&empty, "cad_0000", true);
+        assert_eq!(rc, 0);
+        assert!(cad.is_empty());
+        std::fs::remove_file(&empty).ok();
+    }
+
+    #[test]
+    fn linear_walks_in_order_and_wraps() {
+        let db = temp_db(5);
+        let (_, a) = next_track(&db, "cad_0000", false);
+        assert_eq!(a, "cad_0001");
+        let (_, b) = next_track(&db, "cad_0004", false);
+        assert_eq!(b, "cad_0000", "linear wraparound to first track");
+        std::fs::remove_file(&db).ok();
+    }
 }
