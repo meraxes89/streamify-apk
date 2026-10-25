@@ -521,9 +521,10 @@ impl CollabPlaylistState {
     /// Convergence-safety of the swap: item identity is
     /// `(author, counter)`; old and new namespaces are disjoint, so
     /// historical items/tombstones keep their minted ids and merge
-    /// exactly as before. The per-author delta-sync clock and the
-    /// strictly-monotonic per-author seq also key on author, so the new
-    /// namespace starts fresh — no retransmission ambiguity.
+    /// exactly as before. The local `item_counter` and `local_seq`
+    /// CONTINUE across the swap (still strictly monotonic — receivers'
+    /// per-author delta-sync clocks have never seen the new author, so
+    /// every op under it arrives as a fresh, monotonic stream).
     ///
     /// The previous author's locally-held role carries across (normally
     /// the creator's Admin from [`CollabPlaylistState::new`], or the
@@ -942,10 +943,14 @@ mod collab_playlist_tests {
         assert_eq!(add_a.item_id >> 32, 1);
         assert_eq!(a.role_of(0x00A1_1CE), PlaylistRole::Admin); // carried
         // New mints land in the adopted namespace — distinct devices can
-        // no longer collide on the same (author, counter) identity.
+        // no longer collide on the same (author, counter) identity. The
+        // per-replica counter CONTINUES across the swap (1 → 2): identity
+        // stays unique because the AUTHOR half changed — the
+        // disjoint-namespace property is what adopt_author relies on,
+        // not a counter reset.
         let add_b = a.build_add(222, 0.5).expect("post-adoption add");
         assert_eq!(add_b.item_id >> 32, 0x00A1_1CE);
-        assert_eq!(add_b.item_id & 0xFFFF_FFFF, 1); // fresh counter space
+        assert_eq!(add_b.item_id & 0xFFFF_FFFF, 2);
 
         // Idempotent re-adoption of the same author is a no-op.
         a.adopt_author(0x00A1_1CE);
