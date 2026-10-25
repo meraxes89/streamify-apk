@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "../util/Finite.h"
+
 #include "AudioRingBuffer.h"
 
 // ============================================================================
@@ -176,7 +178,10 @@ public:
     // Identity below kSatKnee; C1 tanh shoulder to +-1.0 above it.
     static constexpr float kSatKnee = 0.90f;
     static float saturate(float x) {
-        if (!std::isfinite(x)) return 0.0f;
+        // Bit-pattern finite check (audit #22 item 2 follow-up): std::isfinite
+        // folds to `true` under the prod -ffinite-math-only build, so a NaN
+        // peer sample flowed straight into the mix bus instead of 0.
+        if (!streamify::util::f32_is_finite(x)) return 0.0f;
         const float ax = x < 0.0f ? -x : x;
         if (ax <= kSatKnee) return x;
         const float span = 1.0f - kSatKnee;

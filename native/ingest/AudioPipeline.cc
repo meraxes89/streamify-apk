@@ -5,6 +5,7 @@
 #endif
 #include "AudioPipeline.h"
 #include "../engine/TaskOrchestrator.h"
+#include "../util/Finite.h"
 #include "../util/stlog.h"
 #include <algorithm>
 
@@ -372,7 +373,10 @@ float AudioPipeline::extractBPM(const std::string& filepath) {
     if (bpm < 60.0f) bpm *= 2.0f;
     if (bpm > 200.0f) bpm /= 2.0f;
     
-    return (std::isnan(bpm) || std::isinf(bpm)) ? 120.0f : bpm;
+    // Bit-pattern check (audit #22 item 2 follow-up): isnan/isinf both fold
+    // under prod -ffinite-math-only — a NaN BPM (hostile/corrupt analysis)
+    // shipped as NaN instead of the 120 fallback.
+    return streamify::util::f32_is_finite(bpm) ? bpm : 120.0f;
 }
 
 std::string AudioPipeline::extractKey(const std::string& filepath) {
@@ -669,7 +673,8 @@ std::string AudioPipeline::extractAcousticDNAFromPcm(
     outResults[0] = integratedLufs;
     outResults[1] = lraDb;
     outResults[2] = truePeakDb;
-    outResults[3] = (std::isnan(bpm) || std::isinf(bpm)) ? 120.0f : bpm;
+    // Bit-pattern finite check (audit #22 item 2 follow-up) — see above.
+    outResults[3] = streamify::util::f32_is_finite(bpm) ? bpm : 120.0f;
 
     // Optional 128-d acoustic embedding
     if (outEmbedding) {

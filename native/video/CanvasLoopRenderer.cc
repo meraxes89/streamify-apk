@@ -6,6 +6,8 @@
 
 #include <cmath>
 
+#include "../util/Finite.h"
+
 namespace streamify::video {
 
 void CanvasLoopRenderer::reset(int64_t monotonicMs, const CanvasLoopConfig& cfg,
@@ -40,14 +42,17 @@ void CanvasLoopRenderer::seek(int64_t monotonicMs, float phase01) {
     if (!everReset_) {
         return;  // nothing to seek yet — reset() owns the first anchor
     }
-    if (!std::isfinite(phase01)) {
+    // Bit-pattern finite check (audit #22 item 2 follow-up): the prod
+    // -ffinite-math-only build folds std::isfinite to `true` here.
+    if (!streamify::util::f32_is_finite(phase01)) {
         phase01 = 0.0f;
     }
     float p = phase01 - std::floor(phase01);
     if (p >= 1.0f) {
         p = 0.0f;
     }
-    float period = (std::isfinite(cfg_.periodSec) && cfg_.periodSec > 0.0f)
+    float period = (streamify::util::f32_is_finite(cfg_.periodSec) &&
+                    cfg_.periodSec > 0.0f)
                        ? cfg_.periodSec
                        : 8.0f;
     // Bound the anchor offset so p * period * 1000 stays inside int64 for

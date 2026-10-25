@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../util/Finite.h"
+
 namespace streamify {
 namespace math {
 namespace {
@@ -114,7 +116,11 @@ float keyTransitionScore(int32_t numberA, bool isMinorA, int32_t numberB,
 
 float bpmTransitionScore(float bpmA, float bpmB) {
     // Missing/invalid tempo metadata is NEUTRAL, never punishing.
-    if (!std::isfinite(bpmA) || !std::isfinite(bpmB) || bpmA <= 0.0f ||
+    // Bit-pattern check (audit #22 item 2 follow-up): std::isfinite folds
+    // to `true` in the prod -ffinite-math-only build, so a NaN BPM fed by
+    // malformed tags scored NaN (poisoned the whole queue ranking).
+    if (!streamify::util::f32_is_finite(bpmA) ||
+        !streamify::util::f32_is_finite(bpmB) || bpmA <= 0.0f ||
         bpmB <= 0.0f) {
         return kBpmNeutral;
     }

@@ -645,6 +645,15 @@ static void test_peer_mix_pool() {
         check(mx > 0.99f, "saturation: actually engaged (not muted)");
         check(mix::PeerMixPool::saturate(32.0f) <= 1.0f, "saturate(32) bounded by 1");
         check(mix::PeerMixPool::saturate(0.5f) == 0.5f, "saturate identity below knee");
+        // NaN/Inf peer samples must hard-zero (audit #22 item 2 follow-up):
+        // the guard must survive the prod -ffinite-math-only build (bit-pattern
+        // check), and this locks the semantics for every build mode.
+        check(mix::PeerMixPool::saturate(std::nanf("")) == 0.0f,
+              "saturate(NaN) == 0 (prod fast-math safe)");
+        check(mix::PeerMixPool::saturate(INFINITY) == 0.0f,
+              "saturate(+Inf) == 0 (prod fast-math safe)");
+        check(mix::PeerMixPool::saturate(-INFINITY) == 0.0f,
+              "saturate(-Inf) == 0 (prod fast-math safe)");
     }
 
     // Underrun accounting with one starved peer.

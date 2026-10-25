@@ -6,6 +6,8 @@
 
 #include <cmath>
 
+#include "../util/Finite.h"
+
 namespace streamify {
 namespace math {
 namespace {
@@ -30,7 +32,10 @@ inline float lerp(float a, float b, float s) {
 }  // namespace
 
 CircadianWeights circadianWeights(float localHour) {
-    if (!std::isfinite(localHour)) {
+    // Bit-pattern check (audit #22 item 2 follow-up): std::isfinite folds
+    // to `true` in the prod -ffinite-math-only build — a NaN clock read
+    // would propagate NaN weights into every radio score.
+    if (!streamify::util::f32_is_finite(localHour)) {
         return kCircadianNeutral;
     }
 
