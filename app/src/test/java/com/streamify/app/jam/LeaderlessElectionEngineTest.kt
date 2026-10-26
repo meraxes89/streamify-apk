@@ -12,6 +12,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import org.junit.BeforeClass
+import com.streamify.app.testkit.JvmSLogSink
 
 /**
  * Leaderless election FSM + Death Pivot — deterministic, virtual-clock driven.
@@ -23,6 +25,18 @@ import java.util.concurrent.CopyOnWriteArrayList
  * sleep-lottery.
  */
 class LeaderlessElectionEngineTest {
+
+
+    companion object {
+        // Strict-mock migration (P1): SLog reaches android.util.Log on this
+        // path. Install the explicit JVM log fake instead of relying on
+        // isReturnDefaultValues = true.
+        @BeforeClass
+        @JvmStatic
+        fun installJvmSLogSink() {
+            JvmSLogSink.install()
+        }
+    }
 
     private lateinit var scope: CoroutineScope
     private val continuations = CopyOnWriteArrayList<JamWire.ContinuationBody>()
