@@ -36,7 +36,9 @@ Thumbs.db
 /rust/target/
 target/
 *.rs.bk
-Cargo.lock
+# Cargo.lock IS committed (audit #44 P1-3): an app shipping native Rust
+# deps pins its dependency graph exactly — and the CI cache key
+# hashFiles('rust/Cargo.lock') stops being permanently empty.
 
 # Keystore
 *.jks

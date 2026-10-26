@@ -57,6 +57,29 @@ jobs:
           done
           echo "**$PASS_COUNT/3 probes passed.** Build proceeds regardless." >> "$GITHUB_STEP_SUMMARY"
 
+  # 0b. RUST LINT GATE (audit #44 P1-3): clippy with -D warnings on the
+  # full lib + test surface. Runs parallel to the big build — needs only
+  # checkout + toolchain, so a lint failure lands in ~2 minutes instead
+  # of after a 30-minute native build. (cargo fmt: the tree is not
+  # rustfmt-formatted today; a repo-wide format lands as its own PR and
+  # the --check gate switches on after it — tracked on #44.)
+  rust-lint:
+    name: "Rust: clippy -D warnings"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+        with:
+          workspaces: rust
+      - name: Clippy (lib + tests, warnings are errors)
+        working-directory: rust
+        run: cargo clippy --lib --tests -- -D warnings
+
   # 1. BUILD JOB: Compile everything only after gatekeeper passes
   build-and-compile:
     needs: gatekeeper-api-probe
@@ -307,8 +330,12 @@ jobs:
     name: "Shard: ${{ matrix.shard }}"
     needs: build-and-compile
     runs-on: ubuntu-latest
-    # Advisory: shard flakiness must not mask build/release status.
-    continue-on-error: true
+    # audit #44 P1-3: BLOCKING. A red suite must stop the merge — the old
+    # "shard flakiness must not mask build status" blanket made every
+    # test in the repo advisory theater (a red DSP suite could not block
+    # anything). Flaky tests get fixed or quarantined by name, not
+    # hidden behind a job-wide flag. fail-fast stays false so one shard
+    # failure still reports the full matrix.
     strategy:
       fail-fast: false
       matrix:
@@ -454,7 +481,9 @@ jobs:
     name: "Native C++20 LibFuzzer (Cached Corpus)"
     needs: build-and-compile
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # audit #44 P1-3: BLOCKING. A LibFuzzer crash IS a memory-safety bug
+    # in production C++ — exactly what main must never absorb. Timed-out
+    # fuzz runs still exit 0; only crashes fail the job.
     if: github.event_name == 'schedule' || github.base_ref == 'main'
     steps:
       - uses: actions/checkout@v4
@@ -617,6 +646,46 @@ jobs:
         with:
           name: log-emulator-api-${{ matrix.api }}
           path: shard-emulator-api-${{ matrix.api }}.log
+
+  # 6b. CI GATE (audit #44 P1-3): the single required-status-check target
+  # for branch protection on main. Matrix jobs expand to N checks with
+  # generated display names — requiring them individually is brittle — so
+  # this job folds the blocking set into one stable name. `if: always()`
+  # is what makes it run after a failure; the explicit state scan below is
+  # what makes it FAIL on that failure. Advisory jobs (gatekeeper probe:
+  # datacenter-IP bot-wall; emulator matrix: runner fleet cannot run ARM64
+  # emulators) are deliberately NOT part of the blocking set.
+  ci-gate:
+    name: "CI gate (blocking)"
+    runs-on: ubuntu-latest
+    needs: [rust-lint, build-and-compile, test-matrix, native-deep-fuzz, codeql-analysis]
+    if: always()
+    steps:
+      - name: Enforce blocking-job success
+        env:
+          NEEDS_CONTEXT: ${{ toJSON(needs) }}
+        run: |
+          python3 - << 'PY'
+          import json, os, sys
+          needs = json.loads(os.environ['NEEDS_CONTEXT'])
+          # Fuzz runs on schedule + PRs only: skipped on plain pushes to
+          # main, which must not fail the gate.
+          tolerated_skips = {'native-deep-fuzz'}
+          failures = []
+          for job, info in needs.items():
+              if info['result'] == 'failure' or (
+                  info['result'] == 'skipped' and job not in tolerated_skips
+              ):
+                  failures.append(f"{job}: {info['result']}")
+          if failures:
+              print('CI gate FAILED — blocking jobs did not succeed:')
+              for f in failures:
+                  print(f'  - {f}')
+              sys.exit(1)
+          print('CI gate passed — all blocking jobs green:')
+          for job, info in sorted(needs.items()):
+              print(f'  - {job}: {info["result"]}')
+          PY
 
   # 6. AGGREGATION & DEPLOYMENT
   aggregate-and-publish-logs:

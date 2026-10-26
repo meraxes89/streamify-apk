@@ -979,10 +979,10 @@ mod collab_playlist_tests {
         let add_a = a.build_add(111, 0.25).expect("pre-adoption add");
         assert_eq!(add_a.item_id >> 32, 1); // minted in the legacy namespace
 
-        a.adopt_author(0x00A1_1CE);
+        a.adopt_author(0x000A_11CE);
         // Historical item identity is untouched (namespaces disjoint).
         assert_eq!(add_a.item_id >> 32, 1);
-        assert_eq!(a.role_of(0x00A1_1CE), PlaylistRole::Admin); // carried
+        assert_eq!(a.role_of(0x000A_11CE), PlaylistRole::Admin); // carried
         // New mints land in the adopted namespace — distinct devices can
         // no longer collide on the same (author, counter) identity. The
         // per-replica counter CONTINUES across the swap (1 → 2): identity
@@ -990,18 +990,18 @@ mod collab_playlist_tests {
         // disjoint-namespace property is what adopt_author relies on,
         // not a counter reset.
         let add_b = a.build_add(222, 0.5).expect("post-adoption add");
-        assert_eq!(add_b.item_id >> 32, 0x00A1_1CE);
+        assert_eq!(add_b.item_id >> 32, 0x000A_11CE);
         assert_eq!(add_b.item_id & 0xFFFF_FFFF, 2);
 
         // Idempotent re-adoption of the same author is a no-op.
-        a.adopt_author(0x00A1_1CE);
+        a.adopt_author(0x000A_11CE);
 
         // An existing roster entry for the new author (host grant) wins
         // over the carried role: a viewer stays a viewer.
         let mut b = CollabPlaylistState::new(2);
-        b.set_role_local(0x0BEE_F, PlaylistRole::Viewer);
-        b.adopt_author(0x0BEE_F);
-        assert_eq!(b.role_of(0x0BEE_F), PlaylistRole::Viewer);
+        b.set_role_local(0x0000_BEEF, PlaylistRole::Viewer);
+        b.adopt_author(0x0000_BEEF);
+        assert_eq!(b.role_of(0x0000_BEEF), PlaylistRole::Viewer);
         assert!(b.build_add(1, 0.5).is_none()); // viewer cannot add
     }
 
