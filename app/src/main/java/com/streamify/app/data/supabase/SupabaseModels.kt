@@ -70,35 +70,11 @@ data class TrackComment(
     val createdAt: String = ""
 )
 
-data class ListeningSession(
-    val id: String,
-    val sessionCode: String,
-    val hostUserId: String,
-    val currentTrackId: String?,
-    val currentTrackJson: JSONObject?,
-    val positionMs: Long,
-    val isPlaying: Boolean,
-    val hostClockTimestamp: Long,
-    val queue: List<Track> = emptyList(),
-    val participantIds: List<String> = emptyList()
-)
-
 // ============================================================================
 // JAM IDENTITY CODEC — lossless track identity across the wire.
 // ytmVideoId/isrc MUST travel with every payload so guests never fall into
 // blind fuzzy resolution (the root of historical wrong-song jams).
 // ============================================================================
-
-data class DevicePlaybackSnapshot(
-    val deviceId: String,
-    val trackId: String,
-    val trackTitle: String,
-    val trackArtist: String,
-    val isPlaying: Boolean,
-    val positionMs: Long,
-    val clientEpochMs: Long,
-    val durationMs: Long
-)
 
 data class FriendActivity(
     val userId: String,

@@ -158,7 +158,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
 
     // Phase 4 — WearOS companion links (Data/Message/Channel clients)
-    implementation("com.google.android.gms:play-services-wearable:18.1.0")
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // Phase 4 — Home/Lock screen Now Playing widgets (Glance)
