@@ -53,12 +53,6 @@ object SupabaseClient {
 
     val liveProfileUpdates = MutableSharedFlow<JSONObject>(extraBufferCapacity = 64)
 
-    val remotePlaybackState = MutableSharedFlow<DevicePlaybackSnapshot>(extraBufferCapacity = 8)
-
-    val jamPlaybackUpdates = MutableSharedFlow<JSONObject>(extraBufferCapacity = 32)
-
-    val jamQueueUpdates = MutableSharedFlow<List<Track>>(extraBufferCapacity = 16)
-
     val isAdmin: Boolean
         get() = _currentUser.value?.isAdmin == true ||
                 _currentUser.value?.email?.contains("sireenyadav", ignoreCase = true) == true ||
@@ -416,18 +410,6 @@ object SupabaseClient {
         return Pair(400, "Adaptive retry limit reached")
     }
 
-    var onListeningSessionRow: ((org.json.JSONObject) -> Unit)? = null
-
-    data class JamLeaseSnapshot(
-        val sessionId: String,
-        val hostUserId: String?,
-        val leaseExpired: Boolean,
-        val lastTickPosMs: Long,
-        val lastTickMonoMs: Long,
-        val participantIds: List<String>,
-        val hostEpoch: Long
-    )
-
 
     // ── Domain delegations (implementation lives in the domain clients) ──
 
@@ -457,40 +439,6 @@ object SupabaseClient {
     suspend fun submitSyncedLyrics(trackId: String, lyricsContent: String): Result<Boolean> = SupabaseCommunityClient.submitSyncedLyrics(trackId, lyricsContent)
     suspend fun fetchActiveBroadcasts(): List<String> = SupabaseCommunityClient.fetchActiveBroadcasts()
 
-    val activeJam get() = SupabaseJamClient.activeJam
-    suspend fun createJamSession(track: Track, positionMs: Long): Result<ListeningSession> = SupabaseJamClient.createJamSession(track, positionMs)
-    suspend fun joinJamSession(sessionCode: String): Result<ListeningSession> = SupabaseJamClient.joinJamSession(sessionCode)
-    suspend fun updateJamPlayback(sessionCode: String, track: Track, positionMs: Long, isPlaying: Boolean): Result<Boolean> = SupabaseJamClient.updateJamPlayback(sessionCode, track, positionMs, isPlaying)
-    fun broadcastJamTick(
-        sessionCode: String,
-        trackId: String,
-        trackTitle: String,
-        trackArtist: String,
-        positionMs: Long,
-        isPlaying: Boolean,
-        hostEpochMs: Long = System.currentTimeMillis(),
-        action: String = "TICK",
-        trackJson: JSONObject? = null,
-        senderId: String = "",
-        epochMs: Long = 0L,
-        extras: JSONObject? = null
-    ): Boolean = SupabaseJamClient.broadcastJamTick(sessionCode, trackId, trackTitle, trackArtist, positionMs, isPlaying, hostEpochMs, action, trackJson, senderId, epochMs, extras)
-    fun broadcastJamQueue(sessionCode: String, queue: List<Track>) = SupabaseJamClient.broadcastJamQueue(sessionCode, queue)
-    fun joinJamRealtimeChannel(sessionCode: String) = SupabaseJamClient.joinJamRealtimeChannel(sessionCode)
-    fun joinSessionRowChannel(sessionId: String) = SupabaseJamClient.joinSessionRowChannel(sessionId)
-    fun leaveJamSession() = SupabaseJamClient.leaveJamSession()
-    fun adoptForeignHost(sessionCode: String, newHostUserId: String?) = SupabaseJamClient.adoptForeignHost(sessionCode, newHostUserId)
-    suspend fun jamHeartbeat(sessionId: String, posMs: Long, monoMs: Long): String = SupabaseJamClient.jamHeartbeat(sessionId, posMs, monoMs)
-    suspend fun jamTakeover(
-        sessionId: String,
-        advisorySuccessor: String,
-        pivotPosMs: Long,
-        pivotMonoMs: Long
-    ): Long? = SupabaseJamClient.jamTakeover(sessionId, advisorySuccessor, pivotPosMs, pivotMonoMs)
-    suspend fun fetchJamLeaseRow(sessionId: String): JamLeaseSnapshot? = SupabaseJamClient.fetchJamLeaseRow(sessionId)
-    suspend fun fetchJamSnapshot(sessionCode: String): Result<ListeningSession> = SupabaseJamClient.fetchJamSnapshot(sessionCode)
-    fun patchJamQueueJson(sessionCode: String, queue: List<Track>) = SupabaseJamClient.patchJamQueueJson(sessionCode, queue)
-    fun patchJamParticipant(sessionCode: String, userId: String, add: Boolean) = SupabaseJamClient.patchJamParticipant(sessionCode, userId, add)
 
     suspend fun getAdminTelemetry(): Result<AdminTelemetry> = SupabaseAdminClient.getAdminTelemetry()
     suspend fun setUserAdminRole(targetUserId: String, isAdmin: Boolean): Result<Boolean> = SupabaseAdminClient.setUserAdminRole(targetUserId, isAdmin)
