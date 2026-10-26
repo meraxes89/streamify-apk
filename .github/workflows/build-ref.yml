@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch / tag / SHA to build (e.g. legacy-6ffa6c4)'
+        description: 'Branch / tag / SHA to build (defaults to main; e.g. a legacy tag)'
         required: true
-        default: 'legacy-6ffa6c4'
+        default: 'main'
 
 jobs:
   build:
