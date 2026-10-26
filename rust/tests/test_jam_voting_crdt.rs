@@ -677,7 +677,13 @@ async fn thirty_two_peer_democratic_voting_chaos() {
         if nodes.iter().all(|n| n.peer_count() == CHAOS_N - 1) {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(10), "chaos mesh did not form");
+        // 30 s (run #363 flake fix): formation = 992 directed handshakes on
+        // a 4-worker runtime. On a loaded CI runner (this shard races 8
+        // other jobs in the parallel matrix) the 10 s deadline expired
+        // while the mesh was still legitimately forming — a load artifact,
+        // not a protocol bug. 30 s keeps the guard real (a broken mesh
+        // still never forms) while removing the wall-clock sensitivity.
+        assert!(t0.elapsed() < Duration::from_secs(30), "chaos mesh did not form");
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
