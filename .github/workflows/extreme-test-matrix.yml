@@ -178,7 +178,7 @@ jobs:
         run: which cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Cache Cargo Registry & Build Dir
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: |
@@ -193,7 +193,7 @@ jobs:
 
       - name: Cache Android NDK & CMake
         id: ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           # Runner-image env vars are NOT part of the Actions `env` context, so
@@ -263,7 +263,7 @@ jobs:
 
       - name: Upload Build Log Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-log-${{ github.run_number }}
           path: build.log
@@ -311,14 +311,14 @@ jobs:
 
       - name: Upload APK Artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Streamify-Debug-APK
           path: streamify.apk
 
       - name: Create Build Release
         if: success() && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: build-${{ env.EFFECTIVE_BUILD }}
           name: Streamify Build ${{ env.EFFECTIVE_BUILD }}
@@ -329,7 +329,7 @@ jobs:
 
       - name: Create Canary Release
         if: success() && github.ref == 'refs/heads/streamify-yt-spt'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: canary-build-${{ env.EFFECTIVE_BUILD }}
           name: Streamify Canary ${{ env.EFFECTIVE_BUILD }} (Flagship Test)
@@ -341,7 +341,7 @@ jobs:
 
       - name: Update Latest Release
         if: success() && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v1.0.0
           name: Streamify v1.0.0 (Latest Build)
@@ -405,7 +405,7 @@ jobs:
           cache-read-only: true
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
@@ -418,7 +418,7 @@ jobs:
           ./gradlew assembleDebug -Pstreamify.skipRust=true --stacktrace
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
 
@@ -482,7 +482,7 @@ jobs:
 
       - name: Cache Cargo Registry & Host Target Dir
         if: matrix.type == 'rust'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: |
@@ -515,7 +515,7 @@ jobs:
       - name: Cache Android NDK & CMake
         id: ndk-cache
         if: matrix.type == 'android-jvm'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             /usr/local/lib/android/sdk/ndk/26.1.10909125
@@ -584,7 +584,7 @@ jobs:
             && mv "shard-${{ matrix.shard }}.log.tmp" "shard-${{ matrix.shard }}.log"
 
       - name: Upload Shard Log Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: log-${{ matrix.shard }}
@@ -621,7 +621,7 @@ jobs:
           max-size: 500M
 
       - name: Restore Fuzzer Seed Corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: native/fuzz/corpus
           key: libfuzzer-corpus-${{ github.ref_name }}-${{ github.sha }}
@@ -649,7 +649,7 @@ jobs:
 
       - name: Upload Crash Artifacts on Fault
         if: env.FUZZER_FOUND_CRASH == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libfuzzer-crash-dumps
           path: native/fuzz/artifacts/
@@ -665,7 +665,7 @@ jobs:
           sed -i "1s/^/==================================================\nSHARD: native-libfuzzer\nDESCRIPTION: Deep LibFuzzer Crash Hunt\nSTATUS: $STATUS\n==================================================\n\n/" shard-native-libfuzzer.log
 
       - name: Upload Fuzzer Log Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: log-native-libfuzzer
@@ -712,7 +712,7 @@ jobs:
 
       - name: Cache Android NDK & CMake
         id: ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             /Users/runner/Library/Android/sdk/ndk/26.1.10909125
@@ -760,7 +760,7 @@ jobs:
 
       - name: Upload Shard Log Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: log-emulator-api-${{ matrix.api }}
           path: shard-emulator-api-${{ matrix.api }}.log
