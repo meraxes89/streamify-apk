@@ -81,14 +81,14 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use jni::objects::{GlobalRef, JByteArray, JClass, JString, ReleaseMode};
-use jni::sys::{jboolean, jbyteArray, jint, jlong, jobject, jstring};
+use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, ReleaseMode};
+use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring};
 use jni::{JNIEnv, JavaVM};
 use tokio::runtime::Runtime;
 
 use crate::consensus::{CollabPlaylistState, PlaylistRole};
 use crate::jam_crdt::{JamOp, OpType};
-use crate::p2p_mesh::{MeshConfig, MeshNode, PeerId, RESERVED_CONTROL_TYPES, MSG_JAM_APP};
+use crate::p2p_mesh::{MeshConfig, MeshNode, PeerId, MSG_JAM_APP, RESERVED_CONTROL_TYPES};
 
 const JNI_TRUE: jboolean = 1;
 const JNI_FALSE: jboolean = 0;
@@ -163,13 +163,21 @@ fn snapshot_cb() -> Option<Arc<P2pCallback>> {
 fn deliver_frame(cb: &P2pCallback, peer_hex: &str, msg_type: u8, payload: &[u8]) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if let Ok(mut env) = cb.vm.attach_current_thread() {
-            let Ok(peer) = env.new_string(peer_hex) else { return };
-            let Ok(arr) = env.byte_array_from_slice(payload) else { return };
+            let Ok(peer) = env.new_string(peer_hex) else {
+                return;
+            };
+            let Ok(arr) = env.byte_array_from_slice(payload) else {
+                return;
+            };
             let _ = env.call_method(
                 cb.listener.as_obj(),
                 "onP2pFrame",
                 "(Ljava/lang/String;I[B)V",
-                &[(&peer).into(), jint::from(msg_type as i32).into(), (&arr).into()],
+                &[
+                    (&peer).into(),
+                    jint::from(msg_type as i32).into(),
+                    (&arr).into(),
+                ],
             );
         }
     }));
@@ -178,10 +186,16 @@ fn deliver_frame(cb: &P2pCallback, peer_hex: &str, msg_type: u8, payload: &[u8])
 fn deliver_peer_event(cb: &P2pCallback, peer_hex: &str, joined: bool) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if let Ok(mut env) = cb.vm.attach_current_thread() {
-            let Ok(peer) = env.new_string(peer_hex) else { return };
+            let Ok(peer) = env.new_string(peer_hex) else {
+                return;
+            };
             let _ = env.call_method(
                 cb.listener.as_obj(),
-                if joined { "onP2pPeerJoined" } else { "onP2pPeerLeft" },
+                if joined {
+                    "onP2pPeerJoined"
+                } else {
+                    "onP2pPeerLeft"
+                },
                 "(Ljava/lang/String;)V",
                 &[(&peer).into()],
             );
@@ -204,19 +218,18 @@ fn spawn_app_bridge(rt: &Runtime, node: &Arc<MeshNode>) {
                 _ = stop.changed() => break,
                 pkt = rx.recv() => {
                     let Some(pkt) = pkt else { break };
-                    match snapshot_cb() {
-                        Some(cb) => deliver_frame(
+                    if let Some(cb) = snapshot_cb() {
+                        deliver_frame(
                             &cb,
                             &pkt.from_peer.to_hex(),
                             pkt.header.msg_type,
                             &pkt.payload,
-                        ),
-                        // No listener registered: drain quietly. Frames are
-                        // still gossip-deduped; dropping them is the same
-                        // bounded-discard contract the router applies to a
-                        // slow consumer.
-                        None => {}
+                        );
                     }
+                    // No listener registered: drain quietly. Frames are
+                    // still gossip-deduped; dropping them is the same
+                    // bounded-discard contract the router applies to a
+                    // slow consumer.
                 }
             }
         }
@@ -256,7 +269,7 @@ fn spawn_app_bridge(rt: &Runtime, node: &Arc<MeshNode>) {
 /// Wire-up point B: mesh start with an already-registered callback.
 fn wire_app_bridge_if_registered() {
     if snapshot_cb().is_some() {
-        with_runtime(|rt, node| spawn_app_bridge(rt, node));
+        with_runtime(spawn_app_bridge);
     }
 }
 
@@ -490,26 +503,29 @@ pub extern "system" fn Java_com_streamify_app_data_NativeBridge_nativeP2pGetConn
 pub extern "system" fn Java_com_streamify_app_data_NativeBridge_nativeP2pRegisterIncomingCallback(
     env: JNIEnv,
     _class: JClass,
-    listener: jobject,
+    listener: JObject,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        if listener.is_null() {
+        if listener.as_raw().is_null() {
             return JNI_FALSE;
         }
         let vm = match env.get_java_vm() {
             Ok(vm) => vm,
             Err(_) => return JNI_FALSE,
         };
-        let global = match env.new_global_ref(unsafe { JClass::from_raw(listener) }) {
+        let global = match env.new_global_ref(listener) {
             Ok(g) => g,
             Err(_) => return JNI_FALSE,
         };
         {
             let mut guard = heal(P2P_CB.lock());
-            *guard = Some(Arc::new(P2pCallback { vm, listener: global }));
+            *guard = Some(Arc::new(P2pCallback {
+                vm,
+                listener: global,
+            }));
         }
         // Wire-up point A: live mesh at registration time.
-        with_runtime(|rt, node| spawn_app_bridge(rt, node));
+        with_runtime(spawn_app_bridge);
         JNI_TRUE
     }))
     .unwrap_or(JNI_FALSE)
@@ -1090,12 +1106,21 @@ pub extern "system" fn Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshQu
 ) -> jstring {
     catch_unwind(AssertUnwindSafe(|| {
         let json = with_node(|node| {
-            let proposed: Vec<serde_json::Value> =
-                node.crdt_proposed_queue().into_iter().map(view_json).collect();
-            let committed: Vec<serde_json::Value> =
-                node.crdt_committed_queue().into_iter().map(view_json).collect();
-            let playback: Vec<serde_json::Value> =
-                node.crdt_playback_order().into_iter().map(view_json).collect();
+            let proposed: Vec<serde_json::Value> = node
+                .crdt_proposed_queue()
+                .into_iter()
+                .map(view_json)
+                .collect();
+            let committed: Vec<serde_json::Value> = node
+                .crdt_committed_queue()
+                .into_iter()
+                .map(view_json)
+                .collect();
+            let playback: Vec<serde_json::Value> = node
+                .crdt_playback_order()
+                .into_iter()
+                .map(view_json)
+                .collect();
             let stats = node.stats();
             serde_json::json!({
                 "proposed": proposed,
@@ -1139,7 +1164,10 @@ pub extern "system" fn Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshBr
     paused: jboolean,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        let artist: String = env.get_string(&artist).map(|s| s.into()).unwrap_or_default();
+        let artist: String = env
+            .get_string(&artist)
+            .map(|s| s.into())
+            .unwrap_or_default();
         let album: String = env.get_string(&album).map(|s| s.into()).unwrap_or_default();
         let room: Option<[u8; 16]> = with_node(|n| n.session().0);
         match with_node(|node| {

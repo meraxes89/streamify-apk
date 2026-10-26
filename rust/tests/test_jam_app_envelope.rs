@@ -24,12 +24,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use streamify_core_rs::p2p_mesh::{
-    MeshConfig, MeshNode, PeerId, RESERVED_CONTROL_TYPES, MSG_JAM_APP,
+    MeshConfig, MeshNode, PeerId, MSG_JAM_APP, RESERVED_CONTROL_TYPES,
 };
 
 /// Contract 1 — envelope legality (mirrors `app_msg_type_ok`'s rules: a
 /// type is app-injectable iff it is 0..=255 and not reserved).
+///
+/// `assertions_on_constants` is intentional: these are regression pins,
+/// not logic — a registry edit that moves/reserves MSG_JAM_APP must fail
+/// HERE first, at the contract, before it fails at runtime.
 #[test]
+#[allow(clippy::assertions_on_constants)]
 fn jam_app_envelope_is_app_visible() {
     assert!(
         !RESERVED_CONTROL_TYPES.contains(&MSG_JAM_APP),
@@ -39,19 +44,29 @@ fn jam_app_envelope_is_app_visible() {
         MSG_JAM_APP >= 0x20,
         "app extensions must live in the >= 0x20 range the guard documents"
     );
-    // The whole JamWire family maps onto this one envelope: prove the
-    // mapping target is stable and the collision source range is what we
-    // document (1..=31 — JamWire Msg constants top out at 28; a couple of
-    // spare codes below 0x20 keep the family closed under future adds).
+    // The raw JamWire vocabulary must be mostly rejected by the guard when
+    // sent bare — that collision is exactly why the envelope exists. Count
+    // the rejects instead of asserting inside the loop (an in-loop assert
+    // with a computed condition doubles as a live census of the collision).
+    let mut raw_rejected = 0;
+    let mut raw_ptp_mimicry = 0;
     for jam_type in 1..=31u8 {
-        let collides = jam_type == 0x01 // MSG_PTP_SYNC (TICK would spoof PTP)
-            || RESERVED_CONTROL_TYPES.contains(&jam_type);
-        // Any JamWire type that is NOT PTP_SYNC/CRDT_OP app-visible would
-        // be rejected by the guard if sent raw — that is exactly why the
-        // envelope exists. (0x01/0x02 are admissible but semantically
-        // wrong: they are the mesh's own PTP/CRDT channels.)
-        let _ = collides;
+        if RESERVED_CONTROL_TYPES.contains(&jam_type) {
+            raw_rejected += 1;
+        }
+        if jam_type == 0x01 {
+            raw_ptp_mimicry += 1; // MSG_PTP_SYNC: bare TICK would spoof PTP
+        }
     }
+    assert!(
+        raw_rejected >= 13,
+        "the raw JamWire vocabulary must be mostly rejected by the guard — \
+         that collision is why the envelope exists (got {raw_rejected} of 31)"
+    );
+    assert_eq!(
+        raw_ptp_mimicry, 1,
+        "exactly one JamWire type mimics PTP_SYNC (TICK)"
+    );
 }
 
 /// Contracts 2 + 3 — routing + teardown on a two-node loopback mesh.
@@ -83,16 +98,21 @@ async fn jam_app_envelope_routes_peer_to_peer_and_stops_cleanly() {
     // A JamWire-shaped payload (magic + version + msgType header is
     // validated Kotlin-side; content is opaque to the mesh).
     let payload: Vec<u8> = (0u16..96).flat_map(|i| i.to_le_bytes()).collect();
-    a.broadcast(MSG_JAM_APP, &payload).expect("envelope broadcast enqueues");
+    a.broadcast(MSG_JAM_APP, &payload)
+        .expect("envelope broadcast enqueues");
 
     let got = tokio::time::timeout(Duration::from_secs(10), rx.recv())
         .await
         .expect("envelope frame delivered across the mesh")
         .expect("subscription alive");
-    assert_eq!(got.payload, payload, "payload survives the wire byte-for-byte");
+    assert_eq!(
+        got.payload, payload,
+        "payload survives the wire byte-for-byte"
+    );
     assert_eq!(got.header.msg_type, MSG_JAM_APP);
     assert_eq!(
-        got.from_peer, a.id(),
+        got.from_peer,
+        a.id(),
         "origin peer id must be the sender, not the relay (peer-to-peer here, \
          but the invariant is what the upcall's peerIdHex depends on)"
     );
@@ -106,10 +126,13 @@ async fn jam_app_envelope_routes_peer_to_peer_and_stops_cleanly() {
         .await
         .expect("stop signal fires on shutdown")
         .expect("sender still alive while node is");
-    assert!(*stop.borrow(), "stop channel must carry `true` after shutdown");
+    assert!(
+        *stop.borrow(),
+        "stop channel must carry `true` after shutdown"
+    );
 
     // And a second subscriber can drain cleanly afterwards (no hang, no
     // panic) — the node's router simply goes quiet.
-    let mut rx2 = b.subscribe(MSG_JAM_APP, 4);
+    let rx2 = b.subscribe(MSG_JAM_APP, 4);
     drop(rx2);
 }
