@@ -1,0 +1,214 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #450
+COMMIT: 84c4b6d7b0f42e829d9bfa347a0d2ad2da4a16c2
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: FAILED ❌
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: testDebugUnitTest
+
+> Configure project :app
+Checking the license for package NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/licenses
+License for package NDK (Side by side) 25.1.8937393 accepted.
+Preparing "Install NDK (Side by side) 25.1.8937393 v.25.1.8937393".
+"Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" ready.
+Installing NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/ndk/25.1.8937393
+"Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" complete.
+"Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" finished.
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:checkDebugAarMetadata
+> Task :app:mergeDebugResources FROM-CACHE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:compileDebugKotlin
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Native DSP Test Suite...
+[TEST] Phase 1: Native DSP, Audiophile Fidelity & 32-Peer Jam
+  - Phase1/BS.1770: calibration anchors
+  - Phase1/BS.1770: dual gating
+  - Phase1/normalize: -8 LUFS -> -14 target
+  - Phase1/limiter: true-peak ceiling + inter-sample
+  - Phase1/channels: constant-power balance + mono
+  - Phase1/ring: SPSC correctness
+  - Phase1/mix: 32-peer pool + saturation
+  - Phase1/silentPLL: bypass + PTP lock + takeover
+  - Phase1/chain: end-to-end -14 LUFS @ -1 dBTP
+  - Phase1/rate: legacy paths honor the configured fs
+  - Phase1/rate: rate-aware legacy surface PASSED
+  - Phase1/perf: limiter hot-path benchmark
+    SoftKneeLimiter 2048f stereo hot   1036187.9 ns/block  505.95 ns/frame  (~1.73% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      80095.7 ns/block   19.55 ns/frame  (~0.07% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          73081.8 ns/block   17.84 ns/frame  (~0.06% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           30209.9 ns/block    7.38 ns/frame  (~0.03% of an A55 core, est.)
+  - Phase1/perf: zero-alloc hot paths
+  - Phase1/perf: zero-alloc audit PASSED
+[TEST] Phase 1: all 231 checks passed
+[TEST] Phase 2: Harmonic Transition Engine, Candidate Fast-Math & Circadian Curves
+  [harmonic] candidate ID hashing
+  [harmonic] candidate dedup kernels
+  [harmonic] Camelot key transition matrix
+  [harmonic] BPM transition + combined coefficient
+  [harmonic] circadian daypart curves
+    (24h max per-second jump: 6.44e-05)
+  [harmonic] perf budgets + zero-alloc audit
+    (256x256 masks+union: 16.8 us, best of 5)
+    (bulk hash 20k x 21-char ids: 425 us)
+[TEST] Phase 2: all 150 checks passed (0 failed)
+[phase3] canvas loop + AGSL ambient glow
+  [canvas] loop phase primitives
+  [canvas] boundary crossfade weights
+  [canvas] blended-signal seam continuity (C0 + C1)
+  [canvas] bit-exact frame periodicity (both strategies)
+  [canvas] renderer clock discipline
+  [agsl] shader source + uniform tables
+  [agsl] runtime param generation
+  [agsl] fuzz-regression: hostile time/period quotients
+[phase3] canvas/AGSL: 169 passed, 0 failed
+[phase3] audio remuxer & bitstream validators
+  [opus] TOC codes 0-3 + RFC 6716 accounting
+  [adts] header ladder + strict rates
+  [remux] Ogg Opus structural audit
+  [remux] ADTS normalization + lifecycle
+  [remux] degenerate streams + io failure
+  [remux] randomized corrupt-stream soak (500 packets)
+  [remux] zero-allocation per-packet path
+[phase3] audio remuxer: 158 passed, 0 failed
+[phase3] bitmap palette extractor
+  [palette] role colors on synthetic art
+  [palette] WCAG contrast discipline
+  [palette] formats, sizes, malformed ladder
+  [palette] determinism
+  [palette] zero-alloc hot path + perf smoke
+    perf: 1024x1024 RGBA in 10.99 ms
+  [palette] fuzz-regression: median-cut termination
+[phase3] palette: 48 passed, 0 failed
+[phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
+  [sink] CRC32 known vectors + rate codes
+  [sink] SIMD Float32->PCM16 accuracy + saturation
+    max SIMD-vs-scalar delta: 0 LSB
+  [sink] SIMD stereo->mono downmix
+  [sink] FIR decimator: DC, passband, anti-alias, counts
+  [sink] SPSC ring basic IO + wraparound + byte reads
+  [sink] telemetry: watermarks, fullness, latency, xruns
+  [sink] flush semantics
+  [sink] zero-allocation hot paths (AllocGuard)
+  [sink] SPSC stress: 10,000,000 frames, 2 threads
+    0.04 s wall, 255.0 Mframes/s (unsanitized sanitizer build)
+  [sink] SPSC pipeline stress: downmix + decimate, 2 threads
+  [sink] packetizer roundtrip + MTU chunking
+  [sink] packetizer corruption ladder (hostile input)
+  [sink] zero-run compressor roundtrip + bounds
+  [sink] token-bucket rate limiter (deterministic clock)
+  [sink] packetizer pacing + backpressure telemetry
+  [sink] sink registry + stats wire layout
+[phase4] audio sinks: 8454 passed, 0 failed
+  [Phase-5] Palette SIMD & WCAG contrast engine
+    perf: 1080x1080 worst-case (full noise) best-of-3: 2.115 ms
+  [Phase-5] palette suite: 5050 checks passed, 0 failed
+  [Phase-5] Frame pacer & jank monitor
+    stress: 1,000,000 ticks, 9917 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=0
+  [Phase-5] frame pacer suite: 76 checks passed, 0 failed
+  - SoftKneeLimiter transient pass-through: PASSED
+  - SoftKneeLimiter sustained soft-knee limit: PASSED
+  - SoftKneeLimiter short limit: PASSED
+  - LufsNormalizer: PASSED
+  - KissFFTR 1024 Transform: PASSED
+[TEST] All Native DSP Tests Passed Successfully! (ASan/UBSan Verified)
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting SIMD & Physics Test Suite...
+  - AirDrop RK4 ODE Simulation: PASSED
+  - VectorStore 64-D Cosine Search: PASSED
+[TEST] All SIMD Physics Tests Passed Successfully!
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Storage & Telemetry Test Suite...
+  - Lock-Free MPMC Ring Buffer: PASSED
+[streamify:StreamifyNative] [StreamifyDB] Migration error: no such column: play_count
+  - SQLite WAL Database CRUD: PASSED
+[TEST] All Storage & Telemetry Tests Passed Successfully!
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
+[1m[92m   Compiling[0m proc-macro2 v1.0.107
+[1m[92m   Compiling[0m unicode-ident v1.0.27
+[1m[92m   Compiling[0m quote v1.0.47
+[1m[92m   Compiling[0m cfg-if v1.0.5
+[1m[92m   Compiling[0m libc v0.2.191
+[1m[92m   Compiling[0m typenum v1.20.1
+[1m[92m   Compiling[0m shlex v2.0.1
+[1m[92m   Compiling[0m find-msvc-tools v0.1.15
+[1m[92m   Compiling[0m cc v1.10.0
+[1m[92m   Compiling[0m syn v3.0.9
+[1m[92m   Compiling[0m stable_deref_trait v1.2.1
+[1m[92m   Compiling[0m version_check v0.9.5
+[1m[92m   Compiling[0m getrandom v0.4.3
+[1m[92m   Compiling[0m hybrid-array v0.4.15
+[1m[92m   Compiling[0m rand_core v0.10.1
+[1m[92m   Compiling[0m bytes v1.12.1
+[1m[92m   Compiling[0m once_cell v1.21.4
+[1m[92m   Compiling[0m itoa v1.0.18
+[1m[92m   Compiling[0m smallvec v1.16.4
+[1m[92m   Compiling[0m pin-project-lite v0.2.17
+[1m[92m   Compiling[0m zeroize v1.9.1
+[1m[92m   Compiling[0m crypto-common v0.2.2
+[1m[92m   Compiling[0m getrandom v0.2.17
+[1m[92m   Compiling[0m writeable v0.6.4
+[1m[92m   Compiling[0m futures-core v0.3.34
+[1m[92m   Compiling[0m litemap v0.8.3
+[1m[92m   Compiling[0m ring v0.17.14
+[1m[92m   Compiling[0m syn v2.0.119
+[1m[92m   Compiling[0m synstructure v0.14.0
+[1m[92m   Compiling[0m icu_properties_data v2.4.0
+[1m[92m   Compiling[0m icu_normalizer_data v2.4.0
+[1m[92m   Compiling[0m zerocopy v0.8.63
+[1m[92m   Compiling[0m utf8_iter v1.0.4
+[1m[92m   Compiling[0m rustls-pki-types v1.15.1
+[1m[92m   Compiling[0m zerofrom-derive v0.1.8
+[1m[92m   Compiling[0m yoke-derive v0.8.4
+[1m[92m   Compiling[0m zerovec-derive v0.11.7
+[1m[92m   Compiling[0m zerofrom v0.1.8
+[1m[92m   Compiling[0m displaydoc v0.2.7
+[1m[92m   Compiling[0m tokio-macros v2.7.2
+[1m[92m   Compiling[0m yoke v0.8.4
+[1m[92m   Compiling[0m zerovec v0.11.9
