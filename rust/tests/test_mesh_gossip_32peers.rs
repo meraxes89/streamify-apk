@@ -754,12 +754,7 @@ async fn host_death_triggers_deterministic_election_failover() {
     // beat the first election tick — the count was still 0 at assert time.
     let t_elect = std::time::Instant::now();
     loop {
-        if nodes
-            .iter()
-            .enumerate()
-            .skip(1)
-            .all(|(i, n)| n.stats().gov_elections >= 1)
-        {
+        if nodes.iter().skip(1).all(|n| n.stats().gov_elections >= 1) {
             break;
         }
         assert!(
