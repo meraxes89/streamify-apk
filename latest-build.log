@@ -106,10 +106,6 @@ C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngi
 C/C++:     auto& vecStore = VectorStore::getInstance();
 C/C++:           ^
 C/C++: 2 warnings generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned int') [-Wsign-compare]
-C/C++:         if (i * hop_length + nfft > pcm.size()) break;
-C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
-C/C++: 1 warning generated.
 
 > Task :app:buildCMakeDebug[arm64-v8a]
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
@@ -150,8 +146,14 @@ C/C++: 1 warning generated.
 
 > Task :app:compileDebugKotlin
 
+> Task :app:buildCMakeDebug[armeabi-v7a]
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned int') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
+
 > Task :app:cargoBuildRust
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 24s
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 43s
     Building armeabi-v7a (armv7-linux-androideabi)
 [1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
 
@@ -188,6 +190,10 @@ C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfil
 C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
 C/C++:                                                                       ^
 C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
+C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
+C/C++:                                                                                   ^
+C/C++: 1 warning generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
 C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
 C/C++:                                                             ^
@@ -204,10 +210,6 @@ C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:78
 C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
 C/C++:                                                                    ^
 C/C++: 5 warnings generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
-C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
-C/C++:                                                                                   ^
-C/C++: 1 warning generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
 C/C++:     const float beta_bpm = 0.20f;
 C/C++:                 ^
@@ -215,16 +217,8 @@ C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngi
 C/C++:     auto& vecStore = VectorStore::getInstance();
 C/C++:           ^
 C/C++: 2 warnings generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned long') [-Wsign-compare]
-C/C++:         if (i * hop_length + nfft > pcm.size()) break;
-C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
-C/C++: 1 warning generated.
 
 > Task :app:buildCMakeDebug[x86]
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
-C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
-C/C++:                                                                       ^
-C/C++: 1 warning generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
 C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
 C/C++:                                                             ^
@@ -244,6 +238,10 @@ C/C++: 5 warnings generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
 C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
 C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
 C/C++: 1 warning generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
 C/C++:     const float beta_bpm = 0.20f;
@@ -257,12 +255,18 @@ C/C++:         if (i * hop_length + nfft > pcm.size()) break;
 C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
 C/C++: 1 warning generated.
 
+> Task :app:buildCMakeDebug[x86_64]
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned long') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
+
 > Task :app:cargoBuildRust
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 09s
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 25s
     Building x86_64 (x86_64-linux-android)
 [1m[92m   Compiling[0m cfg-if v1.0.5
-[1m[92m   Compiling[0m libc v0.2.191
 [1m[92m   Compiling[0m typenum v1.20.1
+[1m[92m   Compiling[0m libc v0.2.191
 [1m[92m   Compiling[0m zerofrom v0.1.8
 [1m[91merror[E0463][0m[1m: can't find crate for `core`[0m
   [1m[94m|[0m
@@ -272,7 +276,6 @@ C/C++: 1 warning generated.
 [1mFor more information about this error, try `rustc --explain E0463`.[0m
 [1m[91merror[0m: could not compile `cfg-if` (lib) due to 1 previous error
 [1m[33mwarning[0m: build failed, waiting for other jobs to finish...
-[1m[91merror[0m: could not compile `libc` (lib) due to 1 previous error
 [1m[91merror[0m: could not compile `zerofrom` (lib) due to 1 previous error
 [1m[91merror[0m: could not compile `typenum` (lib) due to 1 previous error
 note: If the build failed due to a missing target, you can run this command:
@@ -461,7 +464,7 @@ w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/st
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gradle_build-1793006707080.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gradle_build-1793007406442.json
 
 FAILURE: Build failed with an exception.
 
@@ -637,6 +640,6 @@ Caused by: org.gradle.process.internal.ExecException: Process 'command 'cargo'' 
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 3m 45s
+BUILD FAILED in 4m 17s
 32 actionable tasks: 20 executed, 12 from cache
 Configuration cache entry stored.
