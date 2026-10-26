@@ -13,6 +13,8 @@ sync. Deep-dive: `docs/06_JAM_DISTRIBUTED_ENGINE.md` and
 | `PlaybackReadyGate.kt` | Event-driven readiness FSM (pure Kotlin, zero JNI). |
 | `JamTrackCodec.kt` | JSON codec for jam queue entries over the wire. |
 
-Transport is `data/supabase/SupabaseJamClient` + `SupabaseRealtimeClient`;
+Transport is the engine's own P2P mesh (see `Transport` in `JamEngine.kt`);
 timing is `media/sync/`; the guest-side VM is `viewmodel/JamViewModel`
-and the screen is `ui/screens/JamSessionScreen`.
+and the screen is `ui/screens/JamSessionScreen`. (The legacy v2/v3
+`SupabaseJamClient` realtime stack was removed — it was a dead path
+with no callers; the v4 mesh is authoritative.)

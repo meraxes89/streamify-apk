@@ -27,7 +27,7 @@ jobs:
         run: which cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
@@ -35,7 +35,7 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*') }}
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -95,7 +95,7 @@ jobs:
             --so-glob 'app/build/**/*.so'
           
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: app/build/outputs/apk/**/*.apk
           generate_release_notes: true
