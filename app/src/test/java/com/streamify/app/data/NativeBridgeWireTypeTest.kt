@@ -6,6 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.ConcurrentLinkedQueue
+import org.junit.BeforeClass
+import com.streamify.app.testkit.JvmSLogSink
 
 /**
  * NativeBridgeWireTypeTest — audit #44 P0-1 regression cover.
@@ -29,6 +31,18 @@ import java.util.concurrent.ConcurrentLinkedQueue
  *      JamEngine decodes the payload and ignores the mesh type.
  */
 class NativeBridgeWireTypeTest {
+
+
+    companion object {
+        // Strict-mock migration (P1): SLog reaches android.util.Log on this
+        // path. Install the explicit JVM log fake instead of relying on
+        // isReturnDefaultValues = true.
+        @BeforeClass
+        @JvmStatic
+        fun installJvmSLogSink() {
+            JvmSLogSink.install()
+        }
+    }
 
     private class RecordingMesh : NativeBridge.P2pMesh {
         val broadcasts = ConcurrentLinkedQueue<Pair<Int, ByteArray>>()

@@ -8,6 +8,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import org.junit.BeforeClass
+import com.streamify.app.testkit.JvmSLogSink
 
 /**
  * PlaylistFolderStore + LibraryOrganizer JVM unit suite (Phase 3 —
@@ -20,6 +22,18 @@ import java.io.File
  *    key normalization (articles, embedded numerics), and filters.
  */
 class PlaylistFolderStoreTest {
+
+
+    companion object {
+        // Strict-mock migration (P1): SLog reaches android.util.Log on this
+        // path. Install the explicit JVM log fake instead of relying on
+        // isReturnDefaultValues = true.
+        @BeforeClass
+        @JvmStatic
+        fun installJvmSLogSink() {
+            JvmSLogSink.install()
+        }
+    }
 
     @get:Rule
     val tmp = TemporaryFolder()
