@@ -49,16 +49,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
@@ -80,7 +80,7 @@ jobs:
     timeout-minutes: 3
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 🛡️ Hard End-to-End Search & Stream Resolver Verification
         run: |
@@ -113,7 +113,7 @@ jobs:
     name: "Rust: clippy -D warnings"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: JNI panic-boundary convention gate (audit #44 P2-5)
         # Pure source-level check, no toolchain: every Java_* export in
         # rust/src/jni_bridge*.rs must wrap its body in catch_unwind — a
@@ -145,7 +145,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # audit #44 P0-1 — fail FAST (before a 30-minute native build) on any
       # `external fun` in NativeBridge.kt with no JNI export declared in
@@ -156,7 +156,7 @@ jobs:
         run: python3 scripts/jni_parity_check.py --source
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -222,14 +222,14 @@ jobs:
           echo "NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           # Read-write cache on main so merged commits seed the shared cache
           # that PR jobs restore from (cache-read-only elsewhere).
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Setup CCache for C++ Compilation
-        uses: hendrikmuhs/ccache-action@v1.2.14
+        uses: hendrikmuhs/ccache-action@v1.2.24
         continue-on-error: true
         with:
           # ref_slug is NOT a valid context property (silently rendered an
@@ -381,11 +381,11 @@ jobs:
             # valid for Kotlin sources — see block comment above)
             codeql-build-mode: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
         if: matrix.language == 'java-kotlin'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -399,7 +399,7 @@ jobs:
 
       - name: Setup Gradle
         if: matrix.language == 'java-kotlin'
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: true
 
@@ -471,11 +471,11 @@ jobs:
             target: "rust"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
         if: matrix.type == 'android-jvm'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -507,7 +507,7 @@ jobs:
 
       - name: Setup CCache for Native Shards
         if: matrix.type == 'native'
-        uses: hendrikmuhs/ccache-action@v1.2.14
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           # Shared restore prefix across native shards + the fuzzer job:
           # first run populates, subsequent runs restore.
@@ -535,7 +535,7 @@ jobs:
 
       - name: Setup Gradle
         if: matrix.type == 'android-jvm'
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
@@ -618,7 +618,7 @@ jobs:
     # fuzz runs still exit 0; only crashes fail the job.
     if: github.event_name == 'schedule' || github.base_ref == 'main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Clang-17 & LibFuzzer
         run: |
@@ -628,7 +628,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100
 
       - name: Setup CCache for Fuzzer Compilation
-        uses: hendrikmuhs/ccache-action@v1.2.14
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ${{ runner.os }}-ccache-native-fuzz
           restore-keys: |
@@ -712,16 +712,16 @@ jobs:
           - api: 34
             target: google_apis
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -742,7 +742,7 @@ jobs:
           yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: true
 
@@ -827,7 +827,7 @@ jobs:
     needs: [compile-check, build-and-compile, test-matrix, native-deep-fuzz, emulator-matrix, codeql-analysis]
     if: always()
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download All Shard Logs
         uses: actions/download-artifact@v8
