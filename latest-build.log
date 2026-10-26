@@ -2,9 +2,7 @@ openjdk version "17.0.20.1" 2026-08-18
 OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
 OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
 Downloading https://services.gradle.org/distributions/gradle-8.7-bin.zip
-...............................................................................................................................
-Unzipping /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu/gradle-8.7-bin.zip to /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu
-Set executable permissions for: /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu/gradle-8.7/bin/gradle
+............10%.............20%.............30%.............40%............50%.............60%.............70%.............80%.............90%............100%
 
 Welcome to Gradle 8.7!
 
@@ -16,6 +14,7 @@ Here are the highlights of this release:
 For more details see https://docs.gradle.org/8.7/release-notes.html
 
 Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: assembleDebug
 
 > Configure project :app
 Checking the license for package NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/licenses
@@ -31,593 +30,348 @@ Installing NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/ndk/25.
 [cargoBuildRust] NDK_PATH=/usr/local/lib/android/sdk/ndk/26.1.10909125
 [cargoBuildRust] command=cargo ndk --platform 26 -t arm64-v8a -t armeabi-v7a -o <jniLibs> build --release
     Building arm64-v8a (aarch64-linux-android)
-[1m[92m    Updating[0m crates.io index
-[1m[92m Downloading[0m crates ...
-[1m[92m  Downloaded[0m block-buffer v0.12.1
-[1m[92m  Downloaded[0m crypto-common v0.2.2
-[1m[92m  Downloaded[0m hmac v0.13.0
-[1m[92m  Downloaded[0m ctutils v0.4.6
-[1m[92m  Downloaded[0m hybrid-array v0.4.15
-[1m[92m  Downloaded[0m digest v0.11.3
-[1m[92m  Downloaded[0m cmov v0.5.4
-[1m[92m   Compiling[0m typenum v1.20.1
-[1m[92m   Compiling[0m cmov v0.5.4
-[1m[92m   Compiling[0m ctutils v0.4.6
-[1m[92m   Compiling[0m generic-array v0.14.7
-[1m[92m   Compiling[0m hybrid-array v0.4.15
-[1m[92m   Compiling[0m crypto-common v0.2.2
-[1m[92m   Compiling[0m block-buffer v0.12.1
-[1m[92m   Compiling[0m crypto-common v0.1.7
-[1m[92m   Compiling[0m block-buffer v0.10.4
-[1m[92m   Compiling[0m inout v0.1.4
-[1m[92m   Compiling[0m universal-hash v0.5.1
-[1m[92m   Compiling[0m digest v0.10.7
-[1m[92m   Compiling[0m cipher v0.4.4
-[1m[92m   Compiling[0m poly1305 v0.8.0
-[1m[92m   Compiling[0m curve25519-dalek v4.1.3
-[1m[92m   Compiling[0m sha2 v0.10.9
-[1m[92m   Compiling[0m chacha20 v0.9.1
-[1m[92m   Compiling[0m aead v0.5.2
-[1m[92m   Compiling[0m chacha20poly1305 v0.10.1
-[1m[92m   Compiling[0m sha1 v0.10.7
-[1m[92m   Compiling[0m digest v0.11.3
-[1m[92m   Compiling[0m hmac v0.13.0
-[1m[92m   Compiling[0m ed25519-dalek v2.2.0
 [1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: CoreProxy` is not satisfied[0m
-   [1m[94m--> [0msrc/consensus.rs:28:23
-    [1m[94m|[0m
-[1m[94m 28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
-    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::block_api::CoreProxy` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api.rs:155:1
-    [1m[94m|[0m
-[1m[94m155[0m [1m[94m|[0m pub trait CoreProxy {
-    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:266:1
-    [1m[94m|[0m
-[1m[94m266[0m [1m[94m|[0m pub trait CoreProxy: sealed::Sealed {
-    [1m[94m|[0m [1m[94m-----------------------------------[0m [1m[94mthis is the found trait[0m
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-[1m[96mhelp[0m: the following other types implement trait `hmac::digest::block_api::CoreProxy`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/buffer_macros/fixed.rs:179:9
-    [1m[94m|[0m
-[1m[94m179[0m [1m[94m|[0m           impl$(< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $crate::block_api::CoreProxy for $name$(< $( $lt ),+ >)? {
-    [1m[94m|[0m           [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-    [1m[94m|[0m           [1m[96m|[0m
-    [1m[94m|[0m           [1m[96m`HmacReset<D>`[0m
-    [1m[94m|[0m           [1m[96m`hmac::Hmac<D>`[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:34:1
-    [1m[94m|[0m
-[1m[94m 34[0m [1m[94m|[0m [1m[94m/[0m digest::buffer_fixed!(
-[1m[94m 35[0m [1m[94m|[0m [1m[94m|[0m     /// Generic HMAC instance.
-[1m[94m 36[0m [1m[94m|[0m [1m[94m|[0m     #[derive(Clone)]
-[1m[94m 37[0m [1m[94m|[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-[1m[94m 38[0m [1m[94m|[0m [1m[94m|[0m     impl: MacTraits KeyInit;
-[1m[94m 39[0m [1m[94m|[0m [1m[94m|[0m );
-    [1m[94m|[0m [1m[94m|_-[0m [1m[94min this macro invocation[0m
-[1m[94m...[0m
-[1m[94m 47[0m [1m[94m|[0m [1m[94m/[0m digest::buffer_fixed!(
-[1m[94m 48[0m [1m[94m|[0m [1m[94m|[0m     /// Generic HMAC instance with reset support.
-[1m[94m 49[0m [1m[94m|[0m [1m[94m|[0m     #[derive(Clone)]
-[1m[94m 50[0m [1m[94m|[0m [1m[94m|[0m     pub struct HmacReset<D: EagerHash>(block_api::HmacResetCore<D>);
-[1m[94m 51[0m [1m[94m|[0m [1m[94m|[0m     impl: ResetMacTraits KeyInit;
-[1m[94m 52[0m [1m[94m|[0m [1m[94m|[0m );
-    [1m[94m|[0m [1m[94m|_-[0m [1m[94min this macro invocation[0m
-    [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-    [1m[94m|[0m
-[1m[94m 37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-    [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-    [1m[94m= [0m[1mnote[0m: this error originates in the macro `$crate::buffer_fixed` which comes from the expansion of the macro `digest::buffer_fixed` (in Nightly builds, run with -Z macro-backtrace for more info)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 25.83s
+    Building armeabi-v7a (armv7-linux-androideabi)
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 25.47s
+     Copying libraries to /home/runner/work/streamify-apk/streamify-apk/app/src/main/jniLibs
 
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: BlockSizeUser` is not satisfied[0m
-  [1m[94m--> [0msrc/consensus.rs:28:23
-   [1m[94m|[0m
-[1m[94m28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
-   [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91munsatisfied trait bound[0m
-   [1m[94m|[0m
-   [1m[94m= [0m[1mhelp[0m: the trait `hmac::digest::block_api::BlockSizeUser` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`
-[1m[92mnote[0m: there are multiple different versions of crate `crypto_common` in the dependency graph
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.2.2/src/lib.rs:59:1
-   [1m[94m|[0m
-[1m[94m59[0m [1m[94m|[0m pub trait BlockSizeUser {
-   [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.1.7/src/lib.rs:42:1
-   [1m[94m|[0m
-[1m[94m42[0m [1m[94m|[0m pub trait BlockSizeUser {
-   [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mthis is the found trait[0m
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mhelp[0m: the following other types implement trait `hmac::digest::block_api::BlockSizeUser`:
-             &T
-             &mut T
-             CtOutWrapper<T, OutSize>
-             HmacCore<D>
-             HmacReset<D>
-             HmacResetCore<D>
-             XofFixedWrapper<T, S>
-             hmac::Hmac<D>
-   [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `SmallBlockSizeUser`
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-   [1m[94m|[0m
-[1m[94m37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-   [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
+> Task :app:preBuild
+> Task :app:preDebugBuild
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResValues
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:mergeDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:javaPreCompileDebug
+> Task :app:mergeDebugShaders
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :app:desugarDebugFileDependencies
+> Task :app:compressDebugAssets
+> Task :app:checkDebugDuplicateClasses
+> Task :app:configureCMakeDebug[arm64-v8a]
+> Task :app:processDebugManifestForPackage
+> Task :app:mergeExtDexDebug
+> Task :app:mergeLibDexDebug
 
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: FixedOutput` is not satisfied[0m
-  [1m[94m--> [0msrc/consensus.rs:28:23
-   [1m[94m|[0m
-[1m[94m28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
-   [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::FixedOutput` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-   [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/lib.rs:96:1
-   [1m[94m|[0m
-[1m[94m96[0m [1m[94m|[0m pub trait FixedOutput: Update + OutputSizeUser + Sized {
-   [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/lib.rs:93:1
-   [1m[94m|[0m
-[1m[94m93[0m [1m[94m|[0m pub trait FixedOutput: Update + OutputSizeUser + Sized {
-   [1m[94m|[0m [1m[94m------------------------------------------------------[0m [1m[94mthis is the found trait[0m
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mhelp[0m: the following other types implement trait `hmac::digest::FixedOutput`:
-             HmacReset<D>
-             SimpleHmac<D>
-             SimpleHmacReset<D>
-             XofFixedWrapper<T, S>
-             hmac::Hmac<D>
-   [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `hmac::digest::Digest`
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-   [1m[94m|[0m
-[1m[94m37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-   [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
+> Task :app:buildCMakeDebug[arm64-v8a]
+C/C++: ninja: Entering directory `/home/runner/work/streamify-apk/streamify-apk/app/.cxx/Debug/2v2o2f38/arm64-v8a'
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.cc:5:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.h:110:14: warning: private field 'boxPop_' is not used [-Wunused-private-field]
+C/C++:     uint64_t boxPop_[kMaxSwatches + 1] = {};
+C/C++:              ^
+C/C++: 1 warning generated.
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.cc:1:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.h:112:11: warning: private field 'ratio_' is not used [-Wunused-private-field]
+C/C++:     float ratio_ = 20.0f;
+C/C++:           ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
+C/C++:                                                             ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:230:138: warning: unused parameter 'userId' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
+C/C++:                                                                                                                                          ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:241:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:246:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:783:68: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
+C/C++:                                                                    ^
+C/C++: 5 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
+C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
+C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
+C/C++:     const float beta_bpm = 0.20f;
+C/C++:                 ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:432:11: warning: unused variable 'vecStore' [-Wunused-variable]
+C/C++:     auto& vecStore = VectorStore::getInstance();
+C/C++:           ^
+C/C++: 2 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned long') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
 
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: HashMarker` is not satisfied[0m
-  [1m[94m--> [0msrc/consensus.rs:28:23
-   [1m[94m|[0m
-[1m[94m28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
-   [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::HashMarker` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-   [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/digest.rs:10:1
-   [1m[94m|[0m
-[1m[94m10[0m [1m[94m|[0m pub trait HashMarker {}
-   [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/digest.rs:8:1
-   [1m[94m|[0m
-[1m[94m 8[0m [1m[94m|[0m pub trait HashMarker {}
-   [1m[94m|[0m [1m[94m--------------------[0m [1m[94mthis is the found trait[0m
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-[1m[96mhelp[0m: the following other types implement trait `hmac::digest::HashMarker`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api/ct_variable.rs:39:1
-   [1m[94m|[0m
-[1m[94m39[0m [1m[94m|[0m [1m[96m/[0m impl<T, OutSize> HashMarker for CtOutWrapper<T, OutSize>
-[1m[94m40[0m [1m[94m|[0m [1m[96m|[0m where
-[1m[94m41[0m [1m[94m|[0m [1m[96m|[0m     T: VariableOutputCore + HashMarker,
-[1m[94m42[0m [1m[94m|[0m [1m[96m|[0m     OutSize: ArraySize + IsLessOrEqual<T::OutputSize, Output = True>,
-   [1m[94m|[0m [1m[96m|_____________________________________________________________________^[0m [1m[96m`CtOutWrapper<T, OutSize>`[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/xof_fixed.rs:46:1
-   [1m[94m|[0m
-[1m[94m46[0m [1m[94m|[0m   impl<T: ExtendableOutput + HashMarker, S: ArraySize> HashMarker for XofFixedWrapper<T, S> {}
-   [1m[94m|[0m   [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[96m`XofFixedWrapper<T, S>`[0m
-   [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `hmac::digest::Digest`
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-   [1m[94m|[0m
-[1m[94m37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-   [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
+> Task :app:configureCMakeDebug[armeabi-v7a]
 
-[1m[91merror[E0599][0m[1m: no associated function or constant named `new_from_slice` found for struct `hmac::Hmac<D>` in the current scope[0m
-  [1m[94m--> [0msrc/consensus.rs:28:35
-   [1m[94m|[0m
-[1m[94m28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
-   [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^^^[0m [1m[91massociated function or constant not found in `Hmac<CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>>`[0m
-   [1m[94m|[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-7934414898487943667.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
+> Task :app:buildCMakeDebug[armeabi-v7a]
+C/C++: ninja: Entering directory `/home/runner/work/streamify-apk/streamify-apk/app/.cxx/Debug/2v2o2f38/armeabi-v7a'
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.cc:5:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.h:110:14: warning: private field 'boxPop_' is not used [-Wunused-private-field]
+C/C++:     uint64_t boxPop_[kMaxSwatches + 1] = {};
+C/C++:              ^
+C/C++: 1 warning generated.
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.cc:1:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.h:112:11: warning: private field 'ratio_' is not used [-Wunused-private-field]
+C/C++:     float ratio_ = 20.0f;
+C/C++:           ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
+C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
+C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
+C/C++:                                                             ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:230:138: warning: unused parameter 'userId' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
+C/C++:                                                                                                                                          ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:241:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:246:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:783:68: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
+C/C++:                                                                    ^
+C/C++: 5 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
+C/C++:     const float beta_bpm = 0.20f;
+C/C++:                 ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:432:11: warning: unused variable 'vecStore' [-Wunused-variable]
+C/C++:     auto& vecStore = VectorStore::getInstance();
+C/C++:           ^
+C/C++: 2 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned int') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
 
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: CoreProxy` is not satisfied[0m
-   [1m[94m--> [0msrc/crypto.rs:30:23
-    [1m[94m|[0m
-[1m[94m 30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::block_api::CoreProxy` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api.rs:155:1
-    [1m[94m|[0m
-[1m[94m155[0m [1m[94m|[0m pub trait CoreProxy {
-    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:266:1
-    [1m[94m|[0m
-[1m[94m266[0m [1m[94m|[0m pub trait CoreProxy: sealed::Sealed {
-    [1m[94m|[0m [1m[94m-----------------------------------[0m [1m[94mthis is the found trait[0m
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-[1m[96mhelp[0m: the following other types implement trait `hmac::digest::block_api::CoreProxy`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/buffer_macros/fixed.rs:179:9
-    [1m[94m|[0m
-[1m[94m179[0m [1m[94m|[0m           impl$(< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $crate::block_api::CoreProxy for $name$(< $( $lt ),+ >)? {
-    [1m[94m|[0m           [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-    [1m[94m|[0m           [1m[96m|[0m
-    [1m[94m|[0m           [1m[96m`HmacReset<D>`[0m
-    [1m[94m|[0m           [1m[96m`hmac::Hmac<D>`[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:34:1
-    [1m[94m|[0m
-[1m[94m 34[0m [1m[94m|[0m [1m[94m/[0m digest::buffer_fixed!(
-[1m[94m 35[0m [1m[94m|[0m [1m[94m|[0m     /// Generic HMAC instance.
-[1m[94m 36[0m [1m[94m|[0m [1m[94m|[0m     #[derive(Clone)]
-[1m[94m 37[0m [1m[94m|[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-[1m[94m 38[0m [1m[94m|[0m [1m[94m|[0m     impl: MacTraits KeyInit;
-[1m[94m 39[0m [1m[94m|[0m [1m[94m|[0m );
-    [1m[94m|[0m [1m[94m|_-[0m [1m[94min this macro invocation[0m
-[1m[94m...[0m
-[1m[94m 47[0m [1m[94m|[0m [1m[94m/[0m digest::buffer_fixed!(
-[1m[94m 48[0m [1m[94m|[0m [1m[94m|[0m     /// Generic HMAC instance with reset support.
-[1m[94m 49[0m [1m[94m|[0m [1m[94m|[0m     #[derive(Clone)]
-[1m[94m 50[0m [1m[94m|[0m [1m[94m|[0m     pub struct HmacReset<D: EagerHash>(block_api::HmacResetCore<D>);
-[1m[94m 51[0m [1m[94m|[0m [1m[94m|[0m     impl: ResetMacTraits KeyInit;
-[1m[94m 52[0m [1m[94m|[0m [1m[94m|[0m );
-    [1m[94m|[0m [1m[94m|_-[0m [1m[94min this macro invocation[0m
-    [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-    [1m[94m|[0m
-[1m[94m 37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-    [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-    [1m[94m= [0m[1mnote[0m: this error originates in the macro `$crate::buffer_fixed` which comes from the expansion of the macro `digest::buffer_fixed` (in Nightly builds, run with -Z macro-backtrace for more info)
+> Task :app:mergeDebugJniLibFolders
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:mergeDebugNativeLibs
+> Task :app:stripDebugDebugSymbols
+> Task :app:processDebugResources
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:171:21 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/ExportifyParser.kt:239:37 Variable 'durFormatted' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:35:24 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:39:25 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/lyrics/LyricsCacheManager.kt:105:34 'getter for isBluetoothA2dpOn: Boolean' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:173:17 Variable 'version' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:176:17 Variable 'textPoolLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:178:17 Variable 'flags' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:186:21 Variable 'sylStartIdx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:187:21 Variable 'sylCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:86:9 Parameter 'seedTitle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:87:9 Parameter 'seedArtist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:194:37 'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:197:56 'getter for host: InetAddress!' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:225:37 Parameter 'userId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:24:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:26:20 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:28:15 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/ParallelStreamDownloader.kt:108:41 Variable 'expectedLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:20:28 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:22:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:24:23 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeMusicRadioApi.kt:635:9 Parameter 'rendererKey' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeStreamResolver.kt:582:9 Parameter 'statuses' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:61:21 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:115:21 Variable 'artistName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:22:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:96:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:113:29 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/NuclearResetManager.kt:44:21 Variable 'currentPlaylists' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/SmartOfflineVaultEngine.kt:67:39 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:116:9 Parameter 'encoding' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:168:25 Variable 'lraDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:169:25 Variable 'truePeakDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:68:47 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:241:13 Variable 'tombstone' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:358:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:388:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:476:82 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:249:43 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:250:42 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:35 Parameter 'counts' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:55 Parameter 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:307:66 Parameter 'cloudTopTrack' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:356:37 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:357:35 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:439:13 Variable 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:470:40 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:471:38 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/update/StreamifyUpdateManager.kt:181:74 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/PlaylistLinkScraper.kt:459:92 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/YtSessionExtractor.kt:20:9 Parameter 'onError' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:531:31 Parameter 'session' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:1489:73 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JoinFabric.kt:327:27 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:99:13 Variable 'senderId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:102:13 Variable 'sequence' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:103:13 Variable 'timestampMonoNs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:251:9 Parameter 'positionMs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:252:9 Parameter 'syncedNanos' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:253:9 Parameter 'durationMs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:254:9 Parameter 'playing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/StreamifyAudioProcessor.kt:463:64 Parameter 'channelCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/SyncAudioProcessor.kt:106:13 Variable 'kalmanActive' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:25:48 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:84:28 Variable 'finalBpm' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:85:28 Variable 'finalKey' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:98:21 Name shadowed: trackKey
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:287:41 Parameter 'mode' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:305:37 Parameter 'playlist' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:121:63 Parameter 'limit' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:310:53 Parameter 'rawJson' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CanvasVideoSurface.kt:141:9 Variable 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:163:42 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:73 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:98 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:523:56 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:119:5 Parameter 'onAddToPlaylistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:190:37 'PlaylistPlay: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistPlay
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:201:37 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:228:41 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:335:37 'PlaylistAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistAdd
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:260:65 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:261:53 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/FriendActivityCard.kt:185:49 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/HeartButton.kt:43:9 Variable 'tint' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QrShareCard.kt:147:5 Parameter 'qrBitmap' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QuantumSonicTokenController.kt:217:37 Parameter 'heightPx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/RelatedDiscoverSheet.kt:46:9 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:197:94 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:199:38 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtPlaylistHeroHeader.kt:181:102 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtQueueTrackItem.kt:42:5 Parameter 'onReplay' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSortFilterBar.kt:52:56 'ViewList: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ViewList
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSyllableLine.kt:191:5 Parameter 'startSearchOffset' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtThumbnail.kt:45:5 Parameter 'artist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:191:39 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:352:53 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:368:53 'Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:419:13 Duplicate label in when
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AlbumScreen.kt:307:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ArtistScreen.kt:92:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:50:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:355:5 Parameter 'onClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:414:26 Parameter 'friendName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:68:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:260:68 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:364:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:459:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/EqualizerScreen.kt:56:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:164:5 Parameter 'progressFlow' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:178:5 Parameter 'onQueueClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:179:5 Parameter 'onLyricsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:182:5 Parameter 'isAutoPlayEnabled' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:183:5 Parameter 'onAutoPlayToggle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheetPanes.kt:425:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:40:5 Parameter 'dominantColor' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:42:5 Parameter 'onSettingsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:57:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:103:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:772:56 'ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ExitToApp
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:1224:5 Parameter 'votes' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionWidgets.kt:107:5 Parameter 'isHost' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:52:9 Variable 'downloadTasks' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:56:9 Variable 'user' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:88:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:694:21 Variable 'gridColumns' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1204:43 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1374:5 Parameter 'onMoveToFolder' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1392:44 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/PlayerScreen.kt:14:33 Parameter 'onCollapse' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:46:9 Variable 'spotifyAuth' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:43:5 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:428:33 Parameter 'index' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:93:35 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:454:75 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:668:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:736:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:783:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:800:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:983:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:69:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:244:33 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:148:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:272:5 Parameter 'onArtistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:106:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:412:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:473:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:529:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:607:52 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/FleetConfig.kt:204:29 Parameter 'd' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/SLog.kt:97:15 Unnecessary safe call on a non-null receiver of type Throwable
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/newpipe/NewPipeDownloaderImpl.kt:25:39 'create(MediaType?, ByteArray, Int = ..., Int = ...): RequestBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/HomeViewModel.kt:74:18 This declaration is in a preview state and can be changed in a backwards-incompatible manner with a best-effort migration. Its usage should be marked with '@kotlinx.coroutines.FlowPreview' or '@OptIn(kotlinx.coroutines.FlowPreview::class)' if you accept the drawback of relying on preview API
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:186:43 Parameter '_peers' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:193:56 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:198:40 Parameter 'currentPosition' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerHousekeeping.kt:36:46 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:321:92 Elvis operator (?:) always returns the left operand of non-nullable type Int?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:417:29 Name shadowed: currentT
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:775:93 Unnecessary safe call on a non-null receiver of type Track?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:990:50 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:296:9 Parameter 'allOnlineResults' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:298:9 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:399:25 Variable 'coverUrl' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
 
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: BlockSizeUser` is not satisfied[0m
-  [1m[94m--> [0msrc/crypto.rs:30:23
-   [1m[94m|[0m
-[1m[94m30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-   [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91munsatisfied trait bound[0m
-   [1m[94m|[0m
-   [1m[94m= [0m[1mhelp[0m: the trait `hmac::digest::block_api::BlockSizeUser` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`
-[1m[92mnote[0m: there are multiple different versions of crate `crypto_common` in the dependency graph
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.2.2/src/lib.rs:59:1
-   [1m[94m|[0m
-[1m[94m59[0m [1m[94m|[0m pub trait BlockSizeUser {
-   [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.1.7/src/lib.rs:42:1
-   [1m[94m|[0m
-[1m[94m42[0m [1m[94m|[0m pub trait BlockSizeUser {
-   [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mthis is the found trait[0m
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mhelp[0m: the following other types implement trait `hmac::digest::block_api::BlockSizeUser`:
-             &T
-             &mut T
-             CtOutWrapper<T, OutSize>
-             HmacCore<D>
-             HmacReset<D>
-             HmacResetCore<D>
-             XofFixedWrapper<T, S>
-             hmac::Hmac<D>
-   [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `SmallBlockSizeUser`
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-   [1m[94m|[0m
-[1m[94m37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-   [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: FixedOutput` is not satisfied[0m
-  [1m[94m--> [0msrc/crypto.rs:30:23
-   [1m[94m|[0m
-[1m[94m30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-   [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::FixedOutput` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-   [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/lib.rs:96:1
-   [1m[94m|[0m
-[1m[94m96[0m [1m[94m|[0m pub trait FixedOutput: Update + OutputSizeUser + Sized {
-   [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/lib.rs:93:1
-   [1m[94m|[0m
-[1m[94m93[0m [1m[94m|[0m pub trait FixedOutput: Update + OutputSizeUser + Sized {
-   [1m[94m|[0m [1m[94m------------------------------------------------------[0m [1m[94mthis is the found trait[0m
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mhelp[0m: the following other types implement trait `hmac::digest::FixedOutput`:
-             HmacReset<D>
-             SimpleHmac<D>
-             SimpleHmacReset<D>
-             XofFixedWrapper<T, S>
-             hmac::Hmac<D>
-   [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `hmac::digest::Digest`
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-   [1m[94m|[0m
-[1m[94m37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-   [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: HashMarker` is not satisfied[0m
-  [1m[94m--> [0msrc/crypto.rs:30:23
-   [1m[94m|[0m
-[1m[94m30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-   [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::HashMarker` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-   [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/digest.rs:10:1
-   [1m[94m|[0m
-[1m[94m10[0m [1m[94m|[0m pub trait HashMarker {}
-   [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/digest.rs:8:1
-   [1m[94m|[0m
-[1m[94m 8[0m [1m[94m|[0m pub trait HashMarker {}
-   [1m[94m|[0m [1m[94m--------------------[0m [1m[94mthis is the found trait[0m
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-[1m[96mhelp[0m: the following other types implement trait `hmac::digest::HashMarker`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api/ct_variable.rs:39:1
-   [1m[94m|[0m
-[1m[94m39[0m [1m[94m|[0m [1m[96m/[0m impl<T, OutSize> HashMarker for CtOutWrapper<T, OutSize>
-[1m[94m40[0m [1m[94m|[0m [1m[96m|[0m where
-[1m[94m41[0m [1m[94m|[0m [1m[96m|[0m     T: VariableOutputCore + HashMarker,
-[1m[94m42[0m [1m[94m|[0m [1m[96m|[0m     OutSize: ArraySize + IsLessOrEqual<T::OutputSize, Output = True>,
-   [1m[94m|[0m [1m[96m|_____________________________________________________________________^[0m [1m[96m`CtOutWrapper<T, OutSize>`[0m
-   [1m[94m|[0m
-  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/xof_fixed.rs:46:1
-   [1m[94m|[0m
-[1m[94m46[0m [1m[94m|[0m   impl<T: ExtendableOutput + HashMarker, S: ArraySize> HashMarker for XofFixedWrapper<T, S> {}
-   [1m[94m|[0m   [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[96m`XofFixedWrapper<T, S>`[0m
-   [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `hmac::digest::Digest`
-   [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-  [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-   [1m[94m|[0m
-[1m[94m37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-   [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0599][0m[1m: no associated function or constant named `new_from_slice` found for struct `hmac::Hmac<D>` in the current scope[0m
-  [1m[94m--> [0msrc/crypto.rs:30:35
-   [1m[94m|[0m
-[1m[94m30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-   [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^^^[0m [1m[91massociated function or constant not found in `Hmac<CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>>`[0m
-   [1m[94m|[0m
-   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-7934414898487943667.txt'
-   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: CoreProxy` is not satisfied[0m
-   [1m[94m--> [0msrc/crypto.rs:103:23
-    [1m[94m|[0m
-[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::block_api::CoreProxy` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api.rs:155:1
-    [1m[94m|[0m
-[1m[94m155[0m [1m[94m|[0m pub trait CoreProxy {
-    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:266:1
-    [1m[94m|[0m
-[1m[94m266[0m [1m[94m|[0m pub trait CoreProxy: sealed::Sealed {
-    [1m[94m|[0m [1m[94m-----------------------------------[0m [1m[94mthis is the found trait[0m
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-[1m[96mhelp[0m: the following other types implement trait `hmac::digest::block_api::CoreProxy`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/buffer_macros/fixed.rs:179:9
-    [1m[94m|[0m
-[1m[94m179[0m [1m[94m|[0m           impl$(< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $crate::block_api::CoreProxy for $name$(< $( $lt ),+ >)? {
-    [1m[94m|[0m           [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-    [1m[94m|[0m           [1m[96m|[0m
-    [1m[94m|[0m           [1m[96m`HmacReset<D>`[0m
-    [1m[94m|[0m           [1m[96m`hmac::Hmac<D>`[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:34:1
-    [1m[94m|[0m
-[1m[94m 34[0m [1m[94m|[0m [1m[94m/[0m digest::buffer_fixed!(
-[1m[94m 35[0m [1m[94m|[0m [1m[94m|[0m     /// Generic HMAC instance.
-[1m[94m 36[0m [1m[94m|[0m [1m[94m|[0m     #[derive(Clone)]
-[1m[94m 37[0m [1m[94m|[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-[1m[94m 38[0m [1m[94m|[0m [1m[94m|[0m     impl: MacTraits KeyInit;
-[1m[94m 39[0m [1m[94m|[0m [1m[94m|[0m );
-    [1m[94m|[0m [1m[94m|_-[0m [1m[94min this macro invocation[0m
-[1m[94m...[0m
-[1m[94m 47[0m [1m[94m|[0m [1m[94m/[0m digest::buffer_fixed!(
-[1m[94m 48[0m [1m[94m|[0m [1m[94m|[0m     /// Generic HMAC instance with reset support.
-[1m[94m 49[0m [1m[94m|[0m [1m[94m|[0m     #[derive(Clone)]
-[1m[94m 50[0m [1m[94m|[0m [1m[94m|[0m     pub struct HmacReset<D: EagerHash>(block_api::HmacResetCore<D>);
-[1m[94m 51[0m [1m[94m|[0m [1m[94m|[0m     impl: ResetMacTraits KeyInit;
-[1m[94m 52[0m [1m[94m|[0m [1m[94m|[0m );
-    [1m[94m|[0m [1m[94m|_-[0m [1m[94min this macro invocation[0m
-    [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-    [1m[94m|[0m
-[1m[94m 37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-    [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-    [1m[94m= [0m[1mnote[0m: this error originates in the macro `$crate::buffer_fixed` which comes from the expansion of the macro `digest::buffer_fixed` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: BlockSizeUser` is not satisfied[0m
-   [1m[94m--> [0msrc/crypto.rs:103:23
-    [1m[94m|[0m
-[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91munsatisfied trait bound[0m
-    [1m[94m|[0m
-    [1m[94m= [0m[1mhelp[0m: the trait `hmac::digest::block_api::BlockSizeUser` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`
-[1m[92mnote[0m: there are multiple different versions of crate `crypto_common` in the dependency graph
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.2.2/src/lib.rs:59:1
-    [1m[94m|[0m
-[1m[94m 59[0m [1m[94m|[0m pub trait BlockSizeUser {
-    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.1.7/src/lib.rs:42:1
-    [1m[94m|[0m
-[1m[94m 42[0m [1m[94m|[0m pub trait BlockSizeUser {
-    [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mthis is the found trait[0m
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mhelp[0m: the following other types implement trait `hmac::digest::block_api::BlockSizeUser`:
-              &T
-              &mut T
-              CtOutWrapper<T, OutSize>
-              HmacCore<D>
-              HmacReset<D>
-              HmacResetCore<D>
-              XofFixedWrapper<T, S>
-              hmac::Hmac<D>
-    [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `SmallBlockSizeUser`
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-    [1m[94m|[0m
-[1m[94m 37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-    [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: FixedOutput` is not satisfied[0m
-   [1m[94m--> [0msrc/crypto.rs:103:23
-    [1m[94m|[0m
-[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::FixedOutput` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/lib.rs:96:1
-    [1m[94m|[0m
-[1m[94m 96[0m [1m[94m|[0m pub trait FixedOutput: Update + OutputSizeUser + Sized {
-    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/lib.rs:93:1
-    [1m[94m|[0m
-[1m[94m 93[0m [1m[94m|[0m pub trait FixedOutput: Update + OutputSizeUser + Sized {
-    [1m[94m|[0m [1m[94m------------------------------------------------------[0m [1m[94mthis is the found trait[0m
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mhelp[0m: the following other types implement trait `hmac::digest::FixedOutput`:
-              HmacReset<D>
-              SimpleHmac<D>
-              SimpleHmacReset<D>
-              XofFixedWrapper<T, S>
-              hmac::Hmac<D>
-    [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `hmac::digest::Digest`
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-    [1m[94m|[0m
-[1m[94m 37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-    [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0277][0m[1m: the trait bound `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>: HashMarker` is not satisfied[0m
-   [1m[94m--> [0msrc/crypto.rs:103:23
-    [1m[94m|[0m
-[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `hmac::digest::HashMarker` is not implemented for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>`[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/digest.rs:10:1
-    [1m[94m|[0m
-[1m[94m 10[0m [1m[94m|[0m pub trait HashMarker {}
-    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/digest.rs:8:1
-    [1m[94m|[0m
-[1m[94m  8[0m [1m[94m|[0m pub trait HashMarker {}
-    [1m[94m|[0m [1m[94m--------------------[0m [1m[94mthis is the found trait[0m
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-[1m[96mhelp[0m: the following other types implement trait `hmac::digest::HashMarker`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api/ct_variable.rs:39:1
-    [1m[94m|[0m
-[1m[94m 39[0m [1m[94m|[0m [1m[96m/[0m impl<T, OutSize> HashMarker for CtOutWrapper<T, OutSize>
-[1m[94m 40[0m [1m[94m|[0m [1m[96m|[0m where
-[1m[94m 41[0m [1m[94m|[0m [1m[96m|[0m     T: VariableOutputCore + HashMarker,
-[1m[94m 42[0m [1m[94m|[0m [1m[96m|[0m     OutSize: ArraySize + IsLessOrEqual<T::OutputSize, Output = True>,
-    [1m[94m|[0m [1m[96m|_____________________________________________________________________^[0m [1m[96m`CtOutWrapper<T, OutSize>`[0m
-    [1m[94m|[0m
-   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/xof_fixed.rs:46:1
-    [1m[94m|[0m
-[1m[94m 46[0m [1m[94m|[0m   impl<T: ExtendableOutput + HashMarker, S: ArraySize> HashMarker for XofFixedWrapper<T, S> {}
-    [1m[94m|[0m   [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[96m`XofFixedWrapper<T, S>`[0m
-    [1m[94m= [0m[1mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
-    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `hmac::digest::Digest`
-    [1m[94m= [0m[1mnote[0m: required for `CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, UInt<_, B0>, _>>` to implement `EagerHash`
-[1m[92mnote[0m: required by a bound in `hmac::Hmac`
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hmac-0.13.0/src/lib.rs:37:24
-    [1m[94m|[0m
-[1m[94m 37[0m [1m[94m|[0m     pub struct Hmac<D: EagerHash>(block_api::HmacCore<D>);
-    [1m[94m|[0m                        [1m[92m^^^^^^^^^[0m [1m[92mrequired by this bound in `Hmac`[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-17985582124208544054.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1m[91merror[E0599][0m[1m: no associated function or constant named `new_from_slice` found for struct `hmac::Hmac<D>` in the current scope[0m
-   [1m[94m--> [0msrc/crypto.rs:103:35
-    [1m[94m|[0m
-[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
-    [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^^^[0m [1m[91massociated function or constant not found in `Hmac<CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, _, _>>>`[0m
-    [1m[94m|[0m
-    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-7934414898487943667.txt'
-    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
-
-[1mSome errors have detailed explanations: E0277, E0599.[0m
-[1mFor more information about an error, try `rustc --explain E0277`.[0m
-[1m[91merror[0m: could not compile `streamify_core_rs` (lib) due to 15 previous errors
-note: If the build failed due to a missing target, you can run this command:
-note: 
-note:     rustup target install aarch64-linux-android
-
-> Task :app:cargoBuildRust FAILED
+> Task :app:compileDebugJavaWithJavac
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics
+> Task :app:processDebugJavaRes
+> Task :app:mergeProjectDexDebug
+> Task :app:mergeDebugJavaResource
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:cargoBuildRust'.
-> Process 'command 'cargo'' finished with non-zero exit value 101
+Configuration cache problems found in this build.
+
+1 problem was found storing the configuration cache.
+- Task `:app:cargoBuildRust` of type `org.gradle.api.tasks.Exec`: cannot serialize object of type 'org.gradle.api.internal.project.DefaultProject', a subtype of 'org.gradle.api.Project', as these are not supported with the configuration cache.
+  See https://docs.gradle.org/8.7/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
+
+See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/dm6pg6uzmvm70hov3i5d4zoj4/e7dhuphmtfbn2texa48aju89/configuration-cache-report.html
 
 * Try:
 > Run with --info or --debug option to get more log output.
@@ -625,19 +379,31 @@ Execution failed for task ':app:cargoBuildRust'.
 > Get more help at https://help.gradle.org.
 
 * Exception is:
-org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:cargoBuildRust'.
-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
-	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:282)
-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
-	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
-	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
-	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
-	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
-	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+org.gradle.configurationcache.ConfigurationCacheProblemsException: Configuration cache problems found in this build.
+
+1 problem was found storing the configuration cache.
+- Task `:app:cargoBuildRust` of type `org.gradle.api.tasks.Exec`: cannot serialize object of type 'org.gradle.api.internal.project.DefaultProject', a subtype of 'org.gradle.api.Project', as these are not supported with the configuration cache.
+  See https://docs.gradle.org/8.7/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
+
+See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/dm6pg6uzmvm70hov3i5d4zoj4/e7dhuphmtfbn2texa48aju89/configuration-cache-report.html
+	at org.gradle.configurationcache.problems.ConfigurationCacheProblems.queryFailure(ConfigurationCacheProblems.kt:149)
+	at org.gradle.configurationcache.problems.ConfigurationCacheProblems.report(ConfigurationCacheProblems.kt:177)
+	at org.gradle.internal.buildtree.ProblemReportingBuildActionRunner.reportProblems(ProblemReportingBuildActionRunner.java:61)
+	at org.gradle.internal.buildtree.ProblemReportingBuildActionRunner.run(ProblemReportingBuildActionRunner.java:52)
+	at org.gradle.launcher.exec.BuildOutcomeReportingBuildActionRunner.run(BuildOutcomeReportingBuildActionRunner.java:65)
+	at org.gradle.tooling.internal.provider.FileSystemWatchingBuildActionRunner.run(FileSystemWatchingBuildActionRunner.java:140)
+	at org.gradle.launcher.exec.BuildCompletionNotifyingBuildActionRunner.run(BuildCompletionNotifyingBuildActionRunner.java:41)
+	at org.gradle.launcher.exec.RootBuildLifecycleBuildActionExecutor.lambda$execute$0(RootBuildLifecycleBuildActionExecutor.java:40)
+	at org.gradle.composite.internal.DefaultRootBuildState.run(DefaultRootBuildState.java:123)
+	at org.gradle.launcher.exec.RootBuildLifecycleBuildActionExecutor.execute(RootBuildLifecycleBuildActionExecutor.java:40)
+	at org.gradle.internal.buildtree.InitDeprecationLoggingActionExecutor.execute(InitDeprecationLoggingActionExecutor.java:66)
+	at org.gradle.internal.buildtree.InitProblems.execute(InitProblems.java:36)
+	at org.gradle.internal.buildtree.DefaultBuildTreeContext.execute(DefaultBuildTreeContext.java:40)
+	at org.gradle.launcher.exec.BuildTreeLifecycleBuildActionExecutor.lambda$execute$0(BuildTreeLifecycleBuildActionExecutor.java:71)
+	at org.gradle.internal.buildtree.BuildTreeState.run(BuildTreeState.java:60)
+	at org.gradle.launcher.exec.BuildTreeLifecycleBuildActionExecutor.execute(BuildTreeLifecycleBuildActionExecutor.java:71)
+	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor$3.call(RunAsBuildOperationBuildActionExecutor.java:61)
+	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor$3.call(RunAsBuildOperationBuildActionExecutor.java:57)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
@@ -646,146 +412,53 @@ org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:car
 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
 	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
-	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
-	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
-	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
-	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
-	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
-	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
-Caused by: org.gradle.process.internal.ExecException: Process 'command 'cargo'' finished with non-zero exit value 101
-	at org.gradle.process.internal.DefaultExecHandle$ExecResultImpl.assertNormalExitValue(DefaultExecHandle.java:442)
-	at org.gradle.process.internal.DefaultExecAction.execute(DefaultExecAction.java:38)
-	at org.gradle.api.tasks.AbstractExecTask.exec(AbstractExecTask.java:71)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
-	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
-	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
-	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
-	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
-	at org.gradle.internal.operations.DefaultBuildOperationExecutor.run(DefaultBuildOperationExecutor.java:68)
-	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
-	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
-	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
-	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
-	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
-	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
-	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
-	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
-	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
-	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
-	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:41)
-	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:74)
-	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
-	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
-	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
-	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
-	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
-	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
-	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
-	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:67)
-	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:45)
-	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
-	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
-	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
-	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
-	at org.gradle.internal.Either$Right.fold(Either.java:175)
-	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
-	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
-	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
-	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
-	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
-	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:76)
-	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:54)
-	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:54)
-	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:36)
-	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
-	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
-	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
-	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
-	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
-	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
-	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
-	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
-	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:106)
-	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:55)
-	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
-	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
-	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
-	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:56)
-	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
-	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
-	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
-	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
-	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
-	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
-	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
-	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
-	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
-	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
-	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
-	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
-	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
-	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
-	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
-	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
-	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
-	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
-	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
-	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
-	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
-	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
-	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
-	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
-	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
-	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
-	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
-	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
-	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
+	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor.execute(RunAsBuildOperationBuildActionExecutor.java:57)
+	at org.gradle.launcher.exec.RunAsWorkerThreadBuildActionExecutor.lambda$execute$0(RunAsWorkerThreadBuildActionExecutor.java:36)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:264)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:128)
+	at org.gradle.launcher.exec.RunAsWorkerThreadBuildActionExecutor.execute(RunAsWorkerThreadBuildActionExecutor.java:36)
+	at org.gradle.tooling.internal.provider.continuous.ContinuousBuildActionExecutor.execute(ContinuousBuildActionExecutor.java:110)
+	at org.gradle.tooling.internal.provider.SubscribableBuildActionExecutor.execute(SubscribableBuildActionExecutor.java:64)
+	at org.gradle.internal.session.DefaultBuildSessionContext.execute(DefaultBuildSessionContext.java:46)
+	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter$ActionImpl.apply(BuildSessionLifecycleBuildActionExecuter.java:92)
+	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter$ActionImpl.apply(BuildSessionLifecycleBuildActionExecuter.java:80)
+	at org.gradle.internal.session.BuildSessionState.run(BuildSessionState.java:71)
+	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter.execute(BuildSessionLifecycleBuildActionExecuter.java:62)
+	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter.execute(BuildSessionLifecycleBuildActionExecuter.java:41)
+	at org.gradle.tooling.internal.provider.StartParamsValidatingActionExecuter.execute(StartParamsValidatingActionExecuter.java:64)
+	at org.gradle.tooling.internal.provider.StartParamsValidatingActionExecuter.execute(StartParamsValidatingActionExecuter.java:32)
+	at org.gradle.tooling.internal.provider.SessionFailureReportingActionExecuter.execute(SessionFailureReportingActionExecuter.java:51)
+	at org.gradle.tooling.internal.provider.SessionFailureReportingActionExecuter.execute(SessionFailureReportingActionExecuter.java:39)
+	at org.gradle.tooling.internal.provider.SetupLoggingActionExecuter.execute(SetupLoggingActionExecuter.java:47)
+	at org.gradle.tooling.internal.provider.SetupLoggingActionExecuter.execute(SetupLoggingActionExecuter.java:31)
+	at org.gradle.launcher.daemon.server.exec.ExecuteBuild.doBuild(ExecuteBuild.java:65)
+	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.WatchForDisconnection.execute(WatchForDisconnection.java:39)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.ResetDeprecationLogger.execute(ResetDeprecationLogger.java:29)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.RequestStopIfSingleUsedDaemon.execute(RequestStopIfSingleUsedDaemon.java:35)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.ForwardClientInput$2.create(ForwardClientInput.java:78)
+	at org.gradle.launcher.daemon.server.exec.ForwardClientInput$2.create(ForwardClientInput.java:75)
+	at org.gradle.util.internal.Swapper.swap(Swapper.java:38)
+	at org.gradle.launcher.daemon.server.exec.ForwardClientInput.execute(ForwardClientInput.java:75)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.LogAndCheckHealth.execute(LogAndCheckHealth.java:64)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.LogToClient.doBuild(LogToClient.java:63)
+	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.EstablishBuildEnvironment.doBuild(EstablishBuildEnvironment.java:84)
+	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.StartBuildOrRespondWithBusy$1.run(StartBuildOrRespondWithBusy.java:52)
+	at org.gradle.launcher.daemon.server.DaemonStateCoordinator$1.run(DaemonStateCoordinator.java:297)
 	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 1m 18s
-1 actionable task: 1 executed
+BUILD FAILED in 6m 6s
+42 actionable tasks: 42 executed
+Configuration cache entry discarded with 1 problem.
