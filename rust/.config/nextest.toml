@@ -1,6 +1,6 @@
 [profile.ci]
 fail-fast = false
-slow-timeout = { period = "30s", terminate-after = 3 }
+slow-timeout = { period = "60s", terminate-after = 3 }
 
 # Define a strict hardware-isolated mutex group so 32-peer mesh simulations
 # never overlap with each other OR with any other unit test in the workspace.

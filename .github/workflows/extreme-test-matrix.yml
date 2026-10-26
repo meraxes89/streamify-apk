@@ -149,13 +149,11 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Install Rust Android Target & Prebuilt cargo-ndk
+      - name: Install Rust Android Target & cargo-ndk
         run: |
           rustup target add ${{ matrix.rust_target }}
-          mkdir -p ~/.cargo/bin
-          curl -LsSf https://github.com/bbqsrc/cargo-ndk/releases/latest/download/cargo-ndk-x86_64-unknown-linux-musl.tar.gz \
-            | tar -xzf - -C ~/.cargo/bin
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall -y cargo-ndk
 
       - name: Compile Rust + C++ NDK Directly for ${{ matrix.abi }}
         env:

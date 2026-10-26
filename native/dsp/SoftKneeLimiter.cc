@@ -367,9 +367,10 @@ void SoftKneeLimiter::processFrames(float* io, int frames, int channels) {
         if (sDb < gsDb_) gsDb_ = sDb;
         else gsDb_ += (sDb - gsDb_) * releaseCoef_;
 
-        const float gs = std::pow(10.0f, gsDb_ * 0.05f);
+        const float gs = (gsDb_ >= 0.0f) ? 1.0f : std::pow(10.0f, gsDb_ * 0.05f);
         for (int c = 0; c < C; ++c) {
-            io[static_cast<size_t>(t) * C + c] = satStage(io[static_cast<size_t>(t) * C + c] * gs);
+            const float inSamp = io[static_cast<size_t>(t) * C + c];
+            io[static_cast<size_t>(t) * C + c] = (gs == 1.0f) ? satStage(inSamp) : satStage(inSamp * gs);
         }
     }
 
