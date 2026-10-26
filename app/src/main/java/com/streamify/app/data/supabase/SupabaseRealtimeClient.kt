@@ -132,16 +132,7 @@ internal object SupabaseRealtimeClient {
                 }
                 webSocket.send(joinProfilesMsg.toString())
 
-                // 4. Join ephemeral playback_sync broadcast channel (Zero-Drift Clock Compensation)
-                val joinPlaybackMsg = JSONObject().apply {
-                    put("topic", "realtime:playback_sync")
-                    put("event", "phx_join")
-                    put("payload", JSONObject())
-                    put("ref", "playback_sub")
-                }
-                webSocket.send(joinPlaybackMsg.toString())
-
-                // 5. Heartbeat loop (every 25s)
+                // 4. Heartbeat loop (every 25s)
                 heartbeatJob?.cancel()
                 heartbeatJob = syncScope.launch {
                     while (_isRealtimeConnected.value) {
@@ -175,64 +166,9 @@ internal object SupabaseRealtimeClient {
                         val record = data.optJSONObject("record") ?: data.optJSONObject("old_record") ?: return
 
                         handleIncomingCdcEvent(table, eventType, record)
-                        if (table == "listening_sessions") {
-                            SupabaseClient.onListeningSessionRow?.invoke(record)
-                        }
-                    } else if (event == "broadcast") {
-                        val topic = root.optString("topic", "")
-                        val msgPayload = payload.optJSONObject("payload") ?: payload
-                        val type = payload.optString("type", "")
-                        if (topic == "realtime:playback_sync" || type == "playback_sync") {
-                            val clientEpoch = msgPayload.optLong("client_epoch_ms", 0L)
-                            val now = System.currentTimeMillis()
-                            val transitLatency = (now - clientEpoch).coerceAtLeast(0L)
-                            val basePos = msgPayload.optLong("position_ms", 0L)
-                            val isPlaying = msgPayload.optBoolean("is_playing", false)
-                            val durationMs = msgPayload.optLong("duration_ms", 0L)
-
-                            // Cristian's Algorithm Latency Compensation
-                            val compensatedPosition = if (isPlaying && transitLatency > 0) {
-                                (basePos + transitLatency).coerceAtMost(if (durationMs > 0) durationMs else Long.MAX_VALUE)
-                            } else {
-                                basePos
-                            }
-
-                            val snapshot = DevicePlaybackSnapshot(
-                                deviceId = msgPayload.optString("device_id", ""),
-                                trackId = msgPayload.optString("track_id", ""),
-                                trackTitle = msgPayload.optString("track_title", ""),
-                                trackArtist = msgPayload.optString("track_artist", ""),
-                                isPlaying = isPlaying,
-                                positionMs = compensatedPosition,
-                                clientEpochMs = clientEpoch,
-                                durationMs = durationMs
-                            )
-                            SupabaseClient.remotePlaybackState.tryEmit(snapshot)
-                        } else if (topic.startsWith("realtime:jam_") || type == "jam_tick" || type == "jam_queue_updated") {
-                            if (type == "jam_queue_updated") {
-                                val queueArr = msgPayload.optJSONArray("queue")
-                                if (queueArr != null) {
-                                    val qList = mutableListOf<Track>()
-                                    for (qi in 0 until queueArr.length()) {
-                                        val qo = queueArr.getJSONObject(qi)
-                                        qList.add(
-                                            Track(
-                                                id = qo.optInt("id", 0),
-                                                title = qo.optString("title", ""),
-                                                artist = qo.optString("artist", ""),
-                                                album = qo.optString("album", "Jam Queue"),
-                                                filepath = qo.optString("filepath", ""),
-                                                coverArtPath = qo.optString("coverArtPath", "").ifBlank { null },
-                                                durationSec = qo.optInt("durationSec", 0)
-                                            )
-                                        )
-                                    }
-                                    SupabaseClient.jamQueueUpdates.tryEmit(qList)
-                                }
-                            } else {
-                                SupabaseClient.jamPlaybackUpdates.tryEmit(msgPayload)
-                            }
-                        }
+                        // v2/v3 jam rows + playback_sync broadcasts removed with
+                        // the SupabaseJamClient dead path — the live Jam stack
+                        // is the v4 JamEngine P2P mesh (jam/JamEngine.kt).
                     }
                 } catch (e: Exception) {
                     SLog.e("SupabaseRealtime", "CDC Parse error: ${e.message}")
