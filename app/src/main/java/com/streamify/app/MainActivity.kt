@@ -55,26 +55,8 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
-    // Touch telemetry: every DOWN/UP is logged with coordinates; MOVE events
-    // are throttled to one per 250ms so drags stay visible without flooding.
-    private var lastMoveLogMs: Long = 0L
-
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        when (ev.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN ->
-                com.streamify.app.util.SLog.v("TOUCH", "DOWN x=${ev.x.toInt()} y=${ev.y.toInt()} pointers=${ev.pointerCount}")
-            android.view.MotionEvent.ACTION_UP ->
-                com.streamify.app.util.SLog.v("TOUCH", "UP   x=${ev.x.toInt()} y=${ev.y.toInt()}")
-            android.view.MotionEvent.ACTION_MOVE -> {
-                val now = System.currentTimeMillis()
-                if (now - lastMoveLogMs >= 250) {
-                    lastMoveLogMs = now
-                    com.streamify.app.util.SLog.v("TOUCH", "MOVE x=${ev.x.toInt()} y=${ev.y.toInt()}")
-                }
-            }
-            android.view.MotionEvent.ACTION_CANCEL ->
-                com.streamify.app.util.SLog.v("TOUCH", "CANCEL")
-        }
+        com.streamify.app.ui.motion.TouchTelemetryLogger.log(ev)
         return super.dispatchTouchEvent(ev)
     }
 
