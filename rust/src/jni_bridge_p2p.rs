@@ -75,24 +75,26 @@
 //! not spoofable from the app layer. App-visible types are PTP_SYNC
 //! (0x01) and CRDT_OP (0x02), plus future app-level extensions ≥ 0x20.
 
+use std::collections::BTreeSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
-use jni::objects::{JByteArray, JClass, JString, ReleaseMode};
-use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring};
-use jni::JNIEnv;
+use jni::objects::{GlobalRef, JByteArray, JClass, JString, ReleaseMode};
+use jni::sys::{jboolean, jbyteArray, jint, jlong, jobject, jstring};
+use jni::{JNIEnv, JavaVM};
 use tokio::runtime::Runtime;
 
 use crate::consensus::{CollabPlaylistState, PlaylistRole};
 use crate::jam_crdt::{JamOp, OpType};
-use crate::p2p_mesh::{MeshConfig, MeshNode, PeerId, RESERVED_CONTROL_TYPES};
+use crate::p2p_mesh::{MeshConfig, MeshNode, PeerId, RESERVED_CONTROL_TYPES, MSG_JAM_APP};
 
 const JNI_TRUE: jboolean = 1;
 const JNI_FALSE: jboolean = 0;
 
 struct P2pRuntime {
-    _rt: Runtime,
+    rt: Runtime,
     node: Arc<MeshNode>,
 }
 
@@ -113,6 +115,149 @@ fn stop_runtime() {
 fn with_node<T>(f: impl FnOnce(&Arc<MeshNode>) -> T) -> Option<T> {
     let guard = heal(P2P.lock());
     guard.as_ref().map(|r| f(&r.node))
+}
+
+/// Runtime + node accessor for the app bridge (audit #44 P0-1): the
+/// forwarder tasks must be spawned ON the mesh's own Tokio runtime, so
+/// the wire-up points need the handle, not just the node.
+fn with_runtime<T>(f: impl FnOnce(&Runtime, &Arc<MeshNode>) -> T) -> Option<T> {
+    let guard = heal(P2P.lock());
+    guard.as_ref().map(|r| f(&r.rt, &r.node))
+}
+
+// ════════════════════════════ audit #44 P0-1: incoming-callback bridge ═══
+//
+// `nativeP2pRegisterIncomingCallback` was declared in Kotlin with no
+// native export — an UnsatisfiedLinkError caught and downgraded to
+// `false`, which meant the native mesh NEVER delivered frames into
+// `NativeBridge.incomingFrames`: the entire Jam v4 ingress path was
+// silent on real devices (JVM tests never noticed; they exercise the
+// meshOverride mock). This bridge closes that hole:
+//
+//   • registration stores a GlobalRef to the Kotlin listener + the
+//     JavaVM (same pattern as jni_bridge_chunk_sync's sync callback);
+//   • a forwarder task on the mesh runtime subscribes to MSG_JAM_APP
+//     and upcalls `onP2pFrame(peerHex, msgType, payload)`;
+//   • a peer watcher polls `peers_snapshot()` and upcalls
+//     `onP2pPeerJoined`/`onP2pPeerLeft` on set deltas — the signal
+//     JamEngine's Merkle reconciliation is documented to key off;
+//   • every upcall attaches its thread transiently, is wrapped in
+//     catch_unwind, and swallows JVM failures: the callback layer must
+//     never take the mesh down (house rule);
+//   • tasks select on the node's stop signal, so Stop/restart tears
+//     them down with the node they serve.
+
+struct P2pCallback {
+    vm: JavaVM,
+    listener: GlobalRef,
+}
+
+static P2P_CB: Mutex<Option<Arc<P2pCallback>>> = Mutex::new(None);
+
+fn snapshot_cb() -> Option<Arc<P2pCallback>> {
+    heal(P2P_CB.lock()).clone()
+}
+
+/// Transient per-event thread attach (same contract as the chunk-sync
+/// callback): a JVM failure is swallowed, never propagated.
+fn deliver_frame(cb: &P2pCallback, peer_hex: &str, msg_type: u8, payload: &[u8]) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if let Ok(mut env) = cb.vm.attach_current_thread() {
+            let Ok(peer) = env.new_string(peer_hex) else { return };
+            let Ok(arr) = env.byte_array_from_slice(payload) else { return };
+            let _ = env.call_method(
+                cb.listener.as_obj(),
+                "onP2pFrame",
+                "(Ljava/lang/String;I[B)V",
+                &[(&peer).into(), jint::from(msg_type as i32).into(), (&arr).into()],
+            );
+        }
+    }));
+}
+
+fn deliver_peer_event(cb: &P2pCallback, peer_hex: &str, joined: bool) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if let Ok(mut env) = cb.vm.attach_current_thread() {
+            let Ok(peer) = env.new_string(peer_hex) else { return };
+            let _ = env.call_method(
+                cb.listener.as_obj(),
+                if joined { "onP2pPeerJoined" } else { "onP2pPeerLeft" },
+                "(Ljava/lang/String;)V",
+                &[(&peer).into()],
+            );
+        }
+    }));
+}
+
+/// Spawns the forwarder + peer-watcher tasks on the live mesh runtime.
+/// Called from both wire-up points (registration with a live node, and
+/// mesh start with a pre-registered callback) — idempotent per node
+/// lifetime because each spawn selects on that node's stop signal.
+fn spawn_app_bridge(rt: &Runtime, node: &Arc<MeshNode>) {
+    // Frame forwarder: everything the Kotlin layer multiplexes onto
+    // MSG_JAM_APP lands here after gossip dedupe.
+    let mut rx = node.subscribe(MSG_JAM_APP, 256);
+    let mut stop = node.stop_signal();
+    rt.spawn(async move {
+        loop {
+            tokio::select! {
+                _ = stop.changed() => break,
+                pkt = rx.recv() => {
+                    let Some(pkt) = pkt else { break };
+                    match snapshot_cb() {
+                        Some(cb) => deliver_frame(
+                            &cb,
+                            &pkt.from_peer.to_hex(),
+                            pkt.header.msg_type,
+                            &pkt.payload,
+                        ),
+                        // No listener registered: drain quietly. Frames are
+                        // still gossip-deduped; dropping them is the same
+                        // bounded-discard contract the router applies to a
+                        // slow consumer.
+                        None => {}
+                    }
+                }
+            }
+        }
+    });
+
+    // Peer lifecycle watcher: 1.5 s poll of the peer table, join/leave
+    // emitted on set deltas. The mesh sweeper evicts stale peers on a
+    // 5 s cadence, so a leave event lands within ~6.5 s of a peer's
+    // death — bounded, and strictly better than the previous signal
+    // (nothing at all).
+    let node = Arc::clone(node);
+    let mut stop = node.stop_signal();
+    rt.spawn(async move {
+        let mut known: BTreeSet<u64> = BTreeSet::new();
+        let mut interval = tokio::time::interval(Duration::from_millis(1500));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                _ = stop.changed() => break,
+                _ = interval.tick() => {
+                    let Some(cb) = snapshot_cb() else { continue };
+                    let now: BTreeSet<u64> =
+                        node.peers_snapshot().iter().map(|p| p.id.0).collect();
+                    for id in now.difference(&known) {
+                        deliver_peer_event(&cb, &PeerId(*id).to_hex(), true);
+                    }
+                    for id in known.difference(&now) {
+                        deliver_peer_event(&cb, &PeerId(*id).to_hex(), false);
+                    }
+                    known = now;
+                }
+            }
+        }
+    });
+}
+
+/// Wire-up point B: mesh start with an already-registered callback.
+fn wire_app_bridge_if_registered() {
+    if snapshot_cb().is_some() {
+        with_runtime(|rt, node| spawn_app_bridge(rt, node));
+    }
 }
 
 /// Phase 2: singleton collaborative playlist replica (the frozen
@@ -240,7 +385,10 @@ pub extern "system" fn Java_com_streamify_app_data_NativeBridge_nativeP2pStart(
         // no playlist op can be minted under the legacy shared author.
         bind_playlist_author(&device);
 
-        *heal(P2P.lock()) = Some(P2pRuntime { _rt: rt, node });
+        *heal(P2P.lock()) = Some(P2pRuntime { rt, node });
+        // audit #44 P0-1: a listener registered before Start (or carried
+        // over from a previous mesh life) gets its forwarders now.
+        wire_app_bridge_if_registered();
         JNI_TRUE
     }))
     .unwrap_or(JNI_FALSE)
@@ -320,6 +468,51 @@ pub extern "system" fn Java_com_streamify_app_data_NativeBridge_nativeP2pGetConn
         with_node(|node| node.peer_count() as jint).unwrap_or(0)
     }))
     .unwrap_or(0)
+}
+
+// ── audit #44 P0-1: the missing sixth frozen symbol ──────────────────
+
+/// `nativeP2pRegisterIncomingCallback(listener: P2pIncomingListener):
+/// Boolean` — registers the Kotlin-side ingress listener and returns
+/// whether the upcall bridge is live.
+///
+/// Wire-up orders handled:
+///   • register AFTER Start (the NativeBridge.p2pStart flow): forwarder
+///     tasks spawn immediately onto the live runtime;
+///   • register BEFORE Start: the global ref is stored and Start wires
+///     the tasks (wire_app_bridge_if_registered).
+///
+/// Re-registration replaces the previous global ref (the old one is
+/// released on drop); Stop does NOT unregister — the ref survives so a
+/// same-listener restart needs no re-register, and a stale listener's
+/// upcalls fail harmlessly (swallowed) until it is replaced.
+#[no_mangle]
+pub extern "system" fn Java_com_streamify_app_data_NativeBridge_nativeP2pRegisterIncomingCallback(
+    env: JNIEnv,
+    _class: JClass,
+    listener: jobject,
+) -> jboolean {
+    catch_unwind(AssertUnwindSafe(|| {
+        if listener.is_null() {
+            return JNI_FALSE;
+        }
+        let vm = match env.get_java_vm() {
+            Ok(vm) => vm,
+            Err(_) => return JNI_FALSE,
+        };
+        let global = match env.new_global_ref(unsafe { JClass::from_raw(listener) }) {
+            Ok(g) => g,
+            Err(_) => return JNI_FALSE,
+        };
+        {
+            let mut guard = heal(P2P_CB.lock());
+            *guard = Some(Arc::new(P2pCallback { vm, listener: global }));
+        }
+        // Wire-up point A: live mesh at registration time.
+        with_runtime(|rt, node| spawn_app_bridge(rt, node));
+        JNI_TRUE
+    }))
+    .unwrap_or(JNI_FALSE)
 }
 
 // ════════════════════════════════════════ extensions (NOT frozen §5) ════

@@ -1219,6 +1219,24 @@ object NativeBridge {
     // a device without the native artifact (JVM test shard, x86 emulator,
     // skipRust CI builds) degrades to documented fallbacks instead of
     // crashing the Jam stack. Wrappers delegate 1:1 to the frozen symbols.
+    //
+    // WIRE-TYPE ENVELOPE (audit #44 P0-1): the Rust mesh's frozen type
+    // registry owns 0x01..0x11 as protocol traffic (PTP sync, CRDT ops,
+    // heartbeats, gossip control, chunk swarm, governance …) and the JNI
+    // guard rightly rejects app attempts to spoof them. JamWire's own
+    // vocabulary (Msg 1..=31) collides with that range head-on, so the
+    // native egress below folds the whole JamWire family into the single
+    // app-visible envelope type 0x20 — the JamWire header inside the
+    // payload self-describes the real sub-type, so nothing is lost. The
+    // meshOverride (test mock) keeps receiving raw JamWire types: its
+    // assertions are app-layer contracts, and ingress ignores the mesh
+    // type (JamWire.decode validates the payload itself).
+    private const val MESH_JAM_APP_TYPE = 0x20
+
+    /** JamWire-family (1..=31) → mesh envelope 0x20; anything else passes
+     * through untouched (future app extensions ≥ 0x20 are already legal). */
+    private fun meshWireType(msgType: Int): Int =
+        if (msgType in 1..31) MESH_JAM_APP_TYPE else msgType
 
     /**
      * Upcall surface the Rust mesh invokes when frames / peer lifecycle
@@ -1435,7 +1453,7 @@ object NativeBridge {
     fun p2pBroadcast(msgType: Int, payload: ByteArray): Boolean {
         meshOverride?.let { return it.broadcast(msgType, payload) }
         return try {
-            nativeP2pBroadcast(msgType, payload)
+            nativeP2pBroadcast(meshWireType(msgType), payload)
         } catch (_: Throwable) {
             false
         }
@@ -1444,7 +1462,7 @@ object NativeBridge {
     fun p2pSendToPeer(peerIdHex: String, msgType: Int, payload: ByteArray): Boolean {
         meshOverride?.let { return it.sendToPeer(peerIdHex, msgType, payload) }
         return try {
-            nativeP2pSendToPeer(peerIdHex, msgType, payload)
+            nativeP2pSendToPeer(peerIdHex, meshWireType(msgType), payload)
         } catch (_: Throwable) {
             false
         }

@@ -66,6 +66,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # audit #44 P0-1 — fail FAST (before a 30-minute native build) on any
+      # `external fun` in NativeBridge.kt with no JNI export declared in
+      # native/jni/* or rust/src/jni_bridge*.rs. The link-time `nm` gate in
+      # build-ref.yml (and below) catches the "declared but not compiled
+      # into the target" variant on the real artifacts.
+      - name: JNI ABI parity gate (source-level, fail-fast)
+        run: python3 scripts/jni_parity_check.py --source
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -154,6 +162,15 @@ jobs:
             -Dorg.gradle.caching=false \
             -DANDROID_CCACHE=ccache \
             --stacktrace 2>&1 | tee build.log
+
+      # audit #44 P0-1 — authoritative link-time parity gate on the built
+      # .so artifacts (Rust cdylib + C++ CMake targets merged into the APK).
+      - name: JNI ABI parity gate (nm on built .so)
+        run: |
+          NM="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          if [ ! -x "$NM" ]; then NM=nm; fi
+          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
+            --so-glob 'app/build/**/*.so'
 
       - name: Upload Build Log Artifact
         if: always()
