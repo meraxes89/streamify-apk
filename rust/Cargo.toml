@@ -23,7 +23,7 @@ hmac = "0.12"
 regex = "1.10"
 urlencoding = "2.1"
 tokio = { version = "1.38", features = ["rt-multi-thread", "sync", "macros", "net", "time", "io-util"] }
-socket2 = { version = "0.5", features = ["all"] }
+socket2 = { version = "0.6", features = ["all"] }
 blake3 = "1.5"
 rand = "0.8"
 chacha20poly1305 = "0.10"
