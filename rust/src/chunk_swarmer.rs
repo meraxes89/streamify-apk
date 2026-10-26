@@ -56,6 +56,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::wire_le;
 use crate::p2p_mesh::{
     MSG_CHUNK_DATA, MSG_CHUNK_HAVE, MSG_CHUNK_REQUEST, MSG_TRACK_MANIFEST,
     MSG_TRACK_MANIFEST_REQUEST,
@@ -178,11 +179,16 @@ impl TrackManifest {
     ///
     /// Wire offsets: track[0..8] total_len[8..16] chunk_size[16..20]
     /// num_chunks[20..24] total_hash[24..56] hashes[56..].
+    ///
+    /// audit #44 P2-5: every field read goes through the total `wire_le`
+    /// readers — a future bounds/guard drift degrades into a rejected
+    /// manifest instead of a panic on the recv path.
     pub fn from_wire(payload: &[u8]) -> Result<Self, SwarmError> {
         if payload.len() < 56 {
             return Err(SwarmError::MalformedManifest);
         }
-        let num_chunks = u32::from_le_bytes(payload[20..24].try_into().unwrap());
+        let num_chunks =
+            wire_le::le_u32(&payload[20..24]).ok_or(SwarmError::MalformedManifest)?;
         if num_chunks > MANIFEST_MAX_CHUNKS {
             return Err(SwarmError::ManifestTooLarge);
         }
@@ -193,15 +199,17 @@ impl TrackManifest {
         let chunk_hashes: Vec<[u8; 32]> = (0..num_chunks as usize)
             .map(|i| {
                 let base = 56 + i * 32;
-                payload[base..base + 32].try_into().unwrap()
+                wire_le::fixed::<32>(&payload[base..base + 32])
+                    .ok_or(SwarmError::MalformedManifest)
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
         Ok(TrackManifest {
-            track_id: u64::from_le_bytes(payload[0..8].try_into().unwrap()),
-            total_len: u64::from_le_bytes(payload[8..16].try_into().unwrap()),
-            chunk_size: u32::from_le_bytes(payload[16..20].try_into().unwrap()),
+            track_id: wire_le::le_u64(&payload[0..8]).ok_or(SwarmError::MalformedManifest)?,
+            total_len: wire_le::le_u64(&payload[8..16]).ok_or(SwarmError::MalformedManifest)?,
+            chunk_size: wire_le::le_u32(&payload[16..20]).ok_or(SwarmError::MalformedManifest)?,
             num_chunks,
-            total_hash: payload[24..56].try_into().unwrap(),
+            total_hash: wire_le::fixed::<32>(&payload[24..56])
+                .ok_or(SwarmError::MalformedManifest)?,
             chunk_hashes,
         })
     }
@@ -236,7 +244,7 @@ fn parse_have_payload(payload: &[u8]) -> Option<HaveBits> {
     if payload.len() < 44 {
         return None;
     }
-    let num_chunks = u32::from_le_bytes(payload[40..44].try_into().unwrap());
+    let num_chunks = wire_le::le_u32(&payload[40..44])?;
     if num_chunks > MANIFEST_MAX_CHUNKS {
         return None;
     }
@@ -248,8 +256,8 @@ fn parse_have_payload(payload: &[u8]) -> Option<HaveBits> {
         .map(|i| payload[44 + i / 8] & (1 << (i % 8)) != 0)
         .collect();
     Some(HaveBits {
-        track_id: u64::from_le_bytes(payload[0..8].try_into().unwrap()),
-        total_hash: payload[8..40].try_into().unwrap(),
+        track_id: wire_le::le_u64(&payload[0..8])?,
+        total_hash: wire_le::fixed::<32>(&payload[8..40])?,
         num_chunks,
         bits,
     })
@@ -267,8 +275,8 @@ fn parse_chunk_request_payload(payload: &[u8]) -> Option<(u64, u32)> {
         return None;
     }
     Some((
-        u64::from_le_bytes(payload[0..8].try_into().unwrap()),
-        u32::from_le_bytes(payload[8..12].try_into().unwrap()),
+        wire_le::le_u64(&payload[0..8])?,
+        wire_le::le_u32(&payload[8..12])?,
     ))
 }
 
@@ -280,7 +288,7 @@ fn parse_manifest_request_payload(payload: &[u8]) -> Option<u64> {
     if payload.len() != 8 {
         return None;
     }
-    Some(u64::from_le_bytes(payload[0..8].try_into().unwrap()))
+    wire_le::le_u64(&payload[0..8])
 }
 
 // ─────────────────────────────────────────────────────────── errors/events
@@ -449,8 +457,12 @@ impl Swarm {
             return false;
         }
         let mut data = Vec::with_capacity(self.manifest.total_len as usize);
-        for c in &self.chunks {
-            data.extend_from_slice(c.as_ref().expect("complete"));
+        // audit #44 P2-5: `is_complete` guarantees every slot is Some, but
+        // the flatten makes that guarantee IRRELEVANT to memory safety — a
+        // future invariant drift degrades into a short buffer caught by
+        // the total-hash check below, never a panic.
+        for c in self.chunks.iter().flatten() {
+            data.extend_from_slice(c);
         }
         let mut h = [0u8; 32];
         h.copy_from_slice(blake3::hash(&data).as_bytes());
@@ -704,9 +716,16 @@ impl SwarmManager {
         if payload.len() < 16 {
             return Vec::new();
         }
-        let track_id = u64::from_le_bytes(payload[0..8].try_into().unwrap());
-        let idx = u32::from_le_bytes(payload[8..12].try_into().unwrap());
-        let len = u32::from_le_bytes(payload[12..16].try_into().unwrap()) as usize;
+        let (track_id, idx, len) = match (
+            wire_le::le_u64(&payload[0..8]),
+            wire_le::le_u32(&payload[8..12]),
+            wire_le::le_u32(&payload[12..16]),
+        ) {
+            (Some(t), Some(i), Some(l)) => (t, i, l as usize),
+            // audit #44 P2-5: total reads — a bounds drift degrades into a
+            // dropped frame, never a recv-path panic.
+            _ => return Vec::new(),
+        };
         if payload.len() != 16 + len {
             return Vec::new();
         }
