@@ -30,43 +30,15 @@ jobs:
   # whole matrix at 20+ min wall-clock with zero extra information).
   #
   #   old:  gatekeeper(1m) -> build(15m) -> [tests, codeql, fuzz]  ≈ 20-25m
-  #   new:  t=0 ┬─ compile-check ─> build ─> package/publish
-  #             ├─ rust-core ────────────────┐
-  #             ├─ native x3 (shared ccache) ├─> aggregate (~max of all)
-  #             ├─ jvm-unit ─────────────────┤
-  #             ├─ codeql (build-mode none) ─┤
-  #             └─ probe (advisory) ─────────┘
+  #   new:  t=0 ┬─ build-native-abi [4 ABIs] ─> build-debug-apk ─> package/publish
+  #             ├─ rust-core ───────────────────────────────┐
+  #             ├─ native x3 (shared ccache) ───────────────┼─> aggregate (~max of all)
+  #             ├─ jvm-unit ────────────────────────────────┤
+  #             ├─ codeql (c-cpp & java-kotlin) ────────────┤
+  #             └─ probe (advisory) ────────────────────────┘
   #
-  # Critical path = max(build, test shards) instead of sum(). Expected
-  # feedback for a broken commit: ~4-6 min (compile gate), not 20+.
+  # Critical path = max(native matrix + apk assemble, test shards) instead of sum().
   # ─────────────────────────────────────────────────────────────────────────
-
-  # 0a. COMPILE GATE (fast, blocking): Kotlin/JVM compilation only — no NDK,
-  # no Rust, no APK packaging. Catches the entire class of "app doesn't
-  # compile" breakage in minutes and gates the package/publish stage.
-  compile-check:
-    name: "Compile Gate (Kotlin/JVM)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v6
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      - name: Compile Kotlin (main + unit tests, no native toolchain)
-        run: |
-          chmod +x gradlew
-          ./gradlew compileDebugKotlin compileDebugUnitTestKotlin \
-            -Pstreamify.skipRust=true --stacktrace
 
   # 0b. ZERO-WAIT SHIFT-LEFT GATEKEEPER: Verify live Innertube Search -> Player -> CDN Range Probe (<5s)
   # ADVISORY ONLY: GitHub runners sit in Azure datacenter IP ranges that YouTube
@@ -133,25 +105,103 @@ jobs:
         working-directory: rust
         run: cargo clippy --lib --tests -- -D warnings
 
-  # 1. BUILD JOB: Full native APK build (NDK + cargo-ndk + CMake + Rust).
-  # Starts as soon as the fast compile gate passes — it no longer waits for
-  # the advisory probe, and no test shard waits for it.
-  # Caching is ON (the old --no-build-cache / --no-daemon / cache-disabled trio
-  # plus `clean` guaranteed a cold 15-minute build on every single run).
-  build-and-compile:
+  # ---------------------------------------------------------------------------
+  # TIER 1: 4-Way Parallel Native Matrix (Direct cargo-ndk + CMake/Ninja, Zero Gradle Tax)
+  # ---------------------------------------------------------------------------
+  build-native-abi:
+    name: "Native ABI Shard (${{ matrix.abi }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            rust_target: aarch64-linux-android
+          - abi: armeabi-v7a
+            rust_target: armv7-linux-androideabi
+          - abi: x86_64
+            rust_target: x86_64-linux-android
+          - abi: x86
+            rust_target: i686-linux-android
+    env:
+      RUSTC_WRAPPER: sccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Setup CCache for C++ Compilation
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        continue-on-error: true
+        with:
+          key: ${{ runner.os }}-ccache-native-abi-${{ matrix.abi }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-native-abi-
+            ${{ runner.os }}-ccache-native-
+          max-size: 500M
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install cargo-binstall & cargo-ndk
+        run: |
+          rustup target add ${{ matrix.rust_target }}
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall -y cargo-ndk
+
+      - name: Compile Rust + C++ NDK Directly for ${{ matrix.abi }}
+        run: |
+          mkdir -p out-jniLibs/${{ matrix.abi }}
+
+          # 1. Build Rust .so for this ABI via cargo-ndk
+          cargo ndk -t ${{ matrix.abi }} -o "$PWD/out-jniLibs" build --manifest-path rust/Cargo.toml --release
+
+          # 2. Build C++ .so for this ABI directly via CMake + Ninja (Zero Gradle daemon startup!)
+          NDK_PATH="${ANDROID_NDK_LATEST_HOME:-$ANDROID_HOME/ndk/26.1.10909125}"
+          if [ ! -d "$NDK_PATH" ]; then
+            NDK_PATH=$(find /usr/local/lib/android/sdk/ndk -maxdepth 1 -mindepth 1 | head -n 1)
+          fi
+          echo "Using Android NDK at: $NDK_PATH"
+
+          cmake -B build-android-${{ matrix.abi }} -G Ninja \
+            -S native \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-26 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld"
+          ninja -C build-android-${{ matrix.abi }} -j $(nproc)
+
+          # Copy C++ .so binaries into the staged ABI directory
+          find build-android-${{ matrix.abi }} -name "*.so" -exec cp -vf {} out-jniLibs/${{ matrix.abi }}/ \;
+
+      - name: Upload Compiled .so Bundle (${{ matrix.abi }})
+        uses: actions/upload-artifact@v7
+        with:
+          name: jniLibs-${{ matrix.abi }}
+          path: out-jniLibs/${{ matrix.abi }}/*.so
+          if-no-files-found: error
+          compression-level: 1
+
+  # ---------------------------------------------------------------------------
+  # TIER 2: Assemble 4-ABI Universal Debug APK (~45s)
+  # ---------------------------------------------------------------------------
+  build-debug-apk:
     name: "Build Debug APK (Native Full)"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    needs: [build-native-abi]
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
 
-      # audit #44 P0-1 — fail FAST (before a 30-minute native build) on any
-      # `external fun` in NativeBridge.kt with no JNI export declared in
-      # native/jni/* or rust/src/jni_bridge*.rs. The link-time `nm` gate in
-      # build-ref.yml (and below) catches the "declared but not compiled
-      # into the target" variant on the real artifacts.
+      # audit #44 P0-1 — fail FAST on any external fun in NativeBridge.kt with no JNI export
       - name: JNI ABI parity gate (source-level, fail-fast)
         run: python3 scripts/jni_parity_check.py --source
 
@@ -161,104 +211,54 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
-
-      - name: Install Android Rust Targets
-        run: |
-          rustup target add aarch64-linux-android
-          rustup target add armv7-linux-androideabi
-          rustup target list --installed
-
-      - name: Install cargo-ndk
-        id: cargondk
-        run: which cargo-ndk || cargo install cargo-ndk --locked
-
-      - name: Cache Cargo Registry & Build Dir
-        uses: actions/cache@v6
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-          # rust/Cargo.lock is gitignored, so hashFiles() resolved empty before
-          # (dead cache key). Key on workspace manifests instead.
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.toml', 'rust/**/Cargo.toml') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
-
-      - name: Cache Android NDK & CMake
-        id: ndk-cache
-        uses: actions/cache@v6
-        continue-on-error: true
-        with:
-          # Runner-image env vars are NOT part of the Actions `env` context, so
-          # `${ { env.ANDROID_HOME } }` resolved empty and this cache never
-          # stored anything. Pin the real runner SDK path instead.
-          path: |
-            /usr/local/lib/android/sdk/ndk/26.1.10909125
-            /usr/local/lib/android/sdk/cmake/3.22.1
-          key: ${{ runner.os }}-ndk-26.1.10909125-cmake-3.22.1
-
-      # android-actions/setup-android@v3 installs the legacy `tools` package
-      # by default; Google removed that package from the SDK repository, so
-      # the action now fails on every run. GitHub hosted runners already ship
-      # the Android SDK with cmdline-tools available via $ANDROID_HOME.
-      - name: Install Android NDK & CMake
-        if: steps.ndk-cache.outputs.cache-hit != 'true'
-        run: |
-          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
-          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" > /dev/null
-
-      - name: Configure NDK Environment
-        run: |
-          NDK_DIR="${ANDROID_HOME}/ndk/26.1.10909125"
-          echo "ANDROID_NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$NDK_DIR" >> $GITHUB_ENV
-          echo "NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          # Read-write cache on main so merged commits seed the shared cache
-          # that PR jobs restore from (cache-read-only elsewhere).
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Setup CCache for C++ Compilation
-        uses: hendrikmuhs/ccache-action@v1.2.24
-        continue-on-error: true
+      - name: Download All 4 ABI .so Bundles
+        uses: actions/download-artifact@v8
         with:
-          # ref_slug is NOT a valid context property (silently rendered an
-          # empty suffix); use stable keys so main seeds what PRs restore.
-          key: ${{ runner.os }}-ccache-native-main
-          restore-keys: |
-            ${{ runner.os }}-ccache-native-
-          max-size: 500M
+          pattern: jniLibs-*
+          path: staged-jni
 
-      - name: Build Debug APK
+      - name: Populate app/src/main/jniLibs for All 4 ABIs
+        run: |
+          for ABI in arm64-v8a armeabi-v7a x86_64 x86; do
+            mkdir -p app/src/main/jniLibs/$ABI
+            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} app/src/main/jniLibs/$ABI/ \;
+          done
+          echo "Staged JNI libraries:"
+          ls -lR app/src/main/jniLibs
+
+      - name: Package Universal 4-ABI Debug APK
         id: gradle_build
         run: |
           set -o pipefail
           touch build.log
           chmod +x gradlew
-          # Incremental by design: no `clean`, build cache + daemon enabled
-          # (gradle.properties already sets org.gradle.caching/parallel=true).
           ./gradlew assembleDebug \
-            -DANDROID_CCACHE=ccache \
+            -PskipExternalNativeBuild=true \
+            --build-cache --configuration-cache --no-daemon \
             --stacktrace 2>&1 | tee build.log
 
-      # audit #44 P0-1 — authoritative link-time parity gate on the built
-      # .so artifacts (Rust cdylib + C++ CMake targets merged into the APK).
+      - name: Hard-Verify All 4 Architectures Exist in Final APK
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "❌ FATAL: No APK produced!"
+            exit 1
+          fi
+          for ABI in arm64-v8a armeabi-v7a x86_64 x86; do
+            unzip -l "$APK" | grep -q "lib/$ABI/" || { echo "❌ FATAL: Missing $ABI in $APK"; exit 1; }
+          done
+          echo "✅ Verified Universal APK contains arm64-v8a, armeabi-v7a, x86_64, and x86!"
+
+      # audit #44 P0-1 — authoritative link-time parity gate on the built .so artifacts
       - name: JNI ABI parity gate (nm on built .so)
         run: |
-          NM="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
-          if [ ! -x "$NM" ]; then NM=nm; fi
-          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
-            --so-glob 'app/build/**/*.so'
+          python3 scripts/jni_parity_check.py --nm --nm-bin nm \
+            --so-glob 'app/src/main/jniLibs/**/*.so'
 
       - name: Upload Build Log Artifact
         if: always()
@@ -721,7 +721,7 @@ jobs:
   # but ONLY of the build, never of the test shards.
   emulator-matrix:
     name: "Emulator API ${{ matrix.api }} (ARM64)"
-    needs: build-and-compile
+    needs: build-debug-apk
     # ARM64 emulators need Hypervisor.Framework, and GitHub's macOS images
     # currently cannot use it (qemu aborts with `HVF error: HV_UNSUPPORTED`
     # on both macos-15 and macos-26; Ubuntu runners have no KVM either), so
@@ -821,7 +821,7 @@ jobs:
   ci-gate:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
-    needs: [rust-lint, build-and-compile, test-matrix, native-deep-fuzz, codeql-analysis]
+    needs: [rust-lint, build-debug-apk, test-matrix, native-deep-fuzz, codeql-analysis]
     if: always()
     steps:
       - name: Enforce blocking-job success
@@ -854,7 +854,7 @@ jobs:
   aggregate-and-publish-logs:
     name: Aggregate & Commit to testing-log
     runs-on: ubuntu-latest
-    needs: [compile-check, build-and-compile, test-matrix, native-deep-fuzz, emulator-matrix, codeql-analysis]
+    needs: [build-debug-apk, test-matrix, native-deep-fuzz, emulator-matrix, codeql-analysis]
     if: always()
     steps:
       - uses: actions/checkout@v7
@@ -897,7 +897,7 @@ jobs:
           # job converted a concurrency cancel into a failure and blocked
           # the PRs for weeks. Only an explicit `failure` (or a FAILED
           # shard log) gates now.
-          RESULTS="${{ needs.compile-check.result }},${{ needs.build-and-compile.result }},${{ needs.test-matrix.result }},${{ needs.native-deep-fuzz.result }},${{ needs.codeql-analysis.result }}"
+          RESULTS="${{ needs.build-debug-apk.result }},${{ needs.test-matrix.result }},${{ needs.native-deep-fuzz.result }},${{ needs.codeql-analysis.result }}"
           ANY_FAILED=$(printf '%s\n' "$RESULTS" | grep -c '^failure$' || true)
           ANY_CANCELLED=$(printf '%s\n' "$RESULTS" | grep -c '^cancelled$' || true)
           if [ "${ANY_FAILED:-0}" -gt 0 ] || [ "$SHARD_FAIL" -eq 1 ]; then
