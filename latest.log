@@ -1,6 +1,6 @@
 ========================================================================
-STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #452
-COMMIT: c53ce5f335a2cacf031ff92c7f2a837ec2906df9
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #453
+COMMIT: 8dec89bf7141b9148479dd66a4af39a9c3f51b40
 ========================================================================
 
 ==================================================
@@ -16,6 +16,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 Calculating task graph as no cached configuration is available for tasks: testDebugUnitTest
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
 > Task :app:checkKotlinGradlePluginConfigurationErrors
 > Task :app:generateDebugResValues FROM-CACHE
 > Task :app:createDebugCompatibleScreenManifests
@@ -26,7 +27,6 @@ Calculating task graph as no cached configuration is available for tasks: testDe
 > Task :app:extractDeepLinksDebug FROM-CACHE
 > Task :app:mapDebugSourceSetPaths
 > Task :app:javaPreCompileDebug FROM-CACHE
-> Task :app:preDebugUnitTestBuild UP-TO-DATE
 > Task :app:javaPreCompileDebugUnitTest FROM-CACHE
 > Task :app:checkDebugAarMetadata
 > Task :app:mergeDebugResources FROM-CACHE
@@ -228,9 +228,9 @@ OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were depre
 OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
 OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
 OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/jvm_test-1793006308188.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/jvm_test-1793006634074.json
 
-BUILD SUCCESSFUL in 2m 10s
+BUILD SUCCESSFUL in 1m 52s
 24 actionable tasks: 17 executed, 7 from cache
 Configuration cache entry stored.
 ==================================================
@@ -253,10 +253,10 @@ STATUS: PASSED ✅
   - Phase1/rate: legacy paths honor the configured fs
   - Phase1/rate: rate-aware legacy surface PASSED
   - Phase1/perf: limiter hot-path benchmark
-    SoftKneeLimiter 2048f stereo hot   760256.2 ns/block  371.22 ns/frame  (~1.27% of an A55 core, est.)
-    PeerMixPool::saturate 4096 hot      59495.5 ns/block   14.53 ns/frame  (~0.05% of an A55 core, est.)
-    std::tanh x4096 (arg 0..9)          55319.2 ns/block   13.51 ns/frame  (~0.05% of an A55 core, est.)
-    std::pow(10,x*0.05) x4096           20275.1 ns/block    4.95 ns/frame  (~0.02% of an A55 core, est.)
+    SoftKneeLimiter 2048f stereo hot   1036741.3 ns/block  506.22 ns/frame  (~1.74% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      80045.1 ns/block   19.54 ns/frame  (~0.07% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          73085.9 ns/block   17.84 ns/frame  (~0.06% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           30229.1 ns/block    7.38 ns/frame  (~0.03% of an A55 core, est.)
   - Phase1/perf: zero-alloc hot paths
   - Phase1/perf: zero-alloc audit PASSED
 [TEST] Phase 1: all 231 checks passed
@@ -268,8 +268,8 @@ STATUS: PASSED ✅
   [harmonic] circadian daypart curves
     (24h max per-second jump: 6.44e-05)
   [harmonic] perf budgets + zero-alloc audit
-    (256x256 masks+union: 14.2 us, best of 5)
-    (bulk hash 20k x 21-char ids: 340 us)
+    (256x256 masks+union: 17.0 us, best of 5)
+    (bulk hash 20k x 21-char ids: 421 us)
 [TEST] Phase 2: all 150 checks passed (0 failed)
 [phase3] canvas loop + AGSL ambient glow
   [canvas] loop phase primitives
@@ -296,7 +296,7 @@ STATUS: PASSED ✅
   [palette] formats, sizes, malformed ladder
   [palette] determinism
   [palette] zero-alloc hot path + perf smoke
-    perf: 1024x1024 RGBA in 7.22 ms
+    perf: 1024x1024 RGBA in 8.24 ms
   [palette] fuzz-regression: median-cut termination
 [phase3] palette: 48 passed, 0 failed
 [phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
@@ -310,7 +310,7 @@ STATUS: PASSED ✅
   [sink] flush semantics
   [sink] zero-allocation hot paths (AllocGuard)
   [sink] SPSC stress: 10,000,000 frames, 2 threads
-    0.03 s wall, 293.0 Mframes/s (unsanitized sanitizer build)
+    0.04 s wall, 254.4 Mframes/s (unsanitized sanitizer build)
   [sink] SPSC pipeline stress: downmix + decimate, 2 threads
   [sink] packetizer roundtrip + MTU chunking
   [sink] packetizer corruption ladder (hostile input)
@@ -320,10 +320,10 @@ STATUS: PASSED ✅
   [sink] sink registry + stats wire layout
 [phase4] audio sinks: 8454 passed, 0 failed
   [Phase-5] Palette SIMD & WCAG contrast engine
-    perf: 1080x1080 worst-case (full noise) best-of-3: 1.466 ms
+    perf: 1080x1080 worst-case (full noise) best-of-3: 2.105 ms
   [Phase-5] palette suite: 5050 checks passed, 0 failed
   [Phase-5] Frame pacer & jank monitor
-    stress: 1,000,000 ticks, 573 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=0
+    stress: 1,000,000 ticks, 2333 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=0
   [Phase-5] frame pacer suite: 76 checks passed, 0 failed
   - SoftKneeLimiter transient pass-through: PASSED
   - SoftKneeLimiter sustained soft-knee limit: PASSED

@@ -1,0 +1,361 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #453
+COMMIT: 8dec89bf7141b9148479dd66a4af39a9c3f51b40
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: PASSED ✅
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: testDebugUnitTest
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:checkDebugAarMetadata
+> Task :app:mergeDebugResources FROM-CACHE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:171:21 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/ExportifyParser.kt:239:37 Variable 'durFormatted' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:35:24 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:39:25 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/lyrics/LyricsCacheManager.kt:105:34 'getter for isBluetoothA2dpOn: Boolean' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:173:17 Variable 'version' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:176:17 Variable 'textPoolLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:178:17 Variable 'flags' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:186:21 Variable 'sylStartIdx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:187:21 Variable 'sylCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:86:9 Parameter 'seedTitle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:87:9 Parameter 'seedArtist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:194:37 'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:197:56 'getter for host: InetAddress!' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:225:37 Parameter 'userId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:24:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:26:20 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:28:15 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/ParallelStreamDownloader.kt:108:41 Variable 'expectedLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:20:28 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:22:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:24:23 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeMusicRadioApi.kt:635:9 Parameter 'rendererKey' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeStreamResolver.kt:582:9 Parameter 'statuses' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:61:21 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:115:21 Variable 'artistName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:22:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:96:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:113:29 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/NuclearResetManager.kt:44:21 Variable 'currentPlaylists' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/SmartOfflineVaultEngine.kt:67:39 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:116:9 Parameter 'encoding' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:168:25 Variable 'lraDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:169:25 Variable 'truePeakDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:68:47 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:241:13 Variable 'tombstone' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:358:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:388:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:476:82 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:249:43 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:250:42 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:35 Parameter 'counts' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:55 Parameter 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:307:66 Parameter 'cloudTopTrack' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:356:37 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:357:35 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:439:13 Variable 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:470:40 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:471:38 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/update/StreamifyUpdateManager.kt:181:74 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/PlaylistLinkScraper.kt:459:92 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/YtSessionExtractor.kt:20:9 Parameter 'onError' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:531:31 Parameter 'session' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:1489:73 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JoinFabric.kt:327:27 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:99:13 Variable 'senderId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:102:13 Variable 'sequence' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:103:13 Variable 'timestampMonoNs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:251:9 Parameter 'positionMs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:252:9 Parameter 'syncedNanos' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:253:9 Parameter 'durationMs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:254:9 Parameter 'playing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/StreamifyAudioProcessor.kt:463:64 Parameter 'channelCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/SyncAudioProcessor.kt:106:13 Variable 'kalmanActive' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:25:48 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:84:28 Variable 'finalBpm' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:85:28 Variable 'finalKey' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:98:21 Name shadowed: trackKey
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:287:41 Parameter 'mode' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:305:37 Parameter 'playlist' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:121:63 Parameter 'limit' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:310:53 Parameter 'rawJson' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CanvasVideoSurface.kt:141:9 Variable 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:163:42 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:73 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:98 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:523:56 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:119:5 Parameter 'onAddToPlaylistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:190:37 'PlaylistPlay: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistPlay
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:201:37 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:228:41 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:335:37 'PlaylistAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistAdd
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:260:65 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:261:53 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/FriendActivityCard.kt:185:49 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/HeartButton.kt:43:9 Variable 'tint' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QrShareCard.kt:147:5 Parameter 'qrBitmap' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QuantumSonicTokenController.kt:217:37 Parameter 'heightPx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/RelatedDiscoverSheet.kt:46:9 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:197:94 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:199:38 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtPlaylistHeroHeader.kt:181:102 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtQueueTrackItem.kt:42:5 Parameter 'onReplay' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSortFilterBar.kt:52:56 'ViewList: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ViewList
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSyllableLine.kt:191:5 Parameter 'startSearchOffset' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtThumbnail.kt:45:5 Parameter 'artist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:191:39 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:352:53 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:368:53 'Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:419:13 Duplicate label in when
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AlbumScreen.kt:307:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ArtistScreen.kt:92:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:50:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:355:5 Parameter 'onClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:414:26 Parameter 'friendName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:68:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:260:68 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:364:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:459:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/EqualizerScreen.kt:56:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:164:5 Parameter 'progressFlow' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:178:5 Parameter 'onQueueClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:179:5 Parameter 'onLyricsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:182:5 Parameter 'isAutoPlayEnabled' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:183:5 Parameter 'onAutoPlayToggle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheetPanes.kt:425:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:40:5 Parameter 'dominantColor' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:42:5 Parameter 'onSettingsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:57:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:103:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:772:56 'ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ExitToApp
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:1224:5 Parameter 'votes' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionWidgets.kt:107:5 Parameter 'isHost' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:52:9 Variable 'downloadTasks' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:56:9 Variable 'user' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:88:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:694:21 Variable 'gridColumns' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1204:43 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1374:5 Parameter 'onMoveToFolder' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1392:44 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/PlayerScreen.kt:14:33 Parameter 'onCollapse' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:46:9 Variable 'spotifyAuth' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:43:5 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:428:33 Parameter 'index' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:93:35 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:454:75 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:668:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:736:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:783:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:800:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:983:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:69:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:244:33 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:148:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:272:5 Parameter 'onArtistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:106:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:412:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:473:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:529:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:607:52 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/FleetConfig.kt:204:29 Parameter 'd' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/SLog.kt:97:15 Unnecessary safe call on a non-null receiver of type Throwable
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/newpipe/NewPipeDownloaderImpl.kt:25:39 'create(MediaType?, ByteArray, Int = ..., Int = ...): RequestBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/HomeViewModel.kt:74:18 This declaration is in a preview state and can be changed in a backwards-incompatible manner with a best-effort migration. Its usage should be marked with '@kotlinx.coroutines.FlowPreview' or '@OptIn(kotlinx.coroutines.FlowPreview::class)' if you accept the drawback of relying on preview API
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:186:43 Parameter '_peers' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:193:56 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:198:40 Parameter 'currentPosition' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerHousekeeping.kt:36:46 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:321:92 Elvis operator (?:) always returns the left operand of non-nullable type Int?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:417:29 Name shadowed: currentT
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:775:93 Unnecessary safe call on a non-null receiver of type Track?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:990:50 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:296:9 Parameter 'allOnlineResults' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:298:9 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:399:25 Variable 'coverUrl' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
+
+> Task :app:processDebugJavaRes
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+
+> Task :app:testDebugUnitTest
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/jvm_test-1793006634074.json
+
+BUILD SUCCESSFUL in 1m 52s
+24 actionable tasks: 17 executed, 7 from cache
+Configuration cache entry stored.
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Native DSP Test Suite...
+[TEST] Phase 1: Native DSP, Audiophile Fidelity & 32-Peer Jam
+  - Phase1/BS.1770: calibration anchors
+  - Phase1/BS.1770: dual gating
+  - Phase1/normalize: -8 LUFS -> -14 target
+  - Phase1/limiter: true-peak ceiling + inter-sample
+  - Phase1/channels: constant-power balance + mono
+  - Phase1/ring: SPSC correctness
+  - Phase1/mix: 32-peer pool + saturation
+  - Phase1/silentPLL: bypass + PTP lock + takeover
+  - Phase1/chain: end-to-end -14 LUFS @ -1 dBTP
+  - Phase1/rate: legacy paths honor the configured fs
+  - Phase1/rate: rate-aware legacy surface PASSED
+  - Phase1/perf: limiter hot-path benchmark
+    SoftKneeLimiter 2048f stereo hot   1036741.3 ns/block  506.22 ns/frame  (~1.74% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      80045.1 ns/block   19.54 ns/frame  (~0.07% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          73085.9 ns/block   17.84 ns/frame  (~0.06% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           30229.1 ns/block    7.38 ns/frame  (~0.03% of an A55 core, est.)
+  - Phase1/perf: zero-alloc hot paths
+  - Phase1/perf: zero-alloc audit PASSED
+[TEST] Phase 1: all 231 checks passed
+[TEST] Phase 2: Harmonic Transition Engine, Candidate Fast-Math & Circadian Curves
+  [harmonic] candidate ID hashing
+  [harmonic] candidate dedup kernels
+  [harmonic] Camelot key transition matrix
+  [harmonic] BPM transition + combined coefficient
+  [harmonic] circadian daypart curves
+    (24h max per-second jump: 6.44e-05)
+  [harmonic] perf budgets + zero-alloc audit
+    (256x256 masks+union: 17.0 us, best of 5)
+    (bulk hash 20k x 21-char ids: 421 us)
+[TEST] Phase 2: all 150 checks passed (0 failed)
+[phase3] canvas loop + AGSL ambient glow
+  [canvas] loop phase primitives
+  [canvas] boundary crossfade weights
+  [canvas] blended-signal seam continuity (C0 + C1)
+  [canvas] bit-exact frame periodicity (both strategies)
+  [canvas] renderer clock discipline
+  [agsl] shader source + uniform tables
+  [agsl] runtime param generation
+  [agsl] fuzz-regression: hostile time/period quotients
+[phase3] canvas/AGSL: 169 passed, 0 failed
+[phase3] audio remuxer & bitstream validators
+  [opus] TOC codes 0-3 + RFC 6716 accounting
+  [adts] header ladder + strict rates
+  [remux] Ogg Opus structural audit
+  [remux] ADTS normalization + lifecycle
+  [remux] degenerate streams + io failure
+  [remux] randomized corrupt-stream soak (500 packets)
+  [remux] zero-allocation per-packet path
+[phase3] audio remuxer: 158 passed, 0 failed
+[phase3] bitmap palette extractor
+  [palette] role colors on synthetic art
+  [palette] WCAG contrast discipline
+  [palette] formats, sizes, malformed ladder
+  [palette] determinism
+  [palette] zero-alloc hot path + perf smoke
+    perf: 1024x1024 RGBA in 8.24 ms
+  [palette] fuzz-regression: median-cut termination
+[phase3] palette: 48 passed, 0 failed
+[phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
+  [sink] CRC32 known vectors + rate codes
+  [sink] SIMD Float32->PCM16 accuracy + saturation
+    max SIMD-vs-scalar delta: 0 LSB
+  [sink] SIMD stereo->mono downmix
+  [sink] FIR decimator: DC, passband, anti-alias, counts
+  [sink] SPSC ring basic IO + wraparound + byte reads
+  [sink] telemetry: watermarks, fullness, latency, xruns
+  [sink] flush semantics
+  [sink] zero-allocation hot paths (AllocGuard)
+  [sink] SPSC stress: 10,000,000 frames, 2 threads
+    0.04 s wall, 254.4 Mframes/s (unsanitized sanitizer build)
+  [sink] SPSC pipeline stress: downmix + decimate, 2 threads
+  [sink] packetizer roundtrip + MTU chunking
+  [sink] packetizer corruption ladder (hostile input)
+  [sink] zero-run compressor roundtrip + bounds
+  [sink] token-bucket rate limiter (deterministic clock)
+  [sink] packetizer pacing + backpressure telemetry
+  [sink] sink registry + stats wire layout
+[phase4] audio sinks: 8454 passed, 0 failed
+  [Phase-5] Palette SIMD & WCAG contrast engine
+    perf: 1080x1080 worst-case (full noise) best-of-3: 2.105 ms
+  [Phase-5] palette suite: 5050 checks passed, 0 failed
+  [Phase-5] Frame pacer & jank monitor
+    stress: 1,000,000 ticks, 2333 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=0
+  [Phase-5] frame pacer suite: 76 checks passed, 0 failed
+  - SoftKneeLimiter transient pass-through: PASSED
+  - SoftKneeLimiter sustained soft-knee limit: PASSED
+  - SoftKneeLimiter short limit: PASSED
+  - LufsNormalizer: PASSED
+  - KissFFTR 1024 Transform: PASSED
+[TEST] All Native DSP Tests Passed Successfully! (ASan/UBSan Verified)
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting SIMD & Physics Test Suite...
+  - AirDrop RK4 ODE Simulation: PASSED
+  - VectorStore 64-D Cosine Search: PASSED
+[TEST] All SIMD Physics Tests Passed Successfully!
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Storage & Telemetry Test Suite...
+  - Lock-Free MPMC Ring Buffer: PASSED
+[streamify:StreamifyNative] [StreamifyDB] Migration error: no such column: play_count
+  - SQLite WAL Database CRUD: PASSED
+[TEST] All Storage & Telemetry Tests Passed Successfully!
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
+[31;1merror[0m: profile `ci` not found (known profiles: default, default-miri)
