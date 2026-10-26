@@ -28,14 +28,14 @@ jobs:
 
     steps:
       - name: Checkout Codebase
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Shallow is enough: the bot reads the tree for context. It can
           # no longer push, so full history is unnecessary.
           fetch-depth: 1
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
