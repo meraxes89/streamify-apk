@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🚨 Report a security vulnerability (private)
+    url: https://github.com/meraxes89/streamify-apk/security/advisories/new
+    about: Do NOT open a public issue for security problems. See SECURITY.md for the private channel and SLAs.
+  - name: 💬 Questions & discussion
+    url: https://github.com/meraxes89/streamify-apk/issues?q=is%3Aissue+is%3Aopen+label%3Aquestion
+    about: Ask "how does engine X work?" style questions via the question-labeled issue search, or file a new one with the [question] prefix.
+  - name: 📖 Start here — Architecture map
+    url: https://github.com/meraxes89/streamify-apk/blob/main/docs/ARCHITECTURE.md
+    about: System map, dependency rules, end-to-end playback path. Read before filing engine-related issues.

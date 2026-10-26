@@ -1,0 +1,53 @@
+name: 🔍 Audit follow-up
+description: Track a finding from a deep code audit (e.g., issue #44 findings)
+title: "[audit] "
+labels: ["audit", "tech-debt"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One finding → one tracking issue → one titled PR with its measurement/parity gate (audit-22 house style). Link the parent audit issue in the first line.
+  - type: textarea
+    id: parent
+    attributes:
+      label: Parent audit reference
+      description: e.g., "Follow-up to #44 P0-1 (JNI ABI parity)"
+      placeholder: Follow-up to #44 P1-2 (dual Jam protocol stacks)
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding (file-verified)
+      description: Exact files/symbols/lines involved, current behavior, risk blast radius. Copy the evidence from the audit — don't paraphrase away specifics.
+      value: |
+        **Files:** 
+        **Current behavior:** 
+        **Risk:** 
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Proposed remediation
+      description: Concrete change plan. If it's a CI gate, paste the job sketch. If it's a refactor, name the seams.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: [P0, P1, P2, P3]
+    validations:
+      required: true
+  - type: checkboxes
+    id: done
+    attributes:
+      label: Definition of done
+      options:
+        - label: Fix PR merged with tests covering the changed boundary
+          required: true
+        - label: Relevant doc updated (engine manual / folder README / CHANGELOG)
+          required: true
+        - label: Measurement or parity gate wired into CI (if perf/ABI related)
+          required: false
