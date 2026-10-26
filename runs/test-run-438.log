@@ -1,0 +1,56 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #438
+COMMIT: 1d8e28b9e496ee24fbb2b56aa1f522caadabd245
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: FAILED ❌
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Downloading https://services.gradle.org/distributions/gradle-8.7-bin.zip
+............10%.............20%.............30%.............40%............50%.............60%.............70%.............80%.............90%............100%
+
+Welcome to Gradle 8.7!
+
+Here are the highlights of this release:
+ - Compiling and testing with Java 22
+ - Cacheable Groovy script compilation
+ - New methods in lazy collection properties
+
+For more details see https://docs.gradle.org/8.7/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: testDebugUnitTest
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: FAILED ❌
+==================================================
+
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting SIMD & Physics Test Suite...
+  - AirDrop RK4 ODE Simulation: PASSED
+  - VectorStore 64-D Cosine Search: PASSED
+[TEST] All SIMD Physics Tests Passed Successfully!
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: FAILED ❌
+==================================================
+
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
