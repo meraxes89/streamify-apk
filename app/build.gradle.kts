@@ -20,9 +20,19 @@ val supabaseUrl: String = localProperties.getProperty("SUPABASE_URL")
     ?: System.getenv("SUPABASE_URL")
     ?: "https://dbgtvzgwixerhnwvhtil.supabase.co"
 
+// SEC-01: the legacy fallback below embedded a long-lived service_role
+// JWT — a database administrator credential that bypasses every RLS policy
+// and must never ship inside a client binary. Client traffic now binds
+// strictly to the unprivileged anon key injected at build time via
+// local.properties (see CONTRIBUTING.md "Development environment") or the
+// SUPABASE_ANON_KEY environment variable. The empty fallback is
+// deliberately unprivileged: an unconfigured build degrades to anonymous,
+// RLS-gated access instead of silently wielding administrator privileges.
+// The exposed legacy key is presumed compromised and must additionally be
+// rotated/revoked in the Supabase dashboard.
 val supabaseAnonKey: String = localProperties.getProperty("SUPABASE_ANON_KEY")
     ?: System.getenv("SUPABASE_ANON_KEY")
-    ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiZ3R2emd3aXhlcmhud3ZodGlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjY5MDAyOCwiZXhwIjoyMTAyMjY2MDI4fQ.d-wjZmw8s1liL0JlllLDQ6KBGwHPm7drxhWkvGyOxLQ"
+    ?: ""
 
 val googleWebClientId: String = localProperties.getProperty("GOOGLE_WEB_CLIENT_ID")
     ?: System.getenv("GOOGLE_WEB_CLIENT_ID")

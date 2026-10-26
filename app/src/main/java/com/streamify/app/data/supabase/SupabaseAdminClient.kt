@@ -146,42 +146,107 @@ internal object SupabaseAdminClient {
         }
     }
 
-    suspend fun setUserAdminRole(targetUserId: String, isAdmin: Boolean): Result<Boolean> = withContext(Dispatchers.IO) {
+    // ========================================================================
+    // SEC-02: administrative RPC delegation & authentication guard
+    // ========================================================================
+    // The mutating admin RPCs (set_user_admin_role, terminate_jam_session,
+    // delete_comment_admin) used to be dispatched straight from the client
+    // to /rest/v1/rpc/* — and with the legacy service_role key hardcoded in
+    // the app, ANY installed copy (even signed-out) could invoke them. They
+    // are now routed exclusively through authenticated Supabase Edge
+    // Functions ({SUPABASE_URL}/functions/v1/<name>): the Edge Function
+    // validates the caller's JWT, verifies the admin claim server-side, and
+    // executes the privileged RPC with its own server-held credentials.
+    // The client-side guard below refuses dispatch when no genuine user
+    // session exists — it never falls back to the anon key — so
+    // unauthenticated callers are rejected before any network hop.
+
+    private const val EDGE_FUNCTION_SET_USER_ADMIN_ROLE = "set_user_admin_role"
+    private const val EDGE_FUNCTION_TERMINATE_JAM_SESSION = "terminate_jam_session"
+    private const val EDGE_FUNCTION_DELETE_COMMENT_ADMIN = "delete_comment_admin"
+
+    /**
+     * SEC-02 guard: resolves the CURRENT authenticated user session token,
+     * or null when the caller is effectively unauthenticated. Mirrors
+     * [SupabaseClient.getAuthToken] semantics without its anon-key fallback:
+     * an admin dispatch that would ride that fallback is by definition
+     * unauthenticated and must be rejected client-side, before any network
+     * dispatch.
+     */
+    private fun requireAuthenticatedSessionToken(): String? {
+        val token = SupabaseClient._accessToken.value ?: return null
+        if (token.isBlank()) return null
+        if (SupabaseClient.isJwtExpired(token)) return null
+        if (token == BuildConfig.SUPABASE_ANON_KEY) return null
+        return token
+    }
+
+    /**
+     * Dispatches a privileged admin operation through its authenticated
+     * Supabase Edge Function. Returns Result.failure (without any network
+     * hop) when no authenticated session is present.
+     */
+    private suspend fun executeAdminEdgeFunction(
+        functionName: String,
+        payload: JSONObject
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        val sessionToken = requireAuthenticatedSessionToken()
+        if (sessionToken == null) {
+            SLog.st(
+                "SupabaseAdminClient",
+                "Admin RPC $functionName blocked: no authenticated user session (SEC-02)",
+                null
+            )
+            return@withContext Result.failure(
+                SecurityException("Admin RPC $functionName requires an authenticated session")
+            )
+        }
         try {
-            val body = JSONObject().apply {
+            val url = "${BuildConfig.SUPABASE_URL}/functions/v1/$functionName"
+            val headers = mapOf(
+                "apikey" to BuildConfig.SUPABASE_ANON_KEY,
+                "Authorization" to "Bearer $sessionToken",
+                "Content-Type" to "application/json"
+            )
+            val (code, resp) = SupabaseClient.executeHttpRequest(url, "POST", headers, payload.toString())
+            if (code !in 200..299) {
+                SLog.st(
+                    "SupabaseAdminClient",
+                    "Admin RPC $functionName rejected by edge function: HTTP $code",
+                    null
+                )
+            }
+            Result.success(code in 200..299)
+        } catch (e: Exception) {
+            SLog.st("SupabaseAdminClient", "Admin RPC $functionName dispatch failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setUserAdminRole(targetUserId: String, isAdmin: Boolean): Result<Boolean> =
+        executeAdminEdgeFunction(
+            EDGE_FUNCTION_SET_USER_ADMIN_ROLE,
+            JSONObject().apply {
                 put("target_user_id", targetUserId)
                 put("new_admin_status", isAdmin)
             }
-            val (code, _) = SupabaseClient.executeRpc("rpc/set_user_admin_role", "POST", body.toString())
-            Result.success(code in 200..299)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+        )
 
-    suspend fun terminateJamSessionAdmin(sessionId: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject().apply {
+    suspend fun terminateJamSessionAdmin(sessionId: String): Result<Boolean> =
+        executeAdminEdgeFunction(
+            EDGE_FUNCTION_TERMINATE_JAM_SESSION,
+            JSONObject().apply {
                 put("target_session_id", sessionId)
             }
-            val (code, _) = SupabaseClient.executeRpc("rpc/terminate_jam_session", "POST", body.toString())
-            Result.success(code in 200..299)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+        )
 
-    suspend fun deleteCommentAdmin(commentId: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject().apply {
+    suspend fun deleteCommentAdmin(commentId: String): Result<Boolean> =
+        executeAdminEdgeFunction(
+            EDGE_FUNCTION_DELETE_COMMENT_ADMIN,
+            JSONObject().apply {
                 put("target_comment_id", commentId)
             }
-            val (code, _) = SupabaseClient.executeRpc("rpc/delete_comment_admin", "POST", body.toString())
-            Result.success(code in 200..299)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+        )
 
     suspend fun getAdminJamSessions(): Result<List<AdminJamSession>> = withContext(Dispatchers.IO) {
         try {
