@@ -57,12 +57,42 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      # audit #44 P1-3 — the release path used to build + publish APKs on
+      # tag push without running a single test. Tags don't match the
+      # branch filters on the extreme-test-matrix workflow, so nothing
+      # upstream guarded them either. The full suite now runs HERE, in the
+      # release job itself, before any artifact is signed and published:
+      #   1. Rust: every unit + integration test binary (same suite the
+      #      test matrix runs).
+      #   2. Kotlin: the full JVM unit suite (skipRust — the native libs
+      #      are built for Android targets below).
+      #   3. JNI ABI parity, both modes: source-level and link-level on
+      #      the Android .so files the APK actually ships.
+      # A red suite aborts the release before the keystore is ever touched.
+      - name: Rust test suite (unit + integration)
+        working-directory: rust
+        run: cargo test --lib --tests
+
+      - name: Kotlin JVM unit suite
+        run: ./gradlew testDebugUnitTest -Pstreamify.skipRust=true --stacktrace
+
+      - name: JNI ABI parity gate (source-level)
+        run: python3 scripts/jni_parity_check.py --source
+
       - name: Build Release APK
         run: ./gradlew assembleRelease --stacktrace
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: JNI ABI parity gate (nm on shipped .so)
+        run: |
+          NDK_DIR="${ANDROID_NDK_HOME:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/ndk/26.1.10909125}"
+          NM="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          if [ ! -x "$NM" ]; then NM=nm; fi
+          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
+            --so-glob 'app/build/**/*.so'
           
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

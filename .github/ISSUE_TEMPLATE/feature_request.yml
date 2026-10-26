@@ -1,0 +1,62 @@
+name: ✨ Feature request
+description: Propose something new — aligned with the free-platform philosophy
+title: "[feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before proposing: read [PHILOSOPHY.md](https://github.com/meraxes89/streamify-apk/blob/main/PHILOSOPHY.md). We ship premium features to everyone for free — requests that add paywalls, ads, or telemetry-based monetization will be closed as contrary to project principles.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / user need
+      description: What can't a listener do today that they should be able to? Not the solution — the need.
+      placeholder: Listeners on metered connections want a per-network bitrate ceiling so jam sessions don't silently burn their data plan.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the feature. Name the engine(s) it touches (docs/01–12) and whether it changes any cross-language interface (JNI exports, Jam wire format).
+    validations:
+      required: true
+  - type: dropdown
+    id: engines
+    attributes:
+      label: Engines touched
+      multiple: true
+      options:
+        - Stream resolution (01)
+        - DSP acoustic (02)
+        - Lyrics alignment (03)
+        - Neural continuum (04)
+        - Mesh / AirDrop (05)
+        - Jam distributed (06)
+        - Database / storage (07)
+        - Ingestion / scraper (08)
+        - Search graph (09)
+        - Telemetry profiler (10)
+        - Playback UI (11)
+        - Server security (12)
+        - Native bridge / JNI
+        - None yet (greenfield)
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other designs you rejected and why.
+  - type: checkboxes
+    id: philosophy
+    attributes:
+      label: Philosophy check
+      options:
+        - label: This feature stays free for every user (no paywall/tiering)
+          required: true
+        - label: No new dependency without documented rationale
+          required: false
+        - label: I am willing to implement this myself (assign me)
+          required: false

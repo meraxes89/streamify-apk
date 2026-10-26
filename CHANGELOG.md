@@ -3,6 +3,40 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — audit #44 P0-1: JNI ingress bridge + ABI parity gates
+
+### Fixed
+- `nativeP2pRegisterIncomingCallback` had **no native export** — the
+  declared JNI symbol simply did not exist, so every call degraded to a
+  swallowed `UnsatisfiedLinkError` and `NativeBridge.incomingFrames`
+  NEVER received a frame from the real mesh: the entire Jam v4 ingress
+  path was silent on devices (JVM tests never noticed — they exercise the
+  `meshOverride` mock). Implemented in `rust/src/jni_bridge_p2p.rs`:
+  a global-ref listener + JavaVM bridge, a frame forwarder subscribed to
+  the new `MSG_JAM_APP` envelope, and a peer join/leave watcher, all
+  stop-signal-driven and panic-contained per house rules.
+- JamWire↔mesh **wire-type collision** (found while fixing the above):
+  the Kotlin Jam vocabulary (Msg 1..=31) collides with the mesh's frozen
+  control registry (OP=3 is MSG_CHUNK_DATA, CONTINUATION=4 is
+  MSG_HEARTBEAT, TICK=1 masquerades as PTP_SYNC), so the JNI guard
+  rejected most Jam egress as protocol spoofing. Native egress now folds
+  the JamWire family into the app-visible envelope `MSG_JAM_APP` (0x20);
+  the payload self-describes its sub-type. The mock/test seam is
+  unchanged (raw types both directions).
+
+### Added
+- `scripts/jni_parity_check.py` — Kotlin `external fun` ↔ native JNI
+  export parity tripwire, in two modes: `--source` (fast, fail-first in
+  CI before the native build) and `--nm` (authoritative, on the built
+  `.so` artifacts). Wired into `extreme-test-matrix.yml` (both modes) and
+  `build-ref.yml` (`--nm`).
+- `MeshNode::stop_signal()` — public subscription to the node's shutdown
+  watch, required by the bridge tasks (and any future strong-`Arc`
+  consumer) to tear down with the node.
+- Rust integration test `test_jam_app_envelope.rs` (envelope legality,
+  end-to-end routing, stop-driven teardown) and Kotlin
+  `NativeBridgeWireTypeTest` (mapping + mock-seam raw types).
+
 ## [Unreleased] — Modular Architecture & Documentation Overhaul
 
 Zero logic changes: a structural + documentation pass that carves the

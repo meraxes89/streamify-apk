@@ -99,6 +99,8 @@ use std::collections::{BTreeMap, VecDeque};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
+use crate::wire_le;
+
 /// RIM magic: 'R','I' (u16 LE = 0x5249).
 pub const RIM_MAGIC: u16 = 0x5249;
 /// Remote-intent wire protocol version.
@@ -175,7 +177,9 @@ fn encode_rim(msg_type: u8, sender: u64, target: u64, seq_or_nonce: u64, payload
 /// The frame's target field (routing helper for drain_actions callers).
 pub fn rim_frame_target(frame: &[u8]) -> u64 {
     if frame.len() >= 20 {
-        u64::from_le_bytes(frame[12..20].try_into().expect("len checked"))
+        // audit #44 P2-5: total read — degrade to the broadcast target
+        // on a short frame instead of trusting the guard adjacency.
+        wire_le::le_u64(&frame[12..20]).unwrap_or(0)
     } else {
         0
     }
@@ -612,9 +616,9 @@ fn parse_rim(bytes: &[u8]) -> Result<RimFrame, RimReject> {
     }
     Ok(RimFrame {
         msg_type,
-        sender: u64::from_le_bytes(bytes[4..12].try_into().expect("len checked")),
-        target: u64::from_le_bytes(bytes[12..20].try_into().expect("len checked")),
-        seq_or_nonce: u64::from_le_bytes(bytes[20..28].try_into().expect("len checked")),
+        sender: wire_le::le_u64(&bytes[4..12]).ok_or(RimReject::Truncated)?,
+        target: wire_le::le_u64(&bytes[12..20]).ok_or(RimReject::Truncated)?,
+        seq_or_nonce: wire_le::le_u64(&bytes[20..28]).ok_or(RimReject::Truncated)?,
         payload: bytes[RIM_HEADER_LEN..RIM_HEADER_LEN + plen].to_vec(),
     })
 }
@@ -931,12 +935,16 @@ impl RemoteIntentEngine {
             }
         });
         if let Some(frame) = resend_offer {
-            let target = self.handoff.as_ref().expect("just checked").target;
+            // audit #44 P2-5: re-borrow instead of `.expect("just checked")`
+            // — if the handoff ever vanishes between the read above and
+            // here (a future refactor away from single-function flow), the
+            // resend degrades to a skip, never a panic.
             if let Some(h) = self.handoff.as_mut() {
+                let target = h.target;
                 h.last_offer_ms = now_ms;
                 h.offer_attempts += 1;
+                self.actions.push(IntentAction::Send { target, frame });
             }
-            self.actions.push(IntentAction::Send { target, frame });
         }
         // Intent retransmission / abandonment.
         if matches!(self.role, Role::ActiveController | Role::HandoffPending) {
@@ -1045,7 +1053,16 @@ impl RemoteIntentEngine {
             self.stats.frames_rejected += 1;
             return false;
         }
-        let to_seq = u64::from_le_bytes(frame.payload.as_slice().try_into().expect("len checked"));
+        let to_seq = match wire_le::le_u64(frame.payload.as_slice()) {
+            Some(s) => s,
+            // audit #44 P2-5: total read; the length guard above makes
+            // this unreachable today, but a guard drift degrades into a
+            // rejected NACK instead of a panic.
+            None => {
+                self.stats.frames_rejected += 1;
+                return false;
+            }
+        };
         self.stats.intents_nacked += 1;
         let from_seq = frame.seq_or_nonce;
         if to_seq < from_seq {
@@ -1107,7 +1124,14 @@ impl RemoteIntentEngine {
             }
         }
 
-        let receiver = self.receiver.as_mut().expect("bootstrapped above");
+        // audit #44 P2-5: the role gates above guarantee the receiver is
+        // bootstrapped by the time ingress reaches here; if that invariant
+        // ever drifts (a future refactor moves the bootstrap), degrade to
+        // a rejected frame instead of a panic mid-dispatch.
+        let Some(receiver) = self.receiver.as_mut() else {
+            self.stats.frames_rejected += 1;
+            return false;
+        };
         receiver.last_controller_ms = now_ms;
         receiver.controller_silent_raised = false;
 
@@ -1144,7 +1168,12 @@ impl RemoteIntentEngine {
     /// Equal-controller-pair path: apply if next, stash if future
     /// (NACKing the gap), re-ACK if duplicate.
     fn stash_or_apply(&mut self, sender: u64, seq: u64, intent: RemoteIntent) -> bool {
-        let next = self.receiver.as_ref().expect("caller bootstraps").next_expected;
+        // audit #44 P2-5: degrade to "frame not handled" when the
+        // bootstrap invariant is violated — never a panic.
+        let Some(next) = self.receiver.as_ref().map(|r| r.next_expected) else {
+            self.stats.frames_rejected += 1;
+            return false;
+        };
         if seq < next {
             // Duplicate (sender retry): re-ACK idempotently, never re-apply.
             self.stats.intents_duplicated += 1;
@@ -1154,8 +1183,7 @@ impl RemoteIntentEngine {
         }
         if seq > next {
             // Future intent: stash (bounded) + NACK [next, seq).
-            {
-                let receiver = self.receiver.as_mut().expect("caller bootstraps");
+            if let Some(receiver) = self.receiver.as_mut() {
                 receiver.buffer.insert(seq, intent);
                 if receiver.buffer.len() > MAX_REORDER_BUFFER {
                     // Hostile future-seq flood: drop the HIGHEST entries
@@ -1179,10 +1207,13 @@ impl RemoteIntentEngine {
         // seq == next: apply, then drain consecutively buffered intents.
         self.apply_in_order(sender, seq, intent);
         loop {
-            let (next_now, buffered) = {
-                let receiver = self.receiver.as_ref().expect("applied");
-                (receiver.next_expected, receiver.buffer.get(&receiver.next_expected).copied())
-            };
+            // audit #44 P2-5: no receiver left to drain → nothing buffered
+            // → the match breaks the loop. Total by construction.
+            let (next_now, buffered) = self
+                .receiver
+                .as_ref()
+                .map(|r| (r.next_expected, r.buffer.get(&r.next_expected).copied()))
+                .unwrap_or((0, None));
             match buffered {
                 Some(i) => {
                     if let Some(receiver) = self.receiver.as_mut() {
@@ -1221,7 +1252,19 @@ impl RemoteIntentEngine {
             });
             return false;
         }
-        let epoch = u32::from_le_bytes(payload[0..4].try_into().expect("len checked"));
+        let epoch = match wire_le::le_u32(&payload[0..4]) {
+            Some(e) => e,
+            // audit #44 P2-5: total read — guard drift degrades into a
+            // refused handoff, never a panic.
+            None => {
+                self.stats.frames_rejected += 1;
+                self.events.push_back(IntentEvent::HandoffRefused {
+                    from_controller: frame.sender,
+                    reason: HandoffFailReason::MalformedFrame,
+                });
+                return false;
+            }
+        };
         let (snapshot, consumed) = match PlaybackSnapshot::decode_from(&payload[4..]) {
             Some(v) => v,
             None => {
@@ -1235,8 +1278,20 @@ impl RemoteIntentEngine {
         };
         let key_off = 4 + consumed;
         let sig_off = key_off + 32;
-        let pubkey_bytes: [u8; 32] = payload[key_off..sig_off].try_into().expect("len checked");
-        let sig_bytes: [u8; 64] = payload[sig_off..sig_off + 64].try_into().expect("len checked");
+        let (pubkey_bytes, sig_bytes): ([u8; 32], [u8; 64]) =
+            match (wire_le::fixed::<32>(&payload[key_off..sig_off]), wire_le::fixed::<64>(&payload[sig_off..sig_off + 64])) {
+                (Some(k), Some(s)) => (k, s),
+                // audit #44 P2-5: total reads — guard drift degrades into a
+                // refused handoff, never a panic.
+                _ => {
+                    self.stats.frames_rejected += 1;
+                    self.events.push_back(IntentEvent::HandoffRefused {
+                        from_controller: frame.sender,
+                        reason: HandoffFailReason::MalformedFrame,
+                    });
+                    return false;
+                }
+            };
         let verifying = match VerifyingKey::from_bytes(&pubkey_bytes) {
             Ok(k) => k,
             Err(_) => {
@@ -1333,7 +1388,16 @@ impl RemoteIntentEngine {
             }
             return true;
         }
-        let ack_epoch = u32::from_le_bytes(frame.payload.as_slice().try_into().expect("len checked"));
+        let ack_epoch = match wire_le::le_u32(frame.payload.as_slice()) {
+            Some(e) => e,
+            // audit #44 P2-5: total read; the length guard above makes this
+            // unreachable today — a guard drift degrades into a rejected
+            // frame instead of a panic.
+            None => {
+                self.stats.frames_rejected += 1;
+                return false;
+            }
+        };
         // Adopt the offer epoch as OUR controller epoch: the intent stream
         // now flows under it, aligned with the receiver's pinned base.
         // Pending pre-handoff intents are superseded by the snapshot (the

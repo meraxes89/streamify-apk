@@ -57,6 +57,18 @@ jobs:
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-build-cache --no-daemon --stacktrace
 
+      # audit #44 P0-1 — link-time JNI parity gate: every `external fun`
+      # declared in NativeBridge.kt must resolve to a defined dynamic
+      # symbol in at least one built .so. Source-level checks can miss
+      # "implemented but not compiled into the CMake/cargo target"; this
+      # diff runs on the artifacts that actually ship.
+      - name: JNI ABI parity gate (nm on built .so)
+        run: |
+          NM="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          if [ ! -x "$NM" ]; then NM=nm; fi
+          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
+            --so-glob 'app/build/**/*.so'
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:

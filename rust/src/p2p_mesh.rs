@@ -155,6 +155,24 @@ pub const MSG_GOSSIP_PRUNE: u8 = 0x0F;
 pub const MSG_VOTE_OP: u8 = 0x10;
 pub const MSG_FRIEND_ACTIVITY: u8 = 0x11;
 
+/// Jam v4 application envelope (audit #44 P0-1).
+///
+/// The Kotlin JamEngine multiplexes its whole wire vocabulary (JamWire
+/// Msg 1..=31: TICK, PRESENCE, OP, CONTINUATION, MERKLE_*, ...) through
+/// `NativeBridge.p2pBroadcast`/`p2pSendToPeer`. Those small integers
+/// collide with this registry's frozen control types (JamWire OP=3 is
+/// MSG_CHUNK_DATA; CONTINUATION=4 is MSG_HEARTBEAT; TICK=1 masquerades
+/// as PTP_SYNC), so the JNI app-layer guard rightly rejects most of the
+/// Jam vocabulary as protocol spoofing. The fix is an envelope: the
+/// Kotlin bridge folds every JamWire-family type into THIS one app-level
+/// type — the JamWire header inside the payload self-describes the real
+/// sub-type (magic + version + its own msgType field), so nothing is
+/// lost. 0x20 opens the app-visible extension range the guard docs
+/// already reserved ("future app-level extensions >= 0x20"); it rides
+/// the PlumTree gossip path like every other data type and reaches
+/// `dispatch_to_apps` subscribers after epidemic dedupe.
+pub const MSG_JAM_APP: u8 = 0x20;
+
 /// Message types that flow through the PlumTree engine (dense `sequence`
 /// stream, deviation D3). Everything else is unicast/control and bypasses
 /// the gossip dedupe layer. Phase 1 additions: host-committed intents and
@@ -1621,6 +1639,15 @@ impl MeshNode {
     /// Signals all loops to exit. Idempotent.
     pub fn shutdown(&self) {
         let _ = self.stop_tx.send(true);
+    }
+
+    /// Subscribes to this node's shutdown signal (audit #44 P0-1): the
+    /// JNI app-bridge forwarder tasks hold strong `Arc`s to the node, so
+    /// they cannot rely on `Weak::upgrade` failure to learn the node is
+    /// finished — they select on this channel instead and exit the moment
+    /// [`MeshNode::shutdown`] fires (explicit stop or a restart's teardown).
+    pub fn stop_signal(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.stop_tx.subscribe()
     }
 
     // ═════════════════════════════════════════════════════════════════
