@@ -29,7 +29,9 @@ val googleWebClientId: String = localProperties.getProperty("GOOGLE_WEB_CLIENT_I
     ?: "868888425624-9dfr5crtahiqph68tiba1acapvicnsug.apps.googleusercontent.com"
 
 // 1. Resolve flags at configuration time via Provider API (Configuration-Cache Safe!)
-val skipNativeBuild: Boolean = providers.gradleProperty("skipExternalNativeBuild")
+val ciPrebuiltNativeDir: String? = providers.gradleProperty("ciPrebuiltNativeDir").orNull
+
+val skipNativeBuild: Boolean = (ciPrebuiltNativeDir != null) || providers.gradleProperty("skipExternalNativeBuild")
     .map { it.toBoolean() }
     .orElse(providers.gradleProperty("streamify.skipRust").map { it.toBoolean() })
     .getOrElse(false)
@@ -167,6 +169,10 @@ android {
                 path = file("../native/CMakeLists.txt")
                 version = "3.22.1"
             }
+        }
+    } else if (ciPrebuiltNativeDir != null) {
+        sourceSets.getByName("main") {
+            jniLibs.srcDir(file(ciPrebuiltNativeDir))
         }
     }
 }
