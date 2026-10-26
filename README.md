@@ -8,7 +8,9 @@
 [![C++](https://img.shields.io/badge/C%2B%2B-20%20%7C%20ARM%20NEON%20SIMD-orange.svg)](https://isocpp.org)
 [![Rust](https://img.shields.io/badge/Rust-1.93%20%7C%20Zero--Copy%20SIMD-red.svg)](https://www.rust-lang.org)
 
-**Streamify** is an ultra-low-latency Android music streaming engine engineered with a **Dual-Native (Kotlin + Jetpack Compose, Native C++20 Core, and Rust Engine)** architecture. C++20 handles real-time SIMD audio DSP (ITU-R BS.1770-4 LUFS, KissFFT HPCP Camelot keys, Ellis BPM prior, Soft-Knee limiter) and 6-DOF RK4 fluid dynamics, while Rust eliminates garbage collection bottlenecks with zero-copy SIMD JSON parsing, pure native audio metadata tagging with Lofty (completely eliminating Python and CPython GIL overhead), sub-millisecond binary lyric timeline pre-compilation, and low-jitter PTP clock synchronization.
+**Streamify is a free music streaming platform with every premium feature unlocked by default** — high-fidelity DSP normalization, gapless playback, live distributed jam sessions, synced lyrics, offline libraries: no paywalls, no tiers. Read the full [project philosophy](PHILOSOPHY.md).
+
+Technically, it is an ultra-low-latency Android music streaming engine engineered with a **Dual-Native (Kotlin + Jetpack Compose, Native C++20 Core, and Rust Engine)** architecture. C++20 handles real-time SIMD audio DSP (ITU-R BS.1770-4 LUFS, KissFFT HPCP Camelot keys, Ellis BPM prior, Soft-Knee limiter) and 6-DOF RK4 fluid dynamics, while Rust eliminates garbage collection bottlenecks with zero-copy SIMD JSON parsing, pure native audio metadata tagging with Lofty (completely eliminating Python and CPython GIL overhead), sub-millisecond binary lyric timeline pre-compilation, and low-jitter PTP clock synchronization.
 
 ---
 
@@ -2622,6 +2624,16 @@ graph TD
 
 ## 📜 License
 Streamify APK is licensed under the [MIT License](LICENSE).
+
+---
+
+## 🤝 Community & Governance
+
+- **[PHILOSOPHY.md](PHILOSOPHY.md)** — what we are building and why: a free music streaming platform with all premium features, for everyone.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev environment, workflow, review standards, first-PR checklist.
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** — Contributor Covenant 2.0; blunt about code, kind about people.
+- **[SECURITY.md](SECURITY.md)** — private vulnerability reporting channel, SLAs, severity conventions. **Do not file security issues publicly.**
+- Issue & PR templates live in [`.github/`](.github/) and encode the house rules (measurement gates, boundary parity checklists).
 
 
 

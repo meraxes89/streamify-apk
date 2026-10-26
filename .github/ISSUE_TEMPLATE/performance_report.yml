@@ -1,0 +1,59 @@
+name: ⚡ Performance regression
+description: Glitches, frame drops, latency drift, battery drain — with measurement gates
+title: "[perf] "
+labels: ["perf", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        House rule: perf claims need numbers. A before/after benchmark or trace is part of the report (and part of any fix PR). See CONTRIBUTING.md → "measurement gate".
+  - type: textarea
+    id: summary
+    attributes:
+      label: What regressed / is too slow
+      description: Which path, which budget missed. E.g. "120 FPS frame budget (8.33 ms) exceeded on visualizer during seek."
+      placeholder: LUFS normalization pass exceeds 4 ms/frame on Snapdragon 7-series during gapless transitions.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Hot path affected
+      options:
+        - Audio DSP (C++/NEON)
+        - Rust engine (CRDT / mesh / tagging / clock)
+        - JNI boundary / marshalling
+        - Stream resolution / network
+        - UI / Compose rendering
+        - Startup / cold start
+        - Battery / background work
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: Baseline vs current
+      description: Versions/SHAs compared, and measured deltas if known.
+      value: |
+        - Baseline commit/version: 
+        - Current commit/version: 
+        - Measured delta: 
+    validations:
+      required: true
+  - type: textarea
+    id: methodology
+    attributes:
+      label: Measurement method
+      description: simpleperf / systrace / macrobenchmark / standing bench harness (audit-22 #9) — include device, SoC, run counts, variance.
+      render: shell
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      value: |
+        - Device model / SoC: 
+        - Android version (API level): 
+        - Build type (debug/release): 
+    validations:
+      required: true

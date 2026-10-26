@@ -1,0 +1,84 @@
+name: 🐛 Bug report
+description: Something doesn't behave as documented
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. ⚠️ **Security vulnerabilities must NOT be filed here** — see [SECURITY.md](https://github.com/meraxes89/streamify-apk/blob/main/SECURITY.md).
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the incorrect behavior.
+      placeholder: Jam session host migrates twice within one election window when peer C rejoins.
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Affected engine / area
+      options:
+        - Stream resolution (docs/01)
+        - DSP acoustic (docs/02)
+        - Lyrics alignment (docs/03)
+        - Neural continuum (docs/04)
+        - Mesh / AirDrop (docs/05)
+        - Jam distributed (docs/06)
+        - Database / storage (docs/07)
+        - Ingestion / scraper (docs/08)
+        - Search graph (docs/09)
+        - Telemetry profiler (docs/10)
+        - Playback UI (docs/11)
+        - Server security (docs/12)
+        - Native bridge / JNI
+        - CI / build
+        - Other / unknown
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Be deterministic if possible. Note whether it reproduces every time.
+      value: |
+        1. 
+        2. 
+        3. 
+      placeholder: |
+        1. Open app, start jam session as host on device A
+        2. Join from device B, then kill B's app mid-session
+        3. Relaunch B and rejoin
+        Expected: single stable host
+        Actual: host migrates twice in ~2s
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      value: |
+        - Device model / SoC: 
+        - Android version (API level): 
+        - Streamify version / commit SHA: 
+        - Build type (debug/release): 
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traces
+      description: Trimmed logcat, tombstones, simpleperf output. Wrap in triple backticks.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-filing checklist
+      options:
+        - label: I searched existing issues (open and closed) for duplicates
+          required: true
+        - label: This is not a security vulnerability (those go through SECURITY.md privately)
+          required: true
+        - label: I can reproduce this on the latest main build or a tagged release
+          required: false
