@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -37,7 +37,7 @@ jobs:
         run: which cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android NDK & CMake
         run: sdkmanager "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0"
@@ -50,7 +50,7 @@ jobs:
           echo "NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       # audit #44 P2-5 — panic-boundary convention gate: every Java_*
       # export in rust/src/jni_bridge*.rs must carry catch_unwind. Cheap
