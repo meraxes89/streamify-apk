@@ -66,9 +66,43 @@ object SLog {
         override fun stackTraceString(tr: Throwable): String = android.util.Log.getStackTraceString(tr)
     }
 
+    /**
+     * Strict-mock fallback (sprint P1): pure-JVM sink selected by the
+     * `streamify.slog.jvm` system property, which the Gradle unit-test
+     * task sets for the whole test JVM. This closes the ordering hole a
+     * per-class `@BeforeClass` install cannot: ANY first touch of SLog —
+     * including from another object's static initializer that runs before
+     * any test method — already sees the JVM sink, so `android.util.Log`
+     * is never class-loaded in the test JVM at all (once its <clinit>
+     * fails under strict mocks, the failure is sticky for the whole run:
+     * every later Log reference degrades to NoClassDefFoundError).
+     *
+     * Deliberately android-free: println/stderr only. The rich testkit
+     * fake (app/src/test/.../testkit/JvmSLogSink.kt) can still override
+     * [sink] afterwards for capture/assertions — see its install().
+     */
+    internal object JvmStdoutSink : Sink {
+        private fun emit(level: Char, tag: String, msg: String, tr: Throwable?) {
+            System.err.println("$level/$tag: $msg")
+            tr?.printStackTrace(System.err)
+        }
+        override fun v(tag: String, msg: String, tr: Throwable?) = emit('V', tag, msg, tr)
+        override fun d(tag: String, msg: String, tr: Throwable?) = emit('D', tag, msg, tr)
+        override fun i(tag: String, msg: String, tr: Throwable?) = emit('I', tag, msg, tr)
+        override fun w(tag: String, msg: String, tr: Throwable?) = emit('W', tag, msg, tr)
+        override fun e(tag: String, msg: String, tr: Throwable?) = emit('E', tag, msg, tr)
+        override fun wtf(tag: String, msg: String, tr: Throwable?) = emit('F', tag, msg, tr)
+        override fun stackTraceString(tr: Throwable): String {
+            val sw = java.io.StringWriter()
+            tr?.printStackTrace(java.io.PrintWriter(sw))
+            return sw.toString().ifBlank { "no stack trace" }
+        }
+    }
+
     /** Swap point for tests. Never call this from production code. */
     @Volatile
-    internal var sink: Sink = AndroidSink
+    internal var sink: Sink =
+        if (System.getProperty("streamify.slog.jvm") != null) JvmStdoutSink else AndroidSink
 
     // -------------------------------------------------------------- levels
     const val LEVEL_V = 'V'

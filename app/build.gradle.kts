@@ -122,6 +122,13 @@ android {
         // defaults: a missing mock is a loud RuntimeException, not a quiet 0.
         unitTests {
             isReturnDefaultValues = false
+            // Strict-mock companion: arm the pure-JVM SLog fallback sink for
+            // the WHOLE test JVM (order-proof — beats per-class @BeforeClass
+            // installs because static initializers can run before any test
+            // method). See SLog.JvmStdoutSink.
+            all { test ->
+                test.systemProperty("streamify.slog.jvm", "true")
+            }
         }
     }
     composeOptions {
