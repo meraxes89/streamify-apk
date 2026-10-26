@@ -178,7 +178,7 @@ jobs:
         run: which cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Cache Cargo Registry & Build Dir
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: |
@@ -193,7 +193,7 @@ jobs:
 
       - name: Cache Android NDK & CMake
         id: ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           # Runner-image env vars are NOT part of the Actions `env` context, so
@@ -482,7 +482,7 @@ jobs:
 
       - name: Cache Cargo Registry & Host Target Dir
         if: matrix.type == 'rust'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: |
@@ -515,7 +515,7 @@ jobs:
       - name: Cache Android NDK & CMake
         id: ndk-cache
         if: matrix.type == 'android-jvm'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             /usr/local/lib/android/sdk/ndk/26.1.10909125
@@ -621,7 +621,7 @@ jobs:
           max-size: 500M
 
       - name: Restore Fuzzer Seed Corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: native/fuzz/corpus
           key: libfuzzer-corpus-${{ github.ref_name }}-${{ github.sha }}
@@ -712,7 +712,7 @@ jobs:
 
       - name: Cache Android NDK & CMake
         id: ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             /Users/runner/Library/Android/sdk/ndk/26.1.10909125
