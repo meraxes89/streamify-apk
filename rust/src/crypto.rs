@@ -16,8 +16,8 @@ impl VaultCryptoEngine {
         dest_path: &str,
         master_key: &[u8],
     ) -> Result<(), String> {
-        let mut src_file = File::open(src_path)
-            .map_err(|e| format!("Failed to open source file: {}", e))?;
+        let mut src_file =
+            File::open(src_path).map_err(|e| format!("Failed to open source file: {}", e))?;
         let mut dest_file = File::create(dest_path)
             .map_err(|e| format!("Failed to create destination vault file: {}", e))?;
 

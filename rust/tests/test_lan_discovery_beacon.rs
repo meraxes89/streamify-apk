@@ -71,7 +71,8 @@ fn beacon_v2_payload_layout_is_exact() {
 /// 70-byte form (room descriptor, no sender binding) still parses.
 #[test]
 fn beacon_room_only_form_parses() {
-    let mut payload = build_beacon_v2_payload(1, 1, 80, [9u8; 16], [7u8; 32], 1, 32, 5, [3u8; 32], 0);
+    let mut payload =
+        build_beacon_v2_payload(1, 1, 80, [9u8; 16], [7u8; 32], 1, 32, 5, [3u8; 32], 0);
     payload.truncate(BEACON_V2_ROOM_LEN);
     let parsed = parse_beacon(&payload).expect("70-byte form parses");
     let room = parsed.room.expect("descriptor present");
@@ -102,18 +103,16 @@ fn malformed_beacons_reject_without_panic() {
 async fn foreign_session_device_discovers_live_room() {
     let _guard = RUN_LOCK.lock().await;
     let host_session = format!("room-alpha-{}", std::process::id());
-    let host = MeshNode::start(node(&host_session, "host-device", "disc-host"))
-        
-        .expect("host start");
+    let host =
+        MeshNode::start(node(&host_session, "host-device", "disc-host")).expect("host start");
     // The host starts the LAN beacon: declares authority + advertises the
     // room descriptor (RoomID | HostPubKey | Epoch | Capacity | Count).
     host.start_lan_beacon(&host_session);
 
     // A guest joins the room session and adopts the host claim — its own
     // beacons then advertise the room too (registry convergence).
-    let guest = MeshNode::start(node(&host_session, "guest-device", "disc-guest"))
-        
-        .expect("guest start");
+    let guest =
+        MeshNode::start(node(&host_session, "guest-device", "disc-guest")).expect("guest start");
     guest.add_peer(host.local_addr());
 
     // A bystander in a COMPLETELY DIFFERENT session (the discovering
@@ -160,7 +159,9 @@ async fn foreign_session_device_discovers_live_room() {
         assert!(
             t0.elapsed() < Duration::from_secs(2),
             "observer never discovered the room — obs {:?} host {:?} guest {:?}",
-            observer.stats(), host.stats(), guest.stats()
+            observer.stats(),
+            host.stats(),
+            guest.stats()
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -189,7 +190,9 @@ async fn foreign_session_device_discovers_live_room() {
     // the poll API can render "your room is live" — and so joiners
     // probing announce_to get the current descriptor back).
     assert!(
-        host.lan_rooms().iter().any(|r| r.room_id == host.session().0),
+        host.lan_rooms()
+            .iter()
+            .any(|r| r.room_id == host.session().0),
         "host registry pins its own advertised room"
     );
 
@@ -204,13 +207,10 @@ async fn foreign_session_device_discovers_live_room() {
 async fn discovery_registry_rejects_epoch_downgrades() {
     let _guard = RUN_LOCK.lock().await;
     let session = format!("room-beta-{}", std::process::id());
-    let host = MeshNode::start(node(&session, "host2", "dg-host"))
-        
-        .expect("host");
+    let host = MeshNode::start(node(&session, "host2", "dg-host")).expect("host");
     host.start_lan_beacon(&session);
 
-    let observer = MeshNode::start(node("observer-2", "obs2", "dg-obs"))
-        .expect("observer");
+    let observer = MeshNode::start(node("observer-2", "obs2", "dg-obs")).expect("observer");
     host.announce_to(observer.local_addr());
 
     let t0 = std::time::Instant::now();
@@ -227,9 +227,8 @@ async fn discovery_registry_rejects_epoch_downgrades() {
     // foreign session and inject it through the observer's ingress by
     // having a fake node advertise it.
     let stale_session = format!("{}-stale", session);
-    let stale = MeshNode::start(node(&stale_session, "stale-node", "dg-stale"))
-        
-        .expect("stale node");
+    let stale =
+        MeshNode::start(node(&stale_session, "stale-node", "dg-stale")).expect("stale node");
     // The stale node's OWN room id hashes differently, so instead verify
     // the registry logic directly: re-advertising epoch 1 keeps entry.
     let _ = stale;
@@ -281,12 +280,8 @@ async fn legacy_beacon_interop_still_pairs() {
 async fn stop_lan_beacon_silences_advertisement() {
     let _guard = RUN_LOCK.lock().await;
     let session = format!("room-delta-{}", std::process::id());
-    let host = MeshNode::start(node(&session, "host3", "sb-host"))
-        
-        .expect("host");
-    let member = MeshNode::start(node(&session, "member", "sb-member"))
-        
-        .expect("member");
+    let host = MeshNode::start(node(&session, "host3", "sb-host")).expect("host");
+    let member = MeshNode::start(node(&session, "member", "sb-member")).expect("member");
     host.start_lan_beacon(&session);
     member.add_peer(host.local_addr());
 

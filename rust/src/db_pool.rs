@@ -77,9 +77,7 @@ pub fn get(db_path: &str, lane: Lane) -> Result<PooledConn, rusqlite::Error> {
     }
 
     let registry = REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = registry
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let mut map = registry.lock().unwrap_or_else(|p| p.into_inner());
 
     let pool = match map.get(std::path::Path::new(db_path)) {
         Some(p) => p.clone(),
@@ -107,15 +105,9 @@ pub fn get(db_path: &str, lane: Lane) -> Result<PooledConn, rusqlite::Error> {
     // Slow path: first checkout on this lane. The init lock serializes
     // schema bootstrap across lanes (and re-checks the lane map in case a
     // sibling thread won the race while we waited).
-    let _init_guard = pool
-        .init
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let _init_guard = pool.init.lock().unwrap_or_else(|p| p.into_inner());
 
-    let mut conns = pool
-        .conns
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let mut conns = pool.conns.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(conn) = conns.get(&lane) {
         return Ok(conn.clone());
     }
@@ -143,10 +135,7 @@ mod tests {
     /// Each (path, lane) gets exactly one live handle for the process.
     #[test]
     fn pooled_returns_same_handle_per_lane() {
-        let dir = std::env::temp_dir().join(format!(
-            "dbpool_same_{:?}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("dbpool_same_{:?}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.db");
         let path_str = path.to_str().unwrap();
@@ -165,10 +154,7 @@ mod tests {
     /// depends on readers never queueing on the writer's mutex).
     #[test]
     fn read_and_write_lanes_are_distinct() {
-        let dir = std::env::temp_dir().join(format!(
-            "dbpool_lanes_{:?}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("dbpool_lanes_{:?}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.db");
         let path_str = path.to_str().unwrap();
@@ -185,10 +171,7 @@ mod tests {
     /// committed DDL (proving init happened, not just open).
     #[test]
     fn pool_bootstraps_schema_on_fresh_path() {
-        let dir = std::env::temp_dir().join(format!(
-            "dbpool_fresh_{:?}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("dbpool_fresh_{:?}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.db");
         let path_str = path.to_str().unwrap();
@@ -223,10 +206,7 @@ mod tests {
     /// silent `SQLITE_BUSY` loss class), and reads observe the final count.
     #[test]
     fn concurrent_writers_never_lose_rows() {
-        let dir = std::env::temp_dir().join(format!(
-            "dbpool_conc_{:?}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("dbpool_conc_{:?}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.db");
         let path_str = path.to_str().unwrap();
@@ -246,10 +226,7 @@ mod tests {
                             "INSERT INTO universal_tracks
                              (cad_id, title, artist, duration_sec, source_platform)
                              VALUES (?1, ?2, 'Art', 1, 'TEST')",
-                            rusqlite::params![
-                                format!("cad_{t:02}_{i:03}"),
-                                format!("T{t}-{i}")
-                            ],
+                            rusqlite::params![format!("cad_{t:02}_{i:03}"), format!("T{t}-{i}")],
                         )
                         .unwrap();
                 }
@@ -275,10 +252,7 @@ mod tests {
     /// `user_version` gate reads v2 — the pool must not re-run the scan.
     #[test]
     fn pool_migration_is_once() {
-        let dir = std::env::temp_dir().join(format!(
-            "dbpool_mig_{:?}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("dbpool_mig_{:?}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.db");
         let path_str = path.to_str().unwrap();

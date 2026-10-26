@@ -25,7 +25,8 @@ pub struct ByzantineConsensusEngine;
 impl ByzantineConsensusEngine {
     /// Generates HMAC-SHA256 Proof-of-Acoustic-Compute digest
     pub fn generate_proof(payload: &AcousticProofPayload, secret_key: &[u8]) -> [u8; 32] {
-        let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
 
         mac.update(payload.track_id.as_bytes());
         for energy in &payload.subband_energies {
@@ -408,7 +409,8 @@ impl PlaylistOp {
         if bytes.len() < PLAYLIST_OP_HEADER_LEN {
             return None;
         }
-        let header: [u8; PLAYLIST_OP_HEADER_LEN] = bytes[..PLAYLIST_OP_HEADER_LEN].try_into().ok()?;
+        let header: [u8; PLAYLIST_OP_HEADER_LEN] =
+            bytes[..PLAYLIST_OP_HEADER_LEN].try_into().ok()?;
         if header[52..64].iter().any(|&x| x != 0) {
             return None; // reserved span must be zero
         }
@@ -575,7 +577,10 @@ impl CollabPlaylistState {
 
     /// Current local role of an author (strict-mode lookups).
     pub fn role_of(&self, author: u32) -> PlaylistRole {
-        self.roster.get(&author).copied().unwrap_or(PlaylistRole::Editor)
+        self.roster
+            .get(&author)
+            .copied()
+            .unwrap_or(PlaylistRole::Editor)
     }
 
     /// Local (host-side) roster mutation — the trust root besides Admin
@@ -613,7 +618,8 @@ impl CollabPlaylistState {
             })
             .collect();
         rows.sort_by(|a, b| {
-            a.frac.partial_cmp(&b.frac)
+            a.frac
+                .partial_cmp(&b.frac)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(a.item_id.cmp(&b.item_id))
         });
@@ -983,12 +989,12 @@ mod collab_playlist_tests {
         // Historical item identity is untouched (namespaces disjoint).
         assert_eq!(add_a.item_id >> 32, 1);
         assert_eq!(a.role_of(0x000A_11CE), PlaylistRole::Admin); // carried
-        // New mints land in the adopted namespace — distinct devices can
-        // no longer collide on the same (author, counter) identity. The
-        // per-replica counter CONTINUES across the swap (1 → 2): identity
-        // stays unique because the AUTHOR half changed — the
-        // disjoint-namespace property is what adopt_author relies on,
-        // not a counter reset.
+                                                                 // New mints land in the adopted namespace — distinct devices can
+                                                                 // no longer collide on the same (author, counter) identity. The
+                                                                 // per-replica counter CONTINUES across the swap (1 → 2): identity
+                                                                 // stays unique because the AUTHOR half changed — the
+                                                                 // disjoint-namespace property is what adopt_author relies on,
+                                                                 // not a counter reset.
         let add_b = a.build_add(222, 0.5).expect("post-adoption add");
         assert_eq!(add_b.item_id >> 32, 0x000A_11CE);
         assert_eq!(add_b.item_id & 0xFFFF_FFFF, 2);
@@ -1108,13 +1114,19 @@ mod collab_playlist_tests {
             "Roadtrip 2026 🚗",
         );
         let bytes = op.to_bytes();
-        assert_eq!(bytes.len(), PLAYLIST_OP_HEADER_LEN + "Roadtrip 2026 🚗".len());
+        assert_eq!(
+            bytes.len(),
+            PLAYLIST_OP_HEADER_LEN + "Roadtrip 2026 🚗".len()
+        );
         let back = PlaylistOp::from_bytes(&bytes).expect("round-trip");
         assert_eq!(back, op);
 
         // Truncation at every boundary is a clean None.
         for cut in 0..bytes.len() {
-            assert!(PlaylistOp::from_bytes(&bytes[..cut]).is_none(), "cut at {cut}");
+            assert!(
+                PlaylistOp::from_bytes(&bytes[..cut]).is_none(),
+                "cut at {cut}"
+            );
         }
         // Flipped checksum bit.
         let mut corrupt = bytes.clone();
@@ -1274,7 +1286,10 @@ mod collab_playlist_tests {
         );
         assert_eq!(host.title(), "Collaborative Playlist");
         // The grant op itself is in the log for replica roster sync.
-        assert!(host.log.iter().any(|op| op.kind == PlaylistOpKind::SetRole && op.item_id == 5));
+        assert!(host
+            .log
+            .iter()
+            .any(|op| op.kind == PlaylistOpKind::SetRole && op.item_id == 5));
         let _ = grant;
     }
 
@@ -1297,9 +1312,33 @@ mod collab_playlist_tests {
 
         // Ship everything to everyone in DIFFERENT orders.
         let streams: Vec<Vec<PlaylistOp>> = vec![
-            vec![a1.clone(), a2.clone(), b1.clone(), c1.clone(), rem.clone(), reo.clone(), rn.clone()],
-            vec![rn.clone(), c1.clone(), reo.clone(), rem.clone(), b1.clone(), a2.clone(), a1.clone()],
-            vec![b1.clone(), reo.clone(), a1.clone(), c1.clone(), a2.clone(), rn.clone(), rem.clone()],
+            vec![
+                a1.clone(),
+                a2.clone(),
+                b1.clone(),
+                c1.clone(),
+                rem.clone(),
+                reo.clone(),
+                rn.clone(),
+            ],
+            vec![
+                rn.clone(),
+                c1.clone(),
+                reo.clone(),
+                rem.clone(),
+                b1.clone(),
+                a2.clone(),
+                a1.clone(),
+            ],
+            vec![
+                b1.clone(),
+                reo.clone(),
+                a1.clone(),
+                c1.clone(),
+                a2.clone(),
+                rn.clone(),
+                rem.clone(),
+            ],
         ];
         let mut replicas = [a, b, c];
         for (rep, stream) in replicas.iter_mut().zip(streams.iter()) {

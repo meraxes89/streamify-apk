@@ -49,7 +49,9 @@ pub unsafe extern "C" fn rust_parse_innertube_candidates(
             Err(_) => return std::ptr::null_mut(),
         };
 
-        CString::new(json_output).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(json_output)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -70,7 +72,9 @@ pub unsafe extern "C" fn rust_resolve_stream_url(video_id_ptr: *const c_char) ->
         match StreamResolver::resolve_stream(video_id) {
             Ok(streams) => {
                 let json_str = serde_json::to_string(&streams).unwrap_or_default();
-                CString::new(json_str).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+                CString::new(json_str)
+                    .map(|c| c.into_raw())
+                    .unwrap_or(std::ptr::null_mut())
             }
             Err(_) => std::ptr::null_mut(),
         }
@@ -126,7 +130,9 @@ pub unsafe extern "C" fn rust_write_audio_metadata(
             None
         };
 
-        match AudioMetadataEngine::write_metadata(file_path, title, artist, album, cover_art, lyrics) {
+        match AudioMetadataEngine::write_metadata(
+            file_path, title, artist, album, cover_art, lyrics,
+        ) {
             Ok(_) => 0,
             Err(_) => -5,
         }
@@ -136,10 +142,7 @@ pub unsafe extern "C" fn rust_write_audio_metadata(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rust_compile_lyrics(
-    lrc_ptr: *const u8,
-    lrc_len: usize,
-) -> *mut c_char {
+pub unsafe extern "C" fn rust_compile_lyrics(lrc_ptr: *const u8, lrc_len: usize) -> *mut c_char {
     let result = catch_unwind(AssertUnwindSafe(|| {
         if lrc_ptr.is_null() || lrc_len == 0 {
             return std::ptr::null_mut();
@@ -157,7 +160,9 @@ pub unsafe extern "C" fn rust_compile_lyrics(
             Err(_) => return std::ptr::null_mut(),
         };
 
-        CString::new(json_output).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(json_output)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -182,19 +187,16 @@ pub unsafe extern "C" fn rust_generate_proof_of_compute(
         let pcm_slice = std::slice::from_raw_parts(pcm_ptr, pcm_len);
         let proof = ConsensusEngine::generate_proof_of_compute(pcm_slice, nonce);
 
-        CString::new(proof).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(proof)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rust_process_ptp_timestamps(
-    t0: i64,
-    t1: i64,
-    t2: i64,
-    t3: i64,
-) -> i64 {
+pub unsafe extern "C" fn rust_process_ptp_timestamps(t0: i64, t1: i64, t2: i64, t3: i64) -> i64 {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut guard = match GLOBAL_PTP_FILTER.lock() {
             Ok(g) => g,
@@ -308,7 +310,9 @@ pub unsafe extern "C" fn rust_fuzzy_rank_candidates(
             Err(_) => return std::ptr::null_mut(),
         };
 
-        CString::new(out_json).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(out_json)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -359,7 +363,9 @@ pub unsafe extern "C" fn rust_parse_youtube_playlist(
         match PlaylistParser::parse_youtube_playlist(raw_json) {
             Ok(res) => {
                 let out_json = serde_json::to_string(&res).unwrap_or_default();
-                CString::new(out_json).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+                CString::new(out_json)
+                    .map(|c| c.into_raw())
+                    .unwrap_or(std::ptr::null_mut())
             }
             Err(_) => std::ptr::null_mut(),
         }
@@ -445,9 +451,9 @@ pub unsafe extern "C" fn rust_download_stream_direct(
         };
 
         match StreamDownloader::download_stream_to_file(stream_url, dest_path, 65536, |_| {}) {
-            Ok(sha256_hex) => {
-                CString::new(sha256_hex).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
-            }
+            Ok(sha256_hex) => CString::new(sha256_hex)
+                .map(|c| c.into_raw())
+                .unwrap_or(std::ptr::null_mut()),
             Err(_) => std::ptr::null_mut(),
         }
     }));
@@ -518,7 +524,9 @@ pub unsafe extern "C" fn rust_score_and_rank_radio_candidates(
             Err(_) => return std::ptr::null_mut(),
         };
 
-        CString::new(out_json).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(out_json)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -541,7 +549,12 @@ pub unsafe extern "C" fn rust_process_crossfade_pcm(
         let in_slice = std::slice::from_raw_parts(in_ptr, len);
         let mixed_slice = std::slice::from_raw_parts_mut(mixed_ptr, len);
 
-        CrossfadeDspEngine::process_equal_power_crossfade(out_slice, in_slice, mixed_slice, progress);
+        CrossfadeDspEngine::process_equal_power_crossfade(
+            out_slice,
+            in_slice,
+            mixed_slice,
+            progress,
+        );
         0
     }));
 
@@ -629,7 +642,9 @@ pub unsafe extern "C" fn rust_parse_backup_csv(csv_ptr: *const c_char) -> *mut c
         let records = BackupArchiveEngine::parse_csv_dump(csv);
         let out_json = serde_json::to_string(&records).unwrap_or_default();
 
-        CString::new(out_json).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(out_json)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -660,13 +675,16 @@ pub unsafe extern "C" fn rust_align_and_compile_lyrics(
             None
         };
 
-        let aligned_lines = LyricAlignerEngine::align_unsynchronized_lyrics(raw_lyrics, duration_ms, energy_slice);
+        let aligned_lines =
+            LyricAlignerEngine::align_unsynchronized_lyrics(raw_lyrics, duration_ms, energy_slice);
         let out_json = match serde_json::to_string(&aligned_lines) {
             Ok(j) => j,
             Err(_) => return std::ptr::null_mut(),
         };
 
-        CString::new(out_json).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(out_json)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -731,7 +749,9 @@ pub unsafe extern "C" fn rust_generate_neuro_queue(
             Err(_) => return std::ptr::null_mut(),
         };
 
-        CString::new(out_json).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+        CString::new(out_json)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut())
     }));
 
     result.unwrap_or(std::ptr::null_mut())
@@ -798,5 +818,3 @@ pub unsafe extern "C" fn rust_step_airdrop_physics(
 
     result.unwrap_or(-2)
 }
-
-

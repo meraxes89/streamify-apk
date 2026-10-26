@@ -18,7 +18,10 @@ impl CrossfadeDspEngine {
         let gain_out = angle.cos();
         let gain_in = angle.sin();
 
-        let len = outgoing_buffer.len().min(incoming_buffer.len()).min(out_mixed.len());
+        let len = outgoing_buffer
+            .len()
+            .min(incoming_buffer.len())
+            .min(out_mixed.len());
         for i in 0..len {
             out_mixed[i] = (outgoing_buffer[i] * gain_out) + (incoming_buffer[i] * gain_in);
         }

@@ -95,7 +95,10 @@ impl fmt::Display for VerifierError {
             VerifierError::MalformedHeader => write!(f, "manifest shorter than fixed header"),
             VerifierError::MalformedBody => write!(f, "manifest body length mismatch"),
             VerifierError::TooManyChunks { num_chunks } => {
-                write!(f, "manifest declares {num_chunks} > {MAX_TREE_CHUNKS} chunks")
+                write!(
+                    f,
+                    "manifest declares {num_chunks} > {MAX_TREE_CHUNKS} chunks"
+                )
             }
             VerifierError::RootMismatch => {
                 write!(f, "recomputed merkle root diverges from declared root")
@@ -350,8 +353,7 @@ impl HashTreeManifest {
         let expected = if manifest.total_len == 0 {
             0
         } else {
-            manifest.total_len.div_ceil(manifest.chunk_size as u64)
-                as u32
+            manifest.total_len.div_ceil(manifest.chunk_size as u64) as u32
         };
         if expected != manifest.num_chunks {
             return Err(VerifierError::ChunkCountInconsistent);
@@ -468,8 +470,7 @@ impl ChunkVerifier {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.verified.len() as u32 == self.manifest.num_chunks
-            && self.verified.iter().all(|&v| v)
+        self.verified.len() as u32 == self.manifest.num_chunks && self.verified.iter().all(|&v| v)
     }
 
     pub fn verified_bytes(&self) -> u64 {
@@ -542,7 +543,10 @@ mod tests {
         assert_eq!(m.num_chunks, 4);
         assert_eq!(m.total_len, data.len() as u64);
         assert_eq!(m.chunk_len(3), 1234);
-        assert_eq!(m.chunk_range(2), Some((2 * MIN_CHUNK_SIZE as u64, 3 * MIN_CHUNK_SIZE as u64)));
+        assert_eq!(
+            m.chunk_range(2),
+            Some((2 * MIN_CHUNK_SIZE as u64, 3 * MIN_CHUNK_SIZE as u64))
+        );
         assert_eq!(m.chunk_range(4), None);
 
         let wire = m.to_wire();
@@ -607,28 +611,46 @@ mod tests {
         // Chunk 0: good.
         assert_eq!(
             v.verify_chunk(0, &data[..MIN_CHUNK_SIZE]),
-            ChunkVerdict::Accepted { index: 0, len: MIN_CHUNK_SIZE }
+            ChunkVerdict::Accepted {
+                index: 0,
+                len: MIN_CHUNK_SIZE
+            }
         );
         // Bit-rot: one flipped byte.
         let mut rot = data[MIN_CHUNK_SIZE..2 * MIN_CHUNK_SIZE].to_vec();
         rot[3311] ^= 0x40;
         assert_eq!(
             v.verify_chunk(1, &rot),
-            ChunkVerdict::Rejected { index: 1, reason: RejectReason::HashMismatch }
+            ChunkVerdict::Rejected {
+                index: 1,
+                reason: RejectReason::HashMismatch
+            }
         );
         // Truncated payload.
         assert_eq!(
             v.verify_chunk(1, &data[MIN_CHUNK_SIZE..2 * MIN_CHUNK_SIZE - 1]),
-            ChunkVerdict::Rejected { index: 1, reason: RejectReason::LengthMismatch }
+            ChunkVerdict::Rejected {
+                index: 1,
+                reason: RejectReason::LengthMismatch
+            }
         );
         // Out-of-range index.
         assert_eq!(
             v.verify_chunk(3, &[0u8; 8]),
-            ChunkVerdict::Rejected { index: 3, reason: RejectReason::IndexOutOfRange }
+            ChunkVerdict::Rejected {
+                index: 3,
+                reason: RejectReason::IndexOutOfRange
+            }
         );
         // Genuine chunk 1 + duplicate delivery of chunk 0.
-        assert!(matches!(v.verify_chunk(1, &data[MIN_CHUNK_SIZE..2 * MIN_CHUNK_SIZE]), ChunkVerdict::Accepted { .. }));
-        assert!(matches!(v.verify_chunk(0, &data[..MIN_CHUNK_SIZE]), ChunkVerdict::Duplicate { .. }));
+        assert!(matches!(
+            v.verify_chunk(1, &data[MIN_CHUNK_SIZE..2 * MIN_CHUNK_SIZE]),
+            ChunkVerdict::Accepted { .. }
+        ));
+        assert!(matches!(
+            v.verify_chunk(0, &data[..MIN_CHUNK_SIZE]),
+            ChunkVerdict::Duplicate { .. }
+        ));
 
         assert_eq!(v.rejected_count(), 3);
         assert_eq!(v.duplicate_count(), 1);
@@ -718,7 +740,10 @@ mod tests {
         // A chunk claim against an empty manifest is out of range.
         assert!(matches!(
             v.verify_chunk(0, &[0u8; 16]),
-            ChunkVerdict::Rejected { reason: RejectReason::IndexOutOfRange, .. }
+            ChunkVerdict::Rejected {
+                reason: RejectReason::IndexOutOfRange,
+                ..
+            }
         ));
     }
 }

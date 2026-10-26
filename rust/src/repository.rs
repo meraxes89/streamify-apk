@@ -34,8 +34,7 @@ pub struct TrackRepository {
 
 /// Canonical schema for universal_tracks, shared by TrackRepository::new and
 /// ensure_db_migrated so read-only paths can bootstrap the table safely.
-pub const UNIVERSAL_TRACKS_DDL: &str =
-    "CREATE TABLE IF NOT EXISTS universal_tracks (
+pub const UNIVERSAL_TRACKS_DDL: &str = "CREATE TABLE IF NOT EXISTS universal_tracks (
         cad_id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         artist TEXT NOT NULL,
@@ -121,7 +120,11 @@ impl TrackRepository {
             hash ^= b as u64;
             hash = hash.wrapping_mul(FNV_PRIME);
         }
-        let bucket: u32 = if duration_sec > 0 { duration_sec / 3 } else { 0 };
+        let bucket: u32 = if duration_sec > 0 {
+            duration_sec / 3
+        } else {
+            0
+        };
         for i in 0..4 {
             hash ^= ((bucket >> (i * 8)) & 0xFF) as u64;
             hash = hash.wrapping_mul(FNV_PRIME);
@@ -249,10 +252,18 @@ impl TrackRepository {
                         let len = $field.len() as u32;
                         let len_bytes = len.to_le_bytes();
                         unsafe {
-                            std::ptr::copy_nonoverlapping(len_bytes.as_ptr(), out_buf.add(offset), 4);
+                            std::ptr::copy_nonoverlapping(
+                                len_bytes.as_ptr(),
+                                out_buf.add(offset),
+                                4,
+                            );
                             offset += 4;
                             if !($field).is_empty() {
-                                std::ptr::copy_nonoverlapping(($field).as_ptr(), out_buf.add(offset), ($field).len());
+                                std::ptr::copy_nonoverlapping(
+                                    ($field).as_ptr(),
+                                    out_buf.add(offset),
+                                    ($field).len(),
+                                );
                                 offset += ($field).len();
                             }
                         }
@@ -309,13 +320,10 @@ pub fn ensure_cad_rekey(conn: &Connection) {
     }
 
     let migrated = (|| -> Result<bool, rusqlite::Error> {
-        let mut stmt = conn.prepare(
-            "SELECT cad_id, title, artist, duration_sec FROM universal_tracks",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT cad_id, title, artist, duration_sec FROM universal_tracks")?;
         let rows: Vec<(String, String, String, i64)> = stmt
-            .query_map([], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-            })?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
             .filter_map(|r| r.ok())
             .collect();
         drop(stmt);
@@ -357,10 +365,7 @@ pub fn ensure_cad_rekey(conn: &Connection) {
                      WHERE cad_id = ?1",
                     params![new_id, old_id],
                 );
-                let _ = conn.execute(
-                    "DELETE FROM universal_tracks WHERE cad_id = ?1",
-                    [&old_id],
-                );
+                let _ = conn.execute("DELETE FROM universal_tracks WHERE cad_id = ?1", [&old_id]);
             } else {
                 let _ = conn.execute(
                     "UPDATE universal_tracks SET cad_id = ?1 WHERE cad_id = ?2",
@@ -375,10 +380,7 @@ pub fn ensure_cad_rekey(conn: &Connection) {
     match migrated {
         Ok(true) => {
             let _ = conn.execute_batch("COMMIT;");
-            let _ = conn.execute_batch(&format!(
-                "PRAGMA user_version = {};",
-                REKEY_SCHEMA_VERSION
-            ));
+            let _ = conn.execute_batch(&format!("PRAGMA user_version = {};", REKEY_SCHEMA_VERSION));
         }
         _ => {
             // Roll back and leave user_version untouched so the migration retries
@@ -420,7 +422,11 @@ pub fn generate_cad_id_u64(title: &str, artist: &str, duration_sec: u32) -> u64 
         hash ^= b as u64;
         hash = hash.wrapping_mul(FNV_PRIME);
     }
-    let bucket: u32 = if duration_sec > 0 { duration_sec / 3 } else { 0 };
+    let bucket: u32 = if duration_sec > 0 {
+        duration_sec / 3
+    } else {
+        0
+    };
     for i in 0..4 {
         hash ^= ((bucket >> (i * 8)) & 0xFF) as u64;
         hash = hash.wrapping_mul(FNV_PRIME);

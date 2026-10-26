@@ -537,7 +537,10 @@ pub extern "system" fn Java_com_streamify_app_sync_NativeChunkSyncEngine_createS
         let id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
         let mut map = heal(SESSIONS.lock());
         map.insert(id, session);
-        let drained = map.get_mut(&id).map(|s| s.drain_events()).unwrap_or_default();
+        let drained = map
+            .get_mut(&id)
+            .map(|s| s.drain_events())
+            .unwrap_or_default();
         drop(map);
         deliver_events(drained);
         id as jlong
@@ -553,7 +556,9 @@ pub extern "system" fn Java_com_streamify_app_sync_NativeChunkSyncEngine_startSy
     session_id: jlong,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        with_session(session_id, |s| s.start()).map(jbool).unwrap_or(JNI_FALSE)
+        with_session(session_id, |s| s.start())
+            .map(jbool)
+            .unwrap_or(JNI_FALSE)
     }))
     .unwrap_or(JNI_FALSE)
 }
@@ -567,7 +572,9 @@ pub extern "system" fn Java_com_streamify_app_sync_NativeChunkSyncEngine_pauseSy
     session_id: jlong,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        with_session(session_id, |s| s.pause()).map(jbool).unwrap_or(JNI_FALSE)
+        with_session(session_id, |s| s.pause())
+            .map(jbool)
+            .unwrap_or(JNI_FALSE)
     }))
     .unwrap_or(JNI_FALSE)
 }
@@ -580,7 +587,9 @@ pub extern "system" fn Java_com_streamify_app_sync_NativeChunkSyncEngine_resumeS
     session_id: jlong,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        with_session(session_id, |s| s.resume()).map(jbool).unwrap_or(JNI_FALSE)
+        with_session(session_id, |s| s.resume())
+            .map(jbool)
+            .unwrap_or(JNI_FALSE)
     }))
     .unwrap_or(JNI_FALSE)
 }
@@ -593,7 +602,9 @@ pub extern "system" fn Java_com_streamify_app_sync_NativeChunkSyncEngine_cancelS
     session_id: jlong,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        with_session(session_id, |s| s.cancel()).map(jbool).unwrap_or(JNI_FALSE)
+        with_session(session_id, |s| s.cancel())
+            .map(jbool)
+            .unwrap_or(JNI_FALSE)
     }))
     .unwrap_or(JNI_FALSE)
 }
@@ -758,7 +769,10 @@ pub extern "system" fn Java_com_streamify_app_sync_NativeChunkSyncEngine_registe
         };
         {
             let mut guard = heal(CALLBACK.lock());
-            *guard = Some(CallbackState { vm, callback: global });
+            *guard = Some(CallbackState {
+                vm,
+                callback: global,
+            });
         }
         spawn_callback_thread();
         JNI_TRUE

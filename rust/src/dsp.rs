@@ -230,7 +230,8 @@ impl SpectrumVisualizer {
         #[allow(clippy::needless_range_loop)]
         for i in 0..bar_count {
             let low_idx = (half_n as f32 * (i as f32 / bar_count as f32).powf(2.2)) as usize;
-            let high_idx = ((half_n as f32 * ((i + 1) as f32 / bar_count as f32).powf(2.2)) as usize)
+            let high_idx = ((half_n as f32 * ((i + 1) as f32 / bar_count as f32).powf(2.2))
+                as usize)
                 .max(low_idx + 1)
                 .min(half_n);
 

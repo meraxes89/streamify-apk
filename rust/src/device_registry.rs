@@ -472,7 +472,14 @@ mod tests {
     fn lease_expires_after_three_missed_heartbeats() {
         let mut reg = DeviceRegistry::new(5_000, 15_000);
         assert_eq!(
-            reg.register_or_refresh(TV_ID, "Living Room TV", DeviceType::Tv, tv_caps(), DiscoveryOrigin::LanBeacon, 1_000),
+            reg.register_or_refresh(
+                TV_ID,
+                "Living Room TV",
+                DeviceType::Tv,
+                tv_caps(),
+                DiscoveryOrigin::LanBeacon,
+                1_000
+            ),
             RegistryChange::Discovered { device_id: TV_ID }
         );
         // Heartbeats at 1s..11s keep the lease alive indefinitely.
@@ -496,7 +503,14 @@ mod tests {
     #[test]
     fn heartbeat_refresh_slides_the_lease() {
         let mut reg = DeviceRegistry::default();
-        reg.register_or_refresh(TV_ID, "TV", DeviceType::Tv, tv_caps(), DiscoveryOrigin::LanBeacon, 0);
+        reg.register_or_refresh(
+            TV_ID,
+            "TV",
+            DeviceType::Tv,
+            tv_caps(),
+            DiscoveryOrigin::LanBeacon,
+            0,
+        );
         // 60 s of 5 s heartbeats: never evicted.
         let mut t = 0u64;
         while t < 60_000 {
@@ -510,8 +524,18 @@ mod tests {
     #[test]
     fn non_monotonic_heartbeat_refused() {
         let mut reg = DeviceRegistry::default();
-        reg.register_or_refresh(TV_ID, "TV", DeviceType::Tv, tv_caps(), DiscoveryOrigin::LanBeacon, 10_000);
-        assert_eq!(reg.on_heartbeat(TV_ID, 9_999), Err(HeartbeatError::NonMonotonic));
+        reg.register_or_refresh(
+            TV_ID,
+            "TV",
+            DeviceType::Tv,
+            tv_caps(),
+            DiscoveryOrigin::LanBeacon,
+            10_000,
+        );
+        assert_eq!(
+            reg.on_heartbeat(TV_ID, 9_999),
+            Err(HeartbeatError::NonMonotonic)
+        );
         // Lease untouched by the refused frame.
         assert_eq!(reg.get(TV_ID).unwrap().lease_expires_ms, 25_000);
     }
@@ -529,7 +553,14 @@ mod tests {
             volume_steps: 7,
             direct_render: false,
         };
-        reg.register_or_refresh(TV_ID, "X", DeviceType::Speaker, exotic, DiscoveryOrigin::CloudRelay, 0);
+        reg.register_or_refresh(
+            TV_ID,
+            "X",
+            DeviceType::Speaker,
+            exotic,
+            DiscoveryOrigin::CloudRelay,
+            0,
+        );
         assert_eq!(reg.get(TV_ID).unwrap().caps, exotic);
         assert_eq!(reg.get(TV_ID).unwrap().origin, DiscoveryOrigin::CloudRelay);
     }
@@ -557,26 +588,54 @@ mod tests {
         let mut reg = DeviceRegistry::new(1, 1);
         for i in 0..MAX_REGISTRY_DEVICES as u64 {
             assert_eq!(
-                reg.register_or_refresh(i, "d", DeviceType::Speaker, DeviceCaps::typical(DeviceType::Speaker), DiscoveryOrigin::LanBeacon, 0),
+                reg.register_or_refresh(
+                    i,
+                    "d",
+                    DeviceType::Speaker,
+                    DeviceCaps::typical(DeviceType::Speaker),
+                    DiscoveryOrigin::LanBeacon,
+                    0
+                ),
                 RegistryChange::Discovered { device_id: i }
             );
         }
         assert_eq!(reg.len(), MAX_REGISTRY_DEVICES);
         // One beyond capacity: refused…
         assert_eq!(
-            reg.register_or_refresh(9_999, "overflow", DeviceType::Speaker, DeviceCaps::typical(DeviceType::Speaker), DiscoveryOrigin::LanBeacon, 0),
+            reg.register_or_refresh(
+                9_999,
+                "overflow",
+                DeviceType::Speaker,
+                DeviceCaps::typical(DeviceType::Speaker),
+                DiscoveryOrigin::LanBeacon,
+                0
+            ),
             RegistryChange::CapacityFull
         );
         // …but an EXISTING device still refreshes.
         assert_eq!(
-            reg.register_or_refresh(0, "d", DeviceType::Speaker, DeviceCaps::typical(DeviceType::Speaker), DiscoveryOrigin::LanBeacon, 0),
+            reg.register_or_refresh(
+                0,
+                "d",
+                DeviceType::Speaker,
+                DeviceCaps::typical(DeviceType::Speaker),
+                DiscoveryOrigin::LanBeacon,
+                0
+            ),
             RegistryChange::Refreshed { device_id: 0 }
         );
         // Eviction frees every slot again (TTL elapsed).
         reg.tick(10);
         assert!(reg.is_empty(), "1 ms leases all expired at t=10");
         assert_eq!(
-            reg.register_or_refresh(9_999, "reborn", DeviceType::Speaker, DeviceCaps::typical(DeviceType::Speaker), DiscoveryOrigin::LanBeacon, 10),
+            reg.register_or_refresh(
+                9_999,
+                "reborn",
+                DeviceType::Speaker,
+                DeviceCaps::typical(DeviceType::Speaker),
+                DiscoveryOrigin::LanBeacon,
+                10
+            ),
             RegistryChange::Discovered { device_id: 9_999 }
         );
     }
@@ -585,20 +644,48 @@ mod tests {
     fn update_vs_refresh_classification() {
         let mut reg = DeviceRegistry::default();
         let caps = DeviceCaps::typical(DeviceType::Speaker);
-        reg.register_or_refresh(TV_ID, "Speaker", DeviceType::Speaker, caps, DiscoveryOrigin::LanBeacon, 0);
+        reg.register_or_refresh(
+            TV_ID,
+            "Speaker",
+            DeviceType::Speaker,
+            caps,
+            DiscoveryOrigin::LanBeacon,
+            0,
+        );
         // Same row again → Refreshed.
         assert_eq!(
-            reg.register_or_refresh(TV_ID, "Speaker", DeviceType::Speaker, caps, DiscoveryOrigin::LanBeacon, 5_000),
+            reg.register_or_refresh(
+                TV_ID,
+                "Speaker",
+                DeviceType::Speaker,
+                caps,
+                DiscoveryOrigin::LanBeacon,
+                5_000
+            ),
             RegistryChange::Refreshed { device_id: TV_ID }
         );
         // Renamed → Updated.
         assert_eq!(
-            reg.register_or_refresh(TV_ID, "Kitchen Speaker", DeviceType::Speaker, caps, DiscoveryOrigin::LanBeacon, 6_000),
+            reg.register_or_refresh(
+                TV_ID,
+                "Kitchen Speaker",
+                DeviceType::Speaker,
+                caps,
+                DiscoveryOrigin::LanBeacon,
+                6_000
+            ),
             RegistryChange::Updated { device_id: TV_ID }
         );
         // Roamed LAN → relay → Updated.
         assert_eq!(
-            reg.register_or_refresh(TV_ID, "Kitchen Speaker", DeviceType::Speaker, caps, DiscoveryOrigin::CloudRelay, 7_000),
+            reg.register_or_refresh(
+                TV_ID,
+                "Kitchen Speaker",
+                DeviceType::Speaker,
+                caps,
+                DiscoveryOrigin::CloudRelay,
+                7_000
+            ),
             RegistryChange::Updated { device_id: TV_ID }
         );
         assert_eq!(reg.stats().updates, 2);
@@ -619,10 +706,24 @@ mod tests {
         let mut reg = DeviceRegistry::default();
         // Over-long name truncated; whitespace trimmed.
         let long = "X".repeat(300);
-        reg.register_or_refresh(1, &long, DeviceType::Tv, DeviceCaps::default(), DiscoveryOrigin::LanBeacon, 0);
+        reg.register_or_refresh(
+            1,
+            &long,
+            DeviceType::Tv,
+            DeviceCaps::default(),
+            DiscoveryOrigin::LanBeacon,
+            0,
+        );
         assert_eq!(reg.get(1).unwrap().name.len(), MAX_DEVICE_NAME_LEN);
         // Blank name falls back to a stable synthetic name.
-        reg.register_or_refresh(2, "   ", DeviceType::Watch, DeviceCaps::default(), DiscoveryOrigin::LanBeacon, 0);
+        reg.register_or_refresh(
+            2,
+            "   ",
+            DeviceType::Watch,
+            DeviceCaps::default(),
+            DiscoveryOrigin::LanBeacon,
+            0,
+        );
         assert_eq!(reg.get(2).unwrap().name, "connect-0000000000000002");
     }
 }

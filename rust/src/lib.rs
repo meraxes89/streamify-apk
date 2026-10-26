@@ -53,7 +53,6 @@ pub mod wear_sync;
 // waveform downsampling with a compact binary cache.
 pub mod gesture_physics;
 pub mod jni_bridge_physics_waveform;
-pub mod waveform_indexer;
 pub mod radio_scorer;
 pub mod repository;
 pub mod resolver;
@@ -63,6 +62,7 @@ pub mod spotify_ingest;
 pub mod tagger;
 pub mod task_orchestrator;
 pub mod tick_matrix;
+pub mod waveform_indexer;
 // Audit #22 item 6: shared little-endian wire-field readers —
 // panic-free ingress parsing for every wire codec.
 pub mod wire_le;
@@ -72,8 +72,8 @@ pub use aligner::{AlignedLine, AlignedSyllable, LyricAlignerEngine};
 
 pub use backup::{BackupArchiveEngine, BackupRecord};
 pub use consensus::{
-    CollabPlaylistState, PlaylistApplyResult, PlaylistItemView, PlaylistOp, PlaylistOpKind,
-    PlaylistReject, PlaylistRole, ConsensusEngine,
+    CollabPlaylistState, ConsensusEngine, PlaylistApplyResult, PlaylistItemView, PlaylistOp,
+    PlaylistOpKind, PlaylistReject, PlaylistRole,
 };
 pub use crossfade::CrossfadeDspEngine;
 pub use crypto::VaultCryptoEngine;

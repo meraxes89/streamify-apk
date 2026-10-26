@@ -78,7 +78,12 @@ pub unsafe extern "C" fn resolve_track_cdn(
     out_buf_len: usize,
 ) -> i32 {
     let result = catch_unwind(|| {
-        if db_path_ptr.is_null() || cad_id_ptr.is_null() || title_ptr.is_null() || artist_ptr.is_null() || out_buf.is_null() {
+        if db_path_ptr.is_null()
+            || cad_id_ptr.is_null()
+            || title_ptr.is_null()
+            || artist_ptr.is_null()
+            || out_buf.is_null()
+        {
             return -1;
         }
 
@@ -100,13 +105,18 @@ pub unsafe extern "C" fn resolve_track_cdn(
         let isrc = if isrc_ptr.is_null() {
             None
         } else {
-            CStr::from_ptr(isrc_ptr).to_str().ok().filter(|s| !s.is_empty())
+            CStr::from_ptr(isrc_ptr)
+                .to_str()
+                .ok()
+                .filter(|s| !s.is_empty())
         };
 
         let rt = get_runtime();
 
         rt.block_on(async {
-            match execute_resolution(db_path, cad_id, isrc, title, artist, auth_header, cookies).await {
+            match execute_resolution(db_path, cad_id, isrc, title, artist, auth_header, cookies)
+                .await
+            {
                 Ok(video_id) => {
                     let bytes = video_id.as_bytes();
                     if bytes.len() > out_buf_len {
@@ -176,7 +186,10 @@ pub async fn execute_resolution(
             innertube_search_candidates(q, auth_header, cookies),
             innertube_search_candidates(&fuzzy_query, auth_header, cookies),
         ),
-        None => (Vec::new(), innertube_search_candidates(&fuzzy_query, auth_header, cookies).await),
+        None => (
+            Vec::new(),
+            innertube_search_candidates(&fuzzy_query, auth_header, cookies).await,
+        ),
     };
 
     // TIER 2 verdict: Innertube ISRC Exact Match (authoritative catalog query)
@@ -206,7 +219,10 @@ pub async fn execute_resolution(
     }
 
     // Graceful fallback to first valid candidate
-    if let Some(first) = candidates.into_iter().find(|c| is_valid_video_id(&c.video_id)) {
+    if let Some(first) = candidates
+        .into_iter()
+        .find(|c| is_valid_video_id(&c.video_id))
+    {
         if !db_path.is_empty() && !cad_id.is_empty() {
             bind_video_id_to_db(db_path, cad_id, title, artist, &first.video_id);
         }
@@ -238,7 +254,8 @@ pub async fn innertube_search_candidates(
         "query": query
     });
 
-    let mut req = client.post(url)
+    let mut req = client
+        .post(url)
         .header("Content-Type", "application/json")
         .header("Origin", "https://music.youtube.com")
         .header("Referer", "https://music.youtube.com/");
@@ -269,7 +286,9 @@ pub async fn innertube_search_candidates(
 
 fn is_valid_video_id(video_id: &str) -> bool {
     video_id.len() == 11
-        && video_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        && video_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// Recursively collects every musicResponsiveListItemRenderer object in the tree.
@@ -319,9 +338,15 @@ fn parse_duration_token(token: &str) -> Option<u32> {
         if p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()) || p.len() > 2 {
             return None;
         }
-        total = total.saturating_mul(60).saturating_add(p.parse::<u32>().ok()?);
+        total = total
+            .saturating_mul(60)
+            .saturating_add(p.parse::<u32>().ok()?);
     }
-    if total == 0 { None } else { Some(total) }
+    if total == 0 {
+        None
+    } else {
+        Some(total)
+    }
 }
 
 fn extract_duration_sec(haystacks: &[&str]) -> Option<u32> {
@@ -370,14 +395,11 @@ fn parse_search_candidates(json: &Value) -> Vec<SearchCandidate> {
         // ("Column"), not "...FlexCellRenderer" — parsing the wrong key yielded
         // candidates with empty titles and broke every identity gate.
         let mut columns: Vec<String> = Vec::new();
-        if let Some(flex_columns) = renderer
-            .pointer("/flexColumns")
-            .and_then(Value::as_array)
-        {
+        if let Some(flex_columns) = renderer.pointer("/flexColumns").and_then(Value::as_array) {
             for col in flex_columns {
-                if let Some(cell) =
-                    col.get("musicResponsiveListItemFlexColumnRenderer")
-                        .or_else(|| col.get("musicResponsiveListItemFlexCellRenderer"))
+                if let Some(cell) = col
+                    .get("musicResponsiveListItemFlexColumnRenderer")
+                    .or_else(|| col.get("musicResponsiveListItemFlexCellRenderer"))
                 {
                     columns.push(column_text(cell));
                 }
@@ -386,10 +408,7 @@ fn parse_search_candidates(json: &Value) -> Vec<SearchCandidate> {
         let title = columns.first().cloned().unwrap_or_default();
 
         let mut fixed_parts: Vec<String> = Vec::new();
-        if let Some(fixed_columns) = renderer
-            .pointer("/fixedColumns")
-            .and_then(Value::as_array)
-        {
+        if let Some(fixed_columns) = renderer.pointer("/fixedColumns").and_then(Value::as_array) {
             for col in fixed_columns {
                 if let Some(cell) = col.get("musicResponsiveListItemFixedColumnRenderer") {
                     fixed_parts.push(column_text(cell));
@@ -488,7 +507,9 @@ fn check_local_cache(db_path: &str, cad_id: &str) -> Option<String> {
     let mut stmt = conn
         .prepare_cached("SELECT ytm_video_id FROM universal_tracks WHERE cad_id = ?1")
         .ok()?;
-    let mut rows = stmt.query_map([cad_id], |row| row.get::<_, String>(0)).ok()?;
+    let mut rows = stmt
+        .query_map([cad_id], |row| row.get::<_, String>(0))
+        .ok()?;
     let result = rows.next()?.ok();
     result.filter(|s| !s.is_empty())
 }
@@ -553,13 +574,15 @@ fn span_between<'a>(text: &'a str, pre: &str, post: &str) -> Option<&'a str> {
 /// Visits the watch page exactly like a warmed browser and harvests the
 /// anti-bot context: session cookies, X-Goog-Visitor-Id, signatureTimestamp.
 async fn warm_watch_session(client: &Client, video_id: &str) -> Result<WarmSession, String> {
-    let url = format!(
-        "https://www.youtube.com/watch?v={video_id}&bpctr=9999999999&has_verified=1&hl=en"
-    );
+    let url =
+        format!("https://www.youtube.com/watch?v={video_id}&bpctr=9999999999&has_verified=1&hl=en");
     let resp = client
         .get(&url)
         .header("User-Agent", PAGE_UA)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
         .header("Accept-Language", "en-us,en;q=0.5")
         .header("Cookie", "PREF=hl=en&tz=UTC; SOCS=CAI") // consent bypass
         .header("Sec-Fetch-Mode", "navigate")
@@ -569,8 +592,9 @@ async fn warm_watch_session(client: &Client, video_id: &str) -> Result<WarmSessi
 
     // Harvest Set-Cookie name=value pairs manually (no cookie_store feature).
     let mut jar: Vec<String> = vec!["PREF=hl=en&tz=UTC".into(), "SOCS=CAI".into()];
-    let mut seen: std::collections::HashSet<String> =
-        ["PREF".to_string(), "SOCS".to_string()].into_iter().collect();
+    let mut seen: std::collections::HashSet<String> = ["PREF".to_string(), "SOCS".to_string()]
+        .into_iter()
+        .collect();
     for hv in resp.headers().get_all(reqwest::header::SET_COOKIE) {
         if let Ok(cv) = hv.to_str() {
             if let Some(nv) = cv.split(';').next() {
@@ -584,19 +608,30 @@ async fn warm_watch_session(client: &Client, video_id: &str) -> Result<WarmSessi
         }
     }
 
-    let html = resp.text().await.map_err(|e| format!("warm read failed: {e}"))?;
+    let html = resp
+        .text()
+        .await
+        .map_err(|e| format!("warm read failed: {e}"))?;
 
-    let visitor_id = span_between(&html, "\"visitorData\":\"", "\"").unwrap_or_default().to_string();
+    let visitor_id = span_between(&html, "\"visitorData\":\"", "\"")
+        .unwrap_or_default()
+        .to_string();
     let signature_ts: u32 = span_between(&html, "\"signatureTimestamp\":", ",")
         .and_then(|s| s.trim_matches(',').parse().ok())
-        .or_else(|| span_between(&html, "\"signatureTimestamp\":", "}").and_then(|s| s.parse().ok()))
+        .or_else(|| {
+            span_between(&html, "\"signatureTimestamp\":", "}").and_then(|s| s.parse().ok())
+        })
         .unwrap_or(20683);
 
     if visitor_id.is_empty() {
         return Err("warm page missing visitorData".to_string());
     }
 
-    Ok(WarmSession { cookies: jar.join("; "), visitor_id, signature_ts })
+    Ok(WarmSession {
+        cookies: jar.join("; "),
+        visitor_id,
+        signature_ts,
+    })
 }
 
 /// Anonymous ANDROID_VR resolution — the proven-working production path.
@@ -635,7 +670,10 @@ pub async fn fetch_stream_anonymous(client: &Client, video_id: &str) -> Result<S
         .post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
         .header("Content-Type", "application/json")
         .header("User-Agent", VR_UA)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
         .header("Accept-Language", "en-us,en;q=0.5")
         .header("Sec-Fetch-Mode", "navigate")
         .header("Cookie", &session.cookies)
@@ -646,13 +684,22 @@ pub async fn fetch_stream_anonymous(client: &Client, video_id: &str) -> Result<S
         req = req.header("X-Goog-Visitor-Id", &session.visitor_id);
     }
 
-    let res = req.json(&body).send().await
+    let res = req
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("player request failed: {e}"))?;
     let json: Value = res.json().await.map_err(|e| format!("player json: {e}"))?;
 
-    let ps = json.pointer("/playabilityStatus/status").and_then(|v| v.as_str()).unwrap_or("(none)");
+    let ps = json
+        .pointer("/playabilityStatus/status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(none)");
     if ps != "OK" {
-        let reason = json.pointer("/playabilityStatus/reason").and_then(|v| v.as_str()).unwrap_or("");
+        let reason = json
+            .pointer("/playabilityStatus/reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         return Err(format!("anonymous player blocked: {ps} {reason}"));
     }
 
@@ -660,7 +707,6 @@ pub async fn fetch_stream_anonymous(client: &Client, video_id: &str) -> Result<S
         "SABR-era response: no direct audio URLs (serverAbrStreamingUrl only)".to_string()
     })
 }
-
 
 /// MASTER RESOLUTION (Tier order):
 ///   1. Anonymous ANDROID_VR 1.65.10 with watch-page warm-up (no login!)
@@ -845,7 +891,10 @@ pub async fn fetch_innertube_cdn(
 
 fn extract_best_audio_url(json: &Value) -> Option<String> {
     // 1. Try direct adaptiveFormats inspection prioritizing audio
-    if let Some(formats) = json.pointer("/streamingData/adaptiveFormats").and_then(|v| v.as_array()) {
+    if let Some(formats) = json
+        .pointer("/streamingData/adaptiveFormats")
+        .and_then(|v| v.as_array())
+    {
         let mut best_audio: Option<(&str, u64)> = None;
 
         for fmt in formats {
@@ -873,7 +922,10 @@ fn extract_best_audio_url(json: &Value) -> Option<String> {
     }
 
     // 2. Fallback to combined streamingData.formats
-    if let Some(formats) = json.pointer("/streamingData/formats").and_then(|v| v.as_array()) {
+    if let Some(formats) = json
+        .pointer("/streamingData/formats")
+        .and_then(|v| v.as_array())
+    {
         for fmt in formats {
             if let Some(url) = fmt.get("url").and_then(|v| v.as_str()) {
                 return Some(url.to_string());
@@ -929,7 +981,10 @@ impl StreamResolver {
         // little headroom for the ~1 MB response body.
         let resp = ureq::post(Self::INNERTUBE_SEARCH_URL)
             .timeout(Duration::from_secs(20))
-            .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .set(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
             .set("Content-Type", "application/json")
             .send_json(body)
             .map_err(|e| format!("Search request failed: {}", e))?;
@@ -956,7 +1011,10 @@ impl StreamResolver {
         // 20 s deadline on the one-shot embed fetch.
         let resp = ureq::get(&embed_url)
             .timeout(Duration::from_secs(20))
-            .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .set(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
             .call()
             .map_err(|e| format!("Spotify embed request failed: {}", e))?;
 
@@ -994,9 +1052,18 @@ impl StreamResolver {
 
                 if let Some(items) = track_list {
                     for (idx, item) in items.iter().enumerate() {
-                        let title = item.get("title").or_else(|| item.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown Title");
-                        let subtitle = item.get("subtitle").or_else(|| item.get("artist")).and_then(|v| v.as_str()).unwrap_or("Unknown Artist");
-                        let duration_ms = item.get("duration").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                        let title = item
+                            .get("title")
+                            .or_else(|| item.get("name"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown Title");
+                        let subtitle = item
+                            .get("subtitle")
+                            .or_else(|| item.get("artist"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown Artist");
+                        let duration_ms =
+                            item.get("duration").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
                         tracks.push(ParsedCandidate {
                             id: format!("spotify_{}_{}", item_id, idx),

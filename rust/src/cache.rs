@@ -16,7 +16,12 @@ pub unsafe extern "C" fn crypt_audio_chunk(
     offset: u64,
 ) -> i32 {
     let result = catch_unwind(|| {
-        if input_ptr.is_null() || output_ptr.is_null() || key_ptr.is_null() || len == 0 || key_len == 0 {
+        if input_ptr.is_null()
+            || output_ptr.is_null()
+            || key_ptr.is_null()
+            || len == 0
+            || key_len == 0
+        {
             return -1;
         }
 

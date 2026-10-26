@@ -101,7 +101,9 @@ impl ChaosMesh {
     }
 
     fn idx_of(&self, device_id: u64) -> Option<usize> {
-        self.nodes.iter().position(|n| n.engine.self_id() == device_id)
+        self.nodes
+            .iter()
+            .position(|n| n.engine.self_id() == device_id)
     }
 
     fn now_ms(&self) -> u64 {
@@ -234,11 +236,7 @@ fn churn_to(engine: &mut RemoteIntentEngine, target_epoch: u32) {
 }
 
 fn frame_of(e: &mut RemoteIntentEngine) -> Vec<u8> {
-    let IntentAction::Send { frame, .. } = e
-        .drain_actions()
-        .into_iter()
-        .next()
-        .expect("an action");
+    let IntentAction::Send { frame, .. } = e.drain_actions().into_iter().next().expect("an action");
     frame
 }
 
@@ -260,8 +258,13 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
     let intents = [
         RemoteIntent::Play,
         RemoteIntent::Pause,
-        RemoteIntent::SeekTo { position_ms: 42_000 },
-        RemoteIntent::QueueInsert { cad_id: 0xCAFE, after_index: u32::MAX },
+        RemoteIntent::SeekTo {
+            position_ms: 42_000,
+        },
+        RemoteIntent::QueueInsert {
+            cad_id: 0xCAFE,
+            after_index: u32::MAX,
+        },
         RemoteIntent::QueueRemove { index: 1 },
         RemoteIntent::QueueReorder { from: 0, to: 2 },
         RemoteIntent::SetVolume { volume_pct: 63 },
@@ -274,13 +277,22 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
         mesh.advance();
         let now_ms = mesh.now_ms();
         if mesh.tick == 20 {
-            mesh.nodes[7].engine.begin_handoff(1, &snapshot(), now_ms).expect("controller 8 hands off");
+            mesh.nodes[7]
+                .engine
+                .begin_handoff(1, &snapshot(), now_ms)
+                .expect("controller 8 hands off");
         }
         if mesh.tick == 26 {
-            mesh.nodes[8].engine.begin_handoff(1, &snapshot(), now_ms).expect("controller 9 hands off");
+            mesh.nodes[8]
+                .engine
+                .begin_handoff(1, &snapshot(), now_ms)
+                .expect("controller 9 hands off");
         }
         if mesh.tick == 32 {
-            mesh.nodes[9].engine.begin_handoff(1, &snapshot(), now_ms).expect("controller 10 hands off");
+            mesh.nodes[9]
+                .engine
+                .begin_handoff(1, &snapshot(), now_ms)
+                .expect("controller 10 hands off");
         }
         for &c in &controllers {
             if mesh.rng.gen_bool(0.35) {
@@ -301,13 +313,22 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
     }
 
     // ── chaos accounting ──
-    assert!(mesh.frames_dropped > 100, "20% loss must have fired: dropped={}", mesh.frames_dropped);
-    assert!(mesh.frames_corrupted >= 1, "corruption injection must have fired: {}", mesh.frames_corrupted);
+    assert!(
+        mesh.frames_dropped > 100,
+        "20% loss must have fired: dropped={}",
+        mesh.frames_dropped
+    );
+    assert!(
+        mesh.frames_corrupted >= 1,
+        "corruption injection must have fired: {}",
+        mesh.frames_corrupted
+    );
     // Frames still scheduled on the wire when the sim stopped (tail
     // retransmissions): counted as stranded, never vanished.
     let stranded = mesh.wire.len();
     assert_eq!(
-        mesh.frames_dropped + mesh.frames_delivered + stranded, mesh.frames_sent,
+        mesh.frames_dropped + mesh.frames_delivered + stranded,
+        mesh.frames_sent,
         "frame accounting must balance (dropped + delivered + stranded == sent)"
     );
 
@@ -324,7 +345,10 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
     }
     // Every node applied broadcast intents (the mesh is fully connected).
     for (i, n) in mesh.nodes.iter().enumerate() {
-        assert!(!n.applied.is_empty(), "node[{i}] must have applied broadcast intents");
+        assert!(
+            !n.applied.is_empty(),
+            "node[{i}] must have applied broadcast intents"
+        );
     }
 
     // ── split-brain: ONE deterministic winner everywhere ──
@@ -332,7 +356,10 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
     // FINAL controller pair must belong to it.
     let winner_id = mesh.nodes[9].engine.self_id();
     for (i, n) in mesh.nodes.iter().enumerate() {
-        let pair = n.engine.current_controller().expect("every node saw a controller");
+        let pair = n
+            .engine
+            .current_controller()
+            .expect("every node saw a controller");
         assert!(
             pair.1 == winner_id,
             "node[{i}] final controller must be the epoch-dominant winner \
@@ -342,12 +369,18 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
     // Stale receipts fired somewhere (the losers kept talking after the
     // takeover — their intents were refused, never applied).
     let total_stale: u64 = mesh.nodes.iter().map(|n| n.stale_rejects).sum();
-    assert!(total_stale > 0, "split-brain losers must have drawn stale receipts");
+    assert!(
+        total_stale > 0,
+        "split-brain losers must have drawn stale receipts"
+    );
 
     // ── handoff safety ──
     // The receiver adopted at least once and ended as ActiveReceiver.
     assert_eq!(mesh.nodes[receiver_idx].engine.role(), Role::ActiveReceiver);
-    assert_eq!(mesh.nodes[receiver_idx].halts, 0, "receivers do not halt local players");
+    assert_eq!(
+        mesh.nodes[receiver_idx].halts, 0,
+        "receivers do not halt local players"
+    );
     // Every started handoff ended Completed or Failed — no stuck pendings.
     for (i, n) in mesh.nodes.iter().enumerate() {
         assert!(
@@ -358,12 +391,17 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
             n.handoff_started,
             n.handoff_completed + n.handoff_failed,
             "node[{i}] handoff lifecycle must be closed (started={}, completed={}, failed={})",
-            n.handoff_started, n.handoff_completed, n.handoff_failed
+            n.handoff_started,
+            n.handoff_completed,
+            n.handoff_failed
         );
     }
     // At least one handoff COMPLETED through the chaos (the winner's).
     let completed: u64 = mesh.nodes.iter().map(|n| n.handoff_completed).sum();
-    assert!(completed >= 1, "the dominant controller's handoff must confirm under loss");
+    assert!(
+        completed >= 1,
+        "the dominant controller's handoff must confirm under loss"
+    );
     // The halt signal fired exactly once per completed handoff.
     let halts: u64 = mesh.nodes.iter().map(|n| n.halts).sum();
     assert_eq!(halts, completed);
@@ -372,8 +410,15 @@ fn ten_nodes_concurrent_handoffs_monotonic_under_loss_and_reordering() {
     // Corrupted frames die at the boundary (checksum) — the applied logs
     // stayed strictly increasing (asserted above) and the engines'
     // boundary counters observed the rejects.
-    let rejected: u64 = mesh.nodes.iter().map(|n| n.engine.stats().frames_rejected).sum();
-    assert!(rejected >= mesh.frames_corrupted as u64, "corrupt frames must be boundary-rejected");
+    let rejected: u64 = mesh
+        .nodes
+        .iter()
+        .map(|n| n.engine.stats().frames_rejected)
+        .sum();
+    assert!(
+        rejected >= mesh.frames_corrupted as u64,
+        "corrupt frames must be boundary-rejected"
+    );
 }
 
 #[test]
@@ -382,12 +427,18 @@ fn split_brain_conflicting_queue_modifications_resolve_cleanly_both_orders() {
     // both fire conflicting queue modifications at one receiver, in
     // B-first AND shuffled delivery orders — identical outcomes.
     let a_intents = [
-        RemoteIntent::QueueInsert { cad_id: 0xAAAA, after_index: u32::MAX },
+        RemoteIntent::QueueInsert {
+            cad_id: 0xAAAA,
+            after_index: u32::MAX,
+        },
         RemoteIntent::QueueReorder { from: 0, to: 3 },
         RemoteIntent::SetVolume { volume_pct: 80 },
     ];
     let b_intents = [
-        RemoteIntent::QueueInsert { cad_id: 0xBBBB, after_index: 0 },
+        RemoteIntent::QueueInsert {
+            cad_id: 0xBBBB,
+            after_index: 0,
+        },
         RemoteIntent::QueueRemove { index: 0 },
         RemoteIntent::SetVolume { volume_pct: 20 },
     ];
@@ -436,14 +487,24 @@ fn split_brain_conflicting_queue_modifications_resolve_cleanly_both_orders() {
             }
         }
         // The winner is B (epoch 7 > 5) in BOTH orders.
-        assert_eq!(rcv.current_controller(), Some((7, 50)), "order {order}: B dominates");
+        assert_eq!(
+            rcv.current_controller(),
+            Some((7, 50)),
+            "order {order}: B dominates"
+        );
         // Monotonic ledger in both orders.
         for w in ledger.windows(2) {
-            assert!(w[0] < w[1], "order {order}: applied log strictly increasing");
+            assert!(
+                w[0] < w[1],
+                "order {order}: applied log strictly increasing"
+            );
         }
         // All of B's intents applied.
         let b_applied = ledger.iter().filter(|(_, d, _)| *d == 50).count();
-        assert_eq!(b_applied, 3, "order {order}: the winner's stream applies fully");
+        assert_eq!(
+            b_applied, 3,
+            "order {order}: the winner's stream applies fully"
+        );
         if order == 0 {
             // B first: A's three intents arrive after the takeover → all
             // stale-rejected, nothing of A applied.
@@ -452,7 +513,10 @@ fn split_brain_conflicting_queue_modifications_resolve_cleanly_both_orders() {
         }
         // No receiver state was applied from a dominated pair after the
         // winner established authority.
-        let winner_first = ledger.iter().position(|(_, d, _)| *d == 50).expect("winner applied");
+        let winner_first = ledger
+            .iter()
+            .position(|(_, d, _)| *d == 50)
+            .expect("winner applied");
         assert!(
             ledger[winner_first..].iter().all(|(_, d, _)| *d == 50),
             "order {order}: no loser application after the winner"
@@ -467,7 +531,8 @@ fn partition_heals_and_controller_silence_is_observed_not_revoked() {
     let mut ctrl = RemoteIntentEngine::new(11, [4; 32]);
     let mut rcv = RemoteIntentEngine::new(12, [5; 32]);
     ctrl.start_session();
-    ctrl.dispatch_intent(RemoteIntent::Play, 0).expect("dispatch");
+    ctrl.dispatch_intent(RemoteIntent::Play, 0)
+        .expect("dispatch");
     let frame = frame_of(&mut ctrl);
     rcv.on_frame(&frame, 0);
     assert_eq!(rcv.role(), Role::ActiveReceiver);
@@ -478,12 +543,15 @@ fn partition_heals_and_controller_silence_is_observed_not_revoked() {
     rcv.tick(40_000);
     assert!(rcv.drain_events().iter().any(|e| matches!(
         e,
-        IntentEvent::ControllerSilent { controller: (1, 11) }
+        IntentEvent::ControllerSilent {
+            controller: (1, 11)
+        }
     )));
     // Authority NOT revoked by quietness: still ActiveReceiver, and the
     // controller's next intent (same pair) applies on the same stream.
     assert_eq!(rcv.role(), Role::ActiveReceiver);
-    ctrl.dispatch_intent(RemoteIntent::Pause, 40_500).expect("dispatch");
+    ctrl.dispatch_intent(RemoteIntent::Pause, 40_500)
+        .expect("dispatch");
     let frame = frame_of(&mut ctrl);
     rcv.on_frame(&frame, 40_500);
     assert_eq!(rcv.stats().intents_applied, 2);
@@ -513,7 +581,10 @@ fn handoff_under_permanent_partition_fails_cleanly_never_halting_local() {
     let events = ctrl.drain_events();
     assert!(events.iter().any(|e| matches!(
         e,
-        IntentEvent::HandoffFailed { reason: HandoffFailReason::Timeout, .. }
+        IntentEvent::HandoffFailed {
+            reason: HandoffFailReason::Timeout,
+            ..
+        }
     )));
     assert_eq!(ctrl.role(), Role::ActiveController);
     // No halt signalled, and intents still flow.

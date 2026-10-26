@@ -25,7 +25,10 @@ fn main() {
                                     Ok(k) => n += k,
                                 }
                             }
-                            println!("   ↳ STREAM {st} ct={ct} got={n}B {}", if n > 100_000 {"✅"} else {"⚠️"});
+                            println!(
+                                "   ↳ STREAM {st} ct={ct} got={n}B {}",
+                                if n > 100_000 { "✅" } else { "⚠️" }
+                            );
                         }
                         Err(ureq::Error::Status(c, _)) => println!("   ↳ STREAM HTTP {c} ❌"),
                         Err(e) => println!("   ↳ STREAM ERR {e}"),

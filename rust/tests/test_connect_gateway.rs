@@ -17,8 +17,8 @@ use streamify_core_rs::connect_gateway::{
     MSG_HEARTBEAT, MSG_PRESENCE_ADVERT, MSG_PRESENCE_QUERY, MSG_PRESENCE_REPLY,
 };
 use streamify_core_rs::device_registry::{
-    DeviceCaps, DeviceType, DiscoveryOrigin, HEARTBEAT_INTERVAL_MS, LEASE_TTL_MS, CODEC_AAC,
-    CODEC_APTX, CODEC_OPUS, CODEC_PCM16, CODEC_SBC,
+    DeviceCaps, DeviceType, DiscoveryOrigin, CODEC_AAC, CODEC_APTX, CODEC_OPUS, CODEC_PCM16,
+    CODEC_SBC, HEARTBEAT_INTERVAL_MS, LEASE_TTL_MS,
 };
 
 fn phone_gw() -> ConnectGateway {
@@ -87,7 +87,10 @@ fn lease_expiration_after_three_missed_heartbeats_multi_device() {
     )));
     assert!(events.iter().any(|e| matches!(
         e,
-        GatewayEvent::DeviceLost { device_type: DeviceType::Tv, .. }
+        GatewayEvent::DeviceLost {
+            device_type: DeviceType::Tv,
+            ..
+        }
     )));
     assert_eq!(gw.registry().len(), 1);
 
@@ -141,7 +144,11 @@ fn capability_negotiation_across_the_wire() {
     // Negotiation: intersection with the phone's typical codec set.
     let phone = DeviceCaps::typical(DeviceType::Phone);
     let shared = phone.intersect(caps);
-    assert_eq!(shared, CODEC_AAC | CODEC_OPUS, "SBC/APTX/unknown not shared; AAC+Opus shared");
+    assert_eq!(
+        shared,
+        CODEC_AAC | CODEC_OPUS,
+        "SBC/APTX/unknown not shared; AAC+Opus shared"
+    );
     // A phone and a TV share PCM16 + AAC.
     let tv = DeviceCaps::typical(DeviceType::Tv);
     assert_eq!(phone.intersect(tv), CODEC_AAC | CODEC_PCM16 | CODEC_OPUS);
@@ -152,7 +159,10 @@ fn capability_negotiation_across_the_wire() {
     assert_eq!(tv.snap_volume(43), 43, "100-step TV grid is identity");
     let snapped = caps.snap_volume(43);
     assert_eq!(caps.volume_steps, 32);
-    assert!(snapped == 41 || snapped == 44, "32-step grid snaps near 43: {snapped}");
+    assert!(
+        snapped == 41 || snapped == 44,
+        "32-step grid snaps near 43: {snapped}"
+    );
 }
 
 #[test]
@@ -183,15 +193,19 @@ fn two_gateways_discover_each_other_via_lan_and_relay() {
     // TV from the REPLY (a reply is presence).
     let query = phone.build_presence_query();
     assert!(tv.on_lan_beacon(&query, 2_000));
-    assert!(tv.drain_events().iter().any(|e| matches!(
-        e,
-        GatewayEvent::PresenceQuery { .. }
-    )));
+    assert!(tv
+        .drain_events()
+        .iter()
+        .any(|e| matches!(e, GatewayEvent::PresenceQuery { .. })));
     let reply = tv.build_presence_reply();
     assert!(phone.on_lan_beacon(&reply, 2_100));
     assert!(phone.drain_events().iter().any(|e| matches!(
         e,
-        GatewayEvent::DeviceDiscovered { device_type: DeviceType::Tv, origin: DiscoveryOrigin::LanBeacon, .. }
+        GatewayEvent::DeviceDiscovered {
+            device_type: DeviceType::Tv,
+            origin: DiscoveryOrigin::LanBeacon,
+            ..
+        }
     )));
 
     // A remote watch behind NAT appears via the cloud relay channel.
@@ -246,7 +260,10 @@ fn corrupt_frames_counted_and_never_registered() {
         assert!(!gw.on_lan_beacon(bytes, 0));
     }
     assert!(gw.registry().is_empty());
-    assert_eq!(gw.boundary_stats().frames_rejected, rejected_before + cases.len() as u64);
+    assert_eq!(
+        gw.boundary_stats().frames_rejected,
+        rejected_before + cases.len() as u64
+    );
 
     // The pristine frame still registers fine afterwards.
     assert!(gw.on_lan_beacon(&good, 1_000));
@@ -261,13 +278,19 @@ fn stopped_gateway_ignores_late_datagrams() {
     gw.stop_discovery();
     gw.drain_events();
     // A late LAN datagram after stop: counted, not applied.
-    assert!(!gw.on_lan_beacon(&encode_connect_frame(MSG_PRESENCE_ADVERT, &tv_desc()), 1_000));
+    assert!(!gw.on_lan_beacon(
+        &encode_connect_frame(MSG_PRESENCE_ADVERT, &tv_desc()),
+        1_000
+    ));
     assert!(gw.registry().is_empty());
     assert!(gw.boundary_stats().frames_rejected >= 1);
     // Restart admits a fresh advert.
     gw.start_discovery();
     gw.drain_events();
-    assert!(gw.on_lan_beacon(&encode_connect_frame(MSG_PRESENCE_ADVERT, &tv_desc()), 2_000));
+    assert!(gw.on_lan_beacon(
+        &encode_connect_frame(MSG_PRESENCE_ADVERT, &tv_desc()),
+        2_000
+    ));
     assert_eq!(gw.registry().len(), 1);
 }
 
@@ -288,7 +311,12 @@ fn parse_roundtrip_all_frame_types_and_origins() {
             caps: DeviceCaps::typical(dt),
             name: format!("Dev-{dt}"),
         };
-        for t in [MSG_PRESENCE_ADVERT, MSG_PRESENCE_QUERY, MSG_PRESENCE_REPLY, MSG_HEARTBEAT] {
+        for t in [
+            MSG_PRESENCE_ADVERT,
+            MSG_PRESENCE_QUERY,
+            MSG_PRESENCE_REPLY,
+            MSG_HEARTBEAT,
+        ] {
             let bytes = encode_connect_frame(t, &d);
             let (mt, back) = parse_connect_frame(&bytes).expect("roundtrip");
             assert_eq!(mt, t);

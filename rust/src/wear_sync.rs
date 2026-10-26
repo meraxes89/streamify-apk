@@ -266,8 +266,8 @@ pub fn encode_frame_into(
 /// test/binding surface for hand-built frames).
 pub fn encode_frame(frame_type: u8, seq: u16, flags: u8, payload: &[u8]) -> Vec<u8> {
     let mut buf = vec![0u8; WSX_HEADER_LEN + payload.len() + 4];
-    let n = encode_frame_into(&mut buf, frame_type, seq, flags, payload)
-        .expect("payload pre-budgeted");
+    let n =
+        encode_frame_into(&mut buf, frame_type, seq, flags, payload).expect("payload pre-budgeted");
     buf.truncate(n);
     buf
 }
@@ -414,9 +414,14 @@ impl QueueOp {
             0 => {
                 let cad_id = r.varint()?;
                 let after = r.varint()? as u32;
-                Some(QueueOp::Add { cad_id, after_pos: after })
+                Some(QueueOp::Add {
+                    cad_id,
+                    after_pos: after,
+                })
             }
-            1 => Some(QueueOp::Remove { index: r.varint()? as u32 }),
+            1 => Some(QueueOp::Remove {
+                index: r.varint()? as u32,
+            }),
             2 => Some(QueueOp::Clear),
             3 => {
                 let from = r.varint()? as u32;
@@ -552,7 +557,11 @@ pub fn decode_jam_upvote(payload: &[u8]) -> Option<JamUpvoteMsg> {
         *b = r.u8()?;
     }
     let up = r.u8()? != 0;
-    Some(JamUpvoteMsg { cad_id, voter_nonce: nonce, up })
+    Some(JamUpvoteMsg {
+        cad_id,
+        voter_nonce: nonce,
+        up,
+    })
 }
 
 // ─────────────────────────────────────────────── manifest byte codec
@@ -597,10 +606,11 @@ pub fn encode_manifest_bytes(entries: &[ManifestEntry]) -> Option<Vec<u8>> {
         return None;
     }
     // Pre-size the buffer from a worst-case estimate, write, truncate.
-    let est = 10 + entries
-        .iter()
-        .map(|e| 30 + 32 + 32 * e.seg_hashes.len())
-        .sum::<usize>();
+    let est = 10
+        + entries
+            .iter()
+            .map(|e| 30 + 32 + 32 * e.seg_hashes.len())
+            .sum::<usize>();
     if est > MAX_MANIFEST_BYTES {
         return None;
     }
@@ -650,7 +660,12 @@ pub fn decode_manifest_bytes(bytes: &[u8]) -> Option<Vec<ManifestEntry>> {
             seg_hashes.push(r.hash32()?);
         }
         entries.push(ManifestEntry {
-            info: CacheTrackInfo { cad_id, total_len, seg_size, total_hash },
+            info: CacheTrackInfo {
+                cad_id,
+                total_len,
+                seg_size,
+                total_hash,
+            },
             seg_hashes,
         });
     }
@@ -672,7 +687,10 @@ pub enum WearSyncEvent {
     /// `VoterId::from_nonce`).
     JamUpvoteReceived { upvote: JamUpvoteMsg },
     /// (Watch) full manifest received & validated.
-    ManifestReceived { manifest_id: u8, tracks: Vec<CacheTrackInfo> },
+    ManifestReceived {
+        manifest_id: u8,
+        tracks: Vec<CacheTrackInfo>,
+    },
     /// (Watch) segment verified + buffered.
     CacheSegmentVerified { cad_id: u64, seg_idx: u32 },
     /// (Watch) segment failed Blake3 — discarded, retransmit requested.
@@ -933,7 +951,12 @@ impl PhoneSyncCoordinator {
     /// Starts a cache push: hashes every segment (Blake3 — Phase 3
     /// verifier discipline, miniaturized), emits the manifest frames.
     /// Replaces any active push. `(cad_id, bytes)` per track.
-    pub fn start_cache_push(&mut self, manifest_id: u8, tracks: &[(u64, &[u8])], now_ms: u64) -> bool {
+    pub fn start_cache_push(
+        &mut self,
+        manifest_id: u8,
+        tracks: &[(u64, &[u8])],
+        now_ms: u64,
+    ) -> bool {
         if tracks.is_empty() || tracks.len() > MAX_CACHE_TRACKS {
             return false;
         }
@@ -992,7 +1015,9 @@ impl PhoneSyncCoordinator {
                 seg_hashes: t.seg_hashes.clone(),
             })
             .collect();
-        let Some(bytes) = encode_manifest_bytes(&entries) else { return };
+        let Some(bytes) = encode_manifest_bytes(&entries) else {
+            return;
+        };
         // Chunk into frame payloads FIRST (owned), then send.
         const CHUNK: usize = MAX_WSX_PAYLOAD - 8; // id + idx/count varints
         let total = bytes.len().div_ceil(CHUNK);
@@ -1048,7 +1073,8 @@ impl PhoneSyncCoordinator {
             }
             WSX_QUEUE_ACTION => match decode_queue_action(frame.payload) {
                 Some(op) => {
-                    self.events.push_back(WearSyncEvent::QueueActionReceived { op });
+                    self.events
+                        .push_back(WearSyncEvent::QueueActionReceived { op });
                     self.ack(frame.seq);
                     true
                 }
@@ -1059,7 +1085,8 @@ impl PhoneSyncCoordinator {
             },
             WSX_TRACK_RATING => match decode_track_rating(frame.payload) {
                 Some(rating) => {
-                    self.events.push_back(WearSyncEvent::RatingReceived { rating });
+                    self.events
+                        .push_back(WearSyncEvent::RatingReceived { rating });
                     self.ack(frame.seq);
                     true
                 }
@@ -1070,7 +1097,8 @@ impl PhoneSyncCoordinator {
             },
             WSX_JAM_UPVOTE => match decode_jam_upvote(frame.payload) {
                 Some(upvote) => {
-                    self.events.push_back(WearSyncEvent::JamUpvoteReceived { upvote });
+                    self.events
+                        .push_back(WearSyncEvent::JamUpvoteReceived { upvote });
                     self.ack(frame.seq);
                     true
                 }
@@ -1096,11 +1124,17 @@ impl PhoneSyncCoordinator {
 
     fn on_cache_ack(&mut self, payload: &[u8]) -> bool {
         let mut r = Reader::new(payload);
-        let Some(manifest_id) = r.u8() else { return false };
-        let Some(cad_id) = r.varint() else { return false };
+        let Some(manifest_id) = r.u8() else {
+            return false;
+        };
+        let Some(cad_id) = r.varint() else {
+            return false;
+        };
         let Some(base) = r.varint() else { return false };
         let bits = r.rest().to_vec();
-        let Some(push) = self.push.as_mut() else { return true };
+        let Some(push) = self.push.as_mut() else {
+            return true;
+        };
         if push.manifest_id != manifest_id || push.done {
             return true; // stale ack — inert
         }
@@ -1149,7 +1183,8 @@ impl PhoneSyncCoordinator {
                 let Some(id) = r.u8() else { return false };
                 if self.push.as_ref().is_some_and(|p| p.manifest_id == id) {
                     self.push = None;
-                    self.events.push_back(WearSyncEvent::CacheCancelled { manifest_id: id });
+                    self.events
+                        .push_back(WearSyncEvent::CacheCancelled { manifest_id: id });
                 }
                 true
             }
@@ -1185,7 +1220,8 @@ impl PhoneSyncCoordinator {
                     if let Some(push) = self.push.as_mut() {
                         if let Some(t) = push.tracks.iter_mut().find(|t| t.info.cad_id == cad) {
                             let attempts = t.inflight.get(&(idx as u32)).map_or(1, |(_, a)| *a + 1);
-                            t.inflight.insert(idx as u32, (now_ms + self.config.rto_ms, attempts));
+                            t.inflight
+                                .insert(idx as u32, (now_ms + self.config.rto_ms, attempts));
                         }
                     }
                 }
@@ -1241,7 +1277,8 @@ impl PhoneSyncCoordinator {
 
     fn advance_track(&mut self) {
         if let Some(push) = self.push.as_mut() {
-            let done_current = push.tracks[push.active_track].base >= push.tracks[push.active_track].num_segs();
+            let done_current =
+                push.tracks[push.active_track].base >= push.tracks[push.active_track].num_segs();
             if done_current {
                 if push.active_track + 1 < push.tracks.len() {
                     push.active_track += 1;
@@ -1278,8 +1315,8 @@ impl PhoneSyncCoordinator {
                 }
             }
             let refill = (elapsed.saturating_mul(rate)) / 1000;
-            self.bucket_tokens = (self.bucket_tokens + refill as i64)
-                .min(self.config.burst_bytes as i64);
+            self.bucket_tokens =
+                (self.bucket_tokens + refill as i64).min(self.config.burst_bytes as i64);
         } else {
             self.last_refill_ms = now_ms;
         }
@@ -1392,7 +1429,8 @@ impl PhoneSyncCoordinator {
         }
         for seq in retry {
             self.pending_controls.remove(&seq);
-            self.events.push_back(WearSyncEvent::ControlAbandoned { seq });
+            self.events
+                .push_back(WearSyncEvent::ControlAbandoned { seq });
         }
     }
 
@@ -1512,7 +1550,9 @@ impl WatchSyncCoordinator {
     /// Watch → phone queue edit (propagates into the shared queue).
     pub fn send_queue_action(&mut self, op: &QueueOp) -> bool {
         let mut payload = [0u8; 24];
-        let Some(n) = encode_queue_action(op, &mut payload) else { return false };
+        let Some(n) = encode_queue_action(op, &mut payload) else {
+            return false;
+        };
         self.send(WSX_QUEUE_ACTION, FLAG_ACK_REQUESTED, &payload[..n]);
         // The mirror reflects the edit immediately (local-first).
         self.apply_op(*op);
@@ -1522,7 +1562,9 @@ impl WatchSyncCoordinator {
     /// Rate the current track (1..=5 + thumbs override).
     pub fn send_rating(&mut self, rating: &TrackRating) -> bool {
         let mut payload = [0u8; 16];
-        let Some(n) = encode_track_rating(rating, &mut payload) else { return false };
+        let Some(n) = encode_track_rating(rating, &mut payload) else {
+            return false;
+        };
         self.send(WSX_TRACK_RATING, FLAG_ACK_REQUESTED, &payload[..n]);
         true
     }
@@ -1530,7 +1572,9 @@ impl WatchSyncCoordinator {
     /// Upvote from the watch face into the phone's Jam session.
     pub fn send_jam_upvote(&mut self, upvote: &JamUpvoteMsg) -> bool {
         let mut payload = [0u8; 24];
-        let Some(n) = encode_jam_upvote(upvote, &mut payload) else { return false };
+        let Some(n) = encode_jam_upvote(upvote, &mut payload) else {
+            return false;
+        };
         self.send(WSX_JAM_UPVOTE, FLAG_ACK_REQUESTED, &payload[..n]);
         true
     }
@@ -1544,7 +1588,11 @@ impl WatchSyncCoordinator {
 
     /// User pause / resume of the cache sync.
     pub fn user_pause(&mut self, pause: bool) -> bool {
-        let payload = [if pause { CTRL_USER_PAUSE } else { CTRL_USER_RESUME }];
+        let payload = [if pause {
+            CTRL_USER_PAUSE
+        } else {
+            CTRL_USER_RESUME
+        }];
         self.send(WSX_CACHE_CONTROL, 0, &payload);
         true
     }
@@ -1559,7 +1607,8 @@ impl WatchSyncCoordinator {
             self.manifest_chunk_count = None;
             self.tracks.clear();
             self.track_order.clear();
-            self.events.push_back(WearSyncEvent::CacheCancelled { manifest_id });
+            self.events
+                .push_back(WearSyncEvent::CacheCancelled { manifest_id });
         }
         true
     }
@@ -1613,7 +1662,9 @@ impl WatchSyncCoordinator {
                     for op in ops {
                         self.apply_op(op);
                     }
-                    self.events.push_back(WearSyncEvent::QueueMirrorUpdated { len: self.queue_mirror.len() });
+                    self.events.push_back(WearSyncEvent::QueueMirrorUpdated {
+                        len: self.queue_mirror.len(),
+                    });
                     self.ack(frame.seq);
                     true
                 }
@@ -1645,9 +1696,13 @@ impl WatchSyncCoordinator {
 
     fn on_manifest(&mut self, payload: &[u8], seq: u16) -> bool {
         let mut r = Reader::new(payload);
-        let Some(manifest_id) = r.u8() else { return false };
+        let Some(manifest_id) = r.u8() else {
+            return false;
+        };
         let Some(idx) = r.varint() else { return false };
-        let Some(count) = r.varint() else { return false };
+        let Some(count) = r.varint() else {
+            return false;
+        };
         if idx > 254 || count == 0 || count > 255 || idx >= count {
             self.stats.frames_rejected += 1;
             return false;
@@ -1729,7 +1784,9 @@ impl WatchSyncCoordinator {
 
     fn on_chunk(&mut self, payload: &[u8]) -> bool {
         let mut r = Reader::new(payload);
-        let Some(cad_id) = r.varint() else { return false };
+        let Some(cad_id) = r.varint() else {
+            return false;
+        };
         let Some(idx) = r.varint() else { return false };
         let idx_u = idx as usize;
         // Read-only validation pass, then a mutating pass (borrow-safe).
@@ -1754,7 +1811,11 @@ impl WatchSyncCoordinator {
             self.stats.frames_rejected += 1;
             return false;
         }
-        if self.tracks.get(&cad_id).is_some_and(|t| t.segs[idx_u].is_some()) {
+        if self
+            .tracks
+            .get(&cad_id)
+            .is_some_and(|t| t.segs[idx_u].is_some())
+        {
             // Duplicate delivery: re-ack, no double-verify.
             self.record_ack(cad_id, idx as u32);
             return true;
@@ -1768,7 +1829,10 @@ impl WatchSyncCoordinator {
             let _ = w.put_varint(cad_id);
             let _ = w.put_varint(idx);
             let n = w.pos();
-            self.events.push_back(WearSyncEvent::CacheSegmentCorrupt { cad_id, seg_idx: idx as u32 });
+            self.events.push_back(WearSyncEvent::CacheSegmentCorrupt {
+                cad_id,
+                seg_idx: idx as u32,
+            });
             self.send(WSX_CACHE_CONTROL, 0, &out[..n]);
             return true;
         }
@@ -1789,13 +1853,22 @@ impl WatchSyncCoordinator {
             }
         }
         self.stats.segs_verified += 1;
-        self.events.push_back(WearSyncEvent::CacheSegmentVerified { cad_id, seg_idx: idx as u32 });
+        self.events.push_back(WearSyncEvent::CacheSegmentVerified {
+            cad_id,
+            seg_idx: idx as u32,
+        });
         self.record_ack(cad_id, idx as u32);
         if completes {
-            let assembled: Vec<u8> = self.tracks[&cad_id].segs.iter().flatten().flat_map(|s| s.iter().copied()).collect();
+            let assembled: Vec<u8> = self.tracks[&cad_id]
+                .segs
+                .iter()
+                .flatten()
+                .flat_map(|s| s.iter().copied())
+                .collect();
             if assembled.len() as u64 == info.total_len && seg_hash(&assembled) == info.total_hash {
                 self.stats.tracks_completed += 1;
-                self.events.push_back(WearSyncEvent::CacheTrackCompleted { cad_id });
+                self.events
+                    .push_back(WearSyncEvent::CacheTrackCompleted { cad_id });
                 let mut out = [0u8; 16];
                 let mut w = WearBuf::new(&mut out);
                 let _ = w.put_u8(CTRL_TRACK_DONE);
@@ -1803,7 +1876,8 @@ impl WatchSyncCoordinator {
                 let n = w.pos();
                 self.send(WSX_CACHE_CONTROL, 0, &out[..n]);
             } else {
-                self.events.push_back(WearSyncEvent::CacheTrackFailed { cad_id });
+                self.events
+                    .push_back(WearSyncEvent::CacheTrackFailed { cad_id });
                 let mut out = [0u8; 16];
                 let mut w = WearBuf::new(&mut out);
                 let _ = w.put_u8(CTRL_TRACK_BAD);
@@ -1891,7 +1965,8 @@ impl WatchSyncCoordinator {
         }
         for seq in retry {
             self.pending_controls.remove(&seq);
-            self.events.push_back(WearSyncEvent::ControlAbandoned { seq });
+            self.events
+                .push_back(WearSyncEvent::ControlAbandoned { seq });
         }
     }
 
@@ -1901,8 +1976,15 @@ impl WatchSyncCoordinator {
         if track.verified != track.seg_hashes.len() as u32 {
             return None;
         }
-        let assembled: Vec<u8> = track.segs.iter().flatten().flat_map(|s| s.iter().copied()).collect();
-        if assembled.len() as u64 == track.info.total_len && seg_hash(&assembled) == track.info.total_hash {
+        let assembled: Vec<u8> = track
+            .segs
+            .iter()
+            .flatten()
+            .flat_map(|s| s.iter().copied())
+            .collect();
+        if assembled.len() as u64 == track.info.total_len
+            && seg_hash(&assembled) == track.info.total_hash
+        {
             self.tracks.remove(&cad_id);
             self.track_order.retain(|&c| c != cad_id);
             Some(assembled)
@@ -1936,7 +2018,17 @@ mod tests {
 
     #[test]
     fn varints_roundtrip_across_magnitudes() {
-        for v in [0u64, 1, 127, 128, 300, 0xFFFF, 0x1_0000, u32::MAX as u64, u64::MAX] {
+        for v in [
+            0u64,
+            1,
+            127,
+            128,
+            300,
+            0xFFFF,
+            0x1_0000,
+            u32::MAX as u64,
+            u64::MAX,
+        ] {
             varint_round(v);
         }
         // Hostile 10× continuation → rejected.
@@ -1949,7 +2041,10 @@ mod tests {
     #[test]
     fn queue_delta_bit_packed_roundtrip_and_budget() {
         let ops = vec![
-            QueueOp::Add { cad_id: 0xCAFE, after_pos: 3 },
+            QueueOp::Add {
+                cad_id: 0xCAFE,
+                after_pos: 3,
+            },
             QueueOp::Remove { index: 1 },
             QueueOp::Clear,
             QueueOp::Move { from: 0, to: 2 },
@@ -1961,7 +2056,10 @@ mod tests {
         assert!(n <= 12, "delta payload = {n} bytes");
         // Full 32-entry batch stays in budget.
         let batch: Vec<QueueOp> = (0..MAX_QUEUE_DELTA_ENTRIES as u64)
-            .map(|i| QueueOp::Add { cad_id: 0x1000 + i, after_pos: i as u32 })
+            .map(|i| QueueOp::Add {
+                cad_id: 0x1000 + i,
+                after_pos: i as u32,
+            })
             .collect();
         let mut buf = [0u8; 256];
         let n = encode_queue_delta(&batch, &mut buf).expect("batch encode");
@@ -1976,19 +2074,31 @@ mod tests {
 
     #[test]
     fn rating_and_upvote_roundtrip() {
-        let r = TrackRating { cad_id: 0xBEEF, rating: 5, thumbs_up: true };
+        let r = TrackRating {
+            cad_id: 0xBEEF,
+            rating: 5,
+            thumbs_up: true,
+        };
         let mut buf = [0u8; 16];
         let n = encode_track_rating(&r, &mut buf).expect("encode");
         assert_eq!(decode_track_rating(&buf[..n]), Some(r));
         // Rating 0 / 6 refused at both boundaries.
         for bad in [0u8, 6, 255] {
-            let bad_rating = TrackRating { cad_id: 1, rating: bad, thumbs_up: false };
+            let bad_rating = TrackRating {
+                cad_id: 1,
+                rating: bad,
+                thumbs_up: false,
+            };
             assert_eq!(encode_track_rating(&bad_rating, &mut buf), None);
         }
         let mut payload = vec![0x01, 0x00]; // cad 1, rating 0 → decode refuses
         payload[0] = 1;
         assert_eq!(decode_track_rating(&payload), None);
-        let u = JamUpvoteMsg { cad_id: 0x1234, voter_nonce: [9, 8, 7, 6], up: true };
+        let u = JamUpvoteMsg {
+            cad_id: 0x1234,
+            voter_nonce: [9, 8, 7, 6],
+            up: true,
+        };
         let mut buf = [0u8; 24];
         let n = encode_jam_upvote(&u, &mut buf).expect("encode");
         assert_eq!(decode_jam_upvote(&buf[..n]), Some(u));
@@ -2000,8 +2110,14 @@ mod tests {
     fn wsx_frame_codec_hostile_sweep() {
         let payload = [0xABu8; 40];
         let mut frame = vec![0u8; MAX_WSX_FRAME];
-        let n = encode_frame_into(&mut frame, WSX_QUEUE_DELTA, 0x1234, FLAG_ACK_REQUESTED, &payload)
-            .expect("encode");
+        let n = encode_frame_into(
+            &mut frame,
+            WSX_QUEUE_DELTA,
+            0x1234,
+            FLAG_ACK_REQUESTED,
+            &payload,
+        )
+        .expect("encode");
         frame.truncate(n);
         let parsed = parse_frame(&frame).expect("parse");
         assert_eq!(parsed.frame_type, WSX_QUEUE_DELTA);
@@ -2098,7 +2214,13 @@ mod tests {
     }
 
     fn pseudo_track(seed: u8, size: usize) -> Vec<u8> {
-        (0..size).map(|i| seed.wrapping_add((i % 251) as u8).wrapping_mul(3).wrapping_add(7)).collect()
+        (0..size)
+            .map(|i| {
+                seed.wrapping_add((i % 251) as u8)
+                    .wrapping_mul(3)
+                    .wrapping_add(7)
+            })
+            .collect()
     }
 
     #[test]
@@ -2108,34 +2230,71 @@ mod tests {
 
         // phone → watch: queue delta mirror.
         assert!(phone.push_queue_delta(&[
-            QueueOp::Add { cad_id: 11, after_pos: 0 },
-            QueueOp::Add { cad_id: 22, after_pos: 1 },
-            QueueOp::Add { cad_id: 33, after_pos: 2 },
+            QueueOp::Add {
+                cad_id: 11,
+                after_pos: 0
+            },
+            QueueOp::Add {
+                cad_id: 22,
+                after_pos: 1
+            },
+            QueueOp::Add {
+                cad_id: 33,
+                after_pos: 2
+            },
         ]));
         deliver(&mut phone, &mut watch);
         assert_eq!(watch.queue_mirror(), &[11, 22, 33]);
-        assert!(watch.drain_events().iter().any(|e| matches!(
-            e,
-            WearSyncEvent::QueueMirrorUpdated { len: 3 }
-        )));
+        assert!(watch
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, WearSyncEvent::QueueMirrorUpdated { len: 3 })));
 
         // watch → phone: queue action + rating + upvote.
-        assert!(watch.send_queue_action(&QueueOp::Add { cad_id: 44, after_pos: 1 }));
-        assert!(watch.send_rating(&TrackRating { cad_id: 22, rating: 5, thumbs_up: true }));
-        assert!(watch.send_jam_upvote(&JamUpvoteMsg { cad_id: 33, voter_nonce: [1, 2, 3, 4], up: true }));
+        assert!(watch.send_queue_action(&QueueOp::Add {
+            cad_id: 44,
+            after_pos: 1
+        }));
+        assert!(watch.send_rating(&TrackRating {
+            cad_id: 22,
+            rating: 5,
+            thumbs_up: true
+        }));
+        assert!(watch.send_jam_upvote(&JamUpvoteMsg {
+            cad_id: 33,
+            voter_nonce: [1, 2, 3, 4],
+            up: true
+        }));
         deliver_watch_to_phone(&mut watch, &mut phone);
         let events = phone.drain_events();
         assert!(events.iter().any(|e| matches!(
             e,
-            WearSyncEvent::QueueActionReceived { op: QueueOp::Add { cad_id: 44, after_pos: 1 } }
+            WearSyncEvent::QueueActionReceived {
+                op: QueueOp::Add {
+                    cad_id: 44,
+                    after_pos: 1
+                }
+            }
         )));
         assert!(events.iter().any(|e| matches!(
             e,
-            WearSyncEvent::RatingReceived { rating: TrackRating { cad_id: 22, rating: 5, thumbs_up: true } }
+            WearSyncEvent::RatingReceived {
+                rating: TrackRating {
+                    cad_id: 22,
+                    rating: 5,
+                    thumbs_up: true
+                }
+            }
         )));
         assert!(events.iter().any(|e| matches!(
             e,
-            WearSyncEvent::JamUpvoteReceived { upvote: JamUpvoteMsg { cad_id: 33, voter_nonce: [1,2,3,4], up: true } }
+            WearSyncEvent::JamUpvoteReceived {
+                upvote: JamUpvoteMsg {
+                    cad_id: 33,
+                    voter_nonce: [1, 2, 3, 4],
+                    up: true
+                }
+            }
         )));
         // Watch's own edit reflected locally in its mirror.
         assert_eq!(watch.queue_mirror(), &[11, 44, 22, 33]);
@@ -2154,10 +2313,9 @@ mod tests {
         let t1 = pseudo_track(1, 5 * SEGMENT_SIZE);
         let t2 = pseudo_track(2, 3 * SEGMENT_SIZE - 17);
         assert!(phone.start_cache_push(7, &[(0xA1, &t1), (0xB2, &t2)], 0));
-        assert!(phone
-            .drain_actions()
-            .iter()
-            .any(|a| matches!(a, WearSyncAction::Send { frame } if frame[3] == WSX_CACHE_MANIFEST)));
+        assert!(phone.drain_actions().iter().any(
+            |a| matches!(a, WearSyncAction::Send { frame } if frame[3] == WSX_CACHE_MANIFEST)
+        ));
 
         let mut now = 0u64;
         let mut rounds = 0usize;
@@ -2177,7 +2335,12 @@ mod tests {
             if phone.cache_complete() {
                 break;
             }
-            assert!(rounds < 2_000, "cache push must converge; phone {:?} watch {:?}", phone.stats(), watch.stats());
+            assert!(
+                rounds < 2_000,
+                "cache push must converge; phone {:?} watch {:?}",
+                phone.stats(),
+                watch.stats()
+            );
         }
         // Watch verified every segment + total hashes.
         assert_eq!(watch.stats().segs_verified, 8);
@@ -2234,10 +2397,10 @@ mod tests {
             let WearSyncAction::Send { frame } = a;
             watch.on_frame(&frame, 0);
         }
-        assert!(watch.drain_events().iter().any(|e| matches!(
-            e,
-            WearSyncEvent::ManifestReceived { manifest_id: 3, .. }
-        )));
+        assert!(watch
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, WearSyncEvent::ManifestReceived { manifest_id: 3, .. })));
 
         // Pump chunks, corrupting the FIRST data segment once (payload
         // byte flipped + FNV re-fixed → only Blake3 can catch it).
@@ -2325,7 +2488,10 @@ mod tests {
         watch.report_battery(31, false);
         deliver_watch_to_phone(&mut watch, &mut phone);
         assert_eq!(phone.paused(), None);
-        assert!(phone.drain_events().iter().any(|e| matches!(e, WearSyncEvent::CacheResumed)));
+        assert!(phone
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, WearSyncEvent::CacheResumed)));
         // Charging at 10% also resumes.
         watch.report_battery(10, true);
         deliver_watch_to_phone(&mut watch, &mut phone);
@@ -2386,10 +2552,10 @@ mod tests {
         // Cancel: clears the push.
         watch.cancel_manifest(9);
         deliver_watch_to_phone(&mut watch, &mut phone);
-        assert!(phone.drain_events().iter().any(|e| matches!(
-            e,
-            WearSyncEvent::CacheCancelled { manifest_id: 9 }
-        )));
+        assert!(phone
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, WearSyncEvent::CacheCancelled { manifest_id: 9 })));
         phone.tick(200);
         assert!(count_chunks(&mut phone) == 0);
         assert!(!phone.cache_complete());
@@ -2443,7 +2609,10 @@ mod tests {
             let frame = encode_frame(WSX_CACHE_MANIFEST, (i % 60000) as u16, 0, &payload);
             watch2.on_frame(&frame, 0);
         }
-        assert!(watch2.stats().frames_rejected >= 1, "flood must trip the byte budget");
+        assert!(
+            watch2.stats().frames_rejected >= 1,
+            "flood must trip the byte budget"
+        );
         let buffered: usize = watch2.manifest_chunks.values().map(Vec::len).sum();
         assert!(buffered <= MAX_MANIFEST_BYTES);
     }
@@ -2452,12 +2621,18 @@ mod tests {
     fn queue_mirror_is_bounded_and_edits_are_safe() {
         let mut watch = WatchSyncCoordinator::new();
         for i in 0..(MAX_QUEUE_MIRROR + 10) as u64 {
-            watch.apply_op(QueueOp::Add { cad_id: i, after_pos: u32::MAX });
+            watch.apply_op(QueueOp::Add {
+                cad_id: i,
+                after_pos: u32::MAX,
+            });
         }
         assert!(watch.queue_mirror().len() <= MAX_QUEUE_MIRROR);
         // Out-of-range edits are no-ops, never panics.
         watch.apply_op(QueueOp::Remove { index: 9999 });
-        watch.apply_op(QueueOp::Move { from: 9998, to: 9999 });
+        watch.apply_op(QueueOp::Move {
+            from: 9998,
+            to: 9999,
+        });
         assert!(watch.queue_mirror().len() <= MAX_QUEUE_MIRROR);
         watch.apply_op(QueueOp::Clear);
         assert!(watch.queue_mirror().is_empty());

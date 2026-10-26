@@ -25,9 +25,20 @@ impl RadioAntiDriftEngine {
     const WINDOW_SIZE: usize = 20;
 
     const JUNK_KEYWORDS: &'static [&'static str] = &[
-        "full album", "1 hour", "10 hours", "compilation", "greatest hits mix",
-        "best songs mix", "non stop", "jukebox", "podcast", "audiobook", "asmr",
-        "medley", "slowed + reverb mix", "workout mix",
+        "full album",
+        "1 hour",
+        "10 hours",
+        "compilation",
+        "greatest hits mix",
+        "best songs mix",
+        "non stop",
+        "jukebox",
+        "podcast",
+        "audiobook",
+        "asmr",
+        "medley",
+        "slowed + reverb mix",
+        "workout mix",
     ];
 
     /// Exact 1:1 reproduction of AntiDriftScoringEngine formula in zero-allocation Rust
@@ -73,9 +84,10 @@ impl RadioAntiDriftEngine {
 
             // Duration sanity check
             if (60..=600).contains(&seed_duration_sec)
-                && (track.duration_sec > 720 || track.duration_sec < 35) {
-                    continue;
-                }
+                && (track.duration_sec > 720 || track.duration_sec < 35)
+            {
+                continue;
+            }
 
             // B. Seen signature check
             let sig = Self::signature(&track.title, &track.artist);
@@ -104,7 +116,11 @@ impl RadioAntiDriftEngine {
         }
 
         // 3. Sort by highest affinity score descending
-        ranked_list.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        ranked_list.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         ranked_list
     }
 
@@ -127,7 +143,10 @@ impl RadioAntiDriftEngine {
 
         // 2. Camelot Key Harmonic Compatibility
         if !candidate.key.trim().is_empty() && !seed_key.is_empty() {
-            let key_dist = Self::calculate_camelot_distance(candidate.key.trim().to_uppercase().as_str(), seed_key);
+            let key_dist = Self::calculate_camelot_distance(
+                candidate.key.trim().to_uppercase().as_str(),
+                seed_key,
+            );
             match key_dist {
                 0 => score += 25.0, // Exact harmonic match
                 1 => score += 15.0, // Harmonic neighbor
@@ -144,10 +163,20 @@ impl RadioAntiDriftEngine {
     }
 
     fn calculate_camelot_distance(key_a: &str, key_b: &str) -> i32 {
-        let num_a: i32 = key_a.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+        let num_a: i32 = key_a
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0);
         let letter_a: String = key_a.chars().filter(|c| c.is_ascii_alphabetic()).collect();
 
-        let num_b: i32 = key_b.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+        let num_b: i32 = key_b
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0);
         let letter_b: String = key_b.chars().filter(|c| c.is_ascii_alphabetic()).collect();
 
         if num_a == 0 || num_b == 0 {
@@ -165,7 +194,11 @@ impl RadioAntiDriftEngine {
     }
 
     fn signature(title: &str, artist: &str) -> String {
-        format!("{}:::{}", title.trim().to_lowercase(), artist.trim().to_lowercase())
+        format!(
+            "{}:::{}",
+            title.trim().to_lowercase(),
+            artist.trim().to_lowercase()
+        )
     }
 }
 
@@ -342,15 +375,15 @@ impl GroupBlendScorer {
             Vec::with_capacity(seeds.len());
         let mut member_genres: Vec<std::collections::HashSet<String>> =
             Vec::with_capacity(seeds.len());
-        let mut seen_signatures: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_signatures: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         let mut member_ids: Vec<String> = Vec::with_capacity(seeds.len());
         for seed in seeds {
             member_artists.push(seed.artists.iter().map(|a| norm_tag(a)).collect());
             member_genres.push(seed.genres.iter().map(|g| norm_tag(g)).collect());
             member_ids.push(seed.member_id.clone());
             for t in &seed.recent_tracks {
-                seen_signatures
-                    .insert(RadioAntiDriftEngine::signature(&t.title, &t.artist));
+                seen_signatures.insert(RadioAntiDriftEngine::signature(&t.title, &t.artist));
             }
         }
 
@@ -376,16 +409,17 @@ impl GroupBlendScorer {
             if title_lower.is_empty() || artist_lower.is_empty() {
                 continue;
             }
-            if RadioAntiDriftEngine::JUNK_KEYWORDS.iter().any(|k| title_lower.contains(k)) {
+            if RadioAntiDriftEngine::JUNK_KEYWORDS
+                .iter()
+                .any(|k| title_lower.contains(k))
+            {
                 continue;
             }
             if c.duration_sec > 0 && (c.duration_sec > 720 || c.duration_sec < 35) {
                 continue;
             }
             // Already inside the group's rotation → drift, not blend.
-            if seen_signatures
-                .contains(&RadioAntiDriftEngine::signature(&c.title, &c.artist))
-            {
+            if seen_signatures.contains(&RadioAntiDriftEngine::signature(&c.title, &c.artist)) {
                 continue;
             }
 
@@ -422,15 +456,18 @@ impl GroupBlendScorer {
             };
 
             // AntiDriftPenalty: pool-side artist saturation (order-free).
-            let pool_siblings = artist_pool.get(&artist_lower).copied().unwrap_or(1).saturating_sub(1);
-            let penalty = (pool_siblings.min(Self::ARTIST_POOL_CAP) as f32)
-                * Self::ARTIST_POOL_PENALTY;
+            let pool_siblings = artist_pool
+                .get(&artist_lower)
+                .copied()
+                .unwrap_or(1)
+                .saturating_sub(1);
+            let penalty =
+                (pool_siblings.min(Self::ARTIST_POOL_CAP) as f32) * Self::ARTIST_POOL_PENALTY;
 
-            let score = (w.overlap * affinity
-                + w.freshness * freshness
-                + w.co_occurrence * co_rank
-                - w.anti_drift * penalty)
-                .clamp(0.0, 1.0);
+            let score =
+                (w.overlap * affinity + w.freshness * freshness + w.co_occurrence * co_rank
+                    - w.anti_drift * penalty)
+                    .clamp(0.0, 1.0);
 
             let mutual_blend = matches >= 2 && (matches as usize) >= members.div_ceil(2);
 
@@ -455,7 +492,8 @@ impl GroupBlendScorer {
 
         // ── Rank: score desc, then stable identity order for determinism ──
         scored.sort_by(|a, b| {
-            b.score.partial_cmp(&a.score)
+            b.score
+                .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(a.id.cmp(&b.id))
         });
@@ -506,10 +544,10 @@ impl GroupBlendScorer {
         member_seeds_json: &str,
         now_ms: i64,
     ) -> Result<String, String> {
-        let candidates: Vec<BlendCandidate> = serde_json::from_str(candidate_json)
-            .map_err(|e| format!("candidateJson: {e}"))?;
-        let seeds: Vec<BlendMemberSeed> = serde_json::from_str(member_seeds_json)
-            .map_err(|e| format!("memberSeedsJson: {e}"))?;
+        let candidates: Vec<BlendCandidate> =
+            serde_json::from_str(candidate_json).map_err(|e| format!("candidateJson: {e}"))?;
+        let seeds: Vec<BlendMemberSeed> =
+            serde_json::from_str(member_seeds_json).map_err(|e| format!("memberSeedsJson: {e}"))?;
         if seeds.is_empty() {
             return Err("memberSeedsJson: at least one member seed required".to_string());
         }
@@ -566,7 +604,10 @@ mod blend_tests {
         assert_eq!(res.ranked[0].id, 1);
         assert!((res.ranked[0].overlap_affinity - 2.0 / 3.0).abs() < 1e-5);
         assert!(res.ranked[0].mutual_blend);
-        assert_eq!(res.ranked[0].member_matches, vec!["m1".to_string(), "m2".to_string()]);
+        assert_eq!(
+            res.ranked[0].member_matches,
+            vec!["m1".to_string(), "m2".to_string()]
+        );
         assert!(!res.ranked[1].mutual_blend);
         assert_eq!(res.ranked[1].overlap_members, 1);
     }
@@ -603,18 +644,18 @@ mod blend_tests {
         let seeds = vec![m1, seed("m2", &["y"], &[])];
 
         let cands = vec![
-            cand(1, "Known Track", "X", 0, 0),                  // in rotation → skip
-            cand(2, "1 Hour Mix Compilation", "X", 0, 0),       // junk → skip
-            cand(3, "Podcast Episode", "X", 0, 0),              // junk → skip
+            cand(1, "Known Track", "X", 0, 0),            // in rotation → skip
+            cand(2, "1 Hour Mix Compilation", "X", 0, 0), // junk → skip
+            cand(3, "Podcast Episode", "X", 0, 0),        // junk → skip
             {
                 let mut c = cand(4, "Way Too Long", "X", 0, 0);
                 c.duration_sec = 7_200; // 2 hours → duration sanity skip
                 c
             },
-            cand(5, "Good", "X", 0, 0),                         // kept
-            cand(6, "Also Good", "X", 0, 0),                    // kept (2nd X)
-            cand(7, "Third X", "X", 0, 0),                      // ceiling → dropped
-            cand(8, "Fine", "Y", 0, 0),                         // kept
+            cand(5, "Good", "X", 0, 0),      // kept
+            cand(6, "Also Good", "X", 0, 0), // kept (2nd X)
+            cand(7, "Third X", "X", 0, 0),   // ceiling → dropped
+            cand(8, "Fine", "Y", 0, 0),      // kept
         ];
         let res = GroupBlendScorer::score(&cands, &seeds, NOW);
         let ids: Vec<i64> = res.ranked.iter().map(|r| r.id).collect();
@@ -631,7 +672,10 @@ mod blend_tests {
 
     #[test]
     fn blend_json_round_trip_and_errors() {
-        let seeds = vec![seed("m1", &["the weeknd"], &["pop"]), seed("m2", &["dua lipa"], &[])];
+        let seeds = vec![
+            seed("m1", &["the weeknd"], &["pop"]),
+            seed("m2", &["dua lipa"], &[]),
+        ];
         let cands = vec![cand(1, "Blinding Lights", "The Weeknd", 1, 5)];
         let cj = serde_json::to_string(&cands).unwrap();
         let sj = serde_json::to_string(&seeds).unwrap();
@@ -641,7 +685,10 @@ mod blend_tests {
         assert!(out.contains("\"ranked\""));
 
         assert!(GroupBlendScorer::score_json("{not json", &sj).is_err());
-        assert!(GroupBlendScorer::score_json(&cj, "[]").is_err(), "empty seeds rejected");
+        assert!(
+            GroupBlendScorer::score_json(&cj, "[]").is_err(),
+            "empty seeds rejected"
+        );
         assert!(GroupBlendScorer::score_json(&cj, "{}").is_err());
     }
 
@@ -653,7 +700,10 @@ mod blend_tests {
             .map(|m| {
                 seed(
                     &format!("m{m}"),
-                    &artists[m * 4..m * 4 + 8].iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                    &artists[m * 4..m * 4 + 8]
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>(),
                     &["pop"],
                 )
             })
@@ -689,41 +739,41 @@ mod blend_tests {
     }
 }
 
-    #[test]
-    fn score_json_at_pins_the_freshness_clock() {
-        // Audit #22 item 10 regression lock: the JSON boundary used to read
-        // the wall clock inline — pinned epochs must now be deterministic
-        // and agree with the direct engine call at the same epoch.
-        let cj = serde_json::json!([{
-            "id": 1, "title": "T", "artist": "A", "durationSec": 200,
-            "addedAtMs": 0, "coOccurrenceCount": 0
-        }])
-        .to_string();
-        let sj = serde_json::json!([{
-            "memberId": "m", "artists": ["A"], "genres": ["pop"], "recentTracks": []
-        }])
-        .to_string();
-        // `tookMs` is engine self-timing telemetry (wall-clock noise by
-        // design); everything else must be bit-stable under a pinned epoch.
-        let strip_took = |s: &str| {
-            let mut v: serde_json::Value = serde_json::from_str(s).unwrap();
-            v["tookMs"].take();
-            v
-        };
-        let at_hour = GroupBlendScorer::score_json_at(&cj, &sj, 3_600_000).unwrap();
-        let at_hour_again = GroupBlendScorer::score_json_at(&cj, &sj, 3_600_000).unwrap();
-        assert_eq!(
-            strip_took(&at_hour),
-            strip_took(&at_hour_again),
-            "pinned epoch is deterministic (modulo tookMs telemetry)"
-        );
-        let cands: Vec<BlendCandidate> = serde_json::from_str(&cj).unwrap();
-        let seeds: Vec<BlendMemberSeed> = serde_json::from_str(&sj).unwrap();
-        let direct =
-            serde_json::to_string(&GroupBlendScorer::score(&cands, &seeds, 3_600_000)).unwrap();
-        assert_eq!(
-            strip_took(&at_hour),
-            strip_took(&direct),
-            "seam delegates to the engine unchanged"
-        );
-    }
+#[test]
+fn score_json_at_pins_the_freshness_clock() {
+    // Audit #22 item 10 regression lock: the JSON boundary used to read
+    // the wall clock inline — pinned epochs must now be deterministic
+    // and agree with the direct engine call at the same epoch.
+    let cj = serde_json::json!([{
+        "id": 1, "title": "T", "artist": "A", "durationSec": 200,
+        "addedAtMs": 0, "coOccurrenceCount": 0
+    }])
+    .to_string();
+    let sj = serde_json::json!([{
+        "memberId": "m", "artists": ["A"], "genres": ["pop"], "recentTracks": []
+    }])
+    .to_string();
+    // `tookMs` is engine self-timing telemetry (wall-clock noise by
+    // design); everything else must be bit-stable under a pinned epoch.
+    let strip_took = |s: &str| {
+        let mut v: serde_json::Value = serde_json::from_str(s).unwrap();
+        v["tookMs"].take();
+        v
+    };
+    let at_hour = GroupBlendScorer::score_json_at(&cj, &sj, 3_600_000).unwrap();
+    let at_hour_again = GroupBlendScorer::score_json_at(&cj, &sj, 3_600_000).unwrap();
+    assert_eq!(
+        strip_took(&at_hour),
+        strip_took(&at_hour_again),
+        "pinned epoch is deterministic (modulo tookMs telemetry)"
+    );
+    let cands: Vec<BlendCandidate> = serde_json::from_str(&cj).unwrap();
+    let seeds: Vec<BlendMemberSeed> = serde_json::from_str(&sj).unwrap();
+    let direct =
+        serde_json::to_string(&GroupBlendScorer::score(&cands, &seeds, 3_600_000)).unwrap();
+    assert_eq!(
+        strip_took(&at_hour),
+        strip_took(&direct),
+        "seam delegates to the engine unchanged"
+    );
+}

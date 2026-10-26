@@ -52,9 +52,9 @@ pub unsafe extern "C" fn free_audio_dsp(state_ptr: *mut DspState) {
 #[no_mangle]
 pub unsafe extern "C" fn process_audio_dsp(
     state_ptr: *mut DspState,
-    input_ptr: *const i16,   // Interleaved 16-bit PCM from decoder
-    output_ptr: *mut f32,    // Interleaved 32-bit Float PCM to AudioTrack
-    num_frames: usize,       // Number of stereo frames (each frame = 2 samples)
+    input_ptr: *const i16, // Interleaved 16-bit PCM from decoder
+    output_ptr: *mut f32,  // Interleaved 32-bit Float PCM to AudioTrack
+    num_frames: usize,     // Number of stereo frames (each frame = 2 samples)
 ) -> i32 {
     let result = catch_unwind(|| {
         if state_ptr.is_null() || input_ptr.is_null() || output_ptr.is_null() || num_frames == 0 {
@@ -81,14 +81,20 @@ pub unsafe extern "C" fn process_audio_dsp(
             let in_right = (input[i + 1] as f32 / 32768.0).clamp(-1.0, 1.0);
 
             // --- 1. Biquad Low-Shelf Bass Contour (Channel 0: Left) ---
-            let out_l = (b0 * in_left + b1 * state.x1[0] + b2 * state.x2[0] - a1 * state.y1[0] - a2 * state.y2[0]) / a0;
+            let out_l = (b0 * in_left + b1 * state.x1[0] + b2 * state.x2[0]
+                - a1 * state.y1[0]
+                - a2 * state.y2[0])
+                / a0;
             state.x2[0] = state.x1[0];
             state.x1[0] = in_left;
             state.y2[0] = state.y1[0];
             state.y1[0] = out_l;
 
             // --- 1. Biquad Low-Shelf Bass Contour (Channel 1: Right) ---
-            let out_r = (b0 * in_right + b1 * state.x1[1] + b2 * state.x2[1] - a1 * state.y1[1] - a2 * state.y2[1]) / a0;
+            let out_r = (b0 * in_right + b1 * state.x1[1] + b2 * state.x2[1]
+                - a1 * state.y1[1]
+                - a2 * state.y2[1])
+                / a0;
             state.x2[1] = state.x1[1];
             state.x1[1] = in_right;
             state.y2[1] = state.y1[1];

@@ -23,11 +23,17 @@ fn probe(url: &str, ua: &str, label: &str) {
                 .or_else(|| resp.header("content-range"))
                 .unwrap_or("?")
                 .to_string();
-            println!("  [{label}] status={} content-type={ct} range/len={len}", resp.status());
+            println!(
+                "  [{label}] status={} content-type={ct} range/len={len}",
+                resp.status()
+            );
             let _ = resp.into_string().unwrap_or_default();
         }
         Err(ureq::Error::Status(code, resp)) => {
-            println!("  [{label}] HTTP {code} content-type={}", resp.content_type());
+            println!(
+                "  [{label}] HTTP {code} content-type={}",
+                resp.content_type()
+            );
             let _ = resp.into_string().unwrap_or_default();
         }
         Err(e) => println!("  [{label}] transport error: {e}"),

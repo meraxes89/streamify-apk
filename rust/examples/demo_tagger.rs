@@ -17,11 +17,11 @@ fn main() {
     wav_bytes.extend_from_slice(&(file_len as u32).to_le_bytes());
     wav_bytes.extend_from_slice(b"WAVEfmt ");
     wav_bytes.extend_from_slice(&16u32.to_le_bytes()); // Subchunk1Size
-    wav_bytes.extend_from_slice(&1u16.to_le_bytes());  // AudioFormat (PCM)
-    wav_bytes.extend_from_slice(&1u16.to_le_bytes());  // NumChannels (1)
+    wav_bytes.extend_from_slice(&1u16.to_le_bytes()); // AudioFormat (PCM)
+    wav_bytes.extend_from_slice(&1u16.to_le_bytes()); // NumChannels (1)
     wav_bytes.extend_from_slice(&sample_rate.to_le_bytes());
     wav_bytes.extend_from_slice(&byte_rate.to_le_bytes());
-    wav_bytes.extend_from_slice(&2u16.to_le_bytes());  // BlockAlign
+    wav_bytes.extend_from_slice(&2u16.to_le_bytes()); // BlockAlign
     wav_bytes.extend_from_slice(&16u16.to_le_bytes()); // BitsPerSample
     wav_bytes.extend_from_slice(b"data");
     wav_bytes.extend_from_slice(&(data_len as u32).to_le_bytes());
@@ -30,10 +30,14 @@ fn main() {
     let temp_audio_path = "/tmp/streamify_test_track.wav";
     {
         let mut file = File::create(temp_audio_path).expect("Failed to create temp audio file");
-        file.write_all(&wav_bytes).expect("Failed to write audio bytes");
+        file.write_all(&wav_bytes)
+            .expect("Failed to write audio bytes");
     }
 
-    println!("\n📝 1. Writing metadata via Rust Lofty engine into '{}'...", temp_audio_path);
+    println!(
+        "\n📝 1. Writing metadata via Rust Lofty engine into '{}'...",
+        temp_audio_path
+    );
     let title = "Starboy (Streamify Remaster)";
     let artist = "The Weeknd ft. Daft Punk";
     let album = "Starboy (Deluxe)";

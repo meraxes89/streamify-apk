@@ -3,14 +3,14 @@ use std::f32::consts::PI;
 /// Cache-line aligned state buffer for zero-alloc high-performance integration.
 #[repr(C, align(64))]
 pub struct AirdropState {
-    pub pos: [f32; 3],          // x, y, z
-    pub vel: [f32; 3],          // vx, vy, vz
-    pub stretch_parallel: f32,  // aerodynamic stretch along velocity
-    pub stretch_perp: f32,      // perpendicular squash
-    pub rotation_rad: f32,      // 2D trajectory rotation
-    pub pitch_deg: f32,         // 3D pitch
-    pub roll_deg: f32,          // 3D roll
-    pub impact_progress: f32,   // 0.0 -> 1.0 post-docking
+    pub pos: [f32; 3],         // x, y, z
+    pub vel: [f32; 3],         // vx, vy, vz
+    pub stretch_parallel: f32, // aerodynamic stretch along velocity
+    pub stretch_perp: f32,     // perpendicular squash
+    pub rotation_rad: f32,     // 2D trajectory rotation
+    pub pitch_deg: f32,        // 3D pitch
+    pub roll_deg: f32,         // 3D roll
+    pub impact_progress: f32,  // 0.0 -> 1.0 post-docking
     pub is_docked: bool,
     pub is_ready_to_dock: bool,
     pub shock_radius: f32,

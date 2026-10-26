@@ -22,10 +22,16 @@ fn main() {
 
             if let Some(top) = results.first() {
                 // 2. Resolve direct playable CDN streams
-                println!("\n⚡ 2. Resolving direct playable CDN stream URLs for VideoId: '{}'...", top.id);
+                println!(
+                    "\n⚡ 2. Resolving direct playable CDN stream URLs for VideoId: '{}'...",
+                    top.id
+                );
                 match StreamResolver::resolve_stream(&top.id) {
                     Ok(streams) => {
-                        println!("  ✅ Successfully resolved {} stream format(s):", streams.len());
+                        println!(
+                            "  ✅ Successfully resolved {} stream format(s):",
+                            streams.len()
+                        );
                         for (j, s) in streams.iter().take(3).enumerate() {
                             println!(
                                 "    [{}] Mime: {} | Bitrate: {} bps | Duration: {}s | IsAudioOnly: {}",
@@ -35,7 +41,10 @@ fn main() {
                                 s.duration_sec,
                                 s.is_audio_only
                             );
-                            println!("        URL Preview: {}...", &s.url.chars().take(80).collect::<String>());
+                            println!(
+                                "        URL Preview: {}...",
+                                &s.url.chars().take(80).collect::<String>()
+                            );
                         }
                     }
                     Err(e) => println!("  ❌ Stream resolution error: {}", e),

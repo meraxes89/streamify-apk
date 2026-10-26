@@ -178,7 +178,10 @@ pub fn parse_connect_frame(bytes: &[u8]) -> Result<(u8, PresenceDescriptor), Fra
         return Err(FrameReject::BadVersion);
     }
     let msg_type = bytes[5];
-    if !matches!(msg_type, MSG_PRESENCE_ADVERT | MSG_PRESENCE_QUERY | MSG_PRESENCE_REPLY | MSG_HEARTBEAT) {
+    if !matches!(
+        msg_type,
+        MSG_PRESENCE_ADVERT | MSG_PRESENCE_QUERY | MSG_PRESENCE_REPLY | MSG_HEARTBEAT
+    ) {
         return Err(FrameReject::BadMsgType);
     }
     let device_type = DeviceType::from_u8(bytes[14]).ok_or(FrameReject::BadDeviceType)?;
@@ -187,7 +190,8 @@ pub fn parse_connect_frame(bytes: &[u8]) -> Result<(u8, PresenceDescriptor), Fra
     if bytes.len() < name_end + 4 {
         return Err(FrameReject::Truncated);
     }
-    let name = std::str::from_utf8(&bytes[DESCRIPTOR_LEN..name_end]).map_err(|_| FrameReject::BadName)?;
+    let name =
+        std::str::from_utf8(&bytes[DESCRIPTOR_LEN..name_end]).map_err(|_| FrameReject::BadName)?;
     if name.contains('\0') || name.chars().any(|c| c.is_control()) {
         return Err(FrameReject::BadName);
     }
@@ -451,7 +455,12 @@ impl ConnectGateway {
         }
     }
 
-    fn raise(&mut self, change: RegistryChange, desc: &PresenceDescriptor, origin: DiscoveryOrigin) {
+    fn raise(
+        &mut self,
+        change: RegistryChange,
+        desc: &PresenceDescriptor,
+        origin: DiscoveryOrigin,
+    ) {
         match change {
             RegistryChange::Discovered { device_id } => {
                 self.events.push_back(GatewayEvent::DeviceDiscovered {
@@ -515,7 +524,7 @@ impl ConnectGateway {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device_registry::{LEASE_TTL_MS, CODEC_AAC, CODEC_SBC};
+    use crate::device_registry::{CODEC_AAC, CODEC_SBC, LEASE_TTL_MS};
 
     fn speaker_desc(id: &str, name: &str) -> PresenceDescriptor {
         PresenceDescriptor {
@@ -543,7 +552,12 @@ mod tests {
 
     #[test]
     fn frame_roundtrip_all_types() {
-        for t in [MSG_PRESENCE_ADVERT, MSG_PRESENCE_QUERY, MSG_PRESENCE_REPLY, MSG_HEARTBEAT] {
+        for t in [
+            MSG_PRESENCE_ADVERT,
+            MSG_PRESENCE_QUERY,
+            MSG_PRESENCE_REPLY,
+            MSG_HEARTBEAT,
+        ] {
             let d = speaker_desc("spk-1", "Kitchen Speaker");
             let bytes = encode_connect_frame(t, &d);
             assert!(bytes.len() <= MAX_CONNECT_FRAME);
@@ -563,7 +577,10 @@ mod tests {
         };
         let bytes = encode_connect_frame(MSG_PRESENCE_ADVERT, &d);
         assert_eq!(bytes.len(), DESCRIPTOR_LEN + MAX_DEVICE_NAME_LEN + 4);
-        assert_eq!(parse_connect_frame(&bytes).unwrap().1.name.len(), MAX_DEVICE_NAME_LEN);
+        assert_eq!(
+            parse_connect_frame(&bytes).unwrap().1.name.len(),
+            MAX_DEVICE_NAME_LEN
+        );
     }
 
     #[test]
@@ -573,7 +590,10 @@ mod tests {
 
         // Truncated.
         for cut in [0usize, 4, 15, DESCRIPTOR_LEN + 2] {
-            assert_eq!(parse_connect_frame(&good[..cut]), Err(FrameReject::Truncated));
+            assert_eq!(
+                parse_connect_frame(&good[..cut]),
+                Err(FrameReject::Truncated)
+            );
         }
         // Bad magic.
         let mut bad = good.clone();
@@ -597,7 +617,11 @@ mod tests {
         for bit in [6usize, 7, 13, 15, 22] {
             let mut bad = good.clone();
             bad[bit] ^= 0x40;
-            assert_eq!(parse_connect_frame(&bad), Err(FrameReject::BadChecksum), "bit {bit}");
+            assert_eq!(
+                parse_connect_frame(&bad),
+                Err(FrameReject::BadChecksum),
+                "bit {bit}"
+            );
         }
         // Name length lying past the buffer.
         let mut bad = good.clone();
@@ -635,7 +659,10 @@ mod tests {
     fn discovery_lifecycle_and_lease_events() {
         let mut gw = gateway();
         // Ingest while stopped → refused.
-        let advert = encode_connect_frame(MSG_PRESENCE_ADVERT, &speaker_desc("spk-1", "Kitchen Speaker"));
+        let advert = encode_connect_frame(
+            MSG_PRESENCE_ADVERT,
+            &speaker_desc("spk-1", "Kitchen Speaker"),
+        );
         assert!(!gw.on_lan_beacon(&advert, 1_000));
         assert_eq!(gw.boundary_stats().frames_rejected, 1);
 
@@ -717,7 +744,10 @@ mod tests {
         let mut gw = gateway();
         gw.start_discovery();
         gw.drain_events();
-        let q = encode_connect_frame(MSG_PRESENCE_QUERY, &speaker_desc("other-phone", "Sarah's Phone"));
+        let q = encode_connect_frame(
+            MSG_PRESENCE_QUERY,
+            &speaker_desc("other-phone", "Sarah's Phone"),
+        );
         assert!(gw.on_lan_beacon(&q, 100));
         let events = gw.drain_events();
         let id = device_id_from_string("other-phone");
@@ -747,10 +777,13 @@ mod tests {
         let hb = encode_connect_frame(MSG_HEARTBEAT, &d);
         assert!(gw.on_lan_beacon(&hb, LEASE_TTL_MS + 2));
         let events = gw.drain_events();
-        assert!(events.iter().any(|e| matches!(
-            e,
-            GatewayEvent::DeviceDiscovered { device_id, .. } if *device_id == d.device_id
-        )), "post-reboot heartbeat must re-register: {events:?}");
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                GatewayEvent::DeviceDiscovered { device_id, .. } if *device_id == d.device_id
+            )),
+            "post-reboot heartbeat must re-register: {events:?}"
+        );
         assert!(gw.registry().get(d.device_id).is_some());
     }
 

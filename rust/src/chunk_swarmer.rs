@@ -56,11 +56,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::wire_le;
 use crate::p2p_mesh::{
     MSG_CHUNK_DATA, MSG_CHUNK_HAVE, MSG_CHUNK_REQUEST, MSG_TRACK_MANIFEST,
     MSG_TRACK_MANIFEST_REQUEST,
 };
+use crate::wire_le;
 
 /// Default chunk size: 60 KiB (see module docs — u16 payload budget).
 pub const DEFAULT_CHUNK_SIZE: usize = 60 * 1024;
@@ -187,8 +187,7 @@ impl TrackManifest {
         if payload.len() < 56 {
             return Err(SwarmError::MalformedManifest);
         }
-        let num_chunks =
-            wire_le::le_u32(&payload[20..24]).ok_or(SwarmError::MalformedManifest)?;
+        let num_chunks = wire_le::le_u32(&payload[20..24]).ok_or(SwarmError::MalformedManifest)?;
         if num_chunks > MANIFEST_MAX_CHUNKS {
             return Err(SwarmError::ManifestTooLarge);
         }
@@ -199,8 +198,7 @@ impl TrackManifest {
         let chunk_hashes: Vec<[u8; 32]> = (0..num_chunks as usize)
             .map(|i| {
                 let base = 56 + i * 32;
-                wire_le::fixed::<32>(&payload[base..base + 32])
-                    .ok_or(SwarmError::MalformedManifest)
+                wire_le::fixed::<32>(&payload[base..base + 32]).ok_or(SwarmError::MalformedManifest)
             })
             .collect::<Result<_, _>>()?;
         Ok(TrackManifest {
@@ -1262,11 +1260,12 @@ fn fill_pipelines(
                     // Window semantics: [head, head + window) — the next
                     // `sequential_window` chunks the playback buffer needs.
                     let dist = idx.abs_diff(head);
-                    let seq_rank = if params.sequential_window > 0 && dist < params.sequential_window {
-                        0u32
-                    } else {
-                        1u32
-                    };
+                    let seq_rank =
+                        if params.sequential_window > 0 && dist < params.sequential_window {
+                            0u32
+                        } else {
+                            1u32
+                        };
                     (seq_rank, avail[idx as usize], std::cmp::Reverse(tries), idx)
                 });
             let Some(idx) = best else { break };
@@ -1473,7 +1472,8 @@ mod tests {
         // Window chunks land → the head slides to 4 and the scheduler
         // moves on to the (now-)contiguous tail.
         for i in 0..4u32 {
-            let p = build_data_payload(0x4C0D, i, &data[i as usize * 1024..(i as usize + 1) * 1024]);
+            let p =
+                build_data_payload(0x4C0D, i, &data[i as usize * 1024..(i as usize + 1) * 1024]);
             let _ = m.on_chunk_data(&p, 0x11, NOW, &[]);
         }
         let actions = m.on_tick(NOW, &[0x11, 0x22]);
@@ -1490,7 +1490,11 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(reqs, vec![4, 5, 6, 7], "the window must slide with the head");
+        assert_eq!(
+            reqs,
+            vec![4, 5, 6, 7],
+            "the window must slide with the head"
+        );
     }
 
     #[test]
@@ -1725,7 +1729,10 @@ mod tests {
         let _ = m2.on_have(&full, 0x11, NOW);
         let reqs = chunk_requests(&m2.on_tick(NOW, &[0x11]));
         assert_eq!(reqs.len(), 3);
-        assert!(reqs.iter().all(|&(_, i)| i >= 5), "only the gap is fetched: {reqs:?}");
+        assert!(
+            reqs.iter().all(|&(_, i)| i >= 5),
+            "only the gap is fetched: {reqs:?}"
+        );
 
         for &(_, i) in &reqs {
             let p =
@@ -1781,7 +1788,10 @@ mod tests {
         let _ = m.on_have(&full, 0x11, NOW);
         let _ = m.on_have(&full, 0x22, NOW);
         let reqs = chunk_requests(&m.on_tick(NOW, &[0x11, 0x22]));
-        assert!(reqs.iter().any(|&(_, i)| i == 0), "rotted chunk must be re-requested");
+        assert!(
+            reqs.iter().any(|&(_, i)| i == 0),
+            "rotted chunk must be re-requested"
+        );
 
         // The wire reply from 0x11 is ALSO corrupt → blacklisted for idx 0.
         let mut wire_rot = data[..1024].to_vec();

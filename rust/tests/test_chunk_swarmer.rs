@@ -13,9 +13,7 @@
 
 mod swarm_sim;
 
-use streamify_core_rs::chunk_swarmer::{
-    SwarmAction, SwarmManager, SwarmParams, TrackManifest,
-};
+use streamify_core_rs::chunk_swarmer::{SwarmAction, SwarmManager, SwarmParams, TrackManifest};
 use streamify_core_rs::p2p_mesh::MSG_CHUNK_REQUEST;
 
 use swarm_sim::{pseudo_audio, sim_params, SimMesh, TICK_NS};
@@ -163,7 +161,10 @@ fn swarm_survives_a_full_network_partition_and_self_heals() {
         }
     }
     let stalled_at = stats.iter().skip(3).map(|s| s.have_chunks).sum::<u32>();
-    assert!(stalled_at < 3 * 96, "right half is stalled at its partial union");
+    assert!(
+        stalled_at < 3 * 96,
+        "right half is stalled at its partial union"
+    );
 
     // HEAL: links back up; engines recover on their own.
     mesh.heal_partition();
@@ -204,11 +205,15 @@ fn resumable_state_persists_across_a_full_crash_at_scale() {
     for _ in 0..500 {
         t += TICK_NS;
         for action in doomed.on_tick(t, &peers) {
-            if let SwarmAction::Unicast { to, msg_type, payload } = action {
+            if let SwarmAction::Unicast {
+                to,
+                msg_type,
+                payload,
+            } = action
+            {
                 assert_eq!(to, 0x11);
                 if msg_type == MSG_CHUNK_REQUEST {
-                    let frame =
-                        serve_chunk(TRACK_CRASH, &data, 1024, &payload).unwrap();
+                    let frame = serve_chunk(TRACK_CRASH, &data, 1024, &payload).unwrap();
                     let _ = doomed.on_chunk_data(&frame, 0x11, t, &peers);
                 }
             }
@@ -229,7 +234,9 @@ fn resumable_state_persists_across_a_full_crash_at_scale() {
     );
 
     // CRASH: the state blob is all that survives.
-    let blob = doomed.save_state(TRACK_CRASH).expect("state blob must serialize");
+    let blob = doomed
+        .save_state(TRACK_CRASH)
+        .expect("state blob must serialize");
 
     // Phase 2: a brand-new process restores from the blob.
     let mut resumed = SwarmManager::new(0x99, params);
@@ -257,10 +264,12 @@ fn resumable_state_persists_across_a_full_crash_at_scale() {
     for _ in 0..600 {
         t2 += TICK_NS;
         for action in resumed.on_tick(t2, &peers) {
-            if let SwarmAction::Unicast { msg_type, payload, .. } = action {
+            if let SwarmAction::Unicast {
+                msg_type, payload, ..
+            } = action
+            {
                 if msg_type == MSG_CHUNK_REQUEST {
-                    let frame =
-                        serve_chunk(TRACK_CRASH, &data, 1024, &payload).unwrap();
+                    let frame = serve_chunk(TRACK_CRASH, &data, 1024, &payload).unwrap();
                     let _ = resumed.on_chunk_data(&frame, 0x11, t2, &peers);
                 }
             }
@@ -276,7 +285,9 @@ fn resumable_state_persists_across_a_full_crash_at_scale() {
     }
     assert!(done, "resumed transfer must complete");
     assert_eq!(
-        resumed.take_track(TRACK_CRASH).expect("resumed track assembles"),
+        resumed
+            .take_track(TRACK_CRASH)
+            .expect("resumed track assembles"),
         data
     );
     // THE headline resume property: the network moved ONLY the gap.
@@ -345,6 +356,10 @@ fn global_window_backpressure_holds_for_the_entire_run() {
     }
     assert!(mesh.all_complete(TRACK), "must complete under backpressure");
     for (i, bytes) in mesh.take_all(TRACK).iter().enumerate() {
-        assert_eq!(bytes.as_deref(), Some(data.as_slice()), "node[{i}] diverges");
+        assert_eq!(
+            bytes.as_deref(),
+            Some(data.as_slice()),
+            "node[{i}] diverges"
+        );
     }
 }

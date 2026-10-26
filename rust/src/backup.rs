@@ -26,7 +26,10 @@ impl BackupArchiveEngine {
         };
 
         // Determine column indices
-        let cols: Vec<&str> = header.split(',').map(|c| c.trim().trim_matches('"')).collect();
+        let cols: Vec<&str> = header
+            .split(',')
+            .map(|c| c.trim().trim_matches('"'))
+            .collect();
         let mut title_idx = 1usize;
         let mut artist_idx = 2usize;
         let mut album_idx = 3usize;
@@ -57,7 +60,11 @@ impl BackupArchiveEngine {
                 let spotify_raw = fields.get(spotify_id_idx).unwrap_or(&"").to_string();
 
                 let duration_sec = if let Ok(ms) = dur_raw.parse::<i32>() {
-                    if ms > 1000 { ms / 1000 } else { ms }
+                    if ms > 1000 {
+                        ms / 1000
+                    } else {
+                        ms
+                    }
                 } else {
                     0
                 };

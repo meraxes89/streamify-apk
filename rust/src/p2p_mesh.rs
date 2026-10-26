@@ -100,8 +100,7 @@ use tokio::sync::{mpsc, watch};
 use crate::chunk_swarmer::{SwarmAction, SwarmEvent, SwarmManager, SwarmParams, TrackSwarmStats};
 use crate::gossip::{Action, GossipEngine, GossipParams, GossipStats, Outcomes};
 use crate::jam_crdt::{
-    FullSnapshot, JamCrdtState, JamOp, OpType, QueueViewEntry, VOTE_FLAG_UP,
-    VoterId,
+    FullSnapshot, JamCrdtState, JamOp, OpType, QueueViewEntry, VoterId, VOTE_FLAG_UP,
 };
 use crate::jam_governor::{
     GovernanceEvent, IntentKind, KickKind, RejectReason, RoomGovernor, Topology,
@@ -452,7 +451,10 @@ pub fn build_friend_activity_frame(
 ) -> Option<Vec<u8>> {
     // Budget: two NUL separators, then the pair split evenly-ish.
     let artist = truncate_utf8(artist.trim(), 38);
-    let album = truncate_utf8(album.trim(), FRIEND_ACTIVITY_MAX_TEXT_LEN - artist.len() - 2);
+    let album = truncate_utf8(
+        album.trim(),
+        FRIEND_ACTIVITY_MAX_TEXT_LEN - artist.len() - 2,
+    );
     let mut text = String::with_capacity(FRIEND_ACTIVITY_MAX_TEXT_LEN);
     text.push_str(&artist);
     text.push('\0');
@@ -719,7 +721,10 @@ pub enum MeshError {
     BadMagic,
     BadVersion,
     ChecksumMismatch,
-    LengthMismatch { expected: usize, actual: usize },
+    LengthMismatch {
+        expected: usize,
+        actual: usize,
+    },
     SessionMismatch,
     PeerUnknown,
     NoRemoteTransport,
@@ -1191,9 +1196,8 @@ impl MeshNode {
             None => {
                 let mut seed = [0u8; 32];
                 rand::thread_rng().fill_bytes(&mut seed);
-                let domain = blake3::hash(
-                    format!("{}|{}", cfg.session_id, cfg.device_id).as_bytes(),
-                );
+                let domain =
+                    blake3::hash(format!("{}|{}", cfg.session_id, cfg.device_id).as_bytes());
                 for (i, b) in seed.iter_mut().enumerate() {
                     *b ^= domain.as_bytes()[i];
                 }
@@ -1441,12 +1445,7 @@ impl MeshNode {
         let now = mono_ns();
         let mut map = heal(self.peers.write());
         map.entry(peer).or_insert_with(|| {
-            PeerEntry::new(
-                unspecified_addr(),
-                RouteDomain::Remote,
-                CAP_WEBRTC,
-                now,
-            )
+            PeerEntry::new(unspecified_addr(), RouteDomain::Remote, CAP_WEBRTC, now)
         });
         drop(map);
         self.on_peer_joined(peer);
@@ -1694,18 +1693,21 @@ impl MeshNode {
         // Pin the advertised 16-byte room id from the provided string.
         let room = SessionId::from_session_str(room_id);
         let mut rooms = heal(self.lan_rooms.lock());
-        rooms.insert(room.0, LanRoomEntry {
-            room_id: room.0,
-            host_pubkey: self.my_pubkey(),
-            epoch: 1,
-            capacity: self.cfg.room_capacity,
-            member_count: 1,
-            sender_pubkey: Some(self.my_pubkey()),
-            topology: 0,
-            from_addr: self.local_addr(),
-            port: self.local_addr().port(),
-            last_seen_ns: mono_ns(),
-        });
+        rooms.insert(
+            room.0,
+            LanRoomEntry {
+                room_id: room.0,
+                host_pubkey: self.my_pubkey(),
+                epoch: 1,
+                capacity: self.cfg.room_capacity,
+                member_count: 1,
+                sender_pubkey: Some(self.my_pubkey()),
+                topology: 0,
+                from_addr: self.local_addr(),
+                port: self.local_addr().port(),
+                last_seen_ns: mono_ns(),
+            },
+        );
         drop(rooms);
         self.room_beacon_on.store(true, Ordering::Relaxed);
         // Fire one beacon immediately so the room shows up on nearby
@@ -1758,7 +1760,11 @@ impl MeshNode {
     ///   frame (`gov_intents_committed`).
     /// * MultiRender → gossip the intent; every node verifies at its own
     ///   wire boundary and applies locally.
-    pub fn submit_transport_intent(&self, kind: IntentKind, body: [u8; 16]) -> Result<(), MeshError> {
+    pub fn submit_transport_intent(
+        &self,
+        kind: IntentKind,
+        body: [u8; 16],
+    ) -> Result<(), MeshError> {
         let (topology, is_host) = {
             let g = heal(self.governor.lock());
             (g.topology(), g.is_host())
@@ -1779,7 +1785,9 @@ impl MeshNode {
                 return Err(MeshError::PeerUnknown);
             };
             self.send_to_peer(host, MSG_TRANSPORT_INTENT, &frame)?;
-            self.stats.gov_intents_forwarded.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .gov_intents_forwarded
+                .fetch_add(1, Ordering::Relaxed);
             return Ok(());
         }
 
@@ -1972,8 +1980,7 @@ impl MeshNode {
             let mut c = heal(self.crdt.lock());
             c.apply_op(op);
         }
-        self.broadcast(MSG_CRDT_OP, &op.to_bytes())
-            .map(|_| ())
+        self.broadcast(MSG_CRDT_OP, &op.to_bytes()).map(|_| ())
     }
 
     /// Full-state fold of the mesh CRDT replica (join hydration source).
@@ -2006,10 +2013,7 @@ impl MeshNode {
     }
 
     /// Promotion state of one queue element (pending vs committed).
-    pub fn crdt_promotion_status(
-        &self,
-        target_add_op_id: u64,
-    ) -> crate::jam_crdt::PromotionStatus {
+    pub fn crdt_promotion_status(&self, target_add_op_id: u64) -> crate::jam_crdt::PromotionStatus {
         heal(self.crdt.lock()).promotion_status(target_add_op_id)
     }
 
@@ -2038,7 +2042,9 @@ impl MeshNode {
                         self.stats.gov_rate_limited.fetch_add(1, Ordering::Relaxed);
                     }
                     RejectReason::Blacklisted => {
-                        self.stats.gov_blacklist_rejects.fetch_add(1, Ordering::Relaxed);
+                        self.stats
+                            .gov_blacklist_rejects
+                            .fetch_add(1, Ordering::Relaxed);
                     }
                     _ => {}
                 }
@@ -2051,12 +2057,8 @@ impl MeshNode {
         // votes; a mismatched frame is a forgery attempt).
         if let Some(known_pk) = self.pubkey_of_peer(sender) {
             if known_pk != vote.voter_pubkey {
-                self.stats
-                    .vote_rejects
-                    .fetch_add(1, Ordering::Relaxed);
-                self.stats
-                    .gov_sig_rejects
-                    .fetch_add(1, Ordering::Relaxed);
+                self.stats.vote_rejects.fetch_add(1, Ordering::Relaxed);
+                self.stats.gov_sig_rejects.fetch_add(1, Ordering::Relaxed);
                 return;
             }
         }
@@ -2072,7 +2074,13 @@ impl MeshNode {
 
     /// FRIEND_ACTIVITY ingest: parse → receiver gap guard → registry →
     /// app dispatch. Malformed frames die at the boundary.
-    fn ingest_friend_activity(&self, dp: &DecodedPacket, sender: PeerId, from: SocketAddr, now: i64) {
+    fn ingest_friend_activity(
+        &self,
+        dp: &DecodedPacket,
+        sender: PeerId,
+        from: SocketAddr,
+        now: i64,
+    ) {
         let Some((cad_id, progress_ms, room_id, in_jam, paused, artist, album)) =
             parse_friend_activity(&dp.payload)
         else {
@@ -2106,7 +2114,9 @@ impl MeshNode {
                 },
             );
         }
-        self.stats.friend_activity_rx.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .friend_activity_rx
+            .fetch_add(1, Ordering::Relaxed);
         self.dispatch_to_apps(dp, sender, from);
     }
 
@@ -2146,7 +2156,9 @@ impl MeshNode {
         ) else {
             return Err(MeshError::GovernanceReject);
         };
-        self.stats.friend_activity_tx.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .friend_activity_tx
+            .fetch_add(1, Ordering::Relaxed);
         // Direct link-level broadcast (heartbeat-class: ephemeral presence
         // data never rides the gossip tree).
         let seq = self.broadcast_seq.fetch_add(1, Ordering::Relaxed) + 1;
@@ -2217,7 +2229,11 @@ impl MeshNode {
 
     fn build_beacon_packet(&self) -> Vec<u8> {
         let caps = (if self.cfg.enable_lan { CAP_LAN } else { 0 })
-            | if self.cfg.enable_webrtc { CAP_WEBRTC } else { 0 };
+            | if self.cfg.enable_webrtc {
+                CAP_WEBRTC
+            } else {
+                0
+            };
         let port = self.local_addr().port();
         // Phase 1: every member of a governed room (host OR guest that
         // adopted the host claim) embeds the full room session descriptor
@@ -2437,7 +2453,11 @@ impl MeshNode {
                 // Blacklist enforcement at the registration boundary: a
                 // kicked pubkey (or legacy kicked peer id) can never
                 // re-enter the mesh for the session duration.
-                if let Some(pk) = parsed.as_ref().and_then(|b| b.room.as_ref()).and_then(|r| r.sender_pubkey) {
+                if let Some(pk) = parsed
+                    .as_ref()
+                    .and_then(|b| b.room.as_ref())
+                    .and_then(|r| r.sender_pubkey)
+                {
                     if heal(self.governor.lock()).is_blacklisted_pubkey(&pk) {
                         self.stats
                             .gov_blacklist_rejects
@@ -2737,9 +2757,7 @@ impl MeshNode {
         if topology == Topology::SingleRender && !is_host && !intent.committed {
             // Guest seeing an uncommitted intent that was not addressed to
             // it (leak / Byzantine direct send): not authoritative — drop.
-            self.stats
-                .gov_sig_rejects
-                .fetch_add(1, Ordering::Relaxed);
+            self.stats.gov_sig_rejects.fetch_add(1, Ordering::Relaxed);
             return;
         }
 
@@ -2807,7 +2825,9 @@ impl MeshNode {
                 self.stats.gov_epoch_rejects.fetch_add(1, Ordering::Relaxed);
             }
             RejectReason::Blacklisted => {
-                self.stats.gov_blacklist_rejects.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .gov_blacklist_rejects
+                    .fetch_add(1, Ordering::Relaxed);
             }
             RejectReason::AclDenied => {
                 self.stats.gov_acl_rejects.fetch_add(1, Ordering::Relaxed);
@@ -2962,7 +2982,9 @@ impl MeshNode {
         } else {
             // Never seen this host: wait for claims instead of electing a
             // successor against an incomplete member view.
-            let seen_host = heal(self.pubkeys.read()).values().any(|pk| *pk == host_pubkey);
+            let seen_host = heal(self.pubkeys.read())
+                .values()
+                .any(|pk| *pk == host_pubkey);
             if !seen_host {
                 return;
             }

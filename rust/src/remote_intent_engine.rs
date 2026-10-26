@@ -154,7 +154,13 @@ fn fnv1a32(data: &[u8]) -> u32 {
 }
 
 /// Header bytes exactly as [`encode_rim`] lays them out (signing span).
-fn rim_header(msg_type: u8, sender: u64, target: u64, seq_or_nonce: u64, payload_len: usize) -> Vec<u8> {
+fn rim_header(
+    msg_type: u8,
+    sender: u64,
+    target: u64,
+    seq_or_nonce: u64,
+    payload_len: usize,
+) -> Vec<u8> {
     let mut h = Vec::with_capacity(RIM_HEADER_LEN);
     h.extend_from_slice(&RIM_MAGIC.to_le_bytes());
     h.push(RIM_VERSION);
@@ -166,7 +172,13 @@ fn rim_header(msg_type: u8, sender: u64, target: u64, seq_or_nonce: u64, payload
     h
 }
 
-fn encode_rim(msg_type: u8, sender: u64, target: u64, seq_or_nonce: u64, payload: &[u8]) -> Vec<u8> {
+fn encode_rim(
+    msg_type: u8,
+    sender: u64,
+    target: u64,
+    seq_or_nonce: u64,
+    payload: &[u8],
+) -> Vec<u8> {
     let mut buf = rim_header(msg_type, sender, target, seq_or_nonce, payload.len());
     buf.extend_from_slice(payload);
     let sum = fnv1a32(&buf);
@@ -460,7 +472,10 @@ impl RemoteIntent {
         match self {
             RemoteIntent::Play | RemoteIntent::Pause => {}
             RemoteIntent::SeekTo { position_ms } => b.extend_from_slice(&position_ms.to_le_bytes()),
-            RemoteIntent::QueueInsert { cad_id, after_index } => {
+            RemoteIntent::QueueInsert {
+                cad_id,
+                after_index,
+            } => {
                 b.extend_from_slice(&cad_id.to_le_bytes());
                 b.extend_from_slice(&after_index.to_le_bytes());
             }
@@ -486,33 +501,68 @@ impl RemoteIntent {
 /// App-layer events (JNI fan-out / chaos assertions).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IntentEvent {
-    RoleChanged { from: Role, to: Role },
+    RoleChanged {
+        from: Role,
+        to: Role,
+    },
     /// Offer dispatched (HandoffPending entered).
-    HandoffStarted { target: u64, epoch: u32 },
+    HandoffStarted {
+        target: u64,
+        epoch: u32,
+    },
     /// Receiver confirmed — the local player may NOW halt.
-    HandoffCompleted { target: u64, epoch: u32 },
+    HandoffCompleted {
+        target: u64,
+        epoch: u32,
+    },
     /// Confirmation never arrived / receiver refused — local playback
     /// continues; nothing was interrupted.
-    HandoffFailed { target: u64, reason: HandoffFailReason },
+    HandoffFailed {
+        target: u64,
+        reason: HandoffFailReason,
+    },
     /// (Receiver) offer verified & adopted: restore this snapshot and
     /// start rendering.
-    HandoffAdopted { from_controller: u64, snapshot: PlaybackSnapshot, epoch: u32 },
+    HandoffAdopted {
+        from_controller: u64,
+        snapshot: PlaybackSnapshot,
+        epoch: u32,
+    },
     /// (Receiver) offer refused.
-    HandoffRefused { from_controller: u64, reason: HandoffFailReason },
+    HandoffRefused {
+        from_controller: u64,
+        reason: HandoffFailReason,
+    },
     /// (Receiver) finalize — the controller saw our confirmation.
-    HandoffFinalized { controller: u64 },
+    HandoffFinalized {
+        controller: u64,
+    },
     /// A remote controller pair now dominates this device's receiver.
-    RemoteTookControl { device_id: u64, epoch: u32 },
+    RemoteTookControl {
+        device_id: u64,
+        epoch: u32,
+    },
     /// Intent applied in order (receiver side).
-    IntentApplied { seq_id: u64, intent: RemoteIntent },
+    IntentApplied {
+        seq_id: u64,
+        intent: RemoteIntent,
+    },
     /// Intent from a dominated controller pair — rejected (split-brain
     /// loser receipt).
-    IntentRejectedStale { seq_id: u64, controller: ControllerPair },
+    IntentRejectedStale {
+        seq_id: u64,
+        controller: ControllerPair,
+    },
     /// A controller intent never got ACKed after MAX_INTENT_ATTEMPTS.
-    IntentAbandoned { seq_id: u64, intent: RemoteIntent },
+    IntentAbandoned {
+        seq_id: u64,
+        intent: RemoteIntent,
+    },
     /// (Receiver) controller silent for CONTROLLER_LEASE_MS — app signal
     /// only, authority NOT revoked.
-    ControllerSilent { controller: ControllerPair },
+    ControllerSilent {
+        controller: ControllerPair,
+    },
 }
 
 /// Why a handoff failed.
@@ -885,14 +935,23 @@ impl RemoteIntentEngine {
         payload.extend_from_slice(self.signing.verifying_key().as_bytes());
 
         // Signature over canonical header + payload-without-signature.
-        let header = rim_header(RIM_HANDOFF_OFFER, self.self_id, target, nonce, payload.len());
+        let header = rim_header(
+            RIM_HANDOFF_OFFER,
+            self.self_id,
+            target,
+            nonce,
+            payload.len(),
+        );
         let mut span = header;
         span.extend_from_slice(&payload);
         let sig = self.signing.sign(&span);
         payload.extend_from_slice(&sig.to_bytes());
 
         let frame = encode_rim(RIM_HANDOFF_OFFER, self.self_id, target, nonce, &payload);
-        self.actions.push(IntentAction::Send { target, frame: frame.clone() });
+        self.actions.push(IntentAction::Send {
+            target,
+            frame: frame.clone(),
+        });
         self.handoff = Some(HandoffState {
             target,
             nonce,
@@ -906,7 +965,8 @@ impl RemoteIntentEngine {
         self.stats.handoffs_started += 1;
         self.max_epoch_seen = self.max_epoch_seen.max(epoch);
         self.transition(Role::HandoffPending);
-        self.events.push_back(IntentEvent::HandoffStarted { target, epoch });
+        self.events
+            .push_back(IntentEvent::HandoffStarted { target, epoch });
         Ok(epoch)
     }
 
@@ -962,7 +1022,10 @@ impl RemoteIntentEngine {
                     if let Some(controller) = self.controller.as_mut() {
                         controller.inflight.remove(&seq);
                     }
-                    self.events.push_back(IntentEvent::IntentAbandoned { seq_id: seq, intent });
+                    self.events.push_back(IntentEvent::IntentAbandoned {
+                        seq_id: seq,
+                        intent,
+                    });
                 } else {
                     if let Some(controller) = self.controller.as_mut() {
                         if let Some((_, _, attempts)) = controller.inflight.get_mut(&seq) {
@@ -978,22 +1041,38 @@ impl RemoteIntentEngine {
         }
         // Receiver-side controller lease observation.
         if let Some(receiver) = self.receiver.as_mut() {
-            if !receiver.controller_silent_raised && now_ms >= receiver.last_controller_ms + CONTROLLER_LEASE_MS {
+            if !receiver.controller_silent_raised
+                && now_ms >= receiver.last_controller_ms + CONTROLLER_LEASE_MS
+            {
                 receiver.controller_silent_raised = true;
                 let controller = receiver.controller;
-                self.events.push_back(IntentEvent::ControllerSilent { controller });
+                self.events
+                    .push_back(IntentEvent::ControllerSilent { controller });
             }
         }
     }
 
     /// Controller-side timeout: send ABORT, restore controller role.
     fn timeout_handoff(&mut self, target: u64, nonce: u64) {
-        if self.handoff.as_ref().is_some_and(|h| h.target == target && h.nonce == nonce) {
+        if self
+            .handoff
+            .as_ref()
+            .is_some_and(|h| h.target == target && h.nonce == nonce)
+        {
             self.handoff = None;
-            let frame = encode_rim(RIM_HANDOFF_ABORT, self.self_id, target, nonce, &[ABORT_TIMEOUT]);
+            let frame = encode_rim(
+                RIM_HANDOFF_ABORT,
+                self.self_id,
+                target,
+                nonce,
+                &[ABORT_TIMEOUT],
+            );
             self.actions.push(IntentAction::Send { target, frame });
             self.stats.handoffs_failed += 1;
-            self.events.push_back(IntentEvent::HandoffFailed { target, reason: HandoffFailReason::Timeout });
+            self.events.push_back(IntentEvent::HandoffFailed {
+                target,
+                reason: HandoffFailReason::Timeout,
+            });
             if self.role == Role::HandoffPending {
                 self.transition(Role::ActiveController);
             }
@@ -1120,7 +1199,10 @@ impl RemoteIntentEngine {
                 if self.role == Role::Idle {
                     self.transition(Role::ActiveReceiver);
                 }
-                self.events.push_back(IntentEvent::RemoteTookControl { device_id: sender, epoch });
+                self.events.push_back(IntentEvent::RemoteTookControl {
+                    device_id: sender,
+                    epoch,
+                });
             }
         }
 
@@ -1147,8 +1229,14 @@ impl RemoteIntentEngine {
                     seq,
                     &[REJECT_STALE_EPOCH],
                 );
-                self.actions.push(IntentAction::Send { target: sender, frame });
-                self.events.push_back(IntentEvent::IntentRejectedStale { seq_id: seq, controller });
+                self.actions.push(IntentAction::Send {
+                    target: sender,
+                    frame,
+                });
+                self.events.push_back(IntentEvent::IntentRejectedStale {
+                    seq_id: seq,
+                    controller,
+                });
                 true
             }
             std::cmp::Ordering::Greater => {
@@ -1158,7 +1246,10 @@ impl RemoteIntentEngine {
                 receiver.controller = incoming;
                 receiver.next_expected = ((epoch as u64) << 32) | 1;
                 receiver.buffer.clear();
-                self.events.push_back(IntentEvent::RemoteTookControl { device_id: sender, epoch });
+                self.events.push_back(IntentEvent::RemoteTookControl {
+                    device_id: sender,
+                    epoch,
+                });
                 self.stash_or_apply(sender, seq, intent)
             }
             std::cmp::Ordering::Equal => self.stash_or_apply(sender, seq, intent),
@@ -1178,7 +1269,10 @@ impl RemoteIntentEngine {
             // Duplicate (sender retry): re-ACK idempotently, never re-apply.
             self.stats.intents_duplicated += 1;
             let frame = encode_rim(RIM_ACK, self.self_id, sender, seq, &[]);
-            self.actions.push(IntentAction::Send { target: sender, frame });
+            self.actions.push(IntentAction::Send {
+                target: sender,
+                frame,
+            });
             return true;
         }
         if seq > next {
@@ -1200,8 +1294,17 @@ impl RemoteIntentEngine {
                     }
                 }
             }
-            let nack = encode_rim(RIM_NACK, self.self_id, sender, next, &(seq - 1).to_le_bytes());
-            self.actions.push(IntentAction::Send { target: sender, frame: nack });
+            let nack = encode_rim(
+                RIM_NACK,
+                self.self_id,
+                sender,
+                next,
+                &(seq - 1).to_le_bytes(),
+            );
+            self.actions.push(IntentAction::Send {
+                target: sender,
+                frame: nack,
+            });
             return true;
         }
         // seq == next: apply, then drain consecutively buffered intents.
@@ -1234,8 +1337,14 @@ impl RemoteIntentEngine {
         }
         self.stats.intents_applied += 1;
         let ack = encode_rim(RIM_ACK, self.self_id, sender, seq, &[]);
-        self.actions.push(IntentAction::Send { target: sender, frame: ack });
-        self.events.push_back(IntentEvent::IntentApplied { seq_id: seq, intent });
+        self.actions.push(IntentAction::Send {
+            target: sender,
+            frame: ack,
+        });
+        self.events.push_back(IntentEvent::IntentApplied {
+            seq_id: seq,
+            intent,
+        });
     }
 
     // ── handoff protocol inbound paths ───────────────────────────────
@@ -1278,20 +1387,22 @@ impl RemoteIntentEngine {
         };
         let key_off = 4 + consumed;
         let sig_off = key_off + 32;
-        let (pubkey_bytes, sig_bytes): ([u8; 32], [u8; 64]) =
-            match (wire_le::fixed::<32>(&payload[key_off..sig_off]), wire_le::fixed::<64>(&payload[sig_off..sig_off + 64])) {
-                (Some(k), Some(s)) => (k, s),
-                // audit #44 P2-5: total reads — guard drift degrades into a
-                // refused handoff, never a panic.
-                _ => {
-                    self.stats.frames_rejected += 1;
-                    self.events.push_back(IntentEvent::HandoffRefused {
-                        from_controller: frame.sender,
-                        reason: HandoffFailReason::MalformedFrame,
-                    });
-                    return false;
-                }
-            };
+        let (pubkey_bytes, sig_bytes): ([u8; 32], [u8; 64]) = match (
+            wire_le::fixed::<32>(&payload[key_off..sig_off]),
+            wire_le::fixed::<64>(&payload[sig_off..sig_off + 64]),
+        ) {
+            (Some(k), Some(s)) => (k, s),
+            // audit #44 P2-5: total reads — guard drift degrades into a
+            // refused handoff, never a panic.
+            _ => {
+                self.stats.frames_rejected += 1;
+                self.events.push_back(IntentEvent::HandoffRefused {
+                    from_controller: frame.sender,
+                    reason: HandoffFailReason::MalformedFrame,
+                });
+                return false;
+            }
+        };
         let verifying = match VerifyingKey::from_bytes(&pubkey_bytes) {
             Ok(k) => k,
             Err(_) => {
@@ -1304,9 +1415,18 @@ impl RemoteIntentEngine {
             }
         };
         // Canonical span = header + payload-without-signature.
-        let mut span = rim_header(RIM_HANDOFF_OFFER, frame.sender, frame.target, frame.seq_or_nonce, sig_off);
+        let mut span = rim_header(
+            RIM_HANDOFF_OFFER,
+            frame.sender,
+            frame.target,
+            frame.seq_or_nonce,
+            sig_off,
+        );
         span.extend_from_slice(&payload[..sig_off]);
-        if verifying.verify(&span, &Signature::from_bytes(&sig_bytes)).is_err() {
+        if verifying
+            .verify(&span, &Signature::from_bytes(&sig_bytes))
+            .is_err()
+        {
             self.stats.sig_failures += 1;
             let abort = encode_rim(
                 RIM_HANDOFF_ABORT,
@@ -1315,7 +1435,10 @@ impl RemoteIntentEngine {
                 frame.seq_or_nonce,
                 &[ABORT_BAD_SIGNATURE],
             );
-            self.actions.push(IntentAction::Send { target: frame.sender, frame: abort });
+            self.actions.push(IntentAction::Send {
+                target: frame.sender,
+                frame: abort,
+            });
             self.events.push_back(IntentEvent::HandoffRefused {
                 from_controller: frame.sender,
                 reason: HandoffFailReason::BadSignature,
@@ -1337,7 +1460,10 @@ impl RemoteIntentEngine {
                 frame.seq_or_nonce,
                 &[ABORT_STALE_EPOCH],
             );
-            self.actions.push(IntentAction::Send { target: frame.sender, frame: abort });
+            self.actions.push(IntentAction::Send {
+                target: frame.sender,
+                frame: abort,
+            });
             self.events.push_back(IntentEvent::HandoffRefused {
                 from_controller: frame.sender,
                 reason: HandoffFailReason::StaleEpoch,
@@ -1366,7 +1492,10 @@ impl RemoteIntentEngine {
             frame.seq_or_nonce,
             &epoch.to_le_bytes(),
         );
-        self.actions.push(IntentAction::Send { target: frame.sender, frame: confirm });
+        self.actions.push(IntentAction::Send {
+            target: frame.sender,
+            frame: confirm,
+        });
         self.events.push_back(IntentEvent::HandoffAdopted {
             from_controller: frame.sender,
             snapshot,
@@ -1410,9 +1539,15 @@ impl RemoteIntentEngine {
         }
         self.max_epoch_seen = self.max_epoch_seen.max(ack_epoch);
         let complete = encode_rim(RIM_HANDOFF_COMPLETE, self.self_id, h.target, h.nonce, &[]);
-        self.actions.push(IntentAction::Send { target: h.target, frame: complete });
+        self.actions.push(IntentAction::Send {
+            target: h.target,
+            frame: complete,
+        });
         self.stats.handoffs_completed += 1;
-        self.events.push_back(IntentEvent::HandoffCompleted { target: h.target, epoch: ack_epoch });
+        self.events.push_back(IntentEvent::HandoffCompleted {
+            target: h.target,
+            epoch: ack_epoch,
+        });
         if self.role == Role::HandoffPending {
             self.transition(Role::ActiveController);
         }
@@ -1424,7 +1559,9 @@ impl RemoteIntentEngine {
         if let Some((nonce, controller)) = self.pending_finalize {
             if nonce == frame.seq_or_nonce && controller == frame.sender {
                 self.pending_finalize = None;
-                self.events.push_back(IntentEvent::HandoffFinalized { controller: frame.sender });
+                self.events.push_back(IntentEvent::HandoffFinalized {
+                    controller: frame.sender,
+                });
             }
         }
         true // stray complete — inert
@@ -1445,7 +1582,10 @@ impl RemoteIntentEngine {
         {
             self.handoff = None;
             self.stats.handoffs_failed += 1;
-            self.events.push_back(IntentEvent::HandoffFailed { target: frame.sender, reason });
+            self.events.push_back(IntentEvent::HandoffFailed {
+                target: frame.sender,
+                reason,
+            });
             if self.role == Role::HandoffPending {
                 self.transition(Role::ActiveController);
             }
@@ -1500,7 +1640,10 @@ mod tests {
         let mut e = engine(1, 1);
         assert_eq!(e.role(), Role::Idle);
         // Handoff requires ActiveController.
-        assert_eq!(e.begin_handoff(9, &snap(), 0), Err(HandoffFailReason::NotController));
+        assert_eq!(
+            e.begin_handoff(9, &snap(), 0),
+            Err(HandoffFailReason::NotController)
+        );
         assert_eq!(e.start_session(), 1);
         assert_eq!(e.role(), Role::ActiveController);
         // take_control from controller role is refused.
@@ -1536,8 +1679,13 @@ mod tests {
         let intents = [
             RemoteIntent::Play,
             RemoteIntent::Pause,
-            RemoteIntent::SeekTo { position_ms: 123_456 },
-            RemoteIntent::QueueInsert { cad_id: 0xDEAD_BEEF, after_index: QUEUE_TAIL },
+            RemoteIntent::SeekTo {
+                position_ms: 123_456,
+            },
+            RemoteIntent::QueueInsert {
+                cad_id: 0xDEAD_BEEF,
+                after_index: QUEUE_TAIL,
+            },
             RemoteIntent::QueueRemove { index: 3 },
             RemoteIntent::QueueReorder { from: 1, to: 4 },
             RemoteIntent::SetVolume { volume_pct: 77 },
@@ -1599,7 +1747,14 @@ mod tests {
         let mut last = 0u64;
         for i in 0..100 {
             let seq = e
-                .dispatch_intent(if i % 2 == 0 { RemoteIntent::Play } else { RemoteIntent::Pause }, 0)
+                .dispatch_intent(
+                    if i % 2 == 0 {
+                        RemoteIntent::Play
+                    } else {
+                        RemoteIntent::Pause
+                    },
+                    0,
+                )
                 .expect("controller dispatch");
             assert!(seq > last, "seq must strictly increase");
             last = seq;
@@ -1618,7 +1773,8 @@ mod tests {
         ctrl.start_session();
         let mut frames = Vec::new();
         for i in 0..5u64 {
-            ctrl.dispatch_intent(RemoteIntent::SeekTo { position_ms: i }, 0).unwrap();
+            ctrl.dispatch_intent(RemoteIntent::SeekTo { position_ms: i }, 0)
+                .unwrap();
             frames.push(frame_of_type(&ctrl.drain_actions(), RIM_INTENT));
         }
         // Deliver OUT OF ORDER: 2, 3, 0, 4, 1 → applied strictly 0..4.
@@ -1633,7 +1789,16 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(applied, vec![base(1) + 1, base(1) + 2, base(1) + 3, base(1) + 4, base(1) + 5]);
+        assert_eq!(
+            applied,
+            vec![
+                base(1) + 1,
+                base(1) + 2,
+                base(1) + 3,
+                base(1) + 4,
+                base(1) + 5
+            ]
+        );
         // Duplicate re-delivery: re-ACK, never double-apply.
         rcv.on_frame(&frames[0], 0);
         assert_eq!(rcv.stats().intents_duplicated, 1);
@@ -1649,7 +1814,7 @@ mod tests {
         ctrl.start_session();
         ctrl.dispatch_intent(RemoteIntent::Play, 0).unwrap(); // seq 1
         ctrl.dispatch_intent(RemoteIntent::Pause, 0).unwrap(); // seq 2
-        // One drain carries BOTH intent frames.
+                                                               // One drain carries BOTH intent frames.
         let actions = ctrl.drain_actions();
         let f1 = frame_of_type(&actions, RIM_INTENT);
         let f2 = actions
@@ -1698,7 +1863,7 @@ mod tests {
         ctrl.start_session();
         ctrl.dispatch_intent(RemoteIntent::Play, 0).unwrap();
         let _ = ctrl.drain_actions(); // frame "lost" — no delivery
-        // First RTO elapses (attempts=1 → backoff 800 ms).
+                                      // First RTO elapses (attempts=1 → backoff 800 ms).
         ctrl.tick(801);
         let retry = frame_of_type(&ctrl.drain_actions(), RIM_INTENT);
         rcv.on_frame(&retry, 801);
@@ -1706,7 +1871,8 @@ mod tests {
         // ABANDON path: never delivered, attempts climb to the cap.
         let mut dead = engine(3, 3);
         dead.start_session();
-        dead.dispatch_intent(RemoteIntent::SeekTo { position_ms: 9 }, 0).unwrap();
+        dead.dispatch_intent(RemoteIntent::SeekTo { position_ms: 9 }, 0)
+            .unwrap();
         let _ = dead.drain_actions();
         let mut t = 0u64;
         loop {
@@ -1720,7 +1886,10 @@ mod tests {
             {
                 break;
             }
-            assert!(t < 200_000, "intent must be abandoned after capped attempts");
+            assert!(
+                t < 200_000,
+                "intent must be abandoned after capped attempts"
+            );
         }
     }
 
@@ -1742,11 +1911,23 @@ mod tests {
         assert_eq!(a.controller_epoch(), 6);
         let _ = b.start_session(); // B's final epoch: 8
 
-        a.dispatch_intent(RemoteIntent::QueueInsert { cad_id: 111, after_index: QUEUE_TAIL }, 0)
-            .unwrap();
+        a.dispatch_intent(
+            RemoteIntent::QueueInsert {
+                cad_id: 111,
+                after_index: QUEUE_TAIL,
+            },
+            0,
+        )
+        .unwrap();
         let fa = frame_of_type(&a.drain_actions(), RIM_INTENT);
-        b.dispatch_intent(RemoteIntent::QueueInsert { cad_id: 222, after_index: QUEUE_TAIL }, 0)
-            .unwrap();
+        b.dispatch_intent(
+            RemoteIntent::QueueInsert {
+                cad_id: 222,
+                after_index: QUEUE_TAIL,
+            },
+            0,
+        )
+        .unwrap();
         let fb = frame_of_type(&b.drain_actions(), RIM_INTENT);
 
         // Order 1: B first, then A — A is stale-rejected outright.
@@ -1805,11 +1986,7 @@ mod tests {
             rcv.on_frame(&forged, 0);
         }
         // Reorder buffer never exceeds the bound.
-        let buffer_len = rcv
-            .receiver
-            .as_ref()
-            .map(|r| r.buffer.len())
-            .unwrap_or(0);
+        let buffer_len = rcv.receiver.as_ref().map(|r| r.buffer.len()).unwrap_or(0);
         assert!(buffer_len <= MAX_REORDER_BUFFER, "buffer={buffer_len}");
     }
 
@@ -1835,16 +2012,19 @@ mod tests {
         ctrl.on_frame(&confirm, 1);
         assert!(ctrl.drain_events().iter().any(|e| matches!(
             e,
-            IntentEvent::HandoffCompleted { target: 2, epoch: 2 }
+            IntentEvent::HandoffCompleted {
+                target: 2,
+                epoch: 2
+            }
         )));
         assert_eq!(ctrl.role(), Role::ActiveController);
         // COMPLETE flows back; receiver finalizes.
         let complete = drain_and_pick(&mut ctrl, RIM_HANDOFF_COMPLETE);
         rcv.on_frame(&complete, 2);
-        assert!(rcv.drain_events().iter().any(|e| matches!(
-            e,
-            IntentEvent::HandoffFinalized { controller: 1 }
-        )));
+        assert!(rcv
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, IntentEvent::HandoffFinalized { controller: 1 })));
         // Controller's stream now rides the offer epoch: the receiver is
         // pinned to base(2)|1 and the next intent applies cleanly.
         let seq = ctrl.dispatch_intent(RemoteIntent::Pause, 3).unwrap();
@@ -1860,13 +2040,19 @@ mod tests {
         c2.tick(HANDOFF_TIMEOUT_MS + 1);
         assert!(c2.drain_events().iter().any(|e| matches!(
             e,
-            IntentEvent::HandoffFailed { reason: HandoffFailReason::Timeout, .. }
+            IntentEvent::HandoffFailed {
+                reason: HandoffFailReason::Timeout,
+                ..
+            }
         )));
-        assert_eq!(c2.role(), Role::ActiveController, "abort restores the controller role");
-        assert!(c2
-            .drain_actions()
-            .iter()
-            .any(|a| matches!(a, IntentAction::Send { frame, .. } if frame[3] == RIM_HANDOFF_ABORT)));
+        assert_eq!(
+            c2.role(),
+            Role::ActiveController,
+            "abort restores the controller role"
+        );
+        assert!(c2.drain_actions().iter().any(
+            |a| matches!(a, IntentAction::Send { frame, .. } if frame[3] == RIM_HANDOFF_ABORT)
+        ));
         // Retry after abort allocates a FRESH epoch (dominates the stale one).
         let retry_epoch = c2.begin_handoff(2, &snap(), 100).unwrap();
         assert_eq!(retry_epoch, 3);
@@ -1889,15 +2075,21 @@ mod tests {
         assert!(rcv.on_frame(&offer, 0));
         assert!(rcv.drain_events().iter().any(|e| matches!(
             e,
-            IntentEvent::HandoffRefused { reason: HandoffFailReason::BadSignature, .. }
+            IntentEvent::HandoffRefused {
+                reason: HandoffFailReason::BadSignature,
+                ..
+            }
         )));
-        assert_eq!(rcv.role(), Role::Idle, "receiver never adopted the forged offer");
+        assert_eq!(
+            rcv.role(),
+            Role::Idle,
+            "receiver never adopted the forged offer"
+        );
         assert_eq!(rcv.stats().sig_failures, 1);
         // Receiver answers with a refusal ABORT.
-        assert!(rcv
-            .drain_actions()
-            .iter()
-            .any(|a| matches!(a, IntentAction::Send { frame, .. } if frame[3] == RIM_HANDOFF_ABORT)));
+        assert!(rcv.drain_actions().iter().any(
+            |a| matches!(a, IntentAction::Send { frame, .. } if frame[3] == RIM_HANDOFF_ABORT)
+        ));
     }
 
     #[test]
@@ -1923,9 +2115,16 @@ mod tests {
         rcv.on_frame(&offer, 1);
         assert!(rcv.drain_events().iter().any(|e| matches!(
             e,
-            IntentEvent::HandoffRefused { reason: HandoffFailReason::StaleEpoch, .. }
+            IntentEvent::HandoffRefused {
+                reason: HandoffFailReason::StaleEpoch,
+                ..
+            }
         )));
-        assert_eq!(rcv.role(), Role::ActiveReceiver, "still renders under (9,50)");
+        assert_eq!(
+            rcv.role(),
+            Role::ActiveReceiver,
+            "still renders under (9,50)"
+        );
         // Refusal ABORT carries the stale-epoch reason code.
         assert!(rcv
             .drain_actions()
@@ -1942,14 +2141,18 @@ mod tests {
         rcv.on_frame(&frame_of_type(&ctrl.drain_actions(), RIM_INTENT), 0);
         assert_eq!(rcv.role(), Role::ActiveReceiver);
         rcv.tick(CONTROLLER_LEASE_MS + 1);
-        assert!(rcv.drain_events().iter().any(|e| matches!(
-            e,
-            IntentEvent::ControllerSilent { controller: (1, 1) }
-        )));
+        assert!(rcv
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, IntentEvent::ControllerSilent { controller: (1, 1) })));
         // Authority NOT revoked: role unchanged, later intents still apply.
         assert_eq!(rcv.role(), Role::ActiveReceiver);
-        ctrl.dispatch_intent(RemoteIntent::Pause, CONTROLLER_LEASE_MS + 2).unwrap();
-        rcv.on_frame(&frame_of_type(&ctrl.drain_actions(), RIM_INTENT), CONTROLLER_LEASE_MS + 2);
+        ctrl.dispatch_intent(RemoteIntent::Pause, CONTROLLER_LEASE_MS + 2)
+            .unwrap();
+        rcv.on_frame(
+            &frame_of_type(&ctrl.drain_actions(), RIM_INTENT),
+            CONTROLLER_LEASE_MS + 2,
+        );
         assert_eq!(rcv.stats().intents_applied, 2);
         // The silence flag resets on activity (no repeated events).
         rcv.tick(CONTROLLER_LEASE_MS * 2 + 5);
@@ -1978,9 +2181,9 @@ mod tests {
         // The old controller's intents are now dominated: (2,1) < (3,2).
         let stale = encode_rim(RIM_INTENT, 1, 2, base(2) | 2, &RemoteIntent::Pause.encode());
         rcv.on_frame(&stale, 3);
-        assert!(rcv.drain_events().iter().any(|e| matches!(
-            e,
-            IntentEvent::IntentRejectedStale { .. }
-        )));
+        assert!(rcv
+            .drain_events()
+            .iter()
+            .any(|e| matches!(e, IntentEvent::IntentRejectedStale { .. })));
     }
 }

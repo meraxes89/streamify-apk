@@ -143,7 +143,11 @@ fn long_track_bucket_boundaries_stay_exact_beyond_u32_product_range() {
     assert!(
         bars.iter().all(|&b| b > 0),
         "no bucket may be empty when energy spans the whole track: {:?}",
-        bars.iter().enumerate().filter(|(_, &b)| b == 0).take(3).collect::<Vec<_>>()
+        bars.iter()
+            .enumerate()
+            .filter(|(_, &b)| b == 0)
+            .take(3)
+            .collect::<Vec<_>>()
     );
 }
 

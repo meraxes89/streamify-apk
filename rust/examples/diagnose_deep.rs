@@ -40,14 +40,28 @@ fn post_player(cfg: &ClientCfg, send_ua: bool, sdk: bool) -> Result<Value, Strin
 }
 
 fn summarize(label: &str, json: &Value) {
-    let status = json.pointer("/playabilityStatus/status").and_then(|v| v.as_str()).unwrap_or("(none)");
-    let reason = json.pointer("/playabilityStatus/reason").and_then(|v| v.as_str()).unwrap_or("");
-    let adaptive = json.pointer("/streamingData/adaptiveFormats").and_then(|v| v.as_array());
+    let status = json
+        .pointer("/playabilityStatus/status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(none)");
+    let reason = json
+        .pointer("/playabilityStatus/reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let adaptive = json
+        .pointer("/streamingData/adaptiveFormats")
+        .and_then(|v| v.as_array());
     let (total, with_url, audio) = match adaptive {
         Some(fmts) => (
             fmts.len(),
             fmts.iter().filter(|f| f.get("url").is_some()).count(),
-            fmts.iter().filter(|f| f.get("mimeType").and_then(|m| m.as_str()).map_or(false, |m| m.starts_with("audio/"))).count(),
+            fmts.iter()
+                .filter(|f| {
+                    f.get("mimeType")
+                        .and_then(|m| m.as_str())
+                        .map_or(false, |m| m.starts_with("audio/"))
+                })
+                .count(),
         ),
         None => (0, 0, 0),
     };

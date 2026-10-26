@@ -38,7 +38,10 @@ impl StreamDownloader {
         // 1. Fetch content-length headers
         let head_resp = agent
             .get(stream_url)
-            .set("User-Agent", "Mozilla/5.0 (Linux; Android 11) Streamify/1.0")
+            .set(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 11) Streamify/1.0",
+            )
             .call()
             .map_err(|e| format!("Failed to initiate HTTP stream: {}", e))?;
 

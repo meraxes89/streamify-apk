@@ -9,7 +9,10 @@ fn main() {
 
     match StreamResolver::import_spotify_tracks(spotify_url) {
         Ok(tracks) => {
-            println!("  ✅ Successfully extracted {} tracks without Spotify API credentials!", tracks.len());
+            println!(
+                "  ✅ Successfully extracted {} tracks without Spotify API credentials!",
+                tracks.len()
+            );
             for (i, t) in tracks.iter().take(5).enumerate() {
                 println!(
                     "    [{}] '{}' by {} ({}s)",

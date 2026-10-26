@@ -85,25 +85,13 @@ fn test_proof_of_compute_and_byzantine() {
     // Test Byzantine invariants
     let vec1 = vec![0.1f32, 0.5f32, 0.8f32, 0.2f32];
     let vec2 = vec![0.1f32, 0.5f32, 0.82f32, 0.19f32];
-    let is_valid = ConsensusEngine::verify_byzantine_consensus(
-        -14.1,
-        -14.2,
-        "8B",
-        "8B",
-        &vec1,
-        &vec2,
-    );
+    let is_valid =
+        ConsensusEngine::verify_byzantine_consensus(-14.1, -14.2, "8B", "8B", &vec1, &vec2);
     assert!(is_valid);
 
     // Test mismatched key rejection
-    let is_invalid_key = ConsensusEngine::verify_byzantine_consensus(
-        -14.1,
-        -14.2,
-        "8B",
-        "11A",
-        &vec1,
-        &vec2,
-    );
+    let is_invalid_key =
+        ConsensusEngine::verify_byzantine_consensus(-14.1, -14.2, "8B", "11A", &vec1, &vec2);
     assert!(!is_invalid_key);
 }
 
@@ -136,13 +124,15 @@ fn test_slyr_compilation_and_alignment() {
 
     // Test O(log N) binary search lookup from raw memory
     {
-        let pos_10_2s = LyricCompiler::find_active_positions(slyr_bytes.as_ptr(), slyr_bytes.len(), 10200);
+        let pos_10_2s =
+            LyricCompiler::find_active_positions(slyr_bytes.as_ptr(), slyr_bytes.len(), 10200);
         assert!(pos_10_2s.is_some());
         let (line_idx, syl_idx) = pos_10_2s.unwrap();
         assert_eq!(line_idx, 0);
         assert_eq!(syl_idx, 0); // "Hel"
 
-        let pos_15_9s = LyricCompiler::find_active_positions(slyr_bytes.as_ptr(), slyr_bytes.len(), 15900);
+        let pos_15_9s =
+            LyricCompiler::find_active_positions(slyr_bytes.as_ptr(), slyr_bytes.len(), 15900);
         assert!(pos_15_9s.is_some());
         let (line_idx_2, syl_idx_2) = pos_15_9s.unwrap();
         assert_eq!(line_idx_2, 1);
@@ -155,4 +145,3 @@ fn test_lyric_drift_consensus() {
     assert!(ConsensusEngine::verify_lyric_drift_consensus(120, 130)); // 10ms delta <= 15ms
     assert!(!ConsensusEngine::verify_lyric_drift_consensus(120, 160)); // 40ms delta > 15ms (rejected)
 }
-

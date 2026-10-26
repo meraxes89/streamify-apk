@@ -4,8 +4,8 @@
 // would be copy-paste.
 #![allow(clippy::missing_safety_doc)]
 use sha1::{Digest, Sha1};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::panic::catch_unwind;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Generates SAPISIDHASH safely across FFI.
 /// Returns: Length of string written to out_buf, or negative error code on failure.
@@ -42,7 +42,7 @@ pub unsafe extern "C" fn generate_sapisid_hash(
 
         let digest = hasher.finalize();
         let hash_hex = hex::encode(digest);
-        
+
         // Format: "{timestamp}_{hash_hex}"
         let formatted = format!("{}_{}", timestamp, hash_hex);
         let bytes = formatted.as_bytes();
@@ -77,7 +77,10 @@ mod tests {
         let expected_result = format!("{}_{}", timestamp, expected_hash);
 
         let test_payload = format!("{} {} {}", timestamp, sapisid, origin);
-        assert_eq!(test_payload, "1715000000 TEST_SAPISID_123 https://music.youtube.com");
+        assert_eq!(
+            test_payload,
+            "1715000000 TEST_SAPISID_123 https://music.youtube.com"
+        );
         assert!(expected_result.starts_with("1715000000_"));
     }
 
@@ -103,4 +106,3 @@ mod tests {
         assert_eq!(result, -2);
     }
 }
-

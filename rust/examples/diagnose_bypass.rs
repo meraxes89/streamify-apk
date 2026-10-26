@@ -13,16 +13,28 @@ fn try_client(label: &str, url: &str, body: Value, headers: &[(&str, &str)]) {
     match req.send_json(body) {
         Ok(resp) => {
             let j: Value = resp.into_json().unwrap_or(Value::Null);
-            let status = j.pointer("/playabilityStatus/status").and_then(|v| v.as_str()).unwrap_or("(none)");
-            let reason = j.pointer("/playabilityStatus/reason").and_then(|v| v.as_str()).unwrap_or("");
-            let fmts = j.pointer("/streamingData/adaptiveFormats").and_then(|v| v.as_array());
+            let status = j
+                .pointer("/playabilityStatus/status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(none)");
+            let reason = j
+                .pointer("/playabilityStatus/reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let fmts = j
+                .pointer("/streamingData/adaptiveFormats")
+                .and_then(|v| v.as_array());
             let (total, with_url, audio_best): (usize, usize, u64) = match fmts {
                 Some(f) => (
                     f.len(),
                     f.iter().filter(|x| x.get("url").is_some()).count(),
                     f.iter()
                         .filter(|x| x.get("url").is_some())
-                        .filter(|x| x.get("mimeType").and_then(|m| m.as_str()).map_or(false, |m| m.starts_with("audio/")))
+                        .filter(|x| {
+                            x.get("mimeType")
+                                .and_then(|m| m.as_str())
+                                .map_or(false, |m| m.starts_with("audio/"))
+                        })
                         .map(|x| x.get("bitrate").and_then(|b| b.as_u64()).unwrap_or(0))
                         .max()
                         .unwrap_or(0),
@@ -52,7 +64,10 @@ fn main() {
         "── TVHTML5_SIMPLY_EMBEDDED_PLAYER 2.0",
         "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
         b,
-        &[("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")],
+        &[(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
+        )],
     );
 
     // 2. WEB with full browser headers
@@ -89,6 +104,9 @@ fn main() {
         "── WEB_REMIX 1.20240401",
         "https://music.youtube.com/youtubei/v1/player?prettyPrint=false",
         b,
-        &[("Origin", "https://music.youtube.com"), ("Referer", "https://music.youtube.com/")],
+        &[
+            ("Origin", "https://music.youtube.com"),
+            ("Referer", "https://music.youtube.com/"),
+        ],
     );
 }

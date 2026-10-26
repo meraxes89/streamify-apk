@@ -36,10 +36,16 @@ impl PlaylistParser {
 
         // Try extracting playlist header
         if let Some(header) = root.pointer("/header/musicDetailHeaderRenderer") {
-            if let Some(t) = header.pointer("/title/runs/0/text").and_then(|v| v.as_str()) {
+            if let Some(t) = header
+                .pointer("/title/runs/0/text")
+                .and_then(|v| v.as_str())
+            {
                 playlist_title = t.to_string();
             }
-            if let Some(a) = header.pointer("/subtitle/runs/0/text").and_then(|v| v.as_str()) {
+            if let Some(a) = header
+                .pointer("/subtitle/runs/0/text")
+                .and_then(|v| v.as_str())
+            {
                 playlist_author = a.to_string();
             }
         }
@@ -118,19 +124,33 @@ impl PlaylistParser {
         let mut artist = String::from("Unknown Artist");
         let mut album = String::from("Single");
 
-        if let Some(runs) = renderer.pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs").and_then(|v| v.as_array()) {
-            if let Some(first_run) = runs.first().and_then(|r| r.get("text")).and_then(|t| t.as_str()) {
+        if let Some(runs) = renderer
+            .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs")
+            .and_then(|v| v.as_array())
+        {
+            if let Some(first_run) = runs
+                .first()
+                .and_then(|r| r.get("text"))
+                .and_then(|t| t.as_str())
+            {
                 artist = first_run.to_string();
             }
             if runs.len() >= 3 {
-                if let Some(album_run) = runs.get(2).and_then(|r| r.get("text")).and_then(|t| t.as_str()) {
+                if let Some(album_run) = runs
+                    .get(2)
+                    .and_then(|r| r.get("text"))
+                    .and_then(|t| t.as_str())
+                {
                     album = album_run.to_string();
                 }
             }
         }
 
         let mut duration_sec = 0;
-        if let Some(fixed_cols) = renderer.pointer("/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text/runs/0/text").and_then(|v| v.as_str()) {
+        if let Some(fixed_cols) = renderer
+            .pointer("/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text/runs/0/text")
+            .and_then(|v| v.as_str())
+        {
             duration_sec = Self::parse_duration_string(fixed_cols);
         }
 

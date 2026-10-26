@@ -53,12 +53,16 @@ pub unsafe extern "C" fn free_continuum_state(state_ptr: *mut ContinuumState) {
 #[no_mangle]
 pub unsafe extern "C" fn evaluate_continuum_batch(
     state_ptr: *mut ContinuumState,
-    candidates_ptr: *const f32,      // Flattened [N * 128] float array
+    candidates_ptr: *const f32, // Flattened [N * 128] float array
     candidate_count: usize,
-    out_scores_ptr: *mut f32,        // Output [N] float array
+    out_scores_ptr: *mut f32, // Output [N] float array
 ) -> i32 {
     let result = catch_unwind(|| {
-        if state_ptr.is_null() || candidates_ptr.is_null() || out_scores_ptr.is_null() || candidate_count == 0 {
+        if state_ptr.is_null()
+            || candidates_ptr.is_null()
+            || out_scores_ptr.is_null()
+            || candidate_count == 0
+        {
             return -1;
         }
 
@@ -102,7 +106,9 @@ pub unsafe extern "C" fn evaluate_continuum_batch(
             // 5. Exploration Entropy Boost (Multi-Armed Bandit ε-Greedy)
             if state.exploration_entropy > 0.2 {
                 // Outlier exploration reward
-                let pseudo_rand = (i as f32 * 17.31 + state.session_track_idx as f32 * 7.13).sin().abs();
+                let pseudo_rand = (i as f32 * 17.31 + state.session_track_idx as f32 * 7.13)
+                    .sin()
+                    .abs();
                 if pseudo_rand < state.exploration_entropy {
                     score += 25.0;
                 }
@@ -141,7 +147,8 @@ pub unsafe extern "C" fn commit_track_to_continuum(
 
         #[allow(clippy::needless_range_loop)] // EMA over parallel lanes
         for j in 0..128 {
-            state.momentum_vector[j] = (state.momentum_vector[j] * one_minus_alpha) + (track_vec[j] * alpha);
+            state.momentum_vector[j] =
+                (state.momentum_vector[j] * one_minus_alpha) + (track_vec[j] * alpha);
         }
 
         if track_vec[0] > 0.0 {

@@ -3,13 +3,13 @@
 // boundary — see the module docs); per-function `# Safety` boilerplate
 // would be copy-paste.
 #![allow(clippy::missing_safety_doc)]
+use crate::db_pool::{self, Lane};
+use crate::repository::TrackRepository;
+use crate::resolver::{get_client, get_runtime};
 use rusqlite::Connection;
 use std::ffi::CStr;
 use std::panic::catch_unwind;
 use std::sync::Arc;
-use crate::db_pool::{self, Lane};
-use crate::repository::TrackRepository;
-use crate::resolver::{get_client, get_runtime};
 
 #[derive(serde::Deserialize)]
 struct SpotifyRecentlyPlayed {
@@ -72,7 +72,11 @@ pub unsafe extern "C" fn get_next_track(
     out_video_len: usize,
 ) -> i32 {
     let result = catch_unwind(|| {
-        if db_path_ptr.is_null() || current_cad_id_ptr.is_null() || out_cad_buf.is_null() || out_video_buf.is_null() {
+        if db_path_ptr.is_null()
+            || current_cad_id_ptr.is_null()
+            || out_cad_buf.is_null()
+            || out_video_buf.is_null()
+        {
             return -1;
         }
 
@@ -91,11 +95,13 @@ pub unsafe extern "C" fn get_next_track(
         let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
 
         // 1. Find the rowid of the current track
-        let current_rowid: i64 = conn.query_row(
-            "SELECT rowid FROM universal_tracks WHERE cad_id = ?1",
-            [current_cad_id],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let current_rowid: i64 = conn
+            .query_row(
+                "SELECT rowid FROM universal_tracks WHERE cad_id = ?1",
+                [current_cad_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         // 2. Get the next track (Linear sequential or Random shuffle)
         let next_rowid: i64 = if is_shuffle == 1 {
@@ -104,11 +110,13 @@ pub unsafe extern "C" fn get_next_track(
             // blowing the 16 ms gapless budget. COUNT + uniform OFFSET is
             // an O(offset) rowid-index walk with no materialization and the
             // same uniform distribution over the non-current candidates.
-            let candidates: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM universal_tracks WHERE rowid != ?1",
-                [current_rowid],
-                |row| row.get(0),
-            ).unwrap_or(0);
+            let candidates: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM universal_tracks WHERE rowid != ?1",
+                    [current_rowid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
             if candidates <= 0 {
                 current_rowid
             } else {
@@ -118,29 +126,32 @@ pub unsafe extern "C" fn get_next_track(
                     "SELECT rowid FROM universal_tracks WHERE rowid != ?1 LIMIT 1 OFFSET ?2",
                     rusqlite::params![current_rowid, offset],
                     |row| row.get(0),
-                ).unwrap_or(current_rowid)
+                )
+                .unwrap_or(current_rowid)
             }
         } else {
             conn.query_row(
                 "SELECT rowid FROM universal_tracks WHERE rowid > ?1 ORDER BY rowid ASC LIMIT 1",
                 [current_rowid],
                 |row| row.get(0),
-            ).unwrap_or_else(|_| {
+            )
+            .unwrap_or_else(|_| {
                 // Circular loopback to first track if reached the end
-                conn.query_row(
-                    "SELECT MIN(rowid) FROM universal_tracks",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0)
+                conn.query_row("SELECT MIN(rowid) FROM universal_tracks", [], |row| {
+                    row.get(0)
+                })
+                .unwrap_or(0)
             })
         };
 
         // 3. Fetch CAD-ID and Video ID
-        let (cad_id, video_id): (String, String) = conn.query_row(
-            "SELECT cad_id, COALESCE(ytm_video_id, '') FROM universal_tracks WHERE rowid = ?1",
-            [next_rowid],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).unwrap_or_default();
+        let (cad_id, video_id): (String, String) = conn
+            .query_row(
+                "SELECT cad_id, COALESCE(ytm_video_id, '') FROM universal_tracks WHERE rowid = ?1",
+                [next_rowid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or_default();
 
         let cad_bytes = cad_id.as_bytes();
         let vid_bytes = video_id.as_bytes();
@@ -311,7 +322,8 @@ mod tests {
         // state of every real device DB) — otherwise the bootstrap rekey
         // would rewrite the synthetic ids to canonical FNV hashes before
         // the first query and the lookups below would miss.
-        conn.execute_batch("PRAGMA user_version = 2;").expect("stamp version");
+        conn.execute_batch("PRAGMA user_version = 2;")
+            .expect("stamp version");
         path_str
     }
 
@@ -359,7 +371,11 @@ mod tests {
         }
         // Coupon-collector over 49 candidates in 600 draws: expecting full
         // coverage (~218 draws mean); 30 is a fail-proof floor.
-        assert!(distinct.len() >= 30, "shuffle not covering: {}", distinct.len());
+        assert!(
+            distinct.len() >= 30,
+            "shuffle not covering: {}",
+            distinct.len()
+        );
         std::fs::remove_file(&db).ok();
     }
 
