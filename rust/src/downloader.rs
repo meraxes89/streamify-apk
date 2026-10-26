@@ -93,7 +93,8 @@ impl StreamDownloader {
             .map_err(|e| format!("Failed to flush audio stream to disk: {}", e))?;
 
         let hash_result = hasher.finalize();
-        let sha256_hex = format!("{:x}", hash_result);
+        // digest 0.11 Array no longer implements LowerHex — encode manually.
+        let sha256_hex: String = hash_result.iter().map(|b| format!("{:02x}", b)).collect();
 
         progress_callback(DownloadProgress {
             bytes_downloaded: downloaded_bytes,
@@ -124,7 +125,8 @@ impl StreamDownloader {
             }
         }
 
-        let calculated_hex = format!("{:x}", hasher.finalize());
+        // digest 0.11 Array no longer implements LowerHex — encode manually.
+        let calculated_hex: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
         calculated_hex.eq_ignore_ascii_case(expected_sha256)
     }
 }

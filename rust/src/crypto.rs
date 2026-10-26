@@ -1,4 +1,4 @@
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, Mac, KeyInit};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
