@@ -7,13 +7,19 @@
 # minor/patch bumps no longer saturate GitHub Actions runners and no longer
 # break crate/gradle ABIs one-by-one. MAJOR bumps intentionally stay
 # ungrouped so each one surfaces as its own reviewable upgrade spike.
+#
+# GOV-01..03 (beta-phase-1): open-pull-requests-limit throttled to 3 per
+# ecosystem (was 5) so Dependabot can never monopolize the concurrent
+# runner budget consumed by the extreme-test-matrix; minor/patch bumps
+# arrive as weekly grouped batches only. Stale ungrouped Dependabot PRs
+# (#56, #60, #62, #64, #68) are closed pending the grouped schedule.
 version: 2
 updates:
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
     groups:
@@ -32,7 +38,7 @@ updates:
     directory: "/rust"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
     groups:
@@ -49,7 +55,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "ci"

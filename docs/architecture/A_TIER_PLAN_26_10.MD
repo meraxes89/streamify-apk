@@ -84,6 +84,51 @@ flowchart TD
 * **Dependabot Grouping**: Refactor `.github/dependabot.yml` to group minor dependency updates and throttle automated PR creation.
 * **Test Decoupling**: Separate deterministic fast unit tests (< 2 minutes) for PR verification from high-concurrency 32-node mesh chaos simulations, which are relocated to a dedicated nightly matrix (`0 0 * * *`).
 
+#### GOV-01 Ruleset Configuration for `main` (beta-phase-1)
+
+The `main` branch is protected by a single repository ruleset — `main-branch-protection` — targeting `branch`, scoped to `~DEFAULT_BRANCH`, enforced **active** (not evaluate). The blocking CI gate referenced below is the `CI gate (blocking)` check run produced by the `ci-gate` job of the Extreme Test Matrix workflow, which folds the blocking set (rust-lint, build-debug-apk, test shards, native deep fuzz, CodeQL, gitleaks) into one stable check name.
+
+| Rule | Setting | Rationale |
+|---|---|---|
+| Require a pull request before merging | **Required** (0 approving reviews minimum; house style still expects 1 review on non-trivial changes) | Zero direct pushes to `main`: every change is reviewable, CI-verified, and revertible as an atomic PR. |
+| Require linear history | **Required** | No merge commits on `main`; every commit is individually bisectable, which the DSP regression and JNI parity workflows depend on. |
+| Require branches to be up to date before merging | **Required** (`strict_required_status_checks_policy`) | PRs must be rebased on the latest `main` so the blocking CI gate always validates the exact tree that lands, never a stale ancestor. |
+| Require status checks to pass | **Required**: `CI gate (blocking)` | Mandatory passing CI gate — the merge button is disabled while any blocking job (including the SEC-05 gitleaks secret scan) is red or pending. |
+| Block force pushes | **Required** | Rewriting published history would invalidate gitleaks baselines, audit trails, and bisection anchors. |
+| Restrict deletions | **Required** | `main` is the release/rollback anchor; it must never be deleted. |
+
+**Creation runbook (repo admin):** Settings → Branches → Rulesets → New ruleset → the table above; or via API:
+
+```bash
+curl -X POST \
+  -H "Authorization: token $ADMIN_PAT" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/meraxes89/streamify-apk/rulesets \
+  -d '{
+    "name": "main-branch-protection",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+    "rules": [
+      {"type": "deletion"},
+      {"type": "non_fast_forward"},
+      {"type": "required_linear_history"},
+      {"type": "pull_request", "parameters": {"required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+        "require_last_push_approval": false, "required_review_thread_resolution": false}},
+      {"type": "required_status_checks", "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [{"context": "CI gate (blocking)", "integration_id": 15368}]}}
+    ]
+  }'
+```
+
+`non_fast_forward` enforces the no-force-push guarantee and, together with `pull_request`, yields the zero-direct-push policy: any push that is not a fast-forward merge of a green PR is rejected by the server. Bypass list is intentionally empty — admins are subject to the same gate as everyone else. The payload above is the exact REST request used to create the active `main-branch-protection` ruleset (integration id 15368 is the GitHub Actions app that reports the `CI gate (blocking)` check run).
+
+**GOV-02 execution status (beta-phase-1):** `.github/dependabot.yml` now throttles `open-pull-requests-limit: 3` across all three ecosystems (gradle, cargo, github-actions), with minor/patch bumps arriving as weekly grouped batches; semver-major bumps remain excluded from grouping (dedicated upgrade spikes, per the P0 containment directive).
+
+**GOV-03 execution status (beta-phase-1):** The stale ungrouped Dependabot PRs (#56, #60, #62, #64, #68) are closed pending the grouped weekly schedule; their updates re-materialize inside the grouped batches if still applicable.
+
 ---
 
 ### Step 3: Phase 1 — UniFFI Control Plane Migration
