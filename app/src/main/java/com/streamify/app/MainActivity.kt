@@ -3,10 +3,8 @@ package com.streamify.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -45,7 +43,6 @@ import com.streamify.app.ui.screens.FullPlayerSheet
 import com.streamify.app.ui.screens.PrismaticSplashScreen
 import com.streamify.app.ui.screens.YtOnboardingScreen
 import com.streamify.app.ui.theme.*
-import com.streamify.app.util.PermissionHelper
 import com.streamify.app.viewmodel.PlayerViewModel
 import com.streamify.app.viewmodel.UiEvent
 import com.streamify.app.viewmodel.UiEventBus
@@ -55,26 +52,8 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
-    // Touch telemetry: every DOWN/UP is logged with coordinates; MOVE events
-    // are throttled to one per 250ms so drags stay visible without flooding.
-    private var lastMoveLogMs: Long = 0L
-
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        when (ev.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN ->
-                com.streamify.app.util.SLog.v("TOUCH", "DOWN x=${ev.x.toInt()} y=${ev.y.toInt()} pointers=${ev.pointerCount}")
-            android.view.MotionEvent.ACTION_UP ->
-                com.streamify.app.util.SLog.v("TOUCH", "UP   x=${ev.x.toInt()} y=${ev.y.toInt()}")
-            android.view.MotionEvent.ACTION_MOVE -> {
-                val now = System.currentTimeMillis()
-                if (now - lastMoveLogMs >= 250) {
-                    lastMoveLogMs = now
-                    com.streamify.app.util.SLog.v("TOUCH", "MOVE x=${ev.x.toInt()} y=${ev.y.toInt()}")
-                }
-            }
-            android.view.MotionEvent.ACTION_CANCEL ->
-                com.streamify.app.util.SLog.v("TOUCH", "CANCEL")
-        }
+        com.streamify.app.ui.motion.TouchTelemetryLogger.log(ev)
         return super.dispatchTouchEvent(ev)
     }
 
@@ -82,44 +61,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleSpotifyCallback(intent)
-    }
-
-    private fun handleSpotifyCallback(intent: android.content.Intent?) {
-        val uri = intent?.data ?: return
-        if (uri.scheme == "streamify" && uri.host == "jam") {
-            val code = uri.lastPathSegment?.uppercase()?.takeIf { it.length == 6 }
-            if (code != null) {
-                com.streamify.app.jam.JamEngine.pendingInviteCode = code
-                com.streamify.app.jam.JamEngine.inviteNavigationEvents.tryEmit(code)
-            }
-            return
-        }
-        if (uri.scheme == "streamify" && (uri.host == "callback" || uri.host == "spotify-auth")) {
-            val authCode = uri.getQueryParameter("code")
-            val error = uri.getQueryParameter("error")
-            if (!authCode.isNullOrEmpty()) {
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                    val spotifyAuth = com.streamify.app.data.spotify.SpotifyAuthManager(this@MainActivity)
-                    val dbPath = getDatabasePath("streamify_universal.db").absolutePath
-                    spotifyAuth.handleAuthCallback(authCode, dbPath) { count ->
-                        if (count >= 0) {
-                            android.widget.Toast.makeText(this@MainActivity, "Spotify connected! Synced $count tracks into your taste profile 🎵", android.widget.Toast.LENGTH_SHORT).show()
-                        } else {
-                            android.widget.Toast.makeText(this@MainActivity, "Spotify connected successfully! 🎵", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            } else if (!error.isNullOrEmpty()) {
-                android.widget.Toast.makeText(this, "Spotify auth note: $error", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }
+        com.streamify.app.navigation.SpotifyDeepLinkHandler.handle(this, intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        handleSpotifyCallback(intent)
+        com.streamify.app.navigation.SpotifyDeepLinkHandler.handle(this, intent)
         com.streamify.app.data.models.AppMode.initialize(this)
         // Gap #31 — follow graph: load persisted follow edges + count seeds
         // before any FollowButton reads the flows (null-safe on failure).
@@ -130,26 +78,9 @@ class MainActivity : ComponentActivity() {
         com.streamify.app.jam.JoinFabric.attach(this)
 
         setContent {
-            val audioPrefs = remember { getSharedPreferences("audio_settings", android.content.Context.MODE_PRIVATE) }
-            val isLocalEnabled = remember { audioPrefs.getBoolean("enable_local_audio", false) }
-
-            val permissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestMultiplePermissions()
-            ) { permissions ->
-                if (permissions.values.any { it } && isLocalEnabled) {
-                    enqueueMediaScan(this@MainActivity)
-                }
-            }
-
-            LaunchedEffect(Unit) {
-                if (isLocalEnabled) {
-                    if (!PermissionHelper.hasPermissions(this@MainActivity)) {
-                        permissionLauncher.launch(PermissionHelper.REQUIRED_PERMISSIONS)
-                    } else {
-                        enqueueMediaScan(this@MainActivity)
-                    }
-                }
-            }
+            // Media ingestion entry (prefs read + runtime permissions + scan
+            // enqueue) lives in its own single-responsibility composable.
+            com.streamify.app.media.MediaScanPermissionGate(this@MainActivity)
 
             val authState by AuthManager.authState.collectAsState()
 
@@ -172,128 +103,10 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
 
                 // ── Phase 4 Connect runtime: coordinator + silent-controller hooks ─
-                LaunchedEffect(Unit) {
-                    com.streamify.app.connect.ConnectRuntime.initialize(this@MainActivity)
-                }
-                LaunchedEffect(playerViewModel) {
-                    com.streamify.app.connect.ConnectRuntime.playbackHooks =
-                        object : com.streamify.app.connect.LocalPlaybackHooks {
-                            override fun enterSilentController() {
-                                // Silent remote controller: pause local render,
-                                // keep queue + clock loaded (flip-back = seek).
-                                val ctrl = playerViewModel.getController() ?: return
-                                runCatching { ctrl.pause() }
-                            }
-
-                            override fun exitSilentController(positionMs: Long, play: Boolean) {
-                                val ctrl = playerViewModel.getController() ?: return
-                                runCatching {
-                                    ctrl.seekTo(positionMs)
-                                    if (play) ctrl.play() else ctrl.pause()
-                                }
-                            }
-                        }
-
-                    // Cast handoff source: full MediaItems (stream URL +
-                    // metadata + artwork) from the live session controller.
-                    com.streamify.app.cast.CastMediaManager.queueProvider = {
-                        val ctrl = playerViewModel.getController()
-                        if (ctrl != null && ctrl.mediaItemCount > 0) {
-                            com.streamify.app.cast.CastPlaybackState(
-                                items = (0 until ctrl.mediaItemCount).mapNotNull { i ->
-                                    runCatching { ctrl.getMediaItemAt(i) }.getOrNull()
-                                },
-                                startIndex = ctrl.currentMediaItemIndex,
-                                positionMs = ctrl.currentPosition,
-                                isPlaying = ctrl.isPlaying
-                            )
-                        } else {
-                            null
-                        }
-                    }
-
-                    // ── Phase 4 WearOS: wrist transport, volume, Jam voting ──
-                    com.streamify.app.wear.WearSessionManager.inputHandler =
-                        com.streamify.app.wear.WearInputHandler(
-                            object : com.streamify.app.wear.WearActionSink {
-                                override fun playPause() { playerViewModel.togglePlayPause() }
-                                override fun skipNext() { playerViewModel.skipNext() }
-                                override fun skipPrevious() { playerViewModel.skipPrevious() }
-
-                                override fun volumeStep(delta: Float): Boolean {
-                                    val ctrl = playerViewModel.getController() ?: return false
-                                    return runCatching {
-                                        ctrl.setVolume((ctrl.volume + delta).coerceIn(0f, 1f))
-                                        true
-                                    }.getOrDefault(false)
-                                }
-
-                                override fun jamUpvote(trackId: Int): Boolean {
-                                    val track = com.streamify.app.jam.JamEngine.queue.value
-                                        .find { it.id == trackId } ?: return false
-                                    return runCatching {
-                                        com.streamify.app.jam.JamEngine.castUpvote(track)
-                                    }.getOrDefault(false)
-                                }
-
-                                override fun queueAdd(videoId: String): Boolean {
-                                    if (!com.streamify.app.jam.JamEngine.isActive()) return false
-                                    val stub = com.streamify.app.data.models.Track(
-                                        id = videoId.hashCode(),
-                                        title = videoId,
-                                        artist = "",
-                                        ytmVideoId = videoId
-                                    )
-                                    return runCatching {
-                                        com.streamify.app.jam.JamEngine.addToQueue(stub, "Watch")
-                                    }.getOrDefault(false)
-                                }
-
-                                override fun launchQuickPlaylist(): Boolean {
-                                    return runCatching {
-                                        val liked = com.streamify.app.data.repository.TrackRepository.likedTracks.value
-                                        if (liked.isEmpty()) return false
-                                        playerViewModel.playCollection(liked.shuffled())
-                                        true
-                                    }.getOrDefault(false)
-                                }
-                            }
-                        )
-
-                    // Compact Now Playing mirror to the wrist (5s cadence,
-                    // IO transport; Jam rows carry live vote counts).
-                    while (true) {
-                        kotlinx.coroutines.delay(5000L)
-                        val state = playerViewModel.playerState.value
-                        val track = state.currentTrack ?: continue
-                        val jamActive = com.streamify.app.jam.JamEngine.isActive()
-                        val queueRows = if (jamActive) {
-                            com.streamify.app.jam.JamEngine.queue.value.take(3).map { t ->
-                                com.streamify.app.wear.WearQueueEntry(
-                                    trackId = t.id,
-                                    title = t.title,
-                                    artist = t.artist,
-                                    votes = com.streamify.app.jam.JamEngine.voteCountFor(t)
-                                )
-                            }
-                        } else {
-                            emptyList()
-                        }
-                        com.streamify.app.wear.WearSessionManager.publishNowPlaying(
-                            com.streamify.app.wear.WearNowPlayingState(
-                                trackTitle = track.title,
-                                artist = track.artist,
-                                artworkUrl = track.coverArtPath,
-                                isPlaying = state.isPlaying,
-                                positionMs = playerViewModel.positionMs.value,
-                                durationMs = state.duration,
-                                jamActive = jamActive,
-                                jamQueueTop = queueRows,
-                                updatedAtMs = System.currentTimeMillis()
-                            )
-                        )
-                    }
-                }
+                // ── Connect runtime bridge (hooks + cast queue provider) ──
+                com.streamify.app.connect.ConnectPlaybackBridgeEffect(this@MainActivity, playerViewModel)
+                // ── WearOS bridge (wrist transport + now-playing mirror) ──
+                com.streamify.app.wear.WearSessionBridgeEffect(playerViewModel)
                 val connectSnapshotProvider: () -> com.streamify.app.connect.PlaybackSnapshot = {
                     com.streamify.app.connect.PlaybackSnapshot(
                         queueTitles = playerState.queue.map { it.title },
@@ -759,12 +572,4 @@ class MainActivity : ComponentActivity() {
         com.streamify.app.jam.JoinFabric.detach()
         super.onDestroy()
     }
-}
-
-private fun enqueueMediaScan(context: android.content.Context) {
-    val workManager = androidx.work.WorkManager.getInstance(context)
-    val scanRequest = androidx.work.OneTimeWorkRequestBuilder<com.streamify.app.media.ingestion.IngestionWorker>()
-        .addTag("ingestion_worker")
-        .build()
-    workManager.enqueueUniqueWork("media_scan", androidx.work.ExistingWorkPolicy.KEEP, scanRequest)
 }
