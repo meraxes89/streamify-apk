@@ -115,11 +115,20 @@ android {
         checkReleaseBuilds = false
     }
     testOptions {
-        // JAM v4: the Jam engine is logging-heavy (SLog → android.util.Log);
-        // default-value stubs keep the whole state machine runnable on the
-        // JVM unit-test shard without Robolectric.
+        // Strict-mock migration (sprint P1): default-value stubs were masking
+        // unmocked Android framework calls across JVM unit tests. Every
+        // framework API that reaches a JVM test now needs an explicit mock or
+        // fake (see app/src/test/java/com/streamify/app/testkit/). No silent
+        // defaults: a missing mock is a loud RuntimeException, not a quiet 0.
         unitTests {
-            isReturnDefaultValues = true
+            isReturnDefaultValues = false
+            // Strict-mock companion: arm the pure-JVM SLog fallback sink for
+            // the WHOLE test JVM (order-proof — beats per-class @BeforeClass
+            // installs because static initializers can run before any test
+            // method). See SLog.JvmStdoutSink.
+            all { test ->
+                test.systemProperty("streamify.slog.jvm", "true")
+            }
         }
     }
     composeOptions {

@@ -37,6 +37,73 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object SLog {
 
+    // ---------------------------------------------------------- pluggable sink
+    // Strict-mock migration (sprint P1): the android.util.Log calls used to be
+    // hardwired here, which is why `isReturnDefaultValues = true` existed —
+    // JVM unit tests crashed with "Method ... not mocked" unless every
+    // framework call silently returned 0/null. The logging backend is now a
+    // pluggable [Sink] so JVM tests install an explicit fake
+    // (see app/src/test/java/com/streamify/app/testkit/JvmSLogSink.kt)
+    // instead of the build masking the entire framework surface.
+    internal interface Sink {
+        fun v(tag: String, msg: String, tr: Throwable?)
+        fun d(tag: String, msg: String, tr: Throwable?)
+        fun i(tag: String, msg: String, tr: Throwable?)
+        fun w(tag: String, msg: String, tr: Throwable?)
+        fun e(tag: String, msg: String, tr: Throwable?)
+        fun wtf(tag: String, msg: String, tr: Throwable?)
+        fun stackTraceString(tr: Throwable): String
+    }
+
+    /** Production sink: forwards 1:1 to android.util.Log (identical behavior). */
+    private object AndroidSink : Sink {
+        override fun v(tag: String, msg: String, tr: Throwable?) = android.util.Log.v(tag, msg, tr).let { Unit }
+        override fun d(tag: String, msg: String, tr: Throwable?) = android.util.Log.d(tag, msg, tr).let { Unit }
+        override fun i(tag: String, msg: String, tr: Throwable?) = android.util.Log.i(tag, msg, tr).let { Unit }
+        override fun w(tag: String, msg: String, tr: Throwable?) = android.util.Log.w(tag, msg, tr).let { Unit }
+        override fun e(tag: String, msg: String, tr: Throwable?) = android.util.Log.e(tag, msg, tr).let { Unit }
+        override fun wtf(tag: String, msg: String, tr: Throwable?) = android.util.Log.wtf(tag, msg, tr).let { Unit }
+        override fun stackTraceString(tr: Throwable): String = android.util.Log.getStackTraceString(tr)
+    }
+
+    /**
+     * Strict-mock fallback (sprint P1): pure-JVM sink selected by the
+     * `streamify.slog.jvm` system property, which the Gradle unit-test
+     * task sets for the whole test JVM. This closes the ordering hole a
+     * per-class `@BeforeClass` install cannot: ANY first touch of SLog —
+     * including from another object's static initializer that runs before
+     * any test method — already sees the JVM sink, so `android.util.Log`
+     * is never class-loaded in the test JVM at all (once its <clinit>
+     * fails under strict mocks, the failure is sticky for the whole run:
+     * every later Log reference degrades to NoClassDefFoundError).
+     *
+     * Deliberately android-free: println/stderr only. The rich testkit
+     * fake (app/src/test/.../testkit/JvmSLogSink.kt) can still override
+     * [sink] afterwards for capture/assertions — see its install().
+     */
+    internal object JvmStdoutSink : Sink {
+        private fun emit(level: Char, tag: String, msg: String, tr: Throwable?) {
+            System.err.println("$level/$tag: $msg")
+            tr?.printStackTrace(System.err)
+        }
+        override fun v(tag: String, msg: String, tr: Throwable?) = emit('V', tag, msg, tr)
+        override fun d(tag: String, msg: String, tr: Throwable?) = emit('D', tag, msg, tr)
+        override fun i(tag: String, msg: String, tr: Throwable?) = emit('I', tag, msg, tr)
+        override fun w(tag: String, msg: String, tr: Throwable?) = emit('W', tag, msg, tr)
+        override fun e(tag: String, msg: String, tr: Throwable?) = emit('E', tag, msg, tr)
+        override fun wtf(tag: String, msg: String, tr: Throwable?) = emit('F', tag, msg, tr)
+        override fun stackTraceString(tr: Throwable): String {
+            val sw = java.io.StringWriter()
+            tr?.printStackTrace(java.io.PrintWriter(sw))
+            return sw.toString().ifBlank { "no stack trace" }
+        }
+    }
+
+    /** Swap point for tests. Never call this from production code. */
+    @Volatile
+    internal var sink: Sink =
+        if (System.getProperty("streamify.slog.jvm") != null) JvmStdoutSink else AndroidSink
+
     // -------------------------------------------------------------- levels
     const val LEVEL_V = 'V'
     const val LEVEL_D = 'D'
@@ -117,17 +184,17 @@ object SLog {
     // ---------------------------------------------------------- public api
     // Identical signatures to android.util.Log — drop-in facade.
 
-    fun v(tag: String, msg: String): Int { android.util.Log.v(tag, msg); return append(LEVEL_V, tag, msg) }
-    fun v(tag: String, msg: String, tr: Throwable?): Int { android.util.Log.v(tag, msg, tr); return append(LEVEL_V, tag, msg + fmt(tr)) }
-    fun d(tag: String, msg: String): Int { android.util.Log.d(tag, msg); return append(LEVEL_D, tag, msg) }
-    fun d(tag: String, msg: String, tr: Throwable?): Int { android.util.Log.d(tag, msg, tr); return append(LEVEL_D, tag, msg + fmt(tr)) }
-    fun i(tag: String, msg: String): Int { android.util.Log.i(tag, msg); return append(LEVEL_I, tag, msg) }
-    fun i(tag: String, msg: String, tr: Throwable?): Int { android.util.Log.i(tag, msg, tr); return append(LEVEL_I, tag, msg + fmt(tr)) }
-    fun w(tag: String, msg: String): Int { android.util.Log.w(tag, msg); return append(LEVEL_W, tag, msg) }
-    fun w(tag: String, msg: String, tr: Throwable?): Int { android.util.Log.w(tag, msg, tr); return append(LEVEL_W, tag, msg + fmt(tr)) }
-    fun e(tag: String, msg: String): Int { android.util.Log.e(tag, msg); return append(LEVEL_E, tag, msg) }
-    fun e(tag: String, msg: String, tr: Throwable?): Int { android.util.Log.e(tag, msg, tr); return append(LEVEL_E, tag, msg + fmt(tr)) }
-    fun wtf(tag: String, msg: String): Int { android.util.Log.wtf(tag, msg); return append(LEVEL_F, tag, msg) }
+    fun v(tag: String, msg: String): Int { sink.v(tag, msg, null); return append(LEVEL_V, tag, msg) }
+    fun v(tag: String, msg: String, tr: Throwable?): Int { sink.v(tag, msg, tr); return append(LEVEL_V, tag, msg + fmt(tr)) }
+    fun d(tag: String, msg: String): Int { sink.d(tag, msg, null); return append(LEVEL_D, tag, msg) }
+    fun d(tag: String, msg: String, tr: Throwable?): Int { sink.d(tag, msg, tr); return append(LEVEL_D, tag, msg + fmt(tr)) }
+    fun i(tag: String, msg: String): Int { sink.i(tag, msg, null); return append(LEVEL_I, tag, msg) }
+    fun i(tag: String, msg: String, tr: Throwable?): Int { sink.i(tag, msg, tr); return append(LEVEL_I, tag, msg + fmt(tr)) }
+    fun w(tag: String, msg: String): Int { sink.w(tag, msg, null); return append(LEVEL_W, tag, msg) }
+    fun w(tag: String, msg: String, tr: Throwable?): Int { sink.w(tag, msg, tr); return append(LEVEL_W, tag, msg + fmt(tr)) }
+    fun e(tag: String, msg: String): Int { sink.e(tag, msg, null); return append(LEVEL_E, tag, msg) }
+    fun e(tag: String, msg: String, tr: Throwable?): Int { sink.e(tag, msg, tr); return append(LEVEL_E, tag, msg + fmt(tr)) }
+    fun wtf(tag: String, msg: String): Int { sink.wtf(tag, msg, null); return append(LEVEL_F, tag, msg) }
 
     /** Replaces bare printStackTrace() with contextual capture. */
     fun st(tag: String, context: String, tr: Throwable?) {
@@ -185,7 +252,7 @@ object SLog {
     // ------------------------------------------------------------- hot path
 
     private fun fmt(tr: Throwable?): String =
-        if (tr == null) "" else "\n${android.util.Log.getStackTraceString(tr)}"
+        if (tr == null) "" else "\n${sink.stackTraceString(tr)}"
 
     private fun append(level: Char, tag: String, message: String): Int {
         if (!captureEnabled) return 0 // OFF: this is the entire cost.
@@ -354,11 +421,11 @@ object SLog {
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             try {
                 // Always visible in logcat:
-                android.util.Log.e("CRASH", "uncaught on ${t.name}", e)
+                sink.e("CRASH", "uncaught on ${t.name}", e)
                 // And into the spool if the user opted in:
                 if (captureEnabled) {
                     e("CRASH", "uncaught on thread=${t.name}: ${e.javaClass.name}: ${e.message}")
-                    e("CRASH", android.util.Log.getStackTraceString(e))
+                    e("CRASH", sink.stackTraceString(e))
                 }
                 synchronized(armingLock) { runCatching { drainToDisk(StringBuilder(1024)) } }
             } catch (_: Throwable) {

@@ -16,6 +16,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import org.junit.BeforeClass
+import com.streamify.app.testkit.JvmSLogSink
 
 /**
  * JamEngine v4 end-to-end on the mock mesh: serverless room bootstrap, wire
@@ -26,6 +28,18 @@ import java.util.concurrent.CopyOnWriteArrayList
  * the 1 200 ms heartbeat contract is exercised without long sleeps.
  */
 class JamEngineServerlessTest {
+
+
+    companion object {
+        // Strict-mock migration (P1): SLog reaches android.util.Log on this
+        // path. Install the explicit JVM log fake instead of relying on
+        // isReturnDefaultValues = true.
+        @BeforeClass
+        @JvmStatic
+        fun installJvmSLogSink() {
+            JvmSLogSink.install()
+        }
+    }
 
     private lateinit var mock: MockNativeBridge
     private lateinit var room: VirtualMeshRoom
