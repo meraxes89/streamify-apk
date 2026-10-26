@@ -52,6 +52,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      # audit #44 P2-5 — panic-boundary convention gate: every Java_*
+      # export in rust/src/jni_bridge*.rs must carry catch_unwind. Cheap
+      # source-level check; runs before the build so violations fail fast.
+      - name: JNI panic-boundary convention gate
+        run: python3 scripts/jni_panic_boundary_check.py
+
       - name: Build Debug APK
         run: |
           chmod +x gradlew
