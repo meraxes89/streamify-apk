@@ -3,10 +3,8 @@ package com.streamify.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -45,7 +43,6 @@ import com.streamify.app.ui.screens.FullPlayerSheet
 import com.streamify.app.ui.screens.PrismaticSplashScreen
 import com.streamify.app.ui.screens.YtOnboardingScreen
 import com.streamify.app.ui.theme.*
-import com.streamify.app.util.PermissionHelper
 import com.streamify.app.viewmodel.PlayerViewModel
 import com.streamify.app.viewmodel.UiEvent
 import com.streamify.app.viewmodel.UiEventBus
@@ -81,26 +78,9 @@ class MainActivity : ComponentActivity() {
         com.streamify.app.jam.JoinFabric.attach(this)
 
         setContent {
-            val audioPrefs = remember { getSharedPreferences("audio_settings", android.content.Context.MODE_PRIVATE) }
-            val isLocalEnabled = remember { audioPrefs.getBoolean("enable_local_audio", false) }
-
-            val permissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestMultiplePermissions()
-            ) { permissions ->
-                if (permissions.values.any { it } && isLocalEnabled) {
-                    enqueueMediaScan(this@MainActivity)
-                }
-            }
-
-            LaunchedEffect(Unit) {
-                if (isLocalEnabled) {
-                    if (!PermissionHelper.hasPermissions(this@MainActivity)) {
-                        permissionLauncher.launch(PermissionHelper.REQUIRED_PERMISSIONS)
-                    } else {
-                        enqueueMediaScan(this@MainActivity)
-                    }
-                }
-            }
+            // Media ingestion entry (prefs read + runtime permissions + scan
+            // enqueue) lives in its own single-responsibility composable.
+            com.streamify.app.media.MediaScanPermissionGate(this@MainActivity)
 
             val authState by AuthManager.authState.collectAsState()
 
@@ -710,12 +690,4 @@ class MainActivity : ComponentActivity() {
         com.streamify.app.jam.JoinFabric.detach()
         super.onDestroy()
     }
-}
-
-private fun enqueueMediaScan(context: android.content.Context) {
-    val workManager = androidx.work.WorkManager.getInstance(context)
-    val scanRequest = androidx.work.OneTimeWorkRequestBuilder<com.streamify.app.media.ingestion.IngestionWorker>()
-        .addTag("ingestion_worker")
-        .build()
-    workManager.enqueueUniqueWork("media_scan", androidx.work.ExistingWorkPolicy.KEEP, scanRequest)
 }
