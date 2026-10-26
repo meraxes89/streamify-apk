@@ -213,7 +213,7 @@ dependencies {
     // stubs throw "not mocked" for JSONObject in unit tests; this artifact
     // (test-only, never packaged) keeps the Jam wire track JSON codecs
     // exercisable in testDebugUnitTest.
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 
     // Instrumented macrobenchmark (StreamifyMacrobenchmark) executed by the
     // emulator-matrix CI job via connectedDebugAndroidTest.
