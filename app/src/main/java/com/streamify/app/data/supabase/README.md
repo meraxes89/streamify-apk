@@ -11,7 +11,6 @@ v1.1.0 into domain clients behind a thin `SupabaseClient` facade.
 | `SupabaseAdminClient.kt` | Admin surface (service-role operations). |
 | `SupabaseTracksClient.kt` | Track catalog upserts/fetches. |
 | `SupabaseStatsClient.kt` | Telemetry merge endpoints. |
-| `SupabaseJamClient.kt` | Jam session state + queue broadcasts. |
 | `SupabasePlaylistSyncClient.kt` | Playlist LWW sync. |
 | `SupabaseCommunityClient.kt` | Community hub (comments, friend activity). |
 | `SupabaseEdgeMeshClient.kt` | Edge-Mesh peer registry. |
