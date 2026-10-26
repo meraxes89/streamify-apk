@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <algorithm>
+#include <cstdlib>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -768,15 +769,40 @@ Java_com_streamify_app_data_NativeBridge_getZhipuKey(
     jobject /* this */,
     jint index
 ) {
-    static const char* ZHIPU_KEYS[] = {
-        "57bd4b727f404046b17204dc95a657e8.IMJI6yrCLcZDBl1y",
-        "0758ad943a784d728f17cd5d98b5330d.sn0EnMWZ1kLCleir",
-        "29a71f29e0bf45cbb0e61ae1fcdb0127.BbgwmouOPz7JQWyp",
-        "2f444b74e35c4d7ebae62471309b8b9e.5OzYzb9uP9v0uNzz",
-        "85aa0d0ac2f845579dfc58ae355d855d.yQrUOUVlGG0Xe2q2"
-    };
-    int safeIdx = (index >= 0 && index < 5) ? index : (static_cast<unsigned int>(index) % 5u);
-    return env->NewStringUTF(ZHIPU_KEYS[safeIdx]);
+    // SEC-03: the plaintext ZHIPU_KEYS[] pool was removed from the compiled
+    // .so -- it shipped every key rotation candidate to anyone with `strings`
+    // (and to every APK mirror). Keys are now supplied through process
+    // environment configuration and proxied verbatim; when nothing is
+    // configured we return the empty string and the Kotlin layer applies
+    // its own fallback / backend-proxy path.
+    //
+    //   STREAMIFY_ZHIPU_KEYS   comma-separated key pool, any size >= 1;
+    //                         indices wrap modulo the pool size (negative
+    //                         indices follow the historical wrap semantics)
+    const char* pool = std::getenv("STREAMIFY_ZHIPU_KEYS");
+    if (pool == nullptr || *pool == '\0') {
+        return env->NewStringUTF("");
+    }
+
+    int count = 1;
+    for (const char* p = pool; *p != '\0'; ++p) {
+        if (*p == ',') ++count;
+    }
+    int slot = static_cast<int>(static_cast<unsigned int>(index) %
+                                static_cast<unsigned int>(count));
+
+    const char* entry = pool;
+    while (slot > 0) {
+        while (*entry != '\0' && *entry != ',') ++entry;
+        if (*entry == ',') ++entry;
+        --slot;
+    }
+
+    std::string key;
+    while (*entry != '\0' && *entry != ',') {
+        key.push_back(*entry++);
+    }
+    return env->NewStringUTF(key.c_str());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
