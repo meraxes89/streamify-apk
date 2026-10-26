@@ -27,10 +27,12 @@ struct GoldenOp {
     name: String,
     rust_48: Vec<u8>,
     rust_48_blake3: String,
-    hash_only: Option<(Vec<u8>, String)>,
 }
 
-fn load_fixture() -> (Vec<GoldenOp>, Vec<(String, Vec<u8>, String)>) {
+/// One `hash_only` fixture row: (name, blake3 input bytes, expected hex).
+type HashVector = (String, Vec<u8>, String);
+
+fn load_fixture() -> (Vec<GoldenOp>, Vec<HashVector>) {
     let raw = std::fs::read(fixture_path())
         .unwrap_or_else(|e| panic!("fixture missing/unreadable ({}): {e}", fixture_path().display()));
     let doc: serde_json::Value = serde_json::from_slice(&raw)
@@ -43,7 +45,6 @@ fn load_fixture() -> (Vec<GoldenOp>, Vec<(String, Vec<u8>, String)>) {
             rust_48: hex::decode(v["rust_48"].as_str().expect("rust_48 hex"))
                 .unwrap_or_else(|e| panic!("vector {}: bad rust_48 hex: {e}", v["name"])),
             rust_48_blake3: v["rust_48_blake3"].as_str().expect("rust_48_blake3").to_string(),
-            hash_only: None,
         });
     }
 
