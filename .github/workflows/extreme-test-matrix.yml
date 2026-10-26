@@ -415,7 +415,12 @@ jobs:
         if: matrix.language == 'java-kotlin'
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug -Pstreamify.skipRust=true --stacktrace
+          # Trace ONLY Kotlin/Java AST extraction: bypass C++ CMake, Rust cargo-ndk,
+          # and D8 dexing. CodeQL java-kotlin extractor only analyzes JVM sources.
+          ./gradlew compileDebugKotlin compileDebugJavaWithJavac \
+            -Pstreamify.skipRust=true \
+            -Pandroid.injected.build.abi=none \
+            --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
