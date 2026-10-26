@@ -19,10 +19,10 @@ Installing NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/ndk/25.
 [cargoBuildRust] command=cargo ndk --platform 26 -t arm64-v8a -t armeabi-v7a -o <jniLibs> build --release
     Building arm64-v8a (aarch64-linux-android)
 [1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 37.97s
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 39.31s
     Building armeabi-v7a (armv7-linux-androideabi)
 [1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 37.20s
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 37.51s
      Copying libraries to /home/runner/work/streamify-apk/streamify-apk/app/src/main/jniLibs
 
 > Task :app:preBuild
@@ -81,13 +81,13 @@ C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:78
 C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
 C/C++:                                                                    ^
 C/C++: 5 warnings generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
-C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
-C/C++:                                                                       ^
-C/C++: 1 warning generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
 C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
 C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
 C/C++: 1 warning generated.
 C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
 C/C++:     const float beta_bpm = 0.20f;
@@ -160,7 +160,7 @@ C/C++: 1 warning generated.
 > Task :app:stripDebugDebugSymbols
 > Task :app:processDebugResources
 > Task :app:compileDebugKotlin
-w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:171:21 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:102:21 Variable 'scope' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
@@ -349,7 +349,7 @@ w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/st
 > Task :app:packageDebug
 > Task :app:createDebugApkListingFileRedirect
 > Task :app:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gradle_build-1793005742796.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gradle_build-1793005762742.json
 
 FAILURE: Build failed with an exception.
 
@@ -360,7 +360,7 @@ Configuration cache problems found in this build.
 - Task `:app:cargoBuildRust` of type `org.gradle.api.tasks.Exec`: cannot serialize object of type 'org.gradle.api.internal.project.DefaultProject', a subtype of 'org.gradle.api.Project', as these are not supported with the configuration cache.
   See https://docs.gradle.org/8.7/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
 
-See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/r5fs5me8ipm89py492yn0d7k/e2hxjv5b38tiis9bnvvg1r8r5/configuration-cache-report.html
+See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/r5fs5me8ipm89py492yn0d7k/br2fumuwyf4a58fsc9sgrt2eh/configuration-cache-report.html
 
 * Try:
 > Run with --info or --debug option to get more log output.
@@ -374,7 +374,7 @@ org.gradle.configurationcache.ConfigurationCacheProblemsException: Configuration
 - Task `:app:cargoBuildRust` of type `org.gradle.api.tasks.Exec`: cannot serialize object of type 'org.gradle.api.internal.project.DefaultProject', a subtype of 'org.gradle.api.Project', as these are not supported with the configuration cache.
   See https://docs.gradle.org/8.7/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
 
-See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/r5fs5me8ipm89py492yn0d7k/e2hxjv5b38tiis9bnvvg1r8r5/configuration-cache-report.html
+See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/r5fs5me8ipm89py492yn0d7k/br2fumuwyf4a58fsc9sgrt2eh/configuration-cache-report.html
 	at org.gradle.configurationcache.problems.ConfigurationCacheProblems.queryFailure(ConfigurationCacheProblems.kt:149)
 	at org.gradle.configurationcache.problems.ConfigurationCacheProblems.report(ConfigurationCacheProblems.kt:177)
 	at org.gradle.internal.buildtree.ProblemReportingBuildActionRunner.reportProblems(ProblemReportingBuildActionRunner.java:61)
@@ -448,6 +448,6 @@ See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 5m 29s
+BUILD FAILED in 5m 42s
 42 actionable tasks: 28 executed, 14 from cache
 Configuration cache entry discarded with 1 problem.
