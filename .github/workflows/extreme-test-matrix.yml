@@ -415,10 +415,9 @@ jobs:
         run: |
           chmod +x gradlew
           # Trace ONLY Kotlin/Java AST extraction: bypass C++ CMake, Rust cargo-ndk,
-          # and D8 dexing. CodeQL java-kotlin extractor only analyzes JVM sources.
+          # and D8 dexing via -PskipExternalNativeBuild=true.
           ./gradlew compileDebugKotlin compileDebugJavaWithJavac \
-            -Pstreamify.skipRust=true \
-            -Pandroid.injected.build.abi=none \
+            -PskipExternalNativeBuild=true \
             --stacktrace
 
       - name: Perform CodeQL Analysis
@@ -542,7 +541,12 @@ jobs:
       - name: Execute Native C++20 ASan / UBSan Shard
         id: native_test
         if: matrix.type == 'native'
+        env:
+          ASAN_OPTIONS: "fast_unwind_on_malloc=1:detect_leaks=1:halt_on_error=1"
+          UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+          TMPDIR: "/dev/shm/native_test_tmp"
         run: |
+          mkdir -p /dev/shm/native_test_tmp
           mkdir -p native/build && cd native/build
           cmake -DCMAKE_CXX_COMPILER=clang++ \
                 -DCMAKE_C_COMPILER=clang \
@@ -560,7 +564,9 @@ jobs:
         if: matrix.type == 'android-jvm'
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest -Pstreamify.skipRust=true --stacktrace > shard-${{ matrix.shard }}.log 2>&1
+          ./gradlew testDebugUnitTest \
+            -PskipExternalNativeBuild=true \
+            --stacktrace > shard-${{ matrix.shard }}.log 2>&1
 
       - name: Setup sccache for Rust
         if: matrix.type == 'rust'
@@ -577,7 +583,7 @@ jobs:
           RUSTC_WRAPPER: sccache
           RUSTFLAGS: "-Clink-arg=-fuse-ld=lld"
         run: |
-          cargo nextest run --manifest-path rust/Cargo.toml --verbose > shard-${{ matrix.shard }}.log 2>&1
+          cargo nextest run --manifest-path rust/Cargo.toml --profile ci --verbose > shard-${{ matrix.shard }}.log 2>&1
 
       - name: Format Shard Log Header
         if: always()
