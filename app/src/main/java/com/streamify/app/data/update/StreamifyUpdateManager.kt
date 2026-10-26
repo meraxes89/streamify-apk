@@ -20,6 +20,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.regex.Pattern
+import com.streamify.app.util.ApkSignatureVerifier
 import com.streamify.app.util.SLog
 
 data class RemoteBuildInfo(
@@ -302,6 +303,27 @@ object StreamifyUpdateManager {
     }
 
     fun installApk(context: Context, file: File) {
+        // SEC-04: pin the updater certificate — inspect the downloaded
+        // archive's package signature BEFORE handing it to the system
+        // package installer, so a tampered or hijacked update can never
+        // reach the install surface.
+        val verdict = ApkSignatureVerifier.verifyUpdateCertificate(context, file)
+        if (verdict is ApkSignatureVerifier.Verification.Rejected) {
+            SLog.st(
+                "StreamifyUpdateManager",
+                "SEC-04 blocked update ${file.name}: ${verdict.reason}",
+                null
+            )
+            _updateState.value = UpdateState.Error(
+                "Update rejected: ${verdict.reason}",
+                isManual = false
+            )
+            // Best-effort removal of the hostile artifact; even when the
+            // public Downloads file cannot be deleted on scoped storage,
+            // the installer intent below is never fired.
+            runCatching { file.delete() }
+            return
+        }
         try {
             val apkUri = FileProvider.getUriForFile(
                 context,
