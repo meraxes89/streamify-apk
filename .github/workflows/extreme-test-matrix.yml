@@ -13,7 +13,7 @@ concurrency:
   # Repo-wide single-flight: the SAME code often lands on main + spt + adblog
   # in one session — only the most recent push should keep building.
   # (Branch-scoped groups used to let three identical builds run in parallel.)
-  group: ${{ github.workflow }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -23,11 +23,57 @@ permissions:
 
 
 jobs:
-  # 0. ZERO-WAIT SHIFT-LEFT GATEKEEPER: Verify live Innertube Search -> Player -> CDN Range Probe (<5s)
+  # ─────────────────────────────────────────────────────────────────────────
+  # MAX-PARALLELISM DAG (audit item: "tests shouldn't go in vain when the app
+  # itself isn't compiling" was naive — compile errors surface in their OWN
+  # job in ~4 min; gating every shard behind a full APK build serialized the
+  # whole matrix at 20+ min wall-clock with zero extra information).
+  #
+  #   old:  gatekeeper(1m) -> build(15m) -> [tests, codeql, fuzz]  ≈ 20-25m
+  #   new:  t=0 ┬─ compile-check ─> build ─> package/publish
+  #             ├─ rust-core ────────────────┐
+  #             ├─ native x3 (shared ccache) ├─> aggregate (~max of all)
+  #             ├─ jvm-unit ─────────────────┤
+  #             ├─ codeql (build-mode none) ─┤
+  #             └─ probe (advisory) ─────────┘
+  #
+  # Critical path = max(build, test shards) instead of sum(). Expected
+  # feedback for a broken commit: ~4-6 min (compile gate), not 20+.
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # 0a. COMPILE GATE (fast, blocking): Kotlin/JVM compilation only — no NDK,
+  # no Rust, no APK packaging. Catches the entire class of "app doesn't
+  # compile" breakage in minutes and gates the package/publish stage.
+  compile-check:
+    name: "Compile Gate (Kotlin/JVM)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Compile Kotlin (main + unit tests, no native toolchain)
+        run: |
+          chmod +x gradlew
+          ./gradlew compileDebugKotlin compileDebugUnitTestKotlin \
+            -Pstreamify.skipRust=true --stacktrace
+
+  # 0b. ZERO-WAIT SHIFT-LEFT GATEKEEPER: Verify live Innertube Search -> Player -> CDN Range Probe (<5s)
   # ADVISORY ONLY: GitHub runners sit in Azure datacenter IP ranges that YouTube
   # bot-walls regardless of client fingerprints (residential probes pass while
   # identical CI probes get LOGIN_REQUIRED). This job must NEVER block the build —
   # results are published to the run summary for trend monitoring instead.
+  # Runs in PARALLEL from t=0 now (was a serial prelude to the build job).
   gatekeeper-api-probe:
     name: "Gatekeeper: Search -> CDN Stream Verification"
     runs-on: ubuntu-latest
@@ -80,10 +126,16 @@ jobs:
         working-directory: rust
         run: cargo clippy --lib --tests -- -D warnings
 
-  # 1. BUILD JOB: Compile everything only after gatekeeper passes
+  # 1. BUILD JOB: Full native APK build (NDK + cargo-ndk + CMake + Rust).
+  # Starts as soon as the fast compile gate passes — it no longer waits for
+  # the advisory probe, and no test shard waits for it.
+  # Caching is ON (the old --no-build-cache / --no-daemon / cache-disabled trio
+  # plus `clean` guaranteed a cold 15-minute build on every single run).
   build-and-compile:
-    needs: gatekeeper-api-probe
+    name: "Build Debug APK (Native Full)"
+    needs: compile-check
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
@@ -115,9 +167,10 @@ jobs:
           rustup target list --installed
 
       - name: Install cargo-ndk
+        id: cargondk
         run: which cargo-ndk || cargo install cargo-ndk --locked
 
-      - name: Cache Cargo
+      - name: Cache Cargo Registry & Build Dir
         uses: actions/cache@v4
         continue-on-error: true
         with:
@@ -125,7 +178,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          # rust/Cargo.lock is gitignored, so hashFiles() resolved empty before
+          # (dead cache key). Key on workspace manifests instead.
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.toml', 'rust/**/Cargo.toml') }}
           restore-keys: |
             cargo-${{ runner.os }}-
 
@@ -163,16 +218,19 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          cache-disabled: true
+          # Read-write cache on main so merged commits seed the shared cache
+          # that PR jobs restore from (cache-read-only elsewhere).
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Setup CCache for C++ Compilation
         uses: hendrikmuhs/ccache-action@v1.2.14
         continue-on-error: true
         with:
-          key: ${{ runner.os }}-ccache-${{ github.ref_slug }}
+          # ref_slug is NOT a valid context property (silently rendered an
+          # empty suffix); use stable keys so main seeds what PRs restore.
+          key: ${{ runner.os }}-ccache-native-main
           restore-keys: |
-            ${{ runner.os }}-ccache-main
-            ${{ runner.os }}-ccache-
+            ${{ runner.os }}-ccache-native-
           max-size: 500M
 
       - name: Build Debug APK
@@ -181,8 +239,9 @@ jobs:
           set -o pipefail
           touch build.log
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-build-cache --no-daemon -Pandroid.injected.build.model.only.versioned=3 \
-            -Dorg.gradle.caching=false \
+          # Incremental by design: no `clean`, build cache + daemon enabled
+          # (gradle.properties already sets org.gradle.caching/parallel=true).
+          ./gradlew assembleDebug \
             -DANDROID_CCACHE=ccache \
             --stacktrace 2>&1 | tee build.log
 
@@ -284,29 +343,56 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # 2. CODEQL STATIC ANALYSIS (Runs after successful compile to prevent orphaned runs)
+  # 2. CODEQL STATIC ANALYSIS — language matrix, because the two languages
+  # need OPPOSITE extraction modes (fix for the run #349 failure):
+  #   • c-cpp: build-mode none. Source-level extraction needs no NDK, no
+  #     toolchain — starts and finishes fast at t=0.
+  #   • java-kotlin: TRACED build (default mode). GitHub's buildless Java
+  #     extractor does NOT process Kotlin, and this codebase is 73K LOC of
+  #     pure Kotlin — run #349 finalized an EMPTY java database and failed
+  #     with "CodeQL could not process any code written in Java/Kotlin"
+  #     (CodeQL CLI exit 32). The traced path restores the JDK + Gradle +
+  #     NDK assembleDebug build from the pre-#52 job, giving the extractor
+  #     real javac/kotlinc invocations to trace.
+  # Both legs start at t=0; the traced leg runs PARALLEL to the APK build
+  # instead of serialized after it (the t=0 goal of this PR is preserved).
+  # Job id `codeql-analysis` is kept singular so the `ci-gate` and
+  # `aggregate-and-publish-logs` needs-lists remain valid.
   codeql-analysis:
-    name: CodeQL Static Security & Quality Analysis
-    needs: build-and-compile
+    name: "CodeQL (${{ matrix.language }})"
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            codeql-build-mode: none
+          - language: java-kotlin
+            # empty = unset = traced extraction (build-mode none is NOT
+            # valid for Kotlin sources — see block comment above)
+            codeql-build-mode: ""
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
+        if: matrix.language == 'java-kotlin'
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Install Android NDK & CMake
+        if: matrix.language == 'java-kotlin'
         run: |
           SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
           [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
           yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
 
       - name: Setup Gradle
+        if: matrix.language == 'java-kotlin'
         uses: gradle/actions/setup-gradle@v3
         with:
           cache-read-only: true
@@ -314,22 +400,30 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: c-cpp, java-kotlin
+          languages: ${{ matrix.language }}
           queries: security-and-quality
+          build-mode: ${{ matrix.codeql-build-mode }}
 
       - name: Manual Build for CodeQL Tracing
+        if: matrix.language == 'java-kotlin'
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug -Pstreamify.skipRust=true --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
 
   # 3. TEST MATRIX: Fast Verification (Every Push/PR)
+  # ALL SHARDS START AT t=0 — they test sources/toolchains that do not depend
+  # on the packaged APK. A red shard reports in parallel with the build, not
+  # after it. (audit #44 P1-3: shards are BLOCKING — see the comment on the
+  # job below; the aggregate job still computes the verdict for the log.)
   test-matrix:
     name: "Shard: ${{ matrix.shard }}"
-    needs: build-and-compile
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # audit #44 P1-3: BLOCKING. A red suite must stop the merge — the old
     # "shard flakiness must not mask build status" blanket made every
     # test in the repo advisory theater (a red DSP suite could not block
@@ -379,6 +473,19 @@ jobs:
         if: matrix.type == 'rust'
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Cargo Registry & Host Target Dir
+        if: matrix.type == 'rust'
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-host-${{ runner.os }}-${{ hashFiles('rust/Cargo.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            cargo-host-${{ runner.os }}-
+
       - name: Set up Clang & Sanitizer Matrix
         if: matrix.type == 'native'
         run: |
@@ -391,10 +498,11 @@ jobs:
         if: matrix.type == 'native'
         uses: hendrikmuhs/ccache-action@v1.2.14
         with:
-          key: ${{ runner.os }}-ccache-${{ github.ref_slug }}
+          # Shared restore prefix across native shards + the fuzzer job:
+          # first run populates, subsequent runs restore.
+          key: ${{ runner.os }}-ccache-native-asan
           restore-keys: |
-            ${{ runner.os }}-ccache-main
-            ${{ runner.os }}-ccache-
+            ${{ runner.os }}-ccache-native-
           max-size: 500M
 
       - name: Cache Android NDK & CMake
@@ -418,7 +526,7 @@ jobs:
         if: matrix.type == 'android-jvm'
         uses: gradle/actions/setup-gradle@v3
         with:
-          cache-read-only: true
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Execute Native C++20 ASan / UBSan Shard
         id: native_test
@@ -477,10 +585,12 @@ jobs:
           retention-days: 7
 
   # 4. NATIVE C++ DEEP FUZZING (Nightly & Main PRs)
+  # No `needs`: fuzzing compiles its own harnesses from source; waiting for
+  # the APK build added pure latency.
   native-deep-fuzz:
     name: "Native C++20 LibFuzzer (Cached Corpus)"
-    needs: build-and-compile
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # audit #44 P1-3: BLOCKING. A LibFuzzer crash IS a memory-safety bug
     # in production C++ — exactly what main must never absorb. Timed-out
     # fuzz runs still exit 0; only crashes fail the job.
@@ -498,10 +608,9 @@ jobs:
       - name: Setup CCache for Fuzzer Compilation
         uses: hendrikmuhs/ccache-action@v1.2.14
         with:
-          key: ${{ runner.os }}-ccache-${{ github.ref_slug }}
+          key: ${{ runner.os }}-ccache-native-fuzz
           restore-keys: |
-            ${{ runner.os }}-ccache-main
-            ${{ runner.os }}-ccache-
+            ${{ runner.os }}-ccache-native-
           max-size: 500M
 
       - name: Restore Fuzzer Seed Corpus
@@ -556,6 +665,8 @@ jobs:
           path: shard-native-libfuzzer.log
 
   # 5. MULTI-API ARM64 EMULATOR MATRIX (Nightly only — advisory)
+  # Needs the built APK to install, so it stays downstream of the build —
+  # but ONLY of the build, never of the test shards.
   emulator-matrix:
     name: "Emulator API ${{ matrix.api }} (ARM64)"
     needs: build-and-compile
@@ -691,7 +802,7 @@ jobs:
   aggregate-and-publish-logs:
     name: Aggregate & Commit to testing-log
     runs-on: ubuntu-latest
-    needs: [build-and-compile, test-matrix, native-deep-fuzz, emulator-matrix, codeql-analysis]
+    needs: [compile-check, build-and-compile, test-matrix, native-deep-fuzz, emulator-matrix, codeql-analysis]
     if: always()
     steps:
       - uses: actions/checkout@v4
@@ -726,16 +837,15 @@ jobs:
 
           # Three-state verdict: PASSED / FAILED / CANCELLED.
           #
-          # CANCELLED siblings are NOT failures. The repo-wide single-flight
-          # concurrency group (cancel-in-progress: true) kills older runs
-          # whenever several branches race — the losing run's jobs report
-          # "cancelled", which proves nothing either way about the code.
-          # Treating that as FAILED painted a red X on PRs #30/#31
+          # CANCELLED siblings are NOT failures. The concurrency group kills
+          # older runs whenever several pushes race — the losing run's jobs
+          # report "cancelled", which proves nothing either way about the
+          # code. Treating that as FAILED painted a red X on PRs #30/#31
           # (2026-10-04): every real check was green, but the aggregate
           # job converted a concurrency cancel into a failure and blocked
           # the PRs for weeks. Only an explicit `failure` (or a FAILED
           # shard log) gates now.
-          RESULTS="${{ needs.build-and-compile.result }},${{ needs.test-matrix.result }},${{ needs.native-deep-fuzz.result }},${{ needs.codeql-analysis.result }}"
+          RESULTS="${{ needs.compile-check.result }},${{ needs.build-and-compile.result }},${{ needs.test-matrix.result }},${{ needs.native-deep-fuzz.result }},${{ needs.codeql-analysis.result }}"
           ANY_FAILED=$(printf '%s\n' "$RESULTS" | grep -c '^failure$' || true)
           ANY_CANCELLED=$(printf '%s\n' "$RESULTS" | grep -c '^cancelled$' || true)
           if [ "${ANY_FAILED:-0}" -gt 0 ] || [ "$SHARD_FAIL" -eq 1 ]; then
@@ -743,7 +853,7 @@ jobs:
           elif [ "${ANY_CANCELLED:-0}" -gt 0 ]; then
             echo "OVERALL_TEST_RESULT=CANCELLED (concurrency race — inconclusive, not a failure)" >> $GITHUB_ENV
             echo "" >> combined-test.log
-            echo "NOTE: this run lost the repo-wide concurrency race (siblings cancelled)." >> combined-test.log
+            echo "NOTE: this run lost the concurrency race (siblings cancelled)." >> combined-test.log
             echo "Verdict is INCONCLUSIVE, not FAILED. A superseding run carries the verdict." >> combined-test.log
           else
             echo "OVERALL_TEST_RESULT=PASSED" >> $GITHUB_ENV
