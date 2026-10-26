@@ -1,0 +1,925 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #369
+COMMIT: 92f342c9a7e0c30dfd623ca5f8c569b3d7a0c38f
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: PASSED ✅
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Downloading https://services.gradle.org/distributions/gradle-8.7-bin.zip
+...............................................................................................................................
+Unzipping /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu/gradle-8.7-bin.zip to /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu
+Set executable permissions for: /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu/gradle-8.7/bin/gradle
+
+Welcome to Gradle 8.7!
+
+Here are the highlights of this release:
+ - Compiling and testing with Java 22
+ - Cacheable Groovy script compilation
+ - New methods in lazy collection properties
+
+For more details see https://docs.gradle.org/8.7/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+
+> Configure project :app
+Checking the license for package NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/licenses
+License for package NDK (Side by side) 25.1.8937393 accepted.
+Preparing "Install NDK (Side by side) 25.1.8937393 v.25.1.8937393".
+"Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" ready.
+Installing NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/ndk/25.1.8937393
+"Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" complete.
+"Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" finished.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResValues
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:mergeDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebug
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:171:21 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/ExportifyParser.kt:239:37 Variable 'durFormatted' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:35:24 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:39:25 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/lyrics/LyricsCacheManager.kt:105:34 'getter for isBluetoothA2dpOn: Boolean' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:173:17 Variable 'version' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:176:17 Variable 'textPoolLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:178:17 Variable 'flags' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:186:21 Variable 'sylStartIdx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:187:21 Variable 'sylCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:86:9 Parameter 'seedTitle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:87:9 Parameter 'seedArtist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:194:37 'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:197:56 'getter for host: InetAddress!' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:225:37 Parameter 'userId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:24:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:26:20 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:28:15 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/ParallelStreamDownloader.kt:108:41 Variable 'expectedLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:20:28 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:22:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:24:23 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeMusicRadioApi.kt:635:9 Parameter 'rendererKey' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeStreamResolver.kt:582:9 Parameter 'statuses' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:61:21 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:115:21 Variable 'artistName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:22:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:96:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:113:29 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/NuclearResetManager.kt:44:21 Variable 'currentPlaylists' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/SmartOfflineVaultEngine.kt:67:39 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:116:9 Parameter 'encoding' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:168:25 Variable 'lraDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:169:25 Variable 'truePeakDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:68:47 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:241:13 Variable 'tombstone' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:358:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:388:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:476:82 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/supabase/SupabaseJamClient.kt:297:13 The expression is unused
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:249:43 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:250:42 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:35 Parameter 'counts' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:55 Parameter 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:307:66 Parameter 'cloudTopTrack' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:356:37 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:357:35 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:439:13 Variable 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:470:40 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:471:38 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/update/StreamifyUpdateManager.kt:181:74 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/PlaylistLinkScraper.kt:459:92 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/YtSessionExtractor.kt:20:9 Parameter 'onError' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:531:31 Parameter 'session' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:1489:73 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JoinFabric.kt:327:27 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:99:13 Variable 'senderId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:102:13 Variable 'sequence' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:103:13 Variable 'timestampMonoNs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:251:9 Parameter 'positionMs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:252:9 Parameter 'syncedNanos' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:253:9 Parameter 'durationMs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LeaderlessElectionEngine.kt:254:9 Parameter 'playing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/StreamifyAudioProcessor.kt:463:64 Parameter 'channelCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/SyncAudioProcessor.kt:106:13 Variable 'kalmanActive' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:25:48 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:84:28 Variable 'finalBpm' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:85:28 Variable 'finalKey' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:98:21 Name shadowed: trackKey
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:287:41 Parameter 'mode' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:305:37 Parameter 'playlist' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:121:63 Parameter 'limit' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:310:53 Parameter 'rawJson' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CanvasVideoSurface.kt:141:9 Variable 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:163:42 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:73 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:98 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:523:56 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:119:5 Parameter 'onAddToPlaylistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:190:37 'PlaylistPlay: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistPlay
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:201:37 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:225:41 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:331:37 'PlaylistAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistAdd
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:260:65 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:261:53 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/FriendActivityCard.kt:185:49 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/HeartButton.kt:43:9 Variable 'tint' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QrShareCard.kt:147:5 Parameter 'qrBitmap' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QuantumSonicTokenController.kt:217:37 Parameter 'heightPx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/RelatedDiscoverSheet.kt:46:9 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:197:94 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:199:38 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtPlaylistHeroHeader.kt:181:102 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtQueueTrackItem.kt:42:5 Parameter 'onReplay' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSortFilterBar.kt:52:56 'ViewList: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ViewList
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSyllableLine.kt:191:5 Parameter 'startSearchOffset' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtThumbnail.kt:45:5 Parameter 'artist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:191:39 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:352:53 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:368:53 'Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:419:13 Duplicate label in when
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AlbumScreen.kt:307:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ArtistScreen.kt:92:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:50:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:355:5 Parameter 'onClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:414:26 Parameter 'friendName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:68:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:260:68 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:364:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:459:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/EqualizerScreen.kt:56:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:164:5 Parameter 'progressFlow' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:178:5 Parameter 'onQueueClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:179:5 Parameter 'onLyricsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:182:5 Parameter 'isAutoPlayEnabled' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:183:5 Parameter 'onAutoPlayToggle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheetPanes.kt:425:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:40:5 Parameter 'dominantColor' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:42:5 Parameter 'onSettingsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:57:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:103:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:772:56 'ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ExitToApp
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:1224:5 Parameter 'votes' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionWidgets.kt:107:5 Parameter 'isHost' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:52:9 Variable 'downloadTasks' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:56:9 Variable 'user' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:88:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:694:21 Variable 'gridColumns' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1204:43 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1374:5 Parameter 'onMoveToFolder' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1392:44 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/PlayerScreen.kt:14:33 Parameter 'onCollapse' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:46:9 Variable 'spotifyAuth' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:43:5 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:428:33 Parameter 'index' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:93:35 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:454:75 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:668:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:736:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:783:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:800:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:983:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:69:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:244:33 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:148:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:272:5 Parameter 'onArtistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:106:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:412:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:473:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:529:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:607:52 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/FleetConfig.kt:204:29 Parameter 'd' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/newpipe/NewPipeDownloaderImpl.kt:25:39 'create(MediaType?, ByteArray, Int = ..., Int = ...): RequestBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/HomeViewModel.kt:74:18 This declaration is in a preview state and can be changed in a backwards-incompatible manner with a best-effort migration. Its usage should be marked with '@kotlinx.coroutines.FlowPreview' or '@OptIn(kotlinx.coroutines.FlowPreview::class)' if you accept the drawback of relying on preview API
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:186:43 Parameter '_peers' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:193:56 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:198:40 Parameter 'currentPosition' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerHousekeeping.kt:36:46 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:321:92 Elvis operator (?:) always returns the left operand of non-nullable type Int?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:417:29 Name shadowed: currentT
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:775:93 Unnecessary safe call on a non-null receiver of type Track?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:990:50 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:296:9 Parameter 'allOnlineResults' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:298:9 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:399:25 Variable 'coverUrl' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 4m 7s
+24 actionable tasks: 24 executed
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Native DSP Test Suite...
+[TEST] Phase 1: Native DSP, Audiophile Fidelity & 32-Peer Jam
+  - Phase1/BS.1770: calibration anchors
+  - Phase1/BS.1770: dual gating
+  - Phase1/normalize: -8 LUFS -> -14 target
+  - Phase1/limiter: true-peak ceiling + inter-sample
+  - Phase1/channels: constant-power balance + mono
+  - Phase1/ring: SPSC correctness
+  - Phase1/mix: 32-peer pool + saturation
+  - Phase1/silentPLL: bypass + PTP lock + takeover
+  - Phase1/chain: end-to-end -14 LUFS @ -1 dBTP
+  - Phase1/rate: legacy paths honor the configured fs
+  - Phase1/rate: rate-aware legacy surface PASSED
+  - Phase1/perf: limiter hot-path benchmark
+    SoftKneeLimiter 2048f stereo hot   910570.2 ns/block  444.61 ns/frame  (~1.52% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      50132.4 ns/block   12.24 ns/frame  (~0.04% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          42189.7 ns/block   10.30 ns/frame  (~0.04% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           22885.5 ns/block    5.59 ns/frame  (~0.02% of an A55 core, est.)
+  - Phase1/perf: zero-alloc hot paths
+  - Phase1/perf: zero-alloc audit PASSED
+[TEST] Phase 1: all 231 checks passed
+[TEST] Phase 2: Harmonic Transition Engine, Candidate Fast-Math & Circadian Curves
+  [harmonic] candidate ID hashing
+  [harmonic] candidate dedup kernels
+  [harmonic] Camelot key transition matrix
+  [harmonic] BPM transition + combined coefficient
+  [harmonic] circadian daypart curves
+    (24h max per-second jump: 6.44e-05)
+  [harmonic] perf budgets + zero-alloc audit
+    (256x256 masks+union: 11.7 us, best of 5)
+    (bulk hash 20k x 21-char ids: 277 us)
+[TEST] Phase 2: all 150 checks passed (0 failed)
+[phase3] canvas loop + AGSL ambient glow
+  [canvas] loop phase primitives
+  [canvas] boundary crossfade weights
+  [canvas] blended-signal seam continuity (C0 + C1)
+  [canvas] bit-exact frame periodicity (both strategies)
+  [canvas] renderer clock discipline
+  [agsl] shader source + uniform tables
+  [agsl] runtime param generation
+  [agsl] fuzz-regression: hostile time/period quotients
+[phase3] canvas/AGSL: 169 passed, 0 failed
+[phase3] audio remuxer & bitstream validators
+  [opus] TOC codes 0-3 + RFC 6716 accounting
+  [adts] header ladder + strict rates
+  [remux] Ogg Opus structural audit
+  [remux] ADTS normalization + lifecycle
+  [remux] degenerate streams + io failure
+  [remux] randomized corrupt-stream soak (500 packets)
+  [remux] zero-allocation per-packet path
+[phase3] audio remuxer: 158 passed, 0 failed
+[phase3] bitmap palette extractor
+  [palette] role colors on synthetic art
+  [palette] WCAG contrast discipline
+  [palette] formats, sizes, malformed ladder
+  [palette] determinism
+  [palette] zero-alloc hot path + perf smoke
+    perf: 1024x1024 RGBA in 5.72 ms
+  [palette] fuzz-regression: median-cut termination
+[phase3] palette: 48 passed, 0 failed
+[phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
+  [sink] CRC32 known vectors + rate codes
+  [sink] SIMD Float32->PCM16 accuracy + saturation
+    max SIMD-vs-scalar delta: 0 LSB
+  [sink] SIMD stereo->mono downmix
+  [sink] FIR decimator: DC, passband, anti-alias, counts
+  [sink] SPSC ring basic IO + wraparound + byte reads
+  [sink] telemetry: watermarks, fullness, latency, xruns
+  [sink] flush semantics
+  [sink] zero-allocation hot paths (AllocGuard)
+  [sink] SPSC stress: 10,000,000 frames, 2 threads
+    0.04 s wall, 259.9 Mframes/s (unsanitized sanitizer build)
+  [sink] SPSC pipeline stress: downmix + decimate, 2 threads
+  [sink] packetizer roundtrip + MTU chunking
+  [sink] packetizer corruption ladder (hostile input)
+  [sink] zero-run compressor roundtrip + bounds
+  [sink] token-bucket rate limiter (deterministic clock)
+  [sink] packetizer pacing + backpressure telemetry
+  [sink] sink registry + stats wire layout
+[phase4] audio sinks: 8454 passed, 0 failed
+  [Phase-5] Palette SIMD & WCAG contrast engine
+    perf: 1080x1080 worst-case (full noise) best-of-3: 1.216 ms
+  [Phase-5] palette suite: 5050 checks passed, 0 failed
+  [Phase-5] Frame pacer & jank monitor
+    stress: 1,000,000 ticks, 16279 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=1
+  [Phase-5] frame pacer suite: 76 checks passed, 0 failed
+  - SoftKneeLimiter transient pass-through: PASSED
+  - SoftKneeLimiter sustained soft-knee limit: PASSED
+  - SoftKneeLimiter short limit: PASSED
+  - LufsNormalizer: PASSED
+  - KissFFTR 1024 Transform: PASSED
+[TEST] All Native DSP Tests Passed Successfully! (ASan/UBSan Verified)
+==================================================
+SHARD: native-libfuzzer
+DESCRIPTION: Deep LibFuzzer Crash Hunt
+STATUS: PASSED ✅
+==================================================
+
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 4017662689
+INFO: Loaded 1 modules   (7448 inline 8-bit counters): 7448 [0x564c0a9ffec0, 0x564c0aa01bd8), 
+INFO: Loaded 1 PC tables (7448 PCs): 7448 [0x564c0aa01bd8,0x564c0aa1ed58), 
+INFO:     1421 files found in ../fuzz/corpus
+INFO: seed corpus: files: 1421 min: 1b max: 3755b total: 592079b rss: 42Mb
+#1423	INITED cov: 2891 ft: 11480 corp: 857/367Kb exec/s: 474 rss: 295Mb
+#1424	NEW    cov: 2891 ft: 11481 corp: 858/367Kb lim: 3766 exec/s: 474 rss: 295Mb L: 375/3755 MS: 1 CopyPart-
+#1425	NEW    cov: 2891 ft: 11482 corp: 859/367Kb lim: 3766 exec/s: 475 rss: 295Mb L: 164/3755 MS: 1 ChangeBinInt-
+#1639	NEW    cov: 2891 ft: 11484 corp: 860/371Kb lim: 3766 exec/s: 409 rss: 296Mb L: 3755/3755 MS: 4 ChangeByte-CrossOver-ChangeBit-ChangeBit-
+#1645	NEW    cov: 2892 ft: 11485 corp: 861/371Kb lim: 3766 exec/s: 411 rss: 297Mb L: 704/3755 MS: 1 ChangeASCIIInt-
+#1701	NEW    cov: 2892 ft: 11486 corp: 862/372Kb lim: 3766 exec/s: 425 rss: 297Mb L: 43/3755 MS: 1 ChangeBinInt-
+#2007	NEW    cov: 2892 ft: 11487 corp: 863/372Kb lim: 3766 exec/s: 401 rss: 299Mb L: 491/3755 MS: 1 InsertByte-
+#2048	pulse  cov: 2892 ft: 11487 corp: 863/372Kb lim: 3766 exec/s: 409 rss: 299Mb
+#2222	NEW    cov: 2892 ft: 11492 corp: 864/374Kb lim: 3766 exec/s: 444 rss: 299Mb L: 1956/3755 MS: 5 CrossOver-ChangeASCIIInt-CopyPart-EraseBytes-CopyPart-
+#2846	REDUCE cov: 2892 ft: 11492 corp: 864/374Kb lim: 3766 exec/s: 406 rss: 299Mb L: 89/3755 MS: 4 ChangeBinInt-ChangeBit-ChangeASCIIInt-EraseBytes-
+#2862	REDUCE cov: 2892 ft: 11492 corp: 864/374Kb lim: 3766 exec/s: 408 rss: 299Mb L: 508/3755 MS: 1 EraseBytes-
+#3617	REDUCE cov: 2892 ft: 11492 corp: 864/374Kb lim: 3766 exec/s: 452 rss: 299Mb L: 55/3755 MS: 5 ShuffleBytes-InsertByte-InsertByte-ChangeByte-EraseBytes-
+#3738	REDUCE cov: 2892 ft: 11492 corp: 864/374Kb lim: 3766 exec/s: 415 rss: 299Mb L: 26/3755 MS: 1 EraseBytes-
+#3938	NEW    cov: 2892 ft: 11495 corp: 865/377Kb lim: 3766 exec/s: 437 rss: 299Mb L: 3069/3755 MS: 5 ChangeByte-ChangeByte-ChangeBinInt-CrossOver-CrossOver-
+#3949	REDUCE cov: 2892 ft: 11495 corp: 865/377Kb lim: 3766 exec/s: 438 rss: 299Mb L: 37/3755 MS: 1 EraseBytes-
+#4096	pulse  cov: 2892 ft: 11495 corp: 865/377Kb lim: 3766 exec/s: 409 rss: 299Mb
+#4531	NEW    cov: 2892 ft: 11497 corp: 866/380Kb lim: 3766 exec/s: 411 rss: 299Mb L: 2980/3755 MS: 2 CrossOver-InsertByte-
+#4788	REDUCE cov: 2892 ft: 11497 corp: 866/380Kb lim: 3766 exec/s: 399 rss: 299Mb L: 100/3755 MS: 2 CopyPart-EraseBytes-
+#5278	NEW    cov: 2892 ft: 11498 corp: 867/382Kb lim: 3766 exec/s: 406 rss: 299Mb L: 2817/3755 MS: 5 InsertByte-ChangeByte-InsertByte-CopyPart-InsertRepeatedBytes-
+#5589	NEW    cov: 2892 ft: 11499 corp: 868/386Kb lim: 3766 exec/s: 399 rss: 299Mb L: 3465/3755 MS: 1 InsertByte-
+#5591	NEW    cov: 2892 ft: 11503 corp: 869/389Kb lim: 3766 exec/s: 399 rss: 299Mb L: 3078/3755 MS: 2 ChangeBinInt-CrossOver-
+#5599	REDUCE cov: 2892 ft: 11503 corp: 869/389Kb lim: 3766 exec/s: 399 rss: 299Mb L: 42/3755 MS: 3 ChangeBit-ShuffleBytes-EraseBytes-
+#6072	REDUCE cov: 2892 ft: 11503 corp: 869/389Kb lim: 3766 exec/s: 404 rss: 299Mb L: 93/3755 MS: 3 CMP-ShuffleBytes-EraseBytes- DE: "\010\000"-
+#6145	NEW    cov: 2892 ft: 11504 corp: 870/392Kb lim: 3766 exec/s: 409 rss: 299Mb L: 3766/3766 MS: 3 CopyPart-InsertByte-InsertByte-
+#6798	NEW    cov: 2892 ft: 11505 corp: 871/395Kb lim: 3766 exec/s: 399 rss: 299Mb L: 2372/3766 MS: 3 InsertByte-ChangeBit-CrossOver-
+#7330	NEW    cov: 2892 ft: 11511 corp: 872/398Kb lim: 3766 exec/s: 407 rss: 299Mb L: 2801/3766 MS: 2 ShuffleBytes-PersAutoDict- DE: "\010\000"-
+#8192	pulse  cov: 2892 ft: 11511 corp: 872/398Kb lim: 3766 exec/s: 390 rss: 299Mb
+#8384	REDUCE cov: 2892 ft: 11511 corp: 872/396Kb lim: 3766 exec/s: 399 rss: 299Mb L: 2592/3755 MS: 4 ChangeBinInt-PersAutoDict-ShuffleBytes-EraseBytes- DE: "\010\000"-
+#8488	NEW    cov: 2892 ft: 11512 corp: 873/398Kb lim: 3766 exec/s: 385 rss: 299Mb L: 1700/3755 MS: 4 CrossOver-EraseBytes-ChangeBinInt-CopyPart-
+#8695	NEW    cov: 2892 ft: 11530 corp: 874/402Kb lim: 3766 exec/s: 395 rss: 299Mb L: 3757/3757 MS: 2 CrossOver-CopyPart-
+#8722	NEW    cov: 2894 ft: 11532 corp: 875/405Kb lim: 3766 exec/s: 396 rss: 299Mb L: 3765/3765 MS: 2 ChangeBinInt-CMP- DE: "\274\274\274\271\234\274\274\274"-
+#9412	REDUCE cov: 2894 ft: 11532 corp: 875/405Kb lim: 3766 exec/s: 392 rss: 299Mb L: 1970/3765 MS: 5 ChangeByte-ChangeBinInt-InsertRepeatedBytes-ShuffleBytes-EraseBytes-
+#9528	REDUCE cov: 2894 ft: 11532 corp: 875/405Kb lim: 3766 exec/s: 381 rss: 299Mb L: 22/3765 MS: 1 EraseBytes-
+#9607	NEW    cov: 2894 ft: 11534 corp: 876/408Kb lim: 3766 exec/s: 384 rss: 299Mb L: 2914/3765 MS: 4 InsertByte-InsertRepeatedBytes-ChangeByte-ChangeBinInt-
+#10409	REDUCE cov: 2894 ft: 11534 corp: 876/408Kb lim: 3766 exec/s: 385 rss: 299Mb L: 307/3765 MS: 2 ShuffleBytes-EraseBytes-
+#10569	NEW    cov: 2894 ft: 11535 corp: 877/410Kb lim: 3766 exec/s: 391 rss: 299Mb L: 2368/3765 MS: 5 ChangeBinInt-ChangeBinInt-CrossOver-ChangeASCIIInt-InsertRepeatedBytes-
+#10929	NEW    cov: 2894 ft: 11553 corp: 878/412Kb lim: 3766 exec/s: 376 rss: 299Mb L: 2385/3765 MS: 5 CopyPart-ChangeBit-CrossOver-ChangeByte-CopyPart-
+#11167	NEW    cov: 2894 ft: 11558 corp: 879/415Kb lim: 3766 exec/s: 385 rss: 299Mb L: 3018/3765 MS: 3 InsertRepeatedBytes-ChangeByte-CrossOver-
+#11235	REDUCE cov: 2894 ft: 11558 corp: 879/415Kb lim: 3766 exec/s: 387 rss: 299Mb L: 200/3765 MS: 3 InsertRepeatedBytes-ChangeByte-EraseBytes-
+#11696	REDUCE cov: 2894 ft: 11558 corp: 879/415Kb lim: 3766 exec/s: 377 rss: 299Mb L: 45/3765 MS: 1 EraseBytes-
+#12517	REDUCE cov: 2894 ft: 11558 corp: 879/415Kb lim: 3766 exec/s: 379 rss: 299Mb L: 194/3765 MS: 1 EraseBytes-
+#12774	NEW    cov: 2894 ft: 11562 corp: 880/418Kb lim: 3766 exec/s: 375 rss: 299Mb L: 2981/3765 MS: 2 ChangeByte-InsertByte-
+#13000	REDUCE cov: 2894 ft: 11562 corp: 880/418Kb lim: 3766 exec/s: 371 rss: 299Mb L: 22/3765 MS: 1 EraseBytes-
+#14023	NEW    cov: 2894 ft: 11565 corp: 881/421Kb lim: 3766 exec/s: 379 rss: 299Mb L: 3464/3765 MS: 3 ChangeBinInt-ChangeASCIIInt-CopyPart-
+#14099	REDUCE cov: 2894 ft: 11565 corp: 881/421Kb lim: 3766 exec/s: 371 rss: 299Mb L: 89/3765 MS: 1 EraseBytes-
+#14892	NEW    cov: 2894 ft: 11567 corp: 882/425Kb lim: 3766 exec/s: 372 rss: 299Mb L: 3360/3765 MS: 3 CopyPart-ChangeBinInt-CrossOver-
+#15223	REDUCE cov: 2894 ft: 11567 corp: 882/425Kb lim: 3766 exec/s: 371 rss: 299Mb L: 159/3765 MS: 1 EraseBytes-
+#15574	NEW    cov: 2894 ft: 11570 corp: 883/428Kb lim: 3766 exec/s: 370 rss: 299Mb L: 3360/3765 MS: 1 CrossOver-
+#16066	NEW    cov: 2894 ft: 11572 corp: 884/432Kb lim: 3766 exec/s: 365 rss: 299Mb L: 3755/3765 MS: 2 ChangeBit-PersAutoDict- DE: "\274\274\274\271\234\274\274\274"-
+#16384	pulse  cov: 2894 ft: 11572 corp: 884/432Kb lim: 3766 exec/s: 364 rss: 299Mb
+#16485	NEW    cov: 2894 ft: 11573 corp: 885/433Kb lim: 3766 exec/s: 366 rss: 299Mb L: 891/3765 MS: 4 CrossOver-CrossOver-CrossOver-InsertByte-
+#17163	REDUCE cov: 2894 ft: 11573 corp: 885/433Kb lim: 3766 exec/s: 365 rss: 299Mb L: 446/3765 MS: 3 PersAutoDict-ChangeByte-EraseBytes- DE: "\274\274\274\271\234\274\274\274"-
+#17311	REDUCE cov: 2894 ft: 11573 corp: 885/433Kb lim: 3766 exec/s: 368 rss: 299Mb L: 36/3765 MS: 3 ChangeByte-EraseBytes-PersAutoDict- DE: "\010\000"-
+#17501	REDUCE cov: 2894 ft: 11573 corp: 885/432Kb lim: 3766 exec/s: 364 rss: 299Mb L: 210/3765 MS: 5 ChangeBit-ShuffleBytes-PersAutoDict-ChangeByte-EraseBytes- DE: "\274\274\274\271\234\274\274\274"-
+#17579	NEW    cov: 2894 ft: 11575 corp: 886/436Kb lim: 3766 exec/s: 366 rss: 299Mb L: 3612/3765 MS: 3 CMP-InsertByte-CrossOver- DE: "\377\376\377\012"-
+#19882	REDUCE cov: 2894 ft: 11575 corp: 886/436Kb lim: 3788 exec/s: 361 rss: 299Mb L: 67/3765 MS: 3 EraseBytes-ChangeByte-InsertRepeatedBytes-
+#20020	REDUCE cov: 2894 ft: 11575 corp: 886/436Kb lim: 3788 exec/s: 364 rss: 299Mb L: 413/3765 MS: 3 CopyPart-InsertRepeatedBytes-EraseBytes-
+#20427	NEW    cov: 2894 ft: 11576 corp: 887/439Kb lim: 3788 exec/s: 364 rss: 299Mb L: 3087/3765 MS: 2 ChangeBit-InsertRepeatedBytes-
+#20683	REDUCE cov: 2894 ft: 11576 corp: 887/439Kb lim: 3788 exec/s: 362 rss: 299Mb L: 242/3765 MS: 1 EraseBytes-
+#21259	REDUCE cov: 2894 ft: 11576 corp: 887/439Kb lim: 3788 exec/s: 360 rss: 299Mb L: 290/3765 MS: 1 EraseBytes-
+#21881	REDUCE cov: 2894 ft: 11576 corp: 887/439Kb lim: 3788 exec/s: 358 rss: 299Mb L: 1856/3765 MS: 2 ChangeBinInt-EraseBytes-
+#21902	NEW    cov: 2894 ft: 11579 corp: 888/442Kb lim: 3788 exec/s: 359 rss: 299Mb L: 3088/3765 MS: 1 InsertByte-
+#22060	REDUCE cov: 2894 ft: 11579 corp: 888/442Kb lim: 3788 exec/s: 361 rss: 299Mb L: 791/3765 MS: 3 ShuffleBytes-ChangeBinInt-EraseBytes-
+#22499	NEW    cov: 2894 ft: 11580 corp: 889/444Kb lim: 3788 exec/s: 357 rss: 299Mb L: 2046/3765 MS: 4 PersAutoDict-PersAutoDict-EraseBytes-CrossOver- DE: "\274\274\274\271\234\274\274\274"-"\010\000"-
+#23442	REDUCE cov: 2894 ft: 11582 corp: 890/446Kb lim: 3788 exec/s: 360 rss: 299Mb L: 1978/3765 MS: 3 ChangeBit-ShuffleBytes-PersAutoDict- DE: "\274\274\274\271\234\274\274\274"-
+#24413	REDUCE cov: 2894 ft: 11582 corp: 890/446Kb lim: 3788 exec/s: 359 rss: 299Mb L: 40/3765 MS: 1 EraseBytes-
+#24752	NEW    cov: 2894 ft: 11583 corp: 891/449Kb lim: 3788 exec/s: 358 rss: 299Mb L: 3629/3765 MS: 4 ShuffleBytes-ChangeBit-ChangeBinInt-InsertRepeatedBytes-
+#25163	NEW    cov: 2894 ft: 11584 corp: 892/453Kb lim: 3788 exec/s: 359 rss: 299Mb L: 3756/3765 MS: 1 InsertByte-
+#25363	NEW    cov: 2894 ft: 11601 corp: 893/457Kb lim: 3788 exec/s: 362 rss: 299Mb L: 3777/3777 MS: 5 CMP-ShuffleBytes-ChangeBinInt-ChangeBit-CopyPart- DE: "\001\000\000\004"-
+#26266	REDUCE cov: 2894 ft: 11601 corp: 893/457Kb lim: 3788 exec/s: 359 rss: 299Mb L: 60/3777 MS: 3 EraseBytes-CopyPart-InsertByte-
+#26506	REDUCE cov: 2894 ft: 11601 corp: 893/457Kb lim: 3788 exec/s: 358 rss: 299Mb L: 407/3777 MS: 5 ChangeByte-ChangeByte-InsertByte-CopyPart-EraseBytes-
+#26592	REDUCE cov: 2894 ft: 11601 corp: 893/456Kb lim: 3788 exec/s: 359 rss: 300Mb L: 601/3777 MS: 1 EraseBytes-
+#27103	REDUCE cov: 2894 ft: 11601 corp: 893/456Kb lim: 3788 exec/s: 361 rss: 301Mb L: 3645/3777 MS: 1 EraseBytes-
+#27902	NEW    cov: 2894 ft: 11603 corp: 894/460Kb lim: 3788 exec/s: 362 rss: 301Mb L: 3787/3787 MS: 4 ChangeBit-InsertRepeatedBytes-InsertRepeatedBytes-InsertByte-
+#28149	REDUCE cov: 2894 ft: 11603 corp: 894/460Kb lim: 3788 exec/s: 360 rss: 301Mb L: 54/3787 MS: 2 InsertByte-EraseBytes-
+#28540	REDUCE cov: 2894 ft: 11603 corp: 894/460Kb lim: 3788 exec/s: 361 rss: 301Mb L: 194/3787 MS: 1 EraseBytes-
+#28939	NEW    cov: 2894 ft: 11605 corp: 895/464Kb lim: 3788 exec/s: 357 rss: 301Mb L: 3648/3787 MS: 4 ChangeByte-CrossOver-CopyPart-CrossOver-
+#31812	NEW    cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 357 rss: 301Mb L: 3724/3787 MS: 3 InsertByte-CopyPart-CopyPart-
+#31899	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 354 rss: 301Mb L: 172/3787 MS: 2 ChangeBit-EraseBytes-
+#32321	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 355 rss: 301Mb L: 2299/3787 MS: 2 ChangeBit-EraseBytes-
+#32768	pulse  cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 356 rss: 301Mb
+#33047	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 355 rss: 301Mb L: 705/3787 MS: 1 EraseBytes-
+#33521	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 356 rss: 301Mb L: 154/3787 MS: 4 ChangeBit-PersAutoDict-ChangeByte-EraseBytes- DE: "\274\274\274\271\234\274\274\274"-
+#34416	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3810 exec/s: 354 rss: 301Mb L: 104/3787 MS: 5 InsertByte-CMP-ChangeByte-CMP-EraseBytes- DE: "\000\000\000\014"-"\377?\000\000"-
+#36858	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3832 exec/s: 354 rss: 301Mb L: 23/3787 MS: 2 ChangeBinInt-EraseBytes-
+#36891	REDUCE cov: 2894 ft: 11606 corp: 896/467Kb lim: 3832 exec/s: 351 rss: 301Mb L: 286/3787 MS: 3 ShuffleBytes-ShuffleBytes-EraseBytes-
+#36997	NEW    cov: 2894 ft: 11607 corp: 897/468Kb lim: 3832 exec/s: 352 rss: 301Mb L: 1127/3787 MS: 1 ShuffleBytes-
+#37018	NEW    cov: 2894 ft: 11609 corp: 898/472Kb lim: 3832 exec/s: 352 rss: 301Mb L: 3758/3787 MS: 1 InsertRepeatedBytes-
+#37346	REDUCE cov: 2894 ft: 11609 corp: 898/472Kb lim: 3832 exec/s: 352 rss: 301Mb L: 2441/3787 MS: 3 InsertByte-ShuffleBytes-EraseBytes-
+#38567	REDUCE cov: 2894 ft: 11609 corp: 898/472Kb lim: 3843 exec/s: 350 rss: 301Mb L: 497/3787 MS: 1 EraseBytes-
+#39090	NEW    cov: 2894 ft: 11611 corp: 899/475Kb lim: 3843 exec/s: 349 rss: 301Mb L: 3774/3787 MS: 3 InsertRepeatedBytes-CrossOver-InsertRepeatedBytes-
+#39613	NEW    cov: 2894 ft: 11613 corp: 900/479Kb lim: 3843 exec/s: 350 rss: 301Mb L: 3756/3787 MS: 3 ChangeBinInt-ShuffleBytes-CopyPart-
+#40580	REDUCE cov: 2894 ft: 11613 corp: 900/479Kb lim: 3843 exec/s: 349 rss: 301Mb L: 522/3787 MS: 2 ChangeASCIIInt-EraseBytes-
+#41605	REDUCE cov: 2894 ft: 11613 corp: 900/479Kb lim: 3843 exec/s: 349 rss: 301Mb L: 271/3787 MS: 5 CopyPart-PersAutoDict-CMP-ChangeBinInt-EraseBytes- DE: "\377\376\377\012"-"\015\000"-
+	NEW_FUNC[1/13]: 0x564c0a94fb58 in int std::max<int>(std::initializer_list<int>) /usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/stl_algo.h:5706
+	NEW_FUNC[2/13]: 0x564c0a9636a8 in streamify::palette_simd::RelativeLuminance(unsigned int) /home/runner/work/streamify-apk/streamify-apk/native/src/palette_extractor_simd.cpp:168
+#41723	NEW    cov: 3319 ft: 12059 corp: 901/479Kb lim: 3843 exec/s: 347 rss: 301Mb L: 32/3787 MS: 3 PersAutoDict-ChangeBit-PersAutoDict- DE: "\000\000\000\014"-"\001\000\000\004"-
+#42770	REDUCE cov: 3319 ft: 12059 corp: 901/479Kb lim: 3843 exec/s: 347 rss: 301Mb L: 217/3787 MS: 2 ChangeByte-EraseBytes-
+#42918	REDUCE cov: 3319 ft: 12059 corp: 901/479Kb lim: 3843 exec/s: 346 rss: 301Mb L: 2876/3787 MS: 3 CopyPart-ChangeByte-EraseBytes-
+#43680	REDUCE cov: 3319 ft: 12059 corp: 901/479Kb lim: 3843 exec/s: 346 rss: 301Mb L: 47/3787 MS: 2 InsertByte-EraseBytes-
+#44409	NEW    cov: 3319 ft: 12062 corp: 902/481Kb lim: 3843 exec/s: 346 rss: 301Mb L: 1788/3787 MS: 4 PersAutoDict-EraseBytes-ChangeBinInt-InsertByte- DE: "\015\000"-
+#45257	REDUCE cov: 3319 ft: 12062 corp: 902/480Kb lim: 3843 exec/s: 348 rss: 301Mb L: 90/3787 MS: 3 ChangeBinInt-ChangeBit-EraseBytes-
+#45568	REDUCE cov: 3319 ft: 12062 corp: 902/480Kb lim: 3843 exec/s: 345 rss: 301Mb L: 27/3787 MS: 1 EraseBytes-
+#45778	REDUCE cov: 3319 ft: 12062 corp: 902/480Kb lim: 3843 exec/s: 346 rss: 301Mb L: 3166/3787 MS: 5 ChangeByte-CrossOver-ChangeASCIIInt-CopyPart-EraseBytes-
+#46534	REDUCE cov: 3319 ft: 12062 corp: 902/480Kb lim: 3843 exec/s: 344 rss: 301Mb L: 45/3787 MS: 1 EraseBytes-
+#47425	NEW    cov: 3319 ft: 12066 corp: 903/484Kb lim: 3843 exec/s: 343 rss: 301Mb L: 3774/3787 MS: 1 ShuffleBytes-
+#48441	NEW    cov: 3319 ft: 12074 corp: 904/488Kb lim: 3843 exec/s: 343 rss: 301Mb L: 3829/3829 MS: 1 InsertRepeatedBytes-
+#49301	REDUCE cov: 3319 ft: 12074 corp: 904/488Kb lim: 3843 exec/s: 344 rss: 301Mb L: 45/3829 MS: 5 ShuffleBytes-ChangeBit-ChangeBinInt-CopyPart-EraseBytes-
+#50857	REDUCE cov: 3319 ft: 12074 corp: 904/488Kb lim: 3854 exec/s: 343 rss: 301Mb L: 66/3829 MS: 1 EraseBytes-
+#51646	NEW    cov: 3319 ft: 12075 corp: 905/491Kb lim: 3854 exec/s: 342 rss: 301Mb L: 3762/3829 MS: 4 ChangeBinInt-ChangeByte-ChangeBit-PersAutoDict- DE: "\377?\000\000"-
+#52090	REDUCE cov: 3319 ft: 12075 corp: 905/491Kb lim: 3854 exec/s: 342 rss: 301Mb L: 764/3829 MS: 4 InsertByte-CopyPart-PersAutoDict-CrossOver- DE: "\000\000\000\014"-
+#52427	REDUCE cov: 3319 ft: 12075 corp: 905/491Kb lim: 3854 exec/s: 342 rss: 301Mb L: 16/3829 MS: 2 ChangeByte-EraseBytes-
+#53049	REDUCE cov: 3319 ft: 12075 corp: 905/491Kb lim: 3854 exec/s: 342 rss: 301Mb L: 172/3829 MS: 2 EraseBytes-InsertRepeatedBytes-
+#53280	REDUCE cov: 3319 ft: 12075 corp: 905/491Kb lim: 3854 exec/s: 341 rss: 303Mb L: 391/3829 MS: 1 EraseBytes-
+#53301	REDUCE cov: 3319 ft: 12075 corp: 905/491Kb lim: 3854 exec/s: 341 rss: 303Mb L: 489/3829 MS: 1 EraseBytes-
+#53387	NEW    cov: 3342 ft: 12114 corp: 906/491Kb lim: 3854 exec/s: 342 rss: 304Mb L: 40/3829 MS: 1 PersAutoDict- DE: "\274\274\274\271\234\274\274\274"-
+#54014	REDUCE cov: 3342 ft: 12114 corp: 906/491Kb lim: 3854 exec/s: 341 rss: 305Mb L: 1934/3829 MS: 2 ChangeByte-EraseBytes-
+#54401	REDUCE cov: 3342 ft: 12114 corp: 906/491Kb lim: 3854 exec/s: 342 rss: 305Mb L: 64/3829 MS: 2 InsertByte-EraseBytes-
+#55296	REDUCE cov: 3342 ft: 12114 corp: 906/491Kb lim: 3854 exec/s: 341 rss: 305Mb L: 201/3829 MS: 5 InsertByte-ChangeByte-EraseBytes-InsertRepeatedBytes-ShuffleBytes-
+#56096	NEW    cov: 3342 ft: 12115 corp: 907/495Kb lim: 3854 exec/s: 339 rss: 305Mb L: 3772/3829 MS: 5 InsertByte-PersAutoDict-ChangeBit-PersAutoDict-ChangeBit- DE: "\015\000"-"\000\000\000\014"-
+#56406	NEW    cov: 3362 ft: 12311 corp: 908/495Kb lim: 3854 exec/s: 339 rss: 305Mb L: 68/3829 MS: 5 InsertRepeatedBytes-InsertByte-InsertRepeatedBytes-ChangeBinInt-PersAutoDict- DE: "\001\000\000\004"-
+#56549	NEW    cov: 3367 ft: 12336 corp: 909/495Kb lim: 3854 exec/s: 340 rss: 305Mb L: 47/3829 MS: 3 InsertRepeatedBytes-ChangeBit-PersAutoDict- DE: "\274\274\274\271\234\274\274\274"-
+#58068	REDUCE cov: 3367 ft: 12336 corp: 909/495Kb lim: 3865 exec/s: 339 rss: 308Mb L: 2074/3829 MS: 4 EraseBytes-ChangeASCIIInt-CMP-CrossOver- DE: "\000\000\000\001"-
+#59857	REDUCE cov: 3367 ft: 12336 corp: 909/494Kb lim: 3876 exec/s: 340 rss: 308Mb L: 1361/3829 MS: 4 ChangeBinInt-CrossOver-InsertByte-InsertRepeatedBytes-
+#60014	REDUCE cov: 3367 ft: 12336 corp: 909/494Kb lim: 3876 exec/s: 339 rss: 308Mb L: 3692/3829 MS: 2 ChangeBit-EraseBytes-
+#60341	NEW    cov: 3368 ft: 12338 corp: 910/494Kb lim: 3876 exec/s: 338 rss: 308Mb L: 122/3829 MS: 2 InsertRepeatedBytes-ChangeBinInt-
+#60523	NEW    cov: 3368 ft: 12340 corp: 911/497Kb lim: 3876 exec/s: 340 rss: 308Mb L: 2226/3829 MS: 2 CrossOver-InsertRepeatedBytes-
+#62440	REDUCE cov: 3368 ft: 12340 corp: 911/497Kb lim: 3887 exec/s: 339 rss: 309Mb L: 1057/3829 MS: 2 EraseBytes-InsertRepeatedBytes-
+#62484	NEW    cov: 3386 ft: 12436 corp: 912/497Kb lim: 3887 exec/s: 337 rss: 309Mb L: 147/3829 MS: 4 ChangeBit-ChangeBinInt-CopyPart-InsertRepeatedBytes-
+#62680	REDUCE cov: 3386 ft: 12436 corp: 912/497Kb lim: 3887 exec/s: 338 rss: 309Mb L: 37/3829 MS: 1 EraseBytes-
+#62972	REDUCE cov: 3386 ft: 12436 corp: 912/497Kb lim: 3887 exec/s: 338 rss: 309Mb L: 71/3829 MS: 2 ChangeBinInt-EraseBytes-
+#64797	REDUCE cov: 3386 ft: 12436 corp: 912/497Kb lim: 3898 exec/s: 337 rss: 309Mb L: 138/3829 MS: 5 ChangeByte-PersAutoDict-ChangeASCIIInt-ChangeBinInt-EraseBytes- DE: "\377\376\377\012"-
+#65469	NEW    cov: 3386 ft: 12437 corp: 913/497Kb lim: 3898 exec/s: 337 rss: 309Mb L: 32/3829 MS: 2 ChangeASCIIInt-ChangeBit-
+#65536	pulse  cov: 3386 ft: 12437 corp: 913/497Kb lim: 3898 exec/s: 337 rss: 309Mb
+	NEW_FUNC[1/1]: 0x564c0a951f68 in streamify::palette_simd::SimdPaletteExtractor::BinEntry* std::__copy_move_backward<true, true, std::random_access_iterator_tag>::__copy_move_b<streamify::palette_simd::SimdPaletteExtractor::BinEntry, streamify::palette_simd::SimdPaletteExtractor::BinEntry>(streamify::palette_simd::SimdPaletteExtractor::BinEntry*, streamify::palette_simd::SimdPaletteExtractor::BinEntry*, streamify::palette_simd::SimdPaletteExtractor::BinEntry*) /usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/stl_algobase.h:763
+#66016	NEW    cov: 3391 ft: 12446 corp: 914/497Kb lim: 3898 exec/s: 336 rss: 309Mb L: 40/3829 MS: 2 ChangeBit-PersAutoDict- DE: "\274\274\274\271\234\274\274\274"-
+#66687	NEW    cov: 3391 ft: 12447 corp: 915/497Kb lim: 3898 exec/s: 336 rss: 309Mb L: 146/3829 MS: 1 InsertRepeatedBytes-
+#67143	NEW    cov: 3391 ft: 12448 corp: 916/497Kb lim: 3898 exec/s: 337 rss: 309Mb L: 166/3829 MS: 1 CMP- DE: "\000\000\000\004"-
+#67194	NEW    cov: 3391 ft: 12450 corp: 917/501Kb lim: 3898 exec/s: 337 rss: 309Mb L: 3804/3829 MS: 1 CopyPart-
+#67332	NEW    cov: 3391 ft: 12451 corp: 918/503Kb lim: 3898 exec/s: 336 rss: 309Mb L: 2680/3829 MS: 3 ChangeBinInt-CrossOver-InsertRepeatedBytes-
+#67449	NEW    cov: 3391 ft: 12453 corp: 919/507Kb lim: 3898 exec/s: 337 rss: 309Mb L: 3773/3829 MS: 2 ChangeBinInt-InsertByte-
+#68460	NEW    cov: 3393 ft: 12460 corp: 920/507Kb lim: 3898 exec/s: 335 rss: 309Mb L: 32/3829 MS: 1 ShuffleBytes-
+#68566	NEW    cov: 3393 ft: 12462 corp: 921/507Kb lim: 3898 exec/s: 336 rss: 309Mb L: 40/3829 MS: 1 ShuffleBytes-
+#68690	NEW    cov: 3393 ft: 12466 corp: 922/511Kb lim: 3898 exec/s: 336 rss: 309Mb L: 3640/3829 MS: 4 ChangeBit-CopyPart-ChangeByte-InsertByte-
+#68907	REDUCE cov: 3393 ft: 12466 corp: 922/511Kb lim: 3898 exec/s: 336 rss: 309Mb L: 18/3829 MS: 2 ChangeBinInt-EraseBytes-
+#69362	REDUCE cov: 3393 ft: 12466 corp: 922/511Kb lim: 3898 exec/s: 335 rss: 309Mb L: 64/3829 MS: 5 CopyPart-InsertRepeatedBytes-InsertByte-ChangeBit-EraseBytes-
+#69465	REDUCE cov: 3393 ft: 12466 corp: 922/511Kb lim: 3898 exec/s: 335 rss: 309Mb L: 248/3829 MS: 3 ChangeBinInt-EraseBytes-ChangeByte-
+#69532	REDUCE cov: 3393 ft: 12466 corp: 922/511Kb lim: 3898 exec/s: 335 rss: 309Mb L: 3547/3829 MS: 2 EraseBytes-InsertRepeatedBytes-
+#69709	NEW    cov: 3393 ft: 12470 corp: 923/514Kb lim: 3898 exec/s: 335 rss: 309Mb L: 3887/3887 MS: 2 ShuffleBytes-InsertRepeatedBytes-
+#69805	NEW    cov: 3393 ft: 12483 corp: 924/514Kb lim: 3898 exec/s: 335 rss: 309Mb L: 40/3887 MS: 1 CopyPart-
+#70012	REDUCE cov: 3393 ft: 12483 corp: 924/514Kb lim: 3898 exec/s: 334 rss: 309Mb L: 1056/3887 MS: 2 InsertRepeatedBytes-EraseBytes-
+#70626	NEW    cov: 3393 ft: 12484 corp: 925/514Kb lim: 3898 exec/s: 334 rss: 315Mb L: 45/3887 MS: 4 InsertRepeatedBytes-PersAutoDict-EraseBytes-ChangeBinInt- DE: "\000\000\000\014"-
+#70825	REDUCE cov: 3393 ft: 12484 corp: 925/514Kb lim: 3898 exec/s: 335 rss: 316Mb L: 150/3887 MS: 4 ChangeByte-ChangeBit-InsertByte-EraseBytes-
+#71436	REDUCE cov: 3393 ft: 12484 corp: 925/514Kb lim: 3898 exec/s: 333 rss: 316Mb L: 2766/3887 MS: 1 EraseBytes-
+#71787	NEW    cov: 3394 ft: 12486 corp: 926/514Kb lim: 3898 exec/s: 333 rss: 316Mb L: 40/3887 MS: 1 ShuffleBytes-
+#71941	REDUCE cov: 3394 ft: 12486 corp: 926/514Kb lim: 3898 exec/s: 334 rss: 316Mb L: 3724/3829 MS: 4 EraseBytes-ChangeBit-ChangeBit-CopyPart-
+#72105	REDUCE cov: 3394 ft: 12486 corp: 926/514Kb lim: 3898 exec/s: 333 rss: 316Mb L: 110/3829 MS: 4 ChangeBinInt-InsertByte-PersAutoDict-EraseBytes- DE: "\015\000"-
+#72499	REDUCE cov: 3394 ft: 12486 corp: 926/514Kb lim: 3898 exec/s: 334 rss: 316Mb L: 44/3829 MS: 4 ChangeASCIIInt-CopyPart-ChangeByte-EraseBytes-
+#72555	NEW    cov: 3394 ft: 12490 corp: 927/514Kb lim: 3898 exec/s: 334 rss: 316Mb L: 64/3829 MS: 1 CopyPart-
+#72631	NEW    cov: 3395 ft: 12491 corp: 928/514Kb lim: 3898 exec/s: 334 rss: 316Mb L: 26/3829 MS: 1 EraseBytes-
+#72673	NEW    cov: 3397 ft: 12494 corp: 929/514Kb lim: 3898 exec/s: 334 rss: 316Mb L: 134/3829 MS: 2 ChangeBit-InsertRepeatedBytes-
+#73339	NEW    cov: 3397 ft: 12498 corp: 930/514Kb lim: 3898 exec/s: 333 rss: 316Mb L: 41/3829 MS: 1 InsertByte-
+#73777	NEW    cov: 3399 ft: 12500 corp: 931/515Kb lim: 3898 exec/s: 333 rss: 316Mb L: 122/3829 MS: 3 ShuffleBytes-ShuffleBytes-CrossOver-
+#74179	REDUCE cov: 3399 ft: 12500 corp: 931/515Kb lim: 3898 exec/s: 332 rss: 316Mb L: 32/3829 MS: 2 ChangeByte-EraseBytes-
+#75151	REDUCE cov: 3399 ft: 12500 corp: 931/514Kb lim: 3898 exec/s: 332 rss: 316Mb L: 56/3829 MS: 2 ChangeBit-EraseBytes-
+#75398	REDUCE cov: 3399 ft: 12500 corp: 931/514Kb lim: 3898 exec/s: 333 rss: 316Mb L: 143/3829 MS: 2 ChangeByte-EraseBytes-
+#77198	REDUCE cov: 3399 ft: 12500 corp: 931/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 85/3829 MS: 5 PersAutoDict-ChangeBinInt-ShuffleBytes-ShuffleBytes-EraseBytes- DE: "\000\000\000\014"-
+#77391	REDUCE cov: 3399 ft: 12500 corp: 931/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 29/3829 MS: 3 ChangeBinInt-ChangeBit-EraseBytes-
+#77487	NEW    cov: 3399 ft: 12508 corp: 932/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 28/3829 MS: 1 EraseBytes-
+#77670	REDUCE cov: 3399 ft: 12508 corp: 932/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 2866/3829 MS: 3 CrossOver-EraseBytes-InsertByte-
+#78108	NEW    cov: 3401 ft: 12519 corp: 933/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 49/3829 MS: 3 PersAutoDict-PersAutoDict-CopyPart- DE: "\010\000"-"\000\000\000\001"-
+#78924	REDUCE cov: 3401 ft: 12519 corp: 933/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 98/3829 MS: 1 EraseBytes-
+#79425	REDUCE cov: 3401 ft: 12519 corp: 933/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 71/3829 MS: 1 EraseBytes-
+#79814	REDUCE cov: 3401 ft: 12519 corp: 933/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 41/3829 MS: 4 InsertByte-ChangeByte-PersAutoDict-EraseBytes- DE: "\000\000\000\014"-
+#80318	REDUCE cov: 3401 ft: 12519 corp: 933/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 377/3829 MS: 4 ShuffleBytes-ChangeASCIIInt-ChangeBinInt-EraseBytes-
+#80324	REDUCE cov: 3401 ft: 12525 corp: 934/514Kb lim: 3909 exec/s: 333 rss: 316Mb L: 29/3829 MS: 1 ShuffleBytes-
+#80687	NEW    cov: 3402 ft: 12526 corp: 935/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 123/3829 MS: 3 ShuffleBytes-ChangeASCIIInt-InsertByte-
+#81018	REDUCE cov: 3403 ft: 12530 corp: 936/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 20/3829 MS: 1 EraseBytes-
+#81274	NEW    cov: 3403 ft: 12537 corp: 937/514Kb lim: 3909 exec/s: 331 rss: 316Mb L: 40/3829 MS: 1 CopyPart-
+#81346	REDUCE cov: 3403 ft: 12537 corp: 937/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 98/3829 MS: 2 ChangeBinInt-EraseBytes-
+#82339	NEW    cov: 3404 ft: 12539 corp: 938/514Kb lim: 3909 exec/s: 332 rss: 316Mb L: 26/3829 MS: 3 ChangeByte-CopyPart-EraseBytes-
+#82712	REDUCE cov: 3404 ft: 12539 corp: 938/514Kb lim: 3909 exec/s: 330 rss: 316Mb L: 30/3829 MS: 3 ChangeBinInt-ChangeByte-EraseBytes-
+#82739	REDUCE cov: 3404 ft: 12540 corp: 939/514Kb lim: 3909 exec/s: 330 rss: 316Mb L: 32/3829 MS: 2 ChangeBinInt-CopyPart-
+#83204	NEW    cov: 3404 ft: 12541 corp: 940/514Kb lim: 3909 exec/s: 330 rss: 320Mb L: 21/3829 MS: 5 CopyPart-ChangeByte-ShuffleBytes-InsertRepeatedBytes-EraseBytes-
+#83705	REDUCE cov: 3404 ft: 12541 corp: 940/514Kb lim: 3909 exec/s: 330 rss: 324Mb L: 127/3829 MS: 1 EraseBytes-
+#83906	REDUCE cov: 3404 ft: 12541 corp: 940/514Kb lim: 3909 exec/s: 330 rss: 324Mb L: 76/3829 MS: 1 EraseBytes-
+#84321	NEW    cov: 3404 ft: 12542 corp: 941/514Kb lim: 3909 exec/s: 330 rss: 324Mb L: 73/3829 MS: 5 PersAutoDict-CopyPart-CopyPart-PersAutoDict-EraseBytes- DE: "\377\376\377\012"-"\001\000\000\004"-
+#84614	REDUCE cov: 3404 ft: 12542 corp: 941/514Kb lim: 3909 exec/s: 330 rss: 324Mb L: 114/3829 MS: 3 ChangeBinInt-CrossOver-EraseBytes-
+#85420	REDUCE cov: 3404 ft: 12542 corp: 941/514Kb lim: 3909 exec/s: 331 rss: 332Mb L: 42/3829 MS: 1 EraseBytes-
+#85822	REDUCE cov: 3404 ft: 12542 corp: 941/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 51/3829 MS: 2 InsertByte-EraseBytes-
+#86185	NEW    cov: 3405 ft: 12545 corp: 942/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 28/3829 MS: 3 ShuffleBytes-CrossOver-CrossOver-
+#86207	NEW    cov: 3405 ft: 12546 corp: 943/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 77/3829 MS: 2 PersAutoDict-InsertRepeatedBytes- DE: "\010\000"-
+#86218	NEW    cov: 3405 ft: 12547 corp: 944/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 26/3829 MS: 1 CopyPart-
+#86559	NEW    cov: 3405 ft: 12548 corp: 945/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 20/3829 MS: 1 ChangeBinInt-
+#86675	REDUCE cov: 3405 ft: 12548 corp: 945/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 2772/3829 MS: 1 EraseBytes-
+#86811	NEW    cov: 3405 ft: 12549 corp: 946/514Kb lim: 3909 exec/s: 331 rss: 332Mb L: 40/3829 MS: 1 ChangeBinInt-
+#86842	REDUCE cov: 3405 ft: 12549 corp: 946/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 225/3829 MS: 1 EraseBytes-
+#87084	NEW    cov: 3405 ft: 12552 corp: 947/514Kb lim: 3909 exec/s: 331 rss: 332Mb L: 32/3829 MS: 2 ChangeBit-PersAutoDict- DE: "\000\000\000\001"-
+#87505	REDUCE cov: 3405 ft: 12552 corp: 947/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 28/3829 MS: 1 EraseBytes-
+#87542	REDUCE cov: 3405 ft: 12552 corp: 947/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 3706/3829 MS: 2 ChangeBinInt-EraseBytes-
+#87564	REDUCE cov: 3405 ft: 12552 corp: 947/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 25/3829 MS: 2 ChangeBinInt-EraseBytes-
+#87576	REDUCE cov: 3405 ft: 12552 corp: 947/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 29/3829 MS: 2 CrossOver-EraseBytes-
+#87707	REDUCE cov: 3405 ft: 12554 corp: 948/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 31/3829 MS: 1 PersAutoDict- DE: "\010\000"-
+#88470	REDUCE cov: 3405 ft: 12554 corp: 948/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 248/3829 MS: 3 PersAutoDict-ChangeByte-EraseBytes- DE: "\274\274\274\271\234\274\274\274"-
+#89052	NEW    cov: 3405 ft: 12555 corp: 949/514Kb lim: 3909 exec/s: 331 rss: 332Mb L: 47/3829 MS: 2 CopyPart-CopyPart-
+#89318	REDUCE cov: 3405 ft: 12555 corp: 949/514Kb lim: 3909 exec/s: 330 rss: 332Mb L: 256/3829 MS: 1 EraseBytes-
+#91222	REDUCE cov: 3405 ft: 12555 corp: 949/514Kb lim: 3920 exec/s: 329 rss: 332Mb L: 86/3829 MS: 4 ChangeBinInt-ChangeBit-ChangeBinInt-EraseBytes-
+#91644	REDUCE cov: 3405 ft: 12555 corp: 949/514Kb lim: 3920 exec/s: 329 rss: 332Mb L: 79/3829 MS: 2 PersAutoDict-EraseBytes- DE: "\010\000"-
+#92130	NEW    cov: 3405 ft: 12557 corp: 950/514Kb lim: 3920 exec/s: 330 rss: 332Mb L: 29/3829 MS: 1 InsertByte-
+#92266	REDUCE cov: 3405 ft: 12557 corp: 950/514Kb lim: 3920 exec/s: 329 rss: 332Mb L: 24/3829 MS: 1 EraseBytes-
+#92275	REDUCE cov: 3405 ft: 12557 corp: 950/514Kb lim: 3920 exec/s: 329 rss: 332Mb L: 58/3829 MS: 4 CrossOver-PersAutoDict-ChangeByte-EraseBytes- DE: "\000\000\000\001"-
+#92303	REDUCE cov: 3405 ft: 12557 corp: 950/514Kb lim: 3920 exec/s: 329 rss: 332Mb L: 834/3829 MS: 3 EraseBytes-ChangeByte-InsertRepeatedBytes-
+#92567	NEW    cov: 3405 ft: 12559 corp: 951/516Kb lim: 3920 exec/s: 329 rss: 335Mb L: 2706/3829 MS: 4 ChangeBinInt-CMP-CopyPart-EraseBytes- DE: "\377\024"-
+#92791	REDUCE cov: 3405 ft: 12559 corp: 951/516Kb lim: 3920 exec/s: 329 rss: 335Mb L: 2608/3829 MS: 4 ChangeBinInt-ChangeBit-ChangeByte-EraseBytes-
+#92892	REDUCE cov: 3406 ft: 12560 corp: 952/518Kb lim: 3920 exec/s: 329 rss: 335Mb L: 2305/3829 MS: 1 CrossOver-
+#93131	REDUCE cov: 3406 ft: 12560 corp: 952/517Kb lim: 3920 exec/s: 329 rss: 335Mb L: 1268/3829 MS: 4 InsertRepeatedBytes-ChangeBit-ChangeBit-EraseBytes-
+#94120	REDUCE cov: 3407 ft: 12561 corp: 953/517Kb lim: 3920 exec/s: 329 rss: 335Mb L: 97/3829 MS: 4 CMP-ChangeASCIIInt-InsertByte-InsertRepeatedBytes- DE: "\375\377\377\377"-
+#95273	REDUCE cov: 3407 ft: 12561 corp: 953/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 31/3829 MS: 3 CrossOver-InsertByte-EraseBytes-
+#95424	REDUCE cov: 3407 ft: 12562 corp: 954/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 51/3829 MS: 1 CrossOver-
+#95486	REDUCE cov: 3407 ft: 12562 corp: 954/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 30/3829 MS: 2 ChangeBit-EraseBytes-
+#95763	REDUCE cov: 3407 ft: 12562 corp: 954/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 42/3829 MS: 1 EraseBytes-
+#95812	REDUCE cov: 3407 ft: 12562 corp: 954/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 100/3829 MS: 4 ChangeByte-InsertByte-InsertRepeatedBytes-EraseBytes-
+#96520	REDUCE cov: 3407 ft: 12562 corp: 954/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 730/3829 MS: 2 CMP-EraseBytes- DE: "T\000\000\000"-
+#97102	NEW    cov: 3407 ft: 12563 corp: 955/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 53/3829 MS: 2 EraseBytes-CopyPart-
+#97260	REDUCE cov: 3407 ft: 12563 corp: 955/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 2823/3829 MS: 3 EraseBytes-ChangeASCIIInt-CMP- DE: "\377\377\377\377\377\377\377\277"-
+#97611	REDUCE cov: 3407 ft: 12563 corp: 955/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 2658/3829 MS: 1 EraseBytes-
+#97993	REDUCE cov: 3407 ft: 12563 corp: 955/517Kb lim: 3931 exec/s: 329 rss: 335Mb L: 162/3829 MS: 2 ShuffleBytes-EraseBytes-
+#98326	NEW    cov: 3420 ft: 12809 corp: 956/517Kb lim: 3931 exec/s: 328 rss: 335Mb L: 40/3829 MS: 3 ChangeBinInt-ChangeASCIIInt-ChangeBit-
+#98936	DONE   cov: 3420 ft: 12809 corp: 956/517Kb lim: 3931 exec/s: 328 rss: 335Mb
+###### Recommended dictionary. ######
+"\010\000" # Uses: 1789
+"\274\274\274\271\234\274\274\274" # Uses: 1573
+"\377\376\377\012" # Uses: 1189
+"\001\000\000\004" # Uses: 981
+"\000\000\000\014" # Uses: 740
+"\377?\000\000" # Uses: 747
+"\015\000" # Uses: 633
+"\000\000\000\001" # Uses: 394
+"\000\000\000\004" # Uses: 327
+"\377\024" # Uses: 52
+"\375\377\377\377" # Uses: 37
+"T\000\000\000" # Uses: 14
+"\377\377\377\377\377\377\377\277" # Uses: 7
+###### End of recommended dictionary. ######
+Done 98936 runs in 301 second(s)
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting SIMD & Physics Test Suite...
+  - AirDrop RK4 ODE Simulation: PASSED
+  - VectorStore 64-D Cosine Search: PASSED
+[TEST] All SIMD Physics Tests Passed Successfully!
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Storage & Telemetry Test Suite...
+  - Lock-Free MPMC Ring Buffer: PASSED
+[streamify:StreamifyNative] [StreamifyDB] Migration error: no such column: play_count
+  - SQLite WAL Database CRUD: PASSED
+[TEST] All Storage & Telemetry Tests Passed Successfully!
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m ogg_pager v0.7.2
+[1m[92m  Downloaded[0m lofty_attr v0.13.0
+[1m[92m  Downloaded[0m lofty v0.25.4
+[1m[92m       Fresh[0m unicode-ident v1.0.27
+[1m[92m       Fresh[0m proc-macro2 v1.0.107
+[1m[92m       Fresh[0m cfg-if v1.0.5
+[1m[92m       Fresh[0m quote v1.0.47
+[1m[92m       Fresh[0m libc v0.2.191
+[1m[92m       Fresh[0m version_check v0.9.5
+[1m[92m       Fresh[0m shlex v2.0.1
+[1m[92m       Fresh[0m syn v3.0.9
+[1m[92m       Fresh[0m getrandom v0.2.17
+[1m[92m       Fresh[0m find-msvc-tools v0.1.15
+[1m[92m       Fresh[0m synstructure v0.14.0
+[1m[92m       Fresh[0m cc v1.10.0
+[1m[92m       Fresh[0m stable_deref_trait v1.2.1
+[1m[92m       Fresh[0m zerofrom-derive v0.1.8
+[1m[92m       Fresh[0m yoke-derive v0.8.4
+[1m[92m       Fresh[0m typenum v1.20.1
+[1m[92m       Fresh[0m rand_core v0.6.4
+[1m[92m       Fresh[0m zerofrom v0.1.8
+[1m[92m       Fresh[0m generic-array v0.14.7
+[1m[92m       Fresh[0m zerovec-derive v0.11.7
+[1m[92m       Fresh[0m zeroize v1.9.1
+[1m[92m       Fresh[0m yoke v0.8.4
+[1m[92m       Fresh[0m subtle v2.6.1
+[1m[92m       Fresh[0m displaydoc v0.2.7
+[1m[92m       Fresh[0m once_cell v1.21.4
+[1m[92m       Fresh[0m zerovec v0.11.9
+[1m[92m       Fresh[0m bytes v1.12.1
+[1m[92m       Fresh[0m crypto-common v0.1.7
+[1m[92m       Fresh[0m itoa v1.0.18
+[1m[92m       Fresh[0m pin-project-lite v0.2.17
+[1m[92m       Fresh[0m smallvec v1.16.4
+[1m[92m       Fresh[0m tinystr v0.8.5
+[1m[92m       Fresh[0m litemap v0.8.3
+[1m[92m       Fresh[0m futures-core v0.3.34
+[1m[92m       Fresh[0m writeable v0.6.4
+[1m[92m       Fresh[0m potential_utf v0.1.6
+[1m[92m       Fresh[0m zerotrie v0.2.5
+[1m[92m       Fresh[0m icu_locale_core v2.4.0
+[1m[92m       Fresh[0m syn v2.0.119
+[1m[92m       Fresh[0m utf8_iter v1.0.4
+[1m[92m       Fresh[0m icu_collections v2.4.0
+[1m[92m       Fresh[0m icu_provider v2.4.0
+[1m[92m       Fresh[0m rustls-pki-types v1.15.1
+[1m[92m       Fresh[0m tokio-macros v2.7.2
+[1m[92m       Fresh[0m socket2 v0.6.5
+[1m[92m       Fresh[0m mio v1.2.4
+[1m[92m       Fresh[0m memchr v2.8.3
+[1m[92m       Fresh[0m percent-encoding v2.3.2
+[1m[92m       Fresh[0m icu_normalizer_data v2.4.0
+[1m[92m       Fresh[0m tokio v1.54.1
+[1m[92m       Fresh[0m icu_properties_data v2.4.0
+[1m[92m       Fresh[0m zerocopy v0.8.63
+[1m[92m       Fresh[0m http v1.5.0
+[1m[92m       Fresh[0m cpufeatures v0.2.17
+[1m[92m       Fresh[0m log v0.4.34
+[1m[92m       Fresh[0m untrusted v0.9.0
+[1m[92m       Fresh[0m ring v0.17.14
+[1m[92m       Fresh[0m http-body v1.1.0
+[1m[92m       Fresh[0m icu_properties v2.4.0
+[1m[92m       Fresh[0m icu_normalizer v2.4.0
+[1m[92m       Fresh[0m block-buffer v0.10.4
+[1m[92m       Fresh[0m slab v0.4.12
+[1m[92m       Fresh[0m futures-task v0.3.34
+[1m[92m       Fresh[0m digest v0.10.7
+[1m[92m       Fresh[0m idna_adapter v1.2.2
+[1m[92m       Fresh[0m futures-util v0.3.34
+[1m[92m       Fresh[0m rustls-webpki v0.103.16
+[1m[92m       Fresh[0m serde_core v1.0.229
+[1m[92m       Fresh[0m form_urlencoded v1.2.2
+[1m[92m       Fresh[0m adler2 v2.0.1
+[1m[92m       Fresh[0m try-lock v0.2.5
+[1m[92m       Fresh[0m semver v1.0.28
+[1m[92m       Fresh[0m bitflags v2.13.2
+[1m[92m       Fresh[0m tower-service v0.3.3
+[1m[92m       Fresh[0m want v0.3.2
+[1m[92m       Fresh[0m rustc_version v0.4.1
+[1m[92m       Fresh[0m rustls v0.23.46
+[1m[92m       Fresh[0m httparse v1.10.1
+[1m[92m       Fresh[0m idna v1.1.0
+[1m[92m       Fresh[0m webpki-roots v1.0.11
+[1m[92m       Fresh[0m tracing-core v0.1.36
+[1m[92m       Fresh[0m serde_derive v1.0.229
+[1m[92m       Fresh[0m pkg-config v0.3.34
+[1m[92m       Fresh[0m vcpkg v0.2.15
+[1m[92m       Fresh[0m atomic-waker v1.1.2
+[1m[92m       Fresh[0m simd-adler32 v0.3.10
+[1m[92m       Fresh[0m miniz_oxide v0.9.1
+[1m[92m       Fresh[0m hyper v1.12.0
+[1m[92m       Fresh[0m serde v1.0.229
+[1m[92m       Fresh[0m tracing v0.1.44
+[1m[92m       Fresh[0m url v2.5.8
+[1m[92m       Fresh[0m ahash v0.8.12
+[1m[92m       Fresh[0m zmij v1.0.23
+[1m[92m       Fresh[0m crc32fast v1.5.3
+[1m[92m       Fresh[0m jni-sys-macros v0.4.1
+[1m[92m       Fresh[0m sync_wrapper v1.0.2
+[1m[92m       Fresh[0m futures-channel v0.3.34
+[1m[92m       Fresh[0m inout v0.1.4
+[1m[92m       Fresh[0m base64 v0.23.1
+[1m[92m       Fresh[0m ipnet v2.12.2
+[1m[92m       Fresh[0m tower-layer v0.3.3
+[1m[92m       Fresh[0m hyper-util v0.1.21
+[1m[92m       Fresh[0m tower v0.5.3
+[1m[92m       Fresh[0m cipher v0.4.4
+[1m[92m       Fresh[0m flate2 v1.1.10
+[1m[92m       Fresh[0m jni-sys v0.4.1
+[1m[92m       Fresh[0m serde_json v1.0.154
+[1m[92m       Fresh[0m hashbrown v0.14.5
+[1m[92m       Fresh[0m tokio-rustls v0.26.6
+[1m[92m       Fresh[0m ppv-lite86 v0.2.21
+[1m[92m       Fresh[0m aho-corasick v1.1.5
+[1m[92m       Fresh[0m curve25519-dalek-derive v0.1.1
+[1m[92m       Fresh[0m thiserror-impl v1.0.69
+[1m[92m       Fresh[0m universal-hash v0.5.1
+[1m[92m       Fresh[0m signature v2.2.0
+[1m[92m       Fresh[0m byteorder v1.5.0
+[1m[92m       Fresh[0m base64 v0.22.1
+[1m[92m       Fresh[0m regex-syntax v0.8.11
+[1m[92m       Fresh[0m ryu v1.0.23
+[1m[92m       Fresh[0m opaque-debug v0.3.1
+[1m[92m       Fresh[0m regex-automata v0.4.18
+[1m[92m       Fresh[0m poly1305 v0.8.0
+[1m[92m       Fresh[0m serde_urlencoded v0.7.1
+[1m[92m   Compiling[0m ogg_pager v0.7.2
+[1m[92m       Fresh[0m ed25519 v2.2.3
+[1m[92m       Fresh[0m thiserror v1.0.69
+[1m[92m       Fresh[0m curve25519-dalek v4.1.3
+[1m[92m       Fresh[0m hyper-rustls v0.27.10
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name ogg_pager --edition=2024 /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ogg_pager-0.7.2/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=da90092bf8bdef7a -C extra-filename=-1a5a129ae786e563 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern byteorder=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbyteorder-9acf659854032564.rmeta --cap-lints allow`
+[1m[92m       Fresh[0m libsqlite3-sys v0.28.0
+[1m[92m       Fresh[0m rand_chacha v0.3.1
+[1m[92m       Fresh[0m jni-sys v0.3.1
+[1m[92m       Fresh[0m hashlink v0.9.1
+[1m[92m       Fresh[0m tower-http v0.6.11
+[1m[92m       Fresh[0m chacha20 v0.9.1
+[1m[92m       Fresh[0m paste v1.0.15
+[1m[92m       Fresh[0m webpki-roots v0.26.11
+[1m[92m       Fresh[0m sha2 v0.10.9
+[1m[92m       Fresh[0m http-body-util v0.1.5
+[1m[92m       Fresh[0m combine v4.6.9
+[1m[92m       Fresh[0m aead v0.5.2
+[1m[92m   Compiling[0m lofty_attr v0.13.0
+[1m[92m       Fresh[0m arrayvec v0.7.8
+[1m[92m       Fresh[0m cpufeatures v0.3.1
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name lofty_attr --edition=2024 /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty_attr-0.13.0/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type proc-macro --emit=dep-info,link -C prefer-dynamic -C embed-bitcode=no --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=a20ddc5d59d6a287 -C extra-filename=-b5083c68906b6f86 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern proc_macro2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libproc_macro2-48009055b595a344.rlib --extern quote=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libquote-8a050a42cff7de9b.rlib --extern syn=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsyn-cb9a38cbc3e7b14e.rlib --extern proc_macro --cap-lints allow`
+[1m[92m       Fresh[0m linux-raw-sys v0.12.1
+[1m[92m       Fresh[0m fallible-streaming-iterator v0.1.9
+[1m[92m       Fresh[0m constant_time_eq v0.4.2
+[1m[92m       Fresh[0m data-encoding v2.11.1
+[1m[92m       Fresh[0m cesu8 v1.1.0
+[1m[92m       Fresh[0m fallible-iterator v0.3.0
+[1m[92m       Fresh[0m rusqlite v0.31.0
+[1m[92m       Fresh[0m jni v0.21.1
+[1m[92m       Fresh[0m blake3 v1.8.7
+[1m[92m       Fresh[0m rustix v1.1.5
+[1m[92m       Fresh[0m reqwest v0.12.28
+[1m[92m       Fresh[0m chacha20poly1305 v0.10.1
+[1m[92m       Fresh[0m ureq v2.12.1
+[1m[92m       Fresh[0m ed25519-dalek v2.2.0
+[1m[92m       Fresh[0m rand v0.8.8
+[1m[92m       Fresh[0m getrandom v0.4.3
+[1m[92m       Fresh[0m regex v1.13.1
+[1m[92m       Fresh[0m miniz_oxide v0.8.9
+[1m[92m       Fresh[0m hmac v0.12.1
+[1m[92m       Fresh[0m sha1 v0.10.7
+[1m[92m       Fresh[0m socket2 v0.5.10
+[1m[92m       Fresh[0m hex v0.4.3
+[1m[92m       Fresh[0m fastrand v2.5.0
+[1m[92m       Fresh[0m strsim v0.11.1
+[1m[92m       Fresh[0m urlencoding v2.1.3
+[1m[92m       Fresh[0m tempfile v3.27.0
+[1m[92m   Compiling[0m lofty v0.25.4
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name lofty --edition=2024 /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --cfg 'feature="default"' --cfg 'feature="id3v2_compression_support"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("default", "id3v2_compression_support", "serde"))' -C metadata=7f97c84bbf86f00d -C extra-filename=-8563ca549699183e --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern byteorder=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbyteorder-9acf659854032564.rmeta --extern data_encoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libdata_encoding-26176526fd541cda.rmeta --extern flate2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libflate2-c9dcb22874f2f992.rmeta --extern lofty_attr=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty_attr-b5083c68906b6f86.so --extern log=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblog-983fa770d1a41853.rmeta --extern ogg_pager=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libogg_pager-1a5a129ae786e563.rmeta --extern paste=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libpaste-66f7b9a2581da279.so --cap-lints allow`
+[1m[92m       Dirty[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust): name of dependency changed (lofty => ed25519_dalek)
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name streamify_core_rs --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type cdylib --crate-type rlib --crate-type staticlib --emit=dep-info,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=906db2ae9efac6a5 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern base64=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbase64-985cc97568d6040f.rlib --extern blake3=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libblake3-e268408e6210c49a.rlib --extern chacha20poly1305=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libchacha20poly1305-d06cef66548044a0.rlib --extern ed25519_dalek=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libed25519_dalek-def545f4bc0ae800.rlib --extern hex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhex-3ce79e0819d4ca3e.rlib --extern hmac=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhmac-09932396119151e8.rlib --extern jni=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libjni-3c16e9849162eae1.rlib --extern libc=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblibc-5491b08043aa6ffc.rlib --extern lofty=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty-8563ca549699183e.rlib --extern miniz_oxide=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libminiz_oxide-570f178c5283ae3c.rlib --extern rand=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librand-2b32828987f30431.rlib --extern regex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libregex-e5283df5d1b303e0.rlib --extern reqwest=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libreqwest-cb7d27f4f8f48dd7.rlib --extern rusqlite=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librusqlite-9e9e00755d5ef020.rlib --extern serde=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde-312981bacb910143.rlib --extern serde_json=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde_json-6b8a1c15f117d30f.rlib --extern sha1=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha1-024ff1141bca6bcd.rlib --extern sha2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha2-425427775a0f22ae.rlib --extern socket2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsocket2-3dd23ea187aa454e.rlib --extern strsim=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libstrsim-c88069741e7e557b.rlib --extern tokio=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtokio-665816470b0fe2f9.rlib --extern ureq=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libureq-d90e87f0edecc354.rlib --extern urlencoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liburlencoding-28972c12de0350ef.rlib -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/ring-b7c4db699daebf83/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/libsqlite3-sys-cbd00ea19dbcfd78/out`
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name streamify_core_rs --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=3b09d48a95d7c126 -C extra-filename=-ebdbb392fa001c46 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern base64=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbase64-985cc97568d6040f.rlib --extern blake3=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libblake3-e268408e6210c49a.rlib --extern chacha20poly1305=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libchacha20poly1305-d06cef66548044a0.rlib --extern ed25519_dalek=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libed25519_dalek-def545f4bc0ae800.rlib --extern hex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhex-3ce79e0819d4ca3e.rlib --extern hmac=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhmac-09932396119151e8.rlib --extern jni=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libjni-3c16e9849162eae1.rlib --extern libc=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblibc-5491b08043aa6ffc.rlib --extern lofty=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty-8563ca549699183e.rlib --extern miniz_oxide=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libminiz_oxide-570f178c5283ae3c.rlib --extern rand=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librand-2b32828987f30431.rlib --extern regex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libregex-e5283df5d1b303e0.rlib --extern reqwest=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libreqwest-cb7d27f4f8f48dd7.rlib --extern rusqlite=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librusqlite-9e9e00755d5ef020.rlib --extern serde=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde-312981bacb910143.rlib --extern serde_json=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde_json-6b8a1c15f117d30f.rlib --extern sha1=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha1-024ff1141bca6bcd.rlib --extern sha2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha2-425427775a0f22ae.rlib --extern socket2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsocket2-3dd23ea187aa454e.rlib --extern strsim=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libstrsim-c88069741e7e557b.rlib --extern tempfile=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtempfile-b0c5a63ca08afe22.rlib --extern tokio=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtokio-665816470b0fe2f9.rlib --extern ureq=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libureq-d90e87f0edecc354.rlib --extern urlencoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liburlencoding-28972c12de0350ef.rlib -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/ring-b7c4db699daebf83/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/libsqlite3-sys-cbd00ea19dbcfd78/out`
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0msrc/tagger.rs:41:42
+    [1m[94m|[0m
+[1m[94m 41[0m [1m[94m|[0m                 let title = t.get_string(&ItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
+    [1m[94m|[0m                               [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
+    [1m[94m|[0m                               [1m[94m|[0m
+    [1m[94m|[0m                               [1m[94marguments to this method are incorrect[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: method defined here
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
+    [1m[94m|[0m
+[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
+    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
+[1m[96mhelp[0m: consider removing the borrow
+    [1m[94m|[0m
+[1m[94m 41[0m [91m- [0m                let title = t.get_string([91m&[0mItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
+[1m[94m 41[0m [92m+ [0m                let title = t.get_string(ItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
+    [1m[94m|[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0msrc/tagger.rs:42:43
+    [1m[94m|[0m
+[1m[94m 42[0m [1m[94m|[0m                 let artist = t.get_string(&ItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
+    [1m[94m|[0m                                [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
+    [1m[94m|[0m                                [1m[94m|[0m
+    [1m[94m|[0m                                [1m[94marguments to this method are incorrect[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: method defined here
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
+    [1m[94m|[0m
+[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
+    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
+[1m[96mhelp[0m: consider removing the borrow
+    [1m[94m|[0m
+[1m[94m 42[0m [91m- [0m                let artist = t.get_string([91m&[0mItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
+[1m[94m 42[0m [92m+ [0m                let artist = t.get_string(ItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
+    [1m[94m|[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0msrc/tagger.rs:43:42
+    [1m[94m|[0m
+[1m[94m 43[0m [1m[94m|[0m                 let album = t.get_string(&ItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
+    [1m[94m|[0m                               [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
+    [1m[94m|[0m                               [1m[94m|[0m
+    [1m[94m|[0m                               [1m[94marguments to this method are incorrect[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: method defined here
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
+    [1m[94m|[0m
+[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
+    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
+[1m[96mhelp[0m: consider removing the borrow
+    [1m[94m|[0m
+[1m[94m 43[0m [91m- [0m                let album = t.get_string([91m&[0mItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
+[1m[94m 43[0m [92m+ [0m                let album = t.get_string(ItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
+    [1m[94m|[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0msrc/tagger.rs:44:43
+    [1m[94m|[0m
+[1m[94m 44[0m [1m[94m|[0m                 let lyrics = t.get_string(&ItemKey::Lyrics).map(|s| s.to_string());
+    [1m[94m|[0m                                [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
+    [1m[94m|[0m                                [1m[94m|[0m
+    [1m[94m|[0m                                [1m[94marguments to this method are incorrect[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: method defined here
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
+    [1m[94m|[0m
+[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
+    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
+[1m[96mhelp[0m: consider removing the borrow
+    [1m[94m|[0m
+[1m[94m 44[0m [91m- [0m                let lyrics = t.get_string([91m&[0mItemKey::Lyrics).map(|s| s.to_string());
+[1m[94m 44[0m [92m+ [0m                let lyrics = t.get_string(ItemKey::Lyrics).map(|s| s.to_string());
+    [1m[94m|[0m
+
+[1m[91merror[E0599][0m[1m: no associated function or constant named `new_unchecked` found for struct `lofty::picture::Picture` in the current scope[0m
+   [1m[94m--> [0msrc/tagger.rs:114:44
+    [1m[94m|[0m
+[1m[94m114[0m [1m[94m|[0m                     let picture = Picture::new_unchecked(
+    [1m[94m|[0m                                            [1m[91m^^^^^^^^^^^^^[0m [1m[91massociated function or constant not found in `lofty::picture::Picture`[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: if you're trying to build a new `lofty::picture::Picture` consider using one of the following associated functions:
+      lofty::picture::Picture::from_reader
+      lofty::picture::Picture::from_ape_bytes
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/picture/mod.rs:634:2
+    [1m[94m|[0m
+[1m[94m634[0m [1m[94m|[0m [1m[92m/[0m     pub fn from_reader<R>(reader: &mut R) -> Result<Self, PictureParseError>
+[1m[94m635[0m [1m[94m|[0m [1m[92m|[0m     where
+[1m[94m636[0m [1m[94m|[0m [1m[92m|[0m         R: Read,
+    [1m[94m|[0m [1m[92m|________________^[0m
+[1m[94m...[0m
+[1m[94m913[0m [1m[94m|[0m       pub fn from_ape_bytes(key: &str, bytes: &[u8]) -> Result<Self, PictureParseError> {
+    [1m[94m|[0m       [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[96mhelp[0m: there is an associated function `unchecked` with a similar name
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/picture/mod.rs:678:2
+    [1m[94m|[0m
+[1m[94m678[0m [1m[94m|[0m     pub fn unchecked(data: Vec<u8>) -> PictureBuilder {
+    [1m[94m|[0m     [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1mSome errors have detailed explanations: E0308, E0599.[0m
+[1mFor more information about an error, try `rustc --explain E0308`.[0m
+[1m[91merror[0m: could not compile `streamify_core_rs` (lib) due to 5 previous errors
+
+Caused by:
+  process didn't exit successfully: `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name streamify_core_rs --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type cdylib --crate-type rlib --crate-type staticlib --emit=dep-info,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=906db2ae9efac6a5 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern base64=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbase64-985cc97568d6040f.rlib --extern blake3=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libblake3-e268408e6210c49a.rlib --extern chacha20poly1305=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libchacha20poly1305-d06cef66548044a0.rlib --extern ed25519_dalek=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libed25519_dalek-def545f4bc0ae800.rlib --extern hex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhex-3ce79e0819d4ca3e.rlib --extern hmac=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhmac-09932396119151e8.rlib --extern jni=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libjni-3c16e9849162eae1.rlib --extern libc=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblibc-5491b08043aa6ffc.rlib --extern lofty=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty-8563ca549699183e.rlib --extern miniz_oxide=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libminiz_oxide-570f178c5283ae3c.rlib --extern rand=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librand-2b32828987f30431.rlib --extern regex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libregex-e5283df5d1b303e0.rlib --extern reqwest=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libreqwest-cb7d27f4f8f48dd7.rlib --extern rusqlite=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librusqlite-9e9e00755d5ef020.rlib --extern serde=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde-312981bacb910143.rlib --extern serde_json=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde_json-6b8a1c15f117d30f.rlib --extern sha1=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha1-024ff1141bca6bcd.rlib --extern sha2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha2-425427775a0f22ae.rlib --extern socket2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsocket2-3dd23ea187aa454e.rlib --extern strsim=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libstrsim-c88069741e7e557b.rlib --extern tokio=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtokio-665816470b0fe2f9.rlib --extern ureq=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libureq-d90e87f0edecc354.rlib --extern urlencoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liburlencoding-28972c12de0350ef.rlib -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/ring-b7c4db699daebf83/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/libsqlite3-sys-cbd00ea19dbcfd78/out` (exit status: 1)
+[1m[33mwarning[0m: build failed, waiting for other jobs to finish...
+[1m[91merror[0m: could not compile `streamify_core_rs` (lib test) due to 5 previous errors
+
+Caused by:
+  process didn't exit successfully: `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name streamify_core_rs --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=3b09d48a95d7c126 -C extra-filename=-ebdbb392fa001c46 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern base64=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbase64-985cc97568d6040f.rlib --extern blake3=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libblake3-e268408e6210c49a.rlib --extern chacha20poly1305=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libchacha20poly1305-d06cef66548044a0.rlib --extern ed25519_dalek=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libed25519_dalek-def545f4bc0ae800.rlib --extern hex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhex-3ce79e0819d4ca3e.rlib --extern hmac=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhmac-09932396119151e8.rlib --extern jni=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libjni-3c16e9849162eae1.rlib --extern libc=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblibc-5491b08043aa6ffc.rlib --extern lofty=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty-8563ca549699183e.rlib --extern miniz_oxide=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libminiz_oxide-570f178c5283ae3c.rlib --extern rand=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librand-2b32828987f30431.rlib --extern regex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libregex-e5283df5d1b303e0.rlib --extern reqwest=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libreqwest-cb7d27f4f8f48dd7.rlib --extern rusqlite=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librusqlite-9e9e00755d5ef020.rlib --extern serde=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde-312981bacb910143.rlib --extern serde_json=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde_json-6b8a1c15f117d30f.rlib --extern sha1=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha1-024ff1141bca6bcd.rlib --extern sha2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha2-425427775a0f22ae.rlib --extern socket2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsocket2-3dd23ea187aa454e.rlib --extern strsim=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libstrsim-c88069741e7e557b.rlib --extern tempfile=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtempfile-b0c5a63ca08afe22.rlib --extern tokio=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtokio-665816470b0fe2f9.rlib --extern ureq=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libureq-d90e87f0edecc354.rlib --extern urlencoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liburlencoding-28972c12de0350ef.rlib -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/ring-b7c4db699daebf83/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/libsqlite3-sys-cbd00ea19dbcfd78/out` (exit status: 1)
