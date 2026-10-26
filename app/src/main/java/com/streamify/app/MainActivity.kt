@@ -103,14 +103,10 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
 
                 // ── Phase 4 Connect runtime: coordinator + silent-controller hooks ─
-                LaunchedEffect(Unit) {
-                    com.streamify.app.connect.ConnectRuntime.initialize(this@MainActivity)
-                }
                 // ── Connect runtime bridge (hooks + cast queue provider) ──
                 com.streamify.app.connect.ConnectPlaybackBridgeEffect(this@MainActivity, playerViewModel)
                 // ── WearOS bridge (wrist transport + now-playing mirror) ──
                 com.streamify.app.wear.WearSessionBridgeEffect(playerViewModel)
-                }
                 val connectSnapshotProvider: () -> com.streamify.app.connect.PlaybackSnapshot = {
                     com.streamify.app.connect.PlaybackSnapshot(
                         queueTitles = playerState.queue.map { it.title },
