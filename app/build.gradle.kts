@@ -155,7 +155,7 @@ dependencies {
 
     // Phase 4 — Google Cast SDK (Media3 CastPlayer binding + route-aware volume)
     implementation("androidx.media3:media3-cast:1.2.1")
-    implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
+    implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
 
     // Phase 4 — WearOS companion links (Data/Message/Channel clients)
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
