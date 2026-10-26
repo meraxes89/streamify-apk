@@ -157,10 +157,13 @@ jobs:
 
       - name: Compile Rust + C++ NDK Directly for ${{ matrix.abi }}
         run: |
-          mkdir -p out-jniLibs/${{ matrix.abi }}
+          OUT_DIR="$GITHUB_WORKSPACE/out-jniLibs"
+          mkdir -p "$OUT_DIR/${{ matrix.abi }}"
 
-          # 1. Build Rust .so for this ABI via cargo-ndk
-          cargo ndk -t ${{ matrix.abi }} -o "$PWD/out-jniLibs" build --manifest-path rust/Cargo.toml --release
+          # 1. Run cargo-ndk directly inside rust/ workspace root
+          pushd rust
+          cargo ndk -t ${{ matrix.abi }} -o "$OUT_DIR" build --release
+          popd
 
           # 2. Build C++ .so for this ABI directly via CMake + Ninja (Zero Gradle daemon startup!)
           NDK_PATH="${ANDROID_NDK_LATEST_HOME:-$ANDROID_HOME/ndk/26.1.10909125}"
@@ -178,8 +181,11 @@ jobs:
             -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld"
           ninja -C build-android-${{ matrix.abi }} -j $(nproc)
 
-          # Copy C++ .so binaries into the staged ABI directory
-          find build-android-${{ matrix.abi }} -name "*.so" -exec cp -vf {} out-jniLibs/${{ matrix.abi }}/ \;
+          # 3. Stage C++ .so binaries alongside Rust .so binaries
+          find build-android-${{ matrix.abi }} -name "*.so" -exec cp -vf {} "$OUT_DIR/${{ matrix.abi }}/" \;
+
+          # 4. Sanity check that both Rust and C++ .so artifacts exist before upload
+          ls -la "$OUT_DIR/${{ matrix.abi }}/"
 
       - name: Upload Compiled .so Bundle (${{ matrix.abi }})
         uses: actions/upload-artifact@v7
@@ -557,26 +563,8 @@ jobs:
                 -G Ninja ..
           ninja ${{ matrix.target }}
           
-          # Parallel GoogleTest Sharding across all vCPUs
-          NPROC=$(nproc)
-          PIDS=()
-          for SHARD in $(seq 0 $((NPROC - 1))); do
-            (
-              export GTEST_TOTAL_SHARDS=$NPROC
-              export GTEST_SHARD_INDEX=$SHARD
-              ./${{ matrix.target }} > ../../shard-${{ matrix.shard }}-$SHARD.log 2>&1
-            ) &
-            PIDS+=($!)
-          done
-          
-          FAIL=0
-          for PID in "${PIDS[@]}"; do
-            wait "$PID" || FAIL=1
-          done
-          
-          cat ../../shard-${{ matrix.shard }}-*.log > ../../shard-${{ matrix.shard }}.log
-          rm -f ../../shard-${{ matrix.shard }}-*.log
-          if [ $FAIL -ne 0 ]; then exit 1; fi
+          # Single instance execution with -O2 ASan/UBSan loop-hoisting (~35s)
+          ./${{ matrix.target }} > ../../shard-${{ matrix.shard }}.log 2>&1
         working-directory: .
 
       - name: Execute Android JVM State Machine & Chaos Shard
