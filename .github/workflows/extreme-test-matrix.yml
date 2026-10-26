@@ -318,7 +318,7 @@ jobs:
 
       - name: Create Build Release
         if: success() && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: build-${{ env.EFFECTIVE_BUILD }}
           name: Streamify Build ${{ env.EFFECTIVE_BUILD }}
@@ -329,7 +329,7 @@ jobs:
 
       - name: Create Canary Release
         if: success() && github.ref == 'refs/heads/streamify-yt-spt'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: canary-build-${{ env.EFFECTIVE_BUILD }}
           name: Streamify Canary ${{ env.EFFECTIVE_BUILD }} (Flagship Test)
@@ -341,7 +341,7 @@ jobs:
 
       - name: Update Latest Release
         if: success() && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v1.0.0
           name: Streamify v1.0.0 (Latest Build)
