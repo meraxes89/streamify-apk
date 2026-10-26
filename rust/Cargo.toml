@@ -35,7 +35,7 @@ libc = "0.2"
 # Phase 1 governance: ephemeral room identities + signed directives/kicks.
 # Pure-Rust, no_std-friendly; the 32-byte host ephemeral key in the LAN
 # beacon descriptor (directive B) is an Ed25519 verifying key by design.
-ed25519-dalek = "2.1"
+ed25519-dalek = "3.0"
 
 
 [dev-dependencies]
