@@ -1,0 +1,327 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #401
+COMMIT: dc87186250f384ab0ad97244c723502f60b8ef49
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: FAILED ❌
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Downloading https://services.gradle.org/distributions/gradle-8.7-bin.zip
+...............................................................................................................................
+Unzipping /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu/gradle-8.7-bin.zip to /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu
+Set executable permissions for: /home/runner/.gradle/wrapper/dists/gradle-8.7-bin/bhs2wmbdwecv87pi65oeuq5iu/gradle-8.7/bin/gradle
+
+Welcome to Gradle 8.7!
+
+Here are the highlights of this release:
+ - Compiling and testing with Java 22
+ - Cacheable Groovy script compilation
+ - New methods in lazy collection properties
+
+For more details see https://docs.gradle.org/8.7/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Native DSP Test Suite...
+[TEST] Phase 1: Native DSP, Audiophile Fidelity & 32-Peer Jam
+  - Phase1/BS.1770: calibration anchors
+  - Phase1/BS.1770: dual gating
+  - Phase1/normalize: -8 LUFS -> -14 target
+  - Phase1/limiter: true-peak ceiling + inter-sample
+  - Phase1/channels: constant-power balance + mono
+  - Phase1/ring: SPSC correctness
+  - Phase1/mix: 32-peer pool + saturation
+  - Phase1/silentPLL: bypass + PTP lock + takeover
+  - Phase1/chain: end-to-end -14 LUFS @ -1 dBTP
+  - Phase1/rate: legacy paths honor the configured fs
+  - Phase1/rate: rate-aware legacy surface PASSED
+  - Phase1/perf: limiter hot-path benchmark
+    SoftKneeLimiter 2048f stereo hot   525496.8 ns/block  256.59 ns/frame  (~0.88% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      43196.1 ns/block   10.55 ns/frame  (~0.04% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          36507.7 ns/block    8.91 ns/frame  (~0.03% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           14249.5 ns/block    3.48 ns/frame  (~0.01% of an A55 core, est.)
+  - Phase1/perf: zero-alloc hot paths
+  - Phase1/perf: zero-alloc audit PASSED
+[TEST] Phase 1: all 231 checks passed
+[TEST] Phase 2: Harmonic Transition Engine, Candidate Fast-Math & Circadian Curves
+  [harmonic] candidate ID hashing
+  [harmonic] candidate dedup kernels
+  [harmonic] Camelot key transition matrix
+  [harmonic] BPM transition + combined coefficient
+  [harmonic] circadian daypart curves
+    (24h max per-second jump: 6.44e-05)
+  [harmonic] perf budgets + zero-alloc audit
+    (256x256 masks+union: 9.2 us, best of 5)
+    (bulk hash 20k x 21-char ids: 233 us)
+[TEST] Phase 2: all 150 checks passed (0 failed)
+[phase3] canvas loop + AGSL ambient glow
+  [canvas] loop phase primitives
+  [canvas] boundary crossfade weights
+  [canvas] blended-signal seam continuity (C0 + C1)
+  [canvas] bit-exact frame periodicity (both strategies)
+  [canvas] renderer clock discipline
+  [agsl] shader source + uniform tables
+  [agsl] runtime param generation
+  [agsl] fuzz-regression: hostile time/period quotients
+[phase3] canvas/AGSL: 169 passed, 0 failed
+[phase3] audio remuxer & bitstream validators
+  [opus] TOC codes 0-3 + RFC 6716 accounting
+  [adts] header ladder + strict rates
+  [remux] Ogg Opus structural audit
+  [remux] ADTS normalization + lifecycle
+  [remux] degenerate streams + io failure
+  [remux] randomized corrupt-stream soak (500 packets)
+  [remux] zero-allocation per-packet path
+[phase3] audio remuxer: 158 passed, 0 failed
+[phase3] bitmap palette extractor
+  [palette] role colors on synthetic art
+  [palette] WCAG contrast discipline
+  [palette] formats, sizes, malformed ladder
+  [palette] determinism
+  [palette] zero-alloc hot path + perf smoke
+    perf: 1024x1024 RGBA in 4.31 ms
+  [palette] fuzz-regression: median-cut termination
+[phase3] palette: 48 passed, 0 failed
+[phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
+  [sink] CRC32 known vectors + rate codes
+  [sink] SIMD Float32->PCM16 accuracy + saturation
+    max SIMD-vs-scalar delta: 0 LSB
+  [sink] SIMD stereo->mono downmix
+  [sink] FIR decimator: DC, passband, anti-alias, counts
+  [sink] SPSC ring basic IO + wraparound + byte reads
+  [sink] telemetry: watermarks, fullness, latency, xruns
+  [sink] flush semantics
+  [sink] zero-allocation hot paths (AllocGuard)
+  [sink] SPSC stress: 10,000,000 frames, 2 threads
+    0.02 s wall, 496.5 Mframes/s (unsanitized sanitizer build)
+  [sink] SPSC pipeline stress: downmix + decimate, 2 threads
+  [sink] packetizer roundtrip + MTU chunking
+  [sink] packetizer corruption ladder (hostile input)
+  [sink] zero-run compressor roundtrip + bounds
+  [sink] token-bucket rate limiter (deterministic clock)
+  [sink] packetizer pacing + backpressure telemetry
+  [sink] sink registry + stats wire layout
+[phase4] audio sinks: 8454 passed, 0 failed
+  [Phase-5] Palette SIMD & WCAG contrast engine
+    perf: 1080x1080 worst-case (full noise) best-of-3: 0.919 ms
+  [Phase-5] palette suite: 5050 checks passed, 0 failed
+  [Phase-5] Frame pacer & jank monitor
+    stress: 1,000,000 ticks, 5984 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=0
+  [Phase-5] frame pacer suite: 76 checks passed, 0 failed
+  - SoftKneeLimiter transient pass-through: PASSED
+  - SoftKneeLimiter sustained soft-knee limit: PASSED
+  - SoftKneeLimiter short limit: PASSED
+  - LufsNormalizer: PASSED
+  - KissFFTR 1024 Transform: PASSED
+[TEST] All Native DSP Tests Passed Successfully! (ASan/UBSan Verified)
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting SIMD & Physics Test Suite...
+  - AirDrop RK4 ODE Simulation: PASSED
+  - VectorStore 64-D Cosine Search: PASSED
+[TEST] All SIMD Physics Tests Passed Successfully!
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Storage & Telemetry Test Suite...
+  - Lock-Free MPMC Ring Buffer: PASSED
+[streamify:StreamifyNative] [StreamifyDB] Migration error: no such column: play_count
+  - SQLite WAL Database CRUD: PASSED
+[TEST] All Storage & Telemetry Tests Passed Successfully!
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
+[1m[92m       Fresh[0m unicode-ident v1.0.27
+[1m[92m       Fresh[0m proc-macro2 v1.0.107
+[1m[92m       Fresh[0m cfg-if v1.0.5
+[1m[92m       Fresh[0m quote v1.0.47
+[1m[92m       Fresh[0m libc v0.2.191
+[1m[92m       Fresh[0m version_check v0.9.5
+[1m[92m       Fresh[0m find-msvc-tools v0.1.15
+[1m[92m       Fresh[0m syn v3.0.9
+[1m[92m       Fresh[0m getrandom v0.2.17
+[1m[92m       Fresh[0m shlex v2.0.1
+[1m[92m       Fresh[0m synstructure v0.14.0
+[1m[92m       Fresh[0m cc v1.10.0
+[1m[92m       Fresh[0m typenum v1.20.1
+[1m[92m       Fresh[0m zerofrom-derive v0.1.8
+[1m[92m       Fresh[0m yoke-derive v0.8.4
+[1m[92m       Fresh[0m stable_deref_trait v1.2.1
+[1m[92m       Fresh[0m generic-array v0.14.7
+[1m[92m       Fresh[0m zerofrom v0.1.8
+[1m[92m       Fresh[0m rand_core v0.6.4
+[1m[92m       Fresh[0m zerovec-derive v0.11.7
+[1m[92m       Fresh[0m subtle v2.6.1
+[1m[92m       Fresh[0m yoke v0.8.4
+[1m[92m       Fresh[0m zeroize v1.9.1
+[1m[92m       Fresh[0m displaydoc v0.2.7
+[1m[92m       Fresh[0m once_cell v1.21.4
+[1m[92m       Fresh[0m zerovec v0.11.9
+[1m[92m       Fresh[0m bytes v1.12.1
+[1m[92m       Fresh[0m crypto-common v0.1.7
+[1m[92m       Fresh[0m syn v2.0.119
+[1m[92m       Fresh[0m itoa v1.0.18
+[1m[92m       Fresh[0m pin-project-lite v0.2.17
+[1m[92m       Fresh[0m smallvec v1.16.4
+[1m[92m       Fresh[0m tinystr v0.8.5
+[1m[92m       Fresh[0m writeable v0.6.4
+[1m[92m       Fresh[0m litemap v0.8.3
+[1m[92m       Fresh[0m futures-core v0.3.34
+[1m[92m       Fresh[0m potential_utf v0.1.6
+[1m[92m       Fresh[0m icu_locale_core v2.4.0
+[1m[92m       Fresh[0m zerotrie v0.2.5
+[1m[92m       Fresh[0m utf8_iter v1.0.4
+[1m[92m       Fresh[0m icu_collections v2.4.0
+[1m[92m       Fresh[0m icu_provider v2.4.0
+[1m[92m       Fresh[0m rustls-pki-types v1.15.1
+[1m[92m       Fresh[0m tokio-macros v2.7.2
+[1m[92m       Fresh[0m mio v1.2.4
+[1m[92m       Fresh[0m socket2 v0.6.5
+[1m[92m       Fresh[0m memchr v2.8.3
+[1m[92m       Fresh[0m percent-encoding v2.3.2
+[1m[92m       Fresh[0m icu_normalizer_data v2.4.0
+[1m[92m       Fresh[0m tokio v1.54.1
+[1m[92m       Fresh[0m zerocopy v0.8.63
+[1m[92m       Fresh[0m icu_properties_data v2.4.0
+[1m[92m       Fresh[0m http v1.5.0
+[1m[92m       Fresh[0m log v0.4.34
+[1m[92m       Fresh[0m cpufeatures v0.2.17
+[1m[92m       Fresh[0m untrusted v0.9.0
+[1m[92m       Fresh[0m ring v0.17.14
+[1m[92m       Fresh[0m icu_properties v2.4.0
+[1m[92m       Fresh[0m http-body v1.1.0
+[1m[92m       Fresh[0m icu_normalizer v2.4.0
+[1m[92m       Fresh[0m block-buffer v0.10.4
+[1m[92m       Fresh[0m futures-task v0.3.34
+[1m[92m       Fresh[0m slab v0.4.12
+[1m[92m       Fresh[0m idna_adapter v1.2.2
+[1m[92m       Fresh[0m futures-util v0.3.34
+[1m[92m       Fresh[0m digest v0.10.7
+[1m[92m       Fresh[0m serde_core v1.0.229
+[1m[92m       Fresh[0m rustls-webpki v0.103.16
+[1m[92m       Fresh[0m form_urlencoded v1.2.2
+[1m[92m       Fresh[0m bitflags v2.13.2
+[1m[92m       Fresh[0m tower-service v0.3.3
+[1m[92m       Fresh[0m try-lock v0.2.5
+[1m[92m       Fresh[0m semver v1.0.28
+[1m[92m       Fresh[0m want v0.3.2
+[1m[92m       Fresh[0m rustc_version v0.4.1
+[1m[92m       Fresh[0m rustls v0.23.46
+[1m[92m       Fresh[0m httparse v1.10.1
+[1m[92m       Fresh[0m idna v1.1.0
+[1m[92m       Fresh[0m webpki-roots v1.0.11
+[1m[92m       Fresh[0m tracing-core v0.1.36
+[1m[92m       Fresh[0m serde_derive v1.0.229
+[1m[92m       Fresh[0m adler2 v2.0.1
+[1m[92m       Fresh[0m pkg-config v0.3.34
+[1m[92m       Fresh[0m simd-adler32 v0.3.10
+[1m[92m       Fresh[0m atomic-waker v1.1.2
+[1m[92m       Fresh[0m vcpkg v0.2.15
+[1m[92m       Fresh[0m hyper v1.12.0
+[1m[92m       Fresh[0m miniz_oxide v0.9.1
+[1m[92m       Fresh[0m tracing v0.1.44
+[1m[92m       Fresh[0m serde v1.0.229
+[1m[92m       Fresh[0m url v2.5.8
+[1m[92m       Fresh[0m ahash v0.8.12
+[1m[92m       Fresh[0m crc32fast v1.5.3
+[1m[92m       Fresh[0m zmij v1.0.23
+[1m[92m       Fresh[0m sync_wrapper v1.0.2
+[1m[92m       Fresh[0m futures-channel v0.3.34
+[1m[92m       Fresh[0m jni-sys-macros v0.4.1
+[1m[92m       Fresh[0m inout v0.1.4
+[1m[92m       Fresh[0m tower-layer v0.3.3
+[1m[92m       Fresh[0m ipnet v2.12.2
+[1m[92m       Fresh[0m base64 v0.23.1
+[1m[92m       Fresh[0m tower v0.5.3
+[1m[92m       Fresh[0m hyper-util v0.1.21
+[1m[92m       Fresh[0m cipher v0.4.4
+[1m[92m       Fresh[0m jni-sys v0.4.1
+[1m[92m       Fresh[0m serde_json v1.0.154
+[1m[92m       Fresh[0m flate2 v1.1.10
+[1m[92m       Fresh[0m hashbrown v0.14.5
+[1m[92m       Fresh[0m tokio-rustls v0.26.6
+[1m[92m       Fresh[0m ppv-lite86 v0.2.21
+[1m[92m       Fresh[0m aho-corasick v1.1.5
+[1m[92m       Fresh[0m universal-hash v0.5.1
+[1m[92m       Fresh[0m curve25519-dalek-derive v0.1.1
+[1m[92m       Fresh[0m thiserror-impl v1.0.69
+[1m[92m       Fresh[0m opaque-debug v0.3.1
+[1m[92m       Fresh[0m ryu v1.0.23
+[1m[92m       Fresh[0m regex-syntax v0.8.11
+[1m[92m       Fresh[0m base64 v0.22.1
+[1m[92m       Fresh[0m byteorder v1.5.0
+[1m[92m       Fresh[0m signature v2.2.0
+[1m[92m       Fresh[0m ogg_pager v0.6.1
+[1m[92m       Fresh[0m ed25519 v2.2.3
+[1m[92m       Fresh[0m regex-automata v0.4.18
+[1m[92m       Fresh[0m serde_urlencoded v0.7.1
+[1m[92m       Fresh[0m poly1305 v0.8.0
+[1m[92m       Fresh[0m thiserror v1.0.69
+[1m[92m       Fresh[0m curve25519-dalek v4.1.3
+[1m[92m       Fresh[0m rand_chacha v0.3.1
+[1m[92m       Fresh[0m libsqlite3-sys v0.28.0
+[1m[92m       Fresh[0m hyper-rustls v0.27.10
+[1m[92m       Fresh[0m hashlink v0.9.1
+[1m[92m       Fresh[0m chacha20 v0.9.1
+[1m[92m       Fresh[0m jni-sys v0.3.1
+[1m[92m       Fresh[0m tower-http v0.6.11
+[1m[92m       Fresh[0m paste v1.0.15
+[1m[92m       Fresh[0m webpki-roots v0.26.11
+[1m[92m       Fresh[0m sha2 v0.10.9
+[1m[92m       Fresh[0m http-body-util v0.1.5
+[1m[92m       Fresh[0m combine v4.6.9
+[1m[92m       Fresh[0m lofty_attr v0.11.1
+[1m[92m       Fresh[0m aead v0.5.2
+[1m[92m       Fresh[0m constant_time_eq v0.4.2
+[1m[92m       Fresh[0m fallible-iterator v0.3.0
+[1m[92m       Fresh[0m data-encoding v2.11.1
+[1m[92m       Fresh[0m cesu8 v1.1.0
+[1m[92m       Fresh[0m linux-raw-sys v0.12.1
+[1m[92m       Fresh[0m fallible-streaming-iterator v0.1.9
+[1m[92m       Fresh[0m cpufeatures v0.3.1
+[1m[92m       Fresh[0m arrayvec v0.7.8
+[1m[92m       Fresh[0m rusqlite v0.31.0
+[1m[92m       Fresh[0m blake3 v1.8.7
+[1m[92m       Fresh[0m rustix v1.1.5
+[1m[92m       Fresh[0m jni v0.21.1
+[1m[92m       Fresh[0m lofty v0.21.1
+[1m[92m       Fresh[0m chacha20poly1305 v0.10.1
+[1m[92m       Fresh[0m reqwest v0.12.28
+[1m[92m       Fresh[0m ed25519-dalek v2.2.0
+[1m[92m       Fresh[0m ureq v2.12.1
+[1m[92m       Fresh[0m rand v0.8.8
+[1m[92m       Fresh[0m getrandom v0.4.3
+[1m[92m       Fresh[0m regex v1.13.1
+[1m[92m       Fresh[0m sha1 v0.10.7
+[1m[92m       Fresh[0m hmac v0.12.1
+[1m[92m       Fresh[0m socket2 v0.5.10
+[1m[92m       Fresh[0m fastrand v2.5.0
+[1m[92m       Fresh[0m strsim v0.11.1
+[1m[92m       Fresh[0m urlencoding v2.1.3
+[1m[92m       Fresh[0m hex v0.4.3
+[1m[92m       Fresh[0m tempfile v3.27.0
+[1m[92m       Dirty[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust): the file `src/task_orchestrator.rs` has changed (1792996882.751553693s, 6m 23s after last build at 1792996499.813471102s)
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name streamify_core_rs --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type cdylib --crate-type rlib --crate-type staticlib --emit=dep-info,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=4fdc0e098c66ee72 --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern base64=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbase64-985cc97568d6040f.rlib --extern blake3=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libblake3-e268408e6210c49a.rlib --extern chacha20poly1305=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libchacha20poly1305-d06cef66548044a0.rlib --extern ed25519_dalek=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libed25519_dalek-def545f4bc0ae800.rlib --extern hex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhex-3ce79e0819d4ca3e.rlib --extern hmac=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhmac-09932396119151e8.rlib --extern jni=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libjni-3c16e9849162eae1.rlib --extern libc=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblibc-5491b08043aa6ffc.rlib --extern lofty=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty-b0be7fcbdafe5509.rlib --extern miniz_oxide=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libminiz_oxide-33861e04f48f9d40.rlib --extern rand=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librand-2b32828987f30431.rlib --extern regex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libregex-e5283df5d1b303e0.rlib --extern reqwest=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libreqwest-cb7d27f4f8f48dd7.rlib --extern rusqlite=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librusqlite-9e9e00755d5ef020.rlib --extern serde=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde-312981bacb910143.rlib --extern serde_json=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde_json-6b8a1c15f117d30f.rlib --extern sha1=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha1-024ff1141bca6bcd.rlib --extern sha2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha2-425427775a0f22ae.rlib --extern socket2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsocket2-3dd23ea187aa454e.rlib --extern strsim=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libstrsim-c88069741e7e557b.rlib --extern tokio=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtokio-665816470b0fe2f9.rlib --extern ureq=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libureq-d90e87f0edecc354.rlib --extern urlencoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liburlencoding-28972c12de0350ef.rlib -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/ring-b7c4db699daebf83/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/libsqlite3-sys-cbd00ea19dbcfd78/out`
+[1m[92m     Running[0m `/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name streamify_core_rs --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C opt-level=2 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=4216e68634aa464f -C extra-filename=-a2830894b72b95ad --out-dir /home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps -L dependency=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps --extern base64=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libbase64-985cc97568d6040f.rlib --extern blake3=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libblake3-e268408e6210c49a.rlib --extern chacha20poly1305=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libchacha20poly1305-d06cef66548044a0.rlib --extern ed25519_dalek=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libed25519_dalek-def545f4bc0ae800.rlib --extern hex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhex-3ce79e0819d4ca3e.rlib --extern hmac=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libhmac-09932396119151e8.rlib --extern jni=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libjni-3c16e9849162eae1.rlib --extern libc=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblibc-5491b08043aa6ffc.rlib --extern lofty=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liblofty-b0be7fcbdafe5509.rlib --extern miniz_oxide=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libminiz_oxide-33861e04f48f9d40.rlib --extern rand=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librand-2b32828987f30431.rlib --extern regex=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libregex-e5283df5d1b303e0.rlib --extern reqwest=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libreqwest-cb7d27f4f8f48dd7.rlib --extern rusqlite=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/librusqlite-9e9e00755d5ef020.rlib --extern serde=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde-312981bacb910143.rlib --extern serde_json=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libserde_json-6b8a1c15f117d30f.rlib --extern sha1=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha1-024ff1141bca6bcd.rlib --extern sha2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsha2-425427775a0f22ae.rlib --extern socket2=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libsocket2-3dd23ea187aa454e.rlib --extern strsim=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libstrsim-c88069741e7e557b.rlib --extern tempfile=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtempfile-b0c5a63ca08afe22.rlib --extern tokio=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libtokio-665816470b0fe2f9.rlib --extern ureq=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/libureq-d90e87f0edecc354.rlib --extern urlencoding=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/deps/liburlencoding-28972c12de0350ef.rlib -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/blake3-6581093c470bea28/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/ring-b7c4db699daebf83/out -L native=/home/runner/work/streamify-apk/streamify-apk/rust/target/debug/build/libsqlite3-sys-cbd00ea19dbcfd78/out`
