@@ -25,7 +25,9 @@ use std::time::{Duration, Instant};
 
 use rand::{Rng, SeedableRng};
 use streamify_core_rs::chunk_swarmer::SwarmEvent;
-use streamify_core_rs::chunk_verifier::{hash_file, ChunkVerifier, HashTreeManifest, MIN_CHUNK_SIZE};
+use streamify_core_rs::chunk_verifier::{
+    hash_file, ChunkVerifier, HashTreeManifest, MIN_CHUNK_SIZE,
+};
 use streamify_core_rs::gossip::GossipParams;
 use streamify_core_rs::local_sync::{
     CatalogDelta, CatalogEntry, Direction, LibraryCatalog, SyncPolicy, SyncSession,
@@ -96,7 +98,10 @@ fn ten_node_swarm_20pct_loss_random_drops_corruption() {
     }
 
     // ── chaos actually happened ──
-    assert!(mesh.stats.frames_dropped > 50, "packet loss must have fired");
+    assert!(
+        mesh.stats.frames_dropped > 50,
+        "packet loss must have fired"
+    );
     assert!(
         mesh.stats.frames_corrupted >= 1,
         "corruption injection must have fired: {:?}",
@@ -364,9 +369,18 @@ fn lan_sync_session_survives_lossy_transport_and_intent_chaos() {
     // session must still reach Completed with exact accounting, and
     // every completed file must pass the Phase 3 hash-tree gate.
     let phone: Vec<(String, Vec<u8>)> = vec![
-        ("Clark/Body Riddle/2.flac".into(), pseudo_audio(3 * MIN_CHUNK_SIZE + 9_000)),
-        ("Clark/Empty Tag/0.flac".into(), pseudo_audio(MIN_CHUNK_SIZE)),
-        ("Clark/Iradel 10/7.flac".into(), pseudo_audio(2 * MIN_CHUNK_SIZE + 1)),
+        (
+            "Clark/Body Riddle/2.flac".into(),
+            pseudo_audio(3 * MIN_CHUNK_SIZE + 9_000),
+        ),
+        (
+            "Clark/Empty Tag/0.flac".into(),
+            pseudo_audio(MIN_CHUNK_SIZE),
+        ),
+        (
+            "Clark/Iradel 10/7.flac".into(),
+            pseudo_audio(2 * MIN_CHUNK_SIZE + 1),
+        ),
     ];
     let phone_refs: Vec<(&str, &[u8], u64)> = phone
         .iter()
@@ -395,9 +409,7 @@ fn lan_sync_session_survives_lossy_transport_and_intent_chaos() {
             // paused the transport's progress pushes are REJECTED.
             if rng.gen::<f64>() < 0.08 {
                 assert!(session.pause());
-                assert!(session
-                    .on_bytes_transferred(direction, &path, 1)
-                    .is_err());
+                assert!(session.on_bytes_transferred(direction, &path, 1).is_err());
                 assert!(session.resume());
                 intent_flips += 1;
             }
@@ -419,7 +431,10 @@ fn lan_sync_session_survives_lossy_transport_and_intent_chaos() {
     }
     use streamify_core_rs::local_sync::SessionState;
     assert_eq!(session.state(), SessionState::Completed);
-    assert!(intent_flips >= 1, "intent chaos must have fired ({intent_flips})");
+    assert!(
+        intent_flips >= 1,
+        "intent chaos must have fired ({intent_flips})"
+    );
 
     // Exact accounting.
     let summary = session.summary();
@@ -474,8 +489,7 @@ fn two_way_sync_converges_both_libraries() {
     ]);
 
     // ── desktop-side session: pull P1, P2 and the newer X; push A1 ──
-    let mut desk_session =
-        SyncSession::new("phone", &desktop, &phone, SyncPolicy::default());
+    let mut desk_session = SyncSession::new("phone", &desktop, &phone, SyncPolicy::default());
     assert!(desk_session.start());
     assert_eq!(desk_session.jobs().len(), 4);
     assert!(desk_session
@@ -492,8 +506,7 @@ fn two_way_sync_converges_both_libraries() {
         .any(|j| j.direction == Direction::Push && j.path == "Boards/A1.flac"));
 
     // ── phone-side session (mirrored): push P1, P2, X; pull A1 ──
-    let mut phone_session =
-        SyncSession::new("desktop", &phone, &desktop, SyncPolicy::default());
+    let mut phone_session = SyncSession::new("desktop", &phone, &desktop, SyncPolicy::default());
     assert!(phone_session.start());
     assert_eq!(phone_session.jobs().len(), 4);
     assert!(phone_session

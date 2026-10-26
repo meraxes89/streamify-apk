@@ -264,7 +264,11 @@ fn shutdown_all(nodes: &[Arc<MeshNode>]) {
 
 /// One full trial: 32 nodes, `loss` impairment, OPS broadcasts from
 /// node 0, returns (elapsed, per-node logs) once every node converged.
-async fn run_trial(session: &str, loss: f64, ops: usize) -> (Duration, Vec<HashMap<LogKey, Vec<u8>>>) {
+async fn run_trial(
+    session: &str,
+    loss: f64,
+    ops: usize,
+) -> (Duration, Vec<HashMap<LogKey, Vec<u8>>>) {
     let nodes = build_mesh(session, N_NODES).await;
     wait_full_mesh(&nodes, Duration::from_secs(15)).await;
     apply_jitter_chaos(&nodes, loss);
@@ -668,11 +672,20 @@ async fn host_death_triggers_deterministic_election_failover() {
     let successor_log = (1..N_NODES)
         .position(|i| i == successor_idx)
         .expect("successor is a survivor");
-    let expected_for =
-        |idx: usize| if idx == successor_log { OPS_BEFORE_DEATH } else { total };
+    let expected_for = |idx: usize| {
+        if idx == successor_log {
+            OPS_BEFORE_DEATH
+        } else {
+            total
+        }
+    };
     loop {
         drain(&mut rxs, &mut logs);
-        if logs.iter().enumerate().all(|(i, l)| l.len() == expected_for(i)) {
+        if logs
+            .iter()
+            .enumerate()
+            .all(|(i, l)| l.len() == expected_for(i))
+        {
             break;
         }
         assert!(
@@ -722,11 +735,7 @@ async fn host_death_triggers_deterministic_election_failover() {
 
     // Every survivor ran exactly one election.
     for (i, n) in nodes.iter().enumerate().skip(1) {
-        assert_eq!(
-            n.stats().gov_elections,
-            1,
-            "survivor[{i}] election count"
-        );
+        assert_eq!(n.stats().gov_elections, 1, "survivor[{i}] election count");
     }
 
     println!(

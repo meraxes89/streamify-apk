@@ -190,7 +190,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // ONNX Runtime
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     // High-Performance HTTP Transport
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

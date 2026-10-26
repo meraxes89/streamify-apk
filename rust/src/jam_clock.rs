@@ -114,7 +114,11 @@ impl JamClock {
 
                 // EMA converges fast while unlocked (alpha 0.5), slow once
                 // locked (alpha 0.125) to reject jitter spikes.
-                let alpha = if st.sample_count < MIN_SAMPLES_LOCKED { 0.5 } else { 0.125 };
+                let alpha = if st.sample_count < MIN_SAMPLES_LOCKED {
+                    0.5
+                } else {
+                    0.125
+                };
                 if !INITIALIZED.swap(true, Ordering::AcqRel) {
                     st.ema_offset_ms = theta; // first sample snaps instantly
                 } else {
@@ -208,12 +212,22 @@ mod tests {
         // ── jitter spike once locked must not yank the EMA ──
         JamClock::reset();
         for i in 0..8 {
-            JamClock::apply_sample(i * 1_000, i * 1_000 + 50 + 100, i * 1_000 + 55 + 100, i * 1_000 + 105);
+            JamClock::apply_sample(
+                i * 1_000,
+                i * 1_000 + 50 + 100,
+                i * 1_000 + 55 + 100,
+                i * 1_000 + 105,
+            );
         }
         let stable = JamClock::synced_monotonic_ms() - JamClock::local_monotonic_ms();
         // One pathological 1.5s-delay sample arrives:
         JamClock::apply_sample(10_000, 10_150 + 100, 10_155 + 100, 12_500);
         let after_spike = JamClock::synced_monotonic_ms() - JamClock::local_monotonic_ms();
-        assert!((stable - after_spike).abs() <= 25, "EMA absorbed jitter: {} -> {}", stable, after_spike);
+        assert!(
+            (stable - after_spike).abs() <= 25,
+            "EMA absorbed jitter: {} -> {}",
+            stable,
+            after_spike
+        );
     }
 }

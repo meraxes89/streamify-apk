@@ -5,10 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, Copy)]
 pub struct PtpPacket {
     pub sequence_id: u32,
-    pub t0_origin_send: u64,      // Client departure
-    pub t1_host_receive: u64,     // Host arrival
-    pub t2_host_transmit: u64,    // Host departure
-    pub t3_client_receive: u64,   // Client arrival
+    pub t0_origin_send: u64,    // Client departure
+    pub t1_host_receive: u64,   // Host arrival
+    pub t2_host_transmit: u64,  // Host departure
+    pub t3_client_receive: u64, // Client arrival
 }
 
 pub struct PtpEngine;
@@ -76,7 +76,8 @@ impl PtpFilter {
         let final_offset = self.ema_offset as i64;
         let final_rtt = self.ema_rtt as i64;
 
-        self.clock_offset_nanos.store(final_offset, Ordering::Release);
+        self.clock_offset_nanos
+            .store(final_offset, Ordering::Release);
         self.rtt_nanos.store(final_rtt, Ordering::Release);
 
         final_offset

@@ -147,9 +147,7 @@ impl SimMesh {
     /// `on_peer_up` (fresh HAVE announcements bootstrap the rejoin).
     pub fn restore_peer(&mut self, node: usize) {
         let id = node as u64;
-        let peers: Vec<u64> = (0..self.nodes.len() as u64)
-            .filter(|&p| p != id)
-            .collect();
+        let peers: Vec<u64> = (0..self.nodes.len() as u64).filter(|&p| p != id).collect();
         for &other in &peers {
             self.links.insert((id, other), true);
             self.links.insert((other, id), true);

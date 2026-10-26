@@ -572,10 +572,9 @@ impl GossipEngine {
                 if !self.is_scaled() {
                     self.outbox.entry(p).or_default().push(id);
                 }
-            } else if self.lazy.contains(&p)
-                && self.should_announce(p, id) {
-                    self.outbox.entry(p).or_default().push(id);
-                }
+            } else if self.lazy.contains(&p) && self.should_announce(p, id) {
+                self.outbox.entry(p).or_default().push(id);
+            }
         }
         if was_empty && !self.outbox.is_empty() {
             self.outbox_since_ns = now;
@@ -792,7 +791,8 @@ impl GossipEngine {
             // Bound the quarantine: expired entries are useless.
             if self.abandoned.len() > 4_096 {
                 let rearm_ns = self.params.abandon_rearm.as_nanos() as i64;
-                self.abandoned.retain(|_, at| now.saturating_sub(*at) < rearm_ns * 8);
+                self.abandoned
+                    .retain(|_, at| now.saturating_sub(*at) < rearm_ns * 8);
             }
         }
         // Pass 2: group by target peer, emit batched grafts under pacing.
@@ -812,11 +812,19 @@ impl GossipEngine {
                 break;
             }
             // Batch: up to GRAFT_BATCH ids sharing the same primary target.
-            let head_peer = self.pending.get(&runnable[i]).map(|pg| pg.peer).unwrap_or(0);
+            let head_peer = self
+                .pending
+                .get(&runnable[i])
+                .map(|pg| pg.peer)
+                .unwrap_or(0);
             let mut batch: Vec<MsgId> = Vec::with_capacity(GRAFT_BATCH);
             let mut j = i;
             while j < runnable.len() && batch.len() < GRAFT_BATCH {
-                let p = self.pending.get(&runnable[j]).map(|pg| pg.peer).unwrap_or(0);
+                let p = self
+                    .pending
+                    .get(&runnable[j])
+                    .map(|pg| pg.peer)
+                    .unwrap_or(0);
                 if p == head_peer {
                     batch.push(runnable[j]);
                 }
@@ -956,10 +964,7 @@ impl GossipEngine {
                     let fresh: Vec<MsgId> = if self.is_scaled() && self.params.delta_announce {
                         ids.iter()
                             .copied()
-                            .filter(|id| {
-                                
-                                self.should_announce(p, *id)
-                            })
+                            .filter(|id| self.should_announce(p, *id))
                             .collect()
                     } else {
                         ids.clone()
@@ -1730,7 +1735,10 @@ mod tests {
         // length-lying header of a valid batch must degrade to dropped
         // records — the recv path must never panic.
         let ids: Vec<MsgId> = (0..5)
-            .map(|i| MsgId { sender: 0x1000 + i, seq: i as u32 * 7 })
+            .map(|i| MsgId {
+                sender: 0x1000 + i,
+                seq: i as u32 * 7,
+            })
             .collect();
         let payload = build_graft_batch_payload(&ids);
         for end in 0..=payload.len() {

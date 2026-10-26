@@ -33,10 +33,14 @@ struct GoldenOp {
 type HashVector = (String, Vec<u8>, String);
 
 fn load_fixture() -> (Vec<GoldenOp>, Vec<HashVector>) {
-    let raw = std::fs::read(fixture_path())
-        .unwrap_or_else(|e| panic!("fixture missing/unreadable ({}): {e}", fixture_path().display()));
-    let doc: serde_json::Value = serde_json::from_slice(&raw)
-        .unwrap_or_else(|e| panic!("fixture is not valid JSON: {e}"));
+    let raw = std::fs::read(fixture_path()).unwrap_or_else(|e| {
+        panic!(
+            "fixture missing/unreadable ({}): {e}",
+            fixture_path().display()
+        )
+    });
+    let doc: serde_json::Value =
+        serde_json::from_slice(&raw).unwrap_or_else(|e| panic!("fixture is not valid JSON: {e}"));
 
     let mut ops = Vec::new();
     for v in doc["vectors"].as_array().expect("fixture: vectors array") {
@@ -44,12 +48,18 @@ fn load_fixture() -> (Vec<GoldenOp>, Vec<HashVector>) {
             name: v["name"].as_str().unwrap_or("<unnamed>").to_string(),
             rust_48: hex::decode(v["rust_48"].as_str().expect("rust_48 hex"))
                 .unwrap_or_else(|e| panic!("vector {}: bad rust_48 hex: {e}", v["name"])),
-            rust_48_blake3: v["rust_48_blake3"].as_str().expect("rust_48_blake3").to_string(),
+            rust_48_blake3: v["rust_48_blake3"]
+                .as_str()
+                .expect("rust_48_blake3")
+                .to_string(),
         });
     }
 
     let mut hashes = Vec::new();
-    for h in doc["hash_only"].as_array().expect("fixture: hash_only array") {
+    for h in doc["hash_only"]
+        .as_array()
+        .expect("fixture: hash_only array")
+    {
         hashes.push((
             h["name"].as_str().unwrap_or("<unnamed>").to_string(),
             hex::decode(h["input_hex"].as_str().expect("input_hex hex")).expect("valid hex"),
@@ -81,7 +91,11 @@ fn rust_wire_image_is_bit_frozen() {
         );
 
         // The sealed op must also self-validate its checksum.
-        assert!(op.is_valid(), "{}: golden op checksum must validate", g.name);
+        assert!(
+            op.is_valid(),
+            "{}: golden op checksum must validate",
+            g.name
+        );
     }
 }
 

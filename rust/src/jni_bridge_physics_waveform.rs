@@ -259,11 +259,10 @@ fn generate_waveform_inner(
         Err(e) => return JniStatus::from(e).code(),
     };
     // Write the bars into the caller's output array.
-    let out_elements =
-        match unsafe { env.get_array_elements(out_buckets, ReleaseMode::CopyBack) } {
-            Ok(e) => e,
-            Err(_) => return JniStatus::InvalidBuffer.code(),
-        };
+    let out_elements = match unsafe { env.get_array_elements(out_buckets, ReleaseMode::CopyBack) } {
+        Ok(e) => e,
+        Err(_) => return JniStatus::InvalidBuffer.code(),
+    };
     let out: &mut [u8] = unsafe {
         std::slice::from_raw_parts_mut(out_elements.as_ptr() as *mut u8, out_len as usize)
     };
@@ -300,11 +299,10 @@ fn load_waveform_cache_inner(
     let copied = (view.amplitudes.len() as jint).min(out_len) as usize;
     // SAFETY: CopyBack borrow for the caller's output array; the
     // written prefix is published when AutoElements drops.
-    let out_elements =
-        match unsafe { env.get_array_elements(out_buckets, ReleaseMode::CopyBack) } {
-            Ok(e) => e,
-            Err(_) => return JniStatus::InvalidBuffer.code(),
-        };
+    let out_elements = match unsafe { env.get_array_elements(out_buckets, ReleaseMode::CopyBack) } {
+        Ok(e) => e,
+        Err(_) => return JniStatus::InvalidBuffer.code(),
+    };
     let out: &mut [u8] = unsafe {
         std::slice::from_raw_parts_mut(out_elements.as_ptr() as *mut u8, out_len as usize)
     };

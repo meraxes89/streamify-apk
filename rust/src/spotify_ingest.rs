@@ -3,12 +3,12 @@
 // boundary — see the module docs); per-function `# Safety` boilerplate
 // would be copy-paste.
 #![allow(clippy::missing_safety_doc)]
-use reqwest::Client;
-use std::ffi::CStr;
-use std::panic::catch_unwind;
 use crate::db_pool::{self, Lane};
 use crate::repository::TrackRepository;
 use crate::resolver::{get_client, get_runtime};
+use reqwest::Client;
+use std::ffi::CStr;
+use std::panic::catch_unwind;
 
 #[derive(serde::Deserialize)]
 struct SpotifyPagingResponse<T> {
@@ -112,7 +112,12 @@ pub unsafe extern "C" fn spotify_exchange_pkce(
     out_refresh_len: usize,
 ) -> i32 {
     let result = catch_unwind(|| {
-        if code_ptr.is_null() || verifier_ptr.is_null() || redirect_uri_ptr.is_null() || out_access_buf.is_null() || out_refresh_buf.is_null() {
+        if code_ptr.is_null()
+            || verifier_ptr.is_null()
+            || redirect_uri_ptr.is_null()
+            || out_access_buf.is_null()
+            || out_refresh_buf.is_null()
+        {
             return -1;
         }
 
@@ -122,7 +127,9 @@ pub unsafe extern "C" fn spotify_exchange_pkce(
         let client_id = if client_id_ptr.is_null() {
             "37b8d4f407764d8dbda2f94356e792c3"
         } else {
-            CStr::from_ptr(client_id_ptr).to_str().unwrap_or("37b8d4f407764d8dbda2f94356e792c3")
+            CStr::from_ptr(client_id_ptr)
+                .to_str()
+                .unwrap_or("37b8d4f407764d8dbda2f94356e792c3")
         };
 
         let rt = get_runtime();
@@ -159,9 +166,17 @@ pub unsafe extern "C" fn spotify_exchange_pkce(
                 return -2;
             }
 
-            std::ptr::copy_nonoverlapping(access_bytes.as_ptr(), out_access_buf, access_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                access_bytes.as_ptr(),
+                out_access_buf,
+                access_bytes.len(),
+            );
             if !refresh_bytes.is_empty() {
-                std::ptr::copy_nonoverlapping(refresh_bytes.as_ptr(), out_refresh_buf, refresh_bytes.len());
+                std::ptr::copy_nonoverlapping(
+                    refresh_bytes.as_ptr(),
+                    out_refresh_buf,
+                    refresh_bytes.len(),
+                );
             }
 
             0 // Success
@@ -197,18 +212,26 @@ pub unsafe extern "C" fn spotify_ingest_library(
 
             // 1. Fetch Liked Songs (/v1/me/tracks)
             let liked_url = "https://api.spotify.com/v1/me/tracks?limit=50";
-            total_ingested += fetch_and_commit_spotify_pages(client, access_token, liked_url, db_path).await;
+            total_ingested +=
+                fetch_and_commit_spotify_pages(client, access_token, liked_url, db_path).await;
 
             // 2. Fetch Top Tracks (/v1/me/top/tracks)
             let top_url = "https://api.spotify.com/v1/me/top/tracks?limit=50&time_range=short_term";
-            total_ingested += fetch_and_commit_spotify_top_tracks(client, access_token, top_url, db_path).await;
+            total_ingested +=
+                fetch_and_commit_spotify_top_tracks(client, access_token, top_url, db_path).await;
 
             // 3. Fetch User Playlists (/v1/me/playlists)
             let playlists_url = "https://api.spotify.com/v1/me/playlists?limit=20";
             if let Ok(playlists) = fetch_user_playlists(client, access_token, playlists_url).await {
                 for playlist in playlists {
                     if !playlist.tracks_url.is_empty() {
-                        total_ingested += fetch_and_commit_spotify_pages(client, access_token, &playlist.tracks_url, db_path).await;
+                        total_ingested += fetch_and_commit_spotify_pages(
+                            client,
+                            access_token,
+                            &playlist.tracks_url,
+                            db_path,
+                        )
+                        .await;
                     }
                 }
             }
@@ -234,17 +257,17 @@ async fn fetch_user_playlists(
     let mut pages_fetched = 0;
 
     while let Some(url) = current_url {
-        if pages_fetched >= 3 { break; } // limit to top 60 playlists for rapid sync
+        if pages_fetched >= 3 {
+            break;
+        } // limit to top 60 playlists for rapid sync
         pages_fetched += 1;
 
-        let resp = client.get(&url)
-            .bearer_auth(token)
-            .send()
-            .await
-            .ok();
+        let resp = client.get(&url).bearer_auth(token).send().await.ok();
 
         if let Some(resp) = resp {
-            if !resp.status().is_success() { break; }
+            if !resp.status().is_success() {
+                break;
+            }
             let data: SpotifyPlaylistsResponse = match resp.json().await {
                 Ok(d) => d,
                 Err(_) => break,
@@ -253,7 +276,9 @@ async fn fetch_user_playlists(
             for item in data.items {
                 if let Some(tracks_ref) = item.tracks {
                     if !tracks_ref.href.is_empty() {
-                        playlists.push(SimplePlaylist { tracks_url: tracks_ref.href });
+                        playlists.push(SimplePlaylist {
+                            tracks_url: tracks_ref.href,
+                        });
                     }
                 }
             }
@@ -305,14 +330,27 @@ fn commit_spotify_tracks(db_path: &str, tracks: &[SpotifyTrack]) -> u32 {
     let mut count = 0u32;
     for track in tracks {
         let duration_sec = track.duration_ms / 1000;
-        let artwork_url = track.album.as_ref().and_then(|a| a.images.first()).map(|i| i.url.clone());
+        let artwork_url = track
+            .album
+            .as_ref()
+            .and_then(|a| a.images.first())
+            .map(|i| i.url.clone());
         let isrc = track.external_ids.as_ref().and_then(|e| e.isrc.clone());
-        let artist = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
+        let artist = track
+            .artists
+            .first()
+            .map(|a| a.name.clone())
+            .unwrap_or_default();
         let cad_id = TrackRepository::generate_cad_id(&track.name, &artist, duration_sec);
 
         let res = stmt.execute(rusqlite::params![
-            cad_id, track.name, artist, duration_sec,
-            artwork_url, isrc, track.id
+            cad_id,
+            track.name,
+            artist,
+            duration_sec,
+            artwork_url,
+            isrc,
+            track.id
         ]);
         if res.is_ok() {
             count += 1;
@@ -337,7 +375,9 @@ async fn fetch_and_commit_spotify_pages(
     while let Some(url) = current_url {
         let resp = client.get(&url).bearer_auth(token).send().await.ok();
         let Some(resp) = resp else { break };
-        if !resp.status().is_success() { break; }
+        if !resp.status().is_success() {
+            break;
+        }
 
         let data: SpotifyPagingResponse<SpotifyTrackItem> = match resp.json().await {
             Ok(d) => d,
@@ -372,7 +412,9 @@ async fn fetch_and_commit_spotify_top_tracks(
     while let Some(url) = current_url {
         let resp = client.get(&url).bearer_auth(token).send().await.ok();
         let Some(resp) = resp else { break };
-        if !resp.status().is_success() { break; }
+        if !resp.status().is_success() {
+            break;
+        }
 
         let data: SpotifyPagingResponse<SpotifyTrack> = match resp.json().await {
             Ok(d) => d,

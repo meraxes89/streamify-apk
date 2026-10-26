@@ -43,7 +43,8 @@ pub unsafe extern "C" fn flush_database_wal(db_path_ptr: *const std::os::raw::c_
         match db_pool::get(db_path, Lane::Write) {
             Ok(pooled) => {
                 let conn = pooled.lock().unwrap_or_else(|p| p.into_inner());
-                let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA shrink_memory;");
+                let _ =
+                    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA shrink_memory;");
                 0
             }
             Err(_) => -2,

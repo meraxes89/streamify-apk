@@ -68,7 +68,7 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 
 use jni::objects::{JByteArray, JClass, JString, ReleaseMode};
-use jni::sys::{jbyteArray, jint, jlong, jboolean, jstring};
+use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring};
 use jni::JNIEnv;
 
 use crate::connect_gateway::{device_id_from_string, ConnectGateway, GatewayEvent};
@@ -77,8 +77,8 @@ use crate::remote_intent_engine::{
     IntentEvent, PlaybackSnapshot, RemoteIntent, RemoteIntentEngine,
 };
 use crate::wear_sync::{
-    PhoneSyncCoordinator, QueueOp, WearSyncAction, WearSyncEvent, WearSyncConfig,
-    MAX_CACHE_TRACKS, MAX_TRACK_SEGMENTS, SEGMENT_SIZE,
+    PhoneSyncCoordinator, QueueOp, WearSyncAction, WearSyncConfig, WearSyncEvent, MAX_CACHE_TRACKS,
+    MAX_TRACK_SEGMENTS, SEGMENT_SIZE,
 };
 
 const JNI_TRUE: jboolean = 1;
@@ -224,7 +224,13 @@ fn parse_manifest_blob(blob: &[u8]) -> Option<Vec<(u64, Vec<u8>)>> {
 
 // ─────────────────────────────────────────────── event → JSON
 
-fn device_event_json(kind: &str, device_id: u64, name: &str, dt: DeviceType, origin: DiscoveryOrigin) -> serde_json::Value {
+fn device_event_json(
+    kind: &str,
+    device_id: u64,
+    name: &str,
+    dt: DeviceType,
+    origin: DiscoveryOrigin,
+) -> serde_json::Value {
     serde_json::json!({
         "source": "gateway",
         "type": kind,
@@ -238,15 +244,34 @@ fn device_event_json(kind: &str, device_id: u64, name: &str, dt: DeviceType, ori
 fn gateway_event_json(ev: &GatewayEvent) -> serde_json::Value {
     use GatewayEvent as E;
     match ev {
-        E::DiscoveryStarted => serde_json::json!({"source": "gateway", "type": "discovery_started"}),
-        E::DiscoveryStopped => serde_json::json!({"source": "gateway", "type": "discovery_stopped"}),
-        E::DeviceDiscovered { device_id, name, device_type, origin } =>
-            device_event_json("device_discovered", *device_id, name, *device_type, *origin),
-        E::DeviceUpdated { device_id, name, device_type, origin } =>
-            device_event_json("device_updated", *device_id, name, *device_type, *origin),
-        E::DeviceLost { device_id, name, device_type, origin } =>
-            device_event_json("device_lost", *device_id, name, *device_type, *origin),
-        E::PresenceQuery { from_device_id, name } => serde_json::json!({
+        E::DiscoveryStarted => {
+            serde_json::json!({"source": "gateway", "type": "discovery_started"})
+        }
+        E::DiscoveryStopped => {
+            serde_json::json!({"source": "gateway", "type": "discovery_stopped"})
+        }
+        E::DeviceDiscovered {
+            device_id,
+            name,
+            device_type,
+            origin,
+        } => device_event_json("device_discovered", *device_id, name, *device_type, *origin),
+        E::DeviceUpdated {
+            device_id,
+            name,
+            device_type,
+            origin,
+        } => device_event_json("device_updated", *device_id, name, *device_type, *origin),
+        E::DeviceLost {
+            device_id,
+            name,
+            device_type,
+            origin,
+        } => device_event_json("device_lost", *device_id, name, *device_type, *origin),
+        E::PresenceQuery {
+            from_device_id,
+            name,
+        } => serde_json::json!({
             "source": "gateway",
             "type": "presence_query",
             "deviceId": format!("{from_device_id:016x}"),
@@ -277,14 +302,21 @@ fn intent_event_json(ev: &IntentEvent) -> serde_json::Value {
             "target": format!("{target:016x}"), "reason": reason.to_string(),
             "localPlaybackContinues": true,
         }),
-        E::HandoffAdopted { from_controller, snapshot, epoch } => serde_json::json!({
+        E::HandoffAdopted {
+            from_controller,
+            snapshot,
+            epoch,
+        } => serde_json::json!({
             "source": "intent", "type": "handoff_adopted",
             "controller": format!("{from_controller:016x}"),
             "epoch": epoch,
             "sessionState": serde_json::from_str::<serde_json::Value>(&snapshot.to_json())
                 .unwrap_or(serde_json::Value::Null),
         }),
-        E::HandoffRefused { from_controller, reason } => serde_json::json!({
+        E::HandoffRefused {
+            from_controller,
+            reason,
+        } => serde_json::json!({
             "source": "intent", "type": "handoff_refused",
             "controller": format!("{from_controller:016x}"),
             "reason": reason.to_string(),
@@ -351,7 +383,10 @@ fn wear_event_json(ev: &WearSyncEvent) -> serde_json::Value {
             "voterNonce": upvote.voter_nonce.iter().map(|b| format!("{b:02x}")).collect::<String>(),
             "up": upvote.up,
         }),
-        E::ManifestReceived { manifest_id, tracks } => serde_json::json!({
+        E::ManifestReceived {
+            manifest_id,
+            tracks,
+        } => serde_json::json!({
             "source": "wear", "type": "manifest_received",
             "manifestId": manifest_id, "tracks": tracks.len(),
         }),
@@ -410,7 +445,8 @@ pub extern "system" fn Java_com_streamify_core_rust_RustConnectGateway_nativeIni
         let Some(id_str) = read_jstring(&mut env, &device_id) else {
             return 0;
         };
-        let name_str = read_jstring(&mut env, &device_name).unwrap_or_else(|| "Connect Host".into());
+        let name_str =
+            read_jstring(&mut env, &device_name).unwrap_or_else(|| "Connect Host".into());
         let Some(dt) = DeviceType::from_u8(device_type.clamp(0, 255) as u8) else {
             return 0;
         };

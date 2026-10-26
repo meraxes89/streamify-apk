@@ -11,10 +11,10 @@
 use rand::{Rng, SeedableRng};
 
 use streamify_core_rs::wear_sync::{
-    decode_jam_upvote, decode_queue_action, decode_queue_delta, decode_track_rating,
-    encode_frame, encode_frame_into, encode_jam_upvote, encode_queue_action, encode_queue_delta,
+    decode_jam_upvote, decode_queue_action, decode_queue_delta, decode_track_rating, encode_frame,
+    encode_frame_into, encode_jam_upvote, encode_queue_action, encode_queue_delta,
     encode_track_rating, parse_frame, JamUpvoteMsg, PhoneSyncCoordinator, QueueOp, TrackRating,
-    WearSyncAction, WearSyncConfig, WatchSyncCoordinator, CTRL_SEG_BAD, FLAG_ACK_REQUESTED,
+    WatchSyncCoordinator, WearSyncAction, WearSyncConfig, CTRL_SEG_BAD, FLAG_ACK_REQUESTED,
     MAX_QUEUE_DELTA_ENTRIES, SEGMENT_SIZE, WSX_CACHE_CHUNK, WSX_CACHE_CONTROL, WSX_JAM_UPVOTE,
     WSX_QUEUE_ACTION, WSX_QUEUE_DELTA, WSX_TRACK_RATING,
 };
@@ -25,14 +25,26 @@ use streamify_core_rs::wear_sync::{
 fn queue_payloads_roundtrip_bit_level() {
     // Exhaustive op grammar across magnitudes.
     let ops = vec![
-        QueueOp::Add { cad_id: 0, after_pos: 0 },
-        QueueOp::Add { cad_id: u64::MAX, after_pos: u32::MAX },
-        QueueOp::Add { cad_id: 300, after_pos: 7 },
+        QueueOp::Add {
+            cad_id: 0,
+            after_pos: 0,
+        },
+        QueueOp::Add {
+            cad_id: u64::MAX,
+            after_pos: u32::MAX,
+        },
+        QueueOp::Add {
+            cad_id: 300,
+            after_pos: 7,
+        },
         QueueOp::Remove { index: 0 },
         QueueOp::Remove { index: u32::MAX },
         QueueOp::Clear,
         QueueOp::Move { from: 0, to: 1 },
-        QueueOp::Move { from: u32::MAX, to: u32::MAX },
+        QueueOp::Move {
+            from: u32::MAX,
+            to: u32::MAX,
+        },
     ];
     let mut buf = [0u8; 256];
     let n = encode_queue_delta(&ops, &mut buf).expect("encode");
@@ -49,7 +61,10 @@ fn queue_payloads_roundtrip_bit_level() {
     // A typical batch: 8 small adds (cads ~260, positions < 8) in ≤ 30 B
     // (fixed-width ≈ 96 B — varints + 2-bit op packing shrink ~3×).
     let typical: Vec<QueueOp> = (0..8u64)
-        .map(|i| QueueOp::Add { cad_id: 0x100 + i, after_pos: i as u32 })
+        .map(|i| QueueOp::Add {
+            cad_id: 0x100 + i,
+            after_pos: i as u32,
+        })
         .collect();
     let n = encode_queue_delta(&typical, &mut buf).expect("encode");
     assert!(n <= 30, "typical 8-add delta payload = {n} B");
@@ -68,7 +83,11 @@ fn rating_payload_roundtrip_bit_level() {
     for rating in 1u8..=5 {
         for thumbs in [false, true] {
             for cad in [0u64, 1, 0xDEAD_BEEF, u64::MAX] {
-                let r = TrackRating { cad_id: cad, rating, thumbs_up: thumbs };
+                let r = TrackRating {
+                    cad_id: cad,
+                    rating,
+                    thumbs_up: thumbs,
+                };
                 let mut buf = [0u8; 16];
                 let n = encode_track_rating(&r, &mut buf).expect("encode");
                 assert_eq!(decode_track_rating(&buf[..n]), Some(r));
@@ -79,11 +98,29 @@ fn rating_payload_roundtrip_bit_level() {
     }
     // Typical small cad: the whole rating rides in 3 B.
     let mut buf = [0u8; 16];
-    let n = encode_track_rating(&TrackRating { cad_id: 42, rating: 5, thumbs_up: true }, &mut buf).unwrap();
+    let n = encode_track_rating(
+        &TrackRating {
+            cad_id: 42,
+            rating: 5,
+            thumbs_up: true,
+        },
+        &mut buf,
+    )
+    .unwrap();
     assert!(n <= 3, "typical rating payload = {n} B");
     // Rating 0 refused at both boundaries.
     let mut buf = [0u8; 16];
-    assert_eq!(encode_track_rating(&TrackRating { cad_id: 1, rating: 0, thumbs_up: false }, &mut buf), None);
+    assert_eq!(
+        encode_track_rating(
+            &TrackRating {
+                cad_id: 1,
+                rating: 0,
+                thumbs_up: false
+            },
+            &mut buf
+        ),
+        None
+    );
     assert_eq!(decode_track_rating(&[0x01, 0x00]), None);
 }
 
@@ -91,7 +128,11 @@ fn rating_payload_roundtrip_bit_level() {
 fn jam_upvote_payload_roundtrip_bit_level() {
     for nonce in [[0u8; 4], [1, 2, 3, 4], [0xFF; 4]] {
         for up in [false, true] {
-            let u = JamUpvoteMsg { cad_id: 0x1234_5678, voter_nonce: nonce, up };
+            let u = JamUpvoteMsg {
+                cad_id: 0x1234_5678,
+                voter_nonce: nonce,
+                up,
+            };
             let mut buf = [0u8; 24];
             let n = encode_jam_upvote(&u, &mut buf).expect("encode");
             assert_eq!(decode_jam_upvote(&buf[..n]), Some(u));
@@ -101,7 +142,15 @@ fn jam_upvote_payload_roundtrip_bit_level() {
     }
     // Truncated at every cut point → refused.
     let mut buf = [0u8; 24];
-    let n = encode_jam_upvote(&JamUpvoteMsg { cad_id: 9, voter_nonce: [7; 4], up: true }, &mut buf).unwrap();
+    let n = encode_jam_upvote(
+        &JamUpvoteMsg {
+            cad_id: 9,
+            voter_nonce: [7; 4],
+            up: true,
+        },
+        &mut buf,
+    )
+    .unwrap();
     for cut in 0..n {
         assert_eq!(decode_jam_upvote(&buf[..cut]), None, "cut at {cut}");
     }
@@ -110,8 +159,14 @@ fn jam_upvote_payload_roundtrip_bit_level() {
 #[test]
 fn frame_header_carries_flags_and_seq() {
     let mut buf = [0u8; 128];
-    let n = encode_frame_into(&mut buf, WSX_QUEUE_DELTA, 0xBEEF, FLAG_ACK_REQUESTED, &[1, 2, 3])
-        .expect("encode");
+    let n = encode_frame_into(
+        &mut buf,
+        WSX_QUEUE_DELTA,
+        0xBEEF,
+        FLAG_ACK_REQUESTED,
+        &[1, 2, 3],
+    )
+    .expect("encode");
     let f = parse_frame(&buf[..n]).expect("parse");
     assert_eq!(f.seq, 0xBEEF);
     assert_eq!(f.flags, FLAG_ACK_REQUESTED);
@@ -156,7 +211,12 @@ impl LossyLink {
     }
 
     /// Delivers due frames (with a 1% mid-flight corruption).
-    fn pump(&mut self, phone: &mut PhoneSyncCoordinator, watch: &mut WatchSyncCoordinator, step: usize) {
+    fn pump(
+        &mut self,
+        phone: &mut PhoneSyncCoordinator,
+        watch: &mut WatchSyncCoordinator,
+        step: usize,
+    ) {
         let mut i = 0;
         while i < self.wire.len() {
             let due = self.wire[i].0 <= step;
@@ -195,7 +255,11 @@ fn fast_config() -> WearSyncConfig {
 
 fn pseudo_track(seed: u8, size: usize) -> Vec<u8> {
     (0..size)
-        .map(|i| seed.wrapping_add((i % 241) as u8).wrapping_mul(5).wrapping_add(11))
+        .map(|i| {
+            seed.wrapping_add((i % 241) as u8)
+                .wrapping_mul(5)
+                .wrapping_add(11)
+        })
         .collect()
 }
 
@@ -207,17 +271,40 @@ fn full_duplex_sync_survives_20pct_loss_and_reordering() {
 
     // ── phone → watch: queue delta mirror ──
     assert!(phone.push_queue_delta(&[
-        QueueOp::Add { cad_id: 101, after_pos: 0 },
-        QueueOp::Add { cad_id: 202, after_pos: 1 },
-        QueueOp::Add { cad_id: 303, after_pos: 2 },
-        QueueOp::Add { cad_id: 404, after_pos: 3 },
+        QueueOp::Add {
+            cad_id: 101,
+            after_pos: 0
+        },
+        QueueOp::Add {
+            cad_id: 202,
+            after_pos: 1
+        },
+        QueueOp::Add {
+            cad_id: 303,
+            after_pos: 2
+        },
+        QueueOp::Add {
+            cad_id: 404,
+            after_pos: 3
+        },
     ]));
 
     // ── watch → phone: edit + rating + upvote (before the cache starts,
     //    so the lossy mini-protocol alone carries them) ──
-    assert!(watch.send_queue_action(&QueueOp::Add { cad_id: 505, after_pos: 1 }));
-    assert!(watch.send_rating(&TrackRating { cad_id: 202, rating: 5, thumbs_up: true }));
-    assert!(watch.send_jam_upvote(&JamUpvoteMsg { cad_id: 303, voter_nonce: [9, 9, 1, 7], up: true }));
+    assert!(watch.send_queue_action(&QueueOp::Add {
+        cad_id: 505,
+        after_pos: 1
+    }));
+    assert!(watch.send_rating(&TrackRating {
+        cad_id: 202,
+        rating: 5,
+        thumbs_up: true
+    }));
+    assert!(watch.send_jam_upvote(&JamUpvoteMsg {
+        cad_id: 303,
+        voter_nonce: [9, 9, 1, 7],
+        up: true
+    }));
 
     // ── offline cache: two sizable tracks (50 + 30 segments → enough
     //    wire traffic for the 20% loss to bite hard) ──
@@ -242,7 +329,13 @@ fn full_duplex_sync_survives_20pct_loss_and_reordering() {
         if phone.cache_complete() && step > 40 {
             break;
         }
-        assert!(step < 8_000, "must converge under 20% loss; phone {:?} watch {:?} link {:?}", phone.stats(), watch.stats(), (link.dropped, link.delivered));
+        assert!(
+            step < 8_000,
+            "must converge under 20% loss; phone {:?} watch {:?} link {:?}",
+            phone.stats(),
+            watch.stats(),
+            (link.dropped, link.delivered)
+        );
     }
     // Grace pump: control-frame retries (a lost vote/rating/edit rides
     // the reliable mini-protocol) get their RTO window after completion.
@@ -261,8 +354,16 @@ fn full_duplex_sync_survives_20pct_loss_and_reordering() {
     }
 
     // Chaos actually happened.
-    assert!(link.dropped > 15, "packet loss must have fired: {}", link.dropped);
-    assert!(link.corrupted >= 1, "corruption injection must have fired: {}", link.corrupted);
+    assert!(
+        link.dropped > 15,
+        "packet loss must have fired: {}",
+        link.dropped
+    );
+    assert!(
+        link.corrupted >= 1,
+        "corruption injection must have fired: {}",
+        link.corrupted
+    );
 
     // Queue mirror converged. The watch's own edit (insert AT index 1)
     // landed while the mirror was still empty, then the phone's delta
@@ -275,19 +376,30 @@ fn full_duplex_sync_survives_20pct_loss_and_reordering() {
     assert!(events.iter().any(|e| matches!(
         e,
         streamify_core_rs::wear_sync::WearSyncEvent::QueueActionReceived {
-            op: QueueOp::Add { cad_id: 505, after_pos: 1 }
+            op: QueueOp::Add {
+                cad_id: 505,
+                after_pos: 1
+            }
         }
     )));
     assert!(events.iter().any(|e| matches!(
         e,
         streamify_core_rs::wear_sync::WearSyncEvent::RatingReceived {
-            rating: TrackRating { cad_id: 202, rating: 5, thumbs_up: true }
+            rating: TrackRating {
+                cad_id: 202,
+                rating: 5,
+                thumbs_up: true
+            }
         }
     )));
     assert!(events.iter().any(|e| matches!(
         e,
         streamify_core_rs::wear_sync::WearSyncEvent::JamUpvoteReceived {
-            upvote: JamUpvoteMsg { cad_id: 303, voter_nonce: [9, 9, 1, 7], up: true }
+            upvote: JamUpvoteMsg {
+                cad_id: 303,
+                voter_nonce: [9, 9, 1, 7],
+                up: true
+            }
         }
     )));
 
@@ -310,8 +422,16 @@ fn vote_never_vanishes_under_sustained_loss() {
     let mut link = LossyLink::new(0xFACE_B00C, 0.30);
 
     for i in 0..10u64 {
-        assert!(watch.send_rating(&TrackRating { cad_id: 0x900 + i, rating: 3, thumbs_up: true }));
-        assert!(watch.send_jam_upvote(&JamUpvoteMsg { cad_id: 0xA00 + i, voter_nonce: [i as u8; 4], up: true }));
+        assert!(watch.send_rating(&TrackRating {
+            cad_id: 0x900 + i,
+            rating: 3,
+            thumbs_up: true
+        }));
+        assert!(watch.send_jam_upvote(&JamUpvoteMsg {
+            cad_id: 0xA00 + i,
+            voter_nonce: [i as u8; 4],
+            up: true
+        }));
     }
     let mut got_ratings = 0usize;
     let mut got_upvotes = 0usize;
@@ -326,8 +446,12 @@ fn vote_never_vanishes_under_sustained_loss() {
         // CUMULATIVE event counting (drain_events is per-iteration).
         for ev in phone.drain_events() {
             match ev {
-                streamify_core_rs::wear_sync::WearSyncEvent::RatingReceived { .. } => got_ratings += 1,
-                streamify_core_rs::wear_sync::WearSyncEvent::JamUpvoteReceived { .. } => got_upvotes += 1,
+                streamify_core_rs::wear_sync::WearSyncEvent::RatingReceived { .. } => {
+                    got_ratings += 1
+                }
+                streamify_core_rs::wear_sync::WearSyncEvent::JamUpvoteReceived { .. } => {
+                    got_upvotes += 1
+                }
                 _ => {}
             }
         }
@@ -338,10 +462,17 @@ fn vote_never_vanishes_under_sustained_loss() {
         if got_ratings == 10 && got_upvotes == 10 {
             break;
         }
-        assert!(step < 4_000, "votes must survive 30% loss; ratings={got_ratings} upvotes={got_upvotes} watch {:?}", watch.stats());
+        assert!(
+            step < 4_000,
+            "votes must survive 30% loss; ratings={got_ratings} upvotes={got_upvotes} watch {:?}",
+            watch.stats()
+        );
     }
     assert!(link.dropped > 10, "loss fired: {}", link.dropped);
-    assert!(watch.stats().control_retries >= 1, "retries must have fired");
+    assert!(
+        watch.stats().control_retries >= 1,
+        "retries must have fired"
+    );
 }
 
 #[test]
@@ -392,7 +523,12 @@ fn corrupt_cache_segment_heals_via_priority_retransmit_under_loss() {
         if phone.cache_complete() && step > 40 {
             break;
         }
-        assert!(step < 8_000, "must heal corruption under loss; phone {:?} watch {:?}", phone.stats(), watch.stats());
+        assert!(
+            step < 8_000,
+            "must heal corruption under loss; phone {:?} watch {:?}",
+            phone.stats(),
+            watch.stats()
+        );
     }
     assert!(corrupted_once);
     assert!(seg_bad_seen, "watch must have raised SEG_BAD");

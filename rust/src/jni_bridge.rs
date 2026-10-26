@@ -48,11 +48,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeGenerate
             Err(_) => return -10,
         };
 
-        let mut out_elements =
-            match env.get_array_elements(&out_buffer, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let mut out_elements = match env.get_array_elements(&out_buffer, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
 
         generate_sapisid_hash(
             sapisid_str.as_ptr(),
@@ -76,7 +75,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeGenerate
 ) -> jstring {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let title_str: String = env.get_string(&title).map(|s| s.into()).unwrap_or_default();
-        let artist_str: String = env.get_string(&artist).map(|s| s.into()).unwrap_or_default();
+        let artist_str: String = env
+            .get_string(&artist)
+            .map(|s| s.into())
+            .unwrap_or_default();
         let cad_id = generate_cad_id(&title_str, &artist_str, duration_sec.max(0) as u32);
         match env.new_string(cad_id) {
             Ok(s) => s.into_raw(),
@@ -138,7 +140,9 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeFetchVir
             Ok(ptr) => ptr,
             Err(_) => return -10,
         };
-        let capacity = env.get_direct_buffer_capacity((&out_buffer).into()).unwrap_or(0);
+        let capacity = env
+            .get_direct_buffer_capacity((&out_buffer).into())
+            .unwrap_or(0);
 
         if buf_ptr.is_null() || capacity < 4 {
             return -10;
@@ -192,19 +196,21 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResolveT
         let auth_str: String = if auth_header.is_null() {
             "".to_string()
         } else {
-            env.get_string(&auth_header).map(|s| s.into()).unwrap_or_default()
+            env.get_string(&auth_header)
+                .map(|s| s.into())
+                .unwrap_or_default()
         };
         let cookies_actual = env.get_array_length(&cookies_bytes).unwrap_or(0).max(0) as usize;
         let cookies_len = (cookies_len.max(0) as usize).min(cookies_actual);
-        let cookies_elements =
-            env.get_array_elements(&cookies_bytes, ReleaseMode::NoCopyBack).ok();
+        let cookies_elements = env
+            .get_array_elements(&cookies_bytes, ReleaseMode::NoCopyBack)
+            .ok();
 
         let out_actual = env.get_array_length(&out_buffer).unwrap_or(0).max(0);
-        let mut out_elements =
-            match env.get_array_elements(&out_buffer, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let mut out_elements = match env.get_array_elements(&out_buffer, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
 
         let c_db = match std::ffi::CString::new(db_str) {
             Ok(c) => c,
@@ -235,7 +241,9 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResolveT
             c_title.as_ptr(),
             c_artist.as_ptr(),
             c_auth.as_ptr(),
-            cookies_elements.as_ref().map_or(std::ptr::null(), |e| e.as_ptr()) as *const u8,
+            cookies_elements
+                .as_ref()
+                .map_or(std::ptr::null(), |e| e.as_ptr()) as *const u8,
             cookies_len,
             out_elements.as_mut_ptr() as *mut u8,
             out_actual as usize,
@@ -271,22 +279,23 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_spotifyExchang
         let client_id_str: String = if client_id.is_null() {
             "37b8d4f407764d8dbda2f94356e792c3".to_string()
         } else {
-            env.get_string(&client_id).map(|s| s.into()).unwrap_or_else(|_| "37b8d4f407764d8dbda2f94356e792c3".to_string())
+            env.get_string(&client_id)
+                .map(|s| s.into())
+                .unwrap_or_else(|_| "37b8d4f407764d8dbda2f94356e792c3".to_string())
         };
 
         let access_actual = env.get_array_length(&out_access).unwrap_or(0).max(0) as usize;
         let refresh_actual = env.get_array_length(&out_refresh).unwrap_or(0).max(0) as usize;
 
-        let mut access_elements =
-            match env.get_array_elements(&out_access, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
-        let mut refresh_elements =
-            match env.get_array_elements(&out_refresh, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let mut access_elements = match env.get_array_elements(&out_access, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
+        let mut refresh_elements = match env.get_array_elements(&out_refresh, ReleaseMode::CopyBack)
+        {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
 
         let c_code = match std::ffi::CString::new(code_str) {
             Ok(c) => c,
@@ -487,7 +496,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeInitDsp(
     _env: JNIEnv,
     _class: JClass,
 ) -> jlong {
-    catch_unwind(AssertUnwindSafe(|| unsafe { crate::audio_dsp::init_audio_dsp() })).unwrap_or(std::ptr::null_mut()) as jlong
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::audio_dsp::init_audio_dsp()
+    }))
+    .unwrap_or(std::ptr::null_mut()) as jlong
 }
 
 #[no_mangle]
@@ -522,8 +534,12 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeProcessD
         let frames = num_frames as usize;
         let need_in = frames * 2 * std::mem::size_of::<i16>();
         let need_out = frames * 2 * std::mem::size_of::<f32>();
-        let in_cap = env.get_direct_buffer_capacity((&input_buffer).into()).unwrap_or(0);
-        let out_cap = env.get_direct_buffer_capacity((&output_buffer).into()).unwrap_or(0);
+        let in_cap = env
+            .get_direct_buffer_capacity((&input_buffer).into())
+            .unwrap_or(0);
+        let out_cap = env
+            .get_direct_buffer_capacity((&output_buffer).into())
+            .unwrap_or(0);
         if in_cap < need_in || out_cap < need_out {
             return -2;
         }
@@ -578,11 +594,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeGetNextT
             Ok(e) => e,
             Err(_) => return -10,
         };
-        let mut vid_elements =
-            match env.get_array_elements(&out_video, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let mut vid_elements = match env.get_array_elements(&out_video, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
 
         let c_db = match std::ffi::CString::new(db_str) {
             Ok(c) => c,
@@ -740,16 +755,14 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeCryptCac
             return -2;
         }
 
-        let input_elements =
-            match env.get_array_elements(&input_buf, ReleaseMode::NoCopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
-        let mut output_elements =
-            match env.get_array_elements(&output_buf, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let input_elements = match env.get_array_elements(&input_buf, ReleaseMode::NoCopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
+        let mut output_elements = match env.get_array_elements(&output_buf, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
         let key_elements = match env.get_array_elements(&key_buf, ReleaseMode::NoCopyBack) {
             Ok(e) => e,
             Err(_) => return -10,
@@ -773,8 +786,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeUpdateTh
     _class: JClass,
     status: jint,
 ) -> jint {
-    catch_unwind(AssertUnwindSafe(|| crate::governor::update_thermal_status(status)))
-        .unwrap_or(-10)
+    catch_unwind(AssertUnwindSafe(|| {
+        crate::governor::update_thermal_status(status)
+    }))
+    .unwrap_or(-10)
 }
 
 #[no_mangle]
@@ -782,7 +797,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeGetTherm
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
-    catch_unwind(AssertUnwindSafe(|| unsafe { crate::governor::get_thermal_status() })).unwrap_or(-10)
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::governor::get_thermal_status()
+    }))
+    .unwrap_or(-10)
 }
 
 #[no_mangle]
@@ -850,7 +868,9 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeApplyNor
 
         // Stereo interleaved f32 in-place: validate against real capacity.
         let need = num_frames as usize * 2 * std::mem::size_of::<f32>();
-        let cap = env.get_direct_buffer_capacity((&pcm_buffer).into()).unwrap_or(0);
+        let cap = env
+            .get_direct_buffer_capacity((&pcm_buffer).into())
+            .unwrap_or(0);
         if cap < need {
             return -2;
         }
@@ -893,8 +913,12 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeProcessF
         let frames = num_frames as usize;
         let need_in = frames * 2 * std::mem::size_of::<i16>();
         let need_out = frames * 2 * std::mem::size_of::<f32>();
-        let in_cap = env.get_direct_buffer_capacity((&input_buffer).into()).unwrap_or(0);
-        let out_cap = env.get_direct_buffer_capacity((&output_buffer).into()).unwrap_or(0);
+        let in_cap = env
+            .get_direct_buffer_capacity((&input_buffer).into())
+            .unwrap_or(0);
+        let out_cap = env
+            .get_direct_buffer_capacity((&output_buffer).into())
+            .unwrap_or(0);
         if in_cap < need_in || out_cap < need_out {
             return -2;
         }
@@ -964,7 +988,9 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResetSee
     _env: JNIEnv,
     _class: JClass,
 ) {
-    let _ = catch_unwind(AssertUnwindSafe(|| unsafe { crate::seek_guard::reset_seek_guard() }));
+    let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::seek_guard::reset_seek_guard()
+    }));
 }
 
 #[no_mangle]
@@ -972,8 +998,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeInitCont
     _env: JNIEnv,
     _class: JClass,
 ) -> jlong {
-    catch_unwind(AssertUnwindSafe(|| unsafe { crate::continuum_engine::init_continuum_state() }))
-        .unwrap_or(std::ptr::null_mut()) as jlong
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::continuum_engine::init_continuum_state()
+    }))
+    .unwrap_or(std::ptr::null_mut()) as jlong
 }
 
 #[no_mangle]
@@ -1017,16 +1045,14 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeEvaluate
             return -2;
         }
 
-        let cand_elements =
-            match env.get_array_elements(&candidates, ReleaseMode::NoCopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
-        let mut score_elements =
-            match env.get_array_elements(&out_scores, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let cand_elements = match env.get_array_elements(&candidates, ReleaseMode::NoCopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
+        let mut score_elements = match env.get_array_elements(&out_scores, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
 
         crate::continuum_engine::evaluate_continuum_batch(
             state_ptr as *mut crate::continuum_engine::ContinuumState,
@@ -1060,11 +1086,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeCommitTr
             return -2;
         }
 
-        let vec_elements =
-            match env.get_array_elements(&track_vector, ReleaseMode::NoCopyBack) {
-                Ok(e) => e,
-                Err(_) => return -10,
-            };
+        let vec_elements = match env.get_array_elements(&track_vector, ReleaseMode::NoCopyBack) {
+            Ok(e) => e,
+            Err(_) => return -10,
+        };
 
         crate::continuum_engine::commit_track_to_continuum(
             state_ptr as *mut crate::continuum_engine::ContinuumState,
@@ -1096,11 +1121,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_stepAirDropPhy
             return;
         }
 
-        let mut elements =
-            match env.get_array_elements(&in_out_buffer, ReleaseMode::CopyBack) {
-                Ok(e) => e,
-                Err(_) => return,
-            };
+        let mut elements = match env.get_array_elements(&in_out_buffer, ReleaseMode::CopyBack) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
 
         let mut state = crate::airdrop::AirdropState {
             pos: [elements[0], elements[1], elements[2]],
@@ -1144,8 +1168,6 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_stepAirDropPhy
     }));
 }
 
-
-
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativePinThreadToLittleCores(
     _env: JNIEnv,
@@ -1159,9 +1181,6 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativePinThrea
         _ => 0,
     }
 }
-
-
-
 
 // ═══════════════════════════════════════════════════════════════════
 // JAM PHASE-1 SYNC CORE: jam_clock / tick_matrix / kalman_pll
@@ -1229,28 +1248,26 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamTickI
     policy: jint,
     out_packed: JLongArray,
 ) -> jint {
-    catch_unwind(
-        AssertUnwindSafe(|| {
-            // Copy-out buffer: JNI primitive arrays cannot be indexed directly.
-            let len = env.get_array_length(&out_packed).unwrap_or(0);
-            if len == 0 {
-                return 0i32;
-            }
-            let mut scratch = vec![0i64; len as usize];
-            let written = crate::tick_matrix::TickMatrix::ingest(
-                seq.max(0) as u32,
-                pos_ms,
-                host_mono_ms,
-                state.clamp(0, 2) as u8,
-                policy.clamp(0, 1) as u8,
-                &mut scratch,
-            );
-            if written > 0 {
-                let _ = env.set_long_array_region(&out_packed, 0, &scratch[..written]);
-            }
-            written as jint
-        }),
-    )
+    catch_unwind(AssertUnwindSafe(|| {
+        // Copy-out buffer: JNI primitive arrays cannot be indexed directly.
+        let len = env.get_array_length(&out_packed).unwrap_or(0);
+        if len == 0 {
+            return 0i32;
+        }
+        let mut scratch = vec![0i64; len as usize];
+        let written = crate::tick_matrix::TickMatrix::ingest(
+            seq.max(0) as u32,
+            pos_ms,
+            host_mono_ms,
+            state.clamp(0, 2) as u8,
+            policy.clamp(0, 1) as u8,
+            &mut scratch,
+        );
+        if written > 0 {
+            let _ = env.set_long_array_region(&out_packed, 0, &scratch[..written]);
+        }
+        written as jint
+    }))
     .unwrap_or(0)
 }
 
@@ -1399,8 +1416,11 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamCrdtF
     out_tomb: JLongArray,
 ) -> jint {
     catch_unwind(AssertUnwindSafe(|| {
-        let Some((queue, tomb)) = crdt_with(|st| st.fold_to_snapshot()) else { return 0 };
-        let n = ((env.get_array_length(&out_queue).unwrap_or(0) / 3).min(queue.len() as i32)).min(2048) as usize;
+        let Some((queue, tomb)) = crdt_with(|st| st.fold_to_snapshot()) else {
+            return 0;
+        };
+        let n = ((env.get_array_length(&out_queue).unwrap_or(0) / 3).min(queue.len() as i32))
+            .min(2048) as usize;
         let mut flat = Vec::with_capacity(n * 3);
         for (frac, add_id, cad) in queue.iter().take(n) {
             flat.push(*frac as jlong);
@@ -1435,7 +1455,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamCanon
 ) -> jlong {
     catch_unwind(AssertUnwindSafe(|| {
         let t: String = env.get_string(&title).map(|s| s.into()).unwrap_or_default();
-        let a: String = env.get_string(&artist).map(|s| s.into()).unwrap_or_default();
+        let a: String = env
+            .get_string(&artist)
+            .map(|s| s.into())
+            .unwrap_or_default();
         crate::repository::generate_cad_id_u64(&t, &a, duration_sec.max(0) as u32) as jlong
     }))
     .unwrap_or(0)
@@ -1448,7 +1471,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamOutbo
     db_path: JString,
 ) -> jint {
     catch_unwind(AssertUnwindSafe(|| {
-        let path: String = env.get_string(&db_path).map(|s| s.into()).unwrap_or_default();
+        let path: String = env
+            .get_string(&db_path)
+            .map(|s| s.into())
+            .unwrap_or_default();
         if path.is_blank_path() {
             return -1;
         }
@@ -1490,7 +1516,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamOutbo
     session_code: JString,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        let session: String = env.get_string(&session_code).map(|s| s.into()).unwrap_or_default();
+        let session: String = env
+            .get_string(&session_code)
+            .map(|s| s.into())
+            .unwrap_or_default();
         let mut nonce = [0u8; 4];
         nonce.copy_from_slice(&(sender_packed as u32).to_be_bytes());
         let mut op = JamOp {
@@ -1526,10 +1555,15 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamOutbo
     out_ops: JLongArray,
 ) -> jint {
     catch_unwind(AssertUnwindSafe(|| {
-        let session: String = env.get_string(&session_code).map(|s| s.into()).unwrap_or_default();
+        let session: String = env
+            .get_string(&session_code)
+            .map(|s| s.into())
+            .unwrap_or_default();
         let capacity = (env.get_array_length(&out_ops).unwrap_or(0).max(0) / 7) as usize;
-        let Some(ops) = outbox_with(|ob| ob.poll_batch(&session, (limit.max(0) as usize).min(capacity)).ok())
-        else {
+        let Some(ops) = outbox_with(|ob| {
+            ob.poll_batch(&session, (limit.max(0) as usize).min(capacity))
+                .ok()
+        }) else {
             return 0;
         };
         let Some(ops) = ops else { return 0 };
@@ -1539,9 +1573,11 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamOutbo
             let mut nonce4 = [0u8; 4];
             nonce4.copy_from_slice(&op.sender_nonce);
             flat.push(op.op_id as jlong);
-            flat.push(((op.op_type as i64) << 8)
-                | ((op.policy_flags as i64) << 16)
-                | (u32::from_be_bytes(nonce4) as i64 & 0xFFFF));
+            flat.push(
+                ((op.op_type as i64) << 8)
+                    | ((op.policy_flags as i64) << 16)
+                    | (u32::from_be_bytes(nonce4) as i64 & 0xFFFF),
+            );
             flat.push(op.track_cad_id as jlong);
             flat.push(op.frac_index.to_bits() as i64);
             flat.push(op.target_add_op_id as jlong);
@@ -1595,7 +1631,10 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamOutbo
     session_code: JString,
 ) -> jint {
     catch_unwind(AssertUnwindSafe(|| {
-        let session: String = env.get_string(&session_code).map(|s| s.into()).unwrap_or_default();
+        let session: String = env
+            .get_string(&session_code)
+            .map(|s| s.into())
+            .unwrap_or_default();
         outbox_with(|ob| ob.pending_count(&session).unwrap_or(0) as jint)
     }))
     .unwrap_or(Some(0))
@@ -1628,13 +1667,30 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamElect
     lease_expired: jboolean,
 ) -> jstring {
     catch_unwind(AssertUnwindSafe(|| {
-        let members: String = env.get_string(&participants_joined).map(|s| s.into()).unwrap_or_default();
-        let host: String = env.get_string(&host_id).map(|s| s.into()).unwrap_or_default();
-        let ids: Vec<String> = members.split(',').filter(|s| !s.is_empty()).map(String::from).collect();
-        let result = crate::jam_governor::JamGovernor::elect_successor(&ids, &host, lease_expired != 0);
+        let members: String = env
+            .get_string(&participants_joined)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        let host: String = env
+            .get_string(&host_id)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        let ids: Vec<String> = members
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        let result =
+            crate::jam_governor::JamGovernor::elect_successor(&ids, &host, lease_expired != 0);
         match result {
-            Some(id) => env.new_string(id).unwrap_or_else(|_| env.new_string("").unwrap()).into_raw(),
-            None => env.new_string("").unwrap_or_else(|_| env.new_string("").unwrap()).into_raw(),
+            Some(id) => env
+                .new_string(id)
+                .unwrap_or_else(|_| env.new_string("").unwrap())
+                .into_raw(),
+            None => env
+                .new_string("")
+                .unwrap_or_else(|_| env.new_string("").unwrap())
+                .into_raw(),
         }
     }))
     .unwrap_or(std::ptr::null_mut())
@@ -1680,12 +1736,29 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeJamIsAdv
     recently_seen: jboolean,
 ) -> jboolean {
     catch_unwind(AssertUnwindSafe(|| {
-        let members: String = env.get_string(&participants_joined).map(|s| s.into()).unwrap_or_default();
-        let host: String = env.get_string(&host_id).map(|s| s.into()).unwrap_or_default();
-        let self_id: String = env.get_string(&self_id).map(|s| s.into()).unwrap_or_default();
-        let ids: Vec<String> = members.split(',').filter(|s| !s.is_empty()).map(String::from).collect();
-        crate::jam_governor::JamGovernor::is_advisory_successor(&ids, &host, &self_id, recently_seen != 0)
-            as jboolean
+        let members: String = env
+            .get_string(&participants_joined)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        let host: String = env
+            .get_string(&host_id)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        let self_id: String = env
+            .get_string(&self_id)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        let ids: Vec<String> = members
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        crate::jam_governor::JamGovernor::is_advisory_successor(
+            &ids,
+            &host,
+            &self_id,
+            recently_seen != 0,
+        ) as jboolean
     }))
     .unwrap_or(0)
 }

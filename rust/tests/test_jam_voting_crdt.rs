@@ -31,8 +31,8 @@ use streamify_core_rs::jam_crdt::{
 };
 use streamify_core_rs::jam_governor::{RejectReason, RoomGovernor};
 use streamify_core_rs::p2p_mesh::{
-    build_friend_activity_frame, parse_friend_activity, LinkCondition, MeshConfig, MeshNode,
-    MeshError, MSG_CRDT_OP, MSG_VOTE_OP,
+    build_friend_activity_frame, parse_friend_activity, LinkCondition, MeshConfig, MeshError,
+    MeshNode, MSG_CRDT_OP, MSG_VOTE_OP,
 };
 
 /// Timing-sensitive mesh sims: serialize within this binary (same
@@ -175,7 +175,10 @@ fn concurrent_multi_user_voting_split_brain_convergence() {
             PromotionStatus::Committed { votes } => {
                 assert!(votes >= threshold, "committed implies threshold met");
             }
-            PromotionStatus::Pending { votes, threshold: th } => {
+            PromotionStatus::Pending {
+                votes,
+                threshold: th,
+            } => {
                 assert_eq!(th, threshold);
                 assert!(votes < threshold, "pending implies below threshold");
             }
@@ -196,7 +199,11 @@ fn concurrent_multi_user_voting_split_brain_convergence() {
 #[test]
 fn vote_replays_are_idempotent() {
     let mut st = JamCrdtState::new();
-    st.set_promotion_policy(PromotionPolicy { member_count: 3, ratio: None, min_votes: 1 });
+    st.set_promotion_policy(PromotionPolicy {
+        member_count: 3,
+        ratio: None,
+        min_votes: 1,
+    });
     let t = add_op(77_001, 42, 0.5);
     assert!(st.apply_op(&t));
 
@@ -213,8 +220,14 @@ fn vote_replays_are_idempotent() {
     let before = st.fold_full();
 
     // Full replay of both ops.
-    assert_eq!(st.apply_op_as(&v1, &voter_of(1)), Some(VoteOutcome::Duplicate));
-    assert_eq!(st.apply_op_as(&v2, &voter_of(2)), Some(VoteOutcome::Duplicate));
+    assert_eq!(
+        st.apply_op_as(&v1, &voter_of(1)),
+        Some(VoteOutcome::Duplicate)
+    );
+    assert_eq!(
+        st.apply_op_as(&v2, &voter_of(2)),
+        Some(VoteOutcome::Duplicate)
+    );
     // Stale (older op_id after the standing vote).
     let stale = vote_op(88_000, 2, false, t.op_id);
     assert_eq!(
@@ -238,7 +251,9 @@ fn vote_frame_forgery_matrix() {
     let frame = caster.build_vote(&op);
 
     // Valid frame verifies (and reveals the voter pubkey).
-    let verified = caster.verify_vote(&frame, 1_000_000).expect("own frame verifies");
+    let verified = caster
+        .verify_vote(&frame, 1_000_000)
+        .expect("own frame verifies");
     assert_eq!(verified.voter_pubkey, caster.pubkey());
     assert_eq!(verified.op.target_add_op_id, 55_005);
     assert_eq!(verified.op.policy_flags & VOTE_FLAG_UP, VOTE_FLAG_UP);
@@ -374,7 +389,9 @@ async fn democratic_voting_converges_on_live_mesh() {
     for (i, op) in tracks.iter().enumerate() {
         // submit_queue_op applies locally AND broadcasts (raw broadcast
         // would leave the originator's own replica without the op).
-        nodes[i % nodes.len()].submit_queue_op(op).expect("submit add");
+        nodes[i % nodes.len()]
+            .submit_queue_op(op)
+            .expect("submit add");
     }
 
     // Wait for the adds to land everywhere.
@@ -383,7 +400,10 @@ async fn democratic_voting_converges_on_live_mesh() {
         if nodes.iter().all(|n| n.crdt_proposed_queue().len() == 3) {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(3), "adds did not converge");
+        assert!(
+            t0.elapsed() < Duration::from_secs(3),
+            "adds did not converge"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
@@ -445,7 +465,10 @@ async fn democratic_voting_converges_on_live_mesh() {
         }) {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(5), "retraction did not converge");
+        assert!(
+            t0.elapsed() < Duration::from_secs(5),
+            "retraction did not converge"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
@@ -482,7 +505,10 @@ async fn forged_and_unsigned_votes_die_at_the_boundary() {
         if nodes.iter().all(|n| n.vote_count(track.op_id) == 1) {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(3), "valid vote did not converge");
+        assert!(
+            t0.elapsed() < Duration::from_secs(3),
+            "valid vote did not converge"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
@@ -507,7 +533,9 @@ async fn forged_and_unsigned_votes_die_at_the_boundary() {
     };
     let mut tampered = real_frame_probe;
     tampered[50] ^= 0xFF; // voter pubkey byte → signature breaks
-    nodes[0].broadcast(MSG_VOTE_OP, &tampered).expect("rebroadcast forged");
+    nodes[0]
+        .broadcast(MSG_VOTE_OP, &tampered)
+        .expect("rebroadcast forged");
 
     // ── Unsigned vote op on the app-visible CRDT channel. ──
     let mut rx_app = nodes[2].subscribe(MSG_CRDT_OP, 16);
@@ -541,7 +569,10 @@ async fn forged_and_unsigned_votes_die_at_the_boundary() {
     assert!(saw_unsigned, "app layer still sees the raw CRDT_OP frame");
     // …but never merged into any mesh vote ledger.
     for n in &nodes {
-        assert!(n.vote_count(track.op_id) <= 2, "unsigned vote must not count");
+        assert!(
+            n.vote_count(track.op_id) <= 2,
+            "unsigned vote must not count"
+        );
     }
 
     for n in &nodes {
@@ -581,9 +612,19 @@ async fn vote_flood_is_rate_limited() {
     }
     // One voter = one standing vote: the ledger holds exactly the
     // caster's LAST accepted upvote.
-    assert_eq!(nodes[1].vote_count(track.op_id), 1, "one voter, one standing vote");
-    assert!(accepted <= 11, "burst capacity respected (accepted {accepted})");
-    assert!(throttled >= 18, "excess votes throttled locally ({throttled})");
+    assert_eq!(
+        nodes[1].vote_count(track.op_id),
+        1,
+        "one voter, one standing vote"
+    );
+    assert!(
+        accepted <= 11,
+        "burst capacity respected (accepted {accepted})"
+    );
+    assert!(
+        throttled >= 18,
+        "excess votes throttled locally ({throttled})"
+    );
 
     // Only the accepted frames ever hit the wire — every replica that
     // sees them converges to the SAME count (the caster's own ledger is
@@ -683,7 +724,10 @@ async fn thirty_two_peer_democratic_voting_chaos() {
         // while the mesh was still legitimately forming — a load artifact,
         // not a protocol bug. 30 s keeps the guard real (a broken mesh
         // still never forms) while removing the wall-clock sensitivity.
-        assert!(t0.elapsed() < Duration::from_secs(30), "chaos mesh did not form");
+        assert!(
+            t0.elapsed() < Duration::from_secs(30),
+            "chaos mesh did not form"
+        );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
@@ -710,7 +754,13 @@ async fn thirty_two_peer_democratic_voting_chaos() {
     // 16 tracks seeded from node 0 (the raw CRDT_OP stream merges into
     // every replica's queue via the Phase 2 mirror path).
     let tracks: Vec<JamOp> = (0..16u64)
-        .map(|i| add_op(JamOp::generate_op_id(), 0x7000_0000 + i, (i as f64 + 1.0) / 17.0))
+        .map(|i| {
+            add_op(
+                JamOp::generate_op_id(),
+                0x7000_0000 + i,
+                (i as f64 + 1.0) / 17.0,
+            )
+        })
         .collect();
     for op in &tracks {
         nodes[0].submit_queue_op(op).expect("seed track");
@@ -719,11 +769,16 @@ async fn thirty_two_peer_democratic_voting_chaos() {
     // Wait until every replica holds all 16 tracks.
     let t0 = Instant::now();
     loop {
-        if nodes.iter().all(|n| n.crdt_proposed_queue().len() + n.crdt_committed_queue().len() == 16)
+        if nodes
+            .iter()
+            .all(|n| n.crdt_proposed_queue().len() + n.crdt_committed_queue().len() == 16)
         {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(10), "tracks did not converge");
+        assert!(
+            t0.elapsed() < Duration::from_secs(10),
+            "tracks did not converge"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
@@ -738,11 +793,19 @@ async fn thirty_two_peer_democratic_voting_chaos() {
     }
     #[allow(clippy::needless_range_loop)] // voter-index labels in assertions
     for voter in 17..21usize {
-        nodes[voter].cast_vote(tracks[1].op_id, true).expect("stray vote");
-        nodes[voter].cast_vote(tracks[2].op_id, true).expect("stray vote");
+        nodes[voter]
+            .cast_vote(tracks[1].op_id, true)
+            .expect("stray vote");
+        nodes[voter]
+            .cast_vote(tracks[2].op_id, true)
+            .expect("stray vote");
     }
-    nodes[21].cast_vote(tracks[3].op_id, true).expect("lone vote");
-    nodes[21].cast_vote(tracks[3].op_id, false).expect("lone retraction");
+    nodes[21]
+        .cast_vote(tracks[3].op_id, true)
+        .expect("lone vote");
+    nodes[21]
+        .cast_vote(tracks[3].op_id, false)
+        .expect("lone retraction");
 
     // Convergence watchdog: all 32 replicas reach the identical fold.
     let t0 = Instant::now();
@@ -876,7 +939,13 @@ async fn friend_activity_rate_limit_registry_and_ttl() {
         .broadcast_friend_activity(0x1234, "Daft Punk", "Discovery", 42_000, None, false, false)
         .expect("first activity");
     let throttled = nodes[0].broadcast_friend_activity(
-        0x1234, "Daft Punk", "Discovery", 43_000, None, false, false,
+        0x1234,
+        "Daft Punk",
+        "Discovery",
+        43_000,
+        None,
+        false,
+        false,
     );
     assert!(matches!(throttled, Err(MeshError::Throttled)));
 
@@ -891,7 +960,10 @@ async fn friend_activity_rate_limit_registry_and_ttl() {
         {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(3), "activity did not propagate");
+        assert!(
+            t0.elapsed() < Duration::from_secs(3),
+            "activity did not propagate"
+        );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     let entry = &nodes[1].friend_activities()[0];
@@ -904,7 +976,11 @@ async fn friend_activity_rate_limit_registry_and_ttl() {
     // Direct unicast bypasses the sender throttle — engine-internal path.
     let before = nodes[1].stats().rx_length_reject;
     nodes[0]
-        .send_to_peer(nodes[1].id(), streamify_core_rs::p2p_mesh::MSG_FRIEND_ACTIVITY, &[0u8; 8])
+        .send_to_peer(
+            nodes[1].id(),
+            streamify_core_rs::p2p_mesh::MSG_FRIEND_ACTIVITY,
+            &[0u8; 8],
+        )
         .expect("malformed unicast");
     tokio::time::sleep(Duration::from_millis(120)).await;
     assert!(nodes[1].stats().rx_length_reject > before);
@@ -916,10 +992,18 @@ async fn friend_activity_rate_limit_registry_and_ttl() {
     let f2 = build_friend_activity_frame(0x8888, 2, None, false, false, "X", "Y").unwrap();
     let base_rejects = nodes[1].stats().friend_activity_rate_limited;
     nodes[0]
-        .send_to_peer(nodes[1].id(), streamify_core_rs::p2p_mesh::MSG_FRIEND_ACTIVITY, &f1)
+        .send_to_peer(
+            nodes[1].id(),
+            streamify_core_rs::p2p_mesh::MSG_FRIEND_ACTIVITY,
+            &f1,
+        )
         .unwrap();
     nodes[0]
-        .send_to_peer(nodes[1].id(), streamify_core_rs::p2p_mesh::MSG_FRIEND_ACTIVITY, &f2)
+        .send_to_peer(
+            nodes[1].id(),
+            streamify_core_rs::p2p_mesh::MSG_FRIEND_ACTIVITY,
+            &f2,
+        )
         .unwrap();
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert!(

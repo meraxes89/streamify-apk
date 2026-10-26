@@ -77,7 +77,9 @@ impl JamOutbox {
 
     #[inline]
     fn lock_conn(&self) -> std::sync::MutexGuard<'_, rusqlite::Connection> {
-        self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn now_ms() -> i64 {
@@ -95,7 +97,12 @@ impl JamOutbox {
             "INSERT OR IGNORE INTO jam_outbox
                 (op_id, session_code, op_data, status, attempts, queued_at_ms, updated_at_ms)
              VALUES (?1, ?2, ?3, 0, 0, ?4, ?4)",
-            params![op.op_id as i64, session_code, op.to_bytes().as_slice(), Self::now_ms()],
+            params![
+                op.op_id as i64,
+                session_code,
+                op.to_bytes().as_slice(),
+                Self::now_ms()
+            ],
         )?;
         if n > 0 {
             if let Ok(mut st) = self.stats.lock() {

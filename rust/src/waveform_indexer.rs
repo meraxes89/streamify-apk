@@ -207,8 +207,7 @@ pub fn duration_ms_for_samples(sample_count: usize, sample_rate_hz: u32) -> u32 
     }
     // saturating_mul: u64::MAX frames × 1000 must not overflow debug
     // builds; the clamp to u32::MAX dominates either way.
-    ((sample_count as u64).saturating_mul(1000) / sample_rate_hz as u64).min(u32::MAX as u64)
-        as u32
+    ((sample_count as u64).saturating_mul(1000) / sample_rate_hz as u64).min(u32::MAX as u64) as u32
 }
 
 /// Zero-copy parsed view of a cache blob: the header fields plus the

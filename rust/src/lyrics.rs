@@ -23,34 +23,34 @@ pub const SLYR_VERSION: u16 = 1;
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SlyrHeader {
-    pub magic: u32,             // 0x534C5952
-    pub version: u16,           // 1
-    pub line_count: u16,        // Total lyric lines
-    pub syllable_count: u32,    // Total syllable segments
-    pub text_pool_len: u32,     // Byte length of UTF-8 string pool
-    pub vocal_offset_ms: i32,   // Auto-calibrated KissFFT drift offset (Δτ*)
-    pub flags: u32,             // Bit 0: Has Syllables, Bit 1: Is Explicit
-    pub reserved: [u8; 8],      // 16-byte boundary padding
+    pub magic: u32,           // 0x534C5952
+    pub version: u16,         // 1
+    pub line_count: u16,      // Total lyric lines
+    pub syllable_count: u32,  // Total syllable segments
+    pub text_pool_len: u32,   // Byte length of UTF-8 string pool
+    pub vocal_offset_ms: i32, // Auto-calibrated KissFFT drift offset (Δτ*)
+    pub flags: u32,           // Bit 0: Has Syllables, Bit 1: Is Explicit
+    pub reserved: [u8; 8],    // 16-byte boundary padding
 }
 
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct SlyrLineHeader {
-    pub start_time_ms: u32,     // Line onset
-    pub end_time_ms: u32,       // Line offset
-    pub syllable_start_idx: u16,// Index into syllable table
-    pub syllable_count: u16,    // Number of syllables in line
-    pub text_offset: u32,       // Byte offset into UTF-8 text pool
+    pub start_time_ms: u32,      // Line onset
+    pub end_time_ms: u32,        // Line offset
+    pub syllable_start_idx: u16, // Index into syllable table
+    pub syllable_count: u16,     // Number of syllables in line
+    pub text_offset: u32,        // Byte offset into UTF-8 text pool
 }
 
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct SlyrSyllableSpan {
-    pub start_time_ms: u32,     // Syllable start
-    pub end_time_ms: u32,       // Syllable end
-    pub char_start: u16,        // Relative character start inside line text
-    pub char_len: u16,          // Character length
-    pub flags: u32,             // Bit 0: Background vocal, Bit 1: Melisma
+    pub start_time_ms: u32, // Syllable start
+    pub end_time_ms: u32,   // Syllable end
+    pub char_start: u16,    // Relative character start inside line text
+    pub char_len: u16,      // Character length
+    pub flags: u32,         // Bit 0: Background vocal, Bit 1: Melisma
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,7 +199,11 @@ impl LyricCompiler {
 
         for line_str in lrc_text.lines() {
             let trimmed = line_str.trim();
-            if trimmed.is_empty() || trimmed.starts_with("[ti:") || trimmed.starts_with("[ar:") || trimmed.starts_with("[al:") {
+            if trimmed.is_empty()
+                || trimmed.starts_with("[ti:")
+                || trimmed.starts_with("[ar:")
+                || trimmed.starts_with("[al:")
+            {
                 continue;
             }
             if let Some(caps) = re_line.captures(trimmed) {
@@ -320,7 +324,11 @@ impl LyricCompiler {
     /// FFI-facing: the caller (C/JNI boundary, itself unsafe) owns the
     /// pointer; this function null-checks before the slice view.
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn find_active_positions(slyr_ptr: *const u8, slyr_len: usize, position_ms: u32) -> Option<(usize, usize)> {
+    pub fn find_active_positions(
+        slyr_ptr: *const u8,
+        slyr_len: usize,
+        position_ms: u32,
+    ) -> Option<(usize, usize)> {
         if slyr_ptr.is_null() || slyr_len == 0 {
             return None;
         }
@@ -340,7 +348,10 @@ impl LyricCompiler {
             return Some((line_idx, 0));
         }
         let lines = unsafe {
-            std::slice::from_raw_parts(slice[header_size..].as_ptr() as *const SlyrLineHeader, total_lines)
+            std::slice::from_raw_parts(
+                slice[header_size..].as_ptr() as *const SlyrLineHeader,
+                total_lines,
+            )
         };
         let line = &lines[line_idx];
         if line.syllable_count == 0 {
@@ -353,7 +364,10 @@ impl LyricCompiler {
             return Some((line_idx, 0));
         }
         let spans = unsafe {
-            std::slice::from_raw_parts(slice[span_offset..].as_ptr() as *const SlyrSyllableSpan, total_spans)
+            std::slice::from_raw_parts(
+                slice[span_offset..].as_ptr() as *const SlyrSyllableSpan,
+                total_spans,
+            )
         };
 
         let start = line.syllable_start_idx as usize;
@@ -400,17 +414,27 @@ impl LyricMap {
         if self.lines.is_empty() {
             return 0;
         }
-        match self.lines.binary_search_by_key(&current_time_ms, |(t, _)| *t) {
+        match self
+            .lines
+            .binary_search_by_key(&current_time_ms, |(t, _)| *t)
+        {
             Ok(idx) => idx,
             Err(idx) => {
-                if idx == 0 { 0 } else { idx - 1 }
+                if idx == 0 {
+                    0
+                } else {
+                    idx - 1
+                }
             }
         }
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn parse_lrc_file(lrc_ptr: *const std::os::raw::c_char, lrc_len: usize) -> *mut LyricMap {
+pub unsafe extern "C" fn parse_lrc_file(
+    lrc_ptr: *const std::os::raw::c_char,
+    lrc_len: usize,
+) -> *mut LyricMap {
     if lrc_ptr.is_null() || lrc_len == 0 {
         return Box::into_raw(Box::new(LyricMap::new(Vec::new())));
     }
@@ -419,12 +443,16 @@ pub unsafe extern "C" fn parse_lrc_file(lrc_ptr: *const std::os::raw::c_char, lr
     let lrc_str = std::str::from_utf8(lrc_slice).unwrap_or("");
 
     let mut lines = Vec::new();
-    let re_line = LRC_LINE_RE
-        .get_or_init(|| regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").ok());
+    let re_line =
+        LRC_LINE_RE.get_or_init(|| regex::Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$").ok());
 
     for line in lrc_str.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("[ti:") || trimmed.starts_with("[ar:") || trimmed.starts_with("[al:") {
+        if trimmed.is_empty()
+            || trimmed.starts_with("[ti:")
+            || trimmed.starts_with("[ar:")
+            || trimmed.starts_with("[al:")
+        {
             continue;
         }
         if let Some(caps) = re_line.as_ref().and_then(|re| re.captures(trimmed)) {
@@ -479,7 +507,12 @@ mod tests {
 
         let parsed = LyricCompiler::compile_lrc(lrc);
         // Two timestamped lines survive (metadata skipped).
-        assert_eq!(parsed.entries.len(), 2, "entries: {:?}", parsed.entries.len());
+        assert_eq!(
+            parsed.entries.len(),
+            2,
+            "entries: {:?}",
+            parsed.entries.len()
+        );
         // First line: 01:23.45 -> (1*60+23)*1000 + 450ms (2-digit centis x10).
         assert_eq!(parsed.entries[0].start_time_ms, 83_450);
         // Second line: 00:05.789 -> 5789ms (3-digit millis pass through).

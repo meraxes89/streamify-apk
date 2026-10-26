@@ -139,14 +139,22 @@ impl TickMatrix {
         if out_packed.is_empty() {
             return 0;
         }
-        let Ok(mut guard) = MATRIX.lock() else { return 0 };
+        let Ok(mut guard) = MATRIX.lock() else {
+            return 0;
+        };
         let st = guard.get_or_insert_with(MatrixState::new);
 
         let mut written = 0usize;
         match st.last_seq {
             None => {
                 // First observation after (re)start: adopt, no synthesis.
-                st.push(JamTick::new(seq, pos_ms, host_mono_ms, state, POLICY_EVERYONE));
+                st.push(JamTick::new(
+                    seq,
+                    pos_ms,
+                    host_mono_ms,
+                    state,
+                    POLICY_EVERYONE,
+                ));
                 out_packed[0] = st.ring[(st.head + RING_SLOTS - 1) & RING_MASK].pack();
                 written = 1;
             }
@@ -167,7 +175,9 @@ impl TickMatrix {
                     MAX_GAP_SEEN.fetch_max(gap as u64, Ordering::AcqRel);
                     // Synthesize missing ticks via linear interpolation between
                     // the previous real tick and this one.
-                    if let Some(prev) = st.ring[(st.head + RING_SLOTS - 1) & RING_MASK].non_default_if(last) {
+                    if let Some(prev) =
+                        st.ring[(st.head + RING_SLOTS - 1) & RING_MASK].non_default_if(last)
+                    {
                         let span_ticks = (gap + 1) as f64;
                         let dpos = (pos_ms - prev.pos_ms) as f64 / span_ticks;
                         let dmono = (host_mono_ms - prev.host_mono_ms) as f64 / span_ticks;
@@ -193,10 +203,13 @@ impl TickMatrix {
 
                 // Interval EMA (only meaningful on consecutive ticks).
                 if gap == 0 {
-                    if let Some(prev) = st.ring[(st.head + RING_SLOTS - 1) & RING_MASK].non_default_if(last) {
+                    if let Some(prev) =
+                        st.ring[(st.head + RING_SLOTS - 1) & RING_MASK].non_default_if(last)
+                    {
                         let dt = (host_mono_ms - prev.host_mono_ms).max(0) as f64;
                         if dt > 5.0 && dt < 10_000.0 {
-                            st.tick_interval_ms = if st.tick_interval_ms == 1_000.0 && st.is_fresh() {
+                            st.tick_interval_ms = if st.tick_interval_ms == 1_000.0 && st.is_fresh()
+                            {
                                 dt
                             } else {
                                 st.tick_interval_ms * 0.8 + dt * 0.2
@@ -205,9 +218,16 @@ impl TickMatrix {
                     }
                 }
 
-                st.push(JamTick::new(seq, pos_ms, host_mono_ms, state, POLICY_EVERYONE));
+                st.push(JamTick::new(
+                    seq,
+                    pos_ms,
+                    host_mono_ms,
+                    state,
+                    POLICY_EVERYONE,
+                ));
                 if written < out_packed.len() {
-                    out_packed[written] = JamTick::new(seq, pos_ms, host_mono_ms, state, POLICY_EVERYONE).pack();
+                    out_packed[written] =
+                        JamTick::new(seq, pos_ms, host_mono_ms, state, POLICY_EVERYONE).pack();
                     written += 1;
                 }
             }
@@ -284,9 +304,15 @@ mod tests {
         // ── consecutive ticks: no synthesis ──
         TickMatrix::reset();
         let mut out = [0i64; 16];
-        assert_eq!(TickMatrix::ingest(1, 1000, 5000, STATE_PLAYING, 0, &mut out), 1);
+        assert_eq!(
+            TickMatrix::ingest(1, 1000, 5000, STATE_PLAYING, 0, &mut out),
+            1
+        );
         // Each ingest call writes from index 0.
-        assert_eq!(TickMatrix::ingest(2, 2000, 6000, STATE_PLAYING, 0, &mut out), 1);
+        assert_eq!(
+            TickMatrix::ingest(2, 2000, 6000, STATE_PLAYING, 0, &mut out),
+            1
+        );
         assert_eq!(JamTick::unpack_seq(out[0]), 2);
         assert_eq!(JamTick::unpack_pos(out[0]), 2000);
         let diag = TickMatrix::diagnostics();
@@ -309,8 +335,14 @@ mod tests {
         TickMatrix::reset();
         let mut out = [0i64; 16];
         TickMatrix::ingest(10, 1_000, 1_000, STATE_PLAYING, 0, &mut out);
-        assert_eq!(TickMatrix::ingest(10, 1_000, 1_000, STATE_PLAYING, 0, &mut out), 0);
-        assert_eq!(TickMatrix::ingest(9, 900, 900, STATE_PLAYING, 0, &mut out), 0);
+        assert_eq!(
+            TickMatrix::ingest(10, 1_000, 1_000, STATE_PLAYING, 0, &mut out),
+            0
+        );
+        assert_eq!(
+            TickMatrix::ingest(9, 900, 900, STATE_PLAYING, 0, &mut out),
+            0
+        );
 
         // ── seq wrap accepted without synthesis ──
         TickMatrix::reset();
@@ -338,13 +370,23 @@ mod tests {
         let mut out = [0i64; 16];
         let mut last = 0u32;
         for i in 1..=5000u32 {
-            TickMatrix::ingest(i, i as i64 * 100, i as i64 * 1000, STATE_PLAYING, 0, &mut out);
+            TickMatrix::ingest(
+                i,
+                i as i64 * 100,
+                i as i64 * 1000,
+                STATE_PLAYING,
+                0,
+                &mut out,
+            );
             last = i;
         }
         assert_eq!(last, 5000);
         TickMatrix::ingest(6000, 6_000_000, 6_000_000, STATE_PLAYING, 0, &mut out);
         // Without reset, seq=1 would be dropped as replay:
-        assert_eq!(TickMatrix::ingest(1, 1000, 1_000, STATE_PLAYING, 0, &mut out), 0);
+        assert_eq!(
+            TickMatrix::ingest(1, 1000, 1_000, STATE_PLAYING, 0, &mut out),
+            0
+        );
 
         TickMatrix::reset();
         assert_eq!(

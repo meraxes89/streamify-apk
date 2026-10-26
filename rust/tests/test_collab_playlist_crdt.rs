@@ -104,8 +104,17 @@ fn concurrent_multi_author_edits_converge_over_the_wire() {
     let rem_b1 = c.build_remove(b1.item_id).expect("cross-author remove");
 
     let all_ops = vec![
-        a1.clone(), b1.clone(), c1.clone(), a2.clone(), a3.clone(), rem_a1.clone(),
-        reo_a1.clone(), readd_a1.clone(), reo_a3.clone(), rn_a.clone(), rn_c.clone(),
+        a1.clone(),
+        b1.clone(),
+        c1.clone(),
+        a2.clone(),
+        a3.clone(),
+        rem_a1.clone(),
+        reo_a1.clone(),
+        readd_a1.clone(),
+        reo_a3.clone(),
+        rn_a.clone(),
+        rn_c.clone(),
         rem_b1.clone(),
     ];
 
@@ -150,7 +159,10 @@ fn concurrent_multi_author_edits_converge_over_the_wire() {
     assert_eq!(rows.len(), 4);
     let a3_row = rows.iter().find(|r| r.cad_id == 103).unwrap();
     assert!((a3_row.frac - 0.95).abs() < 1e-12, "reorder applied");
-    assert!(rows.iter().find(|r| r.cad_id == 201).is_none(), "b1 removed");
+    assert!(
+        rows.iter().find(|r| r.cad_id == 201).is_none(),
+        "b1 removed"
+    );
     assert!(rows.iter().find(|r| r.cad_id == 101).unwrap().item_id != a1.item_id);
 
     // Full replay through the RAW BYTES path (applyPlaylistOp semantics)
@@ -402,12 +414,18 @@ fn randomized_split_brain_chaos_converges() {
         assert_eq!(rep.title(), replicas[0].title());
         assert_eq!(rep.role_of(4), PlaylistRole::Editor, "SetRole converges");
         // The forged Viewer ops never granted anything.
-        assert_eq!(rep.role_of(9), PlaylistRole::Editor, "default role for unknowns");
+        assert_eq!(
+            rep.role_of(9),
+            PlaylistRole::Editor,
+            "default role for unknowns"
+        );
     }
     assert!(!snapshots[0].is_empty(), "chaos kept some rows alive");
 
     // Replay the whole storm once more (idempotence).
-    for (rep, order_ops) in replicas.iter_mut().zip([ops.clone(), ops.clone(), ops.clone()].iter())
+    for (rep, order_ops) in replicas
+        .iter_mut()
+        .zip([ops.clone(), ops.clone(), ops.clone()].iter())
     {
         for op in order_ops {
             let _ = rep.apply_op(op);
@@ -490,7 +508,7 @@ fn scraped_playlist_seeds_a_collaborative_session() {
         tracks: vec![
             track("Midnight City", "M83", 244),
             track("Nightcall", "Kavinsky", 252),
-            track("", "Ghost Row", 100),   // hostile row → skipped
+            track("", "Ghost Row", 100), // hostile row → skipped
             track("Turbo Killer", "Carpenter Brut", 230),
         ],
         continuation_token: None,
@@ -517,7 +535,9 @@ fn scraped_playlist_seeds_a_collaborative_session() {
     let insert = guest.build_add(9_999, mid).expect("guest insert");
     assert_eq!(guest.snapshot_items().len(), 4);
     let rows = guest.snapshot_items();
-    assert!(rows[0].frac < rows[1].frac && rows[1].frac < rows[2].frac && rows[2].frac < rows[3].frac);
+    assert!(
+        rows[0].frac < rows[1].frac && rows[1].frac < rows[2].frac && rows[2].frac < rows[3].frac
+    );
 
     // Round-trip the guest's edit back to the host over the wire codec.
     ship(&mut host, &[insert]);

@@ -8,7 +8,7 @@ pub enum BrainState {
     Distress = 1,   // Fast skip (<10s): 10% Spotify : 0% YouTube : 90% Liked (Emergency Reset)
     Hypnosis = 2,   // Passive dwell (3+ consecutive songs): 35% Spotify : 55% YouTube : 10% Liked
     Impatience = 3, // Scrubbing / Fast-Forward: 50% Spotify : 40% YouTube : 10% Liked (Energy >= 0.75)
-    Obsession = 4,  // Loop / Repeat track: 70% Spotify : 20% YouTube : 10% Liked (Cosine Sim >= 0.90)
+    Obsession = 4, // Loop / Repeat track: 70% Spotify : 20% YouTube : 10% Liked (Cosine Sim >= 0.90)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,9 +88,17 @@ impl NeuroQueueEngine {
             }
 
             // A. Base Tri-Engine Weights
-            let v_sp = if c.source == 1 { c.acoustic_sim } else { c.acoustic_sim * 0.8 };
+            let v_sp = if c.source == 1 {
+                c.acoustic_sim
+            } else {
+                c.acoustic_sim * 0.8
+            };
             let n_yt = if c.source == 2 { 0.90 } else { 0.50 };
-            let a_lk = if c.source == 0 { c.user_affinity.max(0.7) } else { c.user_affinity * 0.4 };
+            let a_lk = if c.source == 0 {
+                c.user_affinity.max(0.7)
+            } else {
+                c.user_affinity * 0.4
+            };
 
             let base_score = (w_sp * v_sp) + (w_yt * n_yt) + (w_lk * a_lk);
 
@@ -121,7 +129,8 @@ impl NeuroQueueEngine {
                 0.0
             };
 
-            let mut final_score = base_score - satiation_penalty + harmonic_bonus + circadian_bonus - tempo_drift_penalty;
+            let mut final_score = base_score - satiation_penalty + harmonic_bonus + circadian_bonus
+                - tempo_drift_penalty;
             if final_score < 0.0 {
                 final_score = 0.01;
             }
@@ -139,19 +148,23 @@ impl NeuroQueueEngine {
         let mut used_ids: HashSet<String> = HashSet::with_capacity(target_count + 8);
         used_ids.insert(seed.id.clone());
 
-        let mut liked_pool: Vec<NeuroCandidate> = scored_list.iter()
+        let mut liked_pool: Vec<NeuroCandidate> = scored_list
+            .iter()
             .filter(|(_, c)| c.source == 0)
             .map(|(_, c)| c.clone())
             .collect();
-        let mut spotify_pool: Vec<NeuroCandidate> = scored_list.iter()
+        let mut spotify_pool: Vec<NeuroCandidate> = scored_list
+            .iter()
             .filter(|(_, c)| c.source == 1)
             .map(|(_, c)| c.clone())
             .collect();
-        let mut yt_pool: Vec<NeuroCandidate> = scored_list.iter()
+        let mut yt_pool: Vec<NeuroCandidate> = scored_list
+            .iter()
             .filter(|(_, c)| c.source == 2)
             .map(|(_, c)| c.clone())
             .collect();
-        let mut general_pool: Vec<NeuroCandidate> = scored_list.into_iter().map(|(_, c)| c).collect();
+        let mut general_pool: Vec<NeuroCandidate> =
+            scored_list.into_iter().map(|(_, c)| c).collect();
 
         let count = target_count.max(1);
         for i in 0..count {
@@ -202,7 +215,10 @@ impl NeuroQueueEngine {
         queue
     }
 
-    fn pop_first_available(pool: &mut Vec<NeuroCandidate>, used: &mut HashSet<String>) -> Option<NeuroCandidate> {
+    fn pop_first_available(
+        pool: &mut Vec<NeuroCandidate>,
+        used: &mut HashSet<String>,
+    ) -> Option<NeuroCandidate> {
         let pos = pool.iter().position(|c| !used.contains(&c.id))?;
         let item = pool.remove(pos);
         used.insert(item.id.clone());
@@ -211,8 +227,16 @@ impl NeuroQueueEngine {
 
     fn parse_camelot(key_str: &str) -> (u8, char) {
         let clean = key_str.trim().to_uppercase();
-        let num: u8 = clean.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(8);
-        let letter: char = clean.chars().find(|c| c.is_ascii_alphabetic()).unwrap_or('A');
+        let num: u8 = clean
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(8);
+        let letter: char = clean
+            .chars()
+            .find(|c| c.is_ascii_alphabetic())
+            .unwrap_or('A');
         (num.clamp(1, 12), letter)
     }
 

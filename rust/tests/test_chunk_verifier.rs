@@ -44,7 +44,10 @@ fn full_size_file_tree_verifies_every_chunk() {
         let lo = i * cs;
         let hi = (lo + cs).min(len);
         let verdict = v.verify_chunk(i as u32, &data[lo..hi]);
-        assert!(matches!(verdict, streamify_core_rs::chunk_verifier::ChunkVerdict::Accepted { .. }));
+        assert!(matches!(
+            verdict,
+            streamify_core_rs::chunk_verifier::ChunkVerdict::Accepted { .. }
+        ));
     }
     assert!(v.is_complete());
     assert_eq!(v.verified_bytes(), len as u64);
@@ -168,7 +171,9 @@ fn manifest_wire_survives_hostile_fuzzing() {
     for round in 0..200 {
         let junk: Vec<u8> = (0..(round % 300 + 1))
             .map(|_| {
-                state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
                 (state >> 33) as u8
             })
             .collect();
@@ -191,7 +196,7 @@ fn tampered_chunk_hash_list_is_pinned_by_the_root() {
     let data = pseudo_audio(5 * MIN_CHUNK_SIZE + 777);
     let mut m = HashTreeManifest::build(&data, MIN_CHUNK_SIZE).unwrap();
     m.chunk_hashes[2][0] ^= 0xFF; // silent tamper
-    // The wire re-parse recomputes the root → hard rejection.
+                                  // The wire re-parse recomputes the root → hard rejection.
     assert!(HashTreeManifest::from_wire(&m.to_wire()).is_err());
 }
 

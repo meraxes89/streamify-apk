@@ -191,7 +191,13 @@ mod tests {
         // ── micro drift stays within audible band ──
         for i in 1..20 {
             let mut o = [0i64; 3];
-            decide(10_000 + i * 260, 1_000 + i * 250, 995 + i * 250, true, &mut o);
+            decide(
+                10_000 + i * 260,
+                1_000 + i * 250,
+                995 + i * 250,
+                true,
+                &mut o,
+            );
             if o[0] == DECISION_SPEED as i64 {
                 assert!((980..=1020).contains(&o[1]), "speed {} out of band", o[1]);
             }

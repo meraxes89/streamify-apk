@@ -71,7 +71,10 @@ impl fmt::Display for SyncError {
         match self {
             SyncError::MalformedCatalog => write!(f, "catalog wire payload malformed"),
             SyncError::CatalogTooLarge { entries } => {
-                write!(f, "catalog declares {entries} > {MAX_CATALOG_ENTRIES} entries")
+                write!(
+                    f,
+                    "catalog declares {entries} > {MAX_CATALOG_ENTRIES} entries"
+                )
             }
             SyncError::InvalidPath { path } => write!(f, "path rejected: {path:?}"),
             SyncError::UnknownJob => write!(f, "no such transfer job in this session"),
@@ -239,7 +242,8 @@ pub fn valid_rel_path(path: &str) -> bool {
     if depth > 32 {
         return false;
     }
-    path.split('/').all(|c| !c.is_empty() && c != "." && c != "..")
+    path.split('/')
+        .all(|c| !c.is_empty() && c != "." && c != "..")
 }
 
 // ─────────────────────────────────────────────────────────── delta
@@ -431,14 +435,16 @@ impl SyncPlan {
         for (l, r) in &delta.diverged {
             match policy.conflict {
                 ConflictPolicy::SkipDiverged => {
-                    plan.skipped.push((l.path.clone(), SkipReason::ConflictSkipped));
+                    plan.skipped
+                        .push((l.path.clone(), SkipReason::ConflictSkipped));
                 }
                 ConflictPolicy::NewerWins => match r.mtime_ms.cmp(&l.mtime_ms) {
                     std::cmp::Ordering::Greater => pull(&mut plan, r, l.path.clone()),
                     std::cmp::Ordering::Less => push(&mut plan, l, l.path.clone()),
                     // Same mtime, different bytes: do NOT guess.
                     std::cmp::Ordering::Equal => {
-                        plan.skipped.push((l.path.clone(), SkipReason::SuspiciousTie));
+                        plan.skipped
+                            .push((l.path.clone(), SkipReason::SuspiciousTie));
                     }
                 },
                 ConflictPolicy::KeepBoth => {
@@ -490,7 +496,11 @@ impl FileTransfer {
     /// Progress fraction in `[0, 1]`; empty files are instantly complete.
     pub fn progress(&self) -> f32 {
         if self.bytes_total == 0 {
-            if self.done { 1.0 } else { 0.0 }
+            if self.done {
+                1.0
+            } else {
+                0.0
+            }
         } else {
             (self.bytes_done as f64 / self.bytes_total as f64).min(1.0) as f32
         }
@@ -513,7 +523,11 @@ pub struct SyncSummary {
 /// Events surfaced to the JNI callback bridge (and the chaos suite).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncEvent {
-    SessionStarted { peer: String, files_planned: u32, bytes_planned: u64 },
+    SessionStarted {
+        peer: String,
+        files_planned: u32,
+        bytes_planned: u64,
+    },
     CatalogsExchanged {
         local_entries: u32,
         remote_entries: u32,
@@ -522,12 +536,28 @@ pub enum SyncEvent {
         diverged: u32,
         identical: u32,
     },
-    FileTransferStarted { direction: Direction, path: String, bytes_total: u64 },
+    FileTransferStarted {
+        direction: Direction,
+        path: String,
+        bytes_total: u64,
+    },
     /// One chunk landed: the "chunk completion callback" the app layer
     /// subscribes to for per-file progress UI.
-    FileChunkCompleted { direction: Direction, path: String, bytes_done: u64, bytes_total: u64 },
-    FileCompleted { direction: Direction, path: String, bytes_total: u64 },
-    FileSkipped { path: String, reason: SkipReason },
+    FileChunkCompleted {
+        direction: Direction,
+        path: String,
+        bytes_done: u64,
+        bytes_total: u64,
+    },
+    FileCompleted {
+        direction: Direction,
+        path: String,
+        bytes_total: u64,
+    },
+    FileSkipped {
+        path: String,
+        reason: SkipReason,
+    },
     SessionCompleted(SyncSummary),
     SessionCancelled(SyncSummary),
 }
@@ -549,7 +579,12 @@ impl SyncSession {
     /// Negotiates a session from the two catalogs + a policy: computes
     /// the delta, gates the plan, and queues the opening events. The
     /// caller has NOT started transferring until `start()`.
-    pub fn new(peer: &str, local: &LibraryCatalog, remote: &LibraryCatalog, policy: SyncPolicy) -> Self {
+    pub fn new(
+        peer: &str,
+        local: &LibraryCatalog,
+        remote: &LibraryCatalog,
+        policy: SyncPolicy,
+    ) -> Self {
         let delta = CatalogDelta::compute(local, remote);
         let plan = SyncPlan::from_delta(&delta, &policy);
         let mut events = std::collections::VecDeque::new();
@@ -770,15 +805,11 @@ impl SyncSession {
             };
             self.events.push_back(ev);
         }
-        if self
-            .files
-            .values()
-            .all(|f| f.done)
-            && self.state == SessionState::Syncing {
-                self.state = SessionState::Completed;
-                let ev = SyncEvent::SessionCompleted(self.summary);
-                self.events.push_back(ev);
-            }
+        if self.files.values().all(|f| f.done) && self.state == SessionState::Syncing {
+            self.state = SessionState::Completed;
+            let ev = SyncEvent::SessionCompleted(self.summary);
+            self.events.push_back(ev);
+        }
     }
 
     /// Per-file progress fraction, `None` for unknown jobs.
@@ -797,7 +828,11 @@ impl SyncSession {
     pub fn overall_progress(&self) -> f32 {
         let total: u64 = self.files.values().map(|f| f.bytes_total).sum();
         if total == 0 {
-            return if self.state == SessionState::Completed { 1.0 } else { 0.0 };
+            return if self.state == SessionState::Completed {
+                1.0
+            } else {
+                0.0
+            };
         }
         let done: u64 = self.files.values().map(|f| f.bytes_done).sum();
         (done as f64 / total as f64).min(1.0) as f32
@@ -895,11 +930,7 @@ mod tests {
         // Entry-count lie: declared 3, body holds 2.
         let mut lie = wire.clone();
         lie[4..8].copy_from_slice(&3u32.to_le_bytes());
-        let two = catalog(vec![
-            entry("a.flac", 1, 1, 1),
-            entry("b.flac", 1, 1, 1),
-        ])
-        .to_wire();
+        let two = catalog(vec![entry("a.flac", 1, 1, 1), entry("b.flac", 1, 1, 1)]).to_wire();
         let mut forged = Vec::new();
         forged.extend_from_slice(&two[..8]);
         forged.extend_from_slice(&two[8..]);
@@ -956,12 +987,18 @@ mod tests {
             &SyncPolicy::default(),
         );
         assert_eq!(plan.jobs.len(), 3);
-        assert!(plan.jobs.iter().any(|j| j.direction == Direction::Pull
-            && j.path == "Clark/Body Riddle/2.flac"));
-        assert!(plan.jobs.iter().any(|j| j.direction == Direction::Push
-            && j.path == "Boards of Canada/MHTRTC/6.flac"));
-        assert!(plan.jobs.iter().any(|j| j.direction == Direction::Push
-            && j.path == "Aphex Twin/SAW II/3.flac"));
+        assert!(plan
+            .jobs
+            .iter()
+            .any(|j| j.direction == Direction::Pull && j.path == "Clark/Body Riddle/2.flac"));
+        assert!(plan
+            .jobs
+            .iter()
+            .any(|j| j.direction == Direction::Push && j.path == "Boards of Canada/MHTRTC/6.flac"));
+        assert!(plan
+            .jobs
+            .iter()
+            .any(|j| j.direction == Direction::Push && j.path == "Aphex Twin/SAW II/3.flac"));
 
         // Push denied: pull-only policy — every push candidate (Aphex +
         // the diverged Boards push) is skipped, only the pull survives.
@@ -972,7 +1009,10 @@ mod tests {
         let plan = SyncPlan::from_delta(&CatalogDelta::compute(&local, &remote), &pull_only);
         assert!(plan.jobs.iter().all(|j| j.direction == Direction::Pull));
         assert_eq!(
-            plan.skipped.iter().filter(|(_, r)| *r == SkipReason::PolicyDenied).count(),
+            plan.skipped
+                .iter()
+                .filter(|(_, r)| *r == SkipReason::PolicyDenied)
+                .count(),
             2
         );
 
@@ -983,8 +1023,10 @@ mod tests {
             ..SyncPolicy::default()
         };
         let plan = SyncPlan::from_delta(&CatalogDelta::compute(&local, &remote), &budget);
-        assert!(plan.jobs.iter().any(|j| j.direction == Direction::Push
-            && j.path == "Aphex Twin/SAW II/3.flac"));
+        assert!(plan
+            .jobs
+            .iter()
+            .any(|j| j.direction == Direction::Push && j.path == "Aphex Twin/SAW II/3.flac"));
         assert_eq!(
             plan.skipped
                 .iter()
@@ -994,15 +1036,21 @@ mod tests {
         );
 
         // Suspicious tie: same mtime, diverged bytes → skipped loudly.
-        let tied = catalog(vec![
-            entry("Boards of Canada/MHTRTC/6.flac", 2_500, 2_000, 0x2A),
-        ]);
+        let tied = catalog(vec![entry(
+            "Boards of Canada/MHTRTC/6.flac",
+            2_500,
+            2_000,
+            0x2A,
+        )]);
         let plan = SyncPlan::from_delta(
             &CatalogDelta::compute(&sample_local(), &tied),
             &SyncPolicy::default(),
         );
         assert_eq!(
-            plan.skipped.iter().filter(|(_, r)| *r == SkipReason::SuspiciousTie).count(),
+            plan.skipped
+                .iter()
+                .filter(|(_, r)| *r == SkipReason::SuspiciousTie)
+                .count(),
             1
         );
 
@@ -1019,10 +1067,7 @@ mod tests {
             conflict: ConflictPolicy::KeepBoth,
             ..SyncPolicy::default()
         };
-        let plan = SyncPlan::from_delta(
-            &CatalogDelta::compute(&sample_local(), &tied_full),
-            &keep,
-        );
+        let plan = SyncPlan::from_delta(&CatalogDelta::compute(&sample_local(), &tied_full), &keep);
         assert_eq!(plan.jobs.len(), 1);
         assert_eq!(plan.jobs[0].direction, Direction::Pull);
         assert_eq!(plan.jobs[0].path, "Boards of Canada/MHTRTC/6.flac.peer");
@@ -1035,7 +1080,10 @@ mod tests {
         let plan = SyncPlan::from_delta(&CatalogDelta::compute(&sample_local(), &tied_full), &skip);
         assert!(plan.jobs.is_empty());
         assert_eq!(
-            plan.skipped.iter().filter(|(_, r)| *r == SkipReason::ConflictSkipped).count(),
+            plan.skipped
+                .iter()
+                .filter(|(_, r)| *r == SkipReason::ConflictSkipped)
+                .count(),
             1
         );
     }
@@ -1074,7 +1122,8 @@ mod tests {
             .is_err());
         assert!(s.resume());
 
-        s.on_file_completed(Direction::Pull, "Clark/Body Riddle/2.flac").unwrap();
+        s.on_file_completed(Direction::Pull, "Clark/Body Riddle/2.flac")
+            .unwrap();
         assert_eq!(s.state(), SessionState::Completed);
         let sum = s.summary();
         assert_eq!(sum.files_pulled, 1);
@@ -1103,21 +1152,35 @@ mod tests {
 
         s.on_bytes_transferred(Direction::Pull, "Clark/Body Riddle/2.flac", 500)
             .unwrap();
-        s.on_file_completed(Direction::Pull, "Clark/Body Riddle/2.flac").unwrap();
+        s.on_file_completed(Direction::Pull, "Clark/Body Riddle/2.flac")
+            .unwrap();
         assert_eq!(s.state(), SessionState::Completed);
 
         let events = s.drain_events();
         // CatalogsExchanged → SessionStarted → Started* → (empty file
         // completes instantly) → Chunk → Completed → SessionCompleted.
-        assert!(matches!(events[0], SyncEvent::CatalogsExchanged { identical: 0, .. }));
-        assert!(matches!(events[1], SyncEvent::SessionStarted { files_planned: 2, .. }));
+        assert!(matches!(
+            events[0],
+            SyncEvent::CatalogsExchanged { identical: 0, .. }
+        ));
+        assert!(matches!(
+            events[1],
+            SyncEvent::SessionStarted {
+                files_planned: 2,
+                ..
+            }
+        ));
         assert!(events.iter().any(|e| matches!(
             e,
             SyncEvent::FileTransferStarted { path, .. } if path == "Clark/Empty Tag/0.flac"
         )));
         assert!(events.iter().any(|e| matches!(
             e,
-            SyncEvent::FileChunkCompleted { bytes_done: 500, bytes_total: 1_000, .. }
+            SyncEvent::FileChunkCompleted {
+                bytes_done: 500,
+                bytes_total: 1_000,
+                ..
+            }
         )));
         assert_eq!(
             events
@@ -1126,7 +1189,10 @@ mod tests {
                 .count(),
             2
         );
-        assert!(matches!(events.last(), Some(SyncEvent::SessionCompleted(_))));
+        assert!(matches!(
+            events.last(),
+            Some(SyncEvent::SessionCompleted(_))
+        ));
         // Drain is destructive.
         assert!(s.drain_events().is_empty());
     }
@@ -1145,7 +1211,10 @@ mod tests {
         assert!(s.cancel());
         assert_eq!(s.state(), SessionState::Cancelled);
         let events = s.drain_events();
-        assert!(matches!(events.last(), Some(SyncEvent::SessionCancelled(_))));
+        assert!(matches!(
+            events.last(),
+            Some(SyncEvent::SessionCancelled(_))
+        ));
     }
 
     #[test]

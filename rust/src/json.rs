@@ -203,7 +203,9 @@ impl InnertubeParser {
         };
 
         let mut streams = Vec::new();
-        let adaptive = root.pointer("/streamingData/adaptiveFormats").and_then(|v| v.as_array());
+        let adaptive = root
+            .pointer("/streamingData/adaptiveFormats")
+            .and_then(|v| v.as_array());
 
         if let Some(formats) = adaptive {
             for f in formats {
@@ -230,7 +232,10 @@ impl InnertubeParser {
 
         // Standard progressive formats fallback
         if streams.is_empty() {
-            if let Some(formats) = root.pointer("/streamingData/formats").and_then(|v| v.as_array()) {
+            if let Some(formats) = root
+                .pointer("/streamingData/formats")
+                .and_then(|v| v.as_array())
+            {
                 for f in formats {
                     if let Some(url) = Self::extract_format_url(f) {
                         let mime_type = f.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
@@ -301,17 +306,27 @@ impl InnertubeParser {
             .map(|f| f as f32);
 
         let mut formats_list = Vec::new();
-        if let Some(adaptive) = root.pointer("/streamingData/adaptiveFormats").and_then(|v| v.as_array()) {
+        if let Some(adaptive) = root
+            .pointer("/streamingData/adaptiveFormats")
+            .and_then(|v| v.as_array())
+        {
             formats_list.extend(adaptive.iter().cloned());
         }
-        if let Some(formats) = root.pointer("/streamingData/formats").and_then(|v| v.as_array()) {
+        if let Some(formats) = root
+            .pointer("/streamingData/formats")
+            .and_then(|v| v.as_array())
+        {
             formats_list.extend(formats.iter().cloned());
         }
 
         let mut candidate_streams = Vec::new();
         for f in &formats_list {
             if let Some(url) = Self::extract_format_url(f) {
-                let mime_type = f.get("mimeType").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                let mime_type = f
+                    .get("mimeType")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let bitrate = f.get("bitrate").and_then(|b| b.as_u64()).unwrap_or(0) as u32;
                 let itag = f.get("itag").and_then(|i| i.as_u64()).unwrap_or(0) as u32;
                 let is_audio = mime_type.starts_with("audio/");
@@ -360,7 +375,10 @@ impl InnertubeParser {
         }
 
         candidate_streams.sort_by_key(|(priority, _)| std::cmp::Reverse(*priority));
-        candidate_streams.into_iter().next().map(|(_, stream)| stream)
+        candidate_streams
+            .into_iter()
+            .next()
+            .map(|(_, stream)| stream)
     }
 
     pub fn extract_stream_verdict(raw_json: &str) -> Option<StreamVerdict> {
@@ -384,10 +402,16 @@ impl InnertubeParser {
             .map(|f| f as f32);
 
         let mut formats_list = Vec::new();
-        if let Some(adaptive) = root.pointer("/streamingData/adaptiveFormats").and_then(|v| v.as_array()) {
+        if let Some(adaptive) = root
+            .pointer("/streamingData/adaptiveFormats")
+            .and_then(|v| v.as_array())
+        {
             formats_list.extend(adaptive.iter().cloned());
         }
-        if let Some(formats) = root.pointer("/streamingData/formats").and_then(|v| v.as_array()) {
+        if let Some(formats) = root
+            .pointer("/streamingData/formats")
+            .and_then(|v| v.as_array())
+        {
             formats_list.extend(formats.iter().cloned());
         }
 
@@ -395,7 +419,11 @@ impl InnertubeParser {
         let mut ciphered_count = 0u32;
 
         for f in &formats_list {
-            let mime_type = f.get("mimeType").and_then(|m| m.as_str()).unwrap_or("").to_string();
+            let mime_type = f
+                .get("mimeType")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .to_string();
             let is_audio = mime_type.starts_with("audio/");
 
             if let Some(url) = f.get("url").and_then(|u| u.as_str()) {
@@ -423,19 +451,28 @@ impl InnertubeParser {
                         loudness_db: format_loudness,
                     });
                 }
-            } else if (f.get("signatureCipher").is_some() || f.get("cipher").is_some()) && is_audio {
+            } else if (f.get("signatureCipher").is_some() || f.get("cipher").is_some()) && is_audio
+            {
                 ciphered_count += 1;
             }
         }
 
         // Sort direct formats: Opus (251) > AAC (140) > highest bitrate
         direct_formats.sort_by(|a, b| {
-            let a_score = if a.itag == 251 || a.mime_type.contains("opus") { 300_000 + a.bitrate }
-                          else if a.itag == 140 || a.mime_type.contains("mp4a") { 200_000 + a.bitrate }
-                          else { a.bitrate };
-            let b_score = if b.itag == 251 || b.mime_type.contains("opus") { 300_000 + b.bitrate }
-                          else if b.itag == 140 || b.mime_type.contains("mp4a") { 200_000 + b.bitrate }
-                          else { b.bitrate };
+            let a_score = if a.itag == 251 || a.mime_type.contains("opus") {
+                300_000 + a.bitrate
+            } else if a.itag == 140 || a.mime_type.contains("mp4a") {
+                200_000 + a.bitrate
+            } else {
+                a.bitrate
+            };
+            let b_score = if b.itag == 251 || b.mime_type.contains("opus") {
+                300_000 + b.bitrate
+            } else if b.itag == 140 || b.mime_type.contains("mp4a") {
+                200_000 + b.bitrate
+            } else {
+                b.bitrate
+            };
             b_score.cmp(&a_score)
         });
 

@@ -21,9 +21,9 @@ pub struct LyricAlignerEngine;
 impl LyricAlignerEngine {
     /// Common short English function words that require shorter acoustic duration
     const SHORT_FUNCTION_WORDS: &'static [&'static str] = &[
-        "a", "an", "the", "in", "on", "at", "to", "for", "of", "and", "or",
-        "but", "so", "if", "is", "am", "are", "was", "were", "it", "its", "my",
-        "you", "he", "she", "we", "they", "me", "him", "her", "us", "them",
+        "a", "an", "the", "in", "on", "at", "to", "for", "of", "and", "or", "but", "so", "if",
+        "is", "am", "are", "was", "were", "it", "its", "my", "you", "he", "she", "we", "they",
+        "me", "him", "her", "us", "them",
     ];
 
     /// Performs word-level forced alignment & prosodic expansion on a single line
@@ -51,19 +51,28 @@ impl LyricAlignerEngine {
         }
 
         let total_weight: f32 = weights.iter().sum();
-        let safe_total_weight = if total_weight > 0.001 { total_weight } else { words.len() as f32 };
+        let safe_total_weight = if total_weight > 0.001 {
+            total_weight
+        } else {
+            words.len() as f32
+        };
 
         // 2. Initial Proportional Timestamp Distribution
         let mut syllables: Vec<AlignedSyllable> = Vec::with_capacity(words.len());
         let mut current_offset = line_start_ms;
 
         for (i, &word) in words.iter().enumerate() {
-            let word_duration = ((weights[i] / safe_total_weight) * total_line_duration as f32).round() as u32;
+            let word_duration =
+                ((weights[i] / safe_total_weight) * total_line_duration as f32).round() as u32;
             let start = current_offset;
             let end = (start + word_duration.max(120)).min(line_start_ms + total_line_duration);
 
             syllables.push(AlignedSyllable {
-                text: if i == words.len() - 1 { word.to_string() } else { format!("{} ", word) },
+                text: if i == words.len() - 1 {
+                    word.to_string()
+                } else {
+                    format!("{} ", word)
+                },
                 start_ms: start,
                 end_ms: end,
                 weight: weights[i],
@@ -96,7 +105,11 @@ impl LyricAlignerEngine {
             return Vec::new();
         }
 
-        let duration = if song_duration_ms > 30000 { song_duration_ms } else { 180000 };
+        let duration = if song_duration_ms > 30000 {
+            song_duration_ms
+        } else {
+            180000
+        };
         // Intro offset (8% of song duration) and Outro padding (5%)
         let intro_offset_ms = (duration as f32 * 0.08) as u32;
         let singing_duration_ms = (duration as f32 * 0.87) as u32;

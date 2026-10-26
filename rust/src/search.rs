@@ -115,7 +115,8 @@ impl FuzzySearchEngine {
         }
 
         let m = matches as f32;
-        let jaro = (m / len1 as f32 + m / len2 as f32 + (m - (transpositions / 2) as f32) / m) / 3.0;
+        let jaro =
+            (m / len1 as f32 + m / len2 as f32 + (m - (transpositions / 2) as f32) / m) / 3.0;
 
         // Prefix bonus (Winkler modification)
         let mut prefix_len = 0usize;
@@ -173,6 +174,10 @@ impl FuzzySearchEngine {
             c.score = (max_score + liked_bonus).clamp(0.0, 1.0);
         }
 
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 }

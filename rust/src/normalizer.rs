@@ -7,10 +7,10 @@ use std::panic::catch_unwind;
 
 #[repr(C)]
 pub struct NormalizerState {
-    pub target_rms: f32,        // Target loudness (e.g., 0.25 ≈ -14 LUFS equivalent)
-    pub current_rms: f32,       // Running average loudness
-    pub gain: f32,              // Current dynamic gain multiplier
-    pub window: [f32; 1024],    // Rolling window of square amplitudes
+    pub target_rms: f32,     // Target loudness (e.g., 0.25 ≈ -14 LUFS equivalent)
+    pub current_rms: f32,    // Running average loudness
+    pub gain: f32,           // Current dynamic gain multiplier
+    pub window: [f32; 1024], // Rolling window of square amplitudes
     pub window_idx: usize,
 }
 

@@ -822,8 +822,7 @@ impl RoomGovernor {
         }
         let mut committed = frame.to_vec();
         let flags = u32::from_le_bytes(committed[125..129].try_into().ok()?);
-        committed[125..129]
-            .copy_from_slice(&(flags | INTENT_COMMITTED_FLAG).to_le_bytes());
+        committed[125..129].copy_from_slice(&(flags | INTENT_COMMITTED_FLAG).to_le_bytes());
         committed[129..161].copy_from_slice(&self.host_pubkey);
         let sig = self.signing.sign(&committed[..129]);
         committed[161..225].copy_from_slice(&sig.to_bytes());
@@ -885,11 +884,7 @@ impl RoomGovernor {
     /// Phase 2 (directive A): wire-boundary verification of a vote frame.
     /// Gate order mirrors [`Self::verify_intent`]: bounds + sealed op →
     /// Ed25519 signature → blacklist → epoch fence → vote rate bucket.
-    pub fn verify_vote(
-        &mut self,
-        frame: &[u8],
-        now_ns: i64,
-    ) -> Result<VerifiedVote, RejectReason> {
+    pub fn verify_vote(&mut self, frame: &[u8], now_ns: i64) -> Result<VerifiedVote, RejectReason> {
         if frame.len() != VOTE_FRAME_LEN {
             return Err(RejectReason::Malformed);
         }
@@ -946,7 +941,11 @@ impl RoomGovernor {
 
     /// Verifies a TRANSPORT_INTENT frame against every governance gate:
     /// bounds → signature → blacklist → epoch fence → replay → rate → ACL.
-    pub fn verify_intent(&mut self, frame: &[u8], now_ns: i64) -> Result<VerifiedIntent, RejectReason> {
+    pub fn verify_intent(
+        &mut self,
+        frame: &[u8],
+        now_ns: i64,
+    ) -> Result<VerifiedIntent, RejectReason> {
         // 1. Origin authenticity: Ed25519 over [0..61) — plus the wire
         //    field parse (shared with the commit path).
         let (kind, epoch, nonce, origin, body) = self.verify_intent_signature(frame)?;
@@ -970,10 +969,9 @@ impl RoomGovernor {
         self.last_nonce.insert(origin, nonce);
 
         // 5. Per-peer rate limit (5 intents/sec, burst 5).
-        let bucket = self
-            .rate
-            .entry(origin)
-            .or_insert_with(|| TokenBucket::new(INTENT_RATE_BURST, INTENT_RATE_LIMIT_PER_SEC, now_ns));
+        let bucket = self.rate.entry(origin).or_insert_with(|| {
+            TokenBucket::new(INTENT_RATE_BURST, INTENT_RATE_LIMIT_PER_SEC, now_ns)
+        });
         if !bucket.try_consume(now_ns) {
             return Err(RejectReason::RateLimited);
         }
@@ -1014,7 +1012,10 @@ impl RoomGovernor {
             // Committed frames were ACL-checked by the host before signing;
             // still enforce locally-known restrictions as defense-in-depth.
             let bits = self.member_bits(&origin);
-            if bits & IS_COHOST == 0 && bits & kind.required_bit() == 0 && origin != self.host_pubkey {
+            if bits & IS_COHOST == 0
+                && bits & kind.required_bit() == 0
+                && origin != self.host_pubkey
+            {
                 return Err(RejectReason::AclDenied);
             }
         }
@@ -1072,10 +1073,7 @@ impl RoomGovernor {
     }
 
     /// Verifies a host-signed ACL_UPDATE.
-    pub fn verify_acl_update(
-        &mut self,
-        frame: &[u8],
-    ) -> Result<VerifiedAclUpdate, RejectReason> {
+    pub fn verify_acl_update(&mut self, frame: &[u8]) -> Result<VerifiedAclUpdate, RejectReason> {
         if frame.len() != ACL_FRAME_LEN {
             return Err(RejectReason::Malformed);
         }
@@ -1128,7 +1126,8 @@ impl RoomGovernor {
 
     /// Applies a verified ACL update (monotonic in acl_version).
     pub fn apply_acl_update(&mut self, update: &VerifiedAclUpdate) {
-        self.acl.insert(update.target_pubkey, update.permission_bits);
+        self.acl
+            .insert(update.target_pubkey, update.permission_bits);
         self.acl_version = self.acl_version.max(update.acl_version);
         if update.target_pubkey == self.pubkey() {
             self.events.push_back(GovernanceEvent::AclChanged {
@@ -1207,4 +1206,3 @@ fn bytes_from_hex(s: &str) -> Option<[u8; 32]> {
     }
     Some(out)
 }
-

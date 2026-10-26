@@ -1,5 +1,5 @@
-use std::fs;
 use libc::{cpu_set_t, sched_setaffinity, CPU_SET, CPU_ZERO};
+use std::fs;
 
 /// Reads `/sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq`
 /// to identify the LITTLE (Efficiency) cluster dynamically across
@@ -33,7 +33,11 @@ pub fn get_little_core_ids() -> Vec<usize> {
 
     // Efficiency cluster is typically the lower 50% (or min 2-4 cores)
     let little_count = (core_freqs.len() / 2).max(2);
-    core_freqs.iter().take(little_count).map(|&(id, _)| id).collect()
+    core_freqs
+        .iter()
+        .take(little_count)
+        .map(|&(id, _)| id)
+        .collect()
 }
 
 /// Binds the current calling thread strictly to the LITTLE (Efficiency) CPU cores

@@ -231,7 +231,8 @@ impl JamOp {
             LAST_SEEN_MS.store(current_ms, Ordering::Release);
         }
 
-        ((current_ms & 0xFFFF_FFFF_FFFF) << 16) | GLOBAL_OP_COUNTER.fetch_add(1, Ordering::AcqRel) as u64
+        ((current_ms & 0xFFFF_FFFF_FFFF) << 16)
+            | GLOBAL_OP_COUNTER.fetch_add(1, Ordering::AcqRel) as u64
     }
 
     /// FNV-1a 32 over payload bytes [0..40): every field except the checksum
@@ -496,8 +497,12 @@ impl JamCrdtState {
                     return false; // B2: late replay after Remove — suppressed
                 }
                 let key = frac_key(op.frac_index, op.op_id);
-                self.queue
-                    .insert(key, QueueEntry { cad_id: op.track_cad_id });
+                self.queue.insert(
+                    key,
+                    QueueEntry {
+                        cad_id: op.track_cad_id,
+                    },
+                );
                 touched = Some(key);
             }
             2 => {
@@ -633,7 +638,8 @@ impl JamCrdtState {
         self.queue.clear();
         for (frac, add_id, cad) in queue {
             if frac.is_finite() {
-                self.queue.insert(frac_key(frac, add_id), QueueEntry { cad_id: cad });
+                self.queue
+                    .insert(frac_key(frac, add_id), QueueEntry { cad_id: cad });
             }
         }
         self.tombstones.clear();
@@ -876,11 +882,7 @@ impl JamCrdtState {
                         .votes
                         .per_target
                         .get(&t)
-                        .map(|m| {
-                            m.iter()
-                                .map(|(v, s)| (*v, s.up, s.op_id))
-                                .collect()
-                        })
+                        .map(|m| m.iter().map(|(v, s)| (*v, s.up, s.op_id)).collect())
                         .unwrap_or_default();
                     voters.sort_by_key(|a| a.0);
                     (t, voters)
@@ -952,8 +954,24 @@ mod tests {
         // ── B2: out-of-order Add after Remove suppressed ──
         let mut st = JamCrdtState::new();
         let cad_a = canonical_cad_id("Track A", "Artist", 100);
-        let add_a = JamOp::new(JamOp::generate_op_id(), [1; 4], OpType::Add, 0, cad_a, 0.5, 0);
-        let rem_a = JamOp::new(JamOp::generate_op_id(), [1; 4], OpType::Remove, 0, cad_a, 0.0, add_a.op_id);
+        let add_a = JamOp::new(
+            JamOp::generate_op_id(),
+            [1; 4],
+            OpType::Add,
+            0,
+            cad_a,
+            0.5,
+            0,
+        );
+        let rem_a = JamOp::new(
+            JamOp::generate_op_id(),
+            [1; 4],
+            OpType::Remove,
+            0,
+            cad_a,
+            0.0,
+            add_a.op_id,
+        );
         assert!(st.apply_op(&rem_a));
         assert!(st.tombstones.contains_key(&add_a.op_id));
         assert!(!st.apply_op(&add_a), "late Add must be tombstoned");
@@ -1006,13 +1024,24 @@ mod tests {
         assert!(st.apply_op(&reorder));
         let snap = st.snapshot_vec();
         assert_eq!(snap.len(), 1);
-        assert_eq!(snap[0].2, cad_a, "reorder must carry original cad, not sender echo");
+        assert_eq!(
+            snap[0].2, cad_a,
+            "reorder must carry original cad, not sender echo"
+        );
         assert!((snap[0].0 - 0.8).abs() < f64::EPSILON);
 
         // ── M2: relative-ULP density latch ──
         let mut dense = JamCrdtState::new();
         dense.apply_op(&JamOp::new(91_001, [5; 4], OpType::Add, 0, 1, 1.0e300, 0));
-        dense.apply_op(&JamOp::new(91_002, [5; 4], OpType::Add, 0, 2, 1.0e300 + 1.0e284, 0));
+        dense.apply_op(&JamOp::new(
+            91_002,
+            [5; 4],
+            OpType::Add,
+            0,
+            2,
+            1.0e300 + 1.0e284,
+            0,
+        ));
         assert!(dense.needs_rebalance, "ULP-scale gap must latch rebalance");
 
         // ── M3: NaN poisoning rejected ──
@@ -1044,7 +1073,15 @@ mod tests {
     // ═════════════════════════════════════════════════════════════════
 
     fn vote_op(op_id: u64, nonce: [u8; 4], up: bool, target: u64) -> JamOp {
-        JamOp::new(op_id, nonce, OpType::Vote, if up { VOTE_FLAG_UP } else { 0 }, 0, 0.0, target)
+        JamOp::new(
+            op_id,
+            nonce,
+            OpType::Vote,
+            if up { VOTE_FLAG_UP } else { 0 },
+            0,
+            0.0,
+            target,
+        )
     }
 
     fn voter_pk(seed: u8) -> VoterId {
@@ -1102,7 +1139,10 @@ mod tests {
 
         let up = vote_op(3001, [7; 4], true, t);
         let retract = vote_op(3002, [7; 4], false, t);
-        assert_eq!(st.apply_op_as(&up, &voter_pk(7)), Some(VoteOutcome::Recorded));
+        assert_eq!(
+            st.apply_op_as(&up, &voter_pk(7)),
+            Some(VoteOutcome::Recorded)
+        );
         assert_eq!(st.vote_count(t), 1);
 
         // Retraction (newer op_id) → net count drops to 0, roster keeps history.
@@ -1111,7 +1151,11 @@ mod tests {
             Some(VoteOutcome::Recorded)
         );
         assert_eq!(st.vote_count(t), 0, "retraction subtracts");
-        assert_eq!(st.voter_roster(t).len(), 1, "roster retains retracted voter");
+        assert_eq!(
+            st.voter_roster(t).len(),
+            1,
+            "roster retains retracted voter"
+        );
         assert_eq!(st.voted_by(t, &voter_pk(7)), Some(false));
 
         // Stale out-of-order delivery (older op_id after the retraction).
@@ -1124,7 +1168,10 @@ mod tests {
 
         // Re-upvote with a newer op_id wins again.
         let reup = vote_op(3003, [7; 4], true, t);
-        assert_eq!(st.apply_op_as(&reup, &voter_pk(7)), Some(VoteOutcome::Recorded));
+        assert_eq!(
+            st.apply_op_as(&reup, &voter_pk(7)),
+            Some(VoteOutcome::Recorded)
+        );
         assert_eq!(st.vote_count(t), 1);
     }
 
@@ -1188,7 +1235,11 @@ mod tests {
     #[test]
     fn promotion_threshold_math() {
         // ⌊N/2⌋+1 majority ladder.
-        let p = |n: u32| PromotionPolicy { member_count: n, ratio: None, min_votes: 1 };
+        let p = |n: u32| PromotionPolicy {
+            member_count: n,
+            ratio: None,
+            min_votes: 1,
+        };
         assert_eq!(p(1).effective_threshold(), 1);
         assert_eq!(p(2).effective_threshold(), 2);
         assert_eq!(p(7).effective_threshold(), 4);
@@ -1196,13 +1247,25 @@ mod tests {
         assert_eq!(p(32).effective_threshold(), 17);
 
         // Host-configured ratio: ceil(ratio·N).
-        let r = PromotionPolicy { member_count: 8, ratio: Some(0.75), min_votes: 1 };
+        let r = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(0.75),
+            min_votes: 1,
+        };
         assert_eq!(r.effective_threshold(), 6);
         // Ratio floors below the majority quorum are still allowed.
-        let r2 = PromotionPolicy { member_count: 8, ratio: Some(0.25), min_votes: 1 };
+        let r2 = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(0.25),
+            min_votes: 1,
+        };
         assert_eq!(r2.effective_threshold(), 2);
         // min_votes floor beats everything.
-        let m = PromotionPolicy { member_count: 4, ratio: None, min_votes: 9 };
+        let m = PromotionPolicy {
+            member_count: 4,
+            ratio: None,
+            min_votes: 9,
+        };
         assert_eq!(m.effective_threshold(), 9);
     }
 
@@ -1242,11 +1305,18 @@ mod tests {
         // (the derived committed block never rewrites the physical queue).
         let after = st.proposed_queue();
         assert_eq!(after.len(), 3);
-        for (prev, cur) in before.iter().filter(|e| e.add_op_id != b.op_id).zip(after.iter()) {
+        for (prev, cur) in before
+            .iter()
+            .filter(|e| e.add_op_id != b.op_id)
+            .zip(after.iter())
+        {
             assert_eq!(prev.add_op_id, cur.add_op_id);
         }
         assert_eq!(after[0].add_op_id, a.op_id);
-        assert!((after[0].frac - 0.40).abs() < f64::EPSILON, "un-voted fractions are sacred");
+        assert!(
+            (after[0].frac - 0.40).abs() < f64::EPSILON,
+            "un-voted fractions are sacred"
+        );
         assert!((after[2].frac - 0.70).abs() < f64::EPSILON);
 
         // A and C each collect 3 votes too — democratic ordering emerges:
@@ -1265,7 +1335,10 @@ mod tests {
         let committed = st.committed_queue();
         assert_eq!(committed.len(), 3);
         assert_eq!(committed[0].add_op_id, c.op_id, "4 votes head the queue");
-        assert_eq!(committed[1].add_op_id, a.op_id, "tie 3-3 → lower add id first");
+        assert_eq!(
+            committed[1].add_op_id, a.op_id,
+            "tie 3-3 → lower add id first"
+        );
         assert_eq!(committed[2].add_op_id, b.op_id);
         // Strictly ascending fractional order inside the committed block,
         // and the whole block sits fractionally ahead of the un-voted rail.
@@ -1274,7 +1347,10 @@ mod tests {
         assert_eq!(proposed.len(), 1);
         assert_eq!(proposed[0].add_op_id, d.op_id);
         assert!(committed[2].frac < proposed[0].frac);
-        assert!((proposed[0].frac - 0.70).abs() < f64::EPSILON, "D untouched at its manual frac");
+        assert!(
+            (proposed[0].frac - 0.70).abs() < f64::EPSILON,
+            "D untouched at its manual frac"
+        );
 
         // The full playback order = committed block, then proposed rail.
         let playback = st.playback_order();
@@ -1317,17 +1393,27 @@ mod tests {
             let voter = voter_pk(op.sender_nonce[0]);
             let _ = r2.apply_op_as(op, &voter);
         }
-        assert_eq!(r1.fold_full(), r2.fold_full(), "split-brain merges must converge");
+        assert_eq!(
+            r1.fold_full(),
+            r2.fold_full(),
+            "split-brain merges must converge"
+        );
         assert_eq!(r1.snapshot_vec(), r2.snapshot_vec());
 
         // Post-merge invariants: 20_002 kept 3 votes (promoted),
         // 20_001 dropped to 1 (never promoted), 20_003 has 1.
         assert_eq!(r1.vote_count(20_002), 3);
         assert_eq!(r1.vote_count(20_001), 1);
-        assert!(matches!(r1.promotion_status(20_002), PromotionStatus::Committed { .. }));
+        assert!(matches!(
+            r1.promotion_status(20_002),
+            PromotionStatus::Committed { .. }
+        ));
         assert!(matches!(
             r1.promotion_status(20_001),
-            PromotionStatus::Pending { votes: 1, threshold: 3 }
+            PromotionStatus::Pending {
+                votes: 1,
+                threshold: 3
+            }
         ));
 
         // Fold → hydrate a third replica from either side: identical state.
@@ -1346,7 +1432,10 @@ mod tests {
             let v = vote_op(31_000 + voter as u64, [voter; 4], true, t.op_id);
             let _ = st.apply_op_as(&v, &voter_pk(voter));
         }
-        assert!(matches!(st.promotion_status(t.op_id), PromotionStatus::Committed { votes: 2 }));
+        assert!(matches!(
+            st.promotion_status(t.op_id),
+            PromotionStatus::Committed { votes: 2 }
+        ));
 
         // Both voters retract — the merged count falls below threshold and
         // the element demotes back to the proposed rail. Convergence demands
@@ -1359,7 +1448,10 @@ mod tests {
         }
         assert!(matches!(
             st.promotion_status(t.op_id),
-            PromotionStatus::Pending { votes: 0, threshold: 2 }
+            PromotionStatus::Pending {
+                votes: 0,
+                threshold: 2
+            }
         ));
         assert!(st.committed_queue().is_empty());
         assert_eq!(st.proposed_queue().len(), 1);
@@ -1382,10 +1474,16 @@ mod tests {
         }
         assert!(matches!(
             st.promotion_status(future.op_id),
-            PromotionStatus::Pending { votes: 2, threshold: 2 }
+            PromotionStatus::Pending {
+                votes: 2,
+                threshold: 2
+            }
         ));
         assert!(st.apply_op(&future), "late Add after its votes");
-        assert!(matches!(st.promotion_status(future.op_id), PromotionStatus::Committed { votes: 2 }));
+        assert!(matches!(
+            st.promotion_status(future.op_id),
+            PromotionStatus::Committed { votes: 2 }
+        ));
     }
 
     #[test]
@@ -1394,17 +1492,41 @@ mod tests {
         // ceil(r · N) > N — unachievable, promotion deadlocked. Now it
         // clamps to 1.0 (everyone-must-vote); NaN / zero / negative
         // keep the majority fallback.
-        let hostile = PromotionPolicy { member_count: 8, ratio: Some(5.0), min_votes: 1 };
+        let hostile = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(5.0),
+            min_votes: 1,
+        };
         assert_eq!(hostile.effective_threshold(), 8);
-        let just_above = PromotionPolicy { member_count: 8, ratio: Some(1.5), min_votes: 1 };
+        let just_above = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(1.5),
+            min_votes: 1,
+        };
         assert_eq!(just_above.effective_threshold(), 8);
-        let upper_edge = PromotionPolicy { member_count: 8, ratio: Some(1.0), min_votes: 1 };
+        let upper_edge = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(1.0),
+            min_votes: 1,
+        };
         assert_eq!(upper_edge.effective_threshold(), 8);
-        let nan = PromotionPolicy { member_count: 8, ratio: Some(f32::NAN), min_votes: 1 };
+        let nan = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(f32::NAN),
+            min_votes: 1,
+        };
         assert_eq!(nan.effective_threshold(), 5);
-        let zero = PromotionPolicy { member_count: 8, ratio: Some(0.0), min_votes: 1 };
+        let zero = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(0.0),
+            min_votes: 1,
+        };
         assert_eq!(zero.effective_threshold(), 5);
-        let neg = PromotionPolicy { member_count: 8, ratio: Some(-0.75), min_votes: 1 };
+        let neg = PromotionPolicy {
+            member_count: 8,
+            ratio: Some(-0.75),
+            min_votes: 1,
+        };
         assert_eq!(neg.effective_threshold(), 5);
     }
 }

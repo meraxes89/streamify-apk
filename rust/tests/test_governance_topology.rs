@@ -20,8 +20,8 @@ use std::time::Duration;
 
 use streamify_core_rs::jam_crdt::{JamOp, OpType};
 use streamify_core_rs::jam_governor::{
-    IntentKind, RejectReason, RoomGovernor, Topology, ALLOW_PLAYBACK_CONTROL,
-    ALLOW_VOLUME_CONTROL, IS_COHOST,
+    IntentKind, RejectReason, RoomGovernor, Topology, ALLOW_PLAYBACK_CONTROL, ALLOW_VOLUME_CONTROL,
+    IS_COHOST,
 };
 use streamify_core_rs::p2p_mesh::{MeshConfig, MeshNode, MSG_CRDT_OP, MSG_TRANSPORT_INTENT};
 
@@ -63,13 +63,19 @@ async fn mesh3(session: &str) -> Vec<Arc<MeshNode>> {
     let host_pk = nodes[0].my_pubkey();
     let t0 = std::time::Instant::now();
     loop {
-        if nodes[1..].iter().all(|n| n.governance_snapshot().host_pubkey == host_pk) {
+        if nodes[1..]
+            .iter()
+            .all(|n| n.governance_snapshot().host_pubkey == host_pk)
+        {
             return nodes;
         }
         assert!(
             t0.elapsed() < Duration::from_secs(2),
             "host claim not adopted: {:?}",
-            nodes.iter().map(|n| n.governance_snapshot().is_host).collect::<Vec<_>>()
+            nodes
+                .iter()
+                .map(|n| n.governance_snapshot().is_host)
+                .collect::<Vec<_>>()
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
@@ -88,7 +94,10 @@ fn acl_bits_and_permission_checks() {
     let mut gov = RoomGovernor::from_seed([7u8; 32]);
     let alice = [1u8; 32];
     // Default: permissive (Phase-0 ControlPolicy::EVERYONE semantics).
-    assert_eq!(gov.member_bits(&alice), ALLOW_PLAYBACK_CONTROL | ALLOW_VOLUME_CONTROL);
+    assert_eq!(
+        gov.member_bits(&alice),
+        ALLOW_PLAYBACK_CONTROL | ALLOW_VOLUME_CONTROL
+    );
     // Host restricts alice to volume-only.
     gov.set_member_acl(alice, ALLOW_VOLUME_CONTROL);
     assert_eq!(gov.member_bits(&alice), ALLOW_VOLUME_CONTROL);
@@ -164,7 +173,11 @@ fn kick_and_acl_wire_frames_verify_and_apply() {
     member.observe_host_claim(host.pubkey(), 1);
 
     // Host kicks + bans the member.
-    let kick = host.build_kick(streamify_core_rs::jam_governor::KickKind::KickAndBan, 7, member.pubkey());
+    let kick = host.build_kick(
+        streamify_core_rs::jam_governor::KickKind::KickAndBan,
+        7,
+        member.pubkey(),
+    );
     let verified = member.verify_kick(&kick).expect("host signature valid");
     member.apply_kick(&verified);
     // The ban blacklists the target pubkey on EVERY replica — the victim
@@ -180,11 +193,12 @@ fn kick_and_acl_wire_frames_verify_and_apply() {
     // A forged kick (wrong signer) dies at the boundary.
     let mut forger = RoomGovernor::from_seed([6u8; 32]);
     forger.declare_host();
-    let fake = forger.build_kick(streamify_core_rs::jam_governor::KickKind::KickAndBan, 1, member.pubkey());
-    assert_eq!(
-        member.verify_kick(&fake).err(),
-        Some(RejectReason::NotHost)
+    let fake = forger.build_kick(
+        streamify_core_rs::jam_governor::KickKind::KickAndBan,
+        1,
+        member.pubkey(),
     );
+    assert_eq!(member.verify_kick(&fake).err(), Some(RejectReason::NotHost));
 
     // ACL update flow: host grants co-host.
     let update = host.build_acl_update(member.pubkey(), IS_COHOST);
@@ -328,14 +342,19 @@ async fn kick_and_ban_blocks_rejoin_across_the_mesh() {
     // Every replica blacklisted the victim's pubkey (directive D).
     let t0 = std::time::Instant::now();
     loop {
-        let all = nodes.iter().all(|n| n.governance_snapshot().blacklist_len >= 1);
+        let all = nodes
+            .iter()
+            .all(|n| n.governance_snapshot().blacklist_len >= 1);
         if all {
             break;
         }
         assert!(
             t0.elapsed() < Duration::from_secs(2),
             "blacklist did not converge: {:?}",
-            nodes.iter().map(|n| n.governance_snapshot().blacklist_len).collect::<Vec<_>>()
+            nodes
+                .iter()
+                .map(|n| n.governance_snapshot().blacklist_len)
+                .collect::<Vec<_>>()
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
@@ -498,7 +517,15 @@ async fn single_render_suppresses_guest_ptp_keeps_silent_presence() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     // CRDT ops are NOT affected by the topology gate.
-    let op = JamOp::new(JamOp::generate_op_id(), [1, 2, 3, 4], OpType::Add, 0, 99, 1.0, 0);
+    let op = JamOp::new(
+        JamOp::generate_op_id(),
+        [1, 2, 3, 4],
+        OpType::Add,
+        0,
+        99,
+        1.0,
+        0,
+    );
     let _ = nodes[1].broadcast(MSG_CRDT_OP, &op.to_bytes());
 
     tokio::time::sleep(Duration::from_millis(50)).await;
