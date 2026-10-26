@@ -358,14 +358,16 @@ void SoftKneeLimiter::processFrames(float* io, int frames, int channels) {
         while (dqHead_ != dqTail_ && deque_[dqHead_].idx < t) {
             dqHead_ = (dqHead_ + 1) % dqCap_;
         }
-        const float sDb = (dqHead_ != dqTail_)
+        float sDb = (dqHead_ != dqTail_)
             ? deque_[dqHead_].g - rampDbPerFrame_ * static_cast<float>(t)
             : 0.0f;
+        if (sDb >= -1e-3f) sDb = 0.0f;
 
         // Ballistics: the schedule owns the descent (exact, ramp-sloped);
         // the 80 ms one-pole only shapes the recovery upward.
         if (sDb < gsDb_) gsDb_ = sDb;
         else gsDb_ += (sDb - gsDb_) * releaseCoef_;
+        if (gsDb_ >= -1e-3f) gsDb_ = 0.0f;
 
         const float gs = (gsDb_ >= 0.0f) ? 1.0f : std::pow(10.0f, gsDb_ * 0.05f);
         for (int c = 0; c < C; ++c) {
