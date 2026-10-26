@@ -218,21 +218,25 @@ fun ContextMenuSheet(
                 }
             )
 
-            // 3. Jam Session Action
-            val activeJam by com.streamify.app.data.supabase.SupabaseClient.activeJam.collectAsState()
+            // 3. Jam Session Action — v4 JamEngine mesh session (the v2/v3
+            // Supabase jam stack was a permanently-null dead path: nothing
+            // ever created a Supabase listening_session, so this branch was
+            // unreachable and "Add to Jam Queue" never rendered).
+            val activeJam by com.streamify.app.jam.JamEngine.activeSession.collectAsState()
             if (activeJam != null) {
                 ContextActionItem(
                     icon = Icons.Filled.QueueMusic,
                     text = "Add to Jam Queue",
                     iconTint = ActiveControl,
                     onClick = {
-                        val session = activeJam
-                        if (session != null) {
-                            val currentList = com.streamify.app.data.supabase.SupabaseClient.jamQueueUpdates.replayCache.firstOrNull()?.toMutableList() ?: mutableListOf()
-                            val isDup = currentList.any { com.streamify.app.data.discovery.FuzzyTitleMatcher.isSameSongVariation(it.title, it.artist, track.title, track.artist) }
+                        if (activeJam != null) {
+                            val jamQueue = com.streamify.app.jam.JamEngine.queue.value
+                            val isDup = jamQueue.any { com.streamify.app.data.discovery.FuzzyTitleMatcher.isSameSongVariation(it.title, it.artist, track.title, track.artist) }
                             if (!isDup) {
-                                currentList.add(track)
-                                com.streamify.app.data.supabase.SupabaseClient.broadcastJamQueue(session.sessionCode, currentList)
+                                com.streamify.app.jam.JamEngine.addToQueue(
+                                    track,
+                                    addedByName = com.streamify.app.jam.JamEngine.myDisplayName.ifBlank { "Someone" }
+                                )
                             }
                             android.widget.Toast.makeText(context, "Added ${track.title} to Jam Queue", android.widget.Toast.LENGTH_SHORT).show()
                         }
