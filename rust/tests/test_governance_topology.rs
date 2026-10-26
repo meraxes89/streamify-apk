@@ -465,7 +465,8 @@ async fn single_render_routes_guest_intents_through_host_commit() {
         panic!(
             "committed frame reached the guest mesh-wide (host_seen={host_seen}, \
              guest_seen={guest_seen}; host committed={}, host sig/epoch/acl/rate \
-             rejects={}/{}/{}/{}, guest2 sig/epoch/acl/rate rejects={}/{}/{}/{})",
+             rejects={}/{}/{}/{}, guest2 sig/epoch/acl/rate/leak \
+             rejects={}/{}/{}/{}/{})",
             m0.gov_intents_committed,
             m0.gov_sig_rejects,
             m0.gov_epoch_rejects,
@@ -474,7 +475,8 @@ async fn single_render_routes_guest_intents_through_host_commit() {
             m2.gov_sig_rejects,
             m2.gov_epoch_rejects,
             m2.gov_acl_rejects,
-            m2.gov_rate_limited
+            m2.gov_rate_limited,
+            m2.gov_intent_leak_drops
         );
     }
 

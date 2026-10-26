@@ -1014,6 +1014,12 @@ struct StatsCounters {
     gov_rate_limited: AtomicU64,
     gov_replays: AtomicU64,
     gov_blacklist_rejects: AtomicU64,
+    // Leak-drops: SingleRender guests dropping UNCOMMITTED intents that
+    // were not addressed to them. Counted separately from sig rejects so
+    // CI telemetry never conflates the benign protocol drop with a real
+    // signature-verification failure (mesh-family flake diagnosis, runs
+    // #363/#383 class: "guest2 sig rejects=1" was ambiguous).
+    gov_intent_leak_drops: AtomicU64,
     gov_kicks_applied: AtomicU64,
     gov_intents_committed: AtomicU64,
     gov_intents_forwarded: AtomicU64,
@@ -1056,6 +1062,7 @@ pub struct MeshStats {
     pub gov_rate_limited: u64,
     pub gov_replays: u64,
     pub gov_blacklist_rejects: u64,
+    pub gov_intent_leak_drops: u64,
     pub gov_kicks_applied: u64,
     pub gov_intents_committed: u64,
     pub gov_intents_forwarded: u64,
@@ -1100,6 +1107,19 @@ pub struct MeshNode {
     stop_tx: watch::Sender<bool>,
     broadcast_target: Option<SocketAddr>,
     peers: RwLock<HashMap<PeerId, PeerEntry>>,
+    /// Formation-retry backlog (chaos-32 flake, runs #363/#383/#389 class):
+    /// addresses handed to [MeshNode::add_peer] that have NOT yet
+    /// registered back. `add_peer` is a one-shot fire-and-forget beacon —
+    /// a datagram lost to a recv-buffer overflow during the 32-node
+    /// formation burst (992 directed beacons in a tight loop) strands the
+    /// pair PERMANENTLY: neither side knows the other's PeerId, so the
+    /// periodic keepalive (which routes by registered PeerId) can never
+    /// repair it. CI evidence: `mesh did not form within 15s: peer counts
+    /// [.. 18 .. 12 ..]` on otherwise-clean loopback. The beacon cadence
+    /// now re-sends to these addrs until registration completes or the
+    /// 60 s formation TTL expires (NAT-rewritten sources that never
+    /// exact-match simply age out).
+    pending_addrs: Mutex<HashMap<SocketAddr, i64>>, // addr -> added_mono_ns
     gossip: Mutex<GossipEngine>,
     swarm: Mutex<SwarmManager>,
     subs: Mutex<HashMap<u8, Vec<mpsc::Sender<InboundPacket>>>>,
@@ -1220,6 +1240,7 @@ impl MeshNode {
             stop_tx: stop_tx.clone(),
             broadcast_target,
             peers: RwLock::new(HashMap::new()),
+            pending_addrs: Mutex::new(HashMap::new()),
             gossip: Mutex::new(gossip_engine),
             swarm: Mutex::new(swarm_manager),
             subs: Mutex::new(HashMap::new()),
@@ -1354,6 +1375,7 @@ impl MeshNode {
             gov_rate_limited: s.gov_rate_limited.load(Ordering::Relaxed),
             gov_replays: s.gov_replays.load(Ordering::Relaxed),
             gov_blacklist_rejects: s.gov_blacklist_rejects.load(Ordering::Relaxed),
+            gov_intent_leak_drops: s.gov_intent_leak_drops.load(Ordering::Relaxed),
             gov_kicks_applied: s.gov_kicks_applied.load(Ordering::Relaxed),
             gov_intents_committed: s.gov_intents_committed.load(Ordering::Relaxed),
             gov_intents_forwarded: s.gov_intents_forwarded.load(Ordering::Relaxed),
@@ -1418,6 +1440,10 @@ impl MeshNode {
     /// auto-registration handshake (both sides learn each other within one
     /// round trip even without broadcast discovery).
     pub fn add_peer(&self, addr: SocketAddr) {
+        {
+            let mut pending = heal(self.pending_addrs.lock());
+            pending.entry(addr).or_insert(mono_ns());
+        }
         let raw = self.build_beacon_packet();
         let _ = self.outbound_txs[shard_of(&addr)].send(Outbound {
             to: addr,
@@ -1458,6 +1484,10 @@ impl MeshNode {
         caps: Option<u16>,
         now: i64,
     ) -> bool {
+        // Formation handshake completed for this source address: retire
+        // its retry backlog entry (exact-match; NAT-rewritten sources age
+        // out via the TTL sweep in send_beacons).
+        heal(self.pending_addrs.lock()).remove(&addr);
         {
             let map = heal(self.peers.read());
             if let Some(e) = map.get(&peer) {
@@ -2757,7 +2787,10 @@ impl MeshNode {
         if topology == Topology::SingleRender && !is_host && !intent.committed {
             // Guest seeing an uncommitted intent that was not addressed to
             // it (leak / Byzantine direct send): not authoritative — drop.
-            self.stats.gov_sig_rejects.fetch_add(1, Ordering::Relaxed);
+            // NOT a signature failure — see counter doc on the stats struct.
+            self.stats
+                .gov_intent_leak_drops
+                .fetch_add(1, Ordering::Relaxed);
             return;
         }
 
@@ -3026,6 +3059,34 @@ impl MeshNode {
                 delay: Duration::ZERO,
             });
         }
+        // Formation retry (chaos-32 flake fix): re-fire the one-shot
+        // add_peer beacon at every housekeeping cadence until the target
+        // registers (register_or_refresh retires the entry) or the 60 s
+        // formation TTL expires. Bounds the retry to one datagram per
+        // pending addr per beacon interval — invisible next to the
+        // keepalive traffic the same cadence already emits.
+        const FORMATION_TTL_NS: i64 = 60_000_000_000;
+        let now = mono_ns();
+        let expired: Vec<SocketAddr> = {
+            let mut pending = heal(self.pending_addrs.lock());
+            let mut expired = Vec::new();
+            pending.retain(|addr, added| {
+                let live = now.saturating_sub(*added) < FORMATION_TTL_NS;
+                if !live {
+                    expired.push(*addr);
+                }
+                live
+            });
+            for addr in pending.keys() {
+                let _ = self.outbound_txs[shard_of(addr)].send(Outbound {
+                    to: *addr,
+                    bytes: raw.clone(),
+                    delay: Duration::ZERO,
+                });
+            }
+            expired
+        };
+        let _ = expired; // TTL-expired addrs simply leave the backlog.
         for peer in self.peer_ids_sorted() {
             self.send_beacon_to(PeerId(peer));
         }
