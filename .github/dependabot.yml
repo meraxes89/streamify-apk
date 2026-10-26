@@ -2,6 +2,11 @@
 # ext 1.5.10 / Kotlin 1.9.22 vs targetSdk 34 at audit time). Weekly
 # update PRs for all three first-party ecosystems. Cargo.lock is
 # committed (audit #44 P1-3), so cargo updates are actionable PRs.
+#
+# Sprint directive (P0 Dependabot containment): grouped updates so routine
+# minor/patch bumps no longer saturate GitHub Actions runners and no longer
+# break crate/gradle ABIs one-by-one. MAJOR bumps intentionally stay
+# ungrouped so each one surfaces as its own reviewable upgrade spike.
 version: 2
 updates:
   - package-ecosystem: "gradle"
@@ -11,6 +16,11 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    groups:
+      gradle-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "cargo"
     directory: "/rust"
@@ -19,6 +29,11 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    groups:
+      rust-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -28,3 +43,7 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
