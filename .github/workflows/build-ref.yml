@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch / tag / SHA to build (e.g. legacy-6ffa6c4)'
+        description: 'Branch / tag / SHA to build (defaults to main; e.g. a legacy tag)'
         required: true
-        default: 'legacy-6ffa6c4'
+        default: 'main'
 
 jobs:
   build:
@@ -51,6 +51,12 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+
+      # audit #44 P2-5 — panic-boundary convention gate: every Java_*
+      # export in rust/src/jni_bridge*.rs must carry catch_unwind. Cheap
+      # source-level check; runs before the build so violations fail fast.
+      - name: JNI panic-boundary convention gate
+        run: python3 scripts/jni_panic_boundary_check.py
 
       - name: Build Debug APK
         run: |

@@ -1,6 +1,6 @@
 # Streamify APK — Production Architecture & Systems Manual
 
-[![Extreme Test Matrix & Chaos Suite](https://github.com/zephyr4289/streamify-apk/actions/workflows/extreme-test-matrix.yml/badge.svg)](https://github.com/zephyr4289/streamify-apk/actions/workflows/extreme-test-matrix.yml)
+[![Extreme Test Matrix & Chaos Suite](https://github.com/meraxes89/streamify-apk/actions/workflows/extreme-test-matrix.yml/badge.svg)](https://github.com/meraxes89/streamify-apk/actions/workflows/extreme-test-matrix.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-brightgreen.svg)](https://android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-purple.svg)](https://kotlinlang.org)
@@ -1782,7 +1782,7 @@ endif()
 ### Local Build & Test Execution
 ```bash
 # Clone the repository
-git clone https://github.com/zephyr4289/streamify-apk.git
+git clone https://github.com/meraxes89/streamify-apk.git
 cd streamify-apk
 
 # 1. Build Debug APK

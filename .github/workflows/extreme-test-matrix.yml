@@ -114,6 +114,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: JNI panic-boundary convention gate (audit #44 P2-5)
+        # Pure source-level check, no toolchain: every Java_* export in
+        # rust/src/jni_bridge*.rs must wrap its body in catch_unwind — a
+        # panic unwinding across the FFI boundary aborts the process.
+        # script exits 1 listing offenders; "panic-boundary-exempt:"
+        # declaration comments are the only escape hatch.
+        run: python3 scripts/jni_panic_boundary_check.py
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

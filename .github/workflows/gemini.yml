@@ -7,9 +7,17 @@ on:
     types: [opened]
 
 permissions:
-  contents: write
+  # audit #44 P3-6: LEAST PRIVILEGE. This workflow is triggered by ANY
+  # user's issue/issue-comment text containing `@gemini` — a classic
+  # prompt-injection surface. The previous `contents: write` + direct
+  # push-to-default-branch path let an unauthenticated comment make the
+  # bot commit and push arbitrary content to main. The bot is now
+  # comment-only: it can read the tree and post analysis replies, and
+  # nothing else. Re-introducing any write path requires a
+  # trusted-reviewer gate (environment protection rules) first.
+  contents: read
   issues: write
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   gemini-reply:
@@ -22,7 +30,9 @@ jobs:
       - name: Checkout Codebase
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # Shallow is enough: the bot reads the tree for context. It can
+          # no longer push, so full history is unnecessary.
+          fetch-depth: 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -68,41 +78,17 @@ jobs:
           wants_commit = any(w in prompt.lower() for w in ["commit", "readme", "contribute", "contributor"])
 
           if wants_commit:
-              readme_file = "README.md"
-              
-              snippet_prompt = f"""
-              Generate a short Markdown section (1-2 sentences) acknowledging Google Gemini as an automated contributor to this repository.
-              Return ONLY the raw markdown text to append. Do not include markdown code blocks.
-              User request: {prompt}
-              """
-              res = client.models.generate_content(
-                  model="gemini-3.6-flash",
-                  contents=snippet_prompt
-              )
-
-              addition = f"\n\n---\n### 🤖 AI Contributor\n{res.text.strip()}\n"
-              with open(readme_file, "a") as f:
-                  f.write(addition)
-
-              # Configure git author to the GitHub App bot identity
-              subprocess.run(["git", "config", "user.name", bot_user], check=True)
-              subprocess.run(["git", "config", "user.email", bot_email], check=True)
-              subprocess.run(["git", "add", readme_file], check=True)
-
-              commit_msg = f"""docs: update contributor acknowledgement (#{issue_num})
-
-          Co-authored-by: {bot_user} <{bot_email}>"""
-
-              subprocess.run(["git", "commit", "-m", commit_msg], check=True)
-              subprocess.run(["git", "push", "origin", f"HEAD:{repo.default_branch}"], check=True)
-
-              commit_sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+              # audit #44 P3-6: the old behavior appended model-generated
+              # text to README.md and PUSHED IT STRAIGHT TO THE DEFAULT
+              # BRANCH from an unauthenticated comment trigger. That write
+              # path is removed — commits land via reviewed PRs only. The
+              # bot politely points at the normal contribution flow.
               reply = (
-                  f"🎉 **Committed and pushed to `{repo.default_branch}`!**\n\n"
-                  f"- **Commit**: `{commit_sha}`\n"
-                  f"- **Author**: `{bot_user}`\n"
-                  f"- **File**: `{readme_file}`\n\n"
-                  "Check your commit history and repository homepage to view the bot's avatar and verified contributor badge."
+                  "🤖 I can no longer commit directly to this repository "
+                  "(write access was scoped down for supply-chain safety — "
+                  "see audit #44 P3-6). "
+                  "Please open a PR with your change and ask me to review "
+                  "it in a comment; I'll reply with analysis here."
               )
               issue.create_comment(reply)
 
