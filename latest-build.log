@@ -31,117 +31,261 @@ Installing NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/ndk/25.
 [cargoBuildRust] NDK_PATH=/usr/local/lib/android/sdk/ndk/26.1.10909125
 [cargoBuildRust] command=cargo ndk --platform 26 -t arm64-v8a -t armeabi-v7a -o <jniLibs> build --release
     Building arm64-v8a (aarch64-linux-android)
+[1m[92m    Updating[0m crates.io index
 [1m[92m Downloading[0m crates ...
-[1m[92m  Downloaded[0m ogg_pager v0.7.2
-[1m[92m  Downloaded[0m lofty_attr v0.13.0
-[1m[92m  Downloaded[0m lofty v0.25.4
-[1m[92m   Compiling[0m ogg_pager v0.7.2
-[1m[92m   Compiling[0m lofty_attr v0.13.0
-[1m[92m   Compiling[0m lofty v0.25.4
+[1m[92m  Downloaded[0m hybrid-array v0.4.15
+[1m[92m  Downloaded[0m const-oid v0.10.2
+[1m[92m  Downloaded[0m digest v0.11.3
+[1m[92m  Downloaded[0m crypto-common v0.2.2
+[1m[92m  Downloaded[0m block-buffer v0.12.1
+[1m[92m  Downloaded[0m sha2 v0.11.1
+[1m[92m   Compiling[0m typenum v1.20.1
+[1m[92m   Compiling[0m const-oid v0.10.2
+[1m[92m   Compiling[0m cpufeatures v0.3.1
+[1m[92m   Compiling[0m generic-array v0.14.7
+[1m[92m   Compiling[0m hybrid-array v0.4.15
+[1m[92m   Compiling[0m block-buffer v0.12.1
+[1m[92m   Compiling[0m crypto-common v0.2.2
+[1m[92m   Compiling[0m crypto-common v0.1.7
+[1m[92m   Compiling[0m block-buffer v0.10.4
+[1m[92m   Compiling[0m inout v0.1.4
+[1m[92m   Compiling[0m universal-hash v0.5.1
+[1m[92m   Compiling[0m digest v0.10.7
+[1m[92m   Compiling[0m cipher v0.4.4
+[1m[92m   Compiling[0m poly1305 v0.8.0
+[1m[92m   Compiling[0m curve25519-dalek v4.1.3
+[1m[92m   Compiling[0m sha2 v0.10.9
+[1m[92m   Compiling[0m chacha20 v0.9.1
+[1m[92m   Compiling[0m aead v0.5.2
+[1m[92m   Compiling[0m chacha20poly1305 v0.10.1
+[1m[92m   Compiling[0m hmac v0.12.1
+[1m[92m   Compiling[0m sha1 v0.10.7
+[1m[92m   Compiling[0m digest v0.11.3
+[1m[92m   Compiling[0m ed25519-dalek v2.2.0
+[1m[92m   Compiling[0m sha2 v0.11.1
 [1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
-[1m[91merror[E0308][0m[1m: mismatched types[0m
-   [1m[94m--> [0msrc/tagger.rs:41:42
+[1m[91merror[E0277][0m[1m: the trait bound `Sha256: sha1::digest::core_api::CoreProxy` is not satisfied[0m
+   [1m[94m--> [0msrc/consensus.rs:28:23
     [1m[94m|[0m
-[1m[94m 41[0m [1m[94m|[0m                 let title = t.get_string(&ItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
-    [1m[94m|[0m                               [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
-    [1m[94m|[0m                               [1m[94m|[0m
-    [1m[94m|[0m                               [1m[94marguments to this method are incorrect[0m
+[1m[94m 28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
+    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `sha1::digest::core_api::CoreProxy` is not implemented for `Sha256`[0m
     [1m[94m|[0m
-[1m[92mnote[0m: method defined here
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
+[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:266:1
     [1m[94m|[0m
-[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
-    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
-[1m[96mhelp[0m: consider removing the borrow
+[1m[94m266[0m [1m[94m|[0m pub trait CoreProxy: sealed::Sealed {
+    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
     [1m[94m|[0m
-[1m[94m 41[0m [91m- [0m                let title = t.get_string([91m&[0mItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
-[1m[94m 41[0m [92m+ [0m                let title = t.get_string(ItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
+   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api.rs:155:1
     [1m[94m|[0m
+[1m[94m155[0m [1m[94m|[0m pub trait CoreProxy {
+    [1m[94m|[0m [1m[94m-------------------[0m [1m[94mthis is the found trait[0m
+    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
+[1m[96mhelp[0m: the trait `sha1::digest::core_api::CoreProxy` [1m[35mis[0m implemented for `[1m[35mCoreWrapper<T>[0m`
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:283:1
+    [1m[94m|[0m
+[1m[94m283[0m [1m[94m|[0m [1m[96m/[0m impl<T> CoreProxy for CoreWrapper<T>
+[1m[94m284[0m [1m[94m|[0m [1m[96m|[0m where
+[1m[94m285[0m [1m[94m|[0m [1m[96m|[0m     T: BufferKindUser,
+[1m[94m286[0m [1m[94m|[0m [1m[96m|[0m     T::BlockSize: IsLess<U256>,
+[1m[94m287[0m [1m[94m|[0m [1m[96m|[0m     Le<T::BlockSize, U256>: NonZero,
+    [1m[94m|[0m [1m[96m|____________________________________^[0m
+    [1m[94m= [0m[1mnote[0m: required for `HmacCore<Sha256>` to implement `sha1::digest::core_api::BlockSizeUser`
 
-[1m[91merror[E0308][0m[1m: mismatched types[0m
-   [1m[94m--> [0msrc/tagger.rs:42:43
-    [1m[94m|[0m
-[1m[94m 42[0m [1m[94m|[0m                 let artist = t.get_string(&ItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
-    [1m[94m|[0m                                [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
-    [1m[94m|[0m                                [1m[94m|[0m
-    [1m[94m|[0m                                [1m[94marguments to this method are incorrect[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: method defined here
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
-    [1m[94m|[0m
-[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
-    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
-[1m[96mhelp[0m: consider removing the borrow
-    [1m[94m|[0m
-[1m[94m 42[0m [91m- [0m                let artist = t.get_string([91m&[0mItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
-[1m[94m 42[0m [92m+ [0m                let artist = t.get_string(ItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
-    [1m[94m|[0m
+[1m[91merror[E0599][0m[1m: the associated function or constant `new_from_slice` exists for struct `CoreWrapper<HmacCore<Sha256>>`, but its trait bounds were not satisfied[0m
+  [1m[94m--> [0msrc/consensus.rs:28:35
+   [1m[94m|[0m
+[1m[94m28[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(secret_key).expect("HMAC can take key of any size");
+   [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^^^[0m [1m[91massociated function or constant cannot be called on `CoreWrapper<HmacCore<Sha256>>` due to unsatisfied trait bounds[0m
+   [1m[94m|[0m
+  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:24:1
+   [1m[94m|[0m
+[1m[94m24[0m [1m[94m|[0m pub struct CoreWrapper<T>
+   [1m[94m|[0m [1m[94m-------------------------[0m [1m[94mdoesn't satisfy `CoreWrapper<HmacCore<Sha256>>: MacMarker`, `CoreWrapper<HmacCore<Sha256>>: Mac`, `_: FixedOutput` or `_: Update`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+           `CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+           which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+           `CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+           which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+           `CoreWrapper<HmacCore<Sha256>>: MacMarker`
+           which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+           which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+           which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&CoreWrapper<HmacCore<Sha256>>: MacMarker`
+           which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&mut CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+           which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&mut CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+           which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&mut CoreWrapper<HmacCore<Sha256>>: MacMarker`
+           which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
 
-[1m[91merror[E0308][0m[1m: mismatched types[0m
-   [1m[94m--> [0msrc/tagger.rs:43:42
+[1m[91merror[E0277][0m[1m: the trait bound `Sha256: sha1::digest::core_api::CoreProxy` is not satisfied[0m
+   [1m[94m--> [0msrc/crypto.rs:30:23
     [1m[94m|[0m
-[1m[94m 43[0m [1m[94m|[0m                 let album = t.get_string(&ItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
-    [1m[94m|[0m                               [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
-    [1m[94m|[0m                               [1m[94m|[0m
-    [1m[94m|[0m                               [1m[94marguments to this method are incorrect[0m
+[1m[94m 30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
+    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `sha1::digest::core_api::CoreProxy` is not implemented for `Sha256`[0m
     [1m[94m|[0m
-[1m[92mnote[0m: method defined here
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
+[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:266:1
     [1m[94m|[0m
-[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
-    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
-[1m[96mhelp[0m: consider removing the borrow
+[1m[94m266[0m [1m[94m|[0m pub trait CoreProxy: sealed::Sealed {
+    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
     [1m[94m|[0m
-[1m[94m 43[0m [91m- [0m                let album = t.get_string([91m&[0mItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
-[1m[94m 43[0m [92m+ [0m                let album = t.get_string(ItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
+   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api.rs:155:1
     [1m[94m|[0m
+[1m[94m155[0m [1m[94m|[0m pub trait CoreProxy {
+    [1m[94m|[0m [1m[94m-------------------[0m [1m[94mthis is the found trait[0m
+    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
+[1m[96mhelp[0m: the trait `sha1::digest::core_api::CoreProxy` [1m[35mis[0m implemented for `[1m[35mCoreWrapper<T>[0m`
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:283:1
+    [1m[94m|[0m
+[1m[94m283[0m [1m[94m|[0m [1m[96m/[0m impl<T> CoreProxy for CoreWrapper<T>
+[1m[94m284[0m [1m[94m|[0m [1m[96m|[0m where
+[1m[94m285[0m [1m[94m|[0m [1m[96m|[0m     T: BufferKindUser,
+[1m[94m286[0m [1m[94m|[0m [1m[96m|[0m     T::BlockSize: IsLess<U256>,
+[1m[94m287[0m [1m[94m|[0m [1m[96m|[0m     Le<T::BlockSize, U256>: NonZero,
+    [1m[94m|[0m [1m[96m|____________________________________^[0m
+    [1m[94m= [0m[1mnote[0m: required for `HmacCore<Sha256>` to implement `sha1::digest::core_api::BlockSizeUser`
 
-[1m[91merror[E0308][0m[1m: mismatched types[0m
-   [1m[94m--> [0msrc/tagger.rs:44:43
-    [1m[94m|[0m
-[1m[94m 44[0m [1m[94m|[0m                 let lyrics = t.get_string(&ItemKey::Lyrics).map(|s| s.to_string());
-    [1m[94m|[0m                                [1m[94m----------[0m [1m[91m^^^^^^^^^^^^^^^^[0m [1m[91mexpected `ItemKey`, found `&ItemKey`[0m
-    [1m[94m|[0m                                [1m[94m|[0m
-    [1m[94m|[0m                                [1m[94marguments to this method are incorrect[0m
-    [1m[94m|[0m
-[1m[92mnote[0m: method defined here
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/tag/mod.rs:334:9
-    [1m[94m|[0m
-[1m[94m334[0m [1m[94m|[0m     pub fn get_string(&self, item_key: ItemKey) -> Option<&str> {
-    [1m[94m|[0m            [1m[92m^^^^^^^^^^[0m
-[1m[96mhelp[0m: consider removing the borrow
-    [1m[94m|[0m
-[1m[94m 44[0m [91m- [0m                let lyrics = t.get_string([91m&[0mItemKey::Lyrics).map(|s| s.to_string());
-[1m[94m 44[0m [92m+ [0m                let lyrics = t.get_string(ItemKey::Lyrics).map(|s| s.to_string());
-    [1m[94m|[0m
+[1m[91merror[E0599][0m[1m: the associated function or constant `new_from_slice` exists for struct `CoreWrapper<HmacCore<Sha256>>`, but its trait bounds were not satisfied[0m
+  [1m[94m--> [0msrc/crypto.rs:30:35
+   [1m[94m|[0m
+[1m[94m30[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
+   [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^^^[0m [1m[91massociated function or constant cannot be called on `CoreWrapper<HmacCore<Sha256>>` due to unsatisfied trait bounds[0m
+   [1m[94m|[0m
+  [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:24:1
+   [1m[94m|[0m
+[1m[94m24[0m [1m[94m|[0m pub struct CoreWrapper<T>
+   [1m[94m|[0m [1m[94m-------------------------[0m [1m[94mdoesn't satisfy `CoreWrapper<HmacCore<Sha256>>: MacMarker`, `CoreWrapper<HmacCore<Sha256>>: Mac`, `_: FixedOutput` or `_: Update`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+           `CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+           which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+           `CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+           which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+           `CoreWrapper<HmacCore<Sha256>>: MacMarker`
+           which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+           which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+           which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&CoreWrapper<HmacCore<Sha256>>: MacMarker`
+           which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&mut CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+           which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&mut CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+           which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+           `&mut CoreWrapper<HmacCore<Sha256>>: MacMarker`
+           which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
 
-[1m[91merror[E0599][0m[1m: no associated function or constant named `new_unchecked` found for struct `lofty::picture::Picture` in the current scope[0m
-   [1m[94m--> [0msrc/tagger.rs:114:44
+[1m[91merror[E0277][0m[1m: the trait bound `Sha256: sha1::digest::core_api::CoreProxy` is not satisfied[0m
+   [1m[94m--> [0msrc/crypto.rs:103:23
     [1m[94m|[0m
-[1m[94m114[0m [1m[94m|[0m                     let picture = Picture::new_unchecked(
-    [1m[94m|[0m                                            [1m[91m^^^^^^^^^^^^^[0m [1m[91massociated function or constant not found in `lofty::picture::Picture`[0m
+[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
+    [1m[94m|[0m                       [1m[91m^^^^^^^^^^[0m [1m[91mthe trait `sha1::digest::core_api::CoreProxy` is not implemented for `Sha256`[0m
     [1m[94m|[0m
-[1m[92mnote[0m: if you're trying to build a new `lofty::picture::Picture` consider using one of the following associated functions:
-      lofty::picture::Picture::from_reader
-      lofty::picture::Picture::from_ape_bytes
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/picture/mod.rs:634:2
+[1m[92mnote[0m: there are multiple different versions of crate `digest` in the dependency graph
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:266:1
     [1m[94m|[0m
-[1m[94m634[0m [1m[94m|[0m [1m[92m/[0m     pub fn from_reader<R>(reader: &mut R) -> Result<Self, PictureParseError>
-[1m[94m635[0m [1m[94m|[0m [1m[92m|[0m     where
-[1m[94m636[0m [1m[94m|[0m [1m[92m|[0m         R: Read,
-    [1m[94m|[0m [1m[92m|________________^[0m
-[1m[94m...[0m
-[1m[94m913[0m [1m[94m|[0m       pub fn from_ape_bytes(key: &str, bytes: &[u8]) -> Result<Self, PictureParseError> {
-    [1m[94m|[0m       [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-[1m[96mhelp[0m: there is an associated function `unchecked` with a similar name
-   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lofty-0.25.4/src/picture/mod.rs:678:2
+[1m[94m266[0m [1m[94m|[0m pub trait CoreProxy: sealed::Sealed {
+    [1m[94m|[0m [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mthis is the expected trait[0m
     [1m[94m|[0m
-[1m[94m678[0m [1m[94m|[0m     pub fn unchecked(data: Vec<u8>) -> PictureBuilder {
-    [1m[94m|[0m     [1m[96m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.11.3/src/block_api.rs:155:1
+    [1m[94m|[0m
+[1m[94m155[0m [1m[94m|[0m pub trait CoreProxy {
+    [1m[94m|[0m [1m[94m-------------------[0m [1m[94mthis is the found trait[0m
+    [1m[94m= [0m[1mhelp[0m: you can use `cargo tree` to explore your dependency tree
+[1m[96mhelp[0m: the trait `sha1::digest::core_api::CoreProxy` [1m[35mis[0m implemented for `[1m[35mCoreWrapper<T>[0m`
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:283:1
+    [1m[94m|[0m
+[1m[94m283[0m [1m[94m|[0m [1m[96m/[0m impl<T> CoreProxy for CoreWrapper<T>
+[1m[94m284[0m [1m[94m|[0m [1m[96m|[0m where
+[1m[94m285[0m [1m[94m|[0m [1m[96m|[0m     T: BufferKindUser,
+[1m[94m286[0m [1m[94m|[0m [1m[96m|[0m     T::BlockSize: IsLess<U256>,
+[1m[94m287[0m [1m[94m|[0m [1m[96m|[0m     Le<T::BlockSize, U256>: NonZero,
+    [1m[94m|[0m [1m[96m|____________________________________^[0m
+    [1m[94m= [0m[1mnote[0m: required for `HmacCore<Sha256>` to implement `sha1::digest::core_api::BlockSizeUser`
 
-[1mSome errors have detailed explanations: E0308, E0599.[0m
-[1mFor more information about an error, try `rustc --explain E0308`.[0m
-[1m[91merror[0m: could not compile `streamify_core_rs` (lib) due to 5 previous errors
+[1m[91merror[E0599][0m[1m: the associated function or constant `new_from_slice` exists for struct `CoreWrapper<HmacCore<Sha256>>`, but its trait bounds were not satisfied[0m
+   [1m[94m--> [0msrc/crypto.rs:103:35
+    [1m[94m|[0m
+[1m[94m103[0m [1m[94m|[0m         let mut mac = HmacSha256::new_from_slice(&derived_key)
+    [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^^^[0m [1m[91massociated function or constant cannot be called on `CoreWrapper<HmacCore<Sha256>>` due to unsatisfied trait bounds[0m
+    [1m[94m|[0m
+   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/core_api/wrapper.rs:24:1
+    [1m[94m|[0m
+[1m[94m 24[0m [1m[94m|[0m pub struct CoreWrapper<T>
+    [1m[94m|[0m [1m[94m-------------------------[0m [1m[94mdoesn't satisfy `CoreWrapper<HmacCore<Sha256>>: MacMarker`, `CoreWrapper<HmacCore<Sha256>>: Mac`, `_: FixedOutput` or `_: Update`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+            `CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+            which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+            `CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+            which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+            `CoreWrapper<HmacCore<Sha256>>: MacMarker`
+            which is required by `CoreWrapper<HmacCore<Sha256>>: Mac`
+            `&CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+            which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+            `&CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+            which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+            `&CoreWrapper<HmacCore<Sha256>>: MacMarker`
+            which is required by `&CoreWrapper<HmacCore<Sha256>>: Mac`
+            `&mut CoreWrapper<HmacCore<Sha256>>: sha1::digest::Update`
+            which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+            `&mut CoreWrapper<HmacCore<Sha256>>: sha1::digest::FixedOutput`
+            which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+            `&mut CoreWrapper<HmacCore<Sha256>>: MacMarker`
+            which is required by `&mut CoreWrapper<HmacCore<Sha256>>: Mac`
+
+[1m[91merror[E0277][0m[1m: the trait bound `Array<u8, UInt<UInt<UInt<UInt<_, B0>, B0>, B0>, B0>>: LowerHex` is not satisfied[0m
+  [1m[94m--> [0msrc/downloader.rs:96:42
+   [1m[94m|[0m
+[1m[94m96[0m [1m[94m|[0m         let sha256_hex = format!("{:x}", hash_result);
+   [1m[94m|[0m                                   [1m[94m----[0m   [1m[91m^^^^^^^^^^^[0m [1m[91mthe trait `LowerHex` is not implemented for `Array<u8, UInt<UInt<UInt<UInt<UInt<_, B0>, B0>, B0>, B0>, B0>>`[0m
+   [1m[94m|[0m                                   [1m[94m|[0m
+   [1m[94m|[0m                                   [1m[94mrequired by this formatting parameter[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mhelp[0m: the following other types implement trait `LowerHex`:
+             &T
+             &mut T
+             GenericArray<u8, T>
+             OpenFlags
+             PrepFlags
+             Saturating<T>
+             Signature
+             Wrapping<T>
+           and 31 others
+   [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-8789883221156511767.txt'
+   [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
+
+[1m[91merror[E0277][0m[1m: the trait bound `Array<u8, UInt<UInt<UInt<UInt<_, B0>, B0>, B0>, B0>>: LowerHex` is not satisfied[0m
+   [1m[94m--> [0msrc/downloader.rs:127:46
+    [1m[94m|[0m
+[1m[94m127[0m [1m[94m|[0m         let calculated_hex = format!("{:x}", hasher.finalize());
+    [1m[94m|[0m                                       [1m[94m----[0m   [1m[91m^^^^^^^^^^^^^^^^^[0m [1m[91mthe trait `LowerHex` is not implemented for `Array<u8, UInt<UInt<UInt<UInt<UInt<_, B0>, B0>, B0>, B0>, B0>>`[0m
+    [1m[94m|[0m                                       [1m[94m|[0m
+    [1m[94m|[0m                                       [1m[94mrequired by this formatting parameter[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mhelp[0m: the following other types implement trait `LowerHex`:
+              &T
+              &mut T
+              GenericArray<u8, T>
+              OpenFlags
+              PrepFlags
+              Saturating<T>
+              Signature
+              Wrapping<T>
+            and 31 others
+    [1m[94m= [0m[1mnote[0m: the full name for the type has been written to '/home/runner/work/streamify-apk/streamify-apk/rust/target/aarch64-linux-android/release/deps/streamify_core_rs.long-type-8789883221156511767.txt'
+    [1m[94m= [0m[1mnote[0m: consider using `--verbose` to print the full type name to the console
+
+[1mSome errors have detailed explanations: E0277, E0599.[0m
+[1mFor more information about an error, try `rustc --explain E0277`.[0m
+[1m[91merror[0m: could not compile `streamify_core_rs` (lib) due to 8 previous errors
 note: If the build failed due to a missing target, you can run this command:
 note: 
 note:     rustup target install aarch64-linux-android
@@ -322,5 +466,5 @@ Caused by: org.gradle.process.internal.ExecException: Process 'command 'cargo'' 
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 1m 30s
+BUILD FAILED in 1m 12s
 1 actionable task: 1 executed
