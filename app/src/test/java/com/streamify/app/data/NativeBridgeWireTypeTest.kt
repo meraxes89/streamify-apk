@@ -60,7 +60,12 @@ class NativeBridgeWireTypeTest {
     private fun meshWireType(msgType: Int): Int {
         val m = NativeBridge::class.java.getDeclaredMethod("meshWireType", Int::class.javaPrimitiveType)
         m.isAccessible = true
-        return m.invoke(null, msgType) as Int
+        // NativeBridge is a Kotlin `object`: meshWireType compiles to an
+        // INSTANCE method on the singleton class, so reflection must pass
+        // the singleton as receiver. invoke(null, ...) throws NPE — which
+        // is exactly what CI surfaced (run #356, jvm-unit-suite) the first
+        // time this suite ran under the new blocking gates.
+        return m.invoke(NativeBridge, msgType) as Int
     }
 
     @Test
