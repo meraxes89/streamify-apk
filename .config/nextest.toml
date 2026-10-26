@@ -1,0 +1,8 @@
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+# Give the 32-peer real-time latency simulation exclusive CPU access
+[[profile.ci.overrides]]
+filter = 'binary(test_mesh_gossip_32peers)'
+threads-required = "num-cpus"
