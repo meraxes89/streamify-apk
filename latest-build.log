@@ -13,45 +13,40 @@ Installing NDK (Side by side) 25.1.8937393 in /usr/local/lib/android/sdk/ndk/25.
 "Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" complete.
 "Install NDK (Side by side) 25.1.8937393 v.25.1.8937393" finished.
 
-> Task :app:cargoBuildRust
-[cargoBuildRust] rustup target install exit: 0
-[cargoBuildRust] NDK_PATH=/usr/local/lib/android/sdk/ndk/26.1.10909125
-[cargoBuildRust] command=cargo ndk --platform 26 -t arm64-v8a -t armeabi-v7a -o <jniLibs> build --release
-    Building arm64-v8a (aarch64-linux-android)
-[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 39.31s
-    Building armeabi-v7a (armv7-linux-androideabi)
-[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 37.51s
-     Copying libraries to /home/runner/work/streamify-apk/streamify-apk/app/src/main/jniLibs
-
-> Task :app:preBuild
-> Task :app:preDebugBuild
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
 > Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
 > Task :app:checkKotlinGradlePluginConfigurationErrors
-> Task :app:generateDebugBuildConfig
 > Task :app:generateDebugResValues FROM-CACHE
-> Task :app:checkDebugAarMetadata
-> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugBuildConfig
 > Task :app:generateDebugResources UP-TO-DATE
-> Task :app:mergeDebugResources FROM-CACHE
-> Task :app:packageDebugResources FROM-CACHE
-> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:checkDebugAarMetadata
 > Task :app:createDebugCompatibleScreenManifests
 > Task :app:extractDeepLinksDebug FROM-CACHE
-> Task :app:processDebugMainManifest
-> Task :app:processDebugManifest
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:mergeDebugResources FROM-CACHE
 > Task :app:javaPreCompileDebug FROM-CACHE
 > Task :app:mergeDebugShaders FROM-CACHE
 > Task :app:compileDebugShaders NO-SOURCE
 > Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:desugarDebugFileDependencies FROM-CACHE
 > Task :app:mergeDebugAssets FROM-CACHE
 > Task :app:compressDebugAssets FROM-CACHE
-> Task :app:desugarDebugFileDependencies FROM-CACHE
+
+> Task :app:cargoBuildRust
+    Building arm64-v8a (aarch64-linux-android)
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
+
 > Task :app:checkDebugDuplicateClasses
 > Task :app:configureCMakeDebug[arm64-v8a]
 > Task :app:mergeExtDexDebug FROM-CACHE
+> Task :app:processDebugMainManifest
 > Task :app:mergeLibDexDebug FROM-CACHE
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:configureCMakeDebug[armeabi-v7a]
 
 > Task :app:buildCMakeDebug[arm64-v8a]
 C/C++: ninja: Entering directory `/home/runner/work/streamify-apk/streamify-apk/app/.cxx/Debug/2v2o2f38/arm64-v8a'
@@ -65,44 +60,8 @@ C/C++: /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.
 C/C++:     float ratio_ = 20.0f;
 C/C++:           ^
 C/C++: 1 warning generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
-C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
-C/C++:                                                             ^
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:230:138: warning: unused parameter 'userId' [-Wunused-parameter]
-C/C++: Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
-C/C++:                                                                                                                                          ^
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:241:63: warning: unused parameter 'env' [-Wunused-parameter]
-C/C++: Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
-C/C++:                                                               ^
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:246:63: warning: unused parameter 'env' [-Wunused-parameter]
-C/C++: Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
-C/C++:                                                               ^
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:783:68: warning: unused parameter 'env' [-Wunused-parameter]
-C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
-C/C++:                                                                    ^
-C/C++: 5 warnings generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
-C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
-C/C++:                                                                                   ^
-C/C++: 1 warning generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
-C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
-C/C++:                                                                       ^
-C/C++: 1 warning generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
-C/C++:     const float beta_bpm = 0.20f;
-C/C++:                 ^
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:432:11: warning: unused variable 'vecStore' [-Wunused-variable]
-C/C++:     auto& vecStore = VectorStore::getInstance();
-C/C++:           ^
-C/C++: 2 warnings generated.
-C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned long') [-Wsign-compare]
-C/C++:         if (i * hop_length + nfft > pcm.size()) break;
-C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
-C/C++: 1 warning generated.
 
-> Task :app:processDebugManifestForPackage
-> Task :app:configureCMakeDebug[armeabi-v7a]
+> Task :app:processDebugResources
 
 > Task :app:buildCMakeDebug[armeabi-v7a]
 C/C++: ninja: Entering directory `/home/runner/work/streamify-apk/streamify-apk/app/.cxx/Debug/2v2o2f38/armeabi-v7a'
@@ -152,15 +111,178 @@ C/C++:         if (i * hop_length + nfft > pcm.size()) break;
 C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
 C/C++: 1 warning generated.
 
-> Task :app:mergeDebugJniLibFolders FROM-CACHE
-> Task :app:validateSigningDebug
-> Task :app:writeDebugAppMetadata
-> Task :app:writeDebugSigningConfigVersions
-> Task :app:mergeDebugNativeLibs
-> Task :app:stripDebugDebugSymbols
-> Task :app:processDebugResources
+> Task :app:buildCMakeDebug[arm64-v8a]
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
+C/C++:                                                             ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:230:138: warning: unused parameter 'userId' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
+C/C++:                                                                                                                                          ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:241:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:246:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:783:68: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
+C/C++:                                                                    ^
+C/C++: 5 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
+C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
+C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
+C/C++:     const float beta_bpm = 0.20f;
+C/C++:                 ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:432:11: warning: unused variable 'vecStore' [-Wunused-variable]
+C/C++:     auto& vecStore = VectorStore::getInstance();
+C/C++:           ^
+C/C++: 2 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned long') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
+
 > Task :app:compileDebugKotlin
-w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:102:21 Variable 'scope' is never used
+
+> Task :app:cargoBuildRust
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 24s
+    Building armeabi-v7a (armv7-linux-androideabi)
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
+
+> Task :app:configureCMakeDebug[x86]
+
+> Task :app:buildCMakeDebug[x86]
+C/C++: ninja: Entering directory `/home/runner/work/streamify-apk/streamify-apk/app/.cxx/Debug/2v2o2f38/x86'
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.cc:5:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.h:110:14: warning: private field 'boxPop_' is not used [-Wunused-private-field]
+C/C++:     uint64_t boxPop_[kMaxSwatches + 1] = {};
+C/C++:              ^
+C/C++: 1 warning generated.
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.cc:1:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.h:112:11: warning: private field 'ratio_' is not used [-Wunused-private-field]
+C/C++:     float ratio_ = 20.0f;
+C/C++:           ^
+C/C++: 1 warning generated.
+
+> Task :app:configureCMakeDebug[x86_64]
+
+> Task :app:buildCMakeDebug[x86_64]
+C/C++: ninja: Entering directory `/home/runner/work/streamify-apk/streamify-apk/app/.cxx/Debug/2v2o2f38/x86_64'
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.cc:5:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/palette/BitmapPalette.h:110:14: warning: private field 'boxPop_' is not used [-Wunused-private-field]
+C/C++:     uint64_t boxPop_[kMaxSwatches + 1] = {};
+C/C++:              ^
+C/C++: 1 warning generated.
+C/C++: In file included from /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.cc:1:
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/dsp/SoftKneeLimiter.h:112:11: warning: private field 'ratio_' is not used [-Wunused-private-field]
+C/C++:     float ratio_ = 20.0f;
+C/C++:           ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
+C/C++:                                                             ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:230:138: warning: unused parameter 'userId' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
+C/C++:                                                                                                                                          ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:241:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:246:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:783:68: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
+C/C++:                                                                    ^
+C/C++: 5 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
+C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
+C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
+C/C++:     const float beta_bpm = 0.20f;
+C/C++:                 ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:432:11: warning: unused variable 'vecStore' [-Wunused-variable]
+C/C++:     auto& vecStore = VectorStore::getInstance();
+C/C++:           ^
+C/C++: 2 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned long') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
+
+> Task :app:buildCMakeDebug[x86]
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/ChronosProfiler.cc:147:71: warning: unused parameter 'currentTimestampMs' [-Wunused-parameter]
+C/C++: float ChronosProfiler::calculateSatiationPenalty(int trackId, int64_t currentTimestampMs) const {
+C/C++:                                                                       ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:180:61: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
+C/C++:                                                             ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:230:138: warning: unused parameter 'userId' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
+C/C++:                                                                                                                                          ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:241:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:246:63: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+C/C++:                                                               ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/jni/jni_bridge.cc:783:68: warning: unused parameter 'env' [-Wunused-parameter]
+C/C++: Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
+C/C++:                                                                    ^
+C/C++: 5 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/StreamifyDB.cc:880:83: warning: unused parameter 'artist' [-Wunused-parameter]
+C/C++: int StreamifyDB::findFuzzyTrackMatch(const std::string& title, const std::string& artist) {
+C/C++:                                                                                   ^
+C/C++: 1 warning generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:140:17: warning: unused variable 'beta_bpm' [-Wunused-variable]
+C/C++:     const float beta_bpm = 0.20f;
+C/C++:                 ^
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/engine/RecommendEngine.cc:432:11: warning: unused variable 'vecStore' [-Wunused-variable]
+C/C++:     auto& vecStore = VectorStore::getInstance();
+C/C++:           ^
+C/C++: 2 warnings generated.
+C/C++: /home/runner/work/streamify-apk/streamify-apk/native/ingest/AudioPipeline.cc:329:35: warning: comparison of integers of different signs: 'int' and 'std::vector<float>::size_type' (aka 'unsigned int') [-Wsign-compare]
+C/C++:         if (i * hop_length + nfft > pcm.size()) break;
+C/C++:             ~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~
+C/C++: 1 warning generated.
+
+> Task :app:cargoBuildRust
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 09s
+    Building x86_64 (x86_64-linux-android)
+[1m[92m   Compiling[0m cfg-if v1.0.5
+[1m[92m   Compiling[0m libc v0.2.191
+[1m[92m   Compiling[0m typenum v1.20.1
+[1m[92m   Compiling[0m zerofrom v0.1.8
+[1m[91merror[E0463][0m[1m: can't find crate for `core`[0m
+  [1m[94m|[0m
+  [1m[94m= [0m[1mnote[0m: the `x86_64-linux-android` target may not be installed
+  [1m[94m= [0m[1mhelp[0m: consider downloading the target with `rustup target add x86_64-linux-android`
+
+[1mFor more information about this error, try `rustc --explain E0463`.[0m
+[1m[91merror[0m: could not compile `cfg-if` (lib) due to 1 previous error
+[1m[33mwarning[0m: build failed, waiting for other jobs to finish...
+[1m[91merror[0m: could not compile `libc` (lib) due to 1 previous error
+[1m[91merror[0m: could not compile `zerofrom` (lib) due to 1 previous error
+[1m[91merror[0m: could not compile `typenum` (lib) due to 1 previous error
+note: If the build failed due to a missing target, you can run this command:
+note: 
+note:     rustup target install x86_64-linux-android
+
+> Task :app:cargoBuildRust FAILED
+
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:171:21 Variable 'scope' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
@@ -339,28 +461,13 @@ w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/st
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
 w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
-
-> Task :app:compileDebugJavaWithJavac
-> Task :app:dexBuilderDebug
-> Task :app:mergeDebugGlobalSynthetics FROM-CACHE
-> Task :app:processDebugJavaRes
-> Task :app:mergeDebugJavaResource
-> Task :app:mergeProjectDexDebug
-> Task :app:packageDebug
-> Task :app:createDebugApkListingFileRedirect
-> Task :app:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gradle_build-1793005762742.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gradle_build-1793006707080.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Configuration cache problems found in this build.
-
-1 problem was found storing the configuration cache.
-- Task `:app:cargoBuildRust` of type `org.gradle.api.tasks.Exec`: cannot serialize object of type 'org.gradle.api.internal.project.DefaultProject', a subtype of 'org.gradle.api.Project', as these are not supported with the configuration cache.
-  See https://docs.gradle.org/8.7/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
-
-See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/r5fs5me8ipm89py492yn0d7k/br2fumuwyf4a58fsc9sgrt2eh/configuration-cache-report.html
+Execution failed for task ':app:cargoBuildRust'.
+> Process 'command 'cargo'' finished with non-zero exit value 101
 
 * Try:
 > Run with --info or --debug option to get more log output.
@@ -368,31 +475,19 @@ See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/
 > Get more help at https://help.gradle.org.
 
 * Exception is:
-org.gradle.configurationcache.ConfigurationCacheProblemsException: Configuration cache problems found in this build.
-
-1 problem was found storing the configuration cache.
-- Task `:app:cargoBuildRust` of type `org.gradle.api.tasks.Exec`: cannot serialize object of type 'org.gradle.api.internal.project.DefaultProject', a subtype of 'org.gradle.api.Project', as these are not supported with the configuration cache.
-  See https://docs.gradle.org/8.7/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
-
-See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/build/reports/configuration-cache/r5fs5me8ipm89py492yn0d7k/br2fumuwyf4a58fsc9sgrt2eh/configuration-cache-report.html
-	at org.gradle.configurationcache.problems.ConfigurationCacheProblems.queryFailure(ConfigurationCacheProblems.kt:149)
-	at org.gradle.configurationcache.problems.ConfigurationCacheProblems.report(ConfigurationCacheProblems.kt:177)
-	at org.gradle.internal.buildtree.ProblemReportingBuildActionRunner.reportProblems(ProblemReportingBuildActionRunner.java:61)
-	at org.gradle.internal.buildtree.ProblemReportingBuildActionRunner.run(ProblemReportingBuildActionRunner.java:52)
-	at org.gradle.launcher.exec.BuildOutcomeReportingBuildActionRunner.run(BuildOutcomeReportingBuildActionRunner.java:65)
-	at org.gradle.tooling.internal.provider.FileSystemWatchingBuildActionRunner.run(FileSystemWatchingBuildActionRunner.java:140)
-	at org.gradle.launcher.exec.BuildCompletionNotifyingBuildActionRunner.run(BuildCompletionNotifyingBuildActionRunner.java:41)
-	at org.gradle.launcher.exec.RootBuildLifecycleBuildActionExecutor.lambda$execute$0(RootBuildLifecycleBuildActionExecutor.java:40)
-	at org.gradle.composite.internal.DefaultRootBuildState.run(DefaultRootBuildState.java:123)
-	at org.gradle.launcher.exec.RootBuildLifecycleBuildActionExecutor.execute(RootBuildLifecycleBuildActionExecutor.java:40)
-	at org.gradle.internal.buildtree.InitDeprecationLoggingActionExecutor.execute(InitDeprecationLoggingActionExecutor.java:66)
-	at org.gradle.internal.buildtree.InitProblems.execute(InitProblems.java:36)
-	at org.gradle.internal.buildtree.DefaultBuildTreeContext.execute(DefaultBuildTreeContext.java:40)
-	at org.gradle.launcher.exec.BuildTreeLifecycleBuildActionExecutor.lambda$execute$0(BuildTreeLifecycleBuildActionExecutor.java:71)
-	at org.gradle.internal.buildtree.BuildTreeState.run(BuildTreeState.java:60)
-	at org.gradle.launcher.exec.BuildTreeLifecycleBuildActionExecutor.execute(BuildTreeLifecycleBuildActionExecutor.java:71)
-	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor$3.call(RunAsBuildOperationBuildActionExecutor.java:61)
-	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor$3.call(RunAsBuildOperationBuildActionExecutor.java:57)
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:cargoBuildRust'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:282)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
@@ -401,53 +496,147 @@ See the complete report at file:///home/runner/work/streamify-apk/streamify-apk/
 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
 	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
-	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor.execute(RunAsBuildOperationBuildActionExecutor.java:57)
-	at org.gradle.launcher.exec.RunAsWorkerThreadBuildActionExecutor.lambda$execute$0(RunAsWorkerThreadBuildActionExecutor.java:36)
-	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:264)
-	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:128)
-	at org.gradle.launcher.exec.RunAsWorkerThreadBuildActionExecutor.execute(RunAsWorkerThreadBuildActionExecutor.java:36)
-	at org.gradle.tooling.internal.provider.continuous.ContinuousBuildActionExecutor.execute(ContinuousBuildActionExecutor.java:110)
-	at org.gradle.tooling.internal.provider.SubscribableBuildActionExecutor.execute(SubscribableBuildActionExecutor.java:64)
-	at org.gradle.internal.session.DefaultBuildSessionContext.execute(DefaultBuildSessionContext.java:46)
-	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter$ActionImpl.apply(BuildSessionLifecycleBuildActionExecuter.java:92)
-	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter$ActionImpl.apply(BuildSessionLifecycleBuildActionExecuter.java:80)
-	at org.gradle.internal.session.BuildSessionState.run(BuildSessionState.java:71)
-	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter.execute(BuildSessionLifecycleBuildActionExecuter.java:62)
-	at org.gradle.tooling.internal.provider.BuildSessionLifecycleBuildActionExecuter.execute(BuildSessionLifecycleBuildActionExecuter.java:41)
-	at org.gradle.tooling.internal.provider.StartParamsValidatingActionExecuter.execute(StartParamsValidatingActionExecuter.java:64)
-	at org.gradle.tooling.internal.provider.StartParamsValidatingActionExecuter.execute(StartParamsValidatingActionExecuter.java:32)
-	at org.gradle.tooling.internal.provider.SessionFailureReportingActionExecuter.execute(SessionFailureReportingActionExecuter.java:51)
-	at org.gradle.tooling.internal.provider.SessionFailureReportingActionExecuter.execute(SessionFailureReportingActionExecuter.java:39)
-	at org.gradle.tooling.internal.provider.SetupLoggingActionExecuter.execute(SetupLoggingActionExecuter.java:47)
-	at org.gradle.tooling.internal.provider.SetupLoggingActionExecuter.execute(SetupLoggingActionExecuter.java:31)
-	at org.gradle.launcher.daemon.server.exec.ExecuteBuild.doBuild(ExecuteBuild.java:65)
-	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.WatchForDisconnection.execute(WatchForDisconnection.java:39)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.ResetDeprecationLogger.execute(ResetDeprecationLogger.java:29)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.RequestStopIfSingleUsedDaemon.execute(RequestStopIfSingleUsedDaemon.java:35)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.ForwardClientInput$2.create(ForwardClientInput.java:78)
-	at org.gradle.launcher.daemon.server.exec.ForwardClientInput$2.create(ForwardClientInput.java:75)
-	at org.gradle.util.internal.Swapper.swap(Swapper.java:38)
-	at org.gradle.launcher.daemon.server.exec.ForwardClientInput.execute(ForwardClientInput.java:75)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.LogAndCheckHealth.execute(LogAndCheckHealth.java:64)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.LogToClient.doBuild(LogToClient.java:63)
-	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.EstablishBuildEnvironment.doBuild(EstablishBuildEnvironment.java:84)
-	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
-	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
-	at org.gradle.launcher.daemon.server.exec.StartBuildOrRespondWithBusy$1.run(StartBuildOrRespondWithBusy.java:52)
-	at org.gradle.launcher.daemon.server.DaemonStateCoordinator$1.run(DaemonStateCoordinator.java:297)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+Caused by: org.gradle.process.internal.ExecException: Process 'command 'cargo'' finished with non-zero exit value 101
+	at org.gradle.process.internal.DefaultExecHandle$ExecResultImpl.assertNormalExitValue(DefaultExecHandle.java:442)
+	at org.gradle.process.internal.DefaultExecAction.execute(DefaultExecAction.java:38)
+	at org.gradle.api.tasks.AbstractExecTask.exec(AbstractExecTask.java:71)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.run(DefaultBuildOperationExecutor.java:68)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:41)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:74)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:67)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:45)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:175)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:76)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:54)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:54)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:106)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:55)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:56)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
 	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 5m 42s
-42 actionable tasks: 28 executed, 14 from cache
-Configuration cache entry discarded with 1 problem.
+BUILD FAILED in 3m 45s
+32 actionable tasks: 20 executed, 12 from cache
+Configuration cache entry stored.
