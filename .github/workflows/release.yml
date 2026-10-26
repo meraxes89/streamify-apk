@@ -51,7 +51,7 @@ jobs:
             echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           else
-            echo "No RELEASE_KEYSTORE_B64 secret set; release APK will fall back to debug signing."
+            echo "No RELEASE_KEYSTORE_B64 secret set; assembleRelease will fail fast (SEC-04): release builds no longer fall back to debug signing."
           fi
 
       - name: Make gradlew executable

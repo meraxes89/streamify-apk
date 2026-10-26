@@ -34,6 +34,14 @@ val supabaseAnonKey: String = localProperties.getProperty("SUPABASE_ANON_KEY")
     ?: System.getenv("SUPABASE_ANON_KEY")
     ?: ""
 
+// SEC-04: release signing state — true only when a production keystore
+// is provided via the KEYSTORE_FILE environment variable. When false, the
+// release signing config stays unpopulated and the fail-fast guards below
+// abort any release assemble/bundle task with a GradleException instead of
+// the legacy silent debug-keystore fallback.
+val releaseKeystoreConfigured: Boolean = System.getenv("KEYSTORE_FILE")
+    ?.let { it.isNotBlank() && file(it).exists() } == true
+
 val googleWebClientId: String = localProperties.getProperty("GOOGLE_WEB_CLIENT_ID")
     ?: System.getenv("GOOGLE_WEB_CLIENT_ID")
     ?: "868888425624-9dfr5crtahiqph68tiba1acapvicnsug.apps.googleusercontent.com"
@@ -102,14 +110,12 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
-            } else {
-                // No CI keystore provided: fall back to debug signing so
-                // personal/family builds still produce installable APKs.
-                storeFile = getByName("debug").storeFile
-                storePassword = getByName("debug").storePassword
-                keyAlias = getByName("debug").keyAlias
-                keyPassword = getByName("debug").keyPassword
             }
+            // SEC-04: the silent debug-keystore fallback that used to live
+            // here is gone. Release artifacts must be signed with the
+            // production keystore or not produced at all — the guard tasks
+            // registered after the android block fail release
+            // assemble/bundle execution when no KEYSTORE_FILE is provided.
         }
     }
 
@@ -183,6 +189,25 @@ android {
     } else if (ciPrebuiltNativeDir != null) {
         sourceSets.getByName("main") {
             jniLibs.srcDir(file(ciPrebuiltNativeDir))
+        }
+    }
+}
+
+// SEC-04 fail-fast guards: with no production keystore configured, refuse
+// to execute any release-variant artifact task. This replaces the old
+// silent debug-signing fallback that produced installable release APKs
+// signed with the public debug key (spoofable by anyone) whenever CI or a
+// local environment forgot to export KEYSTORE_FILE.
+if (!releaseKeystoreConfigured) {
+    tasks.matching { task ->
+        val n = task.name
+        (n.startsWith("assemble") && n.endsWith("Release")) ||
+                (n.startsWith("bundle") && n.endsWith("Release")) ||
+                (n.startsWith("package") && (n.endsWith("Release") || n.endsWith("ReleaseBundle"))) ||
+                (n.startsWith("validateSigning") && n.endsWith("Release"))
+    }.configureEach {
+        doFirst {
+            throw GradleException("Missing production KEYSTORE_FILE for release variant")
         }
     }
 }

@@ -82,6 +82,26 @@ object ApkInstaller {
     }
 
     private fun promptInstallation(context: Context, apkFile: File) {
+        // SEC-04: pin the updater certificate — inspect the downloaded
+        // archive's package signature BEFORE firing the package-installer
+        // intent (see ApkSignatureVerifier for the pinning model).
+        val verdict = ApkSignatureVerifier.verifyUpdateCertificate(context, apkFile)
+        if (verdict is ApkSignatureVerifier.Verification.Rejected) {
+            Toast.makeText(
+                context,
+                "Update blocked: signature verification failed",
+                Toast.LENGTH_LONG
+            ).show()
+            SLog.st(
+                "ApkInstaller",
+                "SEC-04 blocked update ${apkFile.name}: ${verdict.reason}",
+                null
+            )
+            // The update file lives in app-owned external storage: remove
+            // the rejected artifact so it cannot be installed by mistake.
+            runCatching { apkFile.delete() }
+            return
+        }
         try {
             val uri = FileProvider.getUriForFile(
                 context,
