@@ -263,7 +263,7 @@ jobs:
 
       - name: Upload Build Log Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-log-${{ github.run_number }}
           path: build.log
@@ -311,7 +311,7 @@ jobs:
 
       - name: Upload APK Artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Streamify-Debug-APK
           path: streamify.apk
@@ -584,7 +584,7 @@ jobs:
             && mv "shard-${{ matrix.shard }}.log.tmp" "shard-${{ matrix.shard }}.log"
 
       - name: Upload Shard Log Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: log-${{ matrix.shard }}
@@ -649,7 +649,7 @@ jobs:
 
       - name: Upload Crash Artifacts on Fault
         if: env.FUZZER_FOUND_CRASH == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libfuzzer-crash-dumps
           path: native/fuzz/artifacts/
@@ -665,7 +665,7 @@ jobs:
           sed -i "1s/^/==================================================\nSHARD: native-libfuzzer\nDESCRIPTION: Deep LibFuzzer Crash Hunt\nSTATUS: $STATUS\n==================================================\n\n/" shard-native-libfuzzer.log
 
       - name: Upload Fuzzer Log Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: log-native-libfuzzer
@@ -760,7 +760,7 @@ jobs:
 
       - name: Upload Shard Log Artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: log-emulator-api-${{ matrix.api }}
           path: shard-emulator-api-${{ matrix.api }}.log

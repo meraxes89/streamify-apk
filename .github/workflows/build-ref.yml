@@ -76,7 +76,7 @@ jobs:
             --so-glob 'app/build/**/*.so'
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: streamify-apk-${{ inputs.ref }}
           path: app/build/outputs/apk/**/*.apk
