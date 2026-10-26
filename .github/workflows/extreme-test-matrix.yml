@@ -140,7 +140,6 @@ jobs:
   # plus `clean` guaranteed a cold 15-minute build on every single run).
   build-and-compile:
     name: "Build Debug APK (Native Full)"
-    needs: compile-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
