@@ -82,44 +82,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleSpotifyCallback(intent)
-    }
-
-    private fun handleSpotifyCallback(intent: android.content.Intent?) {
-        val uri = intent?.data ?: return
-        if (uri.scheme == "streamify" && uri.host == "jam") {
-            val code = uri.lastPathSegment?.uppercase()?.takeIf { it.length == 6 }
-            if (code != null) {
-                com.streamify.app.jam.JamEngine.pendingInviteCode = code
-                com.streamify.app.jam.JamEngine.inviteNavigationEvents.tryEmit(code)
-            }
-            return
-        }
-        if (uri.scheme == "streamify" && (uri.host == "callback" || uri.host == "spotify-auth")) {
-            val authCode = uri.getQueryParameter("code")
-            val error = uri.getQueryParameter("error")
-            if (!authCode.isNullOrEmpty()) {
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                    val spotifyAuth = com.streamify.app.data.spotify.SpotifyAuthManager(this@MainActivity)
-                    val dbPath = getDatabasePath("streamify_universal.db").absolutePath
-                    spotifyAuth.handleAuthCallback(authCode, dbPath) { count ->
-                        if (count >= 0) {
-                            android.widget.Toast.makeText(this@MainActivity, "Spotify connected! Synced $count tracks into your taste profile 🎵", android.widget.Toast.LENGTH_SHORT).show()
-                        } else {
-                            android.widget.Toast.makeText(this@MainActivity, "Spotify connected successfully! 🎵", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            } else if (!error.isNullOrEmpty()) {
-                android.widget.Toast.makeText(this, "Spotify auth note: $error", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }
+        com.streamify.app.navigation.SpotifyDeepLinkHandler.handle(this, intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        handleSpotifyCallback(intent)
+        com.streamify.app.navigation.SpotifyDeepLinkHandler.handle(this, intent)
         com.streamify.app.data.models.AppMode.initialize(this)
         // Gap #31 — follow graph: load persisted follow edges + count seeds
         // before any FollowButton reads the flows (null-safe on failure).
