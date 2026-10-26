@@ -156,6 +156,10 @@ jobs:
           cargo binstall -y cargo-ndk
 
       - name: Compile Rust + C++ NDK Directly for ${{ matrix.abi }}
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: "0"
+          CARGO_PROFILE_RELEASE_STRIP: "debuginfo"
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
         run: |
           OUT_DIR="$GITHUB_WORKSPACE/out-jniLibs"
           mkdir -p "$OUT_DIR/${{ matrix.abi }}"
@@ -178,7 +182,9 @@ jobs:
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-26 \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld"
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld -Wl,--strip-debug"
           ninja -C build-android-${{ matrix.abi }} -j $(nproc)
 
           # 3. Stage C++ .so binaries alongside Rust .so binaries
@@ -222,6 +228,19 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      - name: Pre-Compile Kotlin, Resources & D8 Dex
+        run: |
+          chmod +x gradlew
+          ./gradlew \
+            :app:compileDebugKotlin \
+            :app:compileDebugJavaWithJavac \
+            :app:processDebugResources \
+            :app:dexBuilderDebug \
+            :app:mergeExtDexDebug \
+            :app:mergeProjectDexDebug \
+            -PskipExternalNativeBuild=true \
+            --build-cache --configuration-cache
+
       - name: Download All 4 ABI .so Bundles
         uses: actions/download-artifact@v8
         with:
@@ -245,7 +264,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug \
             -PskipExternalNativeBuild=true \
-            --build-cache --configuration-cache --no-daemon \
+            --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
 
       - name: Hard-Verify All 4 Architectures Exist in Final APK
@@ -409,12 +428,16 @@ jobs:
         with:
           cache-read-only: true
 
+      - name: Prepare RAM-Backed CodeQL Database Directory
+        run: mkdir -p /dev/shm/codeql-db
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
           build-mode: ${{ matrix.codeql-build-mode }}
+          db-location: /dev/shm/codeql-db
 
       - name: Manual Build for CodeQL Tracing
         if: matrix.language == 'java-kotlin'
@@ -422,14 +445,21 @@ jobs:
           chmod +x gradlew
           # Trace ONLY Kotlin/Java AST extraction: bypass C++ CMake, Rust cargo-ndk,
           # and D8 dexing via -PskipExternalNativeBuild=true.
+          # Use in-process kotlinc with 4.5GB heap to eliminate IPC daemon GC pauses.
           ./gradlew compileDebugKotlin compileDebugJavaWithJavac \
             -PskipExternalNativeBuild=true \
+            -Pkotlin.incremental=false \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Dorg.gradle.jvmargs="-Xmx4608m -XX:+UseParallelGC -XX:MaxMetaspaceSize=1g" \
+            --build-cache --no-daemon \
             --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
+          threads: 0
+          ram: 6144
 
   # 3. TEST MATRIX: Fast Verification (Every Push/PR)
   # ALL SHARDS START AT t=0 — they test sources/toolchains that do not depend
@@ -506,7 +536,7 @@ jobs:
         if: matrix.type == 'native'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-17 cmake ninja-build libstdc++-13-dev ccache
+          sudo apt-get install -y clang-17 cmake ninja-build libstdc++-13-dev ccache eatmydata
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 100
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100
 
@@ -551,8 +581,11 @@ jobs:
           ASAN_OPTIONS: "fast_unwind_on_malloc=1:detect_leaks=1:halt_on_error=1"
           UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
           TMPDIR: "/dev/shm/native_test_tmp"
+          TMP: "/dev/shm/native_test_tmp"
+          TEMP: "/dev/shm/native_test_tmp"
         run: |
           mkdir -p /dev/shm/native_test_tmp
+          sudo mount -t tmpfs -o size=3G tmpfs /tmp || true
           mkdir -p native/build && cd native/build
           cmake -DCMAKE_CXX_COMPILER=clang++ \
                 -DCMAKE_C_COMPILER=clang \
@@ -563,8 +596,10 @@ jobs:
                 -G Ninja ..
           ninja ${{ matrix.target }}
           
-          # Single instance execution with -O2 ASan/UBSan loop-hoisting (~35s)
-          ./${{ matrix.target }} > ../../shard-${{ matrix.shard }}.log 2>&1
+          # Run binary under eatmydata in /dev/shm tmpfs scratch
+          cp -a ${{ matrix.target }} /dev/shm/native_test_tmp/
+          cd /dev/shm/native_test_tmp
+          eatmydata ./${{ matrix.target }} > "$GITHUB_WORKSPACE/shard-${{ matrix.shard }}.log" 2>&1
         working-directory: .
 
       - name: Execute Android JVM State Machine & Chaos Shard

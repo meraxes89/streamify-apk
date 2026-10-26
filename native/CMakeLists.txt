@@ -150,6 +150,14 @@ if (STREAMIFY_BUILD_TESTS)
     )
     target_include_directories(storage_telemetry_test_suite PRIVATE engine third_party/sqlite3 .)
     target_link_libraries(storage_telemetry_test_suite PRIVATE pthread dl)
+    target_compile_options(storage_telemetry_test_suite PRIVATE
+        -O2
+        -march=native
+        -g
+        -fno-omit-frame-pointer
+        -fsanitize=address,undefined
+        -fno-sanitize-recover=all
+    )
 
     # Sub-millisecond acoustic phase-lock core: PTP clock kernel, fractional
     # sinc resampler, hardware/Bluetooth latency profiler (mission brief 3A/B/C).
