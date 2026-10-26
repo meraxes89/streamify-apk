@@ -583,7 +583,7 @@ jobs:
           RUSTC_WRAPPER: sccache
           RUSTFLAGS: "-Clink-arg=-fuse-ld=lld"
         run: |
-          cargo nextest run --manifest-path rust/Cargo.toml --profile ci --verbose > shard-${{ matrix.shard }}.log 2>&1
+          cargo nextest run --manifest-path rust/Cargo.toml --config-file .config/nextest.toml --profile ci --verbose > shard-${{ matrix.shard }}.log 2>&1
 
       - name: Format Shard Log Header
         if: always()
