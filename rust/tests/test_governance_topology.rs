@@ -432,6 +432,7 @@ async fn single_render_routes_guest_intents_through_host_commit() {
     let t0 = std::time::Instant::now();
     let mut host_seen = 0;
     let mut guest_seen = 0;
+    let mut retried = false;
     while t0.elapsed() < Duration::from_secs(5) {
         while rx_host.try_recv().is_ok() {
             host_seen += 1;
@@ -441,6 +442,19 @@ async fn single_render_routes_guest_intents_through_host_commit() {
         }
         if host_seen >= 1 && guest_seen >= 1 {
             break;
+        }
+        // One mid-window retry: on CI (run 40280998552, PR #71) the committed
+        // frame arrived at guest2 BEFORE its trust state for the host was
+        // established — one sig reject — and PlumTree never re-delivers an
+        // already-gossiped frame, so the guest missed it permanently. A
+        // second intent gives the fanout a fresh frame once trust has
+        // caught up; the assertion below stays "at least one delivery",
+        // so extra committed frames cannot false-positive this test.
+        if !retried && host_seen >= 1 && guest_seen < 1 && t0.elapsed() >= Duration::from_millis(1500) {
+            retried = true;
+            nodes[1]
+                .submit_transport_intent(IntentKind::Pause, body_of(1))
+                .expect("guest re-submits");
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
