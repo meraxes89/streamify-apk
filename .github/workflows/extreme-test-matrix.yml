@@ -35,10 +35,36 @@ jobs:
   #             ├─ native x3 (shared ccache) ───────────────┼─> aggregate (~max of all)
   #             ├─ jvm-unit ────────────────────────────────┤
   #             ├─ codeql (c-cpp & java-kotlin) ────────────┤
+  #             ├─ gitleaks (SEC-05 secret scan) ──────────┤
   #             └─ probe (advisory) ────────────────────────┘
   #
   # Critical path = max(native matrix + apk assemble, test shards) instead of sum().
   # ─────────────────────────────────────────────────────────────────────────
+
+  # 0a. STATIC SECRET SCANNER (SEC-05): gitleaks at t=0 on every PR and
+  # push. Raw JWTs (service_role keys), API secrets and private keys added
+  # to the diff fail the build BEFORE any runner time is spent on the
+  # native/compile/test shards. Part of the blocking set — see ci-gate.
+  # Runs on pull_request + push events only: gitleaks-action scans full
+  # repository history on schedule/workflow_dispatch events, which would
+  # permanently red the nightly lane on the pre-existing historical leaks
+  # (legacy service_role JWT, ZHIPU_KEYS) already tracked for rotation by
+  # SEC-01/SEC-03 remediation.
+  gitleaks:
+    name: "Gitleaks: secret scan (blocking)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history so gitleaks can resolve the PR/push commit range
+          # (base^..head) instead of just the shallow HEAD snapshot.
+          fetch-depth: 0
+      - name: Scan diff for exposed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # 0b. ZERO-WAIT SHIFT-LEFT GATEKEEPER: Verify live Innertube Search -> Player -> CDN Range Probe (<5s)
   # ADVISORY ONLY: GitHub runners sit in Azure datacenter IP ranges that YouTube
@@ -845,7 +871,7 @@ jobs:
   ci-gate:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
-    needs: [rust-lint, build-debug-apk, test-matrix, native-deep-fuzz, codeql-analysis]
+    needs: [rust-lint, build-debug-apk, test-matrix, native-deep-fuzz, codeql-analysis, gitleaks]
     if: always()
     steps:
       - name: Enforce blocking-job success
@@ -857,7 +883,10 @@ jobs:
           needs = json.loads(os.environ['NEEDS_CONTEXT'])
           # Fuzz runs on schedule + PRs only: skipped on plain pushes to
           # main, which must not fail the gate.
-          tolerated_skips = {'native-deep-fuzz'}
+          # Gitleaks (SEC-05) runs on PR/push events only: it is skipped
+          # on the nightly schedule lane, where a full-history scan would
+          # re-flag the pre-existing leaks already tracked for rotation.
+          tolerated_skips = {'native-deep-fuzz', 'gitleaks'}
           failures = []
           for job, info in needs.items():
               if info['result'] == 'failure' or (
