@@ -1,0 +1,30 @@
+# audit #44 P3-6: silent dependency rot is a known risk (Compose compiler
+# ext 1.5.10 / Kotlin 1.9.22 vs targetSdk 34 at audit time). Weekly
+# update PRs for all three first-party ecosystems. Cargo.lock is
+# committed (audit #44 P1-3), so cargo updates are actionable PRs.
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"

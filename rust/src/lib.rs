@@ -21,7 +21,6 @@ pub mod jam_outbox;
 pub mod jni_bridge;
 pub mod json;
 pub mod lyrics;
-pub mod markov;
 pub mod neuro_queue;
 pub mod normalizer;
 pub mod playlist_parser;
@@ -29,7 +28,6 @@ pub mod ptp;
 pub mod queue_engine;
 // Jam Phase 2 — zero-server P2P mesh fabric (feat/jam-p2p-mesh-transport):
 pub mod chunk_swarmer;
-pub mod dht_signaling;
 pub mod gossip;
 pub mod jni_bridge_p2p;
 pub mod kalman_pll;
@@ -56,7 +54,6 @@ pub mod wear_sync;
 pub mod gesture_physics;
 pub mod jni_bridge_physics_waveform;
 pub mod waveform_indexer;
-pub mod queue_optimizer;
 pub mod radio_scorer;
 pub mod repository;
 pub mod resolver;
@@ -84,13 +81,11 @@ pub use downloader::{DownloadProgress, StreamDownloader};
 pub use dsp::{BiquadFilter, FilterType, SpectrumVisualizer, StudioEqualizer};
 pub use json::{InnertubeParser, ParsedCandidate, ResolvedStreamFormat};
 pub use lyrics::{CompiledLyricEntry, CompiledLyrics, LyricCompiler};
-pub use markov::MarkovEngine;
 pub use neuro_queue::{BrainState, NeuroCandidate, NeuroQueueEngine};
 pub use playlist_parser::{
     import_parsed_playlist, ParsedPlaylistResult, ParsedPlaylistTrack, PlaylistParser,
 };
 pub use ptp::PtpFilter;
-pub use queue_optimizer::{CandidateTrack, QueueOptimizer};
 pub use radio_scorer::{
     BlendCandidate, BlendMemberSeed, BlendScoreResult, BlendScoredCandidate, BlendWeights,
     GroupBlendScorer, RadioAntiDriftEngine, ScoredCandidate,
