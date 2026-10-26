@@ -128,6 +128,16 @@ android {
             // method). See SLog.JvmStdoutSink.
             all { test ->
                 test.systemProperty("streamify.slog.jvm", "true")
+
+                // Zero-Compromise JVM Test Parallelism & Fast C1 JIT Tuning
+                test.maxParallelForks = Runtime.getRuntime().availableProcessors().coerceAtLeast(2)
+                test.forkEvery = 0 // Keep warm Android shadow classloaders alive for Robolectric
+                test.jvmArgs(
+                    "-Xmx1536m",
+                    "-XX:+UseParallelGC",
+                    "-XX:TieredStopAtLevel=1", // Fast C1 JIT only: eliminates C2 compilation overhead on one-shot tests
+                    "-noverify"                // Skip redundant bytecode verification in test workers
+                )
             }
         }
     }
