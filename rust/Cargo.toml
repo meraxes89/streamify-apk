@@ -49,6 +49,12 @@ tempfile = "3.10"
 # assertions and overflow checks remain on.
 [profile.test]
 opt-level = 2
+debug = "line-tables-only"
+debug-assertions = true
+overflow-checks = true
+
+[profile.test.package."*"]
+opt-level = 2
 
 [profile.release]
 opt-level = 3

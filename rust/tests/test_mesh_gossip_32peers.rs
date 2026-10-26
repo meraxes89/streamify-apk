@@ -129,7 +129,7 @@ async fn build_mesh(session: &str, n: usize) -> Vec<Arc<MeshNode>> {
 /// runner (observed >5 s on 2026-10-24, main, while every protocol
 /// counter was at design values). The real protocol guards are the
 /// convergence watchdog (2.5 s) and the calibrated median budget inside
-/// each trial. Call sites therefore pass a generous 15 s formation
+/// each trial. Call sites therefore pass a generous 30 s formation
 /// window; tightening it here only re-introduces host-noise flakes.
 async fn wait_full_mesh(nodes: &[Arc<MeshNode>], timeout: Duration) {
     let t0 = Instant::now();
@@ -270,7 +270,7 @@ async fn run_trial(
     ops: usize,
 ) -> (Duration, Vec<HashMap<LogKey, Vec<u8>>>) {
     let nodes = build_mesh(session, N_NODES).await;
-    wait_full_mesh(&nodes, Duration::from_secs(15)).await;
+    wait_full_mesh(&nodes, Duration::from_secs(30)).await;
     apply_jitter_chaos(&nodes, loss);
 
     // App-layer subscriptions on the 31 receiving nodes.
@@ -462,7 +462,7 @@ async fn join_storm_10_concurrent_joiners_converge() {
     const JOINERS: usize = 10;
 
     let mut nodes = build_mesh(&session, BASE).await;
-    wait_full_mesh(&nodes, Duration::from_secs(15)).await;
+    wait_full_mesh(&nodes, Duration::from_secs(30)).await;
     apply_jitter_chaos(&nodes, 0.15);
 
     // 10 nodes joining concurrently: bind them all FIRST, then fire every
@@ -493,7 +493,7 @@ async fn join_storm_10_concurrent_joiners_converge() {
         }
     }
     nodes.extend(joiners);
-    wait_full_mesh(&nodes, Duration::from_secs(15)).await;
+    wait_full_mesh(&nodes, Duration::from_secs(30)).await;
 
     // The flood: 1000 ops, all 32 nodes must converge.
     let mut rxs: Vec<_> = nodes[1..]
@@ -564,7 +564,7 @@ async fn host_death_triggers_deterministic_election_failover() {
     const OPS_AFTER: usize = 500;
 
     let nodes = build_mesh(&session, N_NODES).await;
-    wait_full_mesh(&nodes, Duration::from_secs(15)).await;
+    wait_full_mesh(&nodes, Duration::from_secs(30)).await;
 
     // Room governance: node 0 declares host + advertises the room; every
     // guest adopts the claim and mirrors it in its own beacons, so the
@@ -754,12 +754,7 @@ async fn host_death_triggers_deterministic_election_failover() {
     // beat the first election tick — the count was still 0 at assert time.
     let t_elect = std::time::Instant::now();
     loop {
-        if nodes
-            .iter()
-            .enumerate()
-            .skip(1)
-            .all(|(i, n)| n.stats().gov_elections >= 1)
-        {
+        if nodes.iter().skip(1).all(|n| n.stats().gov_elections >= 1) {
             break;
         }
         assert!(

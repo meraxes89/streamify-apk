@@ -28,6 +28,21 @@ val googleWebClientId: String = localProperties.getProperty("GOOGLE_WEB_CLIENT_I
     ?: System.getenv("GOOGLE_WEB_CLIENT_ID")
     ?: "868888425624-9dfr5crtahiqph68tiba1acapvicnsug.apps.googleusercontent.com"
 
+// 1. Resolve flags at configuration time via Provider API (Configuration-Cache Safe!)
+val skipNativeBuild: Boolean = providers.gradleProperty("skipExternalNativeBuild")
+    .map { it.toBoolean() }
+    .orElse(providers.gradleProperty("streamify.skipRust").map { it.toBoolean() })
+    .getOrElse(false)
+
+val singleTargetAbi: String? = providers.gradleProperty("targetAbi").orNull
+
+val allSupportedAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+val activeAbis: List<String> = if (singleTargetAbi != null && singleTargetAbi.isNotBlank()) {
+    listOf(singleTargetAbi)
+} else {
+    allSupportedAbis
+}
+
 android {
     namespace = "com.streamify.app"
     compileSdk = 34
@@ -48,14 +63,16 @@ android {
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         buildConfigField("String", "ADMIN_EMAIL", "\"sireenyadav@gmail.com\"")
 
-        externalNativeBuild {
-            cmake {
-                cppFlags += "-std=c++20 -O3 -flto"
-                arguments += "-DANDROID_STL=c++_shared"
+        if (!skipNativeBuild) {
+            externalNativeBuild {
+                cmake {
+                    cppFlags += "-std=c++20 -O3 -flto"
+                    arguments += "-DANDROID_STL=c++_shared"
+                }
             }
         }
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters.addAll(activeAbis)
         }
     }
 
@@ -144,10 +161,12 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.10"
     }
-    externalNativeBuild {
-        cmake {
-            path = file("../native/CMakeLists.txt")
-            version = "3.22.1"
+    if (!skipNativeBuild) {
+        externalNativeBuild {
+            cmake {
+                path = file("../native/CMakeLists.txt")
+                version = "3.22.1"
+            }
         }
     }
 }
@@ -246,61 +265,41 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
 
-// ── Rust core packaging ─────────────────────────────────────────────────
-// Builds libstreamify_core_rs.so for every packaged ABI and drops it into
-// src/main/jniLibs BEFORE the Android build runs, so every APK ships the
-// Rust engine. Failures abort the build loudly (never silently skipped).
-//
-// Escape hatch for toolchain-less builds:  ./gradlew assembleDebug -Pstreamify.skipRust=true
-val skipRustBuild = (project.findProperty("streamify.skipRust") as String?)?.toBoolean() == true
+// ── Rust core packaging (Configuration-Cache Safe) ─────────────────────
+val rustCrateDir: File = layout.projectDirectory.dir("../rust").asFile
+val jniLibsOutputDir: File = layout.projectDirectory.dir("src/main/jniLibs").asFile
 
-tasks.register<Exec>("cargoBuildRust") {
+val cargoBuildRust by tasks.registering(Exec::class) {
     group = "native"
-    description = "Builds streamify_core_rs (cdylib) for arm64-v8a + armeabi-v7a via cargo-ndk."
-    workingDir = file("../rust")
+    description = "Builds streamify_core_rs cdylib via cargo-ndk (Configuration-Cache safe)."
 
-    doFirst {
-        // Ensure Android Rust targets are installed (belt-and-suspenders)
-        val targetInstall = ProcessBuilder(
-            "rustup", "target", "add", "aarch64-linux-android", "armv7-linux-androideabi"
-        ).inheritIO().start().waitFor()
-        println("[cargoBuildRust] rustup target install exit: $targetInstall")
+    val targetAbis = activeAbis
+    val workDir = rustCrateDir
+    val outDir = jniLibsOutputDir
+    val skip = skipNativeBuild
 
-        // Resolve NDK path from env or Android plugin
-        val ndkPath = System.getenv("ANDROID_NDK_HOME")
-            ?: System.getenv("ANDROID_NDK_ROOT")
-            ?: System.getenv("NDK_HOME")
-            ?: (try { android.ndkDirectory.absolutePath } catch (_: Exception) { "" })
-        if (ndkPath.isNotBlank()) {
-            environment("ANDROID_NDK_HOME", ndkPath)
-            environment("ANDROID_NDK_ROOT", ndkPath)
-            environment("NDK_HOME", ndkPath)
-        }
+    onlyIf { !skip }
 
-        // Ensure cargo-ndk binary is reachable
-        val cargoBin = System.getenv("HOME")?.let { "$it/.cargo/bin" } ?: "/usr/local/cargo/bin"
-        environment("PATH", "$cargoBin:" + System.getenv("PATH"))
+    inputs.dir(File(workDir, "src"))
+    inputs.file(File(workDir, "Cargo.toml"))
+    outputs.dir(outDir)
 
-        // Print EXACTLY what will be executed for CI debugging
-        println("[cargoBuildRust] NDK_PATH=$ndkPath")
-        println("[cargoBuildRust] command=cargo ndk --platform 26 -t arm64-v8a -t armeabi-v7a -o <jniLibs> build --release")
+    workingDir(workDir)
+
+    val ndkArgs = mutableListOf("ndk", "--platform", "26", "-o", outDir.absolutePath)
+    targetAbis.forEach { abi ->
+        ndkArgs.addAll(listOf("-t", abi))
     }
+    ndkArgs.addAll(listOf("build", "--release"))
 
-    commandLine(
-        "cargo", "ndk",
-        "--platform", "26",
-        "-t", "arm64-v8a",
-        "-t", "armeabi-v7a",
-        "-o", file("src/main/jniLibs").absolutePath,
-        "build", "--release"
-    )
+    commandLine("cargo", *ndkArgs.toTypedArray())
 }
 
-afterEvaluate {
-    if (!skipRustBuild) {
-        tasks.named("preBuild") {
-            dependsOn("cargoBuildRust")
-        }
+if (!skipNativeBuild) {
+    tasks.matching {
+        it.name.startsWith("merge") && it.name.endsWith("JniLibFolders")
+    }.configureEach {
+        dependsOn(cargoBuildRust)
     }
 }
 
