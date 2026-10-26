@@ -21,6 +21,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # Semver-major bumps never arrive as automated PRs: they break
+      # gradle/crate ABIs one-by-one and are handled in dedicated upgrade
+      # spikes instead (P0 containment directive).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "cargo"
     directory: "/rust"
@@ -34,6 +40,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # See gradle ignore: majors go through dedicated upgrade spikes.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
