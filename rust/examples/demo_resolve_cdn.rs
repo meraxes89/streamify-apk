@@ -43,7 +43,7 @@ fn main() {
                             );
                             println!(
                                 "        URL Preview: {}...",
-                                &s.url.chars().take(80).collect::<String>()
+                                s.url.chars().take(80).collect::<String>()
                             );
                         }
                     }

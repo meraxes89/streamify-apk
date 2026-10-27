@@ -9,32 +9,33 @@ use streamify_core_rs::resolver::{fetch_innertube_cdn, get_client};
 
 const VIDEO_ID: &str = "jNQXAC9IVRw"; // "Me at the zoo" — most stable video on YT
 
-fn probe(url: &str, ua: &str, label: &str) {
-    match ureq::get(url)
-        .set("User-Agent", ua)
-        .set("Range", "bytes=0-1023")
-        .timeout(std::time::Duration::from_secs(20))
-        .call()
+/// Probe helper (multiplatform Phase 3 / MP-C14: reqwest over the shared
+/// client — the ad-hoc blocking ureq call is retired).
+async fn probe(client: &reqwest::Client, url: &str, ua: &str, label: &str) {
+    match client
+        .get(url)
+        .header("User-Agent", ua)
+        .header("Range", "bytes=0-1023")
+        .send()
+        .await
     {
         Ok(resp) => {
-            let ct = resp.content_type();
+            let ct = resp
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("?");
             let len = resp
-                .header("Content-Length")
-                .or_else(|| resp.header("content-range"))
-                .unwrap_or("?")
-                .to_string();
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .or_else(|| resp.headers().get(reqwest::header::CONTENT_RANGE))
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("?");
             println!(
                 "  [{label}] status={} content-type={ct} range/len={len}",
                 resp.status()
             );
-            let _ = resp.into_string().unwrap_or_default();
-        }
-        Err(ureq::Error::Status(code, resp)) => {
-            println!(
-                "  [{label}] HTTP {code} content-type={}",
-                resp.content_type()
-            );
-            let _ = resp.into_string().unwrap_or_default();
+            let _ = resp.text().await.unwrap_or_default();
         }
         Err(e) => println!("  [{label}] transport error: {e}"),
     }
@@ -62,8 +63,8 @@ fn main() {
                 println!("\n═══ 2. Streamability probe of the resolved URL ═══");
                 let browser_ua = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
                 let android_ua = "com.google.android.apps.youtube.music/6.42.52 (Linux; U; Android 14) gzip";
-                probe(&url, browser_ua, "A: browser UA (= ExoPlayer factory)");
-                probe(&url, android_ua, "B: android-music UA");
+                probe(client, &url, browser_ua, "A: browser UA (= ExoPlayer factory)").await;
+                probe(client, &url, android_ua, "B: android-music UA").await;
             }
             Err(e) => println!("FETCH FAILED: {e}"),
         }

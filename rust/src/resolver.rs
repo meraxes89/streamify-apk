@@ -961,37 +961,40 @@ impl StreamResolver {
 
     /// Searches YouTube Music and returns parsed candidates
     pub fn search_music(query: &str, limit: usize) -> Result<Vec<ParsedCandidate>, String> {
-        let body = serde_json::json!({
-            "context": {
-                "client": {
-                    "clientName": "WEB_REMIX",
-                    "clientVersion": "1.20230515.01.00",
-                    "hl": "en",
-                    "gl": "US"
-                }
-            },
-            "query": query,
-            "params": "egWKAQIIAWoMEAMQBBAJEAoQBRAV"
-        });
-
-        // Tier-0 B1 hang guard (#23 triage): one-shot ureq calls had no
-        // deadline — same stall class as the pooled client (a held-open
-        // socket parks the FFI thread forever). 20 s overall matches the
-        // downloader agent's 8 s connect + 15 s read discipline with a
-        // little headroom for the ~1 MB response body.
-        let resp = ureq::post(Self::INNERTUBE_SEARCH_URL)
-            .timeout(Duration::from_secs(20))
-            .set(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .set("Content-Type", "application/json")
-            .send_json(body)
-            .map_err(|e| format!("Search request failed: {}", e))?;
-
-        let text = resp
-            .into_string()
-            .map_err(|e| format!("Failed to read search response: {}", e))?;
+        // Multiplatform Phase 3 (MP-C14): the blocking ureq one-shot is
+        // retired — the sync surface now drives the SAME shared async
+        // client (single OnceLock runtime, resolver::get_runtime) with
+        // its Tier-0 B1 hang-guard discipline (30 s total / 10 s connect
+        // on the pooled client, covering the old 20 s one-shot budget
+        // with headroom for the ~1 MB response body).
+        let rt = get_runtime();
+        let client = get_client();
+        let text = rt.block_on(async {
+            client
+                .post(Self::INNERTUBE_SEARCH_URL)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                )
+                .json(&serde_json::json!({
+                    "context": {
+                        "client": {
+                            "clientName": "WEB_REMIX",
+                            "clientVersion": "1.20230515.01.00",
+                            "hl": "en",
+                            "gl": "US"
+                        }
+                    },
+                    "query": query,
+                    "params": "egWKAQIIAWoMEAMQBBAJEAoQBRAV"
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("Search request failed: {e}"))?
+                .text()
+                .await
+                .map_err(|e| format!("Failed to read search response: {e}"))
+        })?;
 
         let mut candidates = crate::json::InnertubeParser::parse_candidates(&text);
         if candidates.len() > limit {
@@ -1007,20 +1010,26 @@ impl StreamResolver {
             .ok_or_else(|| "Invalid Spotify URL or URI".to_string())?;
 
         let embed_url = format!("https://open.spotify.com/embed/{}/{}", item_type, item_id);
-        // Tier-0 B1 hang guard (#23 triage): see the search_music note —
-        // 20 s deadline on the one-shot embed fetch.
-        let resp = ureq::get(&embed_url)
-            .timeout(Duration::from_secs(20))
-            .set(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .call()
-            .map_err(|e| format!("Spotify embed request failed: {}", e))?;
-
-        let html = resp
-            .into_string()
-            .map_err(|e| format!("Failed to read embed HTML: {}", e))?;
+        // Multiplatform Phase 3 (MP-C14): same consolidation as
+        // search_music — the shared async client + runtime carry the
+        // hang-guard discipline (30 s total / 10 s connect) that the
+        // old 20 s one-shot ureq deadline provided.
+        let rt = get_runtime();
+        let client = get_client();
+        let html = rt.block_on(async {
+            client
+                .get(&embed_url)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                )
+                .send()
+                .await
+                .map_err(|e| format!("Spotify embed request failed: {e}"))?
+                .text()
+                .await
+                .map_err(|e| format!("Failed to read embed HTML: {e}"))
+        })?;
 
         // Tier 0 B1 (#23): constant pattern — compiled once per process
         // instead of per warm-session scan (the watch-HTML span scan runs on

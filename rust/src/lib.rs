@@ -1,6 +1,9 @@
 pub mod airdrop;
 pub mod aligner;
+// Multiplatform Phase 3 (MP-C11): producer-side polyphase sinc SRC to
+// the canonical 48 kHz f32 rate (rubato SincFixedOut).
 pub mod audio_dsp;
+pub mod audio_src;
 pub mod auth;
 pub mod backup;
 pub mod cache;
@@ -21,11 +24,19 @@ pub mod jam_clock;
 pub mod jam_crdt;
 pub mod jam_governor;
 pub mod jam_outbox;
+// Multiplatform Phase 3 (MP-C12/MP-C13): the JNI surface compiles ONLY
+// for the Android target — the `jni` crate is target-gated in
+// Cargo.toml, and the desktop JVM / Apple lanes reach the core
+// exclusively through the UniFFI contract (no second bridge).
+#[cfg(target_os = "android")]
 pub mod jni_bridge;
 pub mod json;
 pub mod lyrics;
+// Multiplatform Phase 3 (MP-C15): tracing + metrics façade with
+// per-platform (feature-gated) subscribers.
 pub mod neuro_queue;
 pub mod normalizer;
+pub mod obs;
 pub mod playlist_parser;
 pub mod ptp;
 pub mod queue_engine;
@@ -33,8 +44,10 @@ pub mod queue_engine;
 // the JNI surface for it lives in jni_bridge_p2p.rs (Phase 4 trimmed it
 // to the six frozen NativeBridge symbols; the deprecated NativeMeshEngine
 // / NativeRadioEngine exports went with their long-removed Kotlin classes).
+// Multiplatform Phase 3 (MP-C13): Android-only, like jni_bridge above.
 pub mod chunk_swarmer;
 pub mod gossip;
+#[cfg(target_os = "android")]
 pub mod jni_bridge_p2p;
 pub mod kalman_pll;
 pub mod p2p_mesh;
@@ -85,8 +98,12 @@ pub use consensus::{
     PlaylistOpKind, PlaylistReject, PlaylistRole,
 };
 pub use contract::{
-    AudioStreamConfig, BufferStats, EngineError, JamSessionHandle, JamSyncResult, PlaybackState,
-    StreamifyEngine, TrackMetadata,
+    contract_version, AudioErrorKind, AudioStreamConfig, BufferStats, CryptoErrorKind,
+    DacPresentationClock, EngineError, EngineEventListener, EngineSnapshot, JamSessionHandle,
+    JamSyncResult, MediaCommand, NetworkErrorKind, PlaybackState, StorageErrorKind,
+    StreamifyEngine, TrackMetadata, CONTRACT_VERSION, DAC_CLOCK_MAX_SAMPLE_RATE,
+    DAC_CLOCK_MIN_SAMPLE_RATE, MAX_JAM_DELTA_BYTES, MAX_JAM_SESSION_NAME_BYTES,
+    MEDIA_COMMAND_DEBOUNCE_MS,
 };
 pub use crossfade::CrossfadeDspEngine;
 pub use crypto::VaultCryptoEngine;
@@ -105,6 +122,11 @@ pub use radio_scorer::{
 };
 pub use resolver::StreamResolver;
 pub use search::{FuzzySearchEngine, SearchCandidate};
+// Multiplatform Phase 3: the canonical 48 kHz producer SRC stage.
+pub use audio_src::{CanonicalSrc, CANONICAL_RATE_HZ};
+// Multiplatform Phase 3 (MP-C15): observability entry points for the
+// client shells (Beta's init wiring).
+pub use obs::{init_observability, register_core_metrics};
 // Phase 2 (UFFI-01): the crate-root `TrackMetadata` is now the UniFFI
 // contract record (id / duration_ms / stream_url? / album_art_url?). The
 // lofty-backed file-metadata struct remains available at

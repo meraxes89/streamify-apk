@@ -10,19 +10,30 @@ fn main() {
             match resolve_stream_master(client, vid, "", "").await {
                 Ok(url) => {
                     println!("RESOLVED ({}b)", url.len());
-                    // live stream probe like ExoPlayer
-                    let mut req = ureq::get(&url).set("Range", "bytes=0-262143");
-                    match req.call() {
+                    // live stream probe like ExoPlayer (multiplatform Phase 3
+                    // / MP-C14: reqwest over the shared client+runtime — the
+                    // ad-hoc blocking ureq call is retired).
+                    match client
+                        .get(&url)
+                        .header("Range", "bytes=0-262143")
+                        .send()
+                        .await
+                    {
                         Ok(r) => {
                             let st = r.status();
-                            let ct = r.content_type().to_string();
-                            let mut reader = r.into_reader();
-                            let mut tmp = vec![0u8; 16384];
+                            let ct = r
+                                .headers()
+                                .get(reqwest::header::CONTENT_TYPE)
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("?")
+                                .to_string();
+                            // Cap the probe at 256 KiB.
                             let mut n = 0usize;
+                            let mut resp = r;
                             while n < 262_144 {
-                                match std::io::Read::read(&mut reader, &mut tmp) {
-                                    Ok(0) | Err(_) => break,
-                                    Ok(k) => n += k,
+                                match resp.chunk().await {
+                                    Ok(Some(chunk)) => n += chunk.len(),
+                                    Ok(None) | Err(_) => break,
                                 }
                             }
                             println!(
@@ -30,7 +41,6 @@ fn main() {
                                 if n > 100_000 { "✅" } else { "⚠️" }
                             );
                         }
-                        Err(ureq::Error::Status(c, _)) => println!("   ↳ STREAM HTTP {c} ❌"),
                         Err(e) => println!("   ↳ STREAM ERR {e}"),
                     }
                 }
