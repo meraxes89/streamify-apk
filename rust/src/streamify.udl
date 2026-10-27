@@ -1,0 +1,65 @@
+/// Coarse playback lifecycle state reported by the core engine.
+enum PlaybackState {
+    "Idle",
+    "Buffering",
+    "Playing",
+    "Paused",
+    "Error"
+};
+
+/// Canonical descriptive metadata for one playable track.
+dictionary TrackMetadata {
+    string id;
+    string title;
+    string artist;
+    u64 duration_ms;
+    string? stream_url;
+    string? album_art_url;
+};
+
+/// Geometry of the audio pipeline feeding the engine.
+dictionary AudioStreamConfig {
+    u32 sample_rate;
+    u8 channels;
+    u8 bit_depth;
+    u32 buffer_frames;
+};
+
+/// Live buffering health snapshot for telemetry surfaces.
+dictionary BufferStats {
+    u64 buffered_duration_ms;
+    u32 underrun_count;
+    f32 fill_ratio;
+};
+
+/// Typed failure taxonomy crossing the FFI boundary.
+[Error]
+enum EngineError {
+    "NetworkError",
+    "CodecError",
+    "InvalidState",
+    "BufferUnderrun",
+    "InternalError"
+};
+
+/// Root handle to the Streamify core engine.
+///
+/// Thread-safe by construction: interior state is shared behind
+/// `Arc` + `RwLock`/atomics, so the handle can be cloned into any
+/// Kotlin coroutine dispatcher or thread without external locking.
+interface StreamifyEngine {
+    constructor();
+    void initialize();
+    void set_volume(f32 volume);
+    PlaybackState get_playback_state();
+    BufferStats get_buffer_stats();
+};
+
+/// Streamify core engine: typed UniFFI contract (Phase 2, UFFI-01).
+///
+/// Type-safe Kotlin bindings for the control-plane and metadata flows,
+/// replacing the raw extern "C" JNI edges on those paths. The audio
+/// real-time data-plane keeps the frozen JNI contract in jni_bridge_dsp.cc
+/// (zero-allocation, zero-lock, direct-ByteBuffer hot path; AMP-10).
+namespace streamify {
+};
