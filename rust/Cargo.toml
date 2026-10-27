@@ -9,6 +9,14 @@ description = "High-performance Rust engine for Streamify APK"
 name = "streamify_core_rs"
 crate-type = ["cdylib", "rlib", "staticlib"]
 
+# Phase 3 (UFFI-03): the crate-local bindgen CLI consumed by the Gradle
+# task `generateUniffiKotlinBindings` (`cargo run --bin uniffi-bindgen`).
+# Host-only codegen entry point — see src/bin/uniffi-bindgen.rs for why
+# it lives in-crate instead of being installed separately on runners.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
