@@ -79,7 +79,8 @@ pub use consensus::{
     PlaylistOpKind, PlaylistReject, PlaylistRole,
 };
 pub use contract::{
-    AudioStreamConfig, BufferStats, EngineError, PlaybackState, StreamifyEngine, TrackMetadata,
+    AudioStreamConfig, BufferStats, EngineError, JamSessionHandle, JamSyncResult, PlaybackState,
+    StreamifyEngine, TrackMetadata,
 };
 pub use crossfade::CrossfadeDspEngine;
 pub use crypto::VaultCryptoEngine;
