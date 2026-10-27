@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.streamify.app.data.network.YouTubeStreamResolver
+import com.streamify.app.data.uniffi.StreamifyEngineBridge
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -228,6 +229,21 @@ class PlaybackService : MediaSessionService() {
                     isPlaying = isPlaying,
                     jamActive = com.streamify.app.jam.JamEngine.isActive()
                 )
+                // MEDIA-02 (UFFI-04 telemetry): the playing flag refines
+                // READY into Playing/Paused — onPlaybackStateChanged(READY)
+                // may fire before the flag flips, so the authoritative
+                // playing/paused record rides this callback. BUFFERING/IDLE
+                // states are already recorded by onPlaybackStateChanged.
+                when {
+                    isPlaying -> StreamifyEngineBridge.recordPlaybackState(
+                        StreamifyEngineBridge.PlaybackState.Playing
+                    )
+                    exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY ||
+                        exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED ->
+                        StreamifyEngineBridge.recordPlaybackState(
+                            StreamifyEngineBridge.PlaybackState.Paused
+                        )
+                }
             }
 
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
@@ -286,6 +302,34 @@ class PlaybackService : MediaSessionService() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering.value = (playbackState == androidx.media3.common.Player.STATE_BUFFERING)
+                // MEDIA-02 (UFFI-04 telemetry): mirror the Media3 lifecycle
+                // into the engine bridge. STATE_READY's playing/paused
+                // refinement rides onIsPlayingChanged (Media3 may deliver
+                // READY before the isPlaying flag flips); STATE_ENDED maps to
+                // Paused — buffered data retained, consumption suspended.
+                StreamifyEngineBridge.recordPlaybackState(
+                    when (playbackState) {
+                        androidx.media3.common.Player.STATE_BUFFERING ->
+                            StreamifyEngineBridge.PlaybackState.Buffering
+                        androidx.media3.common.Player.STATE_READY ->
+                            if (exoPlayer.isPlaying) {
+                                StreamifyEngineBridge.PlaybackState.Playing
+                            } else {
+                                StreamifyEngineBridge.PlaybackState.Paused
+                            }
+                        androidx.media3.common.Player.STATE_ENDED ->
+                            StreamifyEngineBridge.PlaybackState.Paused
+                        else -> StreamifyEngineBridge.PlaybackState.Idle
+                    }
+                )
+            }
+
+            override fun onVolumeChanged(volume: Float) {
+                // MEDIA-02: route output-volume changes to the core engine
+                // (UDL set_volume, clamped in the bridge and again in Rust).
+                // Result ignored — the telemetry push is best-effort and
+                // degraded backends already fail silently inside the bridge.
+                StreamifyEngineBridge.setVolume(volume)
             }
 
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -297,6 +341,14 @@ class PlaybackService : MediaSessionService() {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 super.onPlayerError(error)
                 SLog.e("PlaybackService", "onPlayerError: playback failed", error)
+
+                // MEDIA-02: a fatal player error is the terminal lifecycle
+                // state for the current item — record it before recovery
+                // runs (Media3 follows with STATE_IDLE, which resets the
+                // session-scoped underrun tally).
+                StreamifyEngineBridge.recordPlaybackState(
+                    StreamifyEngineBridge.PlaybackState.Error
+                )
 
                 // Engine 3: JIT CDN Token Auto-Renewer (403/410 Forbidden Shield)
                 val isExpiredOrBadHttp = error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
