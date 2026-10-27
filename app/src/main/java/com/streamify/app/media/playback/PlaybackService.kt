@@ -8,6 +8,11 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.streamify.app.media.audio.AudioRoutePolicy
+import com.streamify.app.media.audio.AudioTrackPullOutput
+import com.streamify.app.media.audio.NativeFloatSinkEdge
+import com.streamify.app.media.audio.RustAudioPipeline
+import com.streamify.app.media.audio.RustMedia3AudioSink
 import com.streamify.app.data.network.YouTubeStreamResolver
 import com.streamify.app.data.uniffi.MediaCommand
 import com.streamify.app.data.uniffi.StreamifyEngineBridge
@@ -75,6 +80,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+
+        /**
+         * Phase 4a (MP-HAL05): dogfood ring capacity - 16384 frames
+         * ~= 341 ms @ 48 kHz. Deep enough to absorb Media3's bursty
+         * handleBuffer cadence, shallow enough for the low-latency
+         * regime; power-of-two per the native SPSC contract.
+         */
+        const val RUST_SINK_RING_CAPACITY_FRAMES = 16384
         // LEGACY objects kept alive only for non-chain consumers:
         //  - syncAudioProcessor: Jam lockstep hardware-latency compensation
         //    (PlayerViewModel.getAcousticPositionMs)
@@ -109,6 +122,17 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 
     /**
+     * PHASE 4a (MP-HAL05/07): the Rust f32 pull pipeline, live ONLY when
+     * [AudioRoutePolicy] resolved the dogfood route (USE_RUST_AUDIO on
+     * AND the native sink edges present). Null on the legacy Media3
+     * route - the exact same player construction then builds the exact
+     * same DefaultAudioSink chain as before this phase. OnDestroy stops
+     * it (idempotent, leak-free - the pipeline joins its feeder,
+     * releases the AudioTrack and destroys the native ring handle).
+     */
+    private var rustAudioPipeline: RustAudioPipeline? = null
+
+    /**
      * The exact engine instance THIS service published to
      * [SharedPlaybackEngine] (MEDIA-01). OnDestroy withdraws by this tracked
      * identity instead of re-reading mediaSession.player — robust even if
@@ -124,6 +148,56 @@ class PlaybackService : MediaSessionService() {
         } catch (_: Throwable) {}
         DolbySpatialManager.init(this)
         AudioDeviceManager.init(this)
+
+        // PHASE 4a ROUTE BRANCH (MP-HAL05 + MP-HAL07): resolve the dogfood
+        // route ONCE per service generation, BEFORE the renderers factory
+        // builds. RUST_AUDIO_PULL routes Media3's decoded PCM through the
+        // RustMedia3AudioSink adapter into the native f32 SPSC ring; the
+        // urgent-priority feeder pulls it back out into a strictly-48kHz /
+        // 2ch / ENCODING_PCM_FLOAT / PERFORMANCE_MODE_LOW_LATENCY
+        // AudioTrack, with the DAC presentation clock feeding
+        // record_dac_clock (MP-HAL06). LEGACY (flag off OR edges absent OR
+        // pipeline failed to start) keeps the untouched DefaultAudioSink
+        // chain below - graceful fallback, never a broken player.
+        val audioRoute = AudioRoutePolicy.resolve()
+        rustAudioPipeline = if (audioRoute.route == AudioRoutePolicy.Route.RUST_AUDIO_PULL) {
+            RustAudioPipeline(
+                ringFactory = {
+                    // The seam binding is guaranteed present here: the
+                    // route resolved RUST_AUDIO_PULL, which requires
+                    // probeEdges() to have reported the full f32 pull
+                    // path (a present binding is a precondition of that
+                    // report).
+                    val jni = requireNotNull(com.streamify.app.media.audio.RustAudioSinkJni.binding) {
+                        "RUST_AUDIO_PULL resolved but the sink JNI binding is absent"
+                    }
+                    val handle = jni.createSink(
+                        AudioTrackPullOutput.CANONICAL_SAMPLE_RATE_HZ,
+                        AudioTrackPullOutput.CANONICAL_CHANNELS,
+                        RUST_SINK_RING_CAPACITY_FRAMES,
+                    )
+                    check(handle >= 0L) {
+                        "nativeCreateSink rejected the dogfood configuration " +
+                            "(handle=$handle)"
+                    }
+                    NativeFloatSinkEdge(
+                        handle,
+                        AudioTrackPullOutput.CANONICAL_CHANNELS,
+                    )
+                },
+                outputFactory = { AudioTrackPullOutput() },
+                clockRecorder = { clock -> StreamifyEngineBridge.recordDacClock(clock) },
+            ).takeIf { it.start() }
+        } else {
+            null
+        }
+        if (audioRoute.route == AudioRoutePolicy.Route.RUST_AUDIO_PULL && rustAudioPipeline == null) {
+            SLog.w(
+                "PlaybackService",
+                "RUST_AUDIO_PULL route requested but the pipeline failed to start - " +
+                    "falling back to the legacy DefaultAudioSink chain"
+            )
+        }
 
         // ─── AUDIO RENDER CHAIN (DIRECT CDN STREAMING) ──────────────────────────────
         // JAM v4 (mission §C): SyncAudioProcessor rides the AudioSink render
@@ -161,6 +235,14 @@ class PlaybackService : MediaSessionService() {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): androidx.media3.exoplayer.audio.AudioSink {
+                // PHASE 4a (MP-HAL05/07): dogfood branch. The pipeline is
+                // non-null ONLY when AudioRoutePolicy resolved
+                // RUST_AUDIO_PULL and start() succeeded above - every
+                // other path (flag off, native edges unresolved, start
+                // failure) builds the byte-identical legacy chain.
+                rustAudioPipeline?.let { dogfood ->
+                    return RustMedia3AudioSink(dogfood)
+                }
                 return DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
@@ -747,6 +829,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        // PHASE 4a (MP-HAL07 clean-switching law): tear the dogfood pull
+        // pipeline down FIRST - its feeder/publisher threads and the
+        // AudioTrack must die before the engine FFI plane below, and the
+        // stop() contract (join feeder, release track, destroy native
+        // ring handle, all idempotent) guarantees zero leaked native
+        // streams or thread handles across service recreations.
+        rustAudioPipeline?.stop()
+        rustAudioPipeline = null
         jamServiceScope?.cancel()
         errorRecoveryScope?.cancel()
         // Phase 3 (MP-C03): disarm the hardware media-command debounce
