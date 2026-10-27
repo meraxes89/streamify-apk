@@ -65,9 +65,11 @@ include_directories(
 )
 
 # The Android packaging library needs the NDK (jni.h, -landroid, -llog);
-# the Phase 3 host sanitizer lane (ENABLE_ASAN) builds ONLY the test suites,
-# so the .so target is skipped entirely there (it cannot link on a host).
-if (NOT ENABLE_ASAN)
+# the host test lanes (ENABLE_ASAN, and the Phase 4a ENABLE_TESTS alias)
+# build ONLY the test suites, so the .so target is skipped entirely there
+# (it cannot link on a host). Plain NDK cross-compiles — which pass no
+# test flags — keep building the packaging library.
+if (NOT ENABLE_ASAN AND NOT ENABLE_TESTS)
 add_library(streamify_native_core SHARED
     # Phase-5: SIMD palette clustering + WCAG contrast engine.
     src/palette_extractor_simd.cpp
@@ -121,6 +123,13 @@ endif()  # NOT ENABLE_ASAN (Android packaging library)
 
 # --- STANDALONE TEST TARGETS (Host C++20 with ASan / UBSan) ---
 option(STREAMIFY_BUILD_TESTS "Build native test suites" OFF)
+# Phase 4a (MP-HAL01): -DENABLE_TESTS=ON is the directive workflow's
+# spelling of the test lane ("cmake -B build -S . -DENABLE_TESTS=ON");
+# it implies STREAMIFY_BUILD_TESTS so both spellings drive one gate.
+option(ENABLE_TESTS "Alias: build the native test suites (implies STREAMIFY_BUILD_TESTS)" OFF)
+if(ENABLE_TESTS)
+    set(STREAMIFY_BUILD_TESTS ON)
+endif()
 if (STREAMIFY_BUILD_TESTS)
     # Phase 3 (multiplatform): register the host suites with CTest so the
     # quality gate is a single `ctest --test-dir native/build` invocation
@@ -200,6 +209,39 @@ if (STREAMIFY_BUILD_TESTS)
     target_include_directories(dsp_phase_lock_test_suite PRIVATE engine dsp .)
     target_link_libraries(dsp_phase_lock_test_suite PRIVATE m pthread)
 
+    # Phase 4a (MP-HAL01/MP-HAL02): the VirtualHAL adversarial test double —
+    # deterministic simulated DAC clock + jitter/underrun/overrun/rate-change
+    # stress against the REAL hardened AudioSink ring.
+    add_executable(virtual_hal_test_suite
+        tests/test_virtual_hal.cpp
+        src/virtual_hal.cpp
+        src/audio_sink_ringbuffer.cpp
+    )
+    target_include_directories(virtual_hal_test_suite PRIVATE include src util .)
+    target_link_libraries(virtual_hal_test_suite PRIVATE m pthread)
+
+    # Phase 4a (MP-HAL04): the CoreAudio adapter's RT render core — the
+    # platform-independent pull/clock-publication path the Apple
+    # AURenderCallback runs, audited on every host lane.
+    add_executable(coreaudio_render_core_test_suite
+        tests/test_coreaudio_render_core.cpp
+        src/audio_sink_ringbuffer.cpp
+    )
+    target_include_directories(coreaudio_render_core_test_suite PRIVATE include src util .)
+    target_link_libraries(coreaudio_render_core_test_suite PRIVATE m pthread)
+
+    # Phase 4a (MP-HAL01): the directive workflow's dedicated SPSC lane —
+    # the shared suite body with a standalone main, so
+    # `cmake --build build --target test_audio_sink_ringbuffer` works.
+    add_executable(test_audio_sink_ringbuffer
+        tests/main_audio_sink_standalone.cpp
+        tests/test_audio_sink_ringbuffer.cpp
+        src/audio_sink_ringbuffer.cpp
+        src/wear_audio_encoder.cpp
+    )
+    target_include_directories(test_audio_sink_ringbuffer PRIVATE include src util .)
+    target_link_libraries(test_audio_sink_ringbuffer PRIVATE m pthread)
+
     # Variant B: Hardware-tuned hot loops for all 4 test targets.
     # Prevents ASan/UBSan instrumentation from defeating vectorization and register
     # allocation in the 10M-frame SPSC, 1M-tick pacer, and SHA-256 stress loops.
@@ -208,7 +250,7 @@ if (STREAMIFY_BUILD_TESTS)
     # portable, while the arm64-v8a NDK lane carries the deterministic
     # -march=armv8-a+simd+crypto baseline set at the top of this file.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        foreach(tname dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite)
+        foreach(tname dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer)
             target_compile_options(${tname} PRIVATE
                 -fno-fast-math
                 -O2
@@ -228,6 +270,28 @@ if (STREAMIFY_BUILD_TESTS)
     add_test(NAME simd_physics_test_suite COMMAND simd_physics_test_suite)
     add_test(NAME storage_telemetry_test_suite COMMAND storage_telemetry_test_suite)
     add_test(NAME dsp_phase_lock_test_suite COMMAND dsp_phase_lock_test_suite)
+    # Phase 4a lanes: VirtualHAL, the CoreAudio render core and the
+    # directive's standalone SPSC target.
+    add_test(NAME virtual_hal_test_suite COMMAND virtual_hal_test_suite)
+    add_test(NAME coreaudio_render_core_test_suite COMMAND coreaudio_render_core_test_suite)
+    add_test(NAME test_audio_sink_ringbuffer COMMAND test_audio_sink_ringbuffer)
+endif()
+
+# --- Phase 4a (MP-HAL04): Apple CoreAudio pull adapter (Apple hosts only) ----
+# The AURenderCallback lifecycle wrapper (AUHAL on macOS / RemoteIO on iOS).
+# Its entire RT-critical path is the host-testable CoreAudioRenderCore
+# (see coreaudio_render_core_test_suite above); this library adds only the
+# AudioUnit scaffolding and the C facade for the Swift shell (Phase 5).
+if(APPLE)
+    add_library(streamify_coreaudio_adapter STATIC
+        audio/coreaudio_pull_adapter.cpp
+    )
+    target_include_directories(streamify_coreaudio_adapter PRIVATE include src .)
+    target_link_libraries(streamify_coreaudio_adapter PRIVATE
+        "-framework CoreAudio"
+        "-framework AudioUnit"
+        "-framework CoreFoundation"
+    )
 endif()
 
 # --- LIBFUZZER HARNESS (host clang; requires clang with compiler-rt) ---
