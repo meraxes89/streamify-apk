@@ -63,6 +63,15 @@ class PlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
 
+    /**
+     * The exact engine instance THIS service published to
+     * [SharedPlaybackEngine] (MEDIA-01). OnDestroy withdraws by this tracked
+     * identity instead of re-reading mediaSession.player — robust even if
+     * the session field was already torn down, and the identity guard in
+     * SharedPlaybackEngine.withdraw() makes a stale value harmless.
+     */
+    private var publishedPlayer: androidx.media3.common.Player? = null
+
     override fun onCreate() {
         super.onCreate()
         try {
@@ -463,6 +472,9 @@ class PlaybackService : MediaSessionService() {
 
         // Phase 4 — Android Auto: expose the engine to the Auto browse
         // service so head-unit and phone share ONE queue + session.
+        // MEDIA-01: remember the exact instance so onDestroy withdraws it
+        // by identity even if the session field is already gone.
+        publishedPlayer = forwardingPlayer
         SharedPlaybackEngine.publish(forwardingPlayer)
     }
 
@@ -472,17 +484,44 @@ class PlaybackService : MediaSessionService() {
         return mediaSession
     }
 
+    /**
+     * MEDIA-01: the user swiped the task away. Keep the FGS alive only
+     * while something is actually worth keeping alive (media queued and
+     * playWhenReady); otherwise drop the service instead of zombie-idling
+     * a foreground notification nobody controls anymore (documented
+     * MediaSessionService pattern).
+     */
+    override fun onTaskRemoved(rootIntent: android.content.Intent) {
+        val sessionPlayer = mediaSession?.player
+        if (sessionPlayer == null ||
+            !sessionPlayer.playWhenReady ||
+            sessionPlayer.mediaItemCount == 0
+        ) {
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
         jamServiceScope?.cancel()
         errorRecoveryScope?.cancel()
         com.streamify.app.jam.JamEngine.attachRuntimeScope(null)
+        // MEDIA-01: AudioDeviceManager is a process-lifetime object — its
+        // headset-disconnect listener captured THIS service's ExoPlayer.
+        // Clear it before teardown or the dead player (and everything it
+        // retains) leaks for the whole process lifetime, and a later
+        // BECOMING_NOISY broadcast would poke a released player.
+        AudioDeviceManager.onHeadsetDisconnectedListener = null
         AudioDeviceManager.release(this)
         EqualizerManager.release()
         preBufferManager?.release()
         preBufferManager = null
-        // Phase 4 — withdraw the shared engine BEFORE releasing the
-        // session so the Auto service never grabs a dying player.
-        mediaSession?.player?.let { SharedPlaybackEngine.withdraw(it) }
+        // Phase 4 / MEDIA-01 — withdraw the shared engine BEFORE releasing
+        // the session, by the tracked published identity. withdraw() clears
+        // the holder reference and synchronously notifies engine listeners
+        // (the Auto service drops its MediaLibrarySession) so no consumer
+        // ever wraps a player that is about to be released.
+        publishedPlayer?.let { SharedPlaybackEngine.withdraw(it) }
+        publishedPlayer = null
         // Free the DSP native handles. Only StreamifyAudioProcessor holds any
         // (custom release()); Sync/Crossfade are pure-Kotlin helpers with
         // process lifetime — media3's AudioProcessor interface has no release().
