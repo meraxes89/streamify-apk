@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -48,33 +49,58 @@ class StreamifyAutoMediaBrowserService : MediaLibraryService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tree = AutoRootMediaTree(LiveAutoContentSource(this))
 
+    /**
+     * MEDIA-01: shared-engine lifecycle latch. The old read-once check in
+     * onCreate silently missed every publication that landed between the
+     * check and the next Auto bind (cold-start race). The listener fires
+     * the moment the engine publishes — or immediately at registration
+     * when it is already up — so the session is built exactly once per
+     * engine generation, and dropped synchronously when the engine is
+     * withdrawn, before its player is released under us.
+     */
+    private val engineListener = object : SharedPlaybackEngine.EngineListener {
+        override fun onEnginePublished(player: Player) {
+            if (mediaSession == null) {
+                mediaSession = MediaLibrarySession.Builder(
+                    this@StreamifyAutoMediaBrowserService,
+                    player,
+                    AutoLibraryCallback()
+                ).build()
+                SLog.i("AutoMedia", "engine published; Auto session latched")
+            }
+        }
+
+        override fun onEngineWithdrawn() {
+            // The underlying engine is about to be released — drop our
+            // session wrapper NOW so the head unit never commands a dead
+            // player. The latch stays registered: the next publication
+            // (service restart) re-fires onEnginePublished and rebuilds.
+            mediaSession?.release()
+            mediaSession = null
+            SLog.w("AutoMedia", "engine withdrawn; Auto session released, awaiting next publication")
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Cold-start best effort: if the app process was spawned by the Auto
         // bind itself, ask the main service to boot the engine once.
         SharedPlaybackEngine.ensureEngine(this)
-        val player = SharedPlaybackEngine.player
-        if (player != null) {
-            mediaSession = MediaLibrarySession.Builder(this, player, AutoLibraryCallback())
-                .build()
-        } else {
-            SLog.w("AutoMedia", "engine not up at service start; Auto bind will retry")
-        }
+        // MEDIA-01: latch FIRST — covers both the engine-already-up case
+        // (listener fires synchronously) and the publication-still-in-flight
+        // case (listener fires when PlaybackService finishes onCreate).
+        SharedPlaybackEngine.addEngineListener(engineListener)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
-        // Late engine publication (warm start landed after onCreate):
-        // build the session on the next bind instead of returning null forever.
-        if (mediaSession == null) {
-            SharedPlaybackEngine.player?.let { player ->
-                mediaSession = MediaLibrarySession.Builder(this, player, AutoLibraryCallback())
-                    .build()
-            }
-        }
+        // The latch in onCreate builds the session for every publication
+        // timing — including ones that raced this service's own startup —
+        // so a plain read is now complete.
         return mediaSession
     }
 
     override fun onDestroy() {
+        SharedPlaybackEngine.removeEngineListener(engineListener)
         mediaSession?.release()
         mediaSession = null
         serviceScope.cancel()
