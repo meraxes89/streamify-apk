@@ -236,7 +236,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     // Installs baseline profiles when they ship; required before the
     // baseline-profile Gradle module can be generated via macrobenchmark.
-    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -255,24 +255,24 @@ dependencies {
 
     // Phase 4 — WearOS companion links (Data/Message/Channel clients)
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     // Phase 4 — Home/Lock screen Now Playing widgets (Glance)
     implementation("androidx.glance:glance:1.0.0")
     implementation("androidx.glance:glance-appwidget:1.0.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.11.0")
     
     // Coil
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
     
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
 
     // UI Additions
-    implementation("androidx.palette:palette-ktx:1.0.0")
+    implementation("androidx.palette:palette-ktx:1.1.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.compose.animation:animation")
@@ -281,7 +281,7 @@ dependencies {
     // Google Credential Manager (One-Tap Google Sign-In)
     implementation("androidx.credentials:credentials:1.2.2")
     implementation("androidx.credentials:credentials-play-services-auth:1.2.2")
-    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.2.1")
 
     // ONNX Runtime
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
@@ -293,11 +293,11 @@ dependencies {
     // filter above (arm64-v8a, armeabi-v7a, x86, x86_64) — no host .so is
     // required for the JVM unit-test classpath (see
     // StreamifyEngineBridge for the hermetic fallback).
-    implementation("net.java.dev.jna:jna:5.14.0@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // High-Performance HTTP Transport
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.1")
     implementation("com.github.teamnewpipe:newpipeextractor:v0.26.4")
 
     // Hardware-Backed KeyStore & EncryptedSharedPreferences
@@ -308,11 +308,11 @@ dependencies {
     // package are picked up automatically).
     testImplementation("junit:junit:4.13.2")
     // Phase 4 — ViewModel viewModelScope support on the JVM shard.
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 
     // JAM v4: offline pairing QR generation (pure-JVM zxing core — no
     // Android artifact, safe for the JVM test shard).
-    implementation("com.google.zxing:core:3.5.2")
+    implementation("com.google.zxing:core:3.5.4")
 
     // JAM v4: real org.json on the JVM test classpath — the android.jar
     // stubs throw "not mocked" for JSONObject in unit tests; this artifact
@@ -326,7 +326,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test:rules:1.5.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     androidTestImplementation("junit:junit:4.13.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
