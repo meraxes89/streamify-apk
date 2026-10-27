@@ -10,6 +10,15 @@
     public <methods>;
 }
 
+# Phase 4a / MP-HAL05: frozen audio-sink JNI symbol contract
+# (com.streamify.core.native_.NativeAudioSink — the class/package names are
+# ABI, pinned by native/include/streamify_audio_sinks.h). The generic
+# native-members rule below covers it; this explicit pin keeps the frozen
+# edge immune to future edits of that generic block.
+-keep class com.streamify.core.native_.NativeAudioSink {
+    public static native <methods>;
+}
+
 # Prevent stripping C++/Rust JNI entry points
 -keepclasseswithmembernames class * {
     native <methods>;

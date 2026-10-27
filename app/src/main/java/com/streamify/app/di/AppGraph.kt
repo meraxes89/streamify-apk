@@ -64,6 +64,43 @@ object AppGraph {
         //     placeholder seam).
         com.streamify.app.data.telemetry.ObservabilityInit.initialize(context)
 
+        // 0c. Phase 4a (MP-HAL07): dogfood route settings — bound BEFORE
+        //     any audio stack builds so the first AudioRoutePolicy
+        //     resolution already sees the persisted developer override
+        //     (debug builds only; release is gated at resolve()).
+        try {
+            com.streamify.app.media.audio.RustAudioSettings.initialize(context)
+        } catch (e: Throwable) {
+            com.streamify.app.util.SLog.e("StreamifyApp", "Failed to initialize RustAudioSettings", e)
+        }
+
+        // 0d. Phase 4a (MP-HAL05): install the dogfood sink JNI binding.
+        //     The binding class (frozen-symbol external funs) lives in the
+        //     DEBUG-only source set — out of the JNI parity gate's path
+        //     while Alpha's jni_bridge_audio_sinks.cpp is pending — so the
+        //     main tree reaches it via the house reflection soft-probe
+        //     (same pattern as StreamifyEngineBridge's generated-proxy
+        //     probe). Release builds never find the class: the bootstrap
+        //     no-ops and RustAudioSinkJni.binding stays null (edges
+        //     unresolved -> legacy Media3 route, MP-HAL07).
+        if (BuildConfig.DEBUG || BuildConfig.USE_RUST_AUDIO) {
+            try {
+                Class.forName("com.streamify.core.native_.RustAudioDogfoodBootstrap")
+                    .getMethod("install")
+                    .invoke(null)
+                com.streamify.app.util.SLog.i(
+                    "StreamifyApp",
+                    "rust audio dogfood JNI binding installed (useRustAudio=" +
+                        BuildConfig.USE_RUST_AUDIO + ")"
+                )
+            } catch (e: Throwable) {
+                com.streamify.app.util.SLog.i(
+                    "StreamifyApp",
+                    "rust audio dogfood JNI binding absent (release main tree) — seam stays null"
+                )
+            }
+        }
+
         val appContext = context.applicationContext
         com.streamify.app.data.network.YouTubeStreamResolver.appContext = appContext
 

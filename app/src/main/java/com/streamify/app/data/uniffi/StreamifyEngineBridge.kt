@@ -423,6 +423,17 @@ object StreamifyEngineBridge {
          */
         fun dispatchMediaCommand(command: MediaCommand): Result<Unit> =
             backendOpUnavailable("dispatchMediaCommand")
+
+        /**
+         * Phase 4a (MP-HAL06 / MP-C01): records one hardware DAC
+         * presentation clock sample into the engine
+         * (`record_dac_clock`). Called by the DAC clock publisher on its
+         * dedicated non-real-time worker — never the audio thread, per
+         * the UDL contract note. Default: not wired — samples still flow
+         * to the app-side [DacPresentationClock] surface.
+         */
+        fun recordDacClock(clock: DacPresentationClock): Result<Unit> =
+            backendOpUnavailable("recordDacClock")
     }
 
     /** Shared default for seam operations a backend does not implement. */
@@ -727,6 +738,26 @@ object StreamifyEngineBridge {
             }
         }
 
+        override fun recordDacClock(clock: DacPresentationClock): Result<Unit> {
+            val h = handle ?: return engineUnavailable("recordDacClock")
+            val m = methods?.recordDacClock ?: return engineUnavailable("recordDacClock")
+            return try {
+                val mapped = PushContractAdapter.buildDacClock(h.javaClass.classLoader, clock)
+                    ?: return Result.failure(
+                        EngineError.Unexpected(
+                            "DacPresentationClock not representable on the FFI " +
+                                "contract (bindgen shape drift)"
+                        )
+                    )
+                m.invoke(h, mapped)
+                Result.success(Unit)
+            } catch (t: Throwable) {
+                val err = EngineError.fromThrowable(t)
+                handleEngineError(err)
+                Result.failure(err)
+            }
+        }
+
         private fun engineUnavailable(op: String): Result<Nothing> = Result.failure(
             EngineError.EngineUnavailable("$op: engine dispatch not wired ($degradedReason)")
         )
@@ -755,6 +786,7 @@ object StreamifyEngineBridge {
             val getBufferStats: java.lang.reflect.Method,
             val setEventListener: java.lang.reflect.Method?,
             val onMediaCommand: java.lang.reflect.Method?,
+            val recordDacClock: java.lang.reflect.Method?,
         ) {
             companion object {
                 fun resolve(clazz: Class<*>): EngineMethods {
@@ -790,6 +822,7 @@ object StreamifyEngineBridge {
                             "setEventListener", "addEventListener", "registerEventListener"
                         ),
                         onMediaCommand = findSoft("onMediaCommand", "dispatchMediaCommand"),
+                        recordDacClock = findSoft("recordDacClock", "recordDacPresentationClock"),
                     )
                 }
             }
@@ -932,6 +965,27 @@ object StreamifyEngineBridge {
                 is MediaCommand.SetVolume -> payloadCommand(clazz, command.volume)
             }
         }.getOrNull()
+
+        /** Generated dictionary class for the UDL `DacPresentationClock`. */
+        private const val DAC_CLOCK_CLASS = "uniffi.streamify.DacPresentationClock"
+
+        /**
+         * Raises one app-side [DacPresentationClock] onto the generated
+         * UDL dictionary (MP-HAL06 — the `record_dac_clock` argument).
+         * The generated class is a data-class-like constructor with the
+         * three camelCase fields; ULong/UInt map directly. Returns null
+         * when the generated shape is absent or not constructible — the
+         * caller reports a typed failure, never a raw Throwable.
+         */
+        fun buildDacClock(classLoader: ClassLoader, clock: DacPresentationClock): Any? =
+            runCatching {
+                val clazz = Class.forName(DAC_CLOCK_CLASS, true, classLoader)
+                clazz.constructors.firstOrNull { it.parameterCount == 3 }?.newInstance(
+                    clock.dacFramePosition,
+                    clock.sampleRate,
+                    clock.monotonicNs,
+                )
+            }.getOrNull()
 
         /**
          * Lowers one generated snapshot object onto [EngineSnapshot].
@@ -1232,6 +1286,17 @@ object StreamifyEngineBridge {
      */
     fun dispatchMediaCommand(command: MediaCommand): Result<Unit> =
         dispatch("dispatchMediaCommand") { it.dispatchMediaCommand(command) }
+
+    /**
+     * Phase 4a (MP-HAL06): records one hardware DAC presentation clock
+     * sample into the engine (`record_dac_clock` — republished inside
+     * every pushed EngineSnapshot per MP-C01). The DAC clock publisher
+     * calls this from its dedicated non-real-time worker; Result-typed,
+     * never throws across the seam, and a degraded backend is a silent
+     * no-op for the caller's telemetry purposes.
+     */
+    fun recordDacClock(clock: DacPresentationClock): Result<Unit> =
+        dispatch("recordDacClock") { it.recordDacClock(clock) }
 
     /**
      * Re-arms the monotonic revision guard for a fresh engine instance:

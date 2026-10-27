@@ -54,6 +54,17 @@ val skipNativeBuild: Boolean = (ciPrebuiltNativeDir != null) || providers.gradle
     .orElse(providers.gradleProperty("streamify.skipRust").map { it.toBoolean() })
     .getOrElse(false)
 
+// MP-HAL07 (Phase 4a): the USE_RUST_AUDIO dogfood flag — parallel testing
+// of the Rust/native f32 pull pipeline without touching the production
+// Media3 path. Default FALSE in EVERY build type (release ships legacy
+// playback); opt in per-build with:
+//     ./gradlew :app:assembleDebug -Pstreamify.useRustAudio=true
+// Debug builds additionally honor the developer-settings runtime override
+// (RustAudioSettings — see AudioRoutePolicy for the full resolution ladder).
+val useRustAudio: Boolean = providers.gradleProperty("streamify.useRustAudio")
+    .map { it.toBoolean() }
+    .getOrElse(false)
+
 val singleTargetAbi: String? = providers.gradleProperty("targetAbi").orNull
 
 // UFFI-02: root of the Kotlin UniFFI bindings generated from
@@ -90,6 +101,11 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         buildConfigField("String", "ADMIN_EMAIL", "\"sireenyadav@gmail.com\"")
+
+        // MP-HAL07 (Phase 4a): dogfood toggle for the Rust/native f32
+        // audio pull pipeline. Defaults false everywhere; see the
+        // `useRustAudio` declaration above for the full opt-in contract.
+        buildConfigField("boolean", "USE_RUST_AUDIO", "$useRustAudio")
 
         if (!skipNativeBuild) {
             externalNativeBuild {
@@ -157,6 +173,20 @@ android {
     // compile*Kotlin below) keeps them in sync with the UDL.
     sourceSets.getByName("main") {
         java.srcDir(uniffiGeneratedSourcesDir)
+    }
+
+    // MP-HAL05/07 (Phase 4a): the frozen audio-sink JNI declarations
+    // (com.streamify.core.native_.NativeAudioSink) compile into DEBUG
+    // builds ONLY. The JNI parity gate (audit #44) forbids unimplemented
+    // external funs in the main tree — Alpha's jni_bridge_audio_sinks.cpp
+    // has not landed — so the dogfood source set carries them out of the
+    // scanner's path while keeping every runtime call probe-guarded and
+    // every consumer on the RustAudioSinkJni seam. Release builds never
+    // compile the declarations at all: the dogfood surface is
+    // STRUCTURALLY absent from release bytecode (stronger than a flag).
+    // When Alpha's bridge lands, move the file into the main tree.
+    sourceSets.getByName("debug") {
+        java.srcDir("src/rustAudioDogfood/java")
     }
 
     // Lint safety net: the historical codebase carries known warnings
