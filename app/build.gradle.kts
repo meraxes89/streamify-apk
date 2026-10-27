@@ -404,14 +404,17 @@ val generateUniffiKotlinBindings by tasks.registering(Exec::class) {
     val configFile = uniffiConfigFile
     val crateDir = rustCrateDir
     val outDir = uniffiGeneratedSourcesDir
-    val skip = skipUniffiBindgen
+    val bindgenFile = File(crateDir, "src/bin/uniffi-bindgen.rs")
+    val skip = skipUniffiBindgen || skipNativeBuild || !bindgenFile.isFile
 
-    // No-op until Alpha's UFFI-01 contract exists; also skippable for
-    // toolchain-less environments.
+    // No-op until bindgen entry point exists and native build is enabled;
+    // also skippable for toolchain-less / JVM-only environments.
     onlyIf { !skip && udlFile.isFile }
 
     inputs.file(udlFile)
-    inputs.file(configFile).optional(true)
+    if (configFile.isFile) {
+        inputs.file(configFile)
+    }
     outputs.dir(outDir)
 
     workingDir(crateDir)
