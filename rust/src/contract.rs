@@ -1,4 +1,5 @@
-//! Phase 2 (UFFI-01): UniFFI typed contract implementation.
+//! Phase 2 (UFFI-01) + Phase 3 (UFFI-03): UniFFI typed contract,
+//! wired to live dispatch and telemetry.
 //!
 //! The types and the `StreamifyEngine` methods in this module implement the
 //! contract declared in [`crate`]'s `src/streamify.udl`. The scaffolding
@@ -7,9 +8,21 @@
 //! replacing the raw, brittle `extern "C"` JNI edges for the control-plane
 //! and metadata flows.
 //!
+//! Phase 3 (UFFI-03) wires the handle to live state instead of a dormant
+//! shadow: `initialize()` verifies runtime environment invariants before
+//! arming the one-way lifecycle transition and reports failures through the
+//! typed error channel; `record_buffer_stats()` is now part of the FFI
+//! surface so the live playback buffer (Kotlin-side ExoPlayer positions)
+//! and the acoustic pipeline (underruns, ring fill) feed real samples into
+//! the engine, with malformed telemetry rejected at the boundary; and
+//! `set_volume()` is NaN-safe so a garbage gain can never poison the DSP
+//! chain.
+//!
 //! Out of scope by design: the audio real-time data-plane keeps the frozen
 //! JNI contract in `native/jni/jni_bridge_dsp.cc` (zero-allocation,
 //! zero-lock, direct-ByteBuffer hot path — the AMP-10 invariant audit).
+//! This module is the control plane; it never sits on the audio callback
+//! thread.
 //!
 //! Threading: `StreamifyEngine` is `Send + Sync` by construction (the
 //! scaffolding asserts this). Interior state lives behind `Arc` +
@@ -21,6 +34,8 @@
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use std::thread::available_parallelism;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Coarse playback lifecycle state reported by the core engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -77,6 +92,37 @@ impl Default for AudioStreamConfig {
             bit_depth: 32,
             buffer_frames: 2_048,
         }
+    }
+}
+
+impl AudioStreamConfig {
+    /// Validate the pipeline geometry against the physical contract.
+    ///
+    /// The reference geometry must be internally consistent before the
+    /// engine arms: a zero sample rate or channel count, a sample width
+    /// the resampler cannot express, or a degenerate buffer describe an
+    /// acoustic pipeline that cannot exist. Violations surface as
+    /// [`EngineError::InternalError`] (the taxonomy carries no payload —
+    /// the violated bound is diagnosable from the config under test).
+    pub fn validate(&self) -> Result<(), EngineError> {
+        // 8 kHz telephony floor .. 768 kHz pro-audio ceiling.
+        if !(8_000..=768_000).contains(&self.sample_rate) {
+            return Err(EngineError::InternalError);
+        }
+        // Mono .. 7.1 surround.
+        if !(1..=8).contains(&self.channels) {
+            return Err(EngineError::InternalError);
+        }
+        // Widths the PCM conversion paths express.
+        if !matches!(self.bit_depth, 16 | 24 | 32) {
+            return Err(EngineError::InternalError);
+        }
+        // Non-degenerate ring; capped at 2^20 frames (~21 s @ 48 kHz) so
+        // a config typo cannot request an unbounded buffer.
+        if self.buffer_frames == 0 || self.buffer_frames > (1 << 20) {
+            return Err(EngineError::InternalError);
+        }
+        Ok(())
     }
 }
 
@@ -195,12 +241,18 @@ impl StreamifyEngine {
         }
     }
 
-    /// Arm the engine. One-way, idempotent: an `Idle` engine advances to
-    /// `Buffering` (initialized and acquiring first data); any already
-    /// progressed state is left untouched and a second call is a no-op.
-    pub fn initialize(&self) {
+    /// Arm the engine (UFFI-03: live dispatch wiring).
+    ///
+    /// Runtime environment invariants are verified on *every* call —
+    /// first and idempotent repeats alike — and a failed check arms
+    /// nothing: the engine stays `Idle` and the typed error crosses the
+    /// FFI. On success the lifecycle advances one-way `Idle` ->
+    /// `Buffering`; an already-progressed state is never pulled back and
+    /// a second call is a verified no-op.
+    pub fn initialize(&self) -> Result<(), EngineError> {
+        Self::verify_runtime_environment()?;
         if self.shared.initialized.swap(true, Ordering::AcqRel) {
-            return;
+            return Ok(());
         }
         let mut state = self
             .shared
@@ -210,11 +262,22 @@ impl StreamifyEngine {
         if *state == PlaybackState::Idle {
             *state = PlaybackState::Buffering;
         }
+        Ok(())
     }
 
     /// Set the output volume. Clamped to `[0.0, 1.0]`; stored lock-free.
+    ///
+    /// NaN fails safe to full mute: `f32::clamp` propagates NaN, and a
+    /// NaN gain stored as raw bits would poison every downstream DSP
+    /// sample silently (NaN compares false against all bounds — no
+    /// assertion, alarm, or UI bar would ever catch it). ±inf clamp to
+    /// the rails as usual.
     pub fn set_volume(&self, volume: f32) {
-        let clamped = volume.clamp(0.0, 1.0);
+        let clamped = if volume.is_nan() {
+            0.0
+        } else {
+            volume.clamp(0.0, 1.0)
+        };
         self.shared
             .volume_bits
             .store(clamped.to_bits(), Ordering::Release);
@@ -255,15 +318,35 @@ impl StreamifyEngine {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = state;
     }
 
-    /// Publish a buffering health sample (producer side). Each field is a
-    /// single atomic store; readers may observe mixed-generation samples
-    /// under concurrent publication, which is acceptable for telemetry.
+    /// Publish one live buffering sample (UFFI-03: telemetry wiring).
+    ///
+    /// This is the producer edge for metrics from the playback buffer
+    /// and the acoustic pipeline — now on the FFI surface so the app-side
+    /// buffer observer feeds it directly: `buffered_duration_ms` is the
+    /// media duration currently queued ahead of the read cursor,
+    /// `underrun_count` the cumulative starvation events of the current
+    /// telemetry epoch (a decrease signals a producer-side pipeline
+    /// restart — track switch — and is accepted, not rejected), and
+    /// `fill_ratio` the ring occupancy.
+    ///
+    /// Malformed samples never enter the snapshot: a NaN or ±inf fill
+    /// ratio is rejected with [`EngineError::InternalError`] *before* any
+    /// store runs, so a rejected sample cannot partially publish. Finite
+    /// out-of-range fill ratios clamp to `[0.0, 1.0]` — fill estimators
+    /// legitimately overshoot during watermark transitions.
+    ///
+    /// Each field is a single atomic store; readers may observe
+    /// mixed-generation samples under concurrent publication, which is
+    /// acceptable for telemetry.
     pub fn record_buffer_stats(
         &self,
         buffered_duration_ms: u64,
         underrun_count: u32,
         fill_ratio: f32,
-    ) {
+    ) -> Result<(), EngineError> {
+        if !fill_ratio.is_finite() {
+            return Err(EngineError::InternalError);
+        }
         self.shared
             .buffered_duration_ms
             .store(buffered_duration_ms, Ordering::Release);
@@ -273,6 +356,28 @@ impl StreamifyEngine {
         self.shared
             .fill_ratio_bits
             .store(fill_ratio.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+        Ok(())
+    }
+
+    /// Runtime environment invariants (UFFI-03: `initialize()` gate).
+    ///
+    /// Checked before the engine arms and on every idempotent re-arm:
+    ///   * the reference pipeline geometry is internally consistent
+    ///     ([`AudioStreamConfig::validate`]);
+    ///   * the scheduler can report its width — the telemetry samplers
+    ///     and DSP worker dispatch the armed engine relies on cannot be
+    ///     sized on a host where `available_parallelism` fails;
+    ///   * the wall clock is past the epoch — a pre-epoch clock would
+    ///     poison every duration-based diagnostic the engine publishes.
+    fn verify_runtime_environment() -> Result<(), EngineError> {
+        AudioStreamConfig::default().validate()?;
+        if available_parallelism().is_err() {
+            return Err(EngineError::InternalError);
+        }
+        if SystemTime::now() <= UNIX_EPOCH {
+            return Err(EngineError::InternalError);
+        }
+        Ok(())
     }
 }
 
@@ -293,11 +398,16 @@ mod tests {
     #[test]
     fn initialize_is_one_way_and_idempotent() {
         let engine = StreamifyEngine::new();
-        engine.initialize();
+        engine
+            .initialize()
+            .expect("runtime invariants hold on a healthy host");
         assert_eq!(engine.get_playback_state(), PlaybackState::Buffering);
-        // A progressed state is never pulled back by a second initialize.
+        // A progressed state is never pulled back by a second initialize,
+        // and the idempotent re-arm still verifies the environment.
         engine.set_playback_state(PlaybackState::Playing);
-        engine.initialize();
+        engine
+            .initialize()
+            .expect("idempotent re-arm re-verifies cleanly");
         assert_eq!(engine.get_playback_state(), PlaybackState::Playing);
     }
 
@@ -313,13 +423,107 @@ mod tests {
     }
 
     #[test]
+    fn set_volume_fails_safe_on_nan_and_infinity() {
+        let engine = StreamifyEngine::new();
+        // NaN must never enter the stored bits: it would poison every
+        // downstream DSP sample silently. Fail safe to full mute.
+        engine.set_volume(f32::NAN);
+        assert!(engine.volume().abs() < f32::EPSILON);
+        assert!(engine.volume().is_finite());
+        // ±inf clamp to the rails.
+        engine.set_volume(f32::INFINITY);
+        assert!((engine.volume() - 1.0).abs() < f32::EPSILON);
+        engine.set_volume(f32::NEG_INFINITY);
+        assert!(engine.volume().abs() < f32::EPSILON);
+        // A finite value still lands exactly after the garbage round-trip.
+        engine.set_volume(0.25);
+        assert!((engine.volume() - 0.25).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn buffer_stats_round_trip() {
         let engine = StreamifyEngine::new();
-        engine.record_buffer_stats(12_345, 2, 0.75);
+        engine
+            .record_buffer_stats(12_345, 2, 0.75)
+            .expect("finite sample must be accepted");
         let stats = engine.get_buffer_stats();
         assert_eq!(stats.buffered_duration_ms, 12_345);
         assert_eq!(stats.underrun_count, 2);
         assert!((stats.fill_ratio - 0.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn record_buffer_stats_rejects_malformed_fill_ratio() {
+        let engine = StreamifyEngine::new();
+        engine
+            .record_buffer_stats(1_000, 1, 0.5)
+            .expect("finite sample must be accepted");
+        for garbage in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(
+                engine.record_buffer_stats(9_999, 9, garbage),
+                Err(EngineError::InternalError),
+                "{garbage} must be rejected before any store runs"
+            );
+        }
+        // The rejected sample published nothing — not even partially.
+        let stats = engine.get_buffer_stats();
+        assert_eq!(stats.buffered_duration_ms, 1_000);
+        assert_eq!(stats.underrun_count, 1);
+        assert!((stats.fill_ratio - 0.5).abs() < f32::EPSILON);
+        // Finite overshoot clamps instead of rejecting.
+        engine
+            .record_buffer_stats(2_000, 3, 1.7)
+            .expect("finite overshoot must clamp, not reject");
+        assert!((engine.get_buffer_stats().fill_ratio - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn audio_stream_config_invariants_are_enforced() {
+        assert!(AudioStreamConfig::default().validate().is_ok());
+        let degenerate = [
+            AudioStreamConfig {
+                sample_rate: 0,
+                ..AudioStreamConfig::default()
+            },
+            AudioStreamConfig {
+                sample_rate: 1_000_000,
+                ..AudioStreamConfig::default()
+            },
+            AudioStreamConfig {
+                channels: 0,
+                ..AudioStreamConfig::default()
+            },
+            AudioStreamConfig {
+                channels: 9,
+                ..AudioStreamConfig::default()
+            },
+            AudioStreamConfig {
+                bit_depth: 15,
+                ..AudioStreamConfig::default()
+            },
+            AudioStreamConfig {
+                buffer_frames: 0,
+                ..AudioStreamConfig::default()
+            },
+            AudioStreamConfig {
+                buffer_frames: (1 << 20) + 1,
+                ..AudioStreamConfig::default()
+            },
+        ];
+        for config in degenerate {
+            assert_eq!(config.validate(), Err(EngineError::InternalError));
+        }
+        // The bounds are inclusive where they should be.
+        assert!(
+            (AudioStreamConfig {
+                sample_rate: 8_000,
+                channels: 1,
+                bit_depth: 16,
+                buffer_frames: 1,
+            })
+            .validate()
+            .is_ok()
+        );
     }
 
     #[test]
@@ -362,7 +566,9 @@ mod tests {
         const ITERS: usize = 20_000;
 
         let engine = Arc::new(StreamifyEngine::new());
-        engine.initialize();
+        engine
+            .initialize()
+            .expect("runtime invariants hold on a healthy host");
         let barrier = Arc::new(Barrier::new(READERS + WRITERS + 1));
 
         let mut handles = Vec::new();
@@ -373,7 +579,7 @@ mod tests {
                 barrier.wait();
                 for k in 0..ITERS {
                     engine.set_volume((k % 101) as f32 / 100.0);
-                    engine.record_buffer_stats(
+                    let _ = engine.record_buffer_stats(
                         (k % 9_000) as u64,
                         (k % 7) as u32,
                         (k % 1000) as f32 / 1000.0,
@@ -384,7 +590,9 @@ mod tests {
                         _ => PlaybackState::Paused,
                     });
                     if k % 5_000 == 0 {
-                        engine.initialize(); // idempotent under contention
+                        // Idempotent under contention; result handled so
+                        // must_use cannot fire on a stress path.
+                        let _ = engine.initialize();
                     }
                     let _ = i;
                 }
