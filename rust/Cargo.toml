@@ -37,6 +37,16 @@ libc = "0.2"
 # beacon descriptor (directive B) is an Ed25519 verifying key by design.
 ed25519-dalek = "2.1"
 
+# Phase 2 (UFFI-01): typed, type-safe Kotlin<->Rust bindings for the
+# control-plane and metadata flows, replacing the raw extern "C" JNI
+# edges on those paths. The audio real-time data-plane keeps the frozen
+# JNI contract (see jni_bridge_dsp.cc, AMP-10).
+uniffi = { version = "0.28", features = ["cli", "build"] }
+
+[build-dependencies]
+# Scaffolding generation at build time; "builtin-bindgen" embeds the
+# bindgen so no external uniffi-bindgen binary is needed on CI runners.
+uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
 
 [dev-dependencies]
 tempfile = "3.10"

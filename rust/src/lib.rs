@@ -6,6 +6,9 @@ pub mod backup;
 pub mod cache;
 pub mod consensus;
 pub mod continuum_engine;
+// Phase 2 (UFFI-01): UniFFI typed contract — implementation of the
+// types and interface declared in src/streamify.udl.
+pub mod contract;
 pub mod crossfade;
 pub mod crypto;
 pub mod db_pool;
@@ -75,6 +78,9 @@ pub use consensus::{
     CollabPlaylistState, ConsensusEngine, PlaylistApplyResult, PlaylistItemView, PlaylistOp,
     PlaylistOpKind, PlaylistReject, PlaylistRole,
 };
+pub use contract::{
+    AudioStreamConfig, BufferStats, EngineError, PlaybackState, StreamifyEngine, TrackMetadata,
+};
 pub use crossfade::CrossfadeDspEngine;
 pub use crypto::VaultCryptoEngine;
 pub use downloader::{DownloadProgress, StreamDownloader};
@@ -92,4 +98,16 @@ pub use radio_scorer::{
 };
 pub use resolver::StreamResolver;
 pub use search::{FuzzySearchEngine, SearchCandidate};
-pub use tagger::{AudioMetadataEngine, TrackMetadata};
+// Phase 2 (UFFI-01): the crate-root `TrackMetadata` is now the UniFFI
+// contract record (id / duration_ms / stream_url? / album_art_url?). The
+// lofty-backed file-metadata struct remains available at
+// `crate::tagger::TrackMetadata`.
+pub use tagger::AudioMetadataEngine;
+
+// ─── Phase 2 (UFFI-01): UniFFI scaffolding ────────────────────────────────
+// Generated at build time from src/streamify.udl by build.rs. The emitted
+// FFI trampolines and FfiConverter impls resolve the contract types by
+// bare name, so the re-exports above must stay in scope at this include
+// site. Types are defined in `contract`; the object implementation lives
+// there as inherent methods (`new` + the five UDL-declared methods).
+uniffi::include_scaffolding!("streamify");
