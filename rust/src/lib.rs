@@ -32,6 +32,10 @@ pub mod jam_outbox;
 pub mod jni_bridge;
 pub mod json;
 pub mod lyrics;
+// Phase 4a (MP-HAL03): EBU R128 / ITU-R BS.1770-4 loudness measurement
+// and normalization on the canonical 48 kHz pipeline — the golden-vector
+// DSP suite's loudness stage.
+pub mod lufs;
 // Multiplatform Phase 3 (MP-C15): tracing + metrics façade with
 // per-platform (feature-gated) subscribers.
 pub mod neuro_queue;
@@ -84,6 +88,12 @@ pub mod spotify_ingest;
 pub mod tagger;
 pub mod task_orchestrator;
 pub mod tick_matrix;
+// Phase 4a (MP-HAL01/MP-HAL02): the VirtualHAL deterministic adversarial
+// audio test double — simulated DAC presentation clock (jitter, underrun,
+// overrun, rate-change stress) validating the DacPresentationClock
+// contract headless on every CI runner. Pure-Rust twin of
+// native/include/virtual_hal.h.
+pub mod virtual_hal;
 pub mod waveform_indexer;
 // Audit #22 item 6: shared little-endian wire-field readers —
 // panic-free ingress parsing for every wire codec.
@@ -124,6 +134,15 @@ pub use resolver::StreamResolver;
 pub use search::{FuzzySearchEngine, SearchCandidate};
 // Multiplatform Phase 3: the canonical 48 kHz producer SRC stage.
 pub use audio_src::{CanonicalSrc, CANONICAL_RATE_HZ};
+// Phase 4a (MP-HAL03): the BS.1770-4 loudness stage.
+pub use lufs::{LufsAnalyzer, LufsNormalizer, LufsReport, LUFS_SILENCE};
+// Phase 4a (MP-HAL01/MP-HAL02): the VirtualHAL test double + the
+// canonical HAL consumer interface and clock interpolator.
+pub use virtual_hal::{
+    AdversarialModes, AdversarialProfile, AudioHalConsumer, DacClockInterpolator,
+    HalPullReport, ScenarioReport, VirtualHalCallback, VirtualHalConfig, VirtualHalSink,
+    VirtualHalStats, INTERPOLATION_ACCEPTANCE_MS,
+};
 // Multiplatform Phase 3 (MP-C15): observability entry points for the
 // client shells (Beta's init wiring).
 pub use obs::{init_observability, register_core_metrics};
