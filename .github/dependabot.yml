@@ -33,6 +33,27 @@ updates:
       # spikes instead (P0 containment directive).
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # DEP-01 (alpha-phase-3): pinned to the compileSdk 34 baseline;
+      # the compileSdk 35 migration is deferred. Root cause: Dependabot
+      # PR #101 bumped 18 Gradle deps at once and jvm-unit-suite failed
+      # at :app:checkDebugAarMetadata — core-ktx 1.19.1 and
+      # navigation-compose 2.10.2 both enforce compileSdk 35+, while
+      # this project pins compileSdk 34 (Android 14). The caps below
+      # intercept exactly those break-versions while leaving headroom
+      # above the current pins (core-ktx 1.12.0, navigation-compose
+      # 2.7.7, AGP 8.2.2, wrapper 8.7) so safe in-window updates keep
+      # arriving as reviewable grouped batches. AGP and the wrapper
+      # ride the same baseline: AGP 8.3+ requires compileSdk 34's
+      # tooling to move in lockstep, and wrapper 8.8+ pairs with that
+      # AGP generation.
+      - dependency-name: "androidx.core:core-ktx"
+        versions: [">= 1.16.0"]
+      - dependency-name: "androidx.navigation:navigation-compose"
+        versions: [">= 2.8.0"]
+      - dependency-name: "com.android.application"
+        versions: [">= 8.3.0"]
+      - dependency-name: "gradle-wrapper"
+        versions: [">= 8.8.0"]
 
   - package-ecosystem: "cargo"
     directory: "/rust"
