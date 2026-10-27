@@ -33,8 +33,14 @@
 //    number of input samples actually consumed so the caller can retry the
 //    remainder (AudioTrack#write(NON_BLOCKING) parity). overrun_dropped_
 //    exists as a safety net and stays 0 in correct operation.
-//  * Flush() is a control-plane op with AudioTrack#flush() semantics:
-//    quiesce the producer and consumer threads before calling it.
+//  * Flushing is CONSUMER-COOPERATIVE (AMP-10 hardening): any thread may
+//    call RequestFlush() — it only publishes an atomic flag — and the
+//    consumer thread performs the actual cursor reset inside its next
+//    ReadFrames()/ReadBytes() call, where it already owns tail_. The
+//    control thread therefore never mutates cursors the audio callback is
+//    concurrently updating, and the real-time path stays 100% lock-free,
+//    zero-allocation and sleep-free (one acquire exchange + one release
+//    store + a bounded memset on the flush pass).
 //
 //  This unit is the sink-side counterpart of mix/AudioRingBuffer.h (Phase 1,
 //  float mixing ring): it owns format conversion, downmix, decimation and
@@ -184,11 +190,20 @@ public:
     // ---- any thread ----------------------------------------------------------
     void GetStats(SinkStats* out) const;
 
-    // Control-plane: drop buffered audio and reset filter/watermark state.
-    // CONTRACT: quiesce producer and consumer threads first (same contract
-    // as AudioTrack#flush). Cumulative counters are preserved; occupancy,
-    // watermarks and decimator history reset.
-    void Flush();
+    // Control-plane flush request: drop buffered audio without ever
+    // touching a cursor from the caller's thread. Safe to call from ANY
+    // thread (typically UI/control) WHILE the producer and consumer are
+    // live: it only publishes the request flag (release). The consumer
+    // thread consumes it at the top of its next ReadFrames()/ReadBytes()
+    // call — resetting tail_ to the committed head_, zero-filling the
+    // destination with digital silence and returning 0 for that call.
+    // Cumulative counters are preserved; occupancy drops to whatever the
+    // producer commits afterwards. The request is level-triggered and
+    // coalescing: N requests before the next read collapse into one
+    // flush pass. noexcept: an atomic store cannot throw (AMP-10).
+    void RequestFlush() noexcept {
+        flush_requested_.store(true, std::memory_order_release);
+    }
 
     // ---- immutable accessors -------------------------------------------------
     uint32_t sample_rate_in() const { return sample_rate_in_; }
@@ -229,6 +244,11 @@ private:
     alignas(64) std::atomic<uint64_t> frames_read_{0};
     alignas(64) std::atomic<uint64_t> underrun_events_{0};
     alignas(64) std::atomic<uint32_t> low_watermark_{0};
+
+    // ---- cross-thread control plane (own cache line: the UI thread stores
+    //      here while the audio callback runs — sharing a line with consumer
+    //      state would reintroduce the false sharing AMP-10 removes) ---------
+    alignas(64) std::atomic<bool> flush_requested_{false};
 
     // ---- producer-thread scratch (allocated once at construction) --------------
     std::vector<float> mix_scratch_;   // kBlockFrames mono floats
