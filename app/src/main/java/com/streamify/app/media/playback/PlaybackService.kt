@@ -30,6 +30,34 @@ class PlaybackService : MediaSessionService() {
     // with the service so recovery jobs never outlive it, unlike the previous
     // ad-hoc CoroutineScope(...).launch per error which leaked unmanaged jobs.
     private var errorRecoveryScope: kotlinx.coroutines.CoroutineScope? = null
+
+    // ── STRICT ARCHITECTURE FIREWALL (Phase 4) ──
+    //
+    // 1. ZERO UI POLLING — playback position, buffer fullness and DSP
+    //    telemetry are pure StateFlow consumers: PlayerTicker publishes
+    //    positionMs/durationMs into dedicated flows (the UI root never
+    //    recomposes for them), PlayerTicker's gated refresh feeds
+    //    StreamifyEngineBridge.bufferStats, and PlayerViewModel.bufferHealth
+    //    mirrors it for the UI. No Composable or ViewModel calls a blocking
+    //    native getter in a render loop.
+    //
+    // 2. AUDIO-FOCUS TEARDOWN — the AudioFocusGovernor owns focus decisions
+    //    (ExoPlayer's internal handling is disabled below): permanent
+    //    AUDIOFOCUS_LOSS transitions the player to STOPPED atomically and
+    //    stops the foreground service cleanly — no zombie session.
+    //
+    // 3. CLEAN RELEASE — onDestroy invokes StreamifyEngineBridge.release()
+    //    after the session/player teardown so no native buffer allocation
+    //    outlives the service.
+    private val audioFocusGovernor = AudioFocusGovernor()
+    private val focusTeardownLock = Any()
+
+    private val audioFocusListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+        // Registered with the main-thread handler — safe to touch the
+        // player and the service lifecycle directly.
+        executeFocusActions(audioFocusGovernor.onFocusChange(focusChange))
+    }
+
     companion object {
         // LEGACY objects kept alive only for non-chain consumers:
         //  - syncAudioProcessor: Jam lockstep hardware-latency compensation
@@ -158,7 +186,12 @@ class PlaybackService : MediaSessionService() {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .setSpatializationBehavior(C.SPATIALIZATION_BEHAVIOR_AUTO)
-                .build(), true
+                .build(),
+                // FIREWALL (Phase 4): internal Media3 focus handling is OFF —
+                // it only pauses on permanent loss. The AudioFocusGovernor
+                // takes explicit ownership so permanent AUDIOFOCUS_LOSS gets
+                // the full atomic teardown instead of a zombie pause.
+                /* handleAudioFocus = */ false
             )
             .setLoadControl(audioLoadControl)
             .setHandleAudioBecomingNoisy(true)
@@ -243,6 +276,16 @@ class PlaybackService : MediaSessionService() {
                         StreamifyEngineBridge.recordPlaybackState(
                             StreamifyEngineBridge.PlaybackState.Paused
                         )
+                }
+
+                // FIREWALL (Phase 4): explicit focus ownership — request on
+                // playback start, abandon when it ends (the governor retains
+                // focus across its own transient pause/duck so the ending
+                // GAIN still reaches us).
+                if (isPlaying) {
+                    executeFocusActions(audioFocusGovernor.onPlaybackStarted())
+                } else if (!audioFocusGovernor.isTransientPauseActive()) {
+                    executeFocusActions(audioFocusGovernor.onPlaybackStopped())
                 }
             }
 
@@ -532,6 +575,84 @@ class PlaybackService : MediaSessionService() {
 
     private var preBufferManager: PredictivePreBufferManager? = null
 
+    // ── Audio-focus execution (the governor decides, this executes) ──────
+
+    private fun executeFocusActions(actions: List<AudioFocusGovernor.Action>) {
+        for (action in actions) {
+            when (action) {
+                AudioFocusGovernor.Action.RequestFocus -> requestAudioFocusNow()
+                AudioFocusGovernor.Action.AbandonFocus -> abandonAudioFocusNow()
+                is AudioFocusGovernor.Action.Duck -> player?.volume = action.gain
+                AudioFocusGovernor.Action.Unduck -> player?.volume = 1f
+                AudioFocusGovernor.Action.Pause -> player?.pause()
+                AudioFocusGovernor.Action.Resume -> player?.play()
+                AudioFocusGovernor.Action.TeardownPlayback -> teardownForPermanentFocusLoss()
+            }
+        }
+    }
+
+    private fun requestAudioFocusNow() {
+        try {
+            val request = audioFocusRequest ?: android.media.AudioFocusRequest
+                .Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener(
+                    audioFocusListener,
+                    android.os.Handler(android.os.Looper.getMainLooper())
+                )
+                .build()
+                .also { audioFocusRequest = it }
+            audioManager.requestAudioFocus(request)
+        } catch (_: Throwable) {
+            // Focus is best-effort — playback proceeds regardless; the
+            // teardown contract only guards what happens once focus IS ours
+            // and then permanently lost.
+        }
+    }
+
+    private fun abandonAudioFocusNow() {
+        try {
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } catch (_: Throwable) {}
+    }
+
+    private val audioManager: android.media.AudioManager
+        get() = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+
+    @Volatile private var audioFocusRequest: android.media.AudioFocusRequest? = null
+
+    /**
+     * FIREWALL (Phase 4) — permanent AUDIOFOCUS_LOSS: the ATOMIC transition
+     * to STOPPED. One synchronized block pauses AND stops the player and
+     * records the terminal Idle state on the engine bridge (the
+     * session-scoped underrun tally resets) — no observer can catch a
+     * mid-state. Foreground state is then dropped cleanly and the service
+     * stops: no zombie notification, no idle FGS holding priority another
+     * app's player needs.
+     */
+    private fun teardownForPermanentFocusLoss() {
+        synchronized(focusTeardownLock) {
+            try {
+                player?.pause()
+                player?.stop()
+            } catch (_: Throwable) {}
+            // Deterministic terminal record inside the lock — the
+            // onPlaybackStateChanged(IDLE) hook lands the same value right
+            // after; duplicate records are idempotent.
+            StreamifyEngineBridge.recordPlaybackState(
+                StreamifyEngineBridge.PlaybackState.Idle
+            )
+        }
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        stopSelf()
+        SLog.i("PlaybackService", "permanent audio-focus loss — session stopped, foreground dropped")
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
@@ -557,6 +678,9 @@ class PlaybackService : MediaSessionService() {
         jamServiceScope?.cancel()
         errorRecoveryScope?.cancel()
         com.streamify.app.jam.JamEngine.attachRuntimeScope(null)
+        // FIREWALL (Phase 4): release the audio focus the governor holds —
+        // another media app must never wait on a dying service.
+        abandonAudioFocusNow()
         // MEDIA-01: AudioDeviceManager is a process-lifetime object — its
         // headset-disconnect listener captured THIS service's ExoPlayer.
         // Clear it before teardown or the dead player (and everything it
@@ -584,6 +708,12 @@ class PlaybackService : MediaSessionService() {
             mediaSession = null
         }
         player = null
+        // FIREWALL (Phase 4) — the final FFI-plane teardown: LAST, after the
+        // session and player are gone. Idempotent; dispatches the backend
+        // release (engine-side buffer teardown when the contract carries
+        // it) and returns the bridge telemetry surface to the dormant state
+        // so no native allocation or stale session tally outlives the service.
+        StreamifyEngineBridge.release()
         super.onDestroy()
     }
 }
