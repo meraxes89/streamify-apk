@@ -39,6 +39,41 @@ enum class PlaybackButtonState {
 }
 
 /**
+ * UI-01: buffering-health telemetry snapshot projected from the engine
+ * bridge (StreamifyEngineBridge.bufferStats) for player surfaces. Pure vals
+ * — skippable by Compose like the rest of the model family. Underrun
+ * counting is session-scoped: the tally resets when playback enters Idle
+ * (queue cleared / service teardown) and bumps on every Playing ->
+ * Buffering rebuffer observed by the PlaybackService listener.
+ */
+@androidx.compose.runtime.Immutable
+data class BufferHealth(
+    /** Ring fill ratio in `[0.0, 1.0]` — engine-fed (0 while Rust-side producers are unwired). */
+    val fillRatio: Float,
+    /** Underrun (rebuffer) events observed for the current playback session. */
+    val underrunCount: UInt,
+    /** Media duration currently buffered, in milliseconds. */
+    val bufferedDurationMs: ULong,
+) {
+    /** True once the current session has starved the ring at least once. */
+    val isUnderrunWarning: Boolean
+        get() = underrunCount > 0u
+
+    /**
+     * Low-buffer warning. Only meaningful when the engine actually reports
+     * buffered media: fillRatio is engine-fed and defaults to 0.0 while the
+     * Rust-side producers are not wired — the guard keeps the warning quiet
+     * instead of crying wolf on every fresh session.
+     */
+    val isLowBuffer: Boolean
+        get() = bufferedDurationMs > 0uL && fillRatio < LOW_BUFFER_FILL_THRESHOLD
+
+    private companion object {
+        const val LOW_BUFFER_FILL_THRESHOLD = 0.25f
+    }
+}
+
+/**
  * [Immutable]: holds only immutable vals — [Track] is itself @Immutable and
  * the queue list is replaced wholesale (copy-on-write) by the viewmodel, never
  * mutated in place. The Compose compiler treats this state as immutable, so
