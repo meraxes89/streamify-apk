@@ -188,7 +188,7 @@ fn run_pipeline(spec: &VectorSpec, input: &[f32]) -> PipelineOutcome {
     // Stage 2: biquad parametric EQ (f64 direct-form state).
     let mut eq = StudioEqualizer::new(48_000.0);
     eq.set_band_gain(0, 2.0); // 31.25 Hz low shelf
-    eq.set_band_gain(4, 1.5); // 1 kHz peaking
+    eq.set_band_gain(4, 1.5); // 500 Hz peaking (FREQUENCIES[4] = 500.0)
     eq.set_band_gain(9, -1.0); // 16 kHz high shelf
     eq.process_buffer_interleaved(&mut canonical, 2);
 
@@ -269,7 +269,7 @@ fn pipeline_descriptor() -> Value {
         "src": "CanonicalSrc: rubato::SincFixedOut<f32> (sinc_len 256, f_cutoff 0.95, \
                 oversampling 256, cubic, BlackmanHarris2, 1024-frame out chunks)",
         "eq": "StudioEqualizer @48000 Hz — band gains dB: [0]=+2.0 (low shelf 31.25), \
-               [4]=+1.5 (peak 1k), [9]=-1.0 (high shelf 16k); f64 DF state; tanh soft clip",
+               [4]=+1.5 (peak 500), [9]=-1.0 (high shelf 16k); f64 DF state; tanh soft clip",
         "lufs": "EBU R128 / ITU-R BS.1770-4 K-weighted gated integrated (400 ms / 75 %), \
                  target -16 LUFS, gain clamp ±20 dB, silence => 0 dB"
     })

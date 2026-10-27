@@ -3,7 +3,7 @@
   "epsilon": 0.00001,
   "format_version": 1,
   "pipeline": {
-    "eq": "StudioEqualizer @48000 Hz — band gains dB: [0]=+2.0 (low shelf 31.25), [4]=+1.5 (peak 1k), [9]=-1.0 (high shelf 16k); f64 DF state; tanh soft clip",
+    "eq": "StudioEqualizer @48000 Hz — band gains dB: [0]=+2.0 (low shelf 31.25), [4]=+1.5 (peak 500), [9]=-1.0 (high shelf 16k); f64 DF state; tanh soft clip",
     "lufs": "EBU R128 / ITU-R BS.1770-4 K-weighted gated integrated (400 ms / 75 %), target -16 LUFS, gain clamp ±20 dB, silence => 0 dB",
     "src": "CanonicalSrc: rubato::SincFixedOut<f32> (sinc_len 256, f_cutoff 0.95, oversampling 256, cubic, BlackmanHarris2, 1024-frame out chunks)"
   },
