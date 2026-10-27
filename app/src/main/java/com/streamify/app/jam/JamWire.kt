@@ -50,15 +50,14 @@ import java.nio.ByteOrder
  *   SEEK         i64 positionMs                                      (8 B)
  *   PLAY/PAUSE/LEAVE/SESSION_END  — empty
  *   POLICY       u8 policyOrdinal (0=HOST_ONLY, 1=EVERYONE)          (1 B)
- *   MERKLE_ROOT_REQ   u32 opCount + 32 B root                        (36 B)
- *   MERKLE_ROOT_ACK   u8 equal, u32 opCount + 32 B root              (37 B)
- *   MERKLE_BRANCH_REQ u8 level, u16 count, count×u32 index           (var)
- *   MERKLE_BRANCH     u8 level, u16 count, count×32 B hash           (var)
- *   MERKLE_DELTA_REQ  u16 count, count×u32 leafIndex                 (var)
- *   MERKLE_DELTA      u16 opCount, per op: 48 B + u16 jsonLen + json (var)
  *   TRACK_META        i64 cadId + u16 jsonLen + json                 (var)
  *   QUEUE_SNAPSHOT    empty body + track-JSON-array tail (legacy path)
  *   STATE_REQ         empty body — joiner asks the leader for live state
+ *
+ * Message ids 15–20 were the Merkle sync registry, retired with the Kotlin
+ * CRDT amputation (UFFI-04): state convergence is engine-authoritative
+ * (Rust jam_crdt + outbox replay); the ids stay reserved so remaining
+ * wire types never shift.
  *
  * The codec is pure Kotlin (java.nio only) so the entire transport grammar is
  * unit-testable on the JVM shard without Android or native artifacts.
@@ -71,7 +70,7 @@ object JamWire {
     const val MAX_FRAME_BYTES: Int = 256 * 1024
     const val MAX_TRACK_JSON_BYTES: Int = 64 * 1024
 
-    /** Message-type registry (u8). 1–14 protocol core, 15–21 Merkle sync. */
+    /** Message-type registry (u8). 1–14 protocol core; 15–20 retired Merkle sync (UFFI-04). */
     object Msg {
         const val TICK = 1
         const val PRESENCE = 2
@@ -87,12 +86,6 @@ object JamWire {
         const val POLICY = 12
         const val LEAVE = 13
         const val SESSION_END = 14
-        const val MERKLE_ROOT_REQ = 15
-        const val MERKLE_ROOT_ACK = 16
-        const val MERKLE_BRANCH_REQ = 17
-        const val MERKLE_BRANCH = 18
-        const val MERKLE_DELTA_REQ = 19
-        const val MERKLE_DELTA = 20
         const val TRACK_META = 21
         const val QUEUE_SNAPSHOT = 22
         const val STATE_REQ = 23
@@ -108,9 +101,6 @@ object JamWire {
             SYNC_REQ -> "SYNC_REQ"; SYNC_ACK -> "SYNC_ACK"; NEXT_IS -> "NEXT_IS"
             TRACK_CHANGE -> "TRACK_CHANGE"; SEEK -> "SEEK"; PLAY -> "PLAY"; PAUSE -> "PAUSE"
             POLICY -> "POLICY"; LEAVE -> "LEAVE"; SESSION_END -> "SESSION_END"
-            MERKLE_ROOT_REQ -> "MERKLE_ROOT_REQ"; MERKLE_ROOT_ACK -> "MERKLE_ROOT_ACK"
-            MERKLE_BRANCH_REQ -> "MERKLE_BRANCH_REQ"; MERKLE_BRANCH -> "MERKLE_BRANCH"
-            MERKLE_DELTA_REQ -> "MERKLE_DELTA_REQ"; MERKLE_DELTA -> "MERKLE_DELTA"
             TRACK_META -> "TRACK_META"; QUEUE_SNAPSHOT -> "QUEUE_SNAPSHOT"
             STATE_REQ -> "STATE_REQ"
             TOPOLOGY -> "TOPOLOGY"; GOVERNANCE -> "GOVERNANCE"; KICK -> "KICK"
@@ -192,42 +182,6 @@ object JamWire {
     )
 
     data class TrackChangeBody(val positionMs: Long, val playing: Boolean, val trackJson: String?)
-
-    data class MerkleRootBody(val opCount: Int, val root: ByteArray) {
-        override fun equals(other: Any?): Boolean =
-            other is MerkleRootBody && other.opCount == opCount && other.root.contentEquals(root)
-        override fun hashCode(): Int = opCount * 31 + root.contentHashCode()
-    }
-
-    data class MerkleRootAckBody(val equal: Boolean, val opCount: Int, val root: ByteArray) {
-        override fun equals(other: Any?): Boolean =
-            other is MerkleRootAckBody && other.equal == equal && other.opCount == opCount &&
-                other.root.contentEquals(root)
-        override fun hashCode(): Int = (if (equal) 1 else 0) * 31 + opCount + root.contentHashCode()
-    }
-
-    data class MerkleBranchReqBody(val level: Int, val indices: IntArray) {
-        override fun equals(other: Any?): Boolean =
-            other is MerkleBranchReqBody && other.level == level && other.indices.contentEquals(indices)
-        override fun hashCode(): Int = level * 31 + indices.contentHashCode()
-    }
-
-    data class MerkleBranchBody(val level: Int, val hashes: List<ByteArray>) {
-        override fun equals(other: Any?): Boolean =
-            other is MerkleBranchBody && other.level == level &&
-                other.hashes.zip(hashes).all { (a, b) -> a.contentEquals(b) }
-        override fun hashCode(): Int = level * 31 + hashes.size
-    }
-
-    data class MerkleDeltaReqBody(val leafIndices: IntArray) {
-        override fun equals(other: Any?): Boolean =
-            other is MerkleDeltaReqBody && other.leafIndices.contentEquals(leafIndices)
-        override fun hashCode(): Int = leafIndices.contentHashCode()
-    }
-
-    data class MerkleDeltaOp(val op: JamOpWire, val trackJson: String?)
-
-    data class MerkleDeltaBody(val ops: List<MerkleDeltaOp>)
 
     data class TrackMetaBody(val cadId: Long, val trackJson: String)
 
@@ -367,63 +321,6 @@ object JamWire {
     fun encodeSessionEnd(senderNonce: String): ByteArray =
         assemble(Msg.SESSION_END, senderNonce, 0L, ByteArray(0), null)
 
-    fun encodeMerkleRootReq(senderNonce: String, opCount: Int, root: ByteArray): ByteArray {
-        require(root.size == 32) { "merkle root must be 32 bytes" }
-        val b = ByteBuffer.allocate(36).order(ByteOrder.LITTLE_ENDIAN)
-        b.putInt(opCount); b.put(root)
-        return assemble(Msg.MERKLE_ROOT_REQ, senderNonce, 0L, b.array(), null)
-    }
-
-    fun encodeMerkleRootAck(senderNonce: String, equal: Boolean, opCount: Int, root: ByteArray): ByteArray {
-        require(root.size == 32) { "merkle root must be 32 bytes" }
-        val b = ByteBuffer.allocate(37).order(ByteOrder.LITTLE_ENDIAN)
-        b.put(if (equal) 1 else 0.toByte()); b.putInt(opCount); b.put(root)
-        return assemble(Msg.MERKLE_ROOT_ACK, senderNonce, 0L, b.array(), null)
-    }
-
-    fun encodeMerkleBranchReq(senderNonce: String, level: Int, indices: IntArray): ByteArray {
-        val b = ByteBuffer.allocate(3 + indices.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-        b.put(level.coerceIn(0, 30).toByte()); b.putShort(indices.size.toShort())
-        indices.forEach { b.putInt(it) }
-        return assemble(Msg.MERKLE_BRANCH_REQ, senderNonce, 0L, b.array(), null)
-    }
-
-    fun encodeMerkleBranch(senderNonce: String, level: Int, hashes: List<ByteArray>): ByteArray {
-        require(hashes.all { it.size == 32 }) { "merkle node hashes must be 32 bytes" }
-        val b = ByteBuffer.allocate(3 + hashes.size * 32).order(ByteOrder.LITTLE_ENDIAN)
-        b.put(level.coerceIn(0, 30).toByte()); b.putShort(hashes.size.toShort())
-        hashes.forEach { b.put(it) }
-        return assemble(Msg.MERKLE_BRANCH, senderNonce, 0L, b.array(), null)
-    }
-
-    fun encodeMerkleDeltaReq(senderNonce: String, leafIndices: IntArray): ByteArray {
-        val b = ByteBuffer.allocate(2 + leafIndices.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-        b.putShort(leafIndices.size.toShort())
-        leafIndices.forEach { b.putInt(it) }
-        return assemble(Msg.MERKLE_DELTA_REQ, senderNonce, 0L, b.array(), null)
-    }
-
-    fun encodeMerkleDelta(senderNonce: String, ops: List<MerkleDeltaOp>): ByteArray {
-        var size = 2
-        for (d in ops) {
-            size += JamOpWire.WIRE_SIZE + 2 + (d.trackJson?.toByteArray(Charsets.UTF_8)?.size ?: 0)
-        }
-        val b = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
-        b.putShort(ops.size.toShort())
-        for (d in ops) {
-            b.put(JamOpWire.pack(d.op))
-            val json = d.trackJson?.toByteArray(Charsets.UTF_8)
-            if (json == null) {
-                b.putShort(0)
-            } else {
-                require(json.size <= MAX_TRACK_JSON_BYTES) { "delta track JSON too large" }
-                b.putShort(json.size.toShort())
-                b.put(json)
-            }
-        }
-        return assemble(Msg.MERKLE_DELTA, senderNonce, 0L, b.array(), null)
-    }
-
     fun encodeTrackMeta(senderNonce: String, cadId: Long, trackJson: String): ByteArray {
         val json = trackJson.toByteArray(Charsets.UTF_8)
         require(json.size <= MAX_TRACK_JSON_BYTES) { "track meta JSON too large" }
@@ -513,7 +410,7 @@ object JamWire {
      * tally. The vote itself rides this control frame (the 48-byte CRDT op
      * envelope is FROZEN at ADD/REMOVE/REORDER), while the float-up reorder
      * is emitted as a regular OP_REORDER so late joiners still converge on
-     * the democratic order through the Merkle fold.
+     * the democratic order through the engine-authoritative CRDT fold.
      *
      * Body: [targetAddOpId 8B u64][voterNonce 8B ASCII][up 1B][reserved 7B]
      */
@@ -578,8 +475,6 @@ object JamWire {
         Msg.PLAY, Msg.PAUSE -> 0
         Msg.POLICY -> 1
         Msg.LEAVE, Msg.SESSION_END -> 0
-        Msg.MERKLE_ROOT_REQ -> 36
-        Msg.MERKLE_ROOT_ACK -> 37
         Msg.QUEUE_SNAPSHOT, Msg.STATE_REQ -> 0
         Msg.TOPOLOGY -> 1
         Msg.GOVERNANCE -> 12
@@ -592,10 +487,6 @@ object JamWire {
     /** Minimum body sizes for variable-layout frames; −1 = no floor. */
     private fun minBodySize(msgType: Int): Int = when (msgType) {
         Msg.PRESENCE -> 12
-        Msg.MERKLE_BRANCH_REQ -> 3
-        Msg.MERKLE_BRANCH -> 3
-        Msg.MERKLE_DELTA_REQ -> 2
-        Msg.MERKLE_DELTA -> 2
         Msg.TRACK_META -> 10
         else -> -1
     }
@@ -699,69 +590,6 @@ object JamWire {
         if (frame.msgType != Msg.POLICY || frame.body.size != 1) return null
         val v = frame.body[0].toInt()
         return if (v in 0..1) v else null
-    }
-
-    fun parseMerkleRootReq(frame: Frame): MerkleRootBody? {
-        if (frame.msgType != Msg.MERKLE_ROOT_REQ || frame.body.size != 36) return null
-        val b = bodyBuf(frame)
-        val count = b.int
-        val root = ByteArray(32); b.get(root)
-        return if (count < 0) null else MerkleRootBody(count, root)
-    }
-
-    fun parseMerkleRootAck(frame: Frame): MerkleRootAckBody? {
-        if (frame.msgType != Msg.MERKLE_ROOT_ACK || frame.body.size != 37) return null
-        val b = bodyBuf(frame)
-        val equal = b.get().toInt() != 0
-        val count = b.int
-        val root = ByteArray(32); b.get(root)
-        return if (count < 0) null else MerkleRootAckBody(equal, count, root)
-    }
-
-    fun parseMerkleBranchReq(frame: Frame): MerkleBranchReqBody? {
-        if (frame.msgType != Msg.MERKLE_BRANCH_REQ || frame.body.size < 3) return null
-        val b = bodyBuf(frame)
-        val level = b.get().toInt() and 0xFF
-        val count = b.short.toInt() and 0xFFFF
-        if (b.remaining() < count * 4) return null
-        val indices = IntArray(count) { b.int }
-        return MerkleBranchReqBody(level, indices)
-    }
-
-    fun parseMerkleBranch(frame: Frame): MerkleBranchBody? {
-        if (frame.msgType != Msg.MERKLE_BRANCH || frame.body.size < 3) return null
-        val b = bodyBuf(frame)
-        val level = b.get().toInt() and 0xFF
-        val count = b.short.toInt() and 0xFFFF
-        if (b.remaining() < count * 32) return null
-        val hashes = (0 until count).map { ByteArray(32).also { h -> b.get(h) } }
-        return MerkleBranchBody(level, hashes)
-    }
-
-    fun parseMerkleDeltaReq(frame: Frame): MerkleDeltaReqBody? {
-        if (frame.msgType != Msg.MERKLE_DELTA_REQ || frame.body.size < 2) return null
-        val b = bodyBuf(frame)
-        val count = b.short.toInt() and 0xFFFF
-        if (b.remaining() < count * 4) return null
-        return MerkleDeltaReqBody(IntArray(count) { b.int })
-    }
-
-    fun parseMerkleDelta(frame: Frame): MerkleDeltaBody? {
-        if (frame.msgType != Msg.MERKLE_DELTA || frame.body.size < 2) return null
-        val b = bodyBuf(frame)
-        val count = b.short.toInt() and 0xFFFF
-        val ops = ArrayList<MerkleDeltaOp>(count)
-        repeat(count) {
-            if (b.remaining() < JamOpWire.WIRE_SIZE + 2) return null
-            val opBytes = ByteArray(JamOpWire.WIRE_SIZE); b.get(opBytes)
-            val op = JamOpWire.unpack(opBytes) ?: return null
-            val jsonLen = b.short.toInt() and 0xFFFF
-            if (b.remaining() < jsonLen) return null
-            val json = if (jsonLen == 0) null else ByteArray(jsonLen).also { j -> b.get(j) }
-                .toString(Charsets.UTF_8)
-            ops.add(MerkleDeltaOp(op, json))
-        }
-        return MerkleDeltaBody(ops)
     }
 
     fun parseTrackMeta(frame: Frame): TrackMetaBody? {

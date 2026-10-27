@@ -1,5 +1,6 @@
 package com.streamify.app.data.uniffi
 
+import com.streamify.app.data.NativeBridge
 import com.streamify.app.util.SLog
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -211,6 +212,64 @@ object StreamifyEngineBridge {
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // Jam control plane (UFFI-04 — Kotlin CRDT amputation)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * One sealed jam CRDT mutation — field-for-field mirror of the frozen
+     * 48-byte wire envelope (`opId | sender | type | policy | cadId | frac |
+     * target`, little-endian). The bridge owns its own projection so the
+     * seam never depends on the `jam` package: [applyJamDelta] receives
+     * peer deltas off the network, [applyJamLocalOp] seals locally
+     * generated UI mutations — the Rust core folds both.
+     */
+    data class JamDeltaOp(
+        val opId: Long,
+        val sender: Long,
+        val type: Int,
+        val policy: Int,
+        val cadId: Long,
+        val frac: Double,
+        val target: Long,
+    )
+
+    /**
+     * One element of the authoritative jam queue fold:
+     * `(fracBits | addOpId | cadId)` triplets, `Double.fromBits` for the
+     * fractional index.
+     */
+    data class JamQueueSlot(
+        val fracBits: Long,
+        val addOpId: Long,
+        val cadId: Long,
+    )
+
+    /**
+     * Post-apply receipt: the authoritative queue fold as of the applied
+     * op. An empty [queue] means the fold is not observable right now
+     * (engine quiescent) — the caller keeps its last view, exactly like
+     * the pre-amputation `jamCrdtFold()`-null early return.
+     */
+    data class JamDeltaReceipt(val queue: List<JamQueueSlot>)
+
+    /**
+     * Death-pivot extrapolation decision from the native governor
+     * (`jamExtrapolatePivot`): `code` 0 = OK (pivot to [positionMs]),
+     * 1 = BEYOND_END (advance the room to the next queue head),
+     * 2 = TRACK_MISMATCH (re-handshake).
+     */
+    data class JamPivotDecision(val code: Long, val positionMs: Long) {
+        val isBeyondEnd: Boolean get() = code == CODE_BEYOND_END
+        val isTrackMismatch: Boolean get() = code == CODE_TRACK_MISMATCH
+
+        companion object {
+            const val CODE_OK = 0L
+            const val CODE_BEYOND_END = 1L
+            const val CODE_TRACK_MISMATCH = 2L
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // Backend seam
     // ═════════════════════════════════════════════════════════════════════
 
@@ -248,6 +307,54 @@ object StreamifyEngineBridge {
 
         /** Reads the engine-side buffering health snapshot (UDL `get_buffer_stats()`). Default: not wired. */
         fun fetchBufferStats(): Result<BufferStats> = backendOpUnavailable("fetchBufferStats")
+
+        // ── Jam control plane (UFFI-04) ──────────────────────────────────────
+        // The UFFI-01 UDL does not carry the jam plane yet (Alpha's UFFI-03
+        // ledger item). Until the contract extension lands, the production
+        // backend dispatches these through the FROZEN JNI contract
+        // (rust jam_crdt / jam_governor) — the same Rust core the UDL will
+        // expose. Backends that do not implement them report
+        // [EngineError.EngineUnavailable], never a raw Throwable.
+
+        /** Applies a locally sealed jam CRDT op (UI mutation). Default: not wired. */
+        fun applyJamLocalOp(op: JamDeltaOp): Result<JamDeltaReceipt> =
+            backendOpUnavailable("applyJamLocalOp")
+
+        /** Applies a jam CRDT delta received from a peer. Default: not wired. */
+        fun applyJamDelta(op: JamDeltaOp): Result<JamDeltaReceipt> =
+            backendOpUnavailable("applyJamDelta")
+
+        /** Folds the authoritative jam queue. Default: not wired. */
+        fun foldJamQueue(): Result<List<JamQueueSlot>> =
+            backendOpUnavailable("foldJamQueue")
+
+        /** Queries the engine-side jam CRDT state hash. Default: not wired. */
+        fun queryJamStateHash(): Result<String> =
+            backendOpUnavailable("queryJamStateHash")
+
+        /** Deterministic successor election (native governor). Default: not wired. */
+        fun electJamSuccessor(
+            participants: List<String>,
+            hostNonce: String,
+            leaseExpired: Boolean,
+        ): Result<String?> = backendOpUnavailable("electJamSuccessor")
+
+        /** Death-pivot playhead extrapolation (native governor). Default: not wired. */
+        fun extrapolateJamPivot(
+            lastPosMs: Long,
+            lastTickSyncedNanos: Long,
+            nowSyncedNanos: Long,
+            durationMs: Long,
+            trackMatches: Boolean,
+        ): Result<JamPivotDecision> = backendOpUnavailable("extrapolateJamPivot")
+
+        /** Partition-heal arbitration (native governor advisory). Default: not wired. */
+        fun isAdvisoryJamSuccessor(
+            participants: List<String>,
+            hostNonce: String,
+            selfNonce: String,
+            recentlySeen: Boolean,
+        ): Result<Boolean> = backendOpUnavailable("isAdvisoryJamSuccessor")
     }
 
     /** Shared default for seam operations a backend does not implement. */
@@ -375,6 +482,118 @@ object StreamifyEngineBridge {
                 field.get(target) as Number
             }
         }
+
+        // ── Jam control plane (UFFI-04, interim JNI dispatch) ────────────────
+        //
+        // The jam plane is not part of the UFFI-01 UDL yet (Alpha's UFFI-03
+        // ledger item: election, CRDT op apply, Merkle reconciliation →
+        // UniFFI). Until the contract extension lands, the production
+        // backend dispatches jam ops through the FROZEN JNI contract — the
+        // same Rust core (jam_crdt / jam_governor) the UDL will expose. This
+        // is the single wiring point: when the contract ships, this block
+        // flips to the generated proxies with zero changes above the seam.
+        //
+        // Hermetic note: every NativeBridge wrapper degrades to a refusal
+        // (false / null / empty) when the cdylib is absent, so the JVM unit
+        // shard observes [EngineError.EngineUnavailable] and callers fall
+        // back to their legacy snapshot paths — identical pre-amputation
+        // behavior.
+
+        /** Wire ops carry no checksum — the 48-byte envelope is sealed by structure. */
+        private val JAM_WIRE_CHECKSUM_NONE = -1L
+
+        override fun applyJamLocalOp(op: JamDeltaOp): Result<JamDeltaReceipt> =
+            applyJamOpViaJni(op, sealLocally = true)
+
+        override fun applyJamDelta(op: JamDeltaOp): Result<JamDeltaReceipt> =
+            applyJamOpViaJni(op, sealLocally = false)
+
+        private fun applyJamOpViaJni(op: JamDeltaOp, sealLocally: Boolean): Result<JamDeltaReceipt> {
+            val accepted = if (sealLocally) {
+                NativeBridge.jamCrdtApplyLocalOp(
+                    op.opId, op.sender, op.type, op.policy, op.cadId, op.frac, op.target
+                )
+            } else {
+                NativeBridge.jamCrdtApplyWireOp(
+                    op.opId, op.sender, op.type, op.policy, op.cadId, op.frac, op.target,
+                    checksum = JAM_WIRE_CHECKSUM_NONE
+                )
+            }
+            if (!accepted) {
+                // The JNI wrapper conflates "engine unavailable" (no cdylib —
+                // hermetic JVM, stubbed devices) with "op refused by the
+                // state machine" into one false. Both degrade the same way
+                // upstream (legacy snapshot path), so they share the code.
+                return Result.failure(
+                    EngineError.EngineUnavailable(
+                        "jam CRDT ${if (sealLocally) "local op" else "delta"} not applied " +
+                            "(engine unavailable or refused)"
+                    )
+                )
+            }
+            return Result.success(JamDeltaReceipt(queue = foldJamQueueViaJni()))
+        }
+
+        override fun foldJamQueue(): Result<List<JamQueueSlot>> =
+            Result.success(foldJamQueueViaJni())
+
+        private fun foldJamQueueViaJni(): List<JamQueueSlot> {
+            val fold = NativeBridge.jamCrdtFold() ?: return emptyList()
+            val queue = fold.first
+            val slots = ArrayList<JamQueueSlot>(queue.size / 3 + 1)
+            var i = 0
+            while (i + 2 < queue.size) {
+                slots.add(
+                    JamQueueSlot(fracBits = queue[i], addOpId = queue[i + 1], cadId = queue[i + 2])
+                )
+                i += 3
+            }
+            return slots
+        }
+
+        override fun queryJamStateHash(): Result<String> = Result.failure(
+            EngineError.EngineUnavailable(
+                "queryJamStateHash: the jam state-hash surface awaits the UFFI-03 contract " +
+                    "extension — the engine-side hash is the sole authority since the Kotlin " +
+                    "Merkle amputation (UFFI-04)"
+            )
+        )
+
+        override fun electJamSuccessor(
+            participants: List<String>,
+            hostNonce: String,
+            leaseExpired: Boolean,
+        ): Result<String?> = Result.success(
+            NativeBridge.jamElectSuccessor(participants, hostNonce, leaseExpired)
+        )
+
+        override fun extrapolateJamPivot(
+            lastPosMs: Long,
+            lastTickSyncedNanos: Long,
+            nowSyncedNanos: Long,
+            durationMs: Long,
+            trackMatches: Boolean,
+        ): Result<JamPivotDecision> {
+            // The JNI governor speaks the millisecond domain; the bridge API
+            // speaks the app's canonical synced-nanosecond domain.
+            val out = NativeBridge.jamExtrapolatePivot(
+                lastPosMs = lastPosMs,
+                lastTickMonoMs = lastTickSyncedNanos / 1_000_000L,
+                currentSyncedMonoMs = nowSyncedNanos / 1_000_000L,
+                durationMs = durationMs,
+                trackMatches = trackMatches,
+            )
+            return Result.success(JamPivotDecision(code = out[0], positionMs = out[1]))
+        }
+
+        override fun isAdvisoryJamSuccessor(
+            participants: List<String>,
+            hostNonce: String,
+            selfNonce: String,
+            recentlySeen: Boolean,
+        ): Result<Boolean> = Result.success(
+            NativeBridge.jamIsAdvisorySuccessor(participants, hostNonce, selfNonce, recentlySeen)
+        )
 
         private fun engineUnavailable(op: String): Result<Nothing> = Result.failure(
             EngineError.EngineUnavailable("$op: engine dispatch not wired ($degradedReason)")
@@ -633,6 +852,95 @@ object StreamifyEngineBridge {
         }
         return dispatch("hashCandidates") { it.hashCandidates(jsonPayload) }
     }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Jam control plane (UFFI-04 — Result<T>, never throws)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Applies a locally generated jam CRDT op (sealed by the engine).
+     * On success the receipt carries the authoritative post-apply queue
+     * fold; on failure the caller degrades to its legacy snapshot path.
+     */
+    fun applyJamLocalOp(op: JamDeltaOp): Result<JamDeltaReceipt> {
+        validateJamOp(op)?.let { return Result.failure(it) }
+        return dispatch("applyJamLocalOp") { it.applyJamLocalOp(op) }
+    }
+
+    /**
+     * Applies a jam CRDT delta received from a peer over the network —
+     * the single ingress funnel for remote mutations (UFFI-04). On
+     * success the UI queue state updates from the receipt's fold via the
+     * existing StateFlow collectors.
+     */
+    fun applyJamDelta(op: JamDeltaOp): Result<JamDeltaReceipt> {
+        validateJamOp(op)?.let { return Result.failure(it) }
+        return dispatch("applyJamDelta") { it.applyJamDelta(op) }
+    }
+
+    /** Folds the authoritative jam queue from the engine. */
+    fun foldJamQueue(): Result<List<JamQueueSlot>> =
+        dispatch("foldJamQueue") { it.foldJamQueue() }
+
+    /**
+     * Queries the engine-side jam CRDT state hash. Surface for the
+     * upcoming reconciliation contract; unwired backends report
+     * [EngineError.EngineUnavailable].
+     */
+    fun queryJamStateHash(): Result<String> =
+        dispatch("queryJamStateHash") { it.queryJamStateHash() }
+
+    /**
+     * Deterministic successor election over the live participant set
+     * (native governor). Null result = no successor / room should end.
+     */
+    fun electJamSuccessor(
+        participants: List<String>,
+        hostNonce: String,
+        leaseExpired: Boolean,
+    ): Result<String?> = dispatch("electJamSuccessor") {
+        it.electJamSuccessor(participants, hostNonce, leaseExpired)
+    }
+
+    /** Death-pivot playhead extrapolation (native governor). */
+    fun extrapolateJamPivot(
+        lastPosMs: Long,
+        lastTickSyncedNanos: Long,
+        nowSyncedNanos: Long,
+        durationMs: Long,
+        trackMatches: Boolean,
+    ): Result<JamPivotDecision> = dispatch("extrapolateJamPivot") {
+        it.extrapolateJamPivot(lastPosMs, lastTickSyncedNanos, nowSyncedNanos, durationMs, trackMatches)
+    }
+
+    /** Partition-heal arbitration: should [selfNonce] yield to [hostNonce]? */
+    fun isAdvisoryJamSuccessor(
+        participants: List<String>,
+        hostNonce: String,
+        selfNonce: String,
+        recentlySeen: Boolean,
+    ): Result<Boolean> = dispatch("isAdvisoryJamSuccessor") {
+        it.isAdvisoryJamSuccessor(participants, hostNonce, selfNonce, recentlySeen)
+    }
+
+    /**
+     * Contract validation shared by both apply funnels — mirrors the frozen
+     * 48-byte envelope's field ranges (JamOpWire): type `1..3`, policy
+     * `0..1`, finite fractional index. Returns the typed failure or null
+     * when the op is well-formed.
+     */
+    private fun validateJamOp(op: JamDeltaOp): EngineError? = when {
+        op.type !in JAM_OP_ADD..JAM_OP_REORDER ->
+            EngineError.InvalidInput("jam op type ${op.type} outside the frozen 1..3 range")
+        op.policy !in 0..1 ->
+            EngineError.InvalidInput("jam op policy ${op.policy} outside the frozen 0..1 range")
+        !op.frac.isFinite() ->
+            EngineError.InvalidInput("jam op fractional index must be finite")
+        else -> null
+    }
+
+    private const val JAM_OP_ADD = 1
+    private const val JAM_OP_REORDER = 3
 
     /**
      * Single dispatch funnel: contract validation happens above, backend

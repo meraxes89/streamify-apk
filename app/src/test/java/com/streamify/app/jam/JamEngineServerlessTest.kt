@@ -4,6 +4,7 @@ import com.streamify.app.MockNativeBridge
 import com.streamify.app.VirtualMeshRoom
 import com.streamify.app.data.models.Track
 import com.streamify.app.data.NativeBridge
+import com.streamify.app.data.uniffi.StreamifyEngineBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +23,8 @@ import com.streamify.app.testkit.JvmSLogSink
 /**
  * JamEngine v4 end-to-end on the mock mesh: serverless room bootstrap, wire
  * egress contract, guest continuation adoption (zero audio pause), Death
- * Pivot failover, and the legacy CRDT-less queue fallback.
+ * Pivot failover (native governor via the bridge mock backend), and the
+ * legacy CRDT-less queue fallback.
  *
  * The engine singleton runs with the mock room's VIRTUAL synced clock, so
  * the 1 200 ms heartbeat contract is exercised without long sleeps.
@@ -39,6 +41,75 @@ class JamEngineServerlessTest {
         fun installJvmSLogSink() {
             JvmSLogSink.install()
         }
+    }
+
+    /**
+     * Deterministic stand-in for the native governor (UFFI-04): election =
+     * lexicographic minimum nonce over the live participants (the same
+     * deterministic-winner-for-the-same-live-set contract the Rust governor
+     * enforces), pivot extrapolation = the documented Death-Pivot formula.
+     * Applied CRDT ops accumulate in an in-memory fold.
+     */
+    private class GovernorMockBackend : StreamifyEngineBridge.EngineBackend {
+        override val availability = StreamifyEngineBridge.Availability.MOCK
+
+        val appliedLocalOps = mutableListOf<StreamifyEngineBridge.JamDeltaOp>()
+        val appliedDeltas = mutableListOf<StreamifyEngineBridge.JamDeltaOp>()
+        val folds = sortedMapOf<Long, StreamifyEngineBridge.JamQueueSlot>() // cadId -> slot
+
+        override fun resolveStreamUrl(videoId: String): Result<StreamifyEngineBridge.ResolvedStream> =
+            Result.failure(StreamifyEngineBridge.EngineError.EngineUnavailable("unscripted resolve"))
+
+        override fun hashCandidates(jsonPayload: String): Result<String> =
+            Result.failure(StreamifyEngineBridge.EngineError.EngineUnavailable("unscripted hash"))
+
+        override fun applyJamLocalOp(op: StreamifyEngineBridge.JamDeltaOp): Result<StreamifyEngineBridge.JamDeltaReceipt> {
+            appliedLocalOps += op
+            if (op.type == 1) {
+                folds[op.cadId] = StreamifyEngineBridge.JamQueueSlot(
+                    fracBits = op.frac.toRawBits(), addOpId = op.opId, cadId = op.cadId
+                )
+            } else {
+                val key = folds.entries.firstOrNull { it.value.addOpId == op.target }?.key
+                if (key != null) folds.remove(key)
+            }
+            return Result.success(StreamifyEngineBridge.JamDeltaReceipt(folds.values.toList()))
+        }
+
+        override fun applyJamDelta(op: StreamifyEngineBridge.JamDeltaOp): Result<StreamifyEngineBridge.JamDeltaReceipt> {
+            appliedDeltas += op
+            if (op.type == 1) {
+                folds[op.cadId] = StreamifyEngineBridge.JamQueueSlot(
+                    fracBits = op.frac.toRawBits(), addOpId = op.opId, cadId = op.cadId
+                )
+            } else {
+                val key = folds.entries.firstOrNull { it.value.addOpId == op.target }?.key
+                if (key != null) folds.remove(key)
+            }
+            return Result.success(StreamifyEngineBridge.JamDeltaReceipt(folds.values.toList()))
+        }
+
+        override fun foldJamQueue(): Result<List<StreamifyEngineBridge.JamQueueSlot>> =
+            Result.success(folds.values.toList())
+
+        override fun electJamSuccessor(
+            participants: List<String>,
+            hostNonce: String,
+            leaseExpired: Boolean,
+        ): Result<String?> = Result.success(participants.min())
+
+        override fun extrapolateJamPivot(
+            lastPosMs: Long,
+            lastTickSyncedNanos: Long,
+            nowSyncedNanos: Long,
+            durationMs: Long,
+            trackMatches: Boolean,
+        ): Result<StreamifyEngineBridge.JamPivotDecision> = Result.success(
+            StreamifyEngineBridge.JamPivotDecision(
+                code = StreamifyEngineBridge.JamPivotDecision.CODE_OK,
+                positionMs = lastPosMs + (nowSyncedNanos - lastTickSyncedNanos) / 1_000_000L,
+            )
+        )
     }
 
     private lateinit var mock: MockNativeBridge
@@ -73,6 +144,7 @@ class JamEngineServerlessTest {
     @After
     fun tearDown() {
         JamEngine.resetForTest()
+        StreamifyEngineBridge.reset() // never leak a mock backend into another test class
         mock.uninstall()
         collectorScope.cancel()
     }
@@ -183,23 +255,18 @@ class JamEngineServerlessTest {
         assertTrue(commands.none { it is JamEngine.Command.ApplyPllTick })
     }
 
-    // ── Death Pivot: heartbeat loss → deterministic election → pivot ───────
+    // ── Death Pivot: heartbeat loss → governor election → pivot ───────────
 
     @Test
     fun `host death triggers death pivot with extrapolated continuation`() {
+        // Native governor mock: lexicographic-min election. "host9999" > any
+        // 8-char lowercase-hex deviceId prefix, so WE are the successor.
+        val governor = GovernorMockBackend()
+        StreamifyEngineBridge.installBackend(governor)
+
         assertTrue(JamEngine.joinServerlessRoom("streamify://jam/AB3CD9?v=4&s=sess-guest-2&k=" + "cd".repeat(32)))
 
-        // A host whose Blake3 rank LOSES to ours — we are the successor.
-        val sessionCode = "AB3CD9"
-        val myRank = Blake3.hash(JamEngine.deviceId + sessionCode)
-        var host = "host9999"
-        for (i in 0 until 10_000) {
-            val candidate = "host%04d".format(i)
-            if (Blake3.compareUnsigned(Blake3.hash(candidate + sessionCode), myRank) > 0) {
-                host = candidate
-                break
-            }
-        }
+        val host = "host9999"
 
         mock.simulateIncomingPeerPacket(
             JamWire.Msg.PRESENCE,
@@ -213,7 +280,8 @@ class JamEngineServerlessTest {
         drain(300)
 
         // Host goes silent. Advance the synced clock past the 1 200 ms
-        // contract; the watchdog (150 ms real polls) fires the election.
+        // contract; the watchdog (150 ms real polls) fires the governor
+        // election and this device — the deterministic winner — pivots.
         commands.clear()
         mock.sentFrames.clear()
         var guard = 0

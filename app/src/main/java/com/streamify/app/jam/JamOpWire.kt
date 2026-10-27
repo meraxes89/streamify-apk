@@ -10,8 +10,11 @@ import java.nio.ByteOrder
  *
  * Every shared-queue mutation (ADD / REMOVE / REORDER) travels as this exact
  * 48-byte little-endian structure — zero serialization overhead, identical
- * bits on every peer, and a Merkle-leaf-stable byte image so state
- * reconciliation can diff two devices by hashing raw sealed ops.
+ * bits on every peer. The byte image is the cross-boundary currency of the
+ * jam control plane: ops are applied and folded by the Rust core through
+ * [com.streamify.app.data.uniffi.StreamifyEngineBridge] (UFFI-04 — the
+ * duplicate Kotlin Merkle/hash stack was amputated; state convergence is
+ * engine-authoritative).
  *
  * Layout (little-endian):
  *
@@ -48,13 +51,10 @@ data class JamOpWire(
         const val OP_REMOVE: Int = 2
         const val OP_REORDER: Int = 3
 
-        /** Merkle padding sentinel: the sealed image of 48 zero bytes. */
-        val PAD_LEAF: ByteArray = Blake3.hash(ByteArray(WIRE_SIZE))
-
         /**
          * Packs this op into a fresh 48-byte little-endian buffer.
          * The byte image is CANONICAL: identical op ⇒ identical bytes on every
-         * peer, which is what makes Merkle reconciliation sound.
+         * peer — the property the engine-side state hash relies on.
          */
         fun pack(op: JamOpWire): ByteArray {
             val buf = ByteBuffer.allocate(WIRE_SIZE).order(ByteOrder.LITTLE_ENDIAN)
@@ -88,16 +88,6 @@ data class JamOpWire(
             val frac = Double.fromBits(fracBits)
             if (!frac.isFinite()) return null
             return JamOpWire(opId, sender, type, policy, cadId, frac, target)
-        }
-
-        /** Sealed-leaf hash used by the Merkle DAG. */
-        fun leafHash(op: JamOpWire): ByteArray = Blake3.hash(pack(op))
-
-        /** True when [bytes] is exactly the all-zero padding image. */
-        fun isPadLeaf(bytes: ByteArray): Boolean {
-            if (bytes.size != WIRE_SIZE) return false
-            for (b in bytes) if (b.toInt() != 0) return false
-            return true
         }
     }
 }
