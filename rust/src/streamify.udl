@@ -32,6 +32,32 @@ dictionary BufferStats {
     f32 fill_ratio;
 };
 
+/// Opaque handle to the engine's active Jam session (UFFI-03/04).
+///
+/// The handle is data, not behavior: the session object itself stays
+/// inside the engine behind the typed contract, so the Kotlin side can
+/// never hold a stale raw pointer into CRDT interior state.
+dictionary JamSessionHandle {
+    u64 session_id;
+    string session_name;
+    u64 created_at_unix_ms;
+};
+
+/// Outcome of atomically applying one Jam CRDT delta batch (UFFI-03/04).
+///
+/// `state_hash` is the deterministic BLAKE3 image of the session's
+/// canonical CRDT fold (queue + tombstones + vote ledger, order-free):
+/// two replicas that merged the same op set — in any arrival order —
+/// derive the identical string. That makes it the diff currency for
+/// Merkle reconciliation on the Kotlin side (root compare, then branch
+/// walk, then delta exchange — all through this contract).
+dictionary JamSyncResult {
+    u32 ops_applied;
+    u32 ops_rejected;
+    string state_hash;
+    boolean needs_rebalance;
+};
+
 /// Typed failure taxonomy crossing the FFI boundary.
 [Error]
 enum EngineError {
@@ -71,10 +97,32 @@ interface StreamifyEngine {
     /// rejected; out-of-range fill ratios clamp to [0.0, 1.0].
     [Throws=EngineError]
     void record_buffer_stats(u64 buffered_duration_ms, u32 underrun_count, f32 fill_ratio);
+
+    /// Create the engine's active Jam session (UFFI-03/04). Creating
+    /// while a session is live replaces it with a fresh, empty replica
+    /// (the engine is the room's local mirror; a new room means a new
+    /// mirror). A blank or oversized name is rejected as InvalidState.
+    [Throws=EngineError]
+    JamSessionHandle create_jam_session(string session_name);
+
+    /// Atomically apply one Jam CRDT delta batch: `delta` is a
+    /// concatenation of 48-byte little-endian wire ops (the frozen
+    /// `rust_48` image pinned by fixtures/jam_golden_vectors.json). The
+    /// whole batch merges under one lock acquisition; corrupt rows are
+    /// counted in `ops_rejected` and skipped, never aborting the batch.
+    /// A length that is not a multiple of 48 fails as CodecError.
+    [Throws=EngineError]
+    JamSyncResult apply_jam_delta(bytes delta);
+
+    /// Deterministic BLAKE3 state hash (64 hex chars) of the active
+    /// session's canonical CRDT fold. Requires a live session.
+    [Throws=EngineError]
+    string get_jam_state_hash();
 };
 
 /// Streamify core engine: typed UniFFI contract (Phase 2 UFFI-01,
-/// wired to live dispatch and telemetry in Phase 3 UFFI-03).
+/// wired to live dispatch and telemetry in Phase 3 UFFI-03, extended
+/// with the Jam CRDT session surface in Phase 4 UFFI-03/04).
 ///
 /// Type-safe Kotlin bindings for the control-plane and metadata flows,
 /// replacing the raw extern "C" JNI edges on those paths. The audio
