@@ -14,7 +14,9 @@ import java.nio.ByteOrder
 
 /**
  * The 48-byte JamOpWire envelope: exact layout, frozen forever — a byte-level
- * contract shared with the native CRDT and the Merkle leaves.
+ * contract shared with the native CRDT (applied through
+ * StreamifyEngineBridge since UFFI-04) and pinned by the shared golden
+ * fixture.
  */
 class JamOpWireTest {
 
@@ -63,9 +65,6 @@ class JamOpWireTest {
             ((Character.digit(hex[i * 2], 16) shl 4) or Character.digit(hex[i * 2 + 1], 16)).toByte()
         }
 
-    private fun bytesToHex(bytes: ByteArray): String =
-        bytes.joinToString("") { "%02x".format(it) }
-
     private fun goldenOp(v: JSONObject): JamOpWire {
         val fields = v.getJSONObject("fields")
         return JamOpWire(
@@ -103,34 +102,6 @@ class JamOpWireTest {
             // the golden images are all valid sealed ops.
             assertNotNull("$name: golden image must unpack", JamOpWire.unpack(want))
             assertEquals("$name: unpacked fields must match the fixture", golden, JamOpWire.unpack(want))
-        }
-    }
-
-    @Test
-    fun `kotlin leaf-hash image is bit-frozen by the shared golden fixture`() {
-        val vectors = goldenFixture().getJSONArray("vectors")
-        for (i in 0 until vectors.length()) {
-            val v = vectors.getJSONObject(i)
-            val name = v.getString("name")
-            val packed = hexToBytes(v.getString("kotlin_48"))
-            val wantLeaf = v.getString("kotlin_48_blake3")
-            assertEquals(
-                "$name: Merkle leaf hash (hand-rolled BLAKE3 over the packed op) " +
-                    "drifted from the golden fixture",
-                wantLeaf, Blake3.hashHex(packed)
-            )
-        }
-        // The Merkle pad sentinel is a fixture-pinned image too.
-        val hashOnly = goldenFixture().getJSONArray("hash_only")
-        for (i in 0 until hashOnly.length()) {
-            val h = hashOnly.getJSONObject(i)
-            if (h.getString("name") == "merkle-pad-leaf-48-zero-bytes") {
-                assertEquals(
-                    "pad-leaf BLAKE3 drifted from the golden fixture",
-                    h.getString("blake3"),
-                    bytesToHex(JamOpWire.PAD_LEAF)
-                )
-            }
         }
     }
 
@@ -215,25 +186,7 @@ class JamOpWireTest {
     fun `non-finite fractional index rejected`() {
         for (bad in doubleArrayOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
             val bytes = JamOpWire.pack(op.copy(frac = bad))
-            assertNull(JamOpWire.unpack(bytes))
+            assertNull("frac $bad must be rejected", JamOpWire.unpack(bytes))
         }
-    }
-
-    @Test
-    fun `leaf hash is 32 bytes and stable`() {
-        val h1 = JamOpWire.leafHash(op)
-        val h2 = JamOpWire.leafHash(op)
-        assertEquals(32, h1.size)
-        assertArrayEquals(h1, h2)
-        // A one-ULP change in frac must change the leaf hash (Merkle diffing).
-        val changed = JamOpWire.leafHash(op.copy(frac = Math.nextUp(op.frac)))
-        assertFalse(h1.contentEquals(changed))
-    }
-
-    @Test
-    fun `pad leaf is the blake3 of 48 zero bytes`() {
-        assertArrayEquals(Blake3.hash(ByteArray(48)), JamOpWire.PAD_LEAF)
-        assertTrue(JamOpWire.isPadLeaf(ByteArray(48)))
-        assertFalse(JamOpWire.isPadLeaf(JamOpWire.pack(op)))
     }
 }

@@ -20,12 +20,15 @@ import org.junit.Test
  */
 class JamPairingTest {
 
+    /** Lowercase hex — same display format the engine's pairing key uses. */
+    private fun toHex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+
     @Test
     fun `full payload round-trips`() {
         val session = JamEngine.JamSession(
             id = "11111111-2222-3333-4444-555555555555",
             sessionCode = "AB3CD9",
-            pairingKeyHex = Blake3.toHex(ByteArray(32) { it.toByte() }),
+            pairingKeyHex = toHex(ByteArray(32) { it.toByte() }),
             hostNonce = "a1b2c3d4",
             createdAtMs = 1L
         )
@@ -55,7 +58,7 @@ class JamPairingTest {
     @Test
     @Suppress("ktlint:standard:max-line-length")
     fun `pin with key value fragments parses`() {
-        val keyHex = Blake3.toHex(ByteArray(32) { (it * 3).toByte() })
+        val keyHex = toHex(ByteArray(32) { (it * 3).toByte() })
         val parsed = JamPairing.parsePayload("ab3cd9 s=deadbeef k=$keyHex")!!
         assertEquals("AB3CD9", parsed.sessionCode)
         assertEquals("deadbeef", parsed.sessionId)
@@ -99,7 +102,7 @@ class JamPairingTest {
         val session = JamEngine.JamSession(
             id = "aaaabbbb-cccc-dddd-eeee-ffff00001111",
             sessionCode = "QR7TST",
-            pairingKeyHex = Blake3.toHex(JamPairing.generatePairingKey()),
+            pairingKeyHex = toHex(JamPairing.generatePairingKey()),
             hostNonce = "qq7tst01",
             createdAtMs = 0L
         )

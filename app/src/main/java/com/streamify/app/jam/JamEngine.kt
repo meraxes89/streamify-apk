@@ -3,6 +3,7 @@ package com.streamify.app.jam
 import com.streamify.app.data.NativeBridge
 import com.streamify.app.data.models.Track
 import com.streamify.app.data.repository.TrackRepository
+import com.streamify.app.data.uniffi.StreamifyEngineBridge
 import com.streamify.app.util.SLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,15 +41,25 @@ import java.util.concurrent.atomic.AtomicLong
  *               collecting the raw native upcall). Queue mutations ride the
  *               packed 48-byte [JamOpWire] — zero serialization overhead.
  *
- *  AUTHORITY   — [LeaderlessElectionEngine]: Blake3 deterministic minimization
- *               + the Death Pivot. A host whose battery dies is detected by
- *               1 200 ms of tick silence; every survivor independently
- *               computes the same successor and the new host continues the
- *               playback trajectory with zero audio pause.
+ *  AUTHORITY   — the native governor via [StreamifyEngineBridge]
+ *               (UFFI-04): deterministic successor election + the Death
+ *               Pivot. A host whose battery dies is detected by 1 200 ms of
+ *               tick silence; every survivor asks the engine for the same
+ *               successor and the new host continues the playback
+ *               trajectory with zero audio pause. (The duplicate Kotlin
+ *               Blake3 election FSM and Merkle reconciler were amputated —
+ *               the Rust core is the single authority, so state can never
+ *               diverge between two implementations again.)
  *
- *  STATE       — [MerkleStateReconciler]: late joiners exchange a 32-byte
- *               Merkle root and traverse only mismatching branches, converging
- *               on the shared queue in single-digit milliseconds.
+ *  STATE       — engine-authoritative CRDT fold (UFFI-04): every queue op —
+ *               local or received from a peer — passes through
+ *               [StreamifyEngineBridge.applyJamDelta] /
+ *               [StreamifyEngineBridge.applyJamLocalOp] and the UI queue
+ *               rebuilds from the receipt fold via existing StateFlow
+ *               collectors. Late joiners converge via the WAL outbox
+ *               replay + QUEUE_SNAPSHOT legacy path; the engine-side state
+ *               hash surface ([StreamifyEngineBridge.queryJamStateHash])
+ *               lights up with the UFFI-03 contract extension.
  *
  *  IDENTITY    — rooms are created locally: a 6-char PIN plus an ephemeral
  *               32-byte pairing key distributed offline (QR / NFC / paste).
@@ -66,12 +77,22 @@ import java.util.concurrent.atomic.AtomicLong
  *     STATE response (extrapolated through the synced clock), never guessed.
  *  5. LOSSLESS IDENTITY — track payloads carry ytmVideoId/isrc so guests pin
  *     the exact same upload.
- *  6. CRDT QUEUE — every mutation is a sealed 48-byte op folded natively and
- *     journaled to the WAL outbox; late joiners converge via the Merkle DAG.
+ *  6. CRDT QUEUE — every mutation is a sealed 48-byte op folded by the Rust
+ *     core through [StreamifyEngineBridge] (UFFI-04) and journaled to the
+ *     WAL outbox; late joiners converge via outbox replay + snapshots.
  *  7. HOST-DRIVEN AUTO-ADVANCE — only the leader advances the room; guests
  *     deliberately idle awaiting TRACK_CHANGE.
  */
 object JamEngine {
+
+    /** Host-tick silence that triggers a succession round (spec: 1 200 ms). */
+    private const val HEARTBEAT_TIMEOUT_NANOS = 1_200_000_000L
+
+    /** Grace window for an elected successor's CONTINUATION frame. */
+    private const val CONTINUATION_GRACE_NANOS = 900_000_000L
+
+    /** Succession watchdog cadence (real time). */
+    private const val SUCCESSION_POLL_MS = 150L
 
     // ═══════════════ Types ═══════════════
 
@@ -130,6 +151,12 @@ object JamEngine {
         val rttNanos: Long = 0L,
         val ptpLocked: Boolean = false,
         val resamplerRateScalar: Float = 1.0f,
+        /**
+         * State-convergence latency. -1 sentinel while the Kotlin Merkle
+         * reconciler is amputated (UFFI-04) and the engine-side hash
+         * surface (UFFI-03 contract extension) is pending — the gauge
+         * hides the row for negative values.
+         */
         val merkleConvergenceNanos: Long = -1L,
         val authorityEpoch: Long = 0L,
         val electionState: String = "BOOTSTRAP"
@@ -273,8 +300,40 @@ object JamEngine {
     @Volatile var outboxReady: Boolean = false
         private set
 
+    /**
+     * Verified playback state of the current/last leader — THE Death Pivot
+     * extrapolation source (fed by every leader TICK).
+     */
+    private data class HostTickSnapshot(
+        val hostNonce: String,
+        val positionMs: Long,
+        val syncedNanos: Long,
+        val durationMs: Long,
+        val playing: Boolean
+    )
+
     /** Last verified host tick — the Death Pivot extrapolation source. */
-    @Volatile private var lastVerifiedHostTick: LeaderlessElectionEngine.HostTickSource.Snapshot? = null
+    @Volatile private var lastVerifiedHostTick: HostTickSnapshot? = null
+
+    // ── Authority state (native governor via StreamifyEngineBridge, UFFI-04) ──
+
+    /** Current room leader's device nonce (null = bootstrap / unknown). */
+    @Volatile private var leaderNonce: String? = null
+
+    /** Highest authority regime epoch observed or applied. */
+    @Volatile private var authorityEpoch: Long = 0L
+
+    /** Synced-nanos stamp of the last leader TICK/CONTINUATION observed. */
+    @Volatile private var lastLeaderTickSyncedNanos: Long = 0L
+
+    /** Successor an election round named and we now await (grace tracked). */
+    @Volatile private var pendingSuccessor: String? = null
+
+    /** Synced-nanos stamp of the election round that named [pendingSuccessor]. */
+    @Volatile private var pendingSuccessorSinceNanos: Long = 0L
+
+    /** Successors that failed to land a CONTINUATION within the grace window. */
+    private val deadSuccessors = ConcurrentHashMap.newKeySet<String>()
 
     @Volatile private var latestAppliedEpoch = Long.MIN_VALUE
     @Volatile private var lastHostTickAt = 0L
@@ -282,6 +341,7 @@ object JamEngine {
     @Volatile private var sessionEndedLocally = false
     private var sweeperJob: Job? = null
     private var ingressJob: Job? = null
+    private var successionJob: Job? = null
     private val consensusJobs = mutableListOf<Job>()
 
     /** device nonce -> userId, learned from PRESENCE; drives authority checks. */
@@ -318,7 +378,8 @@ object JamEngine {
 
     fun isActive(): Boolean = _session.value != null && !sessionEndedLocally
 
-    fun isHost(): Boolean = election?.isLeader == true
+    /** This device holds room authority (founding host or elected successor). */
+    fun isHost(): Boolean = leaderNonce == deviceId
 
     fun activeSession(): JamSession? = _session.value
 
@@ -344,7 +405,7 @@ object JamEngine {
             isHost = isHost(),
             target = target,
             nextEpoch = epochCounter.incrementAndGet(),
-            leaderNonce = election?.leaderNonce?.value,
+            leaderNonce = this.leaderNonce,
             requesterNonce = deviceId
         )
         if (decision is TopologyDecision.Applied) {
@@ -434,7 +495,7 @@ object JamEngine {
     /** Guest affordance (Gap #18): report a disruptive member to the host. */
     fun reportMember(targetNonce: String, reason: JamGovernance.ReportReason): Boolean {
         if (!isActive() || targetNonce.isBlank()) return false
-        if (!governance.mayEmitControlIntent(deviceId, election?.leaderNonce?.value ?: deviceId, _policy.value) &&
+        if (!governance.mayEmitControlIntent(deviceId, leaderNonce ?: deviceId, _policy.value) &&
             deviceId == targetNonce) return false
         val sent = broadcastFrame(
             JamWire.Msg.REPORT,
@@ -523,88 +584,26 @@ object JamEngine {
         }
     }
 
-    // ═══════════════ Consensus + reconciliation subsystems ═══════════════
+    // ═══════════════ Authority subsystem (native governor, UFFI-04) ═══════
 
-    @Volatile private var election: LeaderlessElectionEngine? = null
-    @Volatile private var reconciler: MerkleStateReconciler? = null
-
-    private fun wireConsensus(session: JamSession) {
-        val electionEngine = LeaderlessElectionEngine(
-            scope = scope,
-            selfNonce = deviceId,
-            clock = ::nowSyncedNanos,
-            // ELECTION DOMAIN: the session CODE is the only room identifier every
-            // join modality shares (QR joiners also know the UUID, PIN joiners
-            // only the code) — so Blake3(deviceId + code) is bit-identical on
-            // every peer regardless of how they entered the room.
-            sessionId = { _session.value?.sessionCode },
-            transport = object : LeaderlessElectionEngine.Transport {
-                override fun broadcastContinuation(body: JamWire.ContinuationBody): Boolean =
-                    broadcastFrame(
-                        JamWire.Msg.CONTINUATION,
-                        JamWire.encodeContinuation(
-                            deviceId, currentEpoch(), body.newEpoch, body.successorNonce,
-                            body.pivotPosMs, body.pivotSyncedNanos, body.durationMs,
-                            body.playing, body.trackMatches
-                        )
-                    )
-            },
-            tickSource = object : LeaderlessElectionEngine.HostTickSource {
-                override fun lastVerifiedTick() = lastVerifiedHostTick
-            }
-        )
-        val merkle = MerkleStateReconciler(
-            scope = scope,
-            selfNonce = deviceId,
-            transport = object : MerkleStateReconciler.Transport {
-                override fun sendToPeer(peerIdHex: String, msgType: Int, payload: ByteArray): Boolean =
-                    NativeBridge.p2pSendToPeer(peerIdHex, msgType, payload)
-            },
-            applyDeltaOp = ::applyWireOp
-        )
-        election = electionEngine
-        reconciler = merkle
-        electionEngine.start()
-        merkle.start()
-
-        // All consensus collectors start UNDISPATCHED so their subscriptions
-        // latch before wireConsensus() returns — createServerlessRoom()
-        // fires becomeFoundingLeader() (and its LeaderElected emission) on
-        // the very next line, and a replay-0 flow drops anything emitted
-        // before subscription.
-        consensusJobs += scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-            electionEngine.events.collect { event ->
-                when (event) {
-                    is LeaderlessElectionEngine.ElectionEvent.DeathPivotExecuted ->
-                        onDeathPivotExecuted(event)
-                    is LeaderlessElectionEngine.ElectionEvent.LeaderElected -> {
-                        refreshConnStatus()
-                        bumpTelemetry { it.copy(authorityEpoch = event.epoch) }
-                    }
-                    is LeaderlessElectionEngine.ElectionEvent.Demoted -> {
-                        refreshConnStatus()
-                        _commands.tryEmit(Command.Rehandshake)
-                    }
-                    is LeaderlessElectionEngine.ElectionEvent.ElectionStarted ->
-                        refreshConnStatus()
-                }
-            }
-        }
-        consensusJobs += scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-            merkle.reports.collect { report ->
-                bumpTelemetry { it.copy(merkleConvergenceNanos = report.latencyNanos) }
-                if (report.converged) refreshQueueFromCrdt()
-            }
-        }
+    /**
+     * Wires the mesh peer lifecycle into the room state. The Kotlin election
+     * FSM and Merkle reconciler subsystems were AMPUTATED (UFFI-04): peer
+     * liveness rides the radar (presence/tick freshness), leader failover is
+     * driven by [successionWatchdogLoop] through the native governor on
+     * [StreamifyEngineBridge], and state convergence is engine-authoritative
+     * (CRDT fold + WAL outbox replay).
+     */
+    private fun wireAuthorityObservers() {
+        // UNDISPATCHED start: the subscription latches before this function
+        // returns, so a peer event arriving on the very next line can never
+        // fall into the replay-0 emission window and vanish.
         consensusJobs += scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             NativeBridge.peerEvents.collect { ev ->
                 if (ev.joined) {
-                    merkle.onPeerJoined(ev.peerIdHex)
                     // New peer: announce ourselves + ask the leader for state.
                     requestJoinState()
                 } else {
-                    merkle.onPeerLeft(ev.peerIdHex)
-                    electionEngine.notePeerLeft(nonceOfPeerId(ev.peerIdHex))
                     peerRadar.remove(nonceOfPeerId(ev.peerIdHex))
                 }
                 refreshConnStatus()
@@ -616,23 +615,112 @@ object JamEngine {
     private fun nonceOfPeerId(peerIdHex: String): String =
         peerRadar.entries.firstOrNull { it.value.peerIdHex == peerIdHex }?.key ?: peerIdHex.take(8)
 
-    private fun onDeathPivotExecuted(event: LeaderlessElectionEngine.ElectionEvent.DeathPivotExecuted) {
-        // THIS device is the successor. Authority is already ours (the
-        // election engine bumped the epoch and broadcast CONTINUATION); now
-        // continue the trajectory on the live player through the normal PLL
-        // path — the room never paused, so nothing needs resuming, only
-        // re-anchoring if the extrapolated position drifted past tolerance.
-        latestAppliedEpoch = event.newEpoch
+    /**
+     * Succession watchdog (guest side): leader silence beyond the 1 200 ms
+     * heartbeat contract triggers a governor election round. Runs on the
+     * engine scope (same lifetime contract as the amputated election FSM:
+     * survives navigation, independent of the FGS tether) and only ever
+     * reads two volatiles while the leader is healthy, so the 150 ms
+     * cadence costs nothing.
+     */
+    private suspend fun successionWatchdogLoop() {
+        while (true) {
+            delay(SUCCESSION_POLL_MS)
+            if (!isActive() || isHost()) continue
+            val lastTick = lastLeaderTickSyncedNanos
+            if (lastTick == 0L) continue // never saw a leader — nothing to fail over
+            val now = nowSyncedNanos()
+            if (now - lastTick <= HEARTBEAT_TIMEOUT_NANOS) continue // leader alive
+            runCatching { runSuccessionRound(now) }
+                .onFailure { SLog.st("JamPivot", "succession round failed", it) }
+        }
+    }
+
+    /**
+     * One governor election round: ask the engine for the deterministic
+     * successor over the live participant set. When it names this device,
+     * the Death Pivot executes; when it names a peer, we wait out the
+     * CONTINUATION grace window before declaring that winner dead too and
+     * re-electing without it (authority walks down the governor ordering).
+     */
+    private fun runSuccessionRound(nowNanos: Long) {
+        val pending = pendingSuccessor
+        if (pending != null && pending != deviceId) {
+            if (nowNanos - pendingSuccessorSinceNanos < CONTINUATION_GRACE_NANOS) return
+            // Grace expired with no CONTINUATION — presume the winner dead.
+            if (pendingSuccessor == pending) {
+                deadSuccessors.add(pending)
+                pendingSuccessor = null
+                SLog.w("JamPivot", "successor $pending failed to continue within grace — excluding")
+            }
+        }
+        val participants = (peerRadar.keys + deviceId).filter { it !in deadSuccessors }
+        if (participants.isEmpty()) return
+        val successor = StreamifyEngineBridge.electJamSuccessor(
+            participants = participants,
+            hostNonce = leaderNonce ?: "",
+            leaseExpired = true,
+        ).getOrNull() ?: return // governor unavailable (degraded) or room should end
+        if (successor.isBlank()) return
+        if (successor == deviceId) {
+            executeDeathPivot(nowNanos)
+        } else if (pendingSuccessor != successor) {
+            pendingSuccessor = successor
+            pendingSuccessorSinceNanos = nowNanos
+            refreshConnStatus()
+            SLog.i("JamPivot", "election named $successor — awaiting continuation")
+        }
+    }
+
+    /**
+     * THE DEATH PIVOT: this device is the governor-named successor. The
+     * playhead extrapolates through the failure from the last verified host
+     * tick, the authoritative CONTINUATION epoch broadcasts, and the local
+     * player re-anchors through the PLL path — the room never paused, so
+     * there is nothing to resume.
+     */
+    private fun executeDeathPivot(nowNanos: Long) {
+        val last = lastVerifiedHostTick
+        val pivot = StreamifyEngineBridge.extrapolateJamPivot(
+            lastPosMs = last?.positionMs ?: 0L,
+            lastTickSyncedNanos = last?.syncedNanos ?: nowNanos,
+            nowSyncedNanos = nowNanos,
+            durationMs = last?.durationMs ?: 0L,
+            trackMatches = true,
+        ).getOrNull() ?: return // governor unavailable — retry next round
+
+        var newEpoch = epochCounter.incrementAndGet()
+        if (newEpoch <= latestAppliedEpoch) {
+            newEpoch = latestAppliedEpoch + 1
+            epochCounter.set(newEpoch)
+        }
+        val positionMs = pivot.positionMs.coerceAtLeast(0L)
+        val broadcast = broadcastFrame(
+            JamWire.Msg.CONTINUATION,
+            JamWire.encodeContinuation(
+                deviceId, currentEpoch(), newEpoch, deviceId,
+                positionMs, nowNanos,
+                last?.durationMs ?: 0L, last?.playing ?: true,
+                !pivot.isTrackMismatch
+            )
+        )
+        // Adopt our own regime even if the broadcast could not leave a dead radio.
+        latestAppliedEpoch = newEpoch
+        if (newEpoch > authorityEpoch) authorityEpoch = newEpoch
+        leaderNonce = deviceId
+        pendingSuccessor = null
         markRegimeChange()
-        val dur = playbackProbe?.invoke()?.getOrNull(1) ?: 0L
-        if (event.beyondTrackEnd) {
+        bumpTelemetry { it.copy(authorityEpoch = authorityEpoch) }
+        if (pivot.isBeyondEnd) {
             // Position extrapolated past the end: the room needs the next
             // queue head. Host auto-advance owns that decision.
             interceptAdvance()
         } else {
-            _commands.tryEmit(Command.ApplyPllTick(event.extrapolatedPosMs, event.pivotNanos / 1_000_000L, dur, true))
+            val dur = last?.durationMs ?: playbackProbe?.invoke()?.getOrNull(1) ?: 0L
+            _commands.tryEmit(Command.ApplyPllTick(positionMs, nowNanos / 1_000_000L, dur, true))
         }
-        SLog.i("JamPivot", "successor continuation anchored at ${event.extrapolatedPosMs}ms")
+        refreshConnStatus()
+        SLog.i("JamPivot", "death pivot executed @ epoch $newEpoch pos=${positionMs}ms broadcast=$broadcast")
     }
 
     // ═══════════════ Outgoing (binary frames on the mesh) ═══════════════
@@ -688,13 +776,14 @@ object JamEngine {
             ?: playbackProbe?.invoke()?.getOrNull(1) ?: 0L
         val hostSyncedNanos = nowSyncedNanos()
 
-        // Own-tick bookkeeping keeps the election watchdog satisfied and the
-        // Death Pivot source warm even when no one else is listening.
-        lastVerifiedHostTick = LeaderlessElectionEngine.HostTickSource.Snapshot(
+        // Own-tick bookkeeping keeps the succession watchdog warm even when
+        // no one else is listening (the last verified tick is the pivot
+        // extrapolation source).
+        lastVerifiedHostTick = HostTickSnapshot(
             hostNonce = deviceId, positionMs = positionMs,
             syncedNanos = hostSyncedNanos, durationMs = durMs, playing = isPlaying
         )
-        election?.noteLeaderTick(deviceId, positionMs, hostSyncedNanos, durMs, isPlaying)
+        lastLeaderTickSyncedNanos = hostSyncedNanos
 
         broadcastFrame(
             JamWire.Msg.TICK,
@@ -767,6 +856,10 @@ object JamEngine {
     private val codeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
     private val secureRandom = SecureRandom()
 
+    /** Lowercase hex — the pairing-key display format (pre-amputation Blake3.toHex output, byte-identical). */
+    private fun toHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
+
     /** Creates a room locally: PIN + ephemeral pairing key, mesh boots, we lead. */
     fun createServerlessRoom(): JamSession {
         if (isActive()) return _session.value!!
@@ -775,18 +868,20 @@ object JamEngine {
         val session = JamSession(
             id = UUID.randomUUID().toString(),
             sessionCode = code,
-            pairingKeyHex = Blake3.toHex(pairingKey),
+            pairingKeyHex = toHex(pairingKey),
             hostNonce = deviceId,
             createdAtMs = System.currentTimeMillis()
         )
         _session.value = session
         startRuntime(session)
-        election?.becomeFoundingLeader()
+        // Founding leader (UFFI-04): authority is a direct assignment — the
+        // native governor only arbitrates SUCCESSION, never bootstrap.
+        leaderNonce = deviceId
+        authorityEpoch = 1L
         epochCounter.set(1L)
-        // Synchronous telemetry anchor: the LeaderElected event is processed
-        // asynchronously on the collector's dispatcher, and an assertion (or
-        // UI frame) in the very next line must already observe epoch 1.
-        bumpTelemetry { it.copy(authorityEpoch = election?.authorityEpoch?.value ?: 1L) }
+        // Synchronous telemetry anchor: a UI frame (or assertion) in the very
+        // next line must already observe epoch 1.
+        bumpTelemetry { it.copy(authorityEpoch = 1L) }
         noteSelf()
         SLog.i("JamRoom", "room created: code=$code id=${session.id} (serverless)")
         return session
@@ -803,7 +898,7 @@ object JamEngine {
             _session.value = JamSession(
                 id = pairing.sessionId,
                 sessionCode = pairing.sessionCode,
-                pairingKeyHex = Blake3.toHex(pairing.pairingKey),
+                pairingKeyHex = toHex(pairing.pairingKey),
                 hostNonce = "",
                 createdAtMs = System.currentTimeMillis()
             )
@@ -853,11 +948,17 @@ object JamEngine {
 
         val opId = NativeBridge.jamGenerateOpId()
         val frac = fracIndexProvider()
-        val applied = NativeBridge.jamCrdtApplyLocalOp(
-            opId, senderPacked, type, if (_policy.value == ControlPolicy.EVERYONE) 1 else 0,
-            cadId, frac, targetAddOpId
-        )
-        if (!applied) return false
+        val policy = if (_policy.value == ControlPolicy.EVERYONE) 1 else 0
+
+        // UFFI-04: CRDT op application routes through StreamifyEngineBridge —
+        // the Rust core seals and folds the op; a failed dispatch (engine
+        // unavailable, op refused) degrades to the caller's legacy path.
+        val receipt = StreamifyEngineBridge.applyJamLocalOp(
+            StreamifyEngineBridge.JamDeltaOp(
+                opId = opId, sender = senderPacked, type = type, policy = policy,
+                cadId = cadId, frac = frac, target = targetAddOpId
+            )
+        ).getOrNull() ?: return false
         localOpIds.add(opId)
 
         if (type == JamOpWire.OP_ADD) {
@@ -867,19 +968,17 @@ object JamEngine {
             elementIndex.entries.removeIf { it.value == targetAddOpId }
         }
 
-        val op = JamOpWire(opId, senderPacked, type, if (_policy.value == ControlPolicy.EVERYONE) 1 else 0, cadId, frac, targetAddOpId)
-
         // Local-first persist (WAL outbox): survives partitions & process death.
         _session.value?.let { s ->
             NativeBridge.jamOutboxEnqueue(opId, senderPacked, type, 0, cadId, frac, targetAddOpId, s.sessionCode)
         }
-        reconciler?.noteOpApplied(op, if (type == JamOpWire.OP_ADD) jamTrackToJson(track).toString() else null)
 
-        refreshQueueFromCrdt()
+        refreshQueueFromCrdt(receipt.queue)
+        val op = JamOpWire(opId, senderPacked, type, policy, cadId, frac, targetAddOpId)
         broadcastFrame(JamWire.Msg.OP, JamWire.encodeOp(deviceId, currentEpoch(), op))
         if (type == JamOpWire.OP_ADD) {
             // Metadata announce: lets receivers resolve cadId → Track without
-            // waiting for a snapshot or Merkle delta.
+            // waiting for a snapshot or engine delta.
             broadcastFrame(
                 JamWire.Msg.TRACK_META,
                 JamWire.encodeTrackMeta(deviceId, cadId, jamTrackToJson(track).toString())
@@ -1027,26 +1126,21 @@ object JamEngine {
         elementIndex.entries.firstOrNull { it.value == addOpId }?.key
 
     /**
-     * Rebuilds the UI queue from the authoritative CRDT fold, resolving cad
-     * identities back to Track objects via the cache.
+     * Rebuilds the UI queue from the authoritative engine fold (UFFI-04),
+     * resolving cad identities back to Track objects via the cache. An
+     * empty fold keeps the last view (the engine may be quiescent).
      */
-    private fun refreshQueueFromCrdt() {
-        val fold = NativeBridge.jamCrdtFold() ?: return
-        val (triples, _) = fold
-        if (triples.isEmpty()) return
-        val rebuilt = ArrayList<Track>(triples.size / 3 + 1)
-        var i = 0
-        while (i + 2 < triples.size) {
-            val cad = triples[i + 2]
-            cadTrackCache[cad]?.let { rebuilt.add(it) }
-            i += 3
-        }
-        i = 0
-        while (i + 2 < triples.size) {
-            fracByCad[triples[i + 2]] = Double.fromBits(triples[i])
-            i += 3
-        }
+    private fun refreshQueueFromCrdt(slots: List<StreamifyEngineBridge.JamQueueSlot>) {
+        if (slots.isEmpty()) return
+        val rebuilt = ArrayList<Track>(slots.size + 1)
+        for (slot in slots) cadTrackCache[slot.cadId]?.let { rebuilt.add(it) }
+        for (slot in slots) fracByCad[slot.cadId] = Double.fromBits(slot.fracBits)
         if (rebuilt.isNotEmpty()) _queue.value = rebuilt
+    }
+
+    /** Pulls a fresh authoritative fold from the engine (on TRACK_META etc.). */
+    private fun refreshQueueFromCrdt() {
+        refreshQueueFromCrdt(StreamifyEngineBridge.foldJamQueue().getOrNull().orEmpty())
     }
 
     /** Full-queue snapshot for the legacy (CRDT-less) convergence path. */
@@ -1092,15 +1186,7 @@ object JamEngine {
         val sender = frame.senderNonce
         if (sender.isBlank() || sender == deviceId) return // own echo / junk
 
-        election?.notePeerSeen(sender)
-
         when (frame.msgType) {
-            JamWire.Msg.MERKLE_ROOT_REQ, JamWire.Msg.MERKLE_ROOT_ACK,
-            JamWire.Msg.MERKLE_BRANCH_REQ, JamWire.Msg.MERKLE_BRANCH,
-            JamWire.Msg.MERKLE_DELTA_REQ, JamWire.Msg.MERKLE_DELTA -> {
-                reconciler?.onFrame(peerIdHex, frame)
-                return
-            }
 
             JamWire.Msg.PRESENCE -> {
                 val p = JamWire.parsePresence(frame) ?: return
@@ -1131,7 +1217,6 @@ object JamEngine {
             JamWire.Msg.LEAVE -> {
                 _members.update { list -> list.filterNot { it.userId == myUserIdOf(sender) } }
                 peerRadar.remove(sender)
-                election?.notePeerLeft(sender)
                 refreshConnStatus()
             }
 
@@ -1253,11 +1338,11 @@ object JamEngine {
                 // Per-member ACL at intent ingress (Gap #14): blocked or
                 // control-revoked senders' queue ops are dropped here.
                 if (sender != deviceId &&
-                    !governance.mayEmitControlIntent(sender, election?.leaderNonce?.value ?: deviceId, _policy.value)) {
+                    !governance.mayEmitControlIntent(sender, leaderNonce ?: deviceId, _policy.value)) {
                     SLog.d("JamGovernance", "OP from $sender dropped by ACL")
                     return
                 }
-                applyWireOp(JamWire.MerkleDeltaOp(op, null))
+                applyWireOp(op, trackJson = null)
             }
 
             JamWire.Msg.TRACK_META -> {
@@ -1356,27 +1441,32 @@ object JamEngine {
     private fun senderIsLeader(senderNonce: String): Boolean {
         // NB: a null leaderNonce is the BOOTSTRAP window (no leader known
         // yet), not "nobody is leader" — the founding host's presence flag
-        // rules until the first election/CONTINUATION formalizes authority.
+        // rules until the first CONTINUATION formalizes authority.
         // Returning false on null here would drop every bootstrap host tick
         // and the room could never elect or pivot.
-        val leader = election?.leaderNonce?.value
+        val leader = leaderNonce
         if (leader == senderNonce) return true
         // Bootstrap window before any CONTINUATION: presence's host flag rules.
         return peerRadar[senderNonce]?.isHost == true && leader.isNullOrEmpty()
     }
 
-    /** Applies a sealed op from the wire (direct OP frame or Merkle delta). */
-    private fun applyWireOp(entry: JamWire.MerkleDeltaOp) {
-        val op = entry.op
+    /**
+     * Applies a sealed op from the wire (direct OP frame) — UFFI-04: the
+     * peer delta passes through [StreamifyEngineBridge.applyJamDelta] and
+     * the UI queue rebuilds from the receipt fold (existing StateFlow
+     * collectors downstream).
+     */
+    private fun applyWireOp(op: JamOpWire, trackJson: String?) {
         if (op.sender == senderPacked && op.opId in localOpIds) return // own echo
-        val applied = NativeBridge.jamCrdtApplyWireOp(
-            op.opId, op.sender, op.type, op.policy, op.cadId, op.frac, op.target,
-            checksum = -1L // sealed by wire structure; native validates shape
-        )
-        if (!applied) return
+        val receipt = StreamifyEngineBridge.applyJamDelta(
+            StreamifyEngineBridge.JamDeltaOp(
+                opId = op.opId, sender = op.sender, type = op.type, policy = op.policy,
+                cadId = op.cadId, frac = op.frac, target = op.target
+            )
+        ).getOrNull() ?: return
         if (op.type == JamOpWire.OP_ADD && op.cadId != 0L) {
             elementIndex[op.cadId] = op.opId
-            entry.trackJson?.let { json ->
+            trackJson?.let { json ->
                 runCatching { JSONObject(json) }.getOrNull()?.let { jamTrackFromJson(it) }
                     ?.let { track ->
                         cadTrackCache[op.cadId] = track
@@ -1388,22 +1478,50 @@ object JamEngine {
             // Remote REMOVE fold — the tally for that element dies too (Gap #37).
             _queueVotes.update { it - op.target }
         }
-        reconciler?.noteOpApplied(op, entry.trackJson)
-        refreshQueueFromCrdt()
+        refreshQueueFromCrdt(receipt.queue)
     }
 
     /** Locally generated op ids (echo suppression without a native query). */
     private val localOpIds = ConcurrentHashMap.newKeySet<Long>()
 
     /**
-     * CONTINUATION epoch — the Death Pivot landing on guests. The playhead
+     * CONTINUATION epoch — the Death Pivot landing. The playhead
      * keeps gliding: the successor's authority simply re-anchors the PLL.
      */
     private fun handleContinuation(body: JamWire.ContinuationBody) {
-        election?.noteContinuation(body)
         if (body.newEpoch <= latestAppliedEpoch) return
+
+        // PARTITION HEAL (UFFI-04): two self-claimed leaders meet after a
+        // network merge. Epoch fencing orders the regimes; the native
+        // governor arbitrates whose regime stands — when this device hosts
+        // but the advisory check names the foreign successor, authority
+        // demotes here and the Rehandshake re-anchors playback under the
+        // surviving leader. Degraded backends keep authority (safe side).
+        if (isHost() && body.successorNonce != deviceId && body.newEpoch > authorityEpoch) {
+            val participants = (peerRadar.keys + deviceId).toList()
+            val demote = StreamifyEngineBridge.isAdvisoryJamSuccessor(
+                participants = participants,
+                hostNonce = body.successorNonce,
+                selfNonce = deviceId,
+                recentlySeen = true,
+            ).getOrDefault(false)
+            if (demote) {
+                SLog.w("JamPivot", "partition heal: demoting to ${body.successorNonce} (native governor)")
+                _commands.tryEmit(Command.Rehandshake)
+            }
+        }
+
         latestAppliedEpoch = body.newEpoch
         if (body.newEpoch > epochCounter.get()) epochCounter.set(body.newEpoch)
+        if (body.newEpoch > authorityEpoch) {
+            authorityEpoch = body.newEpoch
+            bumpTelemetry { it.copy(authorityEpoch = body.newEpoch) }
+        }
+        if (body.successorNonce.isNotBlank()) {
+            leaderNonce = body.successorNonce
+            pendingSuccessor = null
+            lastLeaderTickSyncedNanos = nowSyncedNanos()
+        }
         adoptTakeoverInternal()
         if (!isHost() && body.pivotPosMs >= 0) {
             // Zero-stutter continuity: PLL tick, never a pause.
@@ -1462,7 +1580,7 @@ object JamEngine {
         // control-revoked, co-host) enforced at intent ingress — epoch-gated
         // drop before any playback mutation.
         if (sender != deviceId &&
-            !governance.mayEmitControlIntent(sender, election?.leaderNonce?.value ?: deviceId, _policy.value)) {
+            !governance.mayEmitControlIntent(sender, leaderNonce ?: deviceId, _policy.value)) {
             SLog.d("JamGovernance", "control intent from $sender dropped by ACL")
             return
         }
@@ -1522,15 +1640,16 @@ object JamEngine {
                 if (isHost()) return
 
                 val dur = tick.durationMs
-                // Verified-tick bookkeeping: THE Death Pivot extrapolation source.
-                lastVerifiedHostTick = LeaderlessElectionEngine.HostTickSource.Snapshot(
+                // Verified-tick bookkeeping: THE Death Pivot extrapolation
+                // source + the succession watchdog liveness stamp.
+                lastVerifiedHostTick = HostTickSnapshot(
                     hostNonce = sender,
                     positionMs = tick.positionMs,
                     syncedNanos = tick.hostSyncedNanos,
                     durationMs = dur,
                     playing = tick.playing
                 )
-                election?.noteLeaderTick(sender, tick.positionMs, tick.hostSyncedNanos, dur, tick.playing)
+                lastLeaderTickSyncedNanos = tick.hostSyncedNanos
                 frame.trackJson?.let {
                     runCatching { JSONObject(it) }.getOrNull()?.let { j -> jamTrackFromJson(j) }
                 }?.let { currentHostTrack = it }
@@ -1584,14 +1703,26 @@ object JamEngine {
     }
 
     fun refreshConnStatus() {
-        val electionState = election?.state?.value ?: LeaderlessElectionEngine.ElectionState.BOOTSTRAP
+        val state = currentAuthorityState()
         _connStatus.value = when {
             !isActive() -> ConnStatus.OFFLINE
             !isHost() && System.currentTimeMillis() - lastHostTickAt > 6_000 -> ConnStatus.DEGRADED
-            !isHost() && electionState == LeaderlessElectionEngine.ElectionState.ELECTION -> ConnStatus.DEGRADED
+            !isHost() && state == "ELECTION" -> ConnStatus.DEGRADED
             else -> ConnStatus.LIVE
         }
-        bumpTelemetry { it.copy(electionState = electionState.name) }
+        bumpTelemetry { it.copy(electionState = state) }
+    }
+
+    /**
+     * Authority state for the sync gauge — same vocabulary the amputated
+     * election FSM exposed, derived directly from the authority fields:
+     * LEADER / FOLLOWER / ELECTION (successor pending) / BOOTSTRAP.
+     */
+    private fun currentAuthorityState(): String = when {
+        isHost() -> "LEADER"
+        pendingSuccessor != null -> "ELECTION"
+        leaderNonce != null -> "FOLLOWER"
+        else -> "BOOTSTRAP"
     }
 
     private fun bumpTelemetry(mutate: (SyncTelemetry) -> SyncTelemetry) {
@@ -1628,13 +1759,27 @@ object JamEngine {
         tickSeqCounter.set(0)
         lastRegimeChangeSyncedMs = nowSynced()
 
+        // Fresh authority state (UFFI-04): bootstrap until a leader is known
+        // (founding host assigns itself right after this in
+        // createServerlessRoom; guests learn it from presence/CONTINUATION).
+        leaderNonce = null
+        authorityEpoch = 0L
+        pendingSuccessor = null
+        deadSuccessors.clear()
+        lastLeaderTickSyncedNanos = 0L
+
         // Boot the Rust mesh (Engineer 2): LAN discovery + WebRTC overlay.
         val meshUp = NativeBridge.p2pStart(session.id, deviceId, enableLan = true, enableWebRtc = true)
         SLog.i("JamRoom", "mesh start (${if (meshUp) "up" else "unavailable — loopback mode"}): session=${session.id}")
 
         consensusJobs.forEach { it.cancel() }
         consensusJobs.clear()
-        wireConsensus(session)
+        wireAuthorityObservers()
+
+        // Succession watchdog (UFFI-04): replaces the amputated election
+        // FSM's internal poll loop — engine scope, room lifetime.
+        successionJob?.cancel()
+        successionJob = scope.launch { successionWatchdogLoop() }
 
         // Ingress: raw mesh frames → binary decoder → dispatcher.
         // UNDISPATCHED start: the collect subscription latches synchronously
@@ -1667,7 +1812,7 @@ object JamEngine {
                     it.copy(
                         ptpLocked = clockLocked(),
                         resamplerRateScalar = com.streamify.app.media.audio.SyncAudioProcessor.kalmanSpeedScalar,
-                        authorityEpoch = election?.authorityEpoch?.value ?: 0L
+                        authorityEpoch = this@JamEngine.authorityEpoch
                     )
                 }
                 refreshConnStatus()
@@ -1718,16 +1863,14 @@ object JamEngine {
     private fun endLocally() {
         sessionEndedLocally = true
         stopFgsLoops()
-        election?.stop()
-        reconciler?.stop()
-        election = null
-        reconciler = null
         consensusJobs.forEach { it.cancel() }
         consensusJobs.clear()
         ingressJob?.cancel()
         ingressJob = null
         sweeperJob?.cancel()
         sweeperJob = null
+        successionJob?.cancel()
+        successionJob = null
         NativeBridge.p2pStop()
         NativeBridge.jamClockReset()
         NativeBridge.kalmanPllReset()
@@ -1742,6 +1885,11 @@ object JamEngine {
         latestAppliedEpoch = Long.MIN_VALUE
         lastHostTickAt = 0L
         lastVerifiedHostTick = null
+        leaderNonce = null
+        authorityEpoch = 0L
+        pendingSuccessor = null
+        deadSuccessors.clear()
+        lastLeaderTickSyncedNanos = 0L
         currentHostTrack = null
         announcedNextId = null
         // Phase 1 teardown: topology + governance mirror the room lifetime —
@@ -1894,6 +2042,11 @@ object JamEngine {
         pendingPairingPayload = null
         cachedLocalUserId = null
         latestTopologyEpoch = 0L
+        leaderNonce = null
+        authorityEpoch = 0L
+        pendingSuccessor = null
+        deadSuccessors.clear()
+        lastLeaderTickSyncedNanos = 0L
         governance.reset()
         _governanceRows.value = emptyList()
         _memberReports.value = emptyList()

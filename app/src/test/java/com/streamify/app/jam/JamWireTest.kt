@@ -181,55 +181,9 @@ class JamWireTest {
         assertEquals(JamWire.Msg.SESSION_END, roundTrip(JamWire.encodeSessionEnd(sender))!!.msgType)
     }
 
-    // ── Merkle frames ──────────────────────────────────────────────────────
-
-    @Test
-    fun `merkle root req and ack round-trip`() {
-        val root = Blake3.hash("root")
-        val req = JamWire.parseMerkleRootReq(roundTrip(JamWire.encodeMerkleRootReq(sender, 128, root))!!)!!
-        assertEquals(128, req.opCount)
-        assertArrayEquals(root, req.root)
-
-        val ack = JamWire.parseMerkleRootAck(roundTrip(JamWire.encodeMerkleRootAck(sender, false, 64, root))!!)!!
-        assertTrue(!ack.equal)
-        assertEquals(64, ack.opCount)
-        assertArrayEquals(root, ack.root)
-    }
-
-    @Test
-    fun `merkle branch req and branch round-trip`() {
-        val req = JamWire.parseMerkleBranchReq(
-            roundTrip(JamWire.encodeMerkleBranchReq(sender, 3, intArrayOf(0, 5, 1023)))!!
-        )!!
-        assertEquals(3, req.level)
-        assertArrayEquals(intArrayOf(0, 5, 1023), req.indices)
-
-        val hashes = listOf(Blake3.hash("a"), Blake3.hash("b"))
-        val branch = JamWire.parseMerkleBranch(
-            roundTrip(JamWire.encodeMerkleBranch(sender, 2, hashes))!!
-        )!!
-        assertEquals(2, branch.level)
-        assertArrayEquals(hashes[0], branch.hashes[0])
-        assertArrayEquals(hashes[1], branch.hashes[1])
-    }
-
-    @Test
-    fun `merkle delta req and delta round-trip with track metadata`() {
-        val req = JamWire.parseMerkleDeltaReq(
-            roundTrip(JamWire.encodeMerkleDeltaReq(sender, intArrayOf(1, 2, 3)))!!
-        )!!
-        assertArrayEquals(intArrayOf(1, 2, 3), req.leafIndices)
-
-        val ops = listOf(
-            JamWire.MerkleDeltaOp(JamOpWire(1L, 2L, 1, 0, 3L, 0.5, 0L), """{"t":"A"}"""),
-            JamWire.MerkleDeltaOp(JamOpWire(2L, 2L, 2, 1, 4L, 0.6, 1L), null)
-        )
-        val delta = JamWire.parseMerkleDelta(roundTrip(JamWire.encodeMerkleDelta(sender, ops))!!)!!
-        assertEquals(2, delta.ops.size)
-        assertEquals(ops[0].op, delta.ops[0].op)
-        assertEquals("""{"t":"A"}""", delta.ops[0].trackJson)
-        assertNull(delta.ops[1].trackJson)
-    }
+    // ── Track meta / legacy snapshot ──────────────────────────────────────
+    // (The Merkle sync registry — ids 15–20 — was retired with the Kotlin
+    // CRDT amputation, UFFI-04: convergence is engine-authoritative.)
 
     @Test
     fun `track meta and queue snapshot round-trip`() {

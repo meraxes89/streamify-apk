@@ -53,7 +53,7 @@ class MockNativeBridge(val deviceId: String, private val room: VirtualMeshRoom =
     /**
      * Kills the given host device (radio off + clock of its frames stopped)
      * — the surviving peers must detect heartbeat loss and elect a successor
-     * through the deterministic Blake3 path with zero audio pause.
+     * through the deterministic native-governor path with zero audio pause.
      */
     fun simulateHostDropAndFailover(hostDeviceId: String) {
         room.endpoint(hostDeviceId).kill()
