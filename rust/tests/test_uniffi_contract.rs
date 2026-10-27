@@ -530,9 +530,14 @@ impl SpscFlushMirror {
 
     /// Any thread: the occupancy invariant 0 <= head - tail must hold at
     /// every observation (GetStats' cursor math).
+    ///
+    /// NOTE: Must read `tail` BEFORE `head`. If `head` is read first, the
+    /// producer and consumer can advance between the two loads, causing
+    /// `tail` to appear greater than the previously sampled `head`. Reading
+    /// `tail` first guarantees `t <= head(T_tail) <= head(T_head)`.
     fn occupancy_sane(&self) -> bool {
-        let h = self.head.load(Ordering::Acquire);
         let t = self.tail.load(Ordering::Acquire);
+        let h = self.head.load(Ordering::Acquire);
         t <= h
     }
 }
