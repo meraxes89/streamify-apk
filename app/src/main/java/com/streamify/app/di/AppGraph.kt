@@ -57,6 +57,13 @@ object AppGraph {
         com.streamify.app.util.SLog.initialize(context)
         com.streamify.app.util.SLog.logBootBanner(BuildConfig.VERSION_NAME)
 
+        // 0b. Phase 3 (MP-C15 client side / directive §E.2): observability
+        //     sinks + crash-reporting seam. Sits directly under SLog so the
+        //     very first log frames already state the observability config
+        //     (telemetry sink health, engine-error funnel, Sentry
+        //     placeholder seam).
+        com.streamify.app.data.telemetry.ObservabilityInit.initialize(context)
+
         val appContext = context.applicationContext
         com.streamify.app.data.network.YouTubeStreamResolver.appContext = appContext
 

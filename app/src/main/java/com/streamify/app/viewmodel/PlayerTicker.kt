@@ -33,7 +33,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 /** Position/jam tick loops: the 200ms position poller and the adaptive
- * jam heartbeat ticker. */
+ * jam heartbeat ticker.
+ *
+ * PHASE 3 (MP-C17 — zero-polling invariant): the 200ms loop samples ONLY
+ * the Media3 data-plane position. The engine control-plane pull that used
+ * to live here (`StreamifyEngineBridge.refreshBufferStats()` every 200ms)
+ * is DELETED — buffer telemetry advances purely from the engine's push
+ * snapshots (EngineEventListener → onEngineSnapshot, rev-guarded), and
+ * PlayerViewModel.bufferHealth mirrors the bridge flow reactively. The
+ * position sample's own retirement rides the Phase 4a DacPresentationClock
+ * cutover (USE_RUST_AUDIO flag). */
 internal fun PlayerViewModel.startPollingPosition() {
     positionPollingJob?.cancel()
     positionPollingJob = viewModelScope.launch {
@@ -78,17 +87,14 @@ internal fun PlayerViewModel.startPollingPosition() {
                     }
                 }
 
-                // UI-01: pull engine-side buffer telemetry while a session is
-                // live. Gated on availability so degraded environments (JVM
-                // tests, proxies pending) never churn FFI dispatch — the
-                // bridge's app-side underrun detection keeps flowing
-                // regardless, and the ViewModel's bufferHealth collector
-                // mirrors every publication.
-                if (com.streamify.app.data.uniffi.StreamifyEngineBridge.availability.value !=
-                    com.streamify.app.data.uniffi.StreamifyEngineBridge.Availability.NATIVE_UNAVAILABLE
-                ) {
-                    com.streamify.app.data.uniffi.StreamifyEngineBridge.refreshBufferStats()
-                }
+                // PHASE 3 (MP-C17 — zero-polling invariant): the control-plane
+                // `refreshBufferStats()` pull that lived here is DELETED.
+                // Buffer telemetry is now PUSH-driven — the engine's
+                // EngineEventListener snapshots land on
+                // StreamifyEngineBridge.bufferStats (rev-guarded), and the
+                // ViewModel's bufferHealth collector mirrors every
+                // publication reactively. Zero FFI churn while idle; zero
+                // CPU cycles spent polling a quiescent engine.
 
                 // Explicit Unit keeps the trailing if/else above in statement
                 // position so the inner if needs no else branch (K2 semantics).
