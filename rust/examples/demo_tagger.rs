@@ -14,7 +14,7 @@ fn main() {
 
     let mut wav_bytes = Vec::new();
     wav_bytes.extend_from_slice(b"RIFF");
-    wav_bytes.extend_from_slice(&(file_len as u32).to_le_bytes());
+    wav_bytes.extend_from_slice(&file_len.to_le_bytes());
     wav_bytes.extend_from_slice(b"WAVEfmt ");
     wav_bytes.extend_from_slice(&16u32.to_le_bytes()); // Subchunk1Size
     wav_bytes.extend_from_slice(&1u16.to_le_bytes()); // AudioFormat (PCM)
@@ -24,7 +24,7 @@ fn main() {
     wav_bytes.extend_from_slice(&2u16.to_le_bytes()); // BlockAlign
     wav_bytes.extend_from_slice(&16u16.to_le_bytes()); // BitsPerSample
     wav_bytes.extend_from_slice(b"data");
-    wav_bytes.extend_from_slice(&(data_len as u32).to_le_bytes());
+    wav_bytes.extend_from_slice(&data_len.to_le_bytes());
     wav_bytes.resize(44 + data_len as usize, 0);
 
     let temp_audio_path = "/tmp/streamify_test_track.wav";

@@ -1,27 +1,37 @@
 // ============================================================================
-//  audio_sink_ringbuffer.cpp — Phase-4 lock-free SPSC audio sink
+//  audio_sink_ringbuffer.cpp — Phase-4 lock-free SPSC audio sink,
+//  hardened in Phase 3 (multiplatform MP-C08/09/10)
 //  (native/src/audio_sink_ringbuffer.cpp)
 // ============================================================================
 //
-//  Implementation notes
-//  --------------------
-//  * Storage comes from streamify::alignedAlloc (posix_memalign, Bionic
-//    minSdk-26 mandate from util/NeonCompat.h) and is 64-byte sized up so
-//    vectorized tails never touch the next page.
-//  * All hot paths (WriteFloat / ReadFrames / ReadBytes / converter /
-//    downmix / decimator) are allocation-free and lock-free; the unit tests
-//    prove this with the shared tests/AllocGuard.h audit.
-//  * The vectorized converter keeps a per-path rounding contract: A64 NEON
-//    and SSE2 round to nearest (vcvtnq / cvtps), armv7 NEON biases by
-//    +-0.5 before the truncating vcvtq (round-half-away), the scalar tail
-//    uses lrintf (nearest). Tests accept a +-1 LSB delta between paths.
+// Implementation notes
+// --------------------
+// * Storage is a raw f32 array allocated with the standard C++17
+//   over-aligned operators — ::operator new[](bytes,
+//   std::align_val_t{kCacheLineSize}) and the matching ::operator
+//   delete[](ptr, std::align_val_t{...}) — sized up to a whole cache line
+//   so vectorized tails never touch the next page. This replaces the
+//   previous posix_memalign path (Phase 3 / MP-C09): the aligned-new
+//   forms are the one portable spelling that also compiles on Windows
+//   MSVC, where posix_memalign does not exist.
+// * All hot paths (WriteFloat / ReadFramesF32 / ReadFrames / ReadBytes /
+//   converter / downmix / decimator) are allocation-free and lock-free;
+//   the unit tests prove this with the shared tests/AllocGuard.h audit.
+// * The vectorized converter keeps a per-path rounding contract: A64 NEON
+//   and SSE2 round to nearest (vcvtnq / cvtps), armv7 NEON biases by
+//   +-0.5 before the truncating vcvtq (round-half-away), the scalar tail
+//   uses lrintf (nearest). Tests accept a +-1 LSB delta between paths.
+// * The generational flush handshake (RequestFlush / consumePendingFlush_)
+//   is spelled out below with its exact memory-ordering justification.
 // ============================================================================
 
 #include "../include/audio_sink_ringbuffer.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
 
 #include "../util/NeonCompat.h"
 
@@ -33,7 +43,7 @@ namespace streamify {
 namespace sink {
 
 // ============================================================================
-//  Scalar reference + SIMD Float32 -> PCM16
+//  Scalar reference + SIMD Float32 -> PCM16 (legacy consumer edge)
 // ============================================================================
 
 int16_t ConvertSampleF32ToI16(float sample) {
@@ -259,7 +269,7 @@ size_t Decimator::process(const float* in, size_t frames, float* out) {
 }
 
 // ============================================================================
-//  AudioSink — configuration, SPSC ring, telemetry
+//  AudioSink — configuration, f32 SPSC ring, telemetry, generational flush
 // ============================================================================
 
 namespace {
@@ -309,17 +319,25 @@ AudioSink::AudioSink(const Config& config) {
     sample_rate_out_ = sample_rate_in_ / decimation_factor_;
     capacity_ = cfg.capacity_frames;
     mask_ = capacity_ - 1;
+    // Legacy PCM16 JNI edge unit (ReadBytes). The f32 pull path moves
+    // channels_out_ * sizeof(float) bytes per frame.
     frame_bytes_ = static_cast<size_t>(channels_out_) * sizeof(int16_t);
 
-    const size_t ring_bytes =
-        streamify::alignUp(capacity_ * channels_out_ * sizeof(int16_t), 64);
-    ring_ = static_cast<int16_t*>(streamify::alignedAlloc(64, ring_bytes));
-    if (ring_ == nullptr) return;
+    // ---- MP-C09: standard C++17 over-aligned allocation -------------------
+    // ::operator new[](bytes, align_val_t) is the one portable spelling of
+    // "aligned heap block" that also compiles on Windows MSVC (the previous
+    // posix_memalign path was a POSIX-only API). The block is sized up to a
+    // whole kCacheLineSize multiple so vectorized tails never touch the
+    // next page; the matching delete[] overload is invoked in the dtor.
+    const size_t ring_bytes = streamify::alignUp(
+        capacity_ * channels_out_ * sizeof(float), kCacheLineSize);
+    ring_ = static_cast<float*>(
+        ::operator new[](ring_bytes, std::align_val_t{kCacheLineSize}));
     std::memset(ring_, 0, ring_bytes);
 
     if (!decimator_.init(decimation_factor_ > 1 ? decimation_factor_ : 1u,
                          channels_out_)) {
-        streamify::alignedFree(ring_);
+        ::operator delete[](ring_, std::align_val_t{kCacheLineSize});
         ring_ = nullptr;
         return;
     }
@@ -327,7 +345,8 @@ AudioSink::AudioSink(const Config& config) {
     const size_t dec_frames = kBlockFrames / decimation_factor_ + 2;
     mix_scratch_.assign(kBlockFrames, 0.0f);
     dec_scratch_.assign(dec_frames * channels_out_, 0.0f);
-    pcm_scratch_.assign(dec_frames * channels_out_, 0);
+    // Consumer-side staging for the legacy PCM16 edge quantization.
+    pcm_read_scratch_.assign(kBlockFrames * channels_out_, 0.0f);
 
     low_watermark_.store(static_cast<uint32_t>(capacity_),
                          std::memory_order_relaxed);
@@ -335,14 +354,14 @@ AudioSink::AudioSink(const Config& config) {
 
 AudioSink::~AudioSink() {
     if (ring_ != nullptr) {
-        streamify::alignedFree(ring_);
+        ::operator delete[](ring_, std::align_val_t{kCacheLineSize});
         ring_ = nullptr;
     }
 }
 
 // ---- producer side ----------------------------------------------------------
 
-size_t AudioSink::writePcm_(const int16_t* src, size_t frames) {
+size_t AudioSink::writeFloats_(const float* src, size_t frames) {
     if (src == nullptr || frames == 0) return 0;
     const uint64_t h = head_.load(std::memory_order_relaxed);
     const uint64_t t = tail_.load(std::memory_order_acquire);
@@ -352,9 +371,9 @@ size_t AudioSink::writePcm_(const int16_t* src, size_t frames) {
     const size_t pos = static_cast<size_t>(h) & mask_;
     const size_t ch = channels_out_;
     const size_t first = n < capacity_ - pos ? n : capacity_ - pos;
-    std::memcpy(ring_ + pos * ch, src, first * ch * sizeof(int16_t));
+    std::memcpy(ring_ + pos * ch, src, first * ch * sizeof(float));
     if (n > first) {
-        std::memcpy(ring_, src + first * ch, (n - first) * ch * sizeof(int16_t));
+        std::memcpy(ring_, src + first * ch, (n - first) * ch * sizeof(float));
     }
     head_.store(h + n, std::memory_order_release);
     frames_written_.fetch_add(n, std::memory_order_relaxed);
@@ -403,16 +422,17 @@ size_t AudioSink::WriteFloat(const float* samples, size_t sample_count) {
                                 block * chIn);
             stage = mix_scratch_.data();
         }
-        const float* pcm_f = stage;
+        const float* out_f = stage;
         size_t produced = block;
         if (d > 1) {
             produced = decimator_.process(stage, block, dec_scratch_.data());
-            pcm_f = dec_scratch_.data();
+            out_f = dec_scratch_.data();
         }
         if (produced > 0) {
-            ConvertF32ToI16(pcm_f, pcm_scratch_.data(),
-                            produced * channels_out_);
-            const size_t n = writePcm_(pcm_scratch_.data(), produced);
+            // Phase 3 (MP-C08): commit RAW f32 — no quantization on the
+            // producer side. The legacy PCM16 edge converts at its own
+            // read boundary; the canonical f32 pull path never converts.
+            const size_t n = writeFloats_(out_f, produced);
             if (n < produced) {
                 // Unreachable given the `need` precheck; kept as a hardened
                 // safety net so even a future regression can never corrupt
@@ -435,84 +455,130 @@ size_t AudioSink::WriteFloat(const float* samples, size_t sample_count) {
 
 // ---- consumer side ----------------------------------------------------------
 
-size_t AudioSink::readPcm_(int16_t* dst, size_t frames) {
-    // ---- AMP-10: consumer-cooperative flush ------------------------------
-    // A pending RequestFlush() (any thread — typically UI/control) is
+bool AudioSink::consumePendingFlush_() {
+    // ---- Phase 3 / MP-C10: generational consumer-cooperative flush ------
+    // A pending RequestFlush() (any thread — typically producer/control) is
     // consumed HERE, on the single consumer thread that owns tail_.
     // Performing the reset on the consumer side means no thread ever
-    // mutates a cursor the audio callback is concurrently updating: the
-    // pre-hardening Flush() wrote tail_ from the control thread while
-    // this very function was mid-flight, risking a torn tail_ > head_
-    // (uint64 underflow in the occupancy math) and reading purged ring
-    // slots (memory corruption).
+    // mutates a cursor the audio callback is concurrently updating.
     //
-    // Ordering: the release store in RequestFlush() pairs with this
-    // acquire exchange, so the request is fully visible before the
-    // reset runs; the tail_ release store pairs with the producer's
-    // acquire load in writePcm_'s free-space check, so a concurrent
-    // WriteFloat immediately sees the freed capacity. tail_ can only
-    // move FORWARD to a committed head_, so the SPSC invariant
-    // 0 <= head_ - tail_ <= capacity_ holds throughout.
-    //
-    // The flushed call emits digital silence (the whole destination,
-    // bounded memset — this ring's consumer edge is PCM16, 2 bytes per
-    // sample; the protocol is identical for a float-domain ring with
-    // sizeof(float)) and returns 0. It deliberately does NOT count an
-    // underrun: a requested flush is a control decision, not buffer
-    // starvation. Real-time safety: one lock-free atomic exchange, one
-    // lock-free store, one bounded memset — no locks, no allocation,
-    // no sleeping.
-    if (flush_requested_.exchange(false, std::memory_order_acquire)) {
-        tail_.store(head_.load(std::memory_order_acquire),
-                    std::memory_order_release);
-        if (dst != nullptr && frames > 0) {
-            std::memset(dst, 0, frames * channels_out_ * sizeof(int16_t));
-        }
-        return 0;
+    // Ordering:
+    //   * Requester: flush_generation_.fetch_add(1, Relaxed) — the bump
+    //     itself carries no data, so Relaxed suffices — then a bounded
+    //     acquire-load spin on flush_ack_generation_ (see RequestFlush).
+    //   * Consumer: acquire-load the generation here; a change means at
+    //     least one flush was requested since the last serviced one. The
+    //     tail_ release store pairs with the producer's acquire load in
+    //     writeFloats_'s free-space check, so a concurrent WriteFloat
+    //     immediately sees the freed capacity. The ack release store then
+    //     publishes the reset to the waiter: its acquire load of
+    //     flush_ack_generation_ synchronizes-with this store, so every
+    //     producer write issued after RequestFlush() returns is safely
+    //     ordered after the cursor reset. tail_ can only move FORWARD to a
+    //     committed head_, so the SPSC invariant 0 <= head_ - tail_ <=
+    //     capacity_ holds throughout.
+    //   * Multiple waiters / rapid re-requests: the consumer acks the
+    //     NEWEST observed generation once, releasing every waiter whose
+    //     generation <= ack (level-triggered coalescing).
+    const uint64_t gen = flush_generation_.load(std::memory_order_acquire);
+    if (gen == flush_ack_generation_.load(std::memory_order_relaxed)) {
+        return false;  // no pending request — fast path, one acquire load
     }
-    if (dst == nullptr || frames == 0) return 0;
-    const uint64_t t = tail_.load(std::memory_order_relaxed);
-    const uint64_t h = head_.load(std::memory_order_acquire);
-    const size_t avail = static_cast<size_t>(h - t);
-    const size_t n = frames < avail ? frames : avail;
-    if (n < frames) {
+    tail_.store(head_.load(std::memory_order_acquire),
+                std::memory_order_release);
+    flush_ack_generation_.store(gen, std::memory_order_release);
+    return true;
+}
+
+void AudioSink::recordReadTelemetry_(size_t got, size_t requested) {
+    if (got < requested) {
         underrun_events_.fetch_add(1, std::memory_order_relaxed);
     }
-    if (n == 0) {
+    if (got == 0) {
         // We observed an empty ring — record the floor watermark.
         uint32_t lw = low_watermark_.load(std::memory_order_relaxed);
         while (lw != 0 &&
                !low_watermark_.compare_exchange_weak(
                    lw, 0u, std::memory_order_relaxed)) {
         }
-        return 0;
+        return;
     }
-    const size_t pos = static_cast<size_t>(t) & mask_;
-    const size_t ch = channels_out_;
-    const size_t first = n < capacity_ - pos ? n : capacity_ - pos;
-    std::memcpy(dst, ring_ + pos * ch, first * ch * sizeof(int16_t));
-    if (n > first) {
-        std::memcpy(dst + first * ch, ring_,
-                    (n - first) * ch * sizeof(int16_t));
-    }
-    tail_.store(t + n, std::memory_order_release);
-    frames_read_.fetch_add(n, std::memory_order_relaxed);
-
     // Low watermark: occupancy after this read, w.r.t. a conservative
     // (possibly stale-low) producer cursor — never over-reports.
+    const uint64_t t = tail_.load(std::memory_order_relaxed);
     const uint64_t h2 = head_.load(std::memory_order_acquire);
-    const size_t occ = static_cast<size_t>(h2 - (t + n));
+    const size_t occ = static_cast<size_t>(h2 - t);
     uint32_t lw = low_watermark_.load(std::memory_order_relaxed);
     while (occ < lw &&
            !low_watermark_.compare_exchange_weak(
                lw, static_cast<uint32_t>(occ), std::memory_order_relaxed)) {
     }
+}
+
+size_t AudioSink::readFloats_(float* dst, size_t frames) {
+    if (dst == nullptr || frames == 0) return 0;
+    const uint64_t t = tail_.load(std::memory_order_relaxed);
+    const uint64_t h = head_.load(std::memory_order_acquire);
+    const size_t avail = static_cast<size_t>(h - t);
+    const size_t n = frames < avail ? frames : avail;
+    if (n == 0) return 0;
+    const size_t pos = static_cast<size_t>(t) & mask_;
+    const size_t ch = channels_out_;
+    const size_t first = n < capacity_ - pos ? n : capacity_ - pos;
+    std::memcpy(dst, ring_ + pos * ch, first * ch * sizeof(float));
+    if (n > first) {
+        std::memcpy(dst + first * ch, ring_,
+                    (n - first) * ch * sizeof(float));
+    }
+    tail_.store(t + n, std::memory_order_release);
+    frames_read_.fetch_add(n, std::memory_order_relaxed);
     return n;
 }
 
+size_t AudioSink::ReadFramesF32(float* dst, size_t max_frames) {
+    if (ring_ == nullptr || max_frames == 0) return 0;
+    if (consumePendingFlush_()) {
+        // The flushed call emits digital silence (whole destination) and
+        // returns 0; it deliberately does NOT count an underrun: a
+        // requested flush is a control decision, not buffer starvation.
+        if (dst != nullptr) {
+            std::memset(dst, 0, max_frames * channels_out_ * sizeof(float));
+        }
+        return 0;
+    }
+    if (dst == nullptr) return 0;
+    const size_t got = readFloats_(dst, max_frames);
+    recordReadTelemetry_(got, max_frames);
+    return got;
+}
+
 size_t AudioSink::ReadFrames(int16_t* dst, size_t max_frames) {
-    if (ring_ == nullptr) return 0;
-    return readPcm_(dst, max_frames);
+    if (ring_ == nullptr || max_frames == 0) return 0;
+    if (consumePendingFlush_()) {
+        if (dst != nullptr) {
+            std::memset(dst, 0, max_frames * channels_out_ * sizeof(int16_t));
+        }
+        return 0;
+    }
+    if (dst == nullptr) return 0;
+    // Legacy PCM16 edge: stage kBlockFrames of the f32 ring at a time and
+    // quantize through the SIMD converter. Allocation-free (constructor-
+    // sized scratch), lock-free, and the quantized output is bit-identical
+    // to the pre-Phase-3 ring (same converter, same clamp/round contract).
+    const size_t ch = channels_out_;
+    size_t done = 0;
+    while (done < max_frames) {
+        const size_t want =
+            max_frames - done < kBlockFrames ? max_frames - done : kBlockFrames;
+        const size_t got =
+            readFloats_(pcm_read_scratch_.data(), want);
+        if (got == 0) break;
+        ConvertF32ToI16(pcm_read_scratch_.data(), dst + done * ch, got * ch);
+        done += got;
+        if (got < want) break;  // starved mid-call; telemetry below
+    }
+    recordReadTelemetry_(done, max_frames);
+    return done;
 }
 
 size_t AudioSink::ReadBytes(uint8_t* dst, size_t capacity_bytes) {
@@ -520,7 +586,35 @@ size_t AudioSink::ReadBytes(uint8_t* dst, size_t capacity_bytes) {
         return 0;
     }
     const size_t frames = capacity_bytes / frame_bytes_;
-    return readPcm_(reinterpret_cast<int16_t*>(dst), frames) * frame_bytes_;
+    return ReadFrames(reinterpret_cast<int16_t*>(dst), frames) * frame_bytes_;
+}
+
+// ---- any-thread control plane ----------------------------------------------
+
+void AudioSink::RequestFlush() noexcept {
+    // ---- Phase 3 / MP-C10: generational flush request + bounded ack wait.
+    // Bump the generation (Relaxed: the bump is data-free; visibility to the
+    // consumer is established by the acquire load in consumePendingFlush_),
+    // then wait — yielding, deadline-bounded by kFlushAckTimeoutMs — for the
+    // consumer thread to service the request. Waiting for the ack lets the
+    // caller (producer / control thread) resume writing POST-flush audio
+    // immediately, without racing the consumer's cursor reset; the acquire
+    // load below pairs with the consumer's ack release store so those
+    // subsequent writes are ordered after the reset. If the consumer is not
+    // reading (paused device, torn-down stream), the wait expires and the
+    // request simply applies lazily on the next read — correctness never
+    // depends on the ack arriving.
+    const uint64_t gen =
+        flush_generation_.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto deadline =
+        std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(kFlushAckTimeoutMs);
+    while (flush_ack_generation_.load(std::memory_order_acquire) < gen) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+            break;  // consumer not servicing reads — flush applies lazily
+        }
+        std::this_thread::yield();
+    }
 }
 
 // ---- any-thread telemetry -------------------------------------------------

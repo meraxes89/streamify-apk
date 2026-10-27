@@ -10,8 +10,38 @@ if(CI_SMOKE_LANE)
     set(EXTREME_LTO_FLAGS "")
 endif()
 
+# --- Phase 3 (multiplatform): host sanitizer/CTest lane ---------------------
+# ENABLE_ASAN mirrors the Android CI shard's sanitizer discipline on a plain
+# host toolchain (gcc or clang, no NDK required): it turns on the standalone
+# test suites, injects ASan+UBSan into every compile AND link (CMAKE_*_FLAGS
+# reach the link rule), and drops global LTO so the sanitizers see the real
+# stack frames. The test targets' own -O2 -fno-fast-math -fno-lto overrides
+# keep NaN/overflow guards intact (fast-math would elide them). The Android
+# packaging library (streamify_native_core: jni.h, -landroid, -llog) is
+# excluded in this mode — it cannot link on a host and the lane exists to
+# run `ctest` over the host-built suites (Phase 3 quality gate).
+option(ENABLE_ASAN "Build host test suites under AddressSanitizer + UBSan (implies STREAMIFY_BUILD_TESTS, skips the Android-only .so)" OFF)
+if(ENABLE_ASAN)
+    set(STREAMIFY_BUILD_TESTS ON)
+    set(EXTREME_LTO_FLAGS "")
+    # Same discipline as the CI native shard (extreme-test-matrix.yml): ASan+
+    # UBSan at -O2 with frame pointers — instrumented but still vectorizable,
+    # so the 10M-frame SPSC and pacer stress loops stay inside the CI budget.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer -O2 -g")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer -O2 -g")
+endif()
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ${EXTREME_LTO_FLAGS} -fvisibility=hidden -Wall -Wextra")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -ffast-math ${EXTREME_LTO_FLAGS} -fvisibility=hidden")
+
+if(ENABLE_ASAN)
+    # The global -O3/-ffast-math appended above would fight the sanitizer
+    # lane's frame-keeping -O2; re-assert the sanitizer tail so the LAST
+    # spelling of each switch wins in every compile (fast-math elides the
+    # NaN/overflow guards the suites assert on).
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math -O2")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-fast-math -O2")
+endif()
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a+simd+crypto")
@@ -34,6 +64,10 @@ include_directories(
     third_party/sqlite3
 )
 
+# The Android packaging library needs the NDK (jni.h, -landroid, -llog);
+# the Phase 3 host sanitizer lane (ENABLE_ASAN) builds ONLY the test suites,
+# so the .so target is skipped entirely there (it cannot link on a host).
+if (NOT ENABLE_ASAN)
 add_library(streamify_native_core SHARED
     # Phase-5: SIMD palette clustering + WCAG contrast engine.
     src/palette_extractor_simd.cpp
@@ -83,10 +117,15 @@ target_link_libraries(streamify_native_core
     android
     log
 )
+endif()  # NOT ENABLE_ASAN (Android packaging library)
 
 # --- STANDALONE TEST TARGETS (Host C++20 with ASan / UBSan) ---
 option(STREAMIFY_BUILD_TESTS "Build native test suites" OFF)
 if (STREAMIFY_BUILD_TESTS)
+    # Phase 3 (multiplatform): register the host suites with CTest so the
+    # quality gate is a single `ctest --test-dir native/build` invocation
+    # (`-DENABLE_ASAN=ON` implies this block and skips the Android .so).
+    enable_testing()
     add_executable(dsp_test_suite
         tests/test_dsp.cc
         tests/test_dsp_phase1.cc
@@ -180,6 +219,15 @@ if (STREAMIFY_BUILD_TESTS)
                 -fno-lto)
         endforeach()
     endif()
+
+    # Phase 3 (multiplatform): CTest registration — the quality gate is
+    # `cmake --build native/build && ctest --test-dir native/build`.
+    # The suites are self-contained mains (pass/fail counters, exit code
+    # non-zero on any failure), so a plain COMMAND registration is exact.
+    add_test(NAME dsp_test_suite COMMAND dsp_test_suite)
+    add_test(NAME simd_physics_test_suite COMMAND simd_physics_test_suite)
+    add_test(NAME storage_telemetry_test_suite COMMAND storage_telemetry_test_suite)
+    add_test(NAME dsp_phase_lock_test_suite COMMAND dsp_phase_lock_test_suite)
 endif()
 
 # --- LIBFUZZER HARNESS (host clang; requires clang with compiler-rt) ---

@@ -603,10 +603,16 @@ void test_cooperative_flush_concurrent_stress() {
     AudioSink sink(cfg);
     check(sink.valid(), "stress sink valid");
 
+    // Phase 3 (MP-C10): the generational protocol makes RequestFlush()
+    // wait (bounded) for the consumer's ack, so the consumer must stay
+    // live until every request has been issued and serviced — the read
+    // budget is a CAP on bookkeeping assertions, not an exit condition
+    // (a consumerless requester would pay kFlushAckTimeoutMs per call).
     constexpr uint64_t kFlushRequests = 20000;
     constexpr uint64_t kReadIters = 200000;
     std::atomic<uint64_t> underflow_observations{0};
     std::atomic<bool> stop{false};
+    std::atomic<bool> requests_done{false};
 
     std::thread producer([&sink, &stop]() {
         Rng rng(4242);
@@ -627,14 +633,16 @@ void test_cooperative_flush_concurrent_stress() {
         }
     });
 
-    std::thread control([&sink, &stop, kFlushRequests]() {
+    std::thread control([&sink, kFlushRequests, &requests_done]() {
         for (uint64_t i = 0; i < kFlushRequests; ++i) {
             sink.RequestFlush();  // noexcept: cannot throw under load
             if ((i & 0xFF) == 0) std::this_thread::yield();
         }
+        requests_done.store(true, std::memory_order_release);
     });
 
-    std::thread consumer([&sink, &stop, &underflow_observations, kReadIters]() {
+    std::thread consumer([&sink, &stop, &requests_done, &underflow_observations,
+                          kReadIters]() {
         Rng rng(777);
         int16_t buf[2048];
         for (uint64_t i = 0; i < kReadIters; ++i) {
@@ -658,12 +666,19 @@ void test_cooperative_flush_concurrent_stress() {
                                                      std::memory_order_relaxed);
                 }
             }
+            // Keep servicing the ring until the control thread's requests
+            // have all been issued (each pending generation needs one
+            // consumer read to be acked — see the protocol note above).
+            if (i + 1 == kReadIters && !requests_done.load(std::memory_order_acquire)) {
+                i = 0;  // continue in a fresh accounting epoch
+                continue;
+            }
         }
     });
 
-    control.join();  // all flush requests issued
-    consumer.join(); // all reads done
+    control.join();   // all flush requests issued AND acked (live consumer)
     stop.store(true, std::memory_order_relaxed);
+    consumer.join();  // consumer exits once requests are drained
     producer.join();
 
     check(underflow_observations.load() == 0,
@@ -677,6 +692,212 @@ void test_cooperative_flush_concurrent_stress() {
     check(sink.ReadFrames(out, 32) == 0, "post-stress flush pass works");
     check(sink.WriteFloat(in, 64) == 64, "post-stress write works");
     check(sink.ReadFrames(out, 32) == 32, "post-stress read works");
+}
+
+// ============================================================================
+//  D2. Canonical f32 pull path (Phase 3 / MP-C08) — the ring stores raw
+//  floats end-to-end; quantization exists ONLY at the legacy PCM16 edge.
+// ============================================================================
+
+void test_ring_f32_canonical_path() {
+    std::printf("  [sink] canonical f32 pull path: no premature quantization (MP-C08)\n");
+    AudioSink::Config cfg;
+    cfg.sample_rate = 48000;
+    cfg.channels = 2;
+    cfg.capacity_frames = 1024;
+    AudioSink sink(cfg);
+    check(sink.valid(), "f32 sink valid");
+
+    // --- Sub-LSB dynamic range survives: values far below the PCM16 LSB
+    // (1/32767 ~= 3.05e-5) must round-trip BIT-EXACT through the f32 path.
+    // The pre-Phase-3 ring quantized at write time and destroyed them.
+    const float tiny[8] = {1.0e-9f,  -2.0e-8f, 3.0e-7f,  -4.0e-6f,
+                           5.0e-5f,  -6.0e-4f, 7.0e-3f,  -8.0e-2f};
+    check(sink.WriteFloat(tiny, 8) == 8, "sub-LSB write 4 frames");
+    float out_f[8];
+    check(sink.ReadFramesF32(out_f, 4) == 4, "sub-LSB f32 read 4 frames");
+    bool bitexact = true;
+    for (size_t i = 0; i < 8; ++i) bitexact = bitexact && out_f[i] == tiny[i];
+    check(bitexact, "sub-LSB floats round-trip bit-exact (f32 end-to-end)");
+
+    // --- Full-scale values beyond [-1, 1] survive unclamped on the f32
+    // path (the legacy PCM16 edge clamps; the HAL owns output SRC/limiting).
+    const float hot[4] = {4.25f, -7.5f, 100.0f, -100.0f};
+    check(sink.WriteFloat(hot, 4) == 4, "beyond-full-scale write 2 frames");
+    check(sink.ReadFramesF32(out_f, 2) == 2, "beyond-full-scale f32 read");
+    check(out_f[0] == 4.25f && out_f[1] == -7.5f && out_f[2] == 100.0f &&
+              out_f[3] == -100.0f,
+          "beyond-full-scale floats pass through unclamped");
+
+    // --- Stereo interleaved wraparound fidelity (fill past the ring seam).
+    float wrap_in[2048];  // 1024 frames == full ring capacity
+    for (size_t i = 0; i < 2048; ++i) {
+        wrap_in[i] = PatternSample(i / 2, static_cast<uint32_t>(i % 2));
+    }
+    check(sink.WriteFloat(wrap_in, 2048) == 2048, "wrap write fills ring");
+    float wrap_out[2048];
+    check(sink.ReadFramesF32(wrap_out, 1024) == 1024, "wrap f32 read 1024");
+    bool wrap_ok = true;
+    for (size_t i = 0; i < 2048; ++i) {
+        wrap_ok = wrap_ok && wrap_out[i] == wrap_in[i];
+    }
+    check(wrap_ok, "stereo f32 wraparound is bit-exact");
+
+    // --- Legacy PCM16 edge agreement: the SAME pattern, quantized at the
+    // read edge, matches the frozen converter contract exactly (regression
+    // against the pre-Phase-3 ring output).
+    float pat_in[512];
+    for (size_t i = 0; i < 512; ++i) {
+        pat_in[i] = PatternSample(5000 + i / 2, static_cast<uint32_t>(i % 2));
+    }
+    check(sink.WriteFloat(pat_in, 512) == 512, "legacy-edge write 256 frames");
+    int16_t pcm_out[1024];
+    // 300 > kBlockFrames (256) per call: crosses the chunked-conversion
+    // loop boundary (one full staging chunk + a starved tail).
+    check(sink.ReadFrames(pcm_out, 300) == 256, "legacy-edge read starves at 256");
+    bool legacy_ok = true;
+    for (size_t i = 0; i < 512; ++i) {
+        legacy_ok = legacy_ok && pcm_out[i] ==
+                                     ExpectedPattern(5000 + i / 2,
+                                                     static_cast<uint32_t>(i % 2));
+    }
+    check(legacy_ok, "legacy PCM16 edge bit-identical to frozen contract");
+
+    // --- f32 flush pass: silence, zero return, no underrun accounting.
+    const uint64_t underruns_before = [&sink]() {
+        SinkStats s;
+        sink.GetStats(&s);
+        return s.underrun_events;
+    }();
+    check(sink.WriteFloat(pat_in, 64) == 64, "f32-flush write 32 frames");
+    sink.RequestFlush();  // no live consumer: bounded timeout, lazy apply
+    float flush_out[16];
+    std::memset(flush_out, 0x5A, sizeof(flush_out));
+    check(sink.ReadFramesF32(flush_out, 8) == 0, "f32 flush-consuming read -> 0");
+    bool f32_silent = true;
+    for (size_t i = 0; i < 16; ++i) {
+        f32_silent = f32_silent && flush_out[i] == 0.0f;
+    }
+    check(f32_silent, "f32 flush-consuming read zero-fills destination");
+    SinkStats st;
+    sink.GetStats(&st);
+    check(st.underrun_events == underruns_before,
+          "f32 flush not counted as underrun");
+}
+
+// ============================================================================
+//  E2. Generational flush protocol (Phase 3 / MP-C10) — counter discipline,
+//  bounded ack wait, coalescing, live-consumer handshake.
+// ============================================================================
+
+void test_generational_flush_protocol() {
+    std::printf("  [sink] generational flush protocol (MP-C10)\n");
+    AudioSink::Config cfg;
+    cfg.sample_rate = 48000;
+    cfg.channels = 2;
+    cfg.capacity_frames = 512;
+    AudioSink sink(cfg);
+    check(sink.valid(), "gen-flush sink valid");
+
+    // --- Initial discipline: generation 0, ack 0 — no spurious flush.
+    check(sink.flush_generation() == 0, "generation starts at 0");
+    check(sink.flush_ack_generation() == 0, "ack starts at 0");
+    float in[128];
+    int16_t out[128];
+    for (size_t i = 0; i < 128; ++i) {
+        in[i] = PatternSample(i / 2, static_cast<uint32_t>(i % 2));
+    }
+    check(sink.WriteFloat(in, 128) == 128, "gen-flush write 64 frames");
+    check(sink.ReadFrames(out, 16) == 16, "gen-flush read 16 frames");
+    check(sink.flush_generation() == 0, "reads/writes do not bump generation");
+
+    // --- Request with NO live consumer: bump is visible, ack stays behind,
+    //     and the bounded wait expires (lazy apply on the next read).
+    const auto t0 = std::chrono::steady_clock::now();
+    sink.RequestFlush();
+    const auto waited =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0)
+            .count();
+    check(sink.flush_generation() == 1, "request bumps generation to 1");
+    check(sink.flush_ack_generation() == 0,
+          "no consumer -> ack stays at 0 (lazy)");
+    // Bounded: ~kFlushAckTimeoutMs, generous margin for CI/ASan scheduling.
+    check(waited >= 50 && waited < 2000,
+          "consumerless request bounded-waits (~100ms) then returns");
+    check(sink.ReadFrames(out, 4) == 0, "lazy flush applies on next read");
+    check(sink.flush_ack_generation() == 1, "consumer acks generation 1");
+
+    // --- Coalescing: N rapid bumps collapse into ONE flush pass, and the
+    //     consumer acks the newest observed generation in a single step.
+    check(sink.WriteFloat(in, 128) == 128, "coalesce write 64 frames");
+    sink.RequestFlush();
+    sink.RequestFlush();
+    sink.RequestFlush();
+    check(sink.flush_generation() == 4, "three more bumps -> generation 4");
+    check(sink.ReadFrames(out, 4) == 0, "coalesced requests consume once");
+    check(sink.flush_ack_generation() == 4,
+          "consumer acks newest generation directly");
+    check(sink.ReadFrames(out, 4) == 0, "no sticky flush after consumption");
+
+    // --- Live-consumer handshake: with a reader thread servicing the ring,
+    //     every request converges to ack == generation. RequestFlush itself
+    //     returns at the latest after the bounded timeout, so under CI
+    //     scheduling stalls the ack may land a beat later — assert eventual
+    //     convergence (poll), which is the protocol's actual guarantee.
+    std::atomic<bool> stop{false};
+    std::thread consumer([&sink, &stop]() {
+        int16_t buf[256];
+        while (!stop.load(std::memory_order_relaxed)) {
+            (void)sink.ReadFrames(buf, 64);
+            std::this_thread::yield();
+        }
+    });
+    bool converged = true;
+    for (int i = 0; i < 50; ++i) {
+        sink.RequestFlush();
+        const uint64_t gen = sink.flush_generation();
+        // Convergence poll: a live consumer services every pending
+        // generation within one read iteration; 2 s covers pathological
+        // CI descheduling without ever hanging the suite.
+        for (int spin = 0; spin < 2000; ++spin) {
+            if (sink.flush_ack_generation() >= gen) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        if (sink.flush_ack_generation() < gen) {
+            converged = false;
+            break;
+        }
+    }
+    check(converged, "live consumer acks every flushed generation (50 rounds)");
+    stop.store(true, std::memory_order_relaxed);
+    consumer.join();
+
+    // --- Post-handshake sanity: fresh data flows after the final flush.
+    sink.RequestFlush();  // consumer is gone: bounded timeout again
+    check(sink.ReadFrames(out, 4) == 0, "final flush pass");
+    check(sink.WriteFloat(in, 128) == 128, "post-gen-flush write works");
+    check(sink.ReadFrames(out, 64) == 64, "post-gen-flush read works");
+}
+
+// ============================================================================
+//  E3. Target-dependent cache-line alignment (Phase 3 / MP-C08) — the
+//  alignment constant compiles per target and the hot atomics inherit it.
+// ============================================================================
+
+void test_cache_line_alignment() {
+    std::printf("  [sink] cache-line alignment discipline (MP-C08)\n");
+#if defined(__APPLE__) && defined(__aarch64__)
+    check(streamify::sink::kCacheLineSize == 128,
+          "Apple Silicon targets the 128-byte L1 line");
+#else
+    check(streamify::sink::kCacheLineSize == 64,
+          "x86_64 / generic ARM targets the 64-byte line");
+#endif
+    // The class-level alignment of AudioSink must cover the aligned members
+    // (over-aligned new/delete handles the allocation portably, MP-C09).
+    check(alignof(AudioSink) >= streamify::sink::kCacheLineSize,
+          "AudioSink alignment covers its cache-line-aligned members");
 }
 
 // ============================================================================
@@ -709,6 +930,17 @@ void test_zero_allocation() {
         streamify_test::AllocGuard g;
         (void)sink.ReadFrames(out, 256);
         check(g.count() == 0, "ReadFrames zero allocs");
+    }
+    {
+        streamify_test::AllocGuard g;
+        float f_out[512];
+        (void)sink.ReadFramesF32(f_out, 256);
+        check(g.count() == 0, "ReadFramesF32 zero allocs");
+    }
+    {
+        streamify_test::AllocGuard g;
+        sink.RequestFlush();
+        check(g.count() == 0, "RequestFlush zero allocs");
     }
     {
         streamify_test::AllocGuard g;
@@ -1474,6 +1706,9 @@ int run_audio_sink_tests() {
     test_ring_telemetry();
     test_ring_flush();
     test_cooperative_flush_concurrent_stress();
+    test_ring_f32_canonical_path();
+    test_generational_flush_protocol();
+    test_cache_line_alignment();
     test_zero_allocation();
     test_spsc_stress_10m();
     test_spsc_pipeline_stress();

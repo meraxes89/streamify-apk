@@ -40,9 +40,18 @@ impl AudioMetadataEngine {
 
         let (title, artist, album, lyrics, cover_image) = match tag {
             Some(t) => {
-                let title = t.get_string(ItemKey::TrackTitle).unwrap_or("Unknown Title").to_string();
-                let artist = t.get_string(ItemKey::TrackArtist).unwrap_or("Unknown Artist").to_string();
-                let album = t.get_string(ItemKey::AlbumTitle).unwrap_or("Streamify").to_string();
+                let title = t
+                    .get_string(ItemKey::TrackTitle)
+                    .unwrap_or("Unknown Title")
+                    .to_string();
+                let artist = t
+                    .get_string(ItemKey::TrackArtist)
+                    .unwrap_or("Unknown Artist")
+                    .to_string();
+                let album = t
+                    .get_string(ItemKey::AlbumTitle)
+                    .unwrap_or("Streamify")
+                    .to_string();
                 let lyrics = t.get_string(ItemKey::Lyrics).map(|s| s.to_string());
                 let cover_image = t.pictures().first().map(|p| p.data().to_vec());
                 (title, artist, album, lyrics, cover_image)

@@ -17,15 +17,31 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Multiplatform Phase 3 artifact matrix (MP-C12 / MP-C13, master plan
+#  invariant 2):
+#
+#    target          crate-type consumed as        binding mode
+#    ──────────────  ───────────────────────────  ────────────────────────
+#    android (aarch64, armv7, x86_64: the .aar)  cdylib  → direct JNI
+#                                                  (JNA prohibited there)
+#    desktop JVM (win/mac/linux: streamify-jvm.jar) cdylib → JNA bindings
+#    iOS/iPadOS (XCFramework)                    staticlib → direct Swift
+#
+#  The JNI surface compiles ONLY on Android: the `jni` crate is gated
+#  under [target.'cfg(target_os = "android")'.dependencies] (MP-C13) and
+#  the jni_bridge modules are cfg-gated to match in lib.rs. Desktop JVM
+#  and Apple shells reach the core exclusively through the UniFFI
+#  contract — no second bridge, no dead exports on foreign targets.
+# ─────────────────────────────────────────────────────────────────────────────
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lofty = "0.25"
-ureq = { version = "2.10", features = ["json", "tls"] }
 sha1 = "0.11"
 hex = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
-jni = { version = "0.21", default-features = false }
 sha2 = "0.11"
 hmac = "0.13"
 regex = "1.10"
@@ -37,7 +53,6 @@ rand = "0.8"
 chacha20poly1305 = "0.11"
 miniz_oxide = "0.9"
 base64 = "0.22"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json"] }
 strsim = "0.11"
 libc = "0.2"
 # Phase 1 governance: ephemeral room identities + signed directives/kicks.
@@ -51,6 +66,29 @@ ed25519-dalek = "2.1"
 # JNI contract (see jni_bridge_dsp.cc, AMP-10).
 uniffi = { version = "0.28", features = ["cli", "build"] }
 
+# Multiplatform Phase 3 (MP-C11): producer-side polyphase sinc SRC to the
+# canonical 48 kHz f32 rate — rubato SincFixedOut on the decode thread.
+# Pinned to 0.15 (the directive's audited line); the resampler kernel is
+# bit-stability-sensitive, so bumps are golden-vector-gated decisions.
+rubato = "0.15"
+
+# Multiplatform Phase 3 (MP-C15, Alpha half): tracing + metrics façade
+# with per-platform subscribers. The platform layers are optional,
+# feature-gated target deps (below); the shell selects exactly one per
+# artifact. Beta's client init calls `obs::init_observability()`.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
+metrics = "0.24"
+
+# Multiplatform Phase 3 (MP-C14): network stack consolidation — reqwest
+# (HTTP/2 + TLS 1.3 via rustls, webpki roots) over the single shared
+# tokio runtime (resolver::get_runtime's OnceLock). The blocking ureq
+# client is RETIRED; the remaining sync call sites block_on the async
+# client through the same runtime. `rustls-tls` is reqwest's umbrella
+# alias for the webpki-roots rustls backend (no native-tls, no system
+# cert store — hermetic on Android and cross-compiled desktop targets).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
 [build-dependencies]
 # Scaffolding generation at build time; "builtin-bindgen" embeds the
 # bindgen so no external uniffi-bindgen binary is needed on CI runners.
@@ -58,6 +96,39 @@ uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
 
 [dev-dependencies]
 tempfile = "3.10"
+
+[features]
+default = []
+# Experimental HTTP/3 (QUIC) transport — DISABLED by default per MP-C14:
+# re-enable per-artifact for telemetry-gated canaries only.
+http3 = ["reqwest/http3"]
+# Per-platform tracing subscribers (exactly one is enabled per artifact
+# by the packaging matrix; see src/obs.rs for the layer wiring).
+obs-android = ["dep:tracing-android"]
+obs-oslog = ["dep:tracing-oslog"]
+obs-journald = ["dep:tracing-journald"]
+obs-etw = ["dep:tracing-etw"]
+
+# ── Android: the direct-JNI lane (MP-C12/MP-C13) ────────────────────────────
+# The `jni` crate is ONLY for the Android target: every other platform
+# reaches the core through UniFFI, so a desktop or iOS build must not
+# even compile the JNI bridge (jni_bridge.rs / jni_bridge_p2p.rs carry
+# matching cfg gates in lib.rs).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", default-features = false }
+tracing-android = { version = "0.2", optional = true }
+
+# ── Apple: unified logging for macOS and iOS shells ─────────────────────────
+[target.'cfg(target_os = "macos")'.dependencies]
+tracing-oslog = { version = "0.3", optional = true }
+
+# ── Linux desktop: journald (degrades to fmt-only without a socket) ─────────
+[target.'cfg(target_os = "linux")'.dependencies]
+tracing-journald = { version = "0.3", optional = true }
+
+# ── Windows desktop: Event Tracing for Windows ──────────────────────────────
+[target.'cfg(target_os = "windows")'.dependencies]
+tracing-etw = { version = "0.3", optional = true }
 
 # Phase 1: the 32-peer mesh simulation is allocation-bound in the default
 # unoptimized test profile (7× slower than release — measured: 208 ms
@@ -78,7 +149,23 @@ opt-level = 2
 opt-level = 3
 lto = true
 codegen-units = 1
-# unwind (not abort): JNI/FFI entry points rely on catch_unwind shields to
-# convert panics into error codes instead of aborting the host Android process.
-panic = "unwind"
+# Multiplatform Phase 3 (MP-C06/MP-C07, master plan invariant 8): the
+# approved consensus sets panic = "abort" for release artifacts — a
+# panic in a shipped library must NEVER unwind into the host process
+# (Kotlin/ART, Swift, or a JVM desktop shell), and abort-fail-fast
+# routes the fault through the platform crash reporter instead.
+#
+# Interaction with the catch_unwind FFI shields (contract.rs::ffi_shield):
+# with abort compiled in, panics terminate the process before any
+# unwind — the shields are then the specified contract for every OTHER
+# configuration: debug/test builds (unwind), host tooling, and any
+# downstream binary that links this crate as an rlib and overrides the
+# panic strategy back to unwind. The panic→EngineError::Internal
+# marshaling path is unit-tested under the (unwinding) test profile.
+# NOTE: the pre-Phase-3 profile deliberately chose "unwind" so shields
+# could convert panics into error codes on-device; the flip to "abort"
+# follows MULTIPLATFORM_PLAN_27_10 §2.8 (approved) — if release-on-
+# device marshaling is still wanted, flip this single line back and the
+# shields resume primary duty (they are compiled either way).
+panic = "abort"
 strip = true

@@ -108,45 +108,48 @@ fn main() {
     );
     println!("  Authorization minted: {}…", &auth_header[..28]);
 
-    println!("\n═══ [2] WEB_REMIX PLAYER ═══");
-    let client = ureq::AgentBuilder::new().build();
-    let body = serde_json::json!({
-        "context": {"client": {"clientName": "WEB_REMIX", "clientVersion": "1.20240401.01.00", "hl": "en", "gl": "US"}},
-        "videoId": VIDEO_ID,
-        "contentCheckOk": true,
-        "racyCheckOk": true,
-        "playbackContext": {"contentPlaybackContext": {"signatureTimestamp": 20073, "autoCaptionsDefaultOn": false}}
-    });
-    let resp = client
-        .post("https://music.youtube.com/youtubei/v1/player?prettyPrint=false")
-        .set("Content-Type", "application/json")
-        .set("User-Agent", BROWSER_UA)
-        .set("Authorization", &auth_header)
-        .set("X-Origin", origin)
-        .set("Referer", "https://music.youtube.com/")
-        .set("Cookie", &cookies)
-        .send_json(body);
+    // Multiplatform Phase 3 (MP-C14): reqwest over the shared runtime —
+    // the ad-hoc blocking ureq agent is retired. One bare client (no
+    // default UA: the "bare" probe must send exactly the headers listed).
+    let rt = streamify_core_rs::resolver::get_runtime();
+    let client = reqwest::Client::builder().build().expect("probe client");
+    rt.block_on(async move {
+        println!("\n═══ [2] WEB_REMIX PLAYER ═══");
+        let body = serde_json::json!({
+            "context": {"client": {"clientName": "WEB_REMIX", "clientVersion": "1.20240401.01.00", "hl": "en", "gl": "US"}},
+            "videoId": VIDEO_ID,
+            "contentCheckOk": true,
+            "racyCheckOk": true,
+            "playbackContext": {"contentPlaybackContext": {"signatureTimestamp": 20073, "autoCaptionsDefaultOn": false}}
+        });
+        let resp = client
+            .post("https://music.youtube.com/youtubei/v1/player?prettyPrint=false")
+            .header("Content-Type", "application/json")
+            .header("User-Agent", BROWSER_UA)
+            .header("Authorization", &auth_header)
+            .header("X-Origin", origin)
+            .header("Referer", "https://music.youtube.com/")
+            .header("Cookie", &cookies)
+            .json(&body)
+            .send()
+            .await;
 
-    let json: Value = match resp {
-        Ok(r) => {
-            println!("  HTTP {}", r.status());
-            match r.into_json() {
-                Ok(j) => j,
-                Err(e) => {
-                    println!("  ❌ json: {e}");
-                    return;
+        let json: Value = match resp {
+            Ok(r) => {
+                println!("  HTTP {}", r.status());
+                match r.json::<Value>().await {
+                    Ok(j) => j,
+                    Err(e) => {
+                        println!("  ❌ json: {e}");
+                        return;
+                    }
                 }
             }
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            println!("  ❌ HTTP {code}");
-            return;
-        }
-        Err(e) => {
-            println!("  ❌ {e}");
-            return;
-        }
-    };
+            Err(e) => {
+                println!("  ❌ {e}");
+                return;
+            }
+        };
 
     let ps = json
         .pointer("/playabilityStatus/status")
@@ -178,13 +181,13 @@ fn main() {
             f.get("url").is_some()
                 && f.get("mimeType")
                     .and_then(|m| m.as_str())
-                    .map_or(false, |m| m.starts_with("audio/"))
+                    .is_some_and(|m| m.starts_with("audio/"))
         })
         .collect();
     let n_present = audio_direct.iter().any(|f| {
         f.get("url")
             .and_then(|u| u.as_str())
-            .map_or(false, |u| u.contains("&n="))
+            .is_some_and(|u| u.contains("&n="))
     });
     println!(
         "  total={} direct_urls={} audio_direct={} sabr={}",
@@ -240,21 +243,24 @@ fn main() {
     ];
     let mut best_pass_idx: Option<usize> = None;
     for (i, (label, hdrs)) in combos.iter().enumerate() {
-        let mut req = client.get(&url).set("Range", "bytes=0-262143");
+        let mut req = client.get(&url).header("Range", "bytes=0-262143");
         for (k, v) in hdrs {
-            req = req.set(k, v);
+            req = req.header(*k, *v);
         }
-        match req.call() {
-            Ok(r) => {
+        match req.send().await {
+            Ok(mut r) => {
                 let st = r.status();
-                let ct = r.content_type().to_string();
-                let mut reader = r.into_reader();
-                let mut tmp = vec![0u8; 16384];
+                let ct = r
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("?")
+                    .to_string();
                 let mut body_len = 0usize;
                 while body_len < 262_144 {
-                    match std::io::Read::read(&mut reader, &mut tmp) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => body_len += n,
+                    match r.chunk().await {
+                        Ok(Some(chunk)) => body_len += chunk.len(),
+                        Ok(None) | Err(_) => break,
                     }
                 }
                 println!("  [{i}] {label}: HTTP {st} ct={ct} got={body_len}B");
@@ -262,27 +268,30 @@ fn main() {
                     best_pass_idx = Some(i);
                 }
             }
-            Err(ureq::Error::Status(code, _)) => println!("  [{i}] {label}: HTTP {code}"),
-            Err(e) => println!("  [{i}] {label}: ERR {e}"),
+            Err(e) => {
+                let code = e
+                    .status()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "ERR".to_string());
+                println!("  [{i}] {label}: {code} {e}")
+            }
         }
     }
 
     println!("\n═══ [5] THROUGHPUT (3s sample on best passing combo) ═══");
     if let Some(i) = best_pass_idx {
         let (_, hdrs) = &combos[i];
-        let mut req = client.get(&url).set("Range", "bytes=0-20971519");
+        let mut req = client.get(&url).header("Range", "bytes=0-20971519");
         for (k, v) in hdrs {
-            req = req.set(k, v);
+            req = req.header(*k, *v);
         }
-        if let Ok(mut resp) = req.call() {
-            let mut reader = resp.into_reader();
+        if let Ok(mut resp) = req.send().await {
             let start = Instant::now();
-            let mut buf = vec![0u8; 65536];
             let mut total = 0usize;
             while start.elapsed().as_secs_f64() < 3.0 {
-                match std::io::Read::read(&mut reader, &mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => total += n,
+                match resp.chunk().await {
+                    Ok(Some(chunk)) => total += chunk.len(),
+                    Ok(None) | Err(_) => break,
                 }
             }
             let mbps = total as f64 / start.elapsed().as_secs_f64() / (1024.0 * 1024.0);
@@ -307,4 +316,5 @@ fn main() {
     } else {
         println!("❌ Auth insufficient on this network/account → escalate (SABR/UMP or PO-token research).");
     }
+    });
 }
