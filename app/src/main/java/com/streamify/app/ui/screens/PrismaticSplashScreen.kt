@@ -1,6 +1,5 @@
 package com.streamify.app.ui.screens
 
-import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.provider.Settings
