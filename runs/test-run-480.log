@@ -1,0 +1,205 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #480
+COMMIT: 039687e9a4c12c185fe64a4ee7025d2cbd5e0ef8
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: FAILED ❌
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: testDebugUnitTest
+> Task :app:preBuild UP-TO-DATE
+> Task :app:generateUniffiKotlinBindings SKIPPED
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:checkDebugAarMetadata
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:mergeDebugResources
+> Task :app:processDebugResources
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Native DSP Test Suite...
+[TEST] Phase 1: Native DSP, Audiophile Fidelity & 32-Peer Jam
+  - Phase1/BS.1770: calibration anchors
+  - Phase1/BS.1770: dual gating
+  - Phase1/normalize: -8 LUFS -> -14 target
+  - Phase1/limiter: true-peak ceiling + inter-sample
+  - Phase1/channels: constant-power balance + mono
+  - Phase1/ring: SPSC correctness
+  - Phase1/mix: 32-peer pool + saturation
+  - Phase1/silentPLL: bypass + PTP lock + takeover
+  - Phase1/chain: end-to-end -14 LUFS @ -1 dBTP
+  - Phase1/rate: legacy paths honor the configured fs
+  - Phase1/rate: rate-aware legacy surface PASSED
+  - Phase1/perf: limiter hot-path benchmark
+    SoftKneeLimiter 2048f stereo hot   819688.4 ns/block  400.24 ns/frame  (~1.37% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      58634.8 ns/block   14.32 ns/frame  (~0.05% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          49144.3 ns/block   12.00 ns/frame  (~0.04% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           18705.7 ns/block    4.57 ns/frame  (~0.02% of an A55 core, est.)
+  - Phase1/perf: zero-alloc hot paths
+  - Phase1/perf: zero-alloc audit PASSED
+[TEST] Phase 1: all 231 checks passed
+[TEST] Phase 2: Harmonic Transition Engine, Candidate Fast-Math & Circadian Curves
+  [harmonic] candidate ID hashing
+  [harmonic] candidate dedup kernels
+  [harmonic] Camelot key transition matrix
+  [harmonic] BPM transition + combined coefficient
+  [harmonic] circadian daypart curves
+    (24h max per-second jump: 6.44e-05)
+  [harmonic] perf budgets + zero-alloc audit
+    (256x256 masks+union: 13.6 us, best of 5)
+    (bulk hash 20k x 21-char ids: 346 us)
+[TEST] Phase 2: all 150 checks passed (0 failed)
+[phase3] canvas loop + AGSL ambient glow
+  [canvas] loop phase primitives
+  [canvas] boundary crossfade weights
+  [canvas] blended-signal seam continuity (C0 + C1)
+  [canvas] bit-exact frame periodicity (both strategies)
+  [canvas] renderer clock discipline
+  [agsl] shader source + uniform tables
+  [agsl] runtime param generation
+  [agsl] fuzz-regression: hostile time/period quotients
+[phase3] canvas/AGSL: 169 passed, 0 failed
+[phase3] audio remuxer & bitstream validators
+  [opus] TOC codes 0-3 + RFC 6716 accounting
+  [adts] header ladder + strict rates
+  [remux] Ogg Opus structural audit
+  [remux] ADTS normalization + lifecycle
+  [remux] degenerate streams + io failure
+  [remux] randomized corrupt-stream soak (500 packets)
+  [remux] zero-allocation per-packet path
+[phase3] audio remuxer: 158 passed, 0 failed
+[phase3] bitmap palette extractor
+  [palette] role colors on synthetic art
+  [palette] WCAG contrast discipline
+  [palette] formats, sizes, malformed ladder
+  [palette] determinism
+  [palette] zero-alloc hot path + perf smoke
+    perf: 1024x1024 RGBA in 7.14 ms
+  [palette] fuzz-regression: median-cut termination
+[phase3] palette: 48 passed, 0 failed
+[phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
+  [sink] CRC32 known vectors + rate codes
+  [sink] SIMD Float32->PCM16 accuracy + saturation
+    max SIMD-vs-scalar delta: 0 LSB
+  [sink] SIMD stereo->mono downmix
+  [sink] FIR decimator: DC, passband, anti-alias, counts
+  [sink] SPSC ring basic IO + wraparound + byte reads
+  [sink] telemetry: watermarks, fullness, latency, xruns
+  [sink] flush semantics
+  [sink] zero-allocation hot paths (AllocGuard)
+  [sink] SPSC stress: 10,000,000 frames, 2 threads
+    0.03 s wall, 307.1 Mframes/s (unsanitized sanitizer build)
+  [sink] SPSC pipeline stress: downmix + decimate, 2 threads
+  [sink] packetizer roundtrip + MTU chunking
+  [sink] packetizer corruption ladder (hostile input)
+  [sink] zero-run compressor roundtrip + bounds
+  [sink] token-bucket rate limiter (deterministic clock)
+  [sink] packetizer pacing + backpressure telemetry
+  [sink] sink registry + stats wire layout
+[phase4] audio sinks: 8454 passed, 0 failed
+  [Phase-5] Palette SIMD & WCAG contrast engine
+    perf: 1080x1080 worst-case (full noise) best-of-3: 1.500 ms
+  [Phase-5] palette suite: 5050 checks passed, 0 failed
+  [Phase-5] Frame pacer & jank monitor
+    stress: 1,000,000 ticks, 988 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=0
+  [Phase-5] frame pacer suite: 76 checks passed, 0 failed
+  - SoftKneeLimiter transient pass-through: PASSED
+  - SoftKneeLimiter sustained soft-knee limit: PASSED
+  - SoftKneeLimiter short limit: PASSED
+  - LufsNormalizer: PASSED
+  - KissFFTR 1024 Transform: PASSED
+[TEST] All Native DSP Tests Passed Successfully! (ASan/UBSan Verified)
+==================================================
+SHARD: native-libfuzzer
+DESCRIPTION: Deep LibFuzzer Crash Hunt
+STATUS: PASSED ✅
+==================================================
+
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 1431162493
+INFO: Loaded 1 modules   (7462 inline 8-bit counters): 7462 [0x55a7d4862ec0, 0x55a7d4864be6), 
+INFO: Loaded 1 PC tables (7462 PCs): 7462 [0x55a7d4864be8,0x55a7d4881e48), 
+INFO:     1835 files found in ../fuzz/corpus
+INFO: seed corpus: files: 1835 min: 2b max: 3597b total: 611300b rss: 44Mb
+#1837	INITED cov: 3537 ft: 14117 corp: 1276/434Kb exec/s: 459 rss: 350Mb
+#1953	NEW    cov: 3537 ft: 14118 corp: 1277/434Kb lim: 3608 exec/s: 488 rss: 350Mb L: 151/3597 MS: 1 ShuffleBytes-
+#2048	pulse  cov: 3537 ft: 14118 corp: 1277/434Kb lim: 3608 exec/s: 512 rss: 350Mb
+#2049	NEW    cov: 3541 ft: 14123 corp: 1278/434Kb lim: 3608 exec/s: 512 rss: 350Mb L: 46/3597 MS: 1 CrossOver-
+#2300	NEW    cov: 3544 ft: 14127 corp: 1279/436Kb lim: 3608 exec/s: 460 rss: 356Mb L: 1915/3597 MS: 1 CopyPart-
+#2343	REDUCE cov: 3544 ft: 14127 corp: 1279/436Kb lim: 3608 exec/s: 468 rss: 356Mb L: 1257/3597 MS: 3 ChangeASCIIInt-EraseBytes-CopyPart-
+#2499	NEW    cov: 3544 ft: 14128 corp: 1280/438Kb lim: 3608 exec/s: 499 rss: 356Mb L: 2234/3597 MS: 1 CopyPart-
+#2888	NEW    cov: 3544 ft: 14131 corp: 1281/438Kb lim: 3608 exec/s: 481 rss: 356Mb L: 47/3597 MS: 4 InsertByte-ChangeBinInt-ChangeBit-InsertByte-
+#3204	REDUCE cov: 3544 ft: 14131 corp: 1281/438Kb lim: 3608 exec/s: 457 rss: 356Mb L: 38/3597 MS: 1 EraseBytes-
+#3341	REDUCE cov: 3544 ft: 14131 corp: 1281/438Kb lim: 3608 exec/s: 477 rss: 356Mb L: 73/3597 MS: 2 EraseBytes-ChangeBinInt-
+#4096	pulse  cov: 3544 ft: 14131 corp: 1281/438Kb lim: 3608 exec/s: 455 rss: 357Mb
+#4964	REDUCE cov: 3544 ft: 14131 corp: 1281/438Kb lim: 3619 exec/s: 496 rss: 357Mb L: 166/3597 MS: 3 ChangeBit-EraseBytes-CopyPart-
+#5601	REDUCE cov: 3544 ft: 14131 corp: 1281/438Kb lim: 3619 exec/s: 509 rss: 357Mb L: 1/3597 MS: 2 ChangeBit-EraseBytes-
+#5778	NEW    cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3619 exec/s: 481 rss: 357Mb L: 87/3597 MS: 2 EraseBytes-InsertRepeatedBytes-
+#6249	REDUCE cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3619 exec/s: 480 rss: 357Mb L: 144/3597 MS: 1 EraseBytes-
+#8192	pulse  cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3630 exec/s: 481 rss: 357Mb
+#10205	REDUCE cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3652 exec/s: 463 rss: 357Mb L: 16/3597 MS: 1 EraseBytes-
+#10443	REDUCE cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3652 exec/s: 474 rss: 357Mb L: 138/3597 MS: 3 ShuffleBytes-ChangeBit-EraseBytes-
+#10889	REDUCE cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3652 exec/s: 473 rss: 357Mb L: 519/3597 MS: 1 EraseBytes-
+#12661	REDUCE cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3663 exec/s: 468 rss: 364Mb L: 457/3597 MS: 2 InsertByte-EraseBytes-
+#12970	REDUCE cov: 3548 ft: 14153 corp: 1282/438Kb lim: 3663 exec/s: 463 rss: 364Mb L: 1331/3597 MS: 4 ChangeBit-ChangeByte-CrossOver-EraseBytes-
+#13396	NEW    cov: 3549 ft: 14154 corp: 1283/438Kb lim: 3663 exec/s: 446 rss: 364Mb L: 49/3597 MS: 1 EraseBytes-
+#15268	REDUCE cov: 3549 ft: 14154 corp: 1283/438Kb lim: 3674 exec/s: 449 rss: 364Mb L: 18/3597 MS: 2 ShuffleBytes-EraseBytes-
+#16384	pulse  cov: 3549 ft: 14154 corp: 1283/438Kb lim: 3685 exec/s: 455 rss: 364Mb
+#16861	REDUCE cov: 3549 ft: 14154 corp: 1283/438Kb lim: 3685 exec/s: 455 rss: 364Mb L: 69/3597 MS: 3 EraseBytes-ChangeBinInt-InsertByte-
+#17630	NEW    cov: 3549 ft: 14155 corp: 1284/442Kb lim: 3685 exec/s: 452 rss: 364Mb L: 3657/3657 MS: 4 ChangeByte-ChangeBit-ShuffleBytes-CopyPart-
+#18437	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3685 exec/s: 449 rss: 364Mb L: 1249/3657 MS: 2 ShuffleBytes-EraseBytes-
+#19958	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 453 rss: 365Mb L: 472/3657 MS: 1 EraseBytes-
+#20494	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 455 rss: 365Mb L: 47/3657 MS: 1 EraseBytes-
+#20521	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 456 rss: 365Mb L: 454/3657 MS: 2 CrossOver-EraseBytes-
+#21254	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 452 rss: 365Mb L: 542/3657 MS: 3 InsertByte-EraseBytes-CopyPart-
+#21683	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 451 rss: 371Mb L: 122/3657 MS: 4 ChangeBinInt-CrossOver-InsertByte-EraseBytes-
+#22092	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 450 rss: 383Mb L: 1573/3657 MS: 4 EraseBytes-ShuffleBytes-ChangeByte-CMP- DE: "\377\377\377\377\377\377\001\000"-
+#22598	REDUCE cov: 3549 ft: 14155 corp: 1284/441Kb lim: 3696 exec/s: 451 rss: 383Mb L: 898/3657 MS: 1 EraseBytes-
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: FAILED ❌
+==================================================
+
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Storage & Telemetry Test Suite...
+  - Lock-Free MPMC Ring Buffer: PASSED
+[streamify:StreamifyNative] [StreamifyDB] Migration error: no such column: play_count
+  - SQLite WAL Database CRUD: PASSED
+[TEST] All Storage & Telemetry Tests Passed Successfully!
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
