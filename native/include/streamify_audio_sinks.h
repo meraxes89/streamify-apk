@@ -20,7 +20,13 @@
 //        external fun nativeReadDirect(handle: Long, buf: ByteBuffer,       // registered
 //                                     capacityBytes: Int): Int              // manually.
 //        external fun nativeGetStats(handle: Long, statsOut: ByteBuffer)
-//        external fun nativeFlush(handle: Long)
+//        external fun nativeFlush(handle: Long)   // cooperative (AMP-10):
+//                                                 // routes to RequestFlush()
+//                                                 // — safe while the audio
+//                                                 // callback is live; the
+//                                                 // consumer thread performs
+//                                                 // the cursor reset on its
+//                                                 // next read
 //        external fun nativeDestroy(handle: Long)
 //
 //  * Handles are opaque monotonically-increasing int64 ids from the registry

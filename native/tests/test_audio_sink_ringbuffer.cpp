@@ -494,7 +494,7 @@ void test_ring_telemetry() {
 }
 
 void test_ring_flush() {
-    std::printf("  [sink] flush semantics\n");
+    std::printf("  [sink] cooperative flush semantics (AMP-10)\n");
     AudioSink::Config cfg;
     cfg.sample_rate = 48000;
     cfg.channels = 1;
@@ -506,16 +506,34 @@ void test_ring_flush() {
     check(sink.WriteFloat(in, 200) == 200, "flush test write 200");
     check(sink.ReadFrames(out, 100) == 100, "flush test read 100");
 
-    sink.Flush();
+    // The request itself changes nothing: only the consumer's next read
+    // performs the reset (coalescing, level-triggered).
+    sink.RequestFlush();
     SinkStats st;
     sink.GetStats(&st);
+    check(st.current_fullness_frames == 100, "request alone drops nothing");
+
+    // The flush-consuming read: returns 0, zero-fills the destination
+    // (digital silence), and does NOT count an underrun (control
+    // decision, not starvation).
+    const uint64_t underruns_before = [&sink]() {
+        SinkStats s;
+        sink.GetStats(&s);
+        return s.underrun_events;
+    }();
+    std::memset(out, 0x5A, sizeof(out));  // garbage pattern
+    check(sink.ReadFrames(out, 64) == 0, "flush-consuming read returns 0");
+    bool silent = true;
+    for (size_t i = 0; i < 64; ++i) silent = silent && out[i] == 0;
+    check(silent, "flush-consuming read zero-fills destination");
+    sink.GetStats(&st);
     check(st.current_fullness_frames == 0, "flush empties the ring");
-    check(st.high_watermark_frames == 0, "flush resets high watermark");
-    check(st.low_watermark_frames == 256, "flush resets low watermark");
+    check(st.underrun_events == underruns_before,
+          "requested flush is not counted as an underrun");
     check(st.frames_written == 200 && st.frames_read == 100,
           "cumulative counters preserved across flush");
 
-    check(sink.ReadFrames(out, 1) == 0, "post-flush read starves");
+    check(sink.ReadFrames(out, 1) == 0, "post-flush read starves (counts underrun normally)");
     for (size_t i = 0; i < 50; ++i) in[i] = PatternSample(1000 + i, 0);
     check(sink.WriteFloat(in, 50) == 50, "post-flush write works");
     check(sink.ReadFrames(out, 50) == 50, "post-flush read works");
@@ -524,6 +542,29 @@ void test_ring_flush() {
         fresh = fresh && out[i] == ExpectedPattern(1000 + i, 0);
     }
     check(fresh, "post-flush stream carries fresh pattern (old audio gone)");
+
+    // Requests coalesce: N pending requests collapse into one flush pass,
+    // and a request with nothing buffered is an inert no-op.
+    sink.RequestFlush();
+    sink.RequestFlush();
+    sink.RequestFlush();
+    check(sink.ReadFrames(out, 8) == 0, "coalesced requests consume once");
+    check(sink.ReadFrames(out, 8) == 0, "no sticky flush after consumption");
+
+    // ReadBytes honors the cooperative flush too (shared consumer path):
+    // the destination receives frame-aligned silence.
+    for (size_t i = 0; i < 40; ++i) in[i] = PatternSample(2000 + i, 0);
+    check(sink.WriteFloat(in, 40) == 40, "byte-flush write 40");
+    sink.RequestFlush();
+    uint8_t bytes[64];
+    std::memset(bytes, 0xA5, sizeof(bytes));
+    check(sink.ReadBytes(bytes, sizeof(bytes)) == 0,
+          "flush-consuming byte read returns 0");
+    bool byte_silent = true;
+    for (size_t i = 0; i < sizeof(bytes); ++i) {
+        byte_silent = byte_silent && bytes[i] == 0;
+    }
+    check(byte_silent, "flush-consuming byte read zero-fills destination");
 
     // Invalid configs must not produce usable sinks.
     AudioSink::Config bad = cfg;
@@ -535,6 +576,107 @@ void test_ring_flush() {
     AudioSink::Config bad2 = cfg;
     bad2.capacity_frames = 4;
     check(!AudioSink::ValidateConfig(bad2), "capacity below minimum rejected");
+}
+
+// ============================================================================
+//  E2. Cooperative flush under concurrent read stress (AMP-10)
+// ============================================================================
+
+void test_cooperative_flush_concurrent_stress() {
+    std::printf("  [sink] cooperative flush under concurrent read stress\n");
+    // Model of the production race this hardening closes: the UI/control
+    // thread hammers RequestFlush() while the consumer audio thread reads
+    // and the producer thread writes continuously. Invariants asserted
+    // throughout:
+    //   * occupancy never underflows (head_ - tail_ stays in
+    //     [0, capacity] on every observed sample — the pre-hardening
+    //     control-thread tail_ write could push tail_ past head_);
+    //   * the consumer never blocks, allocates, or sleeps (by code
+    //     inspection: the flush path is one acquire exchange, one
+    //     release store, one bounded memset);
+    //   * every non-flush read returns EITHER a positive count OR the
+    //     digital-silence contract (flush pass / genuine starvation).
+    AudioSink::Config cfg;
+    cfg.sample_rate = 48000;
+    cfg.channels = 2;
+    cfg.capacity_frames = 1024;
+    AudioSink sink(cfg);
+    check(sink.valid(), "stress sink valid");
+
+    constexpr uint64_t kFlushRequests = 20000;
+    constexpr uint64_t kReadIters = 200000;
+    std::atomic<uint64_t> underflow_observations{0};
+    std::atomic<bool> stop{false};
+
+    std::thread producer([&sink, &stop]() {
+        Rng rng(4242);
+        float buf[512];  // 256 frames x 2 ch
+        while (!stop.load(std::memory_order_relaxed)) {
+            for (size_t i = 0; i < 512; ++i) {
+                buf[i] = static_cast<float>(rng.next() % 2001 - 1000) / 32767.0f;
+            }
+            size_t off = 0;
+            while (off < 512 && !stop.load(std::memory_order_relaxed)) {
+                const size_t n = sink.WriteFloat(buf + off, 512 - off);
+                if (n == 0) {
+                    std::this_thread::yield();
+                    continue;
+                }
+                off += n;
+            }
+        }
+    });
+
+    std::thread control([&sink, &stop, kFlushRequests]() {
+        for (uint64_t i = 0; i < kFlushRequests; ++i) {
+            sink.RequestFlush();  // noexcept: cannot throw under load
+            if ((i & 0xFF) == 0) std::this_thread::yield();
+        }
+    });
+
+    std::thread consumer([&sink, &stop, &underflow_observations, kReadIters]() {
+        Rng rng(777);
+        int16_t buf[2048];
+        for (uint64_t i = 0; i < kReadIters; ++i) {
+            const size_t want = 1 + static_cast<size_t>(rng.next() % 1024);
+            const size_t n = sink.ReadFrames(buf, want);
+            // A read must NEVER return more than was asked: that would
+            // mean the cursor pair (head_, tail_) tore — the exact class
+            // of corruption the pre-hardening control-thread tail_ write
+            // risked (uint64 occupancy underflow).
+            if (n > want) {
+                underflow_observations.fetch_add(1, std::memory_order_relaxed);
+            }
+            // Occupancy invariant, sampled to keep the hot loop light:
+            // head_ - tail_ stays within [0, capacity] on every
+            // observation. (n == 0 is legal: flush pass or starvation.)
+            if (i % 8192 == 0) {
+                SinkStats st;
+                sink.GetStats(&st);
+                if (st.current_fullness_frames > st.capacity_frames) {
+                    underflow_observations.fetch_add(1,
+                                                     std::memory_order_relaxed);
+                }
+            }
+        }
+    });
+
+    control.join();  // all flush requests issued
+    consumer.join(); // all reads done
+    stop.store(true, std::memory_order_relaxed);
+    producer.join();
+
+    check(underflow_observations.load() == 0,
+          "no torn cursor state observed under concurrent flush/read/write");
+    // Post-stress sanity: the sink still behaves per contract. Stereo
+    // sink: WriteFloat takes SAMPLES (64 samples = 32 frames).
+    float in[64];
+    int16_t out[64];
+    for (size_t i = 0; i < 64; ++i) in[i] = PatternSample(9000 + i / 2, i % 2);
+    sink.RequestFlush();
+    check(sink.ReadFrames(out, 32) == 0, "post-stress flush pass works");
+    check(sink.WriteFloat(in, 64) == 64, "post-stress write works");
+    check(sink.ReadFrames(out, 32) == 32, "post-stress read works");
 }
 
 // ============================================================================
@@ -1331,6 +1473,7 @@ int run_audio_sink_tests() {
     test_ring_basic_io();
     test_ring_telemetry();
     test_ring_flush();
+    test_cooperative_flush_concurrent_stress();
     test_zero_allocation();
     test_spsc_stress_10m();
     test_spsc_pipeline_stress();

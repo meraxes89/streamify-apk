@@ -436,6 +436,40 @@ size_t AudioSink::WriteFloat(const float* samples, size_t sample_count) {
 // ---- consumer side ----------------------------------------------------------
 
 size_t AudioSink::readPcm_(int16_t* dst, size_t frames) {
+    // ---- AMP-10: consumer-cooperative flush ------------------------------
+    // A pending RequestFlush() (any thread — typically UI/control) is
+    // consumed HERE, on the single consumer thread that owns tail_.
+    // Performing the reset on the consumer side means no thread ever
+    // mutates a cursor the audio callback is concurrently updating: the
+    // pre-hardening Flush() wrote tail_ from the control thread while
+    // this very function was mid-flight, risking a torn tail_ > head_
+    // (uint64 underflow in the occupancy math) and reading purged ring
+    // slots (memory corruption).
+    //
+    // Ordering: the release store in RequestFlush() pairs with this
+    // acquire exchange, so the request is fully visible before the
+    // reset runs; the tail_ release store pairs with the producer's
+    // acquire load in writePcm_'s free-space check, so a concurrent
+    // WriteFloat immediately sees the freed capacity. tail_ can only
+    // move FORWARD to a committed head_, so the SPSC invariant
+    // 0 <= head_ - tail_ <= capacity_ holds throughout.
+    //
+    // The flushed call emits digital silence (the whole destination,
+    // bounded memset — this ring's consumer edge is PCM16, 2 bytes per
+    // sample; the protocol is identical for a float-domain ring with
+    // sizeof(float)) and returns 0. It deliberately does NOT count an
+    // underrun: a requested flush is a control decision, not buffer
+    // starvation. Real-time safety: one lock-free atomic exchange, one
+    // lock-free store, one bounded memset — no locks, no allocation,
+    // no sleeping.
+    if (flush_requested_.exchange(false, std::memory_order_acquire)) {
+        tail_.store(head_.load(std::memory_order_acquire),
+                    std::memory_order_release);
+        if (dst != nullptr && frames > 0) {
+            std::memset(dst, 0, frames * channels_out_ * sizeof(int16_t));
+        }
+        return 0;
+    }
     if (dst == nullptr || frames == 0) return 0;
     const uint64_t t = tail_.load(std::memory_order_relaxed);
     const uint64_t h = head_.load(std::memory_order_acquire);
@@ -489,7 +523,7 @@ size_t AudioSink::ReadBytes(uint8_t* dst, size_t capacity_bytes) {
     return readPcm_(reinterpret_cast<int16_t*>(dst), frames) * frame_bytes_;
 }
 
-// ---- any-thread telemetry / control -----------------------------------------
+// ---- any-thread telemetry -------------------------------------------------
 
 void AudioSink::GetStats(SinkStats* out) const {
     if (out == nullptr) return;
@@ -522,17 +556,6 @@ void AudioSink::GetStats(SinkStats* out) const {
     out->estimated_latency_ms =
         1000.0f * static_cast<float>(out->current_fullness_frames) /
         static_cast<float>(sample_rate_out_);
-}
-
-void AudioSink::Flush() {
-    if (ring_ == nullptr) return;
-    // CONTRACT: producer and consumer are quiesced (AudioTrack#flush parity).
-    const uint64_t h = head_.load(std::memory_order_acquire);
-    tail_.store(h, std::memory_order_release);
-    high_watermark_.store(0, std::memory_order_relaxed);
-    low_watermark_.store(static_cast<uint32_t>(capacity_),
-                         std::memory_order_relaxed);
-    decimator_.reset();
 }
 
 }  // namespace sink
