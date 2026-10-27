@@ -216,6 +216,9 @@ if (STREAMIFY_BUILD_TESTS)
         tests/test_virtual_hal.cpp
         src/virtual_hal.cpp
         src/audio_sink_ringbuffer.cpp
+        # Phase 4a audit fix: the zero-alloc proofs were structurally
+        # vacuous until this counting TU was linked in.
+        tests/alloc_guard_override.cc
     )
     target_include_directories(virtual_hal_test_suite PRIVATE include src util .)
     target_link_libraries(virtual_hal_test_suite PRIVATE m pthread)
@@ -226,6 +229,8 @@ if (STREAMIFY_BUILD_TESTS)
     add_executable(coreaudio_render_core_test_suite
         tests/test_coreaudio_render_core.cpp
         src/audio_sink_ringbuffer.cpp
+        # Phase 4a audit fix: real (non-vacuous) zero-alloc proofs.
+        tests/alloc_guard_override.cc
     )
     target_include_directories(coreaudio_render_core_test_suite PRIVATE include src util .)
     target_link_libraries(coreaudio_render_core_test_suite PRIVATE m pthread)
@@ -238,6 +243,8 @@ if (STREAMIFY_BUILD_TESTS)
         tests/test_audio_sink_ringbuffer.cpp
         src/audio_sink_ringbuffer.cpp
         src/wear_audio_encoder.cpp
+        # Phase 4a audit fix: real (non-vacuous) zero-alloc proofs.
+        tests/alloc_guard_override.cc
     )
     target_include_directories(test_audio_sink_ringbuffer PRIVATE include src util .)
     target_link_libraries(test_audio_sink_ringbuffer PRIVATE m pthread)
