@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.streamify.app.data.network.YouTubeStreamResolver
+import com.streamify.app.data.uniffi.MediaCommand
 import com.streamify.app.data.uniffi.StreamifyEngineBridge
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -26,6 +27,9 @@ import com.streamify.app.media.cache.PredictivePreBufferManager
 class PlaybackService : MediaSessionService() {
 
     private var jamServiceScope: kotlinx.coroutines.CoroutineScope? = null
+
+    /** Scope for the Phase 3 media-command debounce actor (MP-C03/C17). */
+    private var mediaCommandScope: kotlinx.coroutines.CoroutineScope? = null
     // Scope for one-shot error recovery work (CDN re-resolution etc). Lives
     // with the service so recovery jobs never outlive it, unlike the previous
     // ad-hoc CoroutineScope(...).launch per error which leaked unmanaged jobs.
@@ -36,10 +40,13 @@ class PlaybackService : MediaSessionService() {
     // 1. ZERO UI POLLING — playback position, buffer fullness and DSP
     //    telemetry are pure StateFlow consumers: PlayerTicker publishes
     //    positionMs/durationMs into dedicated flows (the UI root never
-    //    recomposes for them), PlayerTicker's gated refresh feeds
-    //    StreamifyEngineBridge.bufferStats, and PlayerViewModel.bufferHealth
-    //    mirrors it for the UI. No Composable or ViewModel calls a blocking
-    //    native getter in a render loop.
+    //    recomposes for them), and buffer telemetry now advances purely
+    //    from the engine's PUSH snapshots (Phase 3 MP-C16:
+    //    EngineEventListener → StreamifyEngineBridge.onEngineSnapshot —
+    //    the 200ms control-plane refreshBufferStats pull is deleted),
+    //    with PlayerViewModel.bufferHealth mirroring the bridge flow for
+    //    the UI. No Composable or ViewModel calls a blocking native
+    //    getter in a render loop.
     //
     // 2. AUDIO-FOCUS TEARDOWN — the AudioFocusGovernor owns focus decisions
     //    (ExoPlayer's internal handling is disabled below): permanent
@@ -49,6 +56,15 @@ class PlaybackService : MediaSessionService() {
     // 3. CLEAN RELEASE — onDestroy invokes StreamifyEngineBridge.release()
     //    after the session/player teardown so no native buffer allocation
     //    outlives the service.
+    //
+    // 4. CLOCK DOMAIN (Phase 3, MP-DEC-03 — directive §D): NO wall-clock
+    //    progress extrapolation. Audit result: every remaining
+    //    System.currentTimeMillis() site in this service is stats
+    //    accounting (listening-seconds dwell windows, play-count dedup,
+    //    CDN-renewal windows) — never progress-bar math. Position
+    //    derivation is scaffolded through PlaybackPositionCalculator so
+    //    the Phase 4a DacPresentationClock cutover (AAudio DAC callbacks
+    //    behind USE_RUST_AUDIO) swaps the position SOURCE, not the math.
     private val audioFocusGovernor = AudioFocusGovernor()
     private val focusTeardownLock = Any()
 
@@ -436,6 +452,39 @@ class PlaybackService : MediaSessionService() {
         })
 
         val forwardingPlayer = object : androidx.media3.common.ForwardingPlayer(exoPlayer) {
+
+            // ── Phase 3 (MP-C03/C17 — directive §C.2): hardware command tap ──
+            // Media3 routes every hardware-origin transport (Bluetooth
+            // headset buttons, car steering-wheel controls, Assistant voice
+            // actions, notification/lockscreen actions) through this session
+            // player's transport methods — the Media3-era equivalent of the
+            // legacy MediaSessionCompat.Callback surface. Each override
+            // mirrors the intent into the debounced MediaCommandDispatcher
+            // BEFORE the local player applies it, so the Rust core's reverse
+            // control plane observes the same intent (50–150ms burst
+            // coalescing inside the dispatcher; Media3 stays the local
+            // audio authority until the Phase 5 cutover).
+
+            override fun play() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Play)
+                super.play()
+            }
+
+            override fun pause() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Pause)
+                super.pause()
+            }
+
+            override fun stop() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Stop)
+                super.stop()
+            }
+
+            override fun seekTo(positionMs: Long) {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Seek(positionMs))
+                super.seekTo(positionMs)
+            }
+
             override fun getAvailableCommands(): androidx.media3.common.Player.Commands {
                 return super.getAvailableCommands().buildUpon()
                     .add(androidx.media3.common.Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
@@ -464,6 +513,7 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun seekToNext() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Next)
                 if (onSeekNextListener != null) {
                     onSeekNextListener?.invoke()
                 } else {
@@ -472,6 +522,7 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun seekToNextMediaItem() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Next)
                 if (onSeekNextListener != null) {
                     onSeekNextListener?.invoke()
                 } else {
@@ -480,6 +531,7 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun seekToPrevious() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Previous)
                 if (onSeekPrevListener != null) {
                     onSeekPrevListener?.invoke()
                 } else {
@@ -488,6 +540,7 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun seekToPreviousMediaItem() {
+                MediaCommandDispatcher.dispatchMediaCommand(MediaCommand.Previous)
                 if (onSeekPrevListener != null) {
                     onSeekPrevListener?.invoke()
                 } else {
@@ -571,6 +624,25 @@ class PlaybackService : MediaSessionService() {
         // by identity even if the session field is already gone.
         publishedPlayer = forwardingPlayer
         SharedPlaybackEngine.publish(forwardingPlayer)
+
+        // ─── Phase 3 (MP-C16/MP-C17 — directive §A/§C) ──────────────────
+        // Arm the hardware media-command debounce actor and bind the
+        // engine's push event listener. Both degrade silently on unwired
+        // backends (typed failures inside the bridge — the generated push
+        // contract arrives with Alpha's MP-C02 codegen; until then the
+        // app-side reactive mirror keeps the UI fed).
+        mediaCommandScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default
+        )
+        MediaCommandDispatcher.start(mediaCommandScope!!)
+        StreamifyEngineBridge.bindEngineEvents()
+            .onFailure { err ->
+                SLog.st(
+                    "PlaybackService",
+                    "engine push binding degraded (expected until Alpha's MP-C02 codegen lands)",
+                    err
+                )
+            }
     }
 
     private var preBufferManager: PredictivePreBufferManager? = null
@@ -677,6 +749,13 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         jamServiceScope?.cancel()
         errorRecoveryScope?.cancel()
+        // Phase 3 (MP-C03): disarm the hardware media-command debounce
+        // actor BEFORE the FFI teardown — a dying session's tail command
+        // is meaningless, and the actor must never dispatch onto a
+        // released backend.
+        MediaCommandDispatcher.stop()
+        mediaCommandScope?.cancel()
+        mediaCommandScope = null
         com.streamify.app.jam.JamEngine.attachRuntimeScope(null)
         // FIREWALL (Phase 4): release the audio focus the governor holds —
         // another media app must never wait on a dying service.

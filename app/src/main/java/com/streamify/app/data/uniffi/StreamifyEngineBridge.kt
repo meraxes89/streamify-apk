@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * StreamifyEngineBridge — high-level Kotlin client wrapper over the UniFFI
  * control plane (Phase 2 canary UFFI-02 / DEC-01; live wiring in Phase 3,
- * UFFI-04).
+ * UFFI-04; reactive push dispatcher + reverse media-command plane in
+ * Phase 3 MP-C16/MP-C17 — see the push event surface below).
  *
  * The raw generated UniFFI proxies (package `uniffi.<namespace>`, produced by
  * `generateUniffiKotlinBindings` from `rust/src/streamify.udl`) never leak
@@ -76,8 +77,24 @@ object StreamifyEngineBridge {
     sealed class EngineError(message: String, cause: Throwable? = null) : Throwable(message, cause) {
         abstract override val message: String
 
-        /** Network transport failure (DNS, TLS, HTTP 5xx…) — Rust `NetworkError`. [retryable] hints at backoff policy. */
-        data class Network(override val message: String, val retryable: Boolean = true) : EngineError(message)
+        /**
+         * Network transport failure (DNS, TLS, HTTP 5xx…) — Rust
+         * `NetworkError`. [retryable] hints at backoff policy; [kind] and
+         * [status] carry the MP-C04 structured payload (failure
+         * classification + HTTP status) once the nested enum lands —
+         * defaults keep every existing construction site compiling.
+         */
+        data class Network(
+            override val message: String,
+            val retryable: Boolean = true,
+            val kind: String = KIND_UNKNOWN,
+            val status: UInt? = null,
+        ) : EngineError(message) {
+            companion object {
+                /** Classification placeholder until the MP-C04 payload lands. */
+                const val KIND_UNKNOWN = "unknown"
+            }
+        }
 
         /** Container/codec parse or decode failure — Rust `CodecError`. */
         data class Codec(override val message: String) : EngineError(message)
@@ -87,6 +104,23 @@ object StreamifyEngineBridge {
 
         /** Playback starved waiting for buffered media — Rust `BufferUnderrun`. */
         data class BufferUnderrun(override val message: String) : EngineError(message)
+
+        /**
+         * Audio device / HAL pipeline failure — Rust `AudioError` (MP-C04
+         * structured-enum forward projection). [kind] classifies the
+         * failure mode; [deviceId] names the offending route when known.
+         */
+        data class Audio(
+            override val message: String,
+            val kind: String = "unknown",
+            val deviceId: String? = null,
+        ) : EngineError(message)
+
+        /** Device-local encrypted storage failure — Rust `StorageError` (MP-C04). */
+        data class Storage(override val message: String) : EngineError(message)
+
+        /** Keyring / token authentication failure — Rust `CryptoError` (MP-C04). */
+        data class Crypto(override val message: String) : EngineError(message)
 
         /** Unexpected internal engine fault — Rust `InternalError`. */
         data class Internal(override val message: String) : EngineError(message)
@@ -162,6 +196,18 @@ object StreamifyEngineBridge {
                     "InternalError" -> Internal(
                         t.message?.takeIf { it.isNotBlank() }
                             ?: "internal error: unexpected engine fault"
+                    )
+                    "AudioError" -> Audio(
+                        t.message?.takeIf { it.isNotBlank() }
+                            ?: "audio error: device or HAL pipeline failed"
+                    )
+                    "StorageError" -> Storage(
+                        t.message?.takeIf { it.isNotBlank() }
+                            ?: "storage error: device-local encrypted store failed"
+                    )
+                    "CryptoError" -> Crypto(
+                        t.message?.takeIf { it.isNotBlank() }
+                            ?: "crypto error: keyring or token authentication failed"
                     )
                     else -> null
                 }
@@ -362,6 +408,21 @@ object StreamifyEngineBridge {
          * resets the telemetry surface and stays idempotent.
          */
         fun releaseEngine(): Result<Unit> = backendOpUnavailable("releaseEngine")
+
+        /**
+         * Phase 3 (MP-C02/C16): registers the push event listener with
+         * the engine. Default: not wired — push stays disabled and the
+         * bridge degrades to the legacy reactive mirror.
+         */
+        fun bindEngineEventListener(): Result<Unit> = backendOpUnavailable("bindEngineEventListener")
+
+        /**
+         * Phase 3 (MP-C03/C17): forwards one media command onto the
+         * engine's reverse control plane (`on_media_command`). Default:
+         * not wired.
+         */
+        fun dispatchMediaCommand(command: MediaCommand): Result<Unit> =
+            backendOpUnavailable("dispatchMediaCommand")
     }
 
     /** Shared default for seam operations a backend does not implement. */
@@ -619,6 +680,53 @@ object StreamifyEngineBridge {
             }
         }
 
+        // ── Phase 3 push contract (MP-C02/C03 — directive §A/§C) ────────
+        // Both dispatch through the soft-probed method table: null methods
+        // mean the generated push contract is not on the classpath yet
+        // (Alpha's MP-C01–C05 codegen pending), and the op degrades to a
+        // typed EngineUnavailable instead of throwing. Failures lower onto
+        // the sealed hierarchy AND route through the exhaustive
+        // [handleEngineError] observability funnel (directive §E.1).
+
+        override fun bindEngineEventListener(): Result<Unit> {
+            val h = handle ?: return engineUnavailable("bindEngineEventListener")
+            val m = methods?.setEventListener ?: return engineUnavailable("bindEngineEventListener")
+            return try {
+                // Re-arm the revision guard BEFORE registration: a fresh
+                // engine instance restarts its counter at 1, and the engine
+                // pushes its authoritative current snapshot on bind.
+                resetRevisionGuard()
+                val listener = PushContractAdapter.buildListenerProxy(h.javaClass.classLoader)
+                m.invoke(h, listener)
+                SLog.i(TAG, "push dispatch live — EngineEventListener bound (rev guard re-armed)")
+                Result.success(Unit)
+            } catch (t: Throwable) {
+                val err = EngineError.fromThrowable(t)
+                handleEngineError(err)
+                Result.failure(err)
+            }
+        }
+
+        override fun dispatchMediaCommand(command: MediaCommand): Result<Unit> {
+            val h = handle ?: return engineUnavailable("dispatchMediaCommand")
+            val m = methods?.onMediaCommand ?: return engineUnavailable("dispatchMediaCommand")
+            return try {
+                val mapped = PushContractAdapter.buildMediaCommand(h.javaClass.classLoader, command)
+                    ?: return Result.failure(
+                        EngineError.Unexpected(
+                            "media command ${command::class.simpleName} not representable " +
+                                "on the FFI contract (bindgen shape drift)"
+                        )
+                    )
+                m.invoke(h, mapped)
+                Result.success(Unit)
+            } catch (t: Throwable) {
+                val err = EngineError.fromThrowable(t)
+                handleEngineError(err)
+                Result.failure(err)
+            }
+        }
+
         private fun engineUnavailable(op: String): Result<Nothing> = Result.failure(
             EngineError.EngineUnavailable("$op: engine dispatch not wired ($degradedReason)")
         )
@@ -645,6 +753,8 @@ object StreamifyEngineBridge {
             val setVolume: java.lang.reflect.Method,
             val getPlaybackState: java.lang.reflect.Method,
             val getBufferStats: java.lang.reflect.Method,
+            val setEventListener: java.lang.reflect.Method?,
+            val onMediaCommand: java.lang.reflect.Method?,
         ) {
             companion object {
                 fun resolve(clazz: Class<*>): EngineMethods {
@@ -655,11 +765,31 @@ object StreamifyEngineBridge {
                             it.name.equals(name, ignoreCase = true) && it.parameterCount == params
                         } ?: throw NoSuchMethodException("${clazz.name}.$name/$params")
 
+                    /**
+                     * Soft probe for the Phase 3 push-contract methods
+                     * (MP-C02/C03). The frozen Phase 2 UDL does not carry
+                     * them yet, so absence is a NORMAL degraded state —
+                     * null disables push / media-command dispatch until
+                     * Alpha's codegen lands, with zero app changes above
+                     * this table.
+                     */
+                    fun findSoft(vararg names: String): java.lang.reflect.Method? =
+                        names.firstNotNullOfOrNull { candidate ->
+                            clazz.methods.firstOrNull {
+                                it.name.equals(candidate, ignoreCase = true) &&
+                                    it.parameterCount == 1
+                            }
+                        }
+
                     return EngineMethods(
                         initialize = find("initialize", 0),
                         setVolume = find("setVolume", 1),
                         getPlaybackState = find("getPlaybackState", 0),
                         getBufferStats = find("getBufferStats", 0),
+                        setEventListener = findSoft(
+                            "setEventListener", "addEventListener", "registerEventListener"
+                        ),
+                        onMediaCommand = findSoft("onMediaCommand", "dispatchMediaCommand"),
                     )
                 }
             }
@@ -712,6 +842,245 @@ object StreamifyEngineBridge {
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // Phase 3 push-contract adapter (MP-C02/C03 — reflective lowering)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Reflective lowering seam between the app-side Phase 3 projections
+     * ([EngineSnapshot], [MediaCommand], [DacPresentationClock]) and the
+     * generated `uniffi.streamify.*` classes.
+     *
+     * The generated push-contract classes exist on the runtime classpath
+     * only when Alpha's MP-C01–C05 codegen has run — the hermetic JVM
+     * unit shard never sees them, so every probe degrades to null instead
+     * of throwing. This adapter is the SINGLE wiring point on the app side
+     * of the boundary: when the bindgen output ships, real builds light
+     * the push path up, and any shape drift between the planned contract
+     * and the generated one adjusts HERE alone (same philosophy as
+     * [NativeEngineBackend]'s method table).
+     */
+    private object PushContractAdapter {
+
+        /** Generated callback interface for the UDL `EngineEventListener`. */
+        private const val LISTENER_INTERFACE = "uniffi.streamify.EngineEventListener"
+
+        /** Generated enum/sealed type for the UDL `MediaCommandSource`. */
+        private const val MEDIA_COMMAND_CLASS = "uniffi.streamify.MediaCommand"
+
+        /**
+         * Builds a dynamic proxy implementing the generated listener
+         * interface, delegating every `onEngineEvent(snapshot)` invocation
+         * to [StreamifyEngineBridge.onEngineSnapshot] after lowering the
+         * raw generated snapshot onto the app-side [EngineSnapshot]
+         * projection. `java.lang.reflect.Proxy` is the callback-interface
+         * equivalent of the method-table reflection above: zero
+         * compile-time references, identical hermetic binary.
+         */
+        fun buildListenerProxy(classLoader: ClassLoader): Any {
+            val iface = Class.forName(LISTENER_INTERFACE, true, classLoader)
+            val listener = EngineEventListenerImpl { snapshot ->
+                StreamifyEngineBridge.onEngineSnapshot(snapshot)
+            }
+            return java.lang.reflect.Proxy.newProxyInstance(classLoader, arrayOf(iface)) { proxy, method, args ->
+                when (method.name) {
+                    "equals" -> proxy === args?.firstOrNull()
+                    "hashCode" -> System.identityHashCode(proxy)
+                    "toString" -> "StreamifyEngineEventListenerProxy($LISTENER_INTERFACE)"
+                    else -> {
+                        if (method.parameterCount == 1 && args != null) {
+                            val snapshot = convertSnapshot(args[0])
+                            if (snapshot != null) {
+                                listener.onEngineEvent(snapshot)
+                            } else {
+                                // Contract violation: the payload no longer
+                                // matches the frozen projection. Degrade —
+                                // never throw back across the engine's FFI
+                                // dispatch thread (MP-DEC-06, symmetric
+                                // panic safety).
+                                handleEngineError(
+                                    EngineError.Unexpected(
+                                        "unconvertible EngineSnapshot payload from FFI: " +
+                                            "${args[0]?.javaClass?.name}"
+                                    )
+                                )
+                            }
+                        }
+                        null
+                    }
+                }
+            }
+        }
+
+        /**
+         * Lowers one generated media command onto the contract type.
+         * Parameterless variants resolve as enum constants (or static
+         * instances); payload variants (Seek / SetVolume) resolve via a
+         * static one-arg factory or constructor on the generated type.
+         * Returns null when the variant is not representable — the caller
+         * reports a typed failure, never a raw Throwable.
+         */
+        fun buildMediaCommand(classLoader: ClassLoader, command: MediaCommand): Any? = runCatching {
+            val clazz = Class.forName(MEDIA_COMMAND_CLASS, true, classLoader)
+            when (command) {
+                is MediaCommand.Play -> constant(clazz, "Play")
+                is MediaCommand.Pause -> constant(clazz, "Pause")
+                is MediaCommand.TogglePlayPause -> constant(clazz, "TogglePlayPause")
+                is MediaCommand.Next -> constant(clazz, "Next")
+                is MediaCommand.Previous -> constant(clazz, "Previous")
+                is MediaCommand.Stop -> constant(clazz, "Stop")
+                is MediaCommand.Seek -> payloadCommand(clazz, command.positionMs)
+                is MediaCommand.SetVolume -> payloadCommand(clazz, command.volume)
+            }
+        }.getOrNull()
+
+        /**
+         * Lowers one generated snapshot object onto [EngineSnapshot].
+         * Returns null when the payload is not recognizable (rev or
+         * playback state unreadable) — the caller treats that as a
+         * contract violation, never a crash.
+         */
+        fun convertSnapshot(raw: Any?): EngineSnapshot? {
+            if (raw == null) return null
+            val rev = readU64(raw, "rev") ?: return null
+            val state = readEnumName(raw, "playbackState")
+                ?.let { name ->
+                    PlaybackState.values().firstOrNull { it.name.equals(name, ignoreCase = true) }
+                } ?: return null
+            val stats = readProperty(raw, "bufferStats")?.let { convertBufferStats(it) }
+            val clock = readProperty(raw, "dacClock", "dacPresentationClock", "clock")
+                ?.let { convertDacClock(it) }
+            return EngineSnapshot(
+                rev = rev,
+                playbackState = state,
+                bufferStats = stats ?: BufferStats.EMPTY,
+                dacClock = clock,
+            )
+        }
+
+        private fun convertBufferStats(raw: Any): BufferStats = BufferStats(
+            bufferedDurationMs = readU64(raw, "bufferedDurationMs") ?: 0uL,
+            underrunCount = readU32(raw, "underrunCount") ?: 0u,
+            fillRatio = readProperty(raw, "fillRatio")?.let { normalizeFloat(it) } ?: 0f,
+        )
+
+        private fun convertDacClock(raw: Any): DacPresentationClock? {
+            val frames = readU64(raw, "dacFramePosition") ?: return null
+            val rate = readU32(raw, "sampleRate") ?: return null
+            val monotonic = readU64(raw, "monotonicNs") ?: return null
+            return DacPresentationClock(frames, rate, monotonic)
+        }
+
+        /** Parameterless variant: enum constant → static field → nested object → zero-arg factory. */
+        private fun constant(clazz: Class<*>, variant: String): Any? {
+            // 1) plain enum — uniffi's default for payload-less UDL enums.
+            clazz.enumConstants?.firstOrNull { it.toString().equals(variant, ignoreCase = true) }
+                ?.let { return it }
+            // 2) public static field named after the variant.
+            runCatching { clazz.getField(variant).get(null) }.getOrNull()?.let { return it }
+            // 3) Kotlin object variant: nested class holding a static INSTANCE.
+            clazz.classes.firstOrNull { it.simpleName.equals(variant, ignoreCase = true) }?.let { nested ->
+                runCatching { nested.getField("INSTANCE").get(null) }.getOrNull()?.let { return it }
+            }
+            // 4) zero-arg static factory named after the variant.
+            return clazz.methods.firstOrNull {
+                java.lang.reflect.Modifier.isStatic(it.modifiers) &&
+                    it.parameterCount == 0 &&
+                    it.returnType == clazz &&
+                    it.name.equals(variant, ignoreCase = true)
+            }?.let { runCatching { it.invoke(null) }.getOrNull() }
+        }
+
+        /** Payload variant: static one-arg factory returning the type, then constructor. */
+        private fun payloadCommand(clazz: Class<*>, payload: Any): Any? {
+            clazz.methods.filter {
+                java.lang.reflect.Modifier.isStatic(it.modifiers) &&
+                    it.parameterCount == 1 &&
+                    it.returnType == clazz
+            }.forEach { factory ->
+                convertArg(factory.parameterTypes[0], payload)?.let { arg ->
+                    runCatching { factory.invoke(null, arg) }.getOrNull()?.let { return it }
+                }
+            }
+            clazz.constructors.filter { it.parameterCount == 1 }.forEach { ctor ->
+                convertArg(ctor.parameterTypes[0], payload)?.let { arg ->
+                    runCatching { ctor.newInstance(arg) }.getOrNull()?.let { return it }
+                }
+            }
+            return null
+        }
+
+        /** Coerces a Kotlin number payload onto the reflective parameter type. */
+        private fun convertArg(paramType: Class<*>, value: Any): Any? {
+            val number = value as? Number ?: return null
+            return when (paramType) {
+                java.lang.Long.TYPE, java.lang.Long::class.java -> number.toLong()
+                java.lang.Double.TYPE, java.lang.Double::class.java -> number.toDouble()
+                java.lang.Float.TYPE, java.lang.Float::class.java -> number.toFloat()
+                java.lang.Integer.TYPE, java.lang.Integer::class.java -> number.toInt()
+                else -> null
+            }
+        }
+
+        /** Zero-arg property read: getter first, public field fallback. */
+        private fun readProperty(instance: Any, vararg names: String): Any? {
+            val clazz = instance.javaClass
+            for (name in names) {
+                runCatching {
+                    clazz.methods.firstOrNull { it.name == name && it.parameterCount == 0 }
+                        ?.let { return it.invoke(instance) }
+                    clazz.fields.firstOrNull { it.name == name }?.let { return it.get(instance) }
+                }
+            }
+            return null
+        }
+
+        private fun readEnumName(instance: Any, name: String): String? =
+            readProperty(instance, name)?.toString()
+
+        private fun readU64(instance: Any, vararg names: String): ULong? =
+            normalizeU64(readProperty(instance, *names))
+
+        private fun readU32(instance: Any, vararg names: String): UInt? =
+            normalizeU32(readProperty(instance, *names))
+
+        /** u64 normalization across bindgen erasure shapes (boxed ULong, Long, String…). */
+        private fun normalizeU64(raw: Any?): ULong? = when (raw) {
+            is ULong -> raw
+            is UInt -> raw.toULong()
+            is UShort -> raw.toULong()
+            is UByte -> raw.toULong()
+            is Long -> raw.toULong()
+            is Int -> raw.toULong()
+            is Short -> raw.toULong()
+            is Byte -> raw.toULong()
+            is Number -> raw.toLong().toULong()
+            is String -> raw.toULongOrNull()
+            else -> null
+        }
+
+        /** u32 normalization across bindgen erasure shapes. */
+        private fun normalizeU32(raw: Any?): UInt? = when (raw) {
+            is UInt -> raw
+            is UShort -> raw.toUInt()
+            is UByte -> raw.toUInt()
+            is Int -> raw.toUInt()
+            is Short -> raw.toUInt()
+            is Byte -> raw.toUInt()
+            is Number -> raw.toInt().toUInt()
+            is String -> raw.toUIntOrNull()
+            else -> null
+        }
+
+        private fun normalizeFloat(raw: Any?): Float? = when (raw) {
+            is Float -> raw
+            is Double -> raw.toFloat()
+            is Number -> raw.toFloat()
+            is String -> raw.toFloatOrNull()
+            else -> null
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // Lifecycle
     // ═════════════════════════════════════════════════════════════════════
 
@@ -731,12 +1100,14 @@ object StreamifyEngineBridge {
     fun installBackend(mock: EngineBackend) {
         backendRef.set(mock)
         _availability.value = mock.availability
+        pushEventsBound = false
     }
 
     /** Restores the production native backend (test cleanup / forced reload). */
     fun reset() {
         backendRef.set(NativeEngineBackend.create())
         _availability.value = backendRef.get().availability
+        pushEventsBound = false
         synchronized(releaseLock) { released = false }
     }
 
@@ -807,6 +1178,107 @@ object StreamifyEngineBridge {
      */
     val bufferStats: StateFlow<BufferStats> = _bufferStats.asStateFlow()
 
+    // ═════════════════════════════════════════════════════════════════════
+    // Phase 3 push event surface (MP-C02 / MP-C16 — directive §A)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** Guards the monotonic revision state below (listener callbacks + rebind). */
+    private val revisionLock = Any()
+
+    /**
+     * Last engine revision accepted off the push stream. A snapshot with
+     * `rev <= lastSeenRev` is out-of-order and DROPPED — deterministic
+     * state recovery across device sleep and background lifecycle
+     * transitions (MP-DEC-04). Starts at 0: the engine's counter starts
+     * at 1 (rev 0 is never a valid emission), so the first authoritative
+     * snapshot always lands.
+     */
+    private var lastSeenRev: ULong = 0uL
+
+    /** True while a push registration is live on the current backend. */
+    @Volatile private var pushEventsBound: Boolean = false
+
+    private val _engineSnapshots = MutableStateFlow<EngineSnapshot?>(null)
+
+    /**
+     * Raw rev-monotonic push snapshots in arrival order — the diagnostics
+     * and test audit surface. UI consumers read the derived [playbackState]
+     * and [bufferStats] flows instead; this flow exists so replay and
+     * recovery tooling can observe exactly what the engine pushed.
+     */
+    val engineSnapshots: StateFlow<EngineSnapshot?> = _engineSnapshots.asStateFlow()
+
+    /**
+     * Registers the UniFFI [EngineEventListener] with the engine (MP-C16):
+     * the native backend lowers the generated callback interface onto the
+     * app-side [EngineEventListenerImpl] trampoline via a dynamic proxy, and from then on [playbackState] and [bufferStats]
+     * advance purely from push events — ZERO control-plane polling
+     * (MP-C17). Degrades to a typed `EngineUnavailable` failure (never a
+     * raw Throwable) while the generated push contract is absent from the
+     * classpath. Idempotent per backend: a live registration is a no-op
+     * success.
+     */
+    fun bindEngineEvents(): Result<Unit> {
+        if (pushEventsBound) return Result.success(Unit)
+        return dispatch("bindEngineEvents") { it.bindEngineEventListener() }
+            .onSuccess { pushEventsBound = true }
+    }
+
+    /**
+     * Reverse control plane (MP-C03 / MP-DEC-07): forwards one media
+     * command to the engine's `on_media_command` surface. Hardware origins
+     * funnel through MediaCommandDispatcher's debounce; this is the FFI
+     * dispatch point beneath it.
+     */
+    fun dispatchMediaCommand(command: MediaCommand): Result<Unit> =
+        dispatch("dispatchMediaCommand") { it.dispatchMediaCommand(command) }
+
+    /**
+     * Re-arms the monotonic revision guard for a fresh engine instance:
+     * registration implies the engine pushes its authoritative current
+     * snapshot next, whatever rev it carries (a restarted engine restarts
+     * the counter at 1).
+     */
+    internal fun resetRevisionGuard() {
+        synchronized(revisionLock) { lastSeenRev = 0uL }
+    }
+
+    /**
+     * Push ingestion (arrives on the engine's dedicated non-real-time
+     * dispatch thread through the dynamic proxy): verifies the monotonic
+     * revision, then advances the reactive telemetry surface. Cheap and
+     * non-blocking — the push thread belongs to the engine.
+     */
+    internal fun onEngineSnapshot(snapshot: EngineSnapshot) {
+        val lastRev: ULong
+        val accepted = synchronized(revisionLock) {
+            lastRev = lastSeenRev
+            if (snapshot.rev <= lastSeenRev) {
+                false
+            } else {
+                lastSeenRev = snapshot.rev
+                true
+            }
+        }
+        if (!accepted) {
+            SLog.d(TAG, "dropped out-of-order engine snapshot rev=${snapshot.rev} (lastSeen=$lastRev)")
+            return
+        }
+        _engineSnapshots.value = snapshot
+        synchronized(telemetryLock) {
+            _playbackState.value = snapshot.playbackState
+            val app = _bufferStats.value
+            // Fusion: the engine tally is authoritative, but app-side
+            // Media3-detected underruns this engine build may not yet know
+            // about ride along at the max — same semantics as
+            // refreshBufferStats, so consumers cannot tell a pushed sample
+            // apart from a pulled one.
+            _bufferStats.value = snapshot.bufferStats.copy(
+                underrunCount = maxOf(snapshot.bufferStats.underrunCount, app.underrunCount)
+            )
+        }
+    }
+
     /**
      * Returns the telemetry surface to the dormant session state
      * (`Idle` + `EMPTY` stats). Deterministic-isolation hook for the JVM
@@ -820,6 +1292,7 @@ object StreamifyEngineBridge {
         synchronized(telemetryLock) {
             _playbackState.value = PlaybackState.Idle
             _bufferStats.value = BufferStats.EMPTY
+            _engineSnapshots.value = null
         }
     }
 
@@ -1004,6 +1477,36 @@ object StreamifyEngineBridge {
 
     private const val JAM_OP_ADD = 1
     private const val JAM_OP_REORDER = 3
+
+    /**
+     * EXHAUSTIVE structured handler over the sealed [EngineError]
+     * hierarchy (directive §E.1 / MP-C04 forward projection). No `else`
+     * arm on purpose: adding a variant breaks compilation HERE, forcing
+     * an explicit observability decision at the same moment the contract
+     * grows. This is the funnel NativeEngineBackend's Phase 3 catch
+     * blocks route through, and the seam the Sentry adapter (Phase 4,
+     * MP-C15) will subscribe to.
+     */
+    fun handleEngineError(err: EngineError) {
+        when (err) {
+            is EngineError.Network ->
+                SLog.w(TAG, "network failure kind=${err.kind} status=${err.status ?: "n/a"} retryable=${err.retryable}: ${err.message}")
+            is EngineError.Audio ->
+                SLog.e(TAG, "audio pipeline failure kind=${err.kind} deviceId=${err.deviceId ?: "n/a"}: ${err.message}")
+            is EngineError.Storage -> SLog.e(TAG, "Storage failure: ${err.message}", err)
+            is EngineError.Crypto -> SLog.e(TAG, "Crypto authentication failure: ${err.message}", err)
+            is EngineError.Internal -> SLog.e(TAG, "Rust internal error: ${err.message}", err)
+            is EngineError.Codec -> SLog.e(TAG, "codec failure: ${err.message}", err)
+            is EngineError.InvalidState -> SLog.w(TAG, "engine state invariant: ${err.message}")
+            is EngineError.BufferUnderrun -> SLog.w(TAG, "buffer underrun: ${err.message}")
+            is EngineError.InvalidInput -> SLog.d(TAG, "contract validation: ${err.message}")
+            is EngineError.NotFound -> SLog.d(TAG, "lookup miss: ${err.message}")
+            is EngineError.Unauthorized -> SLog.w(TAG, "auth refused: ${err.message}")
+            is EngineError.EngineUnavailable -> SLog.d(TAG, "engine degraded: ${err.message}")
+            is EngineError.EnginePanicked -> SLog.wtf(TAG, "FFI panic shield tripped: ${err.message}")
+            is EngineError.Unexpected -> SLog.e(TAG, "unclassified engine failure: ${err.message}", err)
+        }
+    }
 
     /**
      * Single dispatch funnel: contract validation happens above, backend
