@@ -1,7 +1,7 @@
 # Streamify Multiplatform Execution Ledger & Checkbox Tracker
 **Tracking Document:** `MULTIPLATFORM_CHECKBOX.MD`  
 **Governing Master Plan:** [`docs/architecture/MULTIPLATFORM_PLAN_27_10.MD`](file:///data/data/com.termux/files/home/streamify-apk/docs/architecture/MULTIPLATFORM_PLAN_27_10.MD)  
-**Governing Consensus:** [RFC Discussion #104](https://github.com/meraxes89/streamify-apk/discussions/104#discussioncomment-19212616)  
+**Governing Consensus:** [RFC Discussion #104](https://github.com/meraxes89/streamify-apk/discussions/104#discussioncomment-19212616) & Architectural Review (`docs/nano/resp5.md`)  
 **Date:** October 27, 2026  
 
 ---
@@ -11,51 +11,73 @@
 | Ref ID | Architectural Decision | Status | Consensus Note |
 |---|---|---|---|
 | **MP-DEC-01** | **Sovereign Rust State Engine** | **APPROVED** | 100% of state transitions, playback queue CRDT, network, and DSP live in Rust. No state logic duplicated in UI shells. |
-| **MP-DEC-02** | **Direct Dual UniFFI Codegen** | **APPROVED** | UniFFI generates Kotlin/JVM for Android/Desktop and Swift for iOS. Absolute prohibition of double-bridge (no Kotlin/Native cinterop on Apple). |
-| **MP-DEC-03** | **Hardware HAL as Clock Master** | **APPROVED** | Playback position derives strictly from hardware presentation timestamps (`RenderClock`). Zero wall-clock (`currentTimeMillis`) interpolation. |
+| **MP-DEC-02** | **Direct Dual UniFFI Codegen** | **APPROVED** | Android uses direct JNI mode (`streamify-android.aar`). Desktop JVM uses JNA mode (`streamify-jvm.jar`). iOS uses direct Swift mode. No Kotlin/Native double-bridge on Apple. |
+| **MP-DEC-03** | **Hardware HAL as Clock Master** | **APPROVED** | Derive progress strictly from `DacPresentationClock` (`dac_frame_position`, `sample_rate`, `monotonic_ns`). Target: `<5ms` latency estimation error. |
 | **MP-DEC-04** | **Push Event-Driven State Contract** | **APPROVED** | Abolish UI polling (`get_playback_state`). Rust pushes coalesced snapshots with monotonic `rev: u64` via `EngineEventListener`. |
-| **MP-DEC-05** | **Pure 32-Bit Float & Native Pull** | **APPROVED** | AudioSink preserves IEEE 754 `f32`. Real-time audio thread never crosses FFI boundaries; platform drivers pull directly from C++ ring buffer. |
-| **MP-DEC-06** | **Capability Ports over Monolithic Managers** | **APPROVED** | Decouple OS media integrations (SMTC, MPRIS, Media3, MPRemoteCommandCenter) behind generic Rust capability traits. |
+| **MP-DEC-05** | **Canonical 48kHz & Pure f32 Audio** | **APPROVED** | AudioSink preserves IEEE 754 `f32`. Producer resamples to 48kHz via `rubato::SincFixedOut`. Output SRC only in HAL callback. |
+| **MP-DEC-06** | **FFI Panic Safety Guarantee** | **APPROVED** | `panic = "abort"` in release profile + `catch_unwind` converting Rust panics into `EngineError::Internal { message, backtrace }`. |
+| **MP-DEC-07** | **Bi-directional Media Command Flow** | **APPROVED** | Add `MediaCommandSource` input enum with 50–150ms hardware debounce for headset toggles. |
+| **MP-DEC-08** | **Mobile-First Phased Scope (4a/4b)** | **APPROVED** | 2-engineer scope split: Phase 4a delivers Android (AAudio) + iOS (CoreAudio) + VirtualHAL; Phase 4b delivers Desktop (WASAPI + PipeWire). |
 
 ---
 
 ## 📋 Execution Ledger & Task Checklist
 
-### ⚙️ Phase 3: Contract Freeze, SPSC Hardening & Cargo Matrix
+### ⚙️ Phase 3: Contract Freeze, SPSC Hardening, Panic Safety & Cargo Matrix
 * **Lead Engineer:** Alpha (Rust/Core) & Beta (Bridge/Consumer)
 
-- [ ] **MP-C01**: Expose `RenderClock` struct (`frames_consumed: u64`, `sample_rate: u32`, `monotonic_ns: u64`) in `rust/src/streamify.udl`.
-- [ ] **MP-C02**: Expose `EngineEventListener` interface in `streamify.udl` and wire coalesced push dispatcher in `streamify_core_rs`.
-- [ ] **MP-C03**: Expose `MediaCommandSink` and `MediaCapabilities` traits in `streamify.udl`.
-- [ ] **MP-C04**: Harden `native/include/audio_sink_ringbuffer.h` with `alignas(128)` on Apple Silicon to eliminate L1 false sharing.
-- [ ] **MP-C05**: Port `audio_sink_ringbuffer.h` dynamic allocations to standard C++17 `::operator new[](..., std::align_val_t{64})` for MSVC Windows portability.
-- [ ] **MP-C06**: Gate `jni = "0.21"` in `rust/Cargo.toml` strictly under `[target.'cfg(target_os = "android")'.dependencies]`.
-- [ ] **MP-C07**: Configure split artifact outputs: `cdylib` for Android/Desktop and `staticlib` for iOS XCFramework packaging.
-- [ ] **MP-C08**: Implement `EngineEventListener` in `NativeEngineBackend.kt`, binding Rust push events directly into Compose `StateFlow`.
-- [ ] **MP-C09**: Eliminate `get_playback_state` and `get_buffer_stats` polling loops in Android UI viewmodels.
+- [ ] **MP-C01**: Expose `DacPresentationClock` struct (`dac_frame_position: u64`, `sample_rate: u32`, `monotonic_ns: u64`) in `rust/src/streamify.udl`.
+- [ ] **MP-C02**: Expose `EngineEventListener` callback interface with monotonic `rev: u64` snapshot dispatching.
+- [ ] **MP-C03**: Expose `MediaCommandSource` enum (`Play`, `Pause`, `TogglePlayPause`, `Next`, `Previous`, `Seek`, `SetVolume`, `Stop`) with 50–150ms debounce.
+- [ ] **MP-C04**: Define structured, nested `EngineError` enum (`Network`, `Audio`, `Storage`, `Crypto`, `Internal`) with `#[non_exhaustive]` and stable error codes.
+- [ ] **MP-C05**: Embed `contract_version: u32` in FFI contract for fail-fast startup ABI compatibility check.
+- [ ] **MP-C06**: Wrap all UniFFI entrypoints in `std::panic::catch_unwind`, converting panics to `EngineError::Internal`.
+- [ ] **MP-C07**: Add `panic = "abort"` to release profiles in `rust/Cargo.toml`.
+- [ ] **MP-C08**: Harden `native/include/audio_sink_ringbuffer.h` with target-dependent alignment (`alignas(128)` on Apple Silicon, `alignas(64)` on x86/Windows).
+- [ ] **MP-C09**: Port `audio_sink_ringbuffer.h` dynamic allocations to standard C++17 `::operator new[](..., std::align_val_t{CACHE_LINE})`.
+- [ ] **MP-C10**: Implement generational flush protocol in `audio_sink_ringbuffer.h` and verify under `loom` concurrency tests.
+- [ ] **MP-C11**: Integrate `rubato::SincFixedOut` polyphase sinc resampler on producer side for canonical 48kHz `f32` conversion.
+- [ ] **MP-C12**: Split build outputs: direct JNI for Android target (`streamify-android.aar`) and JNA for Desktop JVM (`streamify-jvm.jar`).
+- [ ] **MP-C13**: Gate `jni = "0.21"` in `rust/Cargo.toml` strictly under `[target.'cfg(target_os = "android")'.dependencies]`.
+- [ ] **MP-C14**: Standardize on `reqwest` (HTTP/2 + TLS 1.3) + `tokio` (single `OnceLock<Runtime>`); gate experimental HTTP/3 behind feature flag.
+- [ ] **MP-C15**: Add `tracing` subscribers (android_logger, os_log, ETW, journald) + `metrics` + `sentry` crash telemetry.
+- [ ] **MP-C16**: Implement `EngineEventListener` in `NativeEngineBackend.kt`, binding Rust push events directly into Compose `StateFlow`.
+- [ ] **MP-C17**: Eliminate `get_playback_state` and `get_buffer_stats` polling loops in Android UI viewmodels.
 
 ---
 
-### 🧪 Phase 4: Virtual HAL, Golden Vectors & Native Pull Adapters
-* **Lead Engineer:** Alpha (Native Pull / Audio) & Beta (Test Double Integration)
+### 📱 Phase 4a: Mobile First Audio Parity (Android + iOS + VirtualHAL)
+* **Lead Engineer:** Alpha (Native Pull / Audio) & Beta (Test Double & Android Bridge)
 
 - [ ] **MP-HAL01**: Implement `VirtualHAL` in C++/Rust: deterministic in-memory null sink with simulated hardware DAC clock.
-- [ ] **MP-HAL02**: Build CI headless integration tests running `VirtualHAL` on Linux, macOS, and Windows runners without physical soundcards.
-- [ ] **MP-HAL03**: Establish golden-vector test suite verifying bit-exact DSP, LUFS normalizer, and EQ output across x86_64 and ARM64.
-- [ ] **MP-HAL04**: Implement Apple CoreAudio native pull adapter (`AURenderCallback`) pulling `f32` from `AudioSink`.
-- [ ] **MP-HAL05**: Implement Windows WASAPI exclusive/shared event-driven pull adapter (`IAudioClient3`).
-- [ ] **MP-HAL06**: Implement Linux PipeWire native process callback adapter (`pw_stream_events`).
-- [ ] **MP-HAL07**: Refactor Android AAudio/Oboe native callback to pull directly from the hardened float `AudioSink`.
+- [ ] **MP-HAL02**: Extend `VirtualHAL` with adversarial conditions (callback size variance 256/512/1024, ±10% timing jitter, injected underruns/overruns, rate change events).
+- [ ] **MP-HAL03**: Establish 48kHz golden-vector test suite verifying bit-exact DSP, LUFS normalizer, and EQ output across x86_64 and ARM64.
+- [ ] **MP-HAL04**: Implement Apple CoreAudio native pull adapter (`AURenderCallback`) pulling `f32` directly from `AudioSink`.
+- [ ] **MP-HAL05**: Refactor Android AAudio/Oboe native callback to pull directly from the hardened float `AudioSink`.
+- [ ] **MP-HAL06**: Verify `<5ms` latency estimation error for `DacPresentationClock` on Android and iOS hardware.
+- [ ] **MP-HAL07**: Scaffold Android feature flag `BuildConfig.USE_RUST_AUDIO` for parallel dogfood testing.
 
 ---
 
-### 🖥️ Phase 5: Shell Assembly & OS Capability Adapters
+### 🖥️ Phase 4b: Desktop Audio (Windows & Linux)
+* **Lead Engineer:** Alpha (Desktop HALs) & Beta (Desktop CI & Packaging)
+
+- [ ] **MP-HAL08**: Implement Windows WASAPI exclusive/shared event-driven pull adapter (`IAudioClient3` + `AvSetMmThreadCharacteristics`).
+- [ ] **MP-HAL09**: Implement Linux PipeWire native process callback adapter (`pw_stream_events`) with ALSA fallback.
+- [ ] **MP-HAL10**: Establish CI size budget for packaged Desktop CMP apps (<250MB).
+
+---
+
+### 🎨 Phase 5: Shell Assembly, iOS Adapter & Android Cutover
 * **Lead Engineer:** Beta (UI / Shell) & Alpha (Platform Integration)
 
-- [ ] **MP-UI01**: Extract platform-agnostic Compose components, theme tokens, and ViewModels into `shared/src/commonMain`.
-- [ ] **MP-UI02**: Build Desktop Compose Multiplatform shell with responsive sidebar navigation rail and window control integration.
-- [ ] **MP-UI03**: Build native SwiftUI shell for iOS wrapping direct Swift UniFFI bindings.
+- [ ] **MP-UI01**: Build native iOS SwiftUI shell wrapping direct Swift UniFFI bindings.
+- [ ] **MP-UI02**: Implement `IOSAudioSessionAdapter` handling `.playback` category, interruption notifications (`.began`, `.ended`), route changes (`.oldDeviceUnavailable` pause), and AirPlay teardowns.
+- [ ] **MP-UI03**: Extract platform-agnostic Compose components, theme tokens, and ViewModels into `shared/src/commonMain`.
+- [ ] **MP-UI04**: Build Desktop Compose Multiplatform shell with responsive sidebar navigation rail and window control integration.
 - [ ] **MP-CAP01**: Implement Windows System Media Transport Controls (SMTC) adapter for taskbar and media keys.
 - [ ] **MP-CAP02**: Implement Linux MPRIS D-Bus adapter for system media player integration.
-- [ ] **MP-CAP03**: Implement Apple `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter` for iOS / macOS lockscreen controls.
+- [ ] **MP-CAP03**: Implement Apple `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter` (rate-limited to 1Hz).
 - [ ] **MP-CAP04**: Implement secure storage provider delegation (Windows DPAPI, Linux Secret Service, iOS Keychain, Android KeyStore).
+- [ ] **MP-CUT01**: Execute 2-week dogfood period on Android with `BuildConfig.USE_RUST_AUDIO = true`.
+- [ ] **MP-CUT02**: Delete legacy Android audio pipeline 30 days post-cutover.
