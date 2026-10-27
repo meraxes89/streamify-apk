@@ -109,23 +109,9 @@ object AppGraph {
                 com.streamify.app.util.SLog.e("StreamifyApp", "Failed to initialize NativeBridge VectorStore", e)
             }
 
-            // 4. Copy ONNX model from assets if present
+            // 4. Initialize native audio pipeline
             try {
-                val modelFile = java.io.File(appContext.filesDir, "clap_int8.onnx")
-                if (!modelFile.exists()) {
-                    try {
-                        appContext.assets.open("models/clap_int8.onnx").use { input ->
-                            java.io.FileOutputStream(modelFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        com.streamify.app.util.SLog.w("StreamifyApp", "CLAP ONNX model not found in assets, skipping")
-                    }
-                }
-                if (modelFile.exists()) {
-                    com.streamify.app.data.NativeBridge.initAudioPipeline(modelFile.absolutePath)
-                }
+                com.streamify.app.data.NativeBridge.initAudioPipeline("")
             } catch (e: Throwable) {
                 com.streamify.app.util.SLog.e("StreamifyApp", "Failed to initialize AudioPipeline", e)
             }

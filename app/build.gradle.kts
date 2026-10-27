@@ -283,8 +283,6 @@ dependencies {
     implementation("androidx.credentials:credentials-play-services-auth:1.2.2")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
-    // ONNX Runtime
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     // Phase 2 — UniFFI Kotlin bindings runtime (UFFI-02). The generated
     // uniffi.* Kotlin proxies dispatch through JNA (Java Native Access)
