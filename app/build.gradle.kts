@@ -301,7 +301,7 @@ dependencies {
     implementation("com.github.teamnewpipe:newpipeextractor:v0.26.4")
 
     // Hardware-Backed KeyStore & EncryptedSharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
 
     // Unit tests (JVM): the jvm-unit-suite CI shard runs the full
     // testDebugUnitTest suite (no package filter, so new tests in any
