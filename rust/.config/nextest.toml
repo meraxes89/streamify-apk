@@ -1,4 +1,22 @@
+# GOV-04 (Phase 2): the ci profile is the PR/push fast path; the nightly
+# profile is the deep matrix selected by extreme-test-matrix.yml on
+# schedule/workflow_dispatch events.
 [profile.ci]
+fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 3 }
+# GOV-04 (Phase 2): the 32-peer mesh chaos suite is allocation-bound (7x
+# slower in unoptimized test builds — measured: 208 ms release vs 1.4 s
+# debug for the same 1000-op trial) and adds 2-3 minutes to the rust
+# shard while racing sibling jobs for runner cores: the documented CI
+# flake lane (A_TIER_PLAN §1, Phase 1 incident log). The nightly profile
+# runs it instead. The 5-node gossip test (test_mesh_gossip) and every
+# other suite stay active on ALL runs.
+default-filter = 'not binary(/test_mesh_gossip_32peers/)'
+
+# GOV-04 (Phase 2): nightly deep matrix — identical to ci but WITHOUT the
+# 32-peer exclusion; the heavy chaos suite runs here, serialized in the
+# hardware-isolated mutex group below.
+[profile.nightly]
 fail-fast = false
 slow-timeout = { period = "60s", terminate-after = 3 }
 
@@ -7,7 +25,7 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 [test-groups.serial-heavy-mesh]
 max-threads = 1
 
-[[profile.ci.overrides]]
+[[profile.nightly.overrides]]
 filter = 'binary(/test_mesh_gossip_32peers/) | test(/thirty_two_nodes/)'
 threads-required = "num-cpus"
 test-group = "serial-heavy-mesh"
