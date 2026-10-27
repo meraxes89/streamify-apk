@@ -2,8 +2,6 @@ package com.streamify.app.data.spotify
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import com.streamify.app.data.network.NetworkEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,21 +27,17 @@ class SpotifyAuthManager(private val context: Context) {
         val isYtConnectedFlow: StateFlow<Boolean> = _ytConnectedState.asStateFlow()
     }
 
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-
-    private val securePrefs = try {
-        EncryptedSharedPreferences.create(
-            context,
-            "spotify_secure_tokens",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    } catch (e: Exception) {
-        context.getSharedPreferences("spotify_secure_tokens_fallback", Context.MODE_PRIVATE)
-    }
+    /**
+     * SEC-04 (Android 8/8.1 cold-boot fix): MasterKey construction lives
+     * INSIDE [SpotifySecureStore]'s guarded probe chain. An early
+     * TrustZone/TEE keystore throwing `KeyStoreException: -28` degrades to
+     * the software AES-256-GCM store (or the safe in-memory session store)
+     * with a warning log — never an unhandled exception out of class init.
+     * All three backends expose the same [SpotifySecureStore.TokenStore]
+     * surface, so no call site below knows which one won.
+     */
+    private val securePrefs: SpotifySecureStore.TokenStore =
+        SpotifySecureStore.create(context)
 
     init {
         _spotifyConnectedState.value = isConnected()
