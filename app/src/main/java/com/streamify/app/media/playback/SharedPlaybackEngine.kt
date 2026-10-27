@@ -3,6 +3,7 @@ package com.streamify.app.media.playback
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import com.streamify.app.data.uniffi.StreamifyEngineBridge
 import com.streamify.app.util.SLog
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -126,6 +127,13 @@ object SharedPlaybackEngine {
             runCatching { l.onEnginePublished(player) }
                 .onFailure { SLog.st(TAG, "onEnginePublished listener failed", it) }
         }
+        // MEDIA-02: a live session arms the Rust core engine — the one-way,
+        // idempotent Idle -> Buffering transition from the UFFI-01 contract.
+        // Every publish path (main service onCreate, Auto-service warm
+        // start) flows through here, so the engine and the Media3 lifecycle
+        // can never drift apart. Degraded backends (no cdylib / proxies
+        // pending) fail silently inside the bridge.
+        StreamifyEngineBridge.initializeEngine()
     }
 
     fun withdraw(player: androidx.media3.common.Player) {
@@ -145,6 +153,12 @@ object SharedPlaybackEngine {
             runCatching { l.onEngineWithdrawn() }
                 .onFailure { SLog.st(TAG, "onEngineWithdrawn listener failed", it) }
         }
+        // MEDIA-02: the session is over — mirror Idle into the engine
+        // bridge telemetry so the session-scoped underrun tally resets for
+        // the next publish (Player.release may race listener delivery).
+        StreamifyEngineBridge.recordPlaybackState(
+            StreamifyEngineBridge.PlaybackState.Idle
+        )
     }
 
     /**

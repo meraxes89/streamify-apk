@@ -497,6 +497,124 @@ object StreamifyEngineBridge {
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // Telemetry surface (MEDIA-02 / UI-01)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** Guards the telemetry state pair below (listener callbacks + refresh). */
+    private val telemetryLock = Any()
+
+    private val _playbackState = MutableStateFlow(PlaybackState.Idle)
+
+    /**
+     * App-observed playback lifecycle — PlaybackService mirrors every
+     * Media3 transition here (MEDIA-02). This is the app-side mirror: the
+     * Rust-side view (UDL `get_playback_state`) advances via Rust-internal
+     * producers — the UFFI-01 contract exposes no state setter across the
+     * FFI; [enginePlaybackState] reads the engine-side view for
+     * diagnostics.
+     */
+    val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    private val _bufferStats = MutableStateFlow(BufferStats.EMPTY)
+
+    /**
+     * Live buffering-health telemetry for UI consumption (UI-01). Fed by
+     * two publishers: app-side rebuffer detection in [recordPlaybackState]
+     * (a `Playing -> Buffering` transition starved the ring) and the
+     * engine-authoritative snapshot pulled by [refreshBufferStats].
+     */
+    val bufferStats: StateFlow<BufferStats> = _bufferStats.asStateFlow()
+
+    /**
+     * Returns the telemetry surface to the dormant session state
+     * (`Idle` + `EMPTY` stats). Deterministic-isolation hook for the JVM
+     * unit shard (the bridge is process-wide; without this, test-order
+     * could leak a session tally between test methods). Production callers
+     * manage sessions through [recordPlaybackState] — entering
+     * [PlaybackState.Idle] carries the same reset semantics for the
+     * underrun tally.
+     */
+    fun resetTelemetry() {
+        synchronized(telemetryLock) {
+            _playbackState.value = PlaybackState.Idle
+            _bufferStats.value = BufferStats.EMPTY
+        }
+    }
+
+    /**
+     * Records an app-observed playback state transition (MEDIA-02 hook —
+     * PlaybackService's Player.Listener is the sole production caller).
+     * Never throws and never dispatches across the FFI: the app-side
+     * mirror is pure Kotlin state.
+     *
+     * Underrun accounting: a `Playing -> Buffering` transition is a
+     * rebuffer (the ring starved mid-playback) and bumps
+     * [bufferStats].underrunCount; a transition into [PlaybackState.Idle]
+     * ends the session and resets the tally. Initial buffering out of
+     * Idle/Paused is a warm-up, not an underrun.
+     */
+    fun recordPlaybackState(state: PlaybackState) {
+        synchronized(telemetryLock) {
+            val previous = _playbackState.value
+            _playbackState.value = state
+            when {
+                state == PlaybackState.Buffering && previous == PlaybackState.Playing -> {
+                    val stats = _bufferStats.value
+                    _bufferStats.value = stats.copy(underrunCount = stats.underrunCount + 1u)
+                }
+                state == PlaybackState.Idle && previous != PlaybackState.Idle -> {
+                    _bufferStats.value = _bufferStats.value.copy(underrunCount = 0u)
+                }
+            }
+        }
+    }
+
+    /**
+     * Arms the Rust core engine (UDL `initialize()` — one-way, idempotent
+     * `Idle -> Buffering`). Called by SharedPlaybackEngine.publish when a
+     * Media3 session goes live. Degrades silently on unwired backends.
+     */
+    fun initializeEngine(): Result<Unit> = dispatch("initializeEngine") { it.initializeEngine() }
+
+    /**
+     * Sets the engine output volume (UDL `set_volume(f32)`); clamped to
+     * `[0, 1]` before dispatch (Rust clamps again behind the FFI).
+     */
+    fun setVolume(volume: Float): Result<Unit> {
+        if (volume.isNaN()) {
+            return Result.failure(EngineError.InvalidInput("volume must not be NaN"))
+        }
+        return dispatch("setVolume") { it.setVolume(volume.coerceIn(0f, 1f)) }
+    }
+
+    /**
+     * Reads the engine-side lifecycle state (UDL `get_playback_state`) —
+     * the Rust view, distinct from the app-observed [playbackState] mirror.
+     * Diagnostics surface; unwired backends report [EngineError.EngineUnavailable].
+     */
+    fun enginePlaybackState(): Result<PlaybackState> =
+        dispatch("enginePlaybackState") { it.fetchPlaybackState() }
+
+    /**
+     * Pulls the engine-side buffering-health snapshot (UDL
+     * `get_buffer_stats`) and publishes it to [bufferStats]. The returned
+     * value is the raw engine sample; the flow carries the sample fused
+     * with the app-side underrun tally (`max`) — Rust-side producers are
+     * not wired yet (`record_buffer_stats` is engine-internal), so the
+     * app-detected count rides along until the engine supersedes it.
+     */
+    fun refreshBufferStats(): Result<BufferStats> =
+        dispatch("refreshBufferStats") { it.fetchBufferStats() }
+            .onSuccess { snapshot ->
+                synchronized(telemetryLock) {
+                    val app = _bufferStats.value
+                    _bufferStats.value = snapshot.copy(
+                        underrunCount = maxOf(snapshot.underrunCount, app.underrunCount)
+                    )
+                }
+            }
+
+    // ═════════════════════════════════════════════════════════════════════
     // Canary operations (Result<T> — never throws)
     // ═════════════════════════════════════════════════════════════════════
 
