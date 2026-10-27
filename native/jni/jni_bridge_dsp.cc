@@ -77,6 +77,32 @@
 //  THREADING: all entry points are thread-safe. The resampler process call
 //  is single-producer (the audio callback); it performs zero allocations
 //  and takes zero locks in steady state.
+//
+//  AMP-10 AUDIT (Phase 2 — Engineer Alpha, feat/alpha-phase2-uniffi-contract):
+//  Invariants verified against 06bbd60 and hardened in this commit:
+//    * FROZEN ABI STABILITY: the four contract symbols above are
+//      byte-identical to the freeze (untouched since c7c4416) — no
+//      signature, argument-order or return-type drift.
+//    * ZERO-ALLOC HOT PATH: the bridge layer performs no heap allocation
+//      by construction (GetDirectBufferAddress/Capacity queries and pure
+//      validation only; config transitions rebuild tables on the control
+//      side, steady-state configure() is a no-op). The engine side is
+//      contractually allocation-free after configure() (see
+//      AcousticPhaseResampler.h, PERFORMANCE CONTRACT). Enforced live by
+//      test_dsp_phase_lock.cc testZeroAllocationHotPath: 2000 resampler
+//      blocks + 300 PTP updates + 120 latency anchors under the armed
+//      AllocGuard must observe exactly 0 allocations.
+//    * ZERO-LOCK SEQLOCK: PtpEngine::getSynchronizedClockNanos() reads
+//      the seqlock-published ClockSnapshot wait-free — acquire loads,
+//      bounded 64-spin retry, coherent-copy fallback on pathological
+//      writer pressure; never blocks, never allocates. Now additionally
+//      proven at compile time in PtpEngine.h: trivially-copyable payload,
+//      always-lock-free sequence counter, 64-byte cache-line isolation.
+//    * PORTABLE TEST BUILDS: no -march=native anywhere in the tree (the
+//      Phase 1 fix at 06bbd60 holds; the stale comment reference in
+//      CMakeLists.txt is corrected in this commit). All four native test
+//      targets compile with deterministic portable flags
+//      (-O2 -fno-fast-math -fno-lto -fno-omit-frame-pointer).
 // ============================================================================
 
 #include <jni.h>

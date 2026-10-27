@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <atomic>
 #include <mutex>
+#include <type_traits>
 
 namespace streamify {
 
@@ -202,6 +203,26 @@ private:
         int64_t  tLocalRefNanos;    // local RAW instant of the snapshot
         uint32_t acceptedCount;     // accepted exchanges so far
     };
+
+    // AMP-10 (Phase 2): compile-time proof of the zero-lock reader law.
+    // The audio callback consumes snapshot_ via readSnapshot() with
+    // bounded spinning only — that contract is only sound if (a) the
+    // payload is trivially copyable (plain-memory reads after the
+    // acquire fences; no destructor side effects, no padding hazards
+    // beyond the explicit alignment) and (b) the sequence counter is
+    // genuinely lock-free on every target ABI — a locking atomic would
+    // silently defeat the wait-free guarantee under writer pressure.
+    // These fire at build time on each of the four ABI lanes, so a
+    // toolchain or platform regression breaks the build loudly instead
+    // of degrading the audio path silently.
+    static_assert(std::is_trivially_copyable_v<ClockSnapshot>,
+                  "seqlock payload must stay trivially copyable");
+    static_assert(std::atomic<uint64_t>::is_always_lock_free,
+                  "seqlock sequence counter must be lock-free on all target ABIs");
+    static_assert(std::atomic<uint32_t>::is_always_lock_free,
+                  "relaxed telemetry atomics must be lock-free on all target ABIs");
+    static_assert(alignof(ClockSnapshot) == 64,
+                  "seqlock snapshot must stay cache-line isolated (false sharing)");
 
     // ---- Writer-side state (guarded by mutex_) ----------------------------
     mutable std::mutex mutex_;

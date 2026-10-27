@@ -164,7 +164,10 @@ if (STREAMIFY_BUILD_TESTS)
     # Variant B: Hardware-tuned hot loops for all 4 test targets.
     # Prevents ASan/UBSan instrumentation from defeating vectorization and register
     # allocation in the 10M-frame SPSC, 1M-tick pacer, and SHA-256 stress loops.
-    # -fno-lto drops LTO overhead on test binaries; -march=native enables hardware SIMD.
+    # -fno-lto drops LTO overhead on test binaries. No -march=native: it caused
+    # cross-runner SIGILL and was removed at 06bbd60; host test lanes stay
+    # portable, while the arm64-v8a NDK lane carries the deterministic
+    # -march=armv8-a+simd+crypto baseline set at the top of this file.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         foreach(tname dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite)
             target_compile_options(${tname} PRIVATE
