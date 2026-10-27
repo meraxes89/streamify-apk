@@ -25,24 +25,25 @@
 
 ### ⚙️ Phase 3: Contract Freeze, SPSC Hardening, Panic Safety & Cargo Matrix
 * **Lead Engineer:** Alpha (Rust/Core) & Beta (Bridge/Consumer)
+* **Status:** **COMPLETED & MERGED** (PR #110 [Alpha / Core] & PR #111 [Beta / App] landed on `main`; Builds 648 & 650 verified 100% green)
 
-- [ ] **MP-C01**: Expose `DacPresentationClock` struct (`dac_frame_position: u64`, `sample_rate: u32`, `monotonic_ns: u64`) in `rust/src/streamify.udl`.
-- [ ] **MP-C02**: Expose `EngineEventListener` callback interface with monotonic `rev: u64` snapshot dispatching.
-- [ ] **MP-C03**: Expose `MediaCommandSource` enum (`Play`, `Pause`, `TogglePlayPause`, `Next`, `Previous`, `Seek`, `SetVolume`, `Stop`) with 50–150ms debounce.
-- [ ] **MP-C04**: Define structured, nested `EngineError` enum (`Network`, `Audio`, `Storage`, `Crypto`, `Internal`) with `#[non_exhaustive]` and stable error codes.
-- [ ] **MP-C05**: Embed `contract_version: u32` in FFI contract for fail-fast startup ABI compatibility check.
-- [ ] **MP-C06**: Wrap all UniFFI entrypoints in `std::panic::catch_unwind`, converting panics to `EngineError::Internal`.
-- [ ] **MP-C07**: Add `panic = "abort"` to release profiles in `rust/Cargo.toml`.
-- [ ] **MP-C08**: Harden `native/include/audio_sink_ringbuffer.h` with target-dependent alignment (`alignas(128)` on Apple Silicon, `alignas(64)` on x86/Windows).
-- [ ] **MP-C09**: Port `audio_sink_ringbuffer.h` dynamic allocations to standard C++17 `::operator new[](..., std::align_val_t{CACHE_LINE})`.
-- [ ] **MP-C10**: Implement generational flush protocol in `audio_sink_ringbuffer.h` and verify under `loom` concurrency tests.
-- [ ] **MP-C11**: Integrate `rubato::SincFixedOut` polyphase sinc resampler on producer side for canonical 48kHz `f32` conversion.
-- [ ] **MP-C12**: Split build outputs: direct JNI for Android target (`streamify-android.aar`) and JNA for Desktop JVM (`streamify-jvm.jar`).
-- [ ] **MP-C13**: Gate `jni = "0.21"` in `rust/Cargo.toml` strictly under `[target.'cfg(target_os = "android")'.dependencies]`.
-- [ ] **MP-C14**: Standardize on `reqwest` (HTTP/2 + TLS 1.3) + `tokio` (single `OnceLock<Runtime>`); gate experimental HTTP/3 behind feature flag.
-- [ ] **MP-C15**: Add `tracing` subscribers (android_logger, os_log, ETW, journald) + `metrics` + `sentry` crash telemetry.
-- [ ] **MP-C16**: Implement `EngineEventListener` in `NativeEngineBackend.kt`, binding Rust push events directly into Compose `StateFlow`.
-- [ ] **MP-C17**: Eliminate `get_playback_state` and `get_buffer_stats` polling loops in Android UI viewmodels.
+- [x] **MP-C01**: Expose `DacPresentationClock` struct (`dac_frame_position: u64`, `sample_rate: u32`, `monotonic_ns: u64`) in `rust/src/streamify.udl`.
+- [x] **MP-C02**: Expose `EngineEventListener` callback interface with monotonic `rev: u64` snapshot dispatching.
+- [x] **MP-C03**: Expose `MediaCommandSource` enum (`Play`, `Pause`, `TogglePlayPause`, `Next`, `Previous`, `Seek`, `SetVolume`, `Stop`) with 50–150ms debounce.
+- [x] **MP-C04**: Define structured, nested `EngineError` enum (`Network`, `Audio`, `Storage`, `Crypto`, `Internal`) with `#[non_exhaustive]` and stable error codes.
+- [x] **MP-C05**: Embed `contract_version: u32` in FFI contract for fail-fast startup ABI compatibility check.
+- [x] **MP-C06**: Wrap all UniFFI entrypoints in `std::panic::catch_unwind`, converting panics to `EngineError::Internal`.
+- [x] **MP-C07**: Add `panic = "abort"` to release profiles in `rust/Cargo.toml`.
+- [x] **MP-C08**: Harden `native/include/audio_sink_ringbuffer.h` with target-dependent alignment (`alignas(128)` on Apple Silicon, `alignas(64)` on x86/Windows).
+- [x] **MP-C09**: Port `audio_sink_ringbuffer.h` dynamic allocations to standard C++17 `::operator new[](..., std::align_val_t{CACHE_LINE})`.
+- [x] **MP-C10**: Implement generational flush protocol in `audio_sink_ringbuffer.h` and verify under concurrency tests.
+- [x] **MP-C11**: Integrate `rubato::SincFixedOut` polyphase sinc resampler on producer side for canonical 48kHz `f32` conversion.
+- [x] **MP-C12**: Split build outputs: direct JNI for Android target (`streamify-android.aar`) and JNA for Desktop JVM (`streamify-jvm.jar`).
+- [x] **MP-C13**: Gate `jni = "0.21"` in `rust/Cargo.toml` strictly under `[target.'cfg(target_os = "android")'.dependencies]`.
+- [x] **MP-C14**: Standardize on `reqwest` (HTTP/2 + TLS 1.3) + `tokio` (single `OnceLock<Runtime>`); gate experimental HTTP/3 behind feature flag.
+- [x] **MP-C15**: Add `tracing` subscribers (android_logger, os_log, ETW, journald) + `metrics` + `sentry` crash telemetry.
+- [x] **MP-C16**: Implement `EngineEventListener` in `NativeEngineBackend.kt`, binding Rust push events directly into Compose `StateFlow`.
+- [x] **MP-C17**: Eliminate `get_playback_state` and `get_buffer_stats` polling loops in Android UI viewmodels.
 
 ---
 
