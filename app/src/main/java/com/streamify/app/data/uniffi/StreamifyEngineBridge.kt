@@ -355,6 +355,13 @@ object StreamifyEngineBridge {
             selfNonce: String,
             recentlySeen: Boolean,
         ): Result<Boolean> = backendOpUnavailable("isAdvisoryJamSuccessor")
+
+        /**
+         * Clean engine teardown hook (strict architecture firewall, Phase
+         * 4). Default: not wired — [StreamifyEngineBridge.release] still
+         * resets the telemetry surface and stays idempotent.
+         */
+        fun releaseEngine(): Result<Unit> = backendOpUnavailable("releaseEngine")
     }
 
     /** Shared default for seam operations a backend does not implement. */
@@ -595,6 +602,23 @@ object StreamifyEngineBridge {
             NativeBridge.jamIsAdvisorySuccessor(participants, hostNonce, selfNonce, recentlySeen)
         )
 
+        override fun releaseEngine(): Result<Unit> {
+            val h = handle ?: return Result.success(Unit) // degraded — nothing held
+            // The UFFI-01 contract carries no destructor yet; generated
+            // uniffi handles grow `destroy()`/`close()` when one lands —
+            // probe reflectively so the teardown lights up with zero app
+            // changes when the contract grows it.
+            val teardown = h.javaClass.methods.firstOrNull {
+                it.name == "destroy" || it.name == "close" || it.name == "release"
+            }
+            return try {
+                teardown?.invoke(h)
+                Result.success(Unit)
+            } catch (t: Throwable) {
+                Result.failure(EngineError.fromThrowable(t))
+            }
+        }
+
         private fun engineUnavailable(op: String): Result<Nothing> = Result.failure(
             EngineError.EngineUnavailable("$op: engine dispatch not wired ($degradedReason)")
         )
@@ -713,6 +737,45 @@ object StreamifyEngineBridge {
     fun reset() {
         backendRef.set(NativeEngineBackend.create())
         _availability.value = backendRef.get().availability
+        synchronized(releaseLock) { released = false }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Clean teardown (strict architecture firewall, Phase 4)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** Guards the one-shot release latch below. */
+    private val releaseLock = Any()
+
+    /** One-shot latch — [release] is idempotent across service recreations. */
+    @Volatile private var released = false
+
+    /**
+     * Clean engine teardown for a dying playback service (strict
+     * architecture firewall, Phase 4):
+     *
+     *  • dispatches [EngineBackend.releaseEngine] so a wired backend frees
+     *    its engine-side allocations (the reflection handle probes for a
+     *    uniffi `destroy()`/`close()` when the contract grows one —
+     *    degraded backends hold nothing);
+     *  • returns the telemetry surface to the dormant session state
+     *    (`Idle` + `EMPTY` stats — the session-scoped underrun tally dies
+     *    with the session, never leaking into the next one);
+     *  • is IDEMPOTENT — a latch makes repeated calls (service recreate
+     *    races, double onDestroy) harmless, and [reset] re-arms it for
+     *    the next session.
+     *
+     * The singleton itself stays re-usable: the next service publish →
+     * initializeEngine re-arms the engine exactly as a cold start would.
+     */
+    fun release() {
+        synchronized(releaseLock) {
+            if (released) return
+            released = true
+        }
+        dispatch("release") { it.releaseEngine() }
+        resetTelemetry()
+        SLog.i(TAG, "released: backend teardown dispatched, telemetry dormant")
     }
 
     // ═════════════════════════════════════════════════════════════════════
