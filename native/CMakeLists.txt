@@ -170,7 +170,6 @@ if (STREAMIFY_BUILD_TESTS)
             target_compile_options(${tname} PRIVATE
                 -fno-fast-math
                 -O2
-                -march=native
                 -fno-lto
                 -fno-omit-frame-pointer)
             target_link_options(${tname} PRIVATE
