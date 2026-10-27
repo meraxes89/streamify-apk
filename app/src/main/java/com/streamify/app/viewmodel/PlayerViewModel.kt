@@ -16,6 +16,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.streamify.app.data.NativeBridge
 import com.streamify.app.data.repository.TrackRepository
 import com.streamify.app.data.models.Track
+import com.streamify.app.data.uniffi.StreamifyEngineBridge
 import com.streamify.app.media.playback.PlaybackService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -63,6 +64,21 @@ class PlayerViewModel(internal val repository: com.streamify.app.data.repository
     internal val _durationMs = MutableStateFlow(0L)
 
     val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
+
+    // ── UI-01: ENGINE BUFFER-HEALTH TELEMETRY ────────────────────────
+    // Dedicated hot flow, same architecture as _positionMs/_durationMs:
+    // the telemetry ticks never touch _playerState, so the composition
+    // root stays skippable and only the leaves surfacing buffering-health
+    // warnings (underrun chip, fill-ratio readout) recompose.
+    private val _bufferHealth = MutableStateFlow<BufferHealth?>(null)
+
+    /**
+     * Live buffering health from the Rust core engine bridge; null until
+     * the first sample. Underrun warnings ride [BufferHealth.isUnderrunWarning]
+     * (session-scoped rebuffers), low-buffer warnings ride
+     * [BufferHealth.isLowBuffer] (engine-fed fill ratio).
+     */
+    val bufferHealth: StateFlow<BufferHealth?> = _bufferHealth.asStateFlow()
 
     val currentTrack: StateFlow<Track?> = _playerState
         .map { it.currentTrack }
@@ -117,6 +133,20 @@ class PlayerViewModel(internal val repository: com.streamify.app.data.repository
 
     init {
         com.streamify.app.jam.JamEngine.attachBridge(this)
+
+        // UI-01: subscribe to the bridge's reactive buffer-stats stream and
+        // project it into the UI-facing health snapshot. The collector lives
+        // in viewModelScope and mirrors every publication (app-side underrun
+        // bumps and engine-pulled refreshes alike).
+        viewModelScope.launch {
+            StreamifyEngineBridge.bufferStats.collect { stats ->
+                _bufferHealth.value = BufferHealth(
+                    fillRatio = stats.fillRatio,
+                    underrunCount = stats.underrunCount,
+                    bufferedDurationMs = stats.bufferedDurationMs,
+                )
+            }
+        }
     }
 
     private val isAdvancing = java.util.concurrent.atomic.AtomicBoolean(false)
