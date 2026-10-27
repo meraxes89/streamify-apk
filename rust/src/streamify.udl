@@ -49,13 +49,32 @@ enum EngineError {
 /// Kotlin coroutine dispatcher or thread without external locking.
 interface StreamifyEngine {
     constructor();
+
+    /// Arm the engine: verify runtime environment invariants, then
+    /// advance the lifecycle one-way Idle -> Buffering. Idempotent;
+    /// a progressed state is never pulled back.
+    [Throws=EngineError]
     void initialize();
+
+    /// Apply the output gain scalar. Clamped to [0.0, 1.0]; a NaN input
+    /// fails safe to full mute. Stored lock-free (Release/Acquire).
     void set_volume(f32 volume);
+
+    /// Current playback lifecycle state.
     PlaybackState get_playback_state();
+
+    /// Current buffering health snapshot.
     BufferStats get_buffer_stats();
+
+    /// Feed one live telemetry sample from the playback buffer and the
+    /// acoustic pipeline. Malformed samples (NaN/±inf fill ratio) are
+    /// rejected; out-of-range fill ratios clamp to [0.0, 1.0].
+    [Throws=EngineError]
+    void record_buffer_stats(u64 buffered_duration_ms, u32 underrun_count, f32 fill_ratio);
 };
 
-/// Streamify core engine: typed UniFFI contract (Phase 2, UFFI-01).
+/// Streamify core engine: typed UniFFI contract (Phase 2 UFFI-01,
+/// wired to live dispatch and telemetry in Phase 3 UFFI-03).
 ///
 /// Type-safe Kotlin bindings for the control-plane and metadata flows,
 /// replacing the raw extern "C" JNI edges on those paths. The audio
