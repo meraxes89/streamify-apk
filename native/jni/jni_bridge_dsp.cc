@@ -226,56 +226,11 @@ Java_com_streamify_app_data_NativeBridge_nativeGetHardwarePlayoutDelayNanos(
 }
 
 // ============================================================================
-// Optional extensions (documented above; additive, not part of the freeze)
+// Optional extensions (documented above, additive): the seven wrappers
+// whose Kotlin declarations were superseded by renamed bindings
+// (nativeSubmitAudioTimestamp / nativeSetAudioOutputRoute /
+// nativeGetPtpOffsetSigmaNanos / nativeGetPtpDriftPpm /
+// nativeGetPtpQualityScore / nativeResamplerGetMaxDriftNanos /
+// nativeResamplerReset) were removed in Phase 4's clean-parity pass —
+// every remaining export maps to an active Kotlin caller.
 // ============================================================================
-extern "C" JNIEXPORT void JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeSubmitAudioTimestamp(
-    JNIEnv* /* env */, jclass /* clazz */,
-    jlong framePosition, jlong nanoTimeMonotonic,
-    jlong framesWritten, jlong queuedFramesHint) {
-    profilerInstance().submitTrackTimestamp(framePosition, nanoTimeMonotonic,
-                                            framesWritten, queuedFramesHint);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeSetAudioOutputRoute(
-    JNIEnv* /* env */, jclass /* clazz */, jint route, jint codec) {
-    profilerInstance().setOutputRoute(
-        static_cast<HardwareLatencyProfiler::Route>(route),
-        static_cast<HardwareLatencyProfiler::Codec>(codec));
-}
-
-extern "C" JNIEXPORT jlong JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeGetPtpOffsetSigmaNanos(
-    JNIEnv* /* env */, jclass /* clazz */) {
-    const double sigma = PtpEngine::getInstance().getOffsetSigmaNanos();
-    return static_cast<jlong>(sigma < 0 ? 0 : sigma);
-}
-
-extern "C" JNIEXPORT jdouble JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeGetPtpDriftPpm(
-    JNIEnv* /* env */, jclass /* clazz */) {
-    return static_cast<jdouble>(PtpEngine::getInstance().getDriftPpm());
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeGetPtpQualityScore(
-    JNIEnv* /* env */, jclass /* clazz */) {
-    const auto stats = PtpEngine::getInstance().getStats();
-    if (!stats.locked) return 0;
-    // 100 at sigma <= 0 us, linear decay to 0 at 500 us.
-    const double score = 100.0 - stats.offsetSigmaNanos / 5'000.0;
-    return static_cast<jint>(score < 0.0 ? 0.0 : (score > 100.0 ? 100.0 : score));
-}
-
-extern "C" JNIEXPORT jlong JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeResamplerGetMaxDriftNanos(
-    JNIEnv* /* env */, jclass /* clazz */) {
-    return AcousticPhaseResampler::kMaxDriftNanosPerSec;   // 500_000 ns/s
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_streamify_app_data_NativeBridge_nativeResamplerReset(
-    JNIEnv* /* env */, jclass /* clazz */) {
-    resamplerInstance().reset();
-}

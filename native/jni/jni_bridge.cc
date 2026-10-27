@@ -874,11 +874,11 @@ Java_com_streamify_app_data_NativeBridge_stepAirDropPhysics(
 // ═══════════════════════════════════════════════════════════════
 // PROJECT NEXUS: CLOSED-LOOP EDGE MESH COMPUTE JNI EXPORTS
 // ═══════════════════════════════════════════════════════════════
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_streamify_app_data_NativeBridge_pinToLittleCores(JNIEnv* /* env */, jobject /* this */) {
-    TaskOrchestrator::getInstance().pinThreadToLittleCores();
-}
+// (Phase 4 clean parity: the orphaned pinToLittleCores wrapper —
+//  superseded by the renamed nativePinToLittleCores binding — and
+//  rustParseInnertubeCandidates — superseded by the direct Rust JNI
+//  export — were removed with the grandfathered dangler set; see
+//  scripts/jni_parity_check.py.)
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_streamify_app_data_NativeBridge_analyzePcmAcousticDNA(
@@ -1066,35 +1066,6 @@ Java_com_streamify_app_data_NativeBridge_rustFuzzyRankCandidates(
 
     env->ReleaseStringUTFChars(query, q);
     env->ReleaseStringUTFChars(candidatesJson, c);
-
-    if (!res) return nullptr;
-    jstring outStr = env->NewStringUTF(res);
-    auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
-    if (free_fn) free_fn(res);
-    return outStr;
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_streamify_app_data_NativeBridge_rustParseInnertubeCandidates(
-    JNIEnv* env,
-    jobject /* this */,
-    jbyteArray jsonBytes
-) {
-    if (!jsonBytes) return nullptr;
-    jsize len = env->GetArrayLength(jsonBytes);
-    if (len <= 0) return nullptr;
-
-    // Byte-array input (not String): raw UTF-8 crosses once, no modified-UTF8
-    // round trip, and the Rust side takes ptr+len directly.
-    typedef char* (*RustFn)(const unsigned char*, size_t);
-    auto fn = get_rust_symbol<RustFn>("rust_parse_innertube_candidates");
-    if (!fn) return nullptr;
-
-    jbyte* bytes = env->GetByteArrayElements(jsonBytes, nullptr);
-    if (!bytes) return nullptr;
-
-    char* res = fn(reinterpret_cast<const unsigned char*>(bytes), static_cast<size_t>(len));
-    env->ReleaseByteArrayElements(jsonBytes, bytes, JNI_ABORT);
 
     if (!res) return nullptr;
     jstring outStr = env->NewStringUTF(res);

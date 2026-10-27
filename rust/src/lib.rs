@@ -30,6 +30,9 @@ pub mod playlist_parser;
 pub mod ptp;
 pub mod queue_engine;
 // Jam Phase 2 — zero-server P2P mesh fabric (feat/jam-p2p-mesh-transport):
+// the JNI surface for it lives in jni_bridge_p2p.rs (Phase 4 trimmed it
+// to the six frozen NativeBridge symbols; the deprecated NativeMeshEngine
+// / NativeRadioEngine exports went with their long-removed Kotlin classes).
 pub mod chunk_swarmer;
 pub mod gossip;
 pub mod jni_bridge_p2p;
@@ -37,25 +40,28 @@ pub mod kalman_pll;
 pub mod p2p_mesh;
 // Phase 3 — P2P chunk swarmer & local LAN sync
 // (feat/phase3-rust-chunk-swarmer-sync): byte-range integrity verifier,
-// resumable transfer state, two-way library catalog sync.
+// resumable transfer state, two-way library catalog sync. The JNI bridge
+// for the removed NativeChunkSyncEngine class was deleted in Phase 4
+// (clean parity); the engines below stay with their own tests.
 pub mod chunk_verifier;
-pub mod jni_bridge_chunk_sync;
 pub mod local_sync;
 // Phase 4 — Streamify Connect gateway & WearOS P2P sync
 // (feat/phase4-rust-connect-gateway-wear-sync): device discovery
 // registry with presence leases, cross-device session handoff &
-// remote intent dispatch, WearOS compact binary sync.
+// remote intent dispatch, WearOS compact binary sync. The JNI bridge
+// for the removed RustConnectGateway class was deleted in Phase 4
+// (clean parity); the engines below stay with their own tests.
 pub mod connect_gateway;
 pub mod device_registry;
-pub mod jni_bridge_connect;
 pub mod remote_intent_engine;
 pub mod wear_sync;
 // Phase 5 — kinetic gesture physics & waveform indexer
 // (feat/phase5-rust-gesture-physics-waveform): analytical 2nd-order
 // spring/fling solver with edge rubberbanding, peak-preserving RMS
-// waveform downsampling with a compact binary cache.
+// waveform downsampling with a compact binary cache. The JNI bridge
+// for the removed RustGesturePhysics / RustWaveformIndexer classes was
+// deleted in Phase 4 (clean parity); the engines stay with their tests.
 pub mod gesture_physics;
-pub mod jni_bridge_physics_waveform;
 pub mod radio_scorer;
 pub mod repository;
 pub mod resolver;
