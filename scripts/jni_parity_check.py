@@ -27,8 +27,7 @@ Two modes:
             into the CMake/cargo target")
 
 Exit 0 on full bi-directional parity; exit 1 on any violation (forward
-missing, reverse dangling, or — in --source mode — a stale allowlist entry);
-exit 2 on config errors (e.g. no .so found).
+missing or reverse dangling); exit 2 on config errors (e.g. no .so found).
 
 Symbol convention: com.streamify.app.data.NativeBridge.fooBar ->
   Java_com_streamify_app_data_NativeBridge_fooBar
@@ -36,24 +35,18 @@ Overloads append __<mangled-args>, so a match is either an exact symbol
 name or a __-suffixed overload of it. Escaped name segments (_1 _2 _3) are
 unescaped before comparison.
 
-KNOWN_DANGLING_EXPORTS (the grandfather set): the Phase-1 amputation removed
-the seven dead C++ bridge files, but a residual set of pre-existing dangling
-exports remains OUTSIDE that scope. They fall in two groups:
-
-  A) legacy NativeBridge-class exports in native/jni/{jni_bridge.cc,
-     jni_bridge_dsp.cc} and rust/src/jni_bridge_p2p.rs that were superseded
-     by differently-named Kotlin wrappers (e.g. Kotlin `pinToLittleCores()`
-     now binds `nativePinToLittleCores`, leaving the old
-     `Java_..._pinToLittleCores` export unbound);
-  B) Rust bridge exports (mesh / chunk-sync / connect / gesture-physics /
-     waveform / radio) whose Kotlin counterpart classes were removed in
-     earlier migrations.
-
-These are grandfathered so the gate could land green in Phase 1 while still
-failing on every NEW dangler. Each entry is a tracked follow-up amputation
-target: prune entries as their symbols disappear (enforced in --source
-mode), never add new ones. `--strict` audits without the grandfather set —
-it is expected to fail until the follow-up amputation phases land.
+KNOWN_DANGLING_EXPORTS: EMPTY since Phase 4's clean-parity pass. The 64
+dangler entries grandfathered when this gate landed in Phase 1 — Rust
+bridges for Kotlin classes removed in earlier migrations (mesh / chunk-
+sync / connect / gesture-physics / waveform / radio), plus legacy
+NativeBridge wrappers superseded by renamed Kotlin bindings — were
+amputated together with the UniFFI migration of the Jam control plane
+(create_jam_session / apply_jam_delta / get_jam_state_hash on
+StreamifyEngine). Every remaining export now maps to an active Kotlin
+caller, so `--strict` and the default run are the same check. The set
+stays in the code (empty) so a future regression can still be triaged
+into "new dangler" vs "known debt" without re-adding scaffolding: ADDING
+entries requires a justification comment and an owning follow-up.
 """
 import argparse
 import re
@@ -71,77 +64,12 @@ EXTERNAL_FUN_RE = re.compile(
 )
 SYM_RE = re.compile(r"(Java_[A-Za-z0-9_]+)")
 
-# Pre-existing dangling exports outside the Phase-1 amputation scope.
-# See the module docstring: prune when a symbol disappears (enforced in
-# --source mode); never add entries.
-KNOWN_DANGLING_EXPORTS = {
-    # -- A) legacy NativeBridge-class exports superseded by renamed wrappers
-    "Java_com_streamify_app_data_NativeBridge_nativeGetPtpDriftPpm",
-    "Java_com_streamify_app_data_NativeBridge_nativeGetPtpOffsetSigmaNanos",
-    "Java_com_streamify_app_data_NativeBridge_nativeGetPtpQualityScore",
-    "Java_com_streamify_app_data_NativeBridge_nativeP2pSwarmSeedTrack",
-    "Java_com_streamify_app_data_NativeBridge_nativeP2pSwarmStats",
-    "Java_com_streamify_app_data_NativeBridge_nativeResamplerGetMaxDriftNanos",
-    "Java_com_streamify_app_data_NativeBridge_nativeResamplerReset",
-    "Java_com_streamify_app_data_NativeBridge_nativeSetAudioOutputRoute",
-    "Java_com_streamify_app_data_NativeBridge_nativeSubmitAudioTimestamp",
-    "Java_com_streamify_app_data_NativeBridge_pinToLittleCores",
-    "Java_com_streamify_app_data_NativeBridge_rustParseInnertubeCandidates",
-    # -- B) Rust bridges for Kotlin classes removed in earlier migrations
-    "Java_com_streamify_app_audio_NativeRadioEngine_scoreGroupBlendCandidates",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_applyPlaylistOp",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_castVote",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_exportPlaylistDelta",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_getTrackVotes",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_kickPeer",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshBroadcastActivity",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshDeclareHost",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshFriendActivity",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshGovernanceStats",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshPlaylistSnapshot",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshPollLanRooms",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshQueueAdd",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshQueueRemove",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshQueueViews",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshSetPlaylistRole",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_nativeMeshSubmitTransportIntent",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_setMemberAcl",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_setTopology",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_startLanBeacon",
-    "Java_com_streamify_app_mesh_NativeMeshEngine_stopLanBeacon",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_advanceFileSync",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_buildHashTree",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_cancelSyncSession",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_createSyncSession",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_destroySyncSession",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_getFileSyncProgress",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_getSyncJobsJson",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_getSyncOverallProgress",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_getSyncSummaryJson",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_hashBytes",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_pauseSyncSession",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_registerSyncCallback",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_resumeSyncSession",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_startSyncSession",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_verifyChunkAgainstTree",
-    "Java_com_streamify_app_sync_NativeChunkSyncEngine_verifyFileAgainstTree",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeDispatchIntent",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeDrainConnectEvents",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeGetDevicesJson",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeInitGateway",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeOnConnectFrame",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeOnRelayFrame",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativePollConnectFrame",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeStartDiscovery",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeStartWearSync",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeStopDiscovery",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeTickConnect",
-    "Java_com_streamify_core_rust_RustConnectGateway_nativeTransferPlayback",
-    "Java_com_streamify_core_rust_RustGesturePhysics_nativeCalculateFlingLanding",
-    "Java_com_streamify_core_rust_RustGesturePhysics_nativeSolveSpringTrajectory",
-    "Java_com_streamify_core_rust_RustWaveformIndexer_nativeGenerateWaveform",
-    "Java_com_streamify_core_rust_RustWaveformIndexer_nativeLoadWaveformCache",
-}
+# Legacy grandfather set — EMPTY since the Phase 4 clean-parity pass
+# amputated all 64 entries (see module docstring). Every remaining
+# export maps to an active Kotlin external fun; --strict is now the
+# same check as the default run. Do not add entries without an
+# owning follow-up noted here.
+KNOWN_DANGLING_EXPORTS: set[str] = set()
 
 
 def kotlin_surface() -> dict[str, set[str]]:
@@ -265,7 +193,9 @@ def main() -> int:
                     help="glob for built shared objects (relative to repo root)")
     ap.add_argument("--strict", action="store_true",
                     help="audit without the KNOWN_DANGLING_EXPORTS grandfather "
-                         "set (expected to fail until follow-up amputation)")
+                         "set (identical to the default run while the set is "
+                         "empty — kept so a future grandfathered entry is "
+                         "always auditable)")
     args = ap.parse_args()
 
     if not (args.source or args.nm):
