@@ -1,0 +1,19 @@
+# Phase 3 (UFFI-03): Kotlin binding configuration for the crate-local
+# `uniffi-bindgen` CLI pipeline.
+#
+# uniffi 0.28's Kotlin backend already defaults the generated package to
+# `uniffi.<namespace>` (file: `<out-dir>/uniffi/streamify/streamify.kt`).
+# This file PINS that choice explicitly rather than relying on the
+# third-party default, because the package name is an ABI-visible contract:
+#   * app/proguard-rules.pro (SEC-06) keeps the whole `uniffi.**` surface —
+#     JNA-based dispatch cannot survive minified release builds without it,
+#     and a keep rule for a package that no longer exists fails silently
+#     at runtime, never at compile time;
+#   * Dependabot ships weekly grouped minor bumps for the cargo ecosystem,
+#     so an uniffi release that changed the default packaging scheme would
+#     otherwise drift straight onto main without anything red failing.
+#
+# Consumed by `generateUniffiKotlinBindings`, which passes this file via
+# `--config` whenever it exists (the UDL remains the sole semantic input).
+[bindings.kotlin]
+package_name = "uniffi.streamify"
