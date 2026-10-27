@@ -56,6 +56,14 @@ val skipNativeBuild: Boolean = (ciPrebuiltNativeDir != null) || providers.gradle
 
 val singleTargetAbi: String? = providers.gradleProperty("targetAbi").orNull
 
+// UFFI-02: root of the Kotlin UniFFI bindings generated from
+// rust/src/streamify.udl (task registered next to cargoBuildRust at the
+// bottom of this file). Registered as a main source directory inside the
+// android block below. While Engineer Alpha's UDL contract (UFFI-01) has
+// not landed the directory stays empty and compilation is unaffected —
+// every CI shard, including the hermetic JVM unit shard, remains green.
+val uniffiGeneratedSourcesDir: File = layout.buildDirectory.dir("generated/uniffi/kotlin").get().asFile
+
 val allSupportedAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 val activeAbis: List<String> = if (singleTargetAbi != null && singleTargetAbi.isNotBlank()) {
     listOf(singleTargetAbi)
@@ -140,6 +148,15 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // UFFI-02: the Kotlin UniFFI bindings generated from
+    // rust/src/streamify.udl are first-class Kotlin sources. The empty/
+    // absent directory costs nothing until Alpha's UFFI-01 contract lands;
+    // from then on `generateUniffiKotlinBindings` (wired ahead of
+    // compile*Kotlin below) keeps them in sync with the UDL.
+    sourceSets.getByName("main") {
+        java.srcDir(uniffiGeneratedSourcesDir)
     }
 
     // Lint safety net: the historical codebase carries known warnings
@@ -269,6 +286,15 @@ dependencies {
     // ONNX Runtime
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
+    // Phase 2 — UniFFI Kotlin bindings runtime (UFFI-02). The generated
+    // uniffi.* Kotlin proxies dispatch through JNA (Java Native Access)
+    // instead of hand-rolled JNI entry points, per DEC-01 "Contract-First
+    // Law". The @aar artifact bundles libjnidispatch.so for every ABI we
+    // filter above (arm64-v8a, armeabi-v7a, x86, x86_64) — no host .so is
+    // required for the JVM unit-test classpath (see
+    // StreamifyEngineBridge for the hermetic fallback).
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
+
     // High-Performance HTTP Transport
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
@@ -342,5 +368,83 @@ if (!skipNativeBuild) {
     }.configureEach {
         dependsOn(cargoBuildRust)
     }
+}
+
+// ── UniFFI Kotlin binding generation (UFFI-02, Configuration-Cache Safe) ─
+//
+// DEC-01 (Contract-First Law): rust/src/streamify.udl — owned by Engineer
+// Alpha (the rust/ subtree) — is the single ABI source of truth for the
+// control plane. This task lowers it into Kotlin proxies under
+// build/generated/uniffi/kotlin (package `uniffi.<namespace>`) via the
+// crate's `uniffi-bindgen` binary (`cargo run --bin uniffi-bindgen`).
+//
+// Forward-safe by design: while the UDL has not landed the task is a
+// no-op (SKIPPED), so every CI shard — including the hermetic JVM unit
+// shard running with -PskipExternalNativeBuild=true and no Rust
+// toolchain — stays green. The moment the contract lands, generation
+// activates with zero further build changes.
+//
+// Escape hatch: -Pstreamify.skipUniffiBindgen=true forces the skip for
+// environments that have the UDL present but no cargo toolchain.
+val uniffiUdlFile: File = File(rustCrateDir, "src/streamify.udl")
+val uniffiConfigFile: File = File(rustCrateDir, "uniffi.toml")
+
+val skipUniffiBindgen: Boolean = providers.gradleProperty("streamify.skipUniffiBindgen")
+    .map { it.toBoolean() }
+    .getOrElse(false)
+
+val generateUniffiKotlinBindings by tasks.registering(Exec::class) {
+    group = "native"
+    description = "Generates Kotlin UniFFI bindings from rust/src/streamify.udl (UFFI-02)."
+
+    // Configuration-cache: copy script-level vals into task-local vals so
+    // the onlyIf/spec lambdas capture plain serializable values, never the
+    // Gradle script object (same house pattern as cargoBuildRust).
+    val udlFile = uniffiUdlFile
+    val configFile = uniffiConfigFile
+    val crateDir = rustCrateDir
+    val outDir = uniffiGeneratedSourcesDir
+    val skip = skipUniffiBindgen
+
+    // No-op until Alpha's UFFI-01 contract exists; also skippable for
+    // toolchain-less environments.
+    onlyIf { !skip && udlFile.isFile }
+
+    inputs.file(udlFile)
+    inputs.file(configFile).optional(true)
+    outputs.dir(outDir)
+
+    workingDir(crateDir)
+
+    // `cargo run --bin uniffi-bindgen` compiles the bindgen entry point
+    // declared by the Rust crate on demand; the UDL (not the .so) is the
+    // only semantic input, so this task deliberately does NOT depend on
+    // cargoBuildRust — binding generation and native packaging run as
+    // independent parallel edges ahead of the compile lifecycle.
+    val bindgenArgs = mutableListOf(
+        "run",
+        "--manifest-path", File(crateDir, "Cargo.toml").absolutePath,
+        "--bin", "uniffi-bindgen",
+        "--",
+        "generate",
+        udlFile.absolutePath,
+        "--language", "kotlin",
+        "--out-dir", outDir.absolutePath
+    )
+    if (configFile.isFile) {
+        bindgenArgs.addAll(listOf("--config", configFile.absolutePath))
+    }
+    commandLine("cargo", *bindgenArgs.toTypedArray())
+}
+
+// Hook the binding generation into the Android compilation lifecycle:
+// every Kotlin compilation of app sources (compileDebugKotlin,
+// compileReleaseKotlin and the JVM unit-test compilation that reuses main
+// sources) runs AFTER the bindings exist — mirroring how cargoBuildRust
+// is wired ahead of merge*JniLibFolders above.
+tasks.matching { task ->
+    task.name.startsWith("compile") && task.name.endsWith("Kotlin")
+}.configureEach {
+    dependsOn(generateUniffiKotlinBindings)
 }
 
