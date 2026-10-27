@@ -694,6 +694,7 @@ object NativeBridge {
 
     /** Canonical CAD-ID u64 — identical value across every subsystem. */
     fun jamCanonicalCadId(title: String, artist: String, durationSec: Int): Long {
+        jamCadIdOverride?.let { return it(title, artist, durationSec) }
         return try { nativeJamCanonicalCadId(title, artist, durationSec) } catch (_: Throwable) {
             0L
         }
@@ -1288,6 +1289,14 @@ object NativeBridge {
     /** Test hook: overrides the synced nanosecond clock (virtual time). */
     @Volatile
     var syncedClockOverride: (() -> Long)? = null
+
+    /**
+     * Test hook: overrides the canonical cad-id derivation (hermetic JVM
+     * shard — no .so, so the native hash is unavailable and every track
+     * would collapse to cad 0, refusing OP_ADD before the CRDT seam).
+     */
+    @Volatile
+    var jamCadIdOverride: ((String, String, Int) -> Long)? = null
 
     private val _incomingFrames = kotlinx.coroutines.flow.MutableSharedFlow<P2pFrameEvent>(
         extraBufferCapacity = 512,

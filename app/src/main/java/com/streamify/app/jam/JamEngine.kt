@@ -935,6 +935,14 @@ object JamEngine {
     private fun cadFor(track: Track): Long =
         NativeBridge.jamCanonicalCadId(track.title, track.artist, track.durationSec)
 
+    // ── Test seams (hermetic JVM shard) ────────────────────────────────────
+
+    /** Read-only probe: live fractional-index bits for a cad element. */
+    internal fun fracBitsForTest(cadId: Long): Long? = fracByCad[cadId]?.toRawBits()
+
+    /** Read-only probe: canonical cad id of a track. */
+    internal fun cadForTest(track: Track): Long = cadFor(track)
+
     /** Seals, applies, persists, and broadcasts one mutation op. */
     private fun mutate(
         type: Int,
