@@ -220,16 +220,18 @@ pub struct OsMediaIntegration {
 
 /// Interior binding state. One surface at a time per integration
 /// object: `start` replaces any previous binding (mirroring the engine's
-/// own single-active-surface reality).
+/// own single-active-surface reality). The adapters are boxed to keep
+/// the enum (and the `Mutex<IntegrationState>` it lives in) small —
+/// `SurfaceAdapter<S>` carries the full sync core inline.
 enum IntegrationState {
     /// No surface bound (before start / after stop).
     Inactive,
     #[cfg(target_os = "windows")]
-    Smtc(crate::platform::windows::smtc::SmtcAdapter),
+    Smtc(Box<crate::platform::windows::smtc::SmtcAdapter>),
     #[cfg(target_os = "linux")]
-    Mpris(crate::platform::linux::mpris::MprisAdapter),
+    Mpris(Box<crate::platform::linux::mpris::MprisAdapter>),
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    Apple(crate::platform::apple::remote_command::AppleRemoteCommandAdapter),
+    Apple(Box<crate::platform::apple::remote_command::AppleRemoteCommandAdapter>),
     /// `start` ran in a situation with no OS surface: updates become
     /// no-ops, commands never arrive. NOT an error (graceful headless
     /// degradation, MP-CAP01).
@@ -284,7 +286,7 @@ impl OsMediaIntegration {
                 window_handle,
             );
             if adapter.is_surface_bound() {
-                *guard = IntegrationState::Smtc(adapter);
+                *guard = IntegrationState::Smtc(Box::new(adapter));
                 Ok(true)
             } else {
                 // No HWND / non-interactive session: SMTC explicitly
@@ -303,7 +305,7 @@ impl OsMediaIntegration {
             // (an unbound adapter would no-op identically, but the
             // surface id would lie).
             if live {
-                *guard = IntegrationState::Mpris(adapter);
+                *guard = IntegrationState::Mpris(Box::new(adapter));
             } else {
                 *guard = IntegrationState::Headless;
             }
@@ -317,7 +319,7 @@ impl OsMediaIntegration {
                     self.engine.clone(),
                 );
             if adapter.is_surface_bound() {
-                *guard = IntegrationState::Apple(adapter);
+                *guard = IntegrationState::Apple(Box::new(adapter));
                 Ok(true)
             } else {
                 *guard = IntegrationState::Headless;

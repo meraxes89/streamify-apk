@@ -216,11 +216,11 @@ impl SecureStoreProvider for ForeignDelegateStore {
         match result.status {
             SecureStoreOpStatus::Success => Ok(result.secret),
             SecureStoreOpStatus::NotFound => Ok(None),
-            other => Err(other.to_engine_error().unwrap_or_else(|| {
-                EngineError::Storage {
+            other => Err(other
+                .to_engine_error()
+                .unwrap_or(EngineError::Storage {
                     kind: StorageErrorKind::Io,
-                }
-            })),
+                })),
         }
     }
 
@@ -292,43 +292,50 @@ pub fn default_secure_store() -> Arc<dyn SecureStoreProvider> {
     {
         return Arc::new(ForeignDelegateStore::new(delegate));
     }
+    select_native_secure_store()
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        return Arc::new(DpapiStore::new());
+/// Per-target native backend selection. A helper per cfg — each with a
+/// proper tail expression — instead of `return`-terminated cfg blocks
+/// (whose fall-through shape is invisible to the compiler's control
+/// flow and trips needless_return under `-D warnings`).
+#[cfg(target_os = "linux")]
+fn select_native_secure_store() -> Arc<dyn SecureStoreProvider> {
+    use self::secret_service::SecretServiceStore;
+    if SecretServiceStore::is_available() {
+        return Arc::new(SecretServiceStore::new());
     }
+    tracing::warn!(
+        target: "streamify::platform",
+        "no Secret Service on the session bus — falling back to NOT-at-rest-secure \
+         in-memory storage (session tokens will not survive restarts)"
+    );
+    Arc::new(InMemorySecureStore::new())
+}
 
-    #[cfg(target_os = "linux")]
-    {
-        if secret_service::SecretServiceStore::is_available() {
-            return Arc::new(SecretServiceStore::new());
-        }
-        tracing::warn!(
-            target: "streamify::platform",
-            "no Secret Service on the session bus — falling back to NOT-at-rest-secure              in-memory storage (session tokens will not survive restarts)"
-        );
-        return Arc::new(InMemorySecureStore::new());
-    }
+#[cfg(target_os = "windows")]
+fn select_native_secure_store() -> Arc<dyn SecureStoreProvider> {
+    Arc::new(DpapiStore::new())
+}
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-        return Arc::new(KeychainStore::new());
-    }
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn select_native_secure_store() -> Arc<dyn SecureStoreProvider> {
+    Arc::new(KeychainStore::new())
+}
 
-    #[cfg(not(any(
-        target_os = "windows",
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "ios"
-    )))]
-    {
-        tracing::warn!(
-            target: "streamify::platform",
-            "no native secure-store backend on this target and no foreign delegate installed — \
-             falling back to NOT-at-rest-secure in-memory storage"
-        );
-        Arc::new(InMemorySecureStore::new())
-    }
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "ios"
+)))]
+fn select_native_secure_store() -> Arc<dyn SecureStoreProvider> {
+    tracing::warn!(
+        target: "streamify::platform",
+        "no native secure-store backend on this target and no foreign delegate installed — \
+         falling back to NOT-at-rest-secure in-memory storage"
+    );
+    Arc::new(InMemorySecureStore::new())
 }
 
 /// Startup self-test (UDL namespace function `secure_store_roundtrip`):

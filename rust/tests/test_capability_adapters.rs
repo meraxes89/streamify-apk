@@ -464,16 +464,14 @@ fn adapter_hammering_from_many_threads_completes_within_budget() {
                 barrier.wait();
                 for i in 0..250u64 {
                     adapter
-                        .update_playback(&playing(u64::from(i) + u64::from(thread_id as u32)))
+                        .update_playback(&playing(i + u64::from(thread_id as u32)))
                         .unwrap();
                     adapter
                         .update_metadata(meta("Stress", &format!("Artist {thread_id}")))
                         .unwrap();
                     streamify_core_rs::platform::adapter::dispatch_inbound(
                         &sink,
-                        MediaCommand::Seek {
-                            position_ms: u64::from(i),
-                        },
+                        MediaCommand::Seek { position_ms: i },
                     );
                     store.store_secret("stress", b"payload").unwrap();
                     store.retrieve_secret("stress").unwrap();

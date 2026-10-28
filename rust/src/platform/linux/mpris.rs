@@ -725,7 +725,7 @@ impl OsMediaSurface for MprisSurface {
             }
         }
         let delta = StateDelta {
-            seeked: track_changed.then(|| 0),
+            seeked: track_changed.then_some(0),
             ..StateDelta::default()
         };
         Self::emit_delta(self.inner.clone(), delta, true);
@@ -763,15 +763,17 @@ mod tests {
 
     #[test]
     fn metadata_dict_carries_the_canonical_keys() {
-        let mut state = MprisState::default();
-        state.metadata = MprisMetadataImage {
-            title: "Nightcall".into(),
-            artist: "Kavinsky".into(),
-            album: Some("OutRun".into()),
-            art_url: Some("file:///tmp/art.jpg".into()),
-            track_key: 0xdeadbeef,
+        let state = MprisState {
+            metadata: MprisMetadataImage {
+                title: "Nightcall".into(),
+                artist: "Kavinsky".into(),
+                album: Some("OutRun".into()),
+                art_url: Some("file:///tmp/art.jpg".into()),
+                track_key: 0xdeadbeef,
+            },
+            duration_ms: 240_000,
+            ..MprisState::default()
         };
-        state.duration_ms = 240_000;
         let dict = state.metadata_dict();
 
         assert_eq!(dict.len(), 6, "trackid+length+artUrl+title+artist+album");
@@ -789,9 +791,7 @@ mod tests {
             "OutRun"
         );
         // trackid embeds the identity key.
-        let trackid = match &dict["mpris:trackid"] {
-            v => v.clone(),
-        };
+        let trackid = dict["mpris:trackid"].clone();
         assert!(trackid
             .to_string()
             .contains(&format!("{:016x}", 0xdeadbeef_u64)));
@@ -804,10 +804,12 @@ mod tests {
 
     #[test]
     fn paused_position_freezes_instead_of_extrapolating() {
-        let mut state = MprisState::default();
-        state.status = PlaybackSyncState::Playing;
-        state.position_ms = 10_000;
-        state.position_updated = Instant::now();
+        let mut state = MprisState {
+            status: PlaybackSyncState::Playing,
+            position_ms: 10_000,
+            position_updated: Instant::now(),
+            ..MprisState::default()
+        };
         // (no sleep: extrapolation is exercised by the absorb test
         // below with a synthetic clock; here the freeze is the point)
         state.status = PlaybackSyncState::Paused;
@@ -816,10 +818,15 @@ mod tests {
 
     #[test]
     fn absorb_detects_discontinuities_and_status_changes() {
-        let mut state = MprisState::default();
-        state.status = PlaybackSyncState::Playing;
-        state.position_ms = 10_000;
-        state.metadata.track_key = 7;
+        let mut state = MprisState {
+            status: PlaybackSyncState::Playing,
+            position_ms: 10_000,
+            metadata: MprisMetadataImage {
+                track_key: 7,
+                ..MprisMetadataImage::default()
+            },
+            ..MprisState::default()
+        };
 
         // Smooth progression (position advanced by ~the elapsed
         // window, same track): no Seeked, status unchanged.

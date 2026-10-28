@@ -227,7 +227,7 @@ impl<S: OsMediaSurface> SurfaceAdapter<S> {
         if identity_changed {
             // New track: swap the metadata immediately and re-push the
             // timeline so the scrubber belongs to the new track.
-            if let Err(err) = self.surface.push_metadata(&*metadata) {
+            if let Err(err) = self.surface.push_metadata(&metadata) {
                 self.degrade(&err);
                 return Ok(());
             }
