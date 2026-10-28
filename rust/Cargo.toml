@@ -96,6 +96,17 @@ uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
 
 [dev-dependencies]
 tempfile = "3.10"
+# Phase 5: nameable tokio for the capability adapter suite's timeouts
+# (the runtime itself is the engine's shared one — resolver::get_runtime).
+tokio = "1.38"
+# Phase 5 (MP-CAP02 e2e): the MPRIS end-to-end lane drives the REAL
+# service over a private dbus-daemon with a plain zbus client (Linux
+# hosts only — auto-skipped elsewhere, the same lane the desktop CI
+# runners execute).
+futures-util = "0.3"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+zbus = { version = "6", default-features = false, features = ["tokio", "proxy"] }
 
 [features]
 default = []
@@ -122,13 +133,48 @@ tracing-android = { version = "0.2", optional = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 tracing-oslog = { version = "0.3", optional = true }
 
+# Phase 5 (MP-CAP03/MP-CAP04): Apple platform capability adapters. The
+# RemoteCommandCenter/NowPlayingInfoCenter bridge resolves its C ABI at
+# runtime (dlsym, see platform/apple/remote_command.rs — the .mm object
+# links from the XCFramework / CMake static lib, same zero-link-dep
+# discipline as the Phase 4b PipeWire dlopen driver), so only the
+# Keychain provider needs a compile-time crate: security-framework
+# (pure-Rust Security.framework bindings, audited by `cargo check
+# --target aarch64-apple-ios` on every host lane).
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+security-framework = "3"
+
 # ── Linux desktop: journald (degrades to fmt-only without a socket) ─────────
 [target.'cfg(target_os = "linux")'.dependencies]
 tracing-journald = { version = "0.3", optional = true }
+# Phase 5 (MP-CAP02/MP-CAP04): the MPRIS D-Bus adapter and the Secret
+# Service keyring provider. zbus is the pure-Rust D-Bus connection (NO
+# libdbus link dep — the wire protocol is implemented in Rust, per the
+# Phase 5 "avoid heavy hard runtime link dependencies" mandate), and the
+# tokio feature runs it on the engine's shared runtime
+# (resolver::get_runtime) instead of spawning a second executor.
+zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service"] }
 
 # ── Windows desktop: Event Tracing for Windows ──────────────────────────────
 [target.'cfg(target_os = "windows")'.dependencies]
 tracing-etw = { version = "0.3", optional = true }
+# Phase 5 (MP-CAP01/MP-CAP04): the SMTC adapter (WinRT
+# Windows.Media.SystemMediaTransportControls via GetForWindow interop)
+# and the DPAPI secure store (CryptProtectData/CryptUnprotectData).
+# Pure-Rust WinRT/Win32 projections — one bridge, one language, and
+# `cargo check --target x86_64-pc-windows-gnu` audits the exact code
+# the Windows shell runs from every host lane. Features are the minimal
+# projection set (no full Windows.* surface: keeps the check tree and
+# the cdylib size lean).
+windows = { version = "0.62", features = [
+    "Foundation",                              # TimeSpan, TypedEventHandler
+    "Media",                                   # SMTC + MediaPlaybackStatus enums
+    "Media_MediaProperties",                   # MusicProperties (DisplayUpdater)
+    "Win32_Foundation",                        # HWND
+    "Win32_System_Com",                        # CoIncrementMTAUsage (event apartment)
+    "Win32_System_WinRT",                      # ISystemMediaTransportControlsInterop (GetForWindow)
+    "Win32_Security_Cryptography",             # DPAPI CryptProtectData/Unprotect + DATA_BLOB
+] }
 
 # Phase 1: the 32-peer mesh simulation is allocation-bound in the default
 # unoptimized test profile (7× slower than release — measured: 208 ms

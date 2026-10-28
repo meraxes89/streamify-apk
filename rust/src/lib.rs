@@ -81,6 +81,12 @@ pub mod wear_sync;
 pub mod gesture_physics;
 pub mod radio_scorer;
 pub mod repository;
+// Phase 5 (MP-CAP01..MP-CAP04): the OS capability adapters — Windows
+// SMTC, Linux MPRIS, Apple RemoteCommandCenter (host-testable cores
+// + cfg-gated platform glue shells) and the SecureStoreProvider
+// delegation (DPAPI / Secret Service / Keychain / UniFFI foreign
+// delegate). The UniFFI facade for the shells is OsMediaIntegration.
+pub mod platform;
 pub mod resolver;
 pub mod search;
 pub mod seek_guard;
@@ -160,6 +166,17 @@ pub use desktop_hal_models::{
 // Multiplatform Phase 3 (MP-C15): observability entry points for the
 // client shells (Beta's init wiring).
 pub use obs::{init_observability, register_core_metrics};
+// Phase 5 (MP-CAP01..04): the platform capability surface for the
+// desktop/mobile shells — the UniFFI facade, the secure-store
+// delegate callback + its UDL types, and the namespace functions the
+// shells install/self-test through. Re-exported at the crate root so
+// the UniFFI scaffolding resolves them by bare name (same rule as
+// the contract re-exports above).
+pub use platform::secure_store::{
+    secure_store_roundtrip, set_secure_store_delegate, SecureFetchResult,
+    SecureStoreDelegate, SecureStoreOpStatus,
+};
+pub use platform::OsMediaIntegration;
 // Phase 2 (UFFI-01): the crate-root `TrackMetadata` is now the UniFFI
 // contract record (id / duration_ms / stream_url? / album_art_url?). The
 // lofty-backed file-metadata struct remains available at

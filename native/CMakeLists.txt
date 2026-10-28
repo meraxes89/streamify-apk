@@ -297,6 +297,23 @@ if (STREAMIFY_BUILD_TESTS)
         endif()
     endif()
 
+    # Phase 5 (MP-CAP03 + MP-UI02): the capability C-ABI parity lane.
+    # Both headers (native/include/apple_remote_command.h,
+    # native/include/ios_audio_session.h) are PURE C — no Apple
+    # frameworks — so this suite compiles and pins the frozen
+    # SF_APPLE_CMD_* / SF_IOSAS_* codes on EVERY host; the Rust suite
+    # cross-checks the same values from the other side, and the real
+    # .mm glue builds only in the Apple lanes below.
+    add_executable(capability_abi_parity_test_suite
+        tests/test_capability_abi_parity.cc
+        # The inert C stubs keep both ABIs linkable on every host (the
+        # real ObjC++ glue only compiles on Apple lanes, below).
+        os/apple_remote_command_stub.c
+        audio/ios_audio_session_stub.c
+    )
+    target_include_directories(capability_abi_parity_test_suite PRIVATE include .)
+    target_link_libraries(capability_abi_parity_test_suite PRIVATE pthread)
+
     # Variant B: Hardware-tuned hot loops for all 4 test targets.
     # Prevents ASan/UBSan instrumentation from defeating vectorization and register
     # allocation in the 10M-frame SPSC, 1M-tick pacer, and SHA-256 stress loops.
@@ -305,7 +322,7 @@ if (STREAMIFY_BUILD_TESTS)
     # portable, while the arm64-v8a NDK lane carries the deterministic
     # -march=armv8-a+simd+crypto baseline set at the top of this file.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer desktop_hal_render_core_test_suite)
+        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer desktop_hal_render_core_test_suite capability_abi_parity_test_suite)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             list(APPEND PHASE4B_TEST_TARGETS linux_hal_driver_test_suite)
         endif()
@@ -337,6 +354,8 @@ if (STREAMIFY_BUILD_TESTS)
     # Phase 4b lanes: the desktop HAL render cores (every host) and the
     # Linux dlopen driver (Linux hosts).
     add_test(NAME desktop_hal_render_core_test_suite COMMAND desktop_hal_render_core_test_suite)
+    # Phase 5 lane: the capability C-ABI parity suite (every host).
+    add_test(NAME capability_abi_parity_test_suite COMMAND capability_abi_parity_test_suite)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME linux_hal_driver_test_suite COMMAND linux_hal_driver_test_suite)
     endif()
@@ -388,6 +407,54 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
     target_include_directories(streamify_linuxhal_driver PRIVATE include src .)
     target_link_libraries(streamify_linuxhal_driver PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# --- Phase 5 (MP-CAP03): Apple RemoteCommandCenter bridge (Apple only) -------
+# The MPRemoteCommandCenter / MPNowPlayingInfoCenter glue behind the
+# pure-C ABI of native/include/apple_remote_command.h. The Rust core
+# resolves these symbols at RUNTIME (dlsym, see
+# rust/src/platform/apple/remote_command.rs) — the same zero-link-dep
+# discipline as the Phase 4b PipeWire dlopen driver — so nothing here
+# is a build-time dependency of the Rust crate: this library exists so
+# macOS hosts can link it into the app process (and the XCFramework
+# script compiles the same TU for the iOS slices).
+# The header itself stays host-compilable and is audited on EVERY lane
+# by capability_abi_parity_test_suite above.
+if(APPLE)
+    enable_language(OBJCXX)
+    add_library(streamify_apple_remote_command STATIC
+        os/apple_remote_command.mm
+    )
+    target_include_directories(streamify_apple_remote_command PRIVATE include .)
+    target_link_libraries(streamify_apple_remote_command PRIVATE
+        "-framework MediaPlayer"
+        "-framework Foundation"
+    )
+endif()
+
+# --- Phase 5 (MP-UI02): iOS AVAudioSession adapter (Apple only) ---------------
+# The AVAudioSession glue behind the pure-C ABI of
+# native/include/ios_audio_session.h: category configuration,
+# interruption pause/resume and route-loss handling, feeding the engine
+# over the frozen SF_IOSAS_* ABI. Same dlsym discipline as above: the
+# Rust core (rust/src/platform/apple/ios_audio_session.rs) resolves the
+# symbols at runtime, and the TU self-guards to an inert stub on macOS
+# (no AVAudioSession there) so the one file builds on every Apple lane;
+# the XCFramework script compiles it for the iOS slices where it is
+# live. The header is audited on EVERY lane by
+# capability_abi_parity_test_suite above.
+if(APPLE)
+    add_library(streamify_ios_audio_session STATIC
+        audio/ios_audio_session.mm
+    )
+    target_include_directories(streamify_ios_audio_session PRIVATE include .)
+    # The TU references no AVFoundation symbols unless it is built for
+    # iOS (the TARGET_OS_IPHONE guard compiles the inert stub on macOS),
+    # but linking the frameworks keeps every Apple lane uniform.
+    target_link_libraries(streamify_ios_audio_session PRIVATE
+        "-framework AVFoundation"
+        "-framework Foundation"
+    )
 endif()
 
 # --- LIBFUZZER HARNESS (host clang; requires clang with compiler-rt) ---

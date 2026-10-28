@@ -45,7 +45,7 @@
 //!   * **MP-C05** — `contract_version()` for fail-fast ABI verification.
 //!   * **MP-C06** — the panic safety boundary: every FFI entrypoint is
 //!     wrapped by [`ffi_shield`], which converts any Rust panic into
-//!     `EngineError::Internal { message, backtrace }` so a panic NEVER
+//!     `EngineError::Internal { error_message, backtrace }` so a panic NEVER
 //!     unwinds into Kotlin or Swift (see `Cargo.toml` for the release
 //!     profile's `panic = "abort"` backstop and its interaction with the
 //!     shields).
@@ -124,7 +124,8 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 ///
 ///   1. THIS shield (primary): the method's own `Result` channel carries
 ///      the structured `Internal` error, so foreign code catches the typed
-///      `EngineErrorException.InternalException` with message + backtrace.
+///      `EngineErrorException.InternalException` with error_message +
+///      backtrace.
 ///      Active in every build configuration whose panic strategy unwinds
 ///      (debug, test, and any downstream binary that overrides the
 ///      profile).
@@ -149,10 +150,10 @@ where
     match catch_unwind(AssertUnwindSafe(body)) {
         Ok(result) => result,
         Err(payload) => {
-            let message = format!("panic under {op}: {}", panic_message(payload.as_ref()));
+            let error_message = format!("panic under {op}: {}", panic_message(payload.as_ref()));
             let backtrace = std::backtrace::Backtrace::force_capture().to_string();
             Err(EngineError::Internal {
-                message,
+                error_message,
                 backtrace: Some(backtrace),
             })
         }
@@ -459,7 +460,7 @@ pub enum CryptoErrorKind {
 ///
 /// `Internal` is also the panic channel (MP-C06): the FFI shields
 /// convert any Rust panic into
-/// `Internal { message, backtrace }`.
+/// `Internal { error_message, backtrace }`.
 ///
 /// Stable numeric codes: [`EngineError::stable_code`] maps every error
 /// to a `u32` of the form `(category << 24) | (kind << 16) | status`,
@@ -495,11 +496,13 @@ pub enum EngineError {
         kind: CryptoErrorKind,
     },
     /// Unexpected internal fault, including marshaled Rust panics
-    /// (MP-C06). `message` carries the panic text or diagnostic;
-    /// `backtrace` the captured stack when available.
+    /// (MP-C06). `error_message` carries the panic text or diagnostic;
+    /// `backtrace` the captured stack when available. The field name is
+    /// pinned to `error_message` (not `message`) by the UniFFI contract —
+    /// see the UDL's NAMING NOTE for the Kotlin codegen collision.
     Internal {
         /// Human-readable diagnostic (panic text for shielded panics).
-        message: String,
+        error_message: String,
         /// Captured backtrace, when available.
         backtrace: Option<String>,
     },
@@ -542,8 +545,8 @@ impl fmt::Display for EngineError {
             },
             EngineError::Storage { kind } => write!(f, "storage error: {kind:?}"),
             EngineError::Crypto { kind } => write!(f, "crypto error: {kind:?}"),
-            EngineError::Internal { message, .. } => {
-                write!(f, "internal error: {message}")
+            EngineError::Internal { error_message, .. } => {
+                write!(f, "internal error: {error_message}")
             }
         }
     }
@@ -1229,7 +1232,7 @@ impl StreamifyEngine {
         ffi_shield("StreamifyEngine::record_buffer_stats", move || {
             if !fill_ratio.is_finite() {
                 return Err(EngineError::Internal {
-                    message: "malformed telemetry: non-finite fill ratio rejected at the boundary"
+                    error_message: "malformed telemetry: non-finite fill ratio rejected at the boundary"
                         .to_string(),
                     backtrace: None,
                 });
@@ -1280,7 +1283,7 @@ impl StreamifyEngine {
             let trimmed = session_name.trim();
             if trimmed.is_empty() || session_name.len() > MAX_JAM_SESSION_NAME_BYTES {
                 return Err(EngineError::Internal {
-                    message: "invalid state: blank or oversized Jam session name rejected"
+                    error_message: "invalid state: blank or oversized Jam session name rejected"
                         .to_string(),
                     backtrace: None,
                 });
@@ -1339,7 +1342,7 @@ impl StreamifyEngine {
         ffi_shield("StreamifyEngine::apply_jam_delta", move || {
             if delta.is_empty() || !delta.len().is_multiple_of(JAM_OP_SIZE) {
                 return Err(EngineError::Internal {
-                    message: format!(
+                    error_message: format!(
                         "codec framing: jam delta length {} is not a multiple of the {JAM_OP_SIZE}-byte wire row",
                         delta.len()
                     ),
@@ -1348,7 +1351,7 @@ impl StreamifyEngine {
             }
             if delta.len() > MAX_JAM_DELTA_BYTES {
                 return Err(EngineError::Internal {
-                    message: format!(
+                    error_message: format!(
                         "codec framing: jam delta of {} bytes exceeds the {MAX_JAM_DELTA_BYTES}-byte batch bound",
                         delta.len()
                     ),
@@ -1365,7 +1368,7 @@ impl StreamifyEngine {
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let session = guard.as_mut().ok_or_else(|| EngineError::Internal {
-                message: "invalid state: no live Jam session for delta application".to_string(),
+                error_message: "invalid state: no live Jam session for delta application".to_string(),
                 backtrace: None,
             })?;
             let mut ops_applied = 0u32;
@@ -1412,7 +1415,7 @@ impl StreamifyEngine {
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let session = guard.as_ref().ok_or_else(|| EngineError::Internal {
-                message: "invalid state: no live Jam session to hash".to_string(),
+                error_message: "invalid state: no live Jam session to hash".to_string(),
                 backtrace: None,
             })?;
             Ok(canonical_jam_state_hash(&session.crdt))
@@ -1433,13 +1436,13 @@ impl StreamifyEngine {
         AudioStreamConfig::default().validate()?;
         if available_parallelism().is_err() {
             return Err(EngineError::Internal {
-                message: "environment: scheduler width unavailable".to_string(),
+                error_message: "environment: scheduler width unavailable".to_string(),
                 backtrace: None,
             });
         }
         if SystemTime::now() <= UNIX_EPOCH {
             return Err(EngineError::Internal {
-                message: "environment: wall clock at or before the epoch".to_string(),
+                error_message: "environment: wall clock at or before the epoch".to_string(),
                 backtrace: None,
             });
         }
@@ -1648,8 +1651,8 @@ mod tests {
                 .record_buffer_stats(9_999, 9, garbage)
                 .expect_err("non-finite fill ratio must be rejected");
             assert!(
-                matches!(&err, EngineError::Internal { message, .. }
-                    if message.contains("non-finite fill ratio")),
+                matches!(&err, EngineError::Internal { error_message, .. }
+                    if error_message.contains("non-finite fill ratio")),
                 "{garbage} must be rejected as Internal with a diagnostic, got {err:?}"
             );
         }
@@ -1754,7 +1757,7 @@ mod tests {
             ),
             (
                 EngineError::Internal {
-                    message: "probe".into(),
+                    error_message: "probe".into(),
                     backtrace: None,
                 },
                 "internal",
@@ -1824,7 +1827,7 @@ mod tests {
         );
         assert_eq!(
             EngineError::Internal {
-                message: "x".into(),
+                error_message: "x".into(),
                 backtrace: None
             }
             .stable_code(),
@@ -1843,14 +1846,14 @@ mod tests {
         })
         .expect_err("panicking body must marshal");
         match &err {
-            EngineError::Internal { message, backtrace } => {
+            EngineError::Internal { error_message, backtrace } => {
                 assert!(
-                    message.contains("boom 0xC0FFEE"),
-                    "message must carry the panic text: {message}"
+                    error_message.contains("boom 0xC0FFEE"),
+                    "error_message must carry the panic text: {error_message}"
                 );
                 assert!(
-                    message.contains("probe"),
-                    "message must name the faulting operation: {message}"
+                    error_message.contains("probe"),
+                    "error_message must name the faulting operation: {error_message}"
                 );
                 let bt = backtrace
                     .as_ref()
@@ -1883,8 +1886,8 @@ mod tests {
             .create_jam_session("__panic_probe__".to_string())
             .expect_err("injected panic must marshal");
         match &err {
-            EngineError::Internal { message, backtrace } => {
-                assert!(message.contains("0xDEADBEEF"));
+            EngineError::Internal { error_message, backtrace } => {
+                assert!(error_message.contains("0xDEADBEEF"));
                 assert!(backtrace.is_some());
             }
             other => panic!("wrong variant: {other:?}"),
@@ -2439,9 +2442,9 @@ mod tests {
     fn expect_internal_with(err: Result<impl std::fmt::Debug, EngineError>, needle: &str) {
         let err = err.expect_err("expected a typed Internal error");
         match &err {
-            EngineError::Internal { message, .. } => assert!(
-                message.contains(needle),
-                "Internal message must mention '{needle}': {message}"
+            EngineError::Internal { error_message, .. } => assert!(
+                error_message.contains(needle),
+                "Internal error_message must mention '{needle}': {error_message}"
             ),
             other => panic!("expected Internal({needle}..), got {other:?}"),
         }
