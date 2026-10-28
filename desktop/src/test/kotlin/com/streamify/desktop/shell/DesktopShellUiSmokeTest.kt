@@ -118,7 +118,83 @@ class DesktopShellUiSmokeTest {
         )
         assertNull(shortcutFor(Key.F, ctrlPressed = false, metaPressed = false))
         assertNull(shortcutFor(Key.A, ctrlPressed = true, metaPressed = false))
-        assertNull(shortcutFor(Key.DirectionRight, ctrlPressed = false, metaPressed = false))
+        // Modifier-riding arrows stay with focus traversal / the OS —
+        // only the BARE arrows are transport nudges.
+        assertNull(shortcutFor(Key.DirectionUp, ctrlPressed = true, metaPressed = false))
+        assertNull(shortcutFor(Key.DirectionDown, ctrlPressed = false, metaPressed = true))
+    }
+
+    // ── Directive transport shortcuts: Left/Right = Seek, Up/Down = Volume ─
+
+    @Test
+    fun bareArrowsNudgeSeekAndVolume() {
+        assertEquals(
+            ShellShortcut.SEEK_BACK,
+            shortcutFor(Key.DirectionLeft, ctrlPressed = false, metaPressed = false),
+        )
+        assertEquals(
+            ShellShortcut.SEEK_FORWARD,
+            shortcutFor(Key.DirectionRight, ctrlPressed = false, metaPressed = false),
+        )
+        assertEquals(
+            ShellShortcut.VOLUME_UP,
+            shortcutFor(Key.DirectionUp, ctrlPressed = false, metaPressed = false),
+        )
+        assertEquals(
+            ShellShortcut.VOLUME_DOWN,
+            shortcutFor(Key.DirectionDown, ctrlPressed = false, metaPressed = false),
+        )
+    }
+
+    @Test
+    fun seekTargetsClampToTrackBoundsAndNeverInventPositions() {
+        // Unknown position: absence is never treated as zero.
+        assertNull(TransportSteps.seekTargetFrom(positionMs = null, deltaMs = 10_000L))
+
+        // Ordinary nudge.
+        assertEquals(
+            35_000L,
+            TransportSteps.seekTargetFrom(positionMs = 25_000L, deltaMs = 10_000L),
+        )
+
+        // Nudging below zero clamps to the track head.
+        assertEquals(
+            0L,
+            TransportSteps.seekTargetFrom(positionMs = 4_000L, deltaMs = -10_000L),
+        )
+
+        // Nudging past a known duration clamps to the track end.
+        assertEquals(
+            180_000L,
+            TransportSteps.seekTargetFrom(
+                positionMs = 175_000L,
+                deltaMs = 10_000L,
+                durationMs = 180_000L,
+            ),
+        )
+
+        // Without a duration there is no upper bound to clamp against.
+        assertEquals(
+            185_000L,
+            TransportSteps.seekTargetFrom(positionMs = 175_000L, deltaMs = 10_000L),
+        )
+    }
+
+    @Test
+    fun volumeTargetsClampToTheEngineRange() {
+        assertEquals(0.75f, TransportSteps.volumeTargetFrom(0.70f, +0.05f))
+        assertEquals(0f, TransportSteps.volumeTargetFrom(0.02f, -0.05f))
+        assertEquals(1f, TransportSteps.volumeTargetFrom(0.98f, +0.05f))
+    }
+
+    // ── Directive sidebar destinations ──────────────────────────────
+
+    @Test
+    fun sidebarCarriesTheFiveDirectiveDestinations() {
+        assertEquals(
+            listOf("Home", "Search", "Library", "Jam Sessions", "Settings"),
+            ShellSection.entries.map { it.label },
+        )
     }
 
     // ── Engine-port-backed shell state wiring ───────────────────────────

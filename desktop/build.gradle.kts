@@ -136,14 +136,31 @@ sourceSets.getByName("main") {
 }
 
 // Hermetic degradation (same contract as the app module's JVM unit shard and
-// :shared): with -Pstreamify.skipRust=true on a toolchain-less host, the JNA
-// smoke suite cannot compile against the generated bindings (which :shared
-// then does not generate at all), so its sources are excluded from the test
-// compilation entirely and the run reports zero tests instead of failing. CI
-// desktop jobs (cargo present) always compile and execute the suite for real.
+// :shared): the UniFFI-referencing JNA smoke suite (src/testEngine) cannot
+// compile against the generated bindings on a toolchain-less host
+// (-Pstreamify.skipRust=true — :shared then does not generate them at all),
+// so that directory is registered on the test compilation ONLY when the
+// engine lane is live. The engine-free shell suite (src/test) stays compiled
+// in every environment, so the directive's local smoke contract
+// (":desktop:test with -Pstreamify.skipRust=true") keeps verifying the
+// shell's decision machinery instead of degrading to zero tests.
+//
+// NOTE (Phase 5 fix): the previous `java.setSrcDirs(emptyList<String>())`
+// block cleared only the JAVA source directories — KGP compiles test
+// sources from the Kotlin source set's own roots, so the uniffi-referencing
+// suite still broke compileTestKotlin under skipRust. The conditional
+// srcDir registration below is the durable form of that degradation.
+val testEngineSrcDir = "src/testEngine/kotlin"
 sourceSets.getByName("test") {
-    if (skipDesktopNative) {
-        java.setSrcDirs(emptyList<String>())
+    if (!skipDesktopNative) {
+        java.srcDir(testEngineSrcDir)
+    }
+}
+kotlin {
+    sourceSets.getByName("test") {
+        if (!skipDesktopNative) {
+            kotlin.srcDir(testEngineSrcDir)
+        }
     }
 }
 

@@ -30,12 +30,12 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,10 +66,13 @@ import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.WindowState
 import com.streamify.shared.components.MiniPlayerBar
 import com.streamify.shared.components.MiniPlayerBarState
+import com.streamify.shared.components.PlaybackSeekbar
+import com.streamify.shared.components.QueueList
+import com.streamify.shared.components.QueueListState
 import com.streamify.shared.components.VolumeSlider
+import com.streamify.shared.components.rememberDacSmoothedPosition
 import com.streamify.shared.model.PlaybackStatus
 import com.streamify.shared.model.PlaybackUiState
-import com.streamify.shared.model.formatPlaybackTime
 import com.streamify.shared.state.PlaybackController
 import com.streamify.shared.theme.StreamifyPalette
 import com.streamify.shared.theme.StreamifySpacing
@@ -98,13 +101,16 @@ import kotlinx.coroutines.launch
  *    width band (>= 1000 dp expanded, below icon-only); the hamburger
  *    toggles it manually with band-crossing reset semantics
  *    (see ShellNavModel).
- *  * KEYBOARD SHORTCUTS: Space play/pause, Ctrl+Right/Left track skip,
- *    Ctrl+F focus search — dispatched from a BUBBLE-phase [onKeyEvent] so
- *    focused text entry consumes its own keys first.
+ *  * KEYBOARD SHORTCUTS: Space play/pause, Left/Right seek, Up/Down
+ *    volume, Ctrl+Right/Left track skip, Ctrl+F focus search — dispatched
+ *    from a BUBBLE-phase [onKeyEvent] so focused text entry consumes its
+ *    own keys first.
  *  * ENGINE STATE: every rendered value (status, volume, position, buffer
  *    health) comes from the push flow via [PlaybackController.state] —
  *    playback position derives strictly from the hardware DAC
- *    presentation clock (MP-DEC-03); zero polling (MP-DEC-04).
+ *    presentation clock (MP-DEC-03), filtered for rendering only by the
+ *    shared [rememberDacSmoothedPosition] playhead guards; zero polling
+ *    (MP-DEC-04).
  */
 @Composable
 fun WindowScope.DesktopShell(
@@ -122,6 +128,24 @@ fun WindowScope.DesktopShell(
     val searchFocusRequester = remember { FocusRequester() }
     val rootFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+
+    // ── Transport nudges (bare-arrow shortcuts) ────────────────────────
+    // Seek bases off the engine-authoritative pushed position (rendered
+    // playhead smoothing never feeds back into commands); volume likewise
+    // round-trips through the engine, so two surfaces can never disagree.
+
+    fun nudgeSeek(deltaMs: Long) {
+        val target = TransportSteps.seekTargetFrom(
+            positionMs = uiState.positionMs,
+            deltaMs = deltaMs,
+            durationMs = uiState.durationMs,
+        )
+        if (target != null) controller?.seekTo(target)
+    }
+
+    fun nudgeVolume(step: Float) {
+        controller?.setVolume(TransportSteps.volumeTargetFrom(uiState.volume, step))
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(StreamifyPalette.BgBase)) {
         // Capture the constraint explicitly: the toggle callback below is a
@@ -182,6 +206,22 @@ fun WindowScope.DesktopShell(
                                     scope.launch { searchFocusRequester.requestFocus() }
                                     true
                                 }
+                                // Bare arrows: transport nudging off the
+                                // ENGINE-AUTHORITATIVE position/volume (the
+                                // pushed snapshot's values — the smoothed
+                                // playhead is render-only).
+                                ShellShortcut.SEEK_FORWARD -> {
+                                    nudgeSeek(+TransportSteps.SEEK_STEP_MS); true
+                                }
+                                ShellShortcut.SEEK_BACK -> {
+                                    nudgeSeek(-TransportSteps.SEEK_STEP_MS); true
+                                }
+                                ShellShortcut.VOLUME_UP -> {
+                                    nudgeVolume(+TransportSteps.VOLUME_STEP); true
+                                }
+                                ShellShortcut.VOLUME_DOWN -> {
+                                    nudgeVolume(-TransportSteps.VOLUME_STEP); true
+                                }
                                 null -> false
                             }
                         },
@@ -191,6 +231,7 @@ fun WindowScope.DesktopShell(
                         ShellSection.SEARCH -> SearchPane(searchFocusRequester)
                         ShellSection.LIBRARY -> LibraryPane()
                         ShellSection.JAM -> JamPane(controller)
+                        ShellSection.SETTINGS -> SettingsPane(uiState, controller, railMode)
                     }
                 }
             }
@@ -272,6 +313,7 @@ private val ShellSection.icon: ImageVector
         ShellSection.SEARCH -> Icons.Filled.Search
         ShellSection.LIBRARY -> Icons.Filled.LibraryMusic
         ShellSection.JAM -> Icons.Filled.Groups
+        ShellSection.SETTINGS -> Icons.Filled.Settings
     }
 
 @Composable
@@ -395,38 +437,19 @@ private fun HomePane(uiState: PlaybackUiState, controller: PlaybackController?) 
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                // Progress: DAC-clock position (MP-DEC-03), determinate when
-                // a duration is known, indeterminate otherwise.
-                val fraction = uiState.progressFraction
-                if (fraction != null) {
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = StreamifyPalette.Primary,
-                        trackColor = StreamifyPalette.BgSurfaceElevated,
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = StreamifyPalette.Primary,
-                        trackColor = StreamifyPalette.BgSurfaceElevated,
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = uiState.positionMs?.let { formatPlaybackTime(it) } ?: "--:--",
-                        style = StreamifyTextStyles.caption,
-                        color = StreamifyPalette.TextTertiary,
-                    )
-                    Text(
-                        text = uiState.durationMs?.let { formatPlaybackTime(it) } ?: "--:--",
-                        style = StreamifyTextStyles.caption,
-                        color = StreamifyPalette.TextTertiary,
-                    )
-                }
+                // Seek surface: the shared interactive seek bar over the
+                // DAC-clock position (MP-DEC-03). The rendered playhead is
+                // the engine-pushed position filtered by the shared
+                // jitter/monotonicity guards — seeks dispatch through the
+                // controller and the engine's next push repaints the bar.
+                PlaybackSeekbar(
+                    positionMs = rememberDacSmoothedPosition(
+                        positionMs = uiState.positionMs,
+                        isPlaying = uiState.isPlaying,
+                    ),
+                    durationMs = uiState.durationMs,
+                    onSeek = { controller.seekTo(it) },
+                )
 
                 // Transport row.
                 Row(
@@ -523,6 +546,35 @@ private fun HomePane(uiState: PlaybackUiState, controller: PlaybackController?) 
                     } ?: "no hardware sample yet",
                 )
                 Metric("volume", "${(uiState.volume * 100f).toInt()}%")
+            }
+        }
+
+        // Queue card — the shared QueueList media control. The engine
+        // pushes session snapshots, not queues: until the catalog/storage
+        // contract ships the queue surface, the desktop lane renders the
+        // component's honest empty state (the Android host lowers its
+        // Media3 queue onto the SAME component).
+        Surface(
+            color = StreamifyPalette.BgCard,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(StreamifySpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(StreamifySpacing.Xs),
+            ) {
+                Text(
+                    text = "Queue",
+                    style = StreamifyTextStyles.title,
+                    color = StreamifyPalette.TextMain,
+                )
+                QueueList(
+                    state = QueueListState(
+                        isPlaying = uiState.isPlaying,
+                    ),
+                    emptyStateText = "The queue lights up when the catalog/storage contract " +
+                        "ships the queue surface — the shared list is wired and waiting.",
+                )
             }
         }
     }
@@ -683,6 +735,111 @@ private fun JamPane(controller: PlaybackController?) {
                     style = StreamifyTextStyles.mono,
                     color = StreamifyPalette.TextSecondary,
                     modifier = Modifier.padding(StreamifySpacing.Lg),
+                )
+            }
+        }
+    }
+}
+
+/** Settings: engine lane status, shortcut reference, shell behavior. */
+@Composable
+private fun SettingsPane(
+    uiState: PlaybackUiState,
+    controller: PlaybackController?,
+    railMode: RailMode,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(StreamifySpacing.Xl),
+        verticalArrangement = Arrangement.spacedBy(StreamifySpacing.Lg),
+    ) {
+        Text(
+            text = "Settings",
+            style = StreamifyTextStyles.headline,
+            color = StreamifyPalette.TextMain,
+        )
+
+        // Engine lane card.
+        Surface(
+            color = StreamifyPalette.BgCard,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(StreamifySpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(StreamifySpacing.Xs),
+            ) {
+                Text(
+                    text = "Engine",
+                    style = StreamifyTextStyles.title,
+                    color = StreamifyPalette.TextMain,
+                )
+                Metric(
+                    "lane",
+                    if (controller != null) {
+                        "Rust core live — JNA-mode UniFFI bindings"
+                    } else {
+                        "unavailable (-Pstreamify.skipRust or no cargo on PATH)"
+                    },
+                )
+                Metric("revision", "rev ${uiState.snapshot.rev}")
+                Metric("status", uiState.status.name.lowercase())
+                Metric("volume", "${(uiState.volume * 100f).toInt()}%")
+            }
+        }
+
+        // Keyboard shortcut reference — the directive's binding table.
+        Surface(
+            color = StreamifyPalette.BgCard,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(StreamifySpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(StreamifySpacing.Xs),
+            ) {
+                Text(
+                    text = "Keyboard shortcuts",
+                    style = StreamifyTextStyles.title,
+                    color = StreamifyPalette.TextMain,
+                )
+                Metric("Space", "play / pause")
+                Metric("\u2190 / \u2192", "seek \u00b1${TransportSteps.SEEK_STEP_MS / 1000L}s")
+                Metric("\u2191 / \u2193", "volume \u00b1${(TransportSteps.VOLUME_STEP * 100f).toInt()}%")
+                Metric("Ctrl+\u2192 / Ctrl+\u2190", "next / previous track")
+                Metric("Ctrl+F", "focus search")
+            }
+        }
+
+        // Shell behavior card.
+        Surface(
+            color = StreamifyPalette.BgCard,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(StreamifySpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(StreamifySpacing.Xs),
+            ) {
+                Text(
+                    text = "Shell",
+                    style = StreamifyTextStyles.title,
+                    color = StreamifyPalette.TextMain,
+                )
+                Metric(
+                    "rail",
+                    if (railMode == RailMode.EXPANDED) {
+                        "expanded — labels visible"
+                    } else {
+                        "compact — icon rail"
+                    },
+                )
+                Metric("window", "custom title bar · minimize · maximize/restore · close")
+                Metric(
+                    "tray",
+                    "system tray integration with transport menu",
                 )
             }
         }

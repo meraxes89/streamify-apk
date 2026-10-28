@@ -19,6 +19,7 @@ enum class ShellSection(val label: String) {
     SEARCH("Search"),
     LIBRARY("Library"),
     JAM("Jam Sessions"),
+    SETTINGS("Settings"),
 }
 
 /** Rail presentation mode. */
