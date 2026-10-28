@@ -1,23 +1,31 @@
-// tests/test_capability_abi_parity.cc — Phase 5 / MP-CAP03
+// tests/test_capability_abi_parity.cc — Phase 5 / MP-CAP03 + MP-UI02
 // ============================================================================
 //
-//  Host-audit lane for the Apple remote-command C ABI
-//  (native/include/apple_remote_command.h): the header is deliberately
-//  PURE C (no Apple frameworks), so this TU compiles and pins it on
-//  EVERY host lane — Linux CI runners included — while the real
-//  Objective-C++ glue (native/os/apple_remote_command.mm) builds only
-//  on Apple targets.
+//  Host-audit lane for the two frozen capability C ABIs:
 //
-//  The Rust side (rust/src/platform/apple/remote_command.rs) declares
-//  the SAME codes as SF_APPLE_CMD_* constants with its own pinning
-//  test, and rust/tests/test_capability_adapters.rs cross-checks this
-//  header textually — three independent pins, one ABI.
+//    * the Apple remote-command bridge
+//      (native/include/apple_remote_command.h), and
+//    * the iOS audio-session adapter
+//      (native/include/ios_audio_session.h).
+//
+//  Both headers are deliberately PURE C (no Apple frameworks), so this
+//  TU compiles and pins them on EVERY host lane — Linux CI runners
+//  included — while the real Objective-C++ glue
+//  (native/os/apple_remote_command.mm, native/audio/ios_audio_session.mm)
+//  builds only on Apple targets.
+//
+//  The Rust side (rust/src/platform/apple/remote_command.rs,
+//  rust/src/platform/apple/ios_audio_session.rs) declares the SAME codes
+//  as SF_APPLE_CMD_* / SF_IOSAS_* constants with its own pinning tests,
+//  and rust/tests/test_capability_adapters.rs cross-checks both headers
+//  textually — three independent pins, one ABI.
 //
 //  Suite discipline: self-contained main with pass/fail counters, exit
 //  code non-zero on any failure (same shape as the other native
 //  suites).
 
 #include "apple_remote_command.h"
+#include "ios_audio_session.h"
 
 #include <cstdio>
 #include <cstring>
@@ -66,6 +74,44 @@ int main() {
                                        nullptr, nullptr) ==
                SF_APPLE_ERR_NO_MEDIAPLAYER,
            "now_playing without MediaPlayer reports unavailable");
+
+    // ── MP-UI02: the frozen iOS audio-session ABI ────────────────────
+    // The event codes (must equal the Rust SF_IOSAS_EVT_* and the
+    // values the .mm emits).
+    expect(SF_IOSAS_EVT_INTERRUPT_BEGAN == 1, "SF_IOSAS_EVT_INTERRUPT_BEGAN == 1");
+    expect(SF_IOSAS_EVT_INTERRUPT_ENDED == 2, "SF_IOSAS_EVT_INTERRUPT_ENDED == 2");
+    expect(SF_IOSAS_EVT_ROUTE_OLD_DEVICE_UNAVAILABLE == 3,
+           "SF_IOSAS_EVT_ROUTE_OLD_DEVICE_UNAVAILABLE == 3");
+    expect(SF_IOSAS_EVT_ROUTE_AIRPLAY_TEARDOWN == 4,
+           "SF_IOSAS_EVT_ROUTE_AIRPLAY_TEARDOWN == 4");
+
+    // The status + option codes.
+    expect(SF_IOSAS_OK == 0, "SF_IOSAS_OK == 0");
+    expect(SF_IOSAS_ERR_NOT_ACTIVE != 0, "SF_IOSAS_ERR_NOT_ACTIVE != 0");
+    expect(SF_IOSAS_ERR_NO_AVFOUNDATION != 0,
+           "SF_IOSAS_ERR_NO_AVFOUNDATION != 0");
+    expect(SF_IOSAS_OPT_SHOULD_RESUME == 0x1u,
+           "SF_IOSAS_OPT_SHOULD_RESUME == 0x1");
+    expect(SF_IOSAS_CATEGORY_OPT_MIX_WITH_OTHERS == 0x1u,
+           "SF_IOSAS_CATEGORY_OPT_MIX_WITH_OTHERS == 0x1");
+    expect(SF_IOSAS_CATEGORY_OPT_DUCK_OTHERS == 0x2u,
+           "SF_IOSAS_CATEGORY_OPT_DUCK_OTHERS == 0x2");
+
+    // The callback type is a plain C function pointer (the Rust side
+    // transmutes exactly this shape — a member-pointer or block type
+    // here would be a silent ABI break).
+    sf_ios_audio_event_cb session_cb = nullptr;
+    expect(session_cb == nullptr,
+           "sf_ios_audio_event_cb is a plain function pointer");
+
+    // The entry points link as C symbols on a non-iOS host too (the
+    // inert stub provides them there).
+    expect(sf_ios_audio_session_start(0u, nullptr, nullptr) ==
+               SF_IOSAS_ERR_NO_AVFOUNDATION,
+           "session start without AVFoundation reports unavailable "
+           "(the graceful fallback)");
+    expect(sf_ios_audio_session_stop() == SF_IOSAS_OK,
+           "session stop is callable and idempotent on every host");
 
     if (g_failures == 0) {
         std::printf("capability_abi_parity_test_suite: %d checks OK\n", g_checks);

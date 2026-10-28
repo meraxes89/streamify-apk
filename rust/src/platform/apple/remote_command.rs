@@ -1,5 +1,5 @@
 //! Apple `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter` adapter —
-//! Phase 5 / MP-CAP03.
+//! Phase 5 / MP-CAP03 (+ the MP-UI02 iOS audio-session activation).
 //!
 //! The Rust half of the Apple media-key + Control Center bridge:
 //!
@@ -138,6 +138,11 @@ pub struct AppleBridgeSurface {
     now_playing_fn: AtomicPtr<c_void>,
     context: AtomicPtr<CommandContext>,
     bound: AtomicBool,
+    /// The MP-UI02 audio-session bridge, activated alongside the media
+    /// center on iOS (absent on macOS, where no `AVAudioSession`
+    /// exists — the stub lane would refuse anyway).
+    #[cfg(target_os = "ios")]
+    ios_session: crate::platform::apple::ios_audio_session::IosAudioSessionBridge,
 }
 
 // SAFETY: the raw pointers are function pointers into already-loaded
@@ -157,6 +162,8 @@ impl AppleBridgeSurface {
             now_playing_fn: AtomicPtr::new(std::ptr::null_mut()),
             context: AtomicPtr::new(std::ptr::null_mut()),
             bound: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            ios_session: crate::platform::apple::ios_audio_session::IosAudioSessionBridge::new(),
         }
     }
 
@@ -213,6 +220,22 @@ impl OsMediaSurface for AppleBridgeSurface {
         self.stop_fn.store(stop, Ordering::Release);
         self.now_playing_fn.store(now_playing, Ordering::Release);
         self.bound.store(true, Ordering::Release);
+
+        // MP-UI02: with the media surface live, also activate the iOS
+        // audio session (AVAudioSessionCategoryPlayback + duckOthers,
+        // interruption pause/resume, pause-on-route-loss). Best-effort
+        // by design: a refused session degrades interruption handling,
+        // never the remote-command surface itself.
+        #[cfg(target_os = "ios")]
+        {
+            let category = crate::platform::apple::ios_audio_session::DEFAULT_CATEGORY_OPTIONS;
+            if !self.ios_session.bind(self.sink.clone(), category) {
+                tracing::info!(
+                    target: "streamify::platform::apple",
+                    "iOS audio session unavailable — interruption/route handling degraded"
+                );
+            }
+        }
         Ok(true)
     }
 
@@ -225,6 +248,11 @@ impl OsMediaSurface for AppleBridgeSurface {
             let stop_fn: SfStopFn = unsafe { std::mem::transmute(stop) };
             let _ = unsafe { stop_fn() };
         }
+        // MP-UI02: deactivate the audio session AFTER the remote-command
+        // center released the now-playing claim — the polite teardown
+        // (observers out, AVAudioSession setActive:NO + notify-others).
+        #[cfg(target_os = "ios")]
+        self.ios_session.unbind();
         // The native side no longer holds the callback: safe to
         // reclaim the context.
         let context = self.context.swap(std::ptr::null_mut(), Ordering::AcqRel);

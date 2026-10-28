@@ -12,10 +12,16 @@
 #    * libstreamify_apple_remote_command.a — the Objective-C++
 #      MPRemoteCommandCenter / MPNowPlayingInfoCenter glue
 #      (native/os/apple_remote_command.mm) behind the frozen C ABI of
-#      native/include/apple_remote_command.h. The Rust core resolves
-#      those symbols at RUNTIME via dlsym (zero link-time dependency —
-#      the Phase 4b dlopen discipline), and the XCFramework guarantees
-#      they ARE present in the final app link.
+#      native/include/apple_remote_command.h;
+#    * the MP-UI02 AVAudioSession adapter
+#      (native/audio/ios_audio_session.mm) behind the frozen C ABI of
+#      native/include/ios_audio_session.h: AVAudioSessionCategoryPlayback
+#      + mix/duck options, interruption pause/resume, pause on route
+#      loss, clean AirPlay teardown.
+#      The Rust core resolves both symbol families at RUNTIME via
+#      dlsym (zero link-time dependency — the Phase 4b dlopen
+#      discipline), and the XCFramework guarantees they ARE present
+#      in the final app link.
 #
 #  SLICES
 #  ------
@@ -109,23 +115,27 @@ done
 # `--profile debug` emits to target/<t>/debug, `--profile release` to release:
 OUT_SUBDIR="debug"; [[ "${PROFILE}" == "release" ]] && OUT_SUBDIR="release"
 
-# --- 2. the ObjC++ media-center glue per slice --------------------------------
-#  One TU, three compiles: -fobjc-arc, arm64 slice needs -fembed-bitcode
-#  marker-free (Xcode 14+ dropped the bitcode requirement entirely).
-compile_glue() {  # $1 = clang triple, $2 = sdk path, $3 = out .o
+# --- 2. the ObjC++ glue per slice ---------------------------------------------
+#  Two TUs, three compiles each: remote-command center + iOS audio
+#  session. -fobjc-arc, arm64 slice needs no bitcode marker (Xcode 14+
+#  dropped the requirement entirely).
+compile_glue() {  # $1 = clang triple, $2 = sdk path, $3 = src .mm, $4 = out .o
     xcrun -sdk "$(basename "$(dirname "$2")")" clang \
         -target "$1" \
         -isysroot "$2" \
         -fobjc-arc -fmodules -O1 \
         -Wall -Werror \
         -I"${NATIVE_DIR}/include" \
-        -c "${NATIVE_DIR}/os/apple_remote_command.mm" \
-        -o "$3"
+        -c "$3" \
+        -o "$4"
 }
-echo "── [2/4] compiling apple_remote_command.mm per slice"
-compile_glue "arm64-apple-ios"        "${IPHONEOS_SDK_PATH}"    "${WORK_DIR}/glue_device.o"
-compile_glue "arm64-apple-simulator"  "${IPHONESIM_SDK_PATH}"   "${WORK_DIR}/glue_sim_arm64.o"
-compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}"   "${WORK_DIR}/glue_sim_x86_64.o"
+echo "── [2/4] compiling apple glue per slice (remote command + iOS audio session)"
+compile_glue "arm64-apple-ios"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"  "${WORK_DIR}/rc_device.o"
+compile_glue "arm64-apple-ios"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"   "${WORK_DIR}/ias_device.o"
+compile_glue "arm64-apple-simulator"  "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"  "${WORK_DIR}/rc_sim_arm64.o"
+compile_glue "arm64-apple-simulator"  "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"  "${WORK_DIR}/ias_sim_arm64.o"
+compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"  "${WORK_DIR}/rc_sim_x86_64.o"
+compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"  "${WORK_DIR}/ias_sim_x86_64.o"
 
 #  Each slice = Rust staticlib + glue object, merged with libtool (Apple's
 #  ar): the app links ONE library per platform, dlsym finds the glue.
@@ -134,11 +144,14 @@ SLICE_LIB() { echo "${WORK_DIR}/StreamifyCore_$1.a"; }
 echo "── [3/4] lipo + libtool"
 xcrun libtool -static -o "$(SLICE_LIB device)" \
     "${RUST_DIR}/target/${DEVICE_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}" \
-    "${WORK_DIR}/glue_device.o"
+    "${WORK_DIR}/rc_device.o" \
+    "${WORK_DIR}/ias_device.o"
 
 xcrun libtool -static -o "${WORK_DIR}/StreamifyCore_simulator.a" \
-    "${WORK_DIR}/glue_sim_arm64.o" \
-    "${WORK_DIR}/glue_sim_x86_64.o" \
+    "${WORK_DIR}/rc_sim_arm64.o" \
+    "${WORK_DIR}/ias_sim_arm64.o" \
+    "${WORK_DIR}/rc_sim_x86_64.o" \
+    "${WORK_DIR}/ias_sim_x86_64.o" \
     "${RUST_DIR}/target/${SIM_ARM_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}" \
     "${RUST_DIR}/target/${SIM_X86_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}"
 
@@ -148,23 +161,26 @@ mkdir -p "${OUTPUT_DIR}"
 echo "── [4/4] xcodebuild -create-xcframework"
 rm -rf "${WORK_DIR}/headers"
 mkdir -p "${WORK_DIR}/headers"
-#  The xcframework wants per-slice header dirs; the C ABI header is the
-#  only public surface (the Rust side is reached through UniFFI).
+#  The xcframework wants per-slice header dirs; the two C ABI headers
+#  are the only public surface (the Rust side is reached through UniFFI).
 cp "${NATIVE_DIR}/include/apple_remote_command.h" "${WORK_DIR}/headers/"
+cp "${NATIVE_DIR}/include/ios_audio_session.h" "${WORK_DIR}/headers/"
 xcodebuild -create-xcframework \
     -library "$(SLICE_LIB device)"    -headers "${WORK_DIR}/headers" \
     -library "${WORK_DIR}/StreamifyCore_simulator.a" \
     -output "${OUTPUT_DIR}/StreamifyCore.xcframework" \
     >/dev/null
 
-#  Slice sanity: the glue symbols MUST be resolvable in every slice (the
-#  dlsym contract the Rust bridge depends on — fail the build, not the app).
+#  Slice sanity: BOTH glue symbol families MUST be resolvable in every
+#  slice (the dlsym contracts the Rust bridges depend on — fail the
+#  build, not the app).
 for lib in "$(SLICE_LIB device)" "${WORK_DIR}/StreamifyCore_simulator.a"; do
-    if ! nm -gU "${lib}" 2>/dev/null \
-         | grep -q "sf_apple_remote_command_start"; then
-        echo "FATAL: sf_apple_* symbols missing in ${lib} — dlsym contract broken" >&2
-        exit 70
-    fi
+    for symbol in sf_apple_remote_command_start sf_ios_audio_session_start; do
+        if ! nm -gU "${lib}" 2>/dev/null | grep -q "${symbol}"; then
+            echo "FATAL: ${symbol} missing in ${lib} — dlsym contract broken" >&2
+            exit 70
+        fi
+    done
 done
 
 if [[ "${SKIP_BINDINGS}" -ne 1 ]]; then
@@ -172,8 +188,11 @@ if [[ "${SKIP_BINDINGS}" -ne 1 ]]; then
     BINDINGS_DIR="${OUTPUT_DIR}/swift"
     mkdir -p "${BINDINGS_DIR}"
     #  Same invocation shape as the Gradle `generateUniffiKotlinBindings`
-    #  task (app/build.gradle.kts): UDL in, language bindings out, config
-    #  optional (the crate ships none — defaults are the contract).
+    #  task (app/build.gradle.kts): UDL in, language bindings out. The
+    #  crate ships uniffi.toml, but its pinned knobs are Kotlin-lane
+    #  only ([bindings.kotlin] package_name/cdylib_name); the Swift lane
+    #  deliberately keeps generator defaults (module `streamify` from
+    #  the namespace), so no --config is passed here.
     ( cd "${RUST_DIR}" && cargo run --bin uniffi-bindgen -- generate \
         src/streamify.udl \
         --language swift \

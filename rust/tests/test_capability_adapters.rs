@@ -37,6 +37,13 @@
 //!     SetPosition), the stale-trackid guard, Volume mapping, property
 //!     reads (PlaybackStatus/Metadata/Position), and a genuine
 //!     `PropertiesChanged` signal receipt.
+//!   * **H — iOS audio session (MP-UI02)**: the interruption/route
+//!     policy machine — pause on `InterruptionBegan`, resume on the OS
+//!     `shouldResume` hint, immediate pause on a lost route, clean
+//!     AirPlay-teardown silence — plus the frozen `SF_IOSAS_*` C ABI
+//!     pinned textually against `native/include/ios_audio_session.h`
+//!     (the host-testable half of the iOS adapter; the `.mm` glue and
+//!     its parity suite pin the same values from the C side).
 //!
 //! Timing discipline (no flaky sleeps): cadence gates are exercised
 //! with a 3600-second interval (nothing else can ever pass) and
@@ -50,6 +57,7 @@ use std::sync::{Arc, Barrier, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use streamify_core_rs::contract::{EngineError, MediaCommand, PlaybackState, StreamifyEngine};
+use streamify_core_rs::platform::ios_audio_session as iosas;
 use streamify_core_rs::platform::secure_store::{
     clear_secure_store_delegate, default_secure_store, secure_store_roundtrip,
     set_secure_store_delegate, ForeignDelegateStore, InMemorySecureStore, SecureFetchResult,
@@ -740,4 +748,172 @@ mod mpris_e2e {
             );
         });
     }
+}
+
+// ---------------------------------------------------------------------------
+// H — iOS audio session (MP-UI02): policy machine + C-ABI parity
+// ---------------------------------------------------------------------------
+//
+// The mission's host-testable mandate for the iOS audio-session
+// adapter: the full interruption/route behavioral contract audited on
+// every CI lane (Linux/Windows included — the policy is pure Rust),
+// while the .mm glue + native parity suite pin the same frozen ABI from
+// the C side. The Apple-bound dlsym bridge
+// (platform::apple::ios_audio_session) compiles only on iOS and is
+// exercised there by its own #[cfg(test)] mod.
+
+#[test]
+fn ios_session_c_abi_codes_match_the_native_header() {
+    // The textual cross-check against
+    // native/include/ios_audio_session.h — the Rust constants, the C
+    // _Static_asserts and the .mm emission share one frozen ABI.
+    let header = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../native/include/ios_audio_session.h"
+    ))
+    .expect("native/include/ios_audio_session.h must exist next to the rust/ tree");
+    for (name, value) in [
+        (
+            "SF_IOSAS_EVT_INTERRUPT_BEGAN",
+            iosas::SF_IOSAS_EVT_INTERRUPT_BEGAN,
+        ),
+        (
+            "SF_IOSAS_EVT_INTERRUPT_ENDED",
+            iosas::SF_IOSAS_EVT_INTERRUPT_ENDED,
+        ),
+        (
+            "SF_IOSAS_EVT_ROUTE_OLD_DEVICE_UNAVAILABLE",
+            iosas::SF_IOSAS_EVT_ROUTE_OLD_DEVICE_UNAVAILABLE,
+        ),
+        (
+            "SF_IOSAS_EVT_ROUTE_AIRPLAY_TEARDOWN",
+            iosas::SF_IOSAS_EVT_ROUTE_AIRPLAY_TEARDOWN,
+        ),
+    ] {
+        let needle = format!("{name} = {value}");
+        assert!(
+            header.contains(&needle),
+            "header must declare `{needle}` (Rust/C ABI drift)"
+        );
+    }
+    // The #define-shaped codes and the entry points themselves.
+    for needle in [
+        "#define SF_IOSAS_OPT_SHOULD_RESUME 0x1u",
+        "#define SF_IOSAS_CATEGORY_OPT_MIX_WITH_OTHERS 0x1u",
+        "#define SF_IOSAS_CATEGORY_OPT_DUCK_OTHERS 0x2u",
+        "uint32_t sf_ios_audio_session_start(uint32_t category_options",
+        "uint32_t sf_ios_audio_session_stop(void)",
+    ] {
+        assert!(
+            header.contains(needle),
+            "header must declare `{needle}` (Rust/C ABI drift)"
+        );
+    }
+}
+
+#[test]
+fn ios_session_policy_interrupts_pause_and_resume_on_the_os_hint() {
+    let mut policy = iosas::IosAudioSessionPolicy::new();
+    assert!(!policy.is_interrupted());
+    // A phone call arrives: the engine pauses NOW (before the user
+    // even looks at the screen).
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::InterruptionBegan),
+        Some(MediaCommand::Pause)
+    );
+    assert!(policy.is_interrupted());
+    // The call ends and the OS authorizes the auto-resume.
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::InterruptionEnded {
+            should_resume: true
+        }),
+        Some(MediaCommand::Play)
+    );
+    assert!(!policy.is_interrupted());
+}
+
+#[test]
+fn ios_session_policy_end_without_the_resume_hint_stays_paused() {
+    let mut policy = iosas::IosAudioSessionPolicy::new();
+    policy.on_event(iosas::IosAudioSessionEvent::InterruptionBegan);
+    // Siri / a user-initiated interruption dismissal: no auto-resume —
+    // the user decides when playback continues.
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::InterruptionEnded {
+            should_resume: false
+        }),
+        None
+    );
+    assert!(!policy.is_interrupted());
+}
+
+#[test]
+fn ios_session_policy_pauses_immediately_when_the_route_vanishes() {
+    let mut policy = iosas::IosAudioSessionPolicy::new();
+    // Unplugged headphones / dropped Bluetooth: pause before the first
+    // frame can escape the suddenly-public speaker.
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::RouteOldDeviceUnavailable),
+        Some(MediaCommand::Pause)
+    );
+    // A route loss is NOT an interruption: the latch stays untouched.
+    assert!(!policy.is_interrupted());
+}
+
+#[test]
+fn ios_session_policy_airplay_teardown_is_clean_silence() {
+    let mut policy = iosas::IosAudioSessionPolicy::new();
+    policy.on_event(iosas::IosAudioSessionEvent::InterruptionBegan);
+    // The .mm handled the session hygiene (observers out, deactivate
+    // with notify-others); the engine keeps playing on the local route.
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::RouteAirPlayTeardown),
+        None
+    );
+    assert!(policy.is_interrupted(), "teardown never touches the latch");
+}
+
+#[test]
+fn ios_session_policy_survives_garbage_and_keeps_flowing() {
+    let mut policy = iosas::IosAudioSessionPolicy::new();
+    // Unknown codes never decode into the typed layer (forward compat:
+    // a NEWER .mm may emit codes this core does not know yet).
+    assert!(iosas::event_from_code(0, 0).is_none());
+    assert!(iosas::event_from_code(4242, 0x8000_0000).is_none());
+    // The known codes still flow after garbage — no state poisoning.
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::InterruptionBegan),
+        Some(MediaCommand::Pause)
+    );
+    // Full OS round-trip after the garbage exposure.
+    assert_eq!(
+        policy.on_event(iosas::IosAudioSessionEvent::InterruptionEnded {
+            should_resume: true
+        }),
+        Some(MediaCommand::Play)
+    );
+    assert!(!policy.is_interrupted());
+}
+
+#[test]
+fn ios_session_policy_maps_raw_c_abi_pairs_end_to_end() {
+    // The exact (event, options) pairs the .mm trampoline produces
+    // over the frozen C ABI — decode → policy → command, one table.
+    let mut policy = iosas::IosAudioSessionPolicy::new();
+    let began =
+        iosas::event_from_code(iosas::SF_IOSAS_EVT_INTERRUPT_BEGAN, 0).expect("began decodes");
+    assert_eq!(policy.on_event(began), Some(MediaCommand::Pause));
+    let ended_resume = iosas::event_from_code(
+        iosas::SF_IOSAS_EVT_INTERRUPT_ENDED,
+        iosas::SF_IOSAS_OPT_SHOULD_RESUME,
+    )
+    .expect("ended decodes");
+    assert_eq!(policy.on_event(ended_resume), Some(MediaCommand::Play));
+    let route_loss = iosas::event_from_code(iosas::SF_IOSAS_EVT_ROUTE_OLD_DEVICE_UNAVAILABLE, 0)
+        .expect("route loss decodes");
+    assert_eq!(policy.on_event(route_loss), Some(MediaCommand::Pause));
+    let teardown =
+        iosas::event_from_code(iosas::SF_IOSAS_EVT_ROUTE_AIRPLAY_TEARDOWN, 0)
+            .expect("teardown decodes");
+    assert_eq!(policy.on_event(teardown), None);
 }

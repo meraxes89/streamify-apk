@@ -297,17 +297,19 @@ if (STREAMIFY_BUILD_TESTS)
         endif()
     endif()
 
-    # Phase 5 (MP-CAP03): the Apple remote-command C ABI parity lane.
-    # The header (native/include/apple_remote_command.h) is PURE C — no
-    # Apple frameworks — so this suite compiles and pins the frozen
-    # SF_APPLE_CMD_* codes on EVERY host; the Rust suite cross-checks
-    # the same values from the other side, and the real .mm glue builds
-    # only in the Apple lanes below.
+    # Phase 5 (MP-CAP03 + MP-UI02): the capability C-ABI parity lane.
+    # Both headers (native/include/apple_remote_command.h,
+    # native/include/ios_audio_session.h) are PURE C — no Apple
+    # frameworks — so this suite compiles and pins the frozen
+    # SF_APPLE_CMD_* / SF_IOSAS_* codes on EVERY host; the Rust suite
+    # cross-checks the same values from the other side, and the real
+    # .mm glue builds only in the Apple lanes below.
     add_executable(capability_abi_parity_test_suite
         tests/test_capability_abi_parity.cc
-        # The inert C stub keeps the ABI linkable on every host (the
-        # real ObjC++ bridge only compiles on Apple lanes, below).
+        # The inert C stubs keep both ABIs linkable on every host (the
+        # real ObjC++ glue only compiles on Apple lanes, below).
         os/apple_remote_command_stub.c
+        audio/ios_audio_session_stub.c
     )
     target_include_directories(capability_abi_parity_test_suite PRIVATE include .)
     target_link_libraries(capability_abi_parity_test_suite PRIVATE pthread)
@@ -426,6 +428,31 @@ if(APPLE)
     target_include_directories(streamify_apple_remote_command PRIVATE include .)
     target_link_libraries(streamify_apple_remote_command PRIVATE
         "-framework MediaPlayer"
+        "-framework Foundation"
+    )
+endif()
+
+# --- Phase 5 (MP-UI02): iOS AVAudioSession adapter (Apple only) ---------------
+# The AVAudioSession glue behind the pure-C ABI of
+# native/include/ios_audio_session.h: category configuration,
+# interruption pause/resume and route-loss handling, feeding the engine
+# over the frozen SF_IOSAS_* ABI. Same dlsym discipline as above: the
+# Rust core (rust/src/platform/apple/ios_audio_session.rs) resolves the
+# symbols at runtime, and the TU self-guards to an inert stub on macOS
+# (no AVAudioSession there) so the one file builds on every Apple lane;
+# the XCFramework script compiles it for the iOS slices where it is
+# live. The header is audited on EVERY lane by
+# capability_abi_parity_test_suite above.
+if(APPLE)
+    add_library(streamify_ios_audio_session STATIC
+        audio/ios_audio_session.mm
+    )
+    target_include_directories(streamify_ios_audio_session PRIVATE include .)
+    # The TU references no AVFoundation symbols unless it is built for
+    # iOS (the TARGET_OS_IPHONE guard compiles the inert stub on macOS),
+    # but linking the frameworks keeps every Apple lane uniform.
+    target_link_libraries(streamify_ios_audio_session PRIVATE
+        "-framework AVFoundation"
         "-framework Foundation"
     )
 endif()

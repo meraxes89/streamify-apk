@@ -17,6 +17,12 @@
 //!     (`SecureStoreProvider` trait; Windows DPAPI, FreeDesktop Secret
 //!     Service, Apple Keychain, and the UniFFI foreign delegate for
 //!     Android `EncryptedSharedPreferences`/KeyStore).
+//!   * **MP-UI02** — iOS audio-session adapter: [`ios_audio_session`]
+//!     (the host-testable interruption/route policy) + the dlsym bridge
+//!     in [`apple::ios_audio_session`] that binds
+//!     `native/audio/ios_audio_session.mm` (`AVAudioSessionCategoryPlayback`,
+//!     interruption pause/resume, pause on route loss, clean AirPlay
+//!     teardown).
 //!
 //! # Architecture (the Phase 4b discipline, applied to control surfaces)
 //!
@@ -57,6 +63,7 @@
 //! namespace function.
 
 pub mod adapter;
+pub mod ios_audio_session;
 pub mod media_sync;
 pub mod secure_store;
 pub mod testing;
