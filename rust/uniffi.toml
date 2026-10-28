@@ -17,3 +17,14 @@
 # `--config` whenever it exists (the UDL remains the sole semantic input).
 [bindings.kotlin]
 package_name = "uniffi.streamify"
+
+# Phase 5 (MP upstream fix from Beta, unblock): the cdylib the generated
+# JNA `NamespaceLibrary` loads. Unpinned, UDL-mode codegen (which has no
+# cargo metadata to derive it from) falls back to the `uniffi_<namespace>`
+# default — `uniffi_streamify` — a library that does not exist, so the
+# desktop shell had to override the loaded name via a system property at
+# startup. Pinned here to the crate's real cdylib (`rust/Cargo.toml`:
+# `[lib] name = "streamify_core_rs"`, crate-type includes `cdylib`), the
+# generated Kotlin emits `Native.load("streamify_core_rs")` directly: no
+# shell-side overrides, no drift between the desktop and Android lanes.
+cdylib_name = "streamify_core_rs"

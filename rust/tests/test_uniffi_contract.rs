@@ -827,7 +827,7 @@ fn buffer_stats_report_under_underrun_simulation() {
         device_id: None,
     };
     let internal = EngineError::Internal {
-        message: "boundary rejection".to_string(),
+        error_message: "boundary rejection".to_string(),
         backtrace: None,
     };
     assert_ne!(underrun.stable_code(), internal.stable_code());
