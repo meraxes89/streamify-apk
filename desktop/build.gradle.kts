@@ -107,6 +107,12 @@ val uniffiBindgenEntryFile: File = File(rustCrateDir, "src/bin/uniffi-bindgen.rs
 val uniffiGeneratedSourcesDir: File =
     layout.buildDirectory.dir("generated/uniffi/kotlin").get().asFile
 
+// Raw codegen output (pre-shim). generateDesktopUniffiBindings writes here;
+// patchDesktopUniffiBindings lowers it into uniffiGeneratedSourcesDir (see
+// the codegen-defect shim below for why the extra hop exists).
+val uniffiGeneratedRawSourcesDir: File =
+    layout.buildDirectory.dir("generated/uniffi/kotlin-raw").get().asFile
+
 // House flags (same contract as app/build.gradle.kts): hermetic environments
 // (no Rust toolchain, -Pstreamify.skipRust=true) degrade the native lane.
 // Gradle CONFIGURATION stays toolchain-free — only task execution touches
@@ -145,7 +151,7 @@ val generateDesktopUniffiBindings by tasks.registering(Exec::class) {
     val udlFile = uniffiUdlFile
     val configFile = uniffiConfigFile
     val bindgenFile = uniffiBindgenEntryFile
-    val outDir = uniffiGeneratedSourcesDir
+    val outDir = uniffiGeneratedRawSourcesDir
     val skip = skipDesktopNative
 
     onlyIf { !skip && udlFile.isFile && bindgenFile.isFile }
@@ -174,6 +180,89 @@ val generateDesktopUniffiBindings by tasks.registering(Exec::class) {
     commandLine("cargo", *bindgenArgs.toTypedArray())
 }
 
+// ── uniffi-rs 0.28.3 Kotlin codegen defect shim ────────────────────────────
+//
+// First proven by this module's CI lane (no earlier lane ever compiled the
+// generated bindings — the app reaches them reflectively, and its CI shards
+// run with -PskipExternalNativeBuild, so the codegen had never been compiled
+// until :desktop:compileKotlin tried on 2026-10-28):
+//
+//   e: streamify.kt: 'message' hides member of supertype 'EngineException'
+//      and needs 'override' modifier / Conflicting declarations: … val
+//      message / Type checking has run into a recursive problem
+//
+// Cause (verified against mozilla/uniffi-rs v0.28.3 sources): the Kotlin
+// backend renames error types via KotlinCodeOracle::convert_error_suffix
+// (EngineError -> EngineException), and for NON-flat error variants the
+// ErrorTemplate emits BOTH a constructor property and an `override val
+// message` formatted-getter for every field literally named `message` —
+// rust/src/streamify.udl's EngineError.Internal(message, backtrace) hits
+// exactly that. The two `message` declarations collide and the generated
+// getter recurses on itself; the file cannot compile as emitted.
+//
+// The durable fix — renaming the UDL field (or pinning a codegen release
+// that stops shadowing kotlin.Throwable.message) — lives in Alpha's rust/
+// subtree and is flagged in the PR description. The desktop lane therefore
+// lowers the RAW codegen through a one-token rename before compilation:
+// every backticked `message` FIELD reference becomes `errorMessage` (the
+// plain label inside the generated message-format string is unbackticked
+// and stays untouched, as do the unbackticked `override val message`
+// getters of the sibling variants). Only the Internal variant carries a
+// message field today (audited against the whole UDL), so the rename is
+// exactly scoped; the gate below fails loudly if that ever drifts.
+val patchDesktopUniffiBindings by tasks.registering {
+    group = "native"
+    description = "uniffi 0.28.3 shim: renames the Throwable-shadowing Internal(`message`) field of the raw codegen to `errorMessage` so the generated Kotlin compiles."
+
+    dependsOn(generateDesktopUniffiBindings)
+
+    val rawDir = uniffiGeneratedRawSourcesDir
+    val finalDir = uniffiGeneratedSourcesDir
+    val skip = skipDesktopNative
+    val rawKtFile = File(rawDir, "uniffi/streamify/streamify.kt")
+
+    onlyIf { !skip && rawKtFile.isFile }
+
+    inputs.dir(rawDir)
+    outputs.dir(finalDir)
+
+    doLast {
+        val text = rawKtFile.readText()
+        val internalPresent = text.contains("class InternalException(")
+        val engineExceptionPresent = text.contains("class EngineException")
+        val backticked = text.split("`message`").size - 1
+        when {
+            !internalPresent && !engineExceptionPresent ->
+                throw GradleException(
+                    "generated streamify.kt no longer declares the EngineError/" +
+                        "EngineException surface — the UDL error contract changed; " +
+                        "re-audit patchDesktopUniffiBindings"
+                )
+            internalPresent && backticked == 0 ->
+                logger.warn(
+                    "uniffi codegen no longer emits a backticked `message` field — " +
+                        "upstream appears fixed; patchDesktopUniffiBindings is a no-op"
+                )
+            else ->
+                logger.lifecycle(
+                    "uniffi 0.28.3 codegen shim: renaming {} backticked `message` " +
+                        "field reference(s) to `errorMessage`",
+                    backticked
+                )
+        }
+
+        rawDir.walkTopDown().filter { it.isFile }.forEach { f ->
+            val dest = File(finalDir, f.relativeTo(rawDir).path)
+            dest.parentFile.mkdirs()
+            if (f.name.endsWith(".kt")) {
+                dest.writeText(f.readText().replace("`message`", "`errorMessage`"))
+            } else {
+                f.copyTo(dest, overwrite = true)
+            }
+        }
+    }
+}
+
 // House pattern from app/build.gradle.kts (UFFI-02): the generated
 // `uniffi/streamify/streamify.kt` registers through the java source dir —
 // KGP compiles .kt files from java srcDirs, proven by the build-ref CI lane
@@ -196,12 +285,13 @@ sourceSets.getByName("test") {
     }
 }
 
-// Every Kotlin compilation runs after the bindings exist (house pattern from
-// the app module — covers compileKotlin and the test compilation).
+// Every Kotlin compilation runs after the PATCHED bindings exist (house
+// pattern from the app module — covers compileKotlin and the test
+// compilation; the shim task transitively depends on generation).
 tasks.matching { task ->
     task.name.startsWith("compile") && task.name.endsWith("Kotlin")
 }.configureEach {
-    dependsOn(generateDesktopUniffiBindings)
+    dependsOn(patchDesktopUniffiBindings)
 }
 
 // ── Host-platform engine build + single-arch resource preparation ───────────
