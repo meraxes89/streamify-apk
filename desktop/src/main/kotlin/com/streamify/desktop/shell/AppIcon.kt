@@ -1,6 +1,7 @@
 package com.streamify.desktop.shell
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
@@ -32,8 +33,7 @@ object AppIcon {
 
         // OLED graphite tile.
         canvas.drawRect(
-            topLeft = Offset.Zero,
-            size = Size(s, s),
+            rect = Rect(left = 0f, top = 0f, right = s, bottom = s),
             paint = Paint().apply { color = StreamifyPalette.BgSurface },
         )
 

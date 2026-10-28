@@ -41,13 +41,13 @@ fun ApplicationScope.StreamifySystemTray(
         tooltip = "Streamify — audiophile client",
         onAction = onShowHideWindow,
     ) {
-        MenuItem("Play / Pause") { controller.togglePlayPause() }
-        MenuItem("Next") { controller.next() }
-        MenuItem("Previous") { controller.previous() }
-        MenuSeparator()
+        Item("Play / Pause") { controller.togglePlayPause() }
+        Item("Next") { controller.next() }
+        Item("Previous") { controller.previous() }
+        Separator()
         CheckboxItem("Muted", checked = isMuted) { onToggleMute() }
-        MenuSeparator()
-        MenuItem("Show / Hide window") { onShowHideWindow() }
-        MenuItem("Quit") { onQuit() }
+        Separator()
+        Item("Show / Hide window") { onShowHideWindow() }
+        Item("Quit") { onQuit() }
     }
 }
