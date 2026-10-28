@@ -219,6 +219,95 @@ callback interface EngineEventListener {
     void on_engine_event(EngineSnapshot snapshot);
 };
 
+/// Outcome of one foreign secure-storage operation (Phase 5 /
+/// MP-CAP04): maps one-to-one onto `EngineError.Storage`'s kind
+/// taxonomy plus `Success`, so a foreign backend routes errors
+/// without carrying the full engine taxonomy across the boundary.
+enum SecureStoreOpStatus {
+    "Success",
+    "NotFound",
+    "Permission",
+    "Corrupt",
+    "Io"
+};
+
+/// Result payload of a foreign secure-storage retrieval: the status
+/// plus the secret bytes when found. One round-trip, no
+/// status-vs-payload race.
+dictionary SecureFetchResult {
+    SecureStoreOpStatus status;
+    bytes? secret;
+};
+
+/// Foreign secure-storage delegate (Phase 5 / MP-CAP04, Android /
+/// fallback lane).
+///
+/// Implemented by the Android shell on top of
+/// `EncryptedSharedPreferences`/KeyStore and installed at app start
+/// via `set_secure_store_delegate`. Absent → the core uses the native
+/// platform backend (Windows DPAPI, Linux Secret Service, Apple
+/// Keychain; an in-memory fallback with a loud log where none exists).
+/// `Send + Sync` semantics: calls may arrive from any engine thread.
+callback interface SecureStoreDelegate {
+    /// Upsert `secret` under `key`.
+    SecureStoreOpStatus store_secret(string key, bytes secret);
+    /// Fetch the secret under `key` (`NotFound` status when absent).
+    SecureFetchResult retrieve_secret(string key);
+    /// Remove the entry under `key` (idempotent).
+    SecureStoreOpStatus delete_secret(string key);
+};
+
+/// Phase 5 (MP-CAP01..03): the OS media-controls facade the desktop
+/// and mobile shells drive.
+///
+/// `start(window_handle)` binds the platform surface — Windows SMTC
+/// (needs the shell's top-level HWND; 0 = headless), Linux MPRIS
+/// (`org.mpris.MediaPlayer2.streamify` on the session bus), Apple
+/// RemoteCommandCenter (through the core's C-ABI bridge) — and OS
+/// transport-control events flow back into the engine's debounced
+/// `on_media_command` automatically. Headless / no-surface hosts
+/// return `false` and the object becomes the documented no-op: never
+/// a crash (the graceful fallback mandate).
+///
+/// The shell mirrors engine state outward by feeding every
+/// `EngineSnapshot` push through `update_playback` (state + timeline
+/// + volume, rate-limited internally: 200 ms SMTC/MPRIS cadence, the
+/// Apple bridge's mandated 1 Hz ceiling) and track changes through
+/// `update_metadata` (identity changes bypass the cadence so the OS
+/// chrome swaps tracks immediately).
+interface OsMediaIntegration {
+    /// Bind to one engine. The engine is both the command sink (OS
+    /// transport controls) and the canonical state source the shell
+    /// mirrors outward.
+    constructor(StreamifyEngine engine);
+
+    /// Attach the platform media surface. `window_handle` is the
+    /// shell's top-level HWND on Windows (0 = headless fallback);
+    /// ignored elsewhere. Returns true when a real OS surface
+    /// attached, false for the headless no-op fallback.
+    [Throws=EngineError]
+    boolean start(u64 window_handle);
+
+    /// Detach the platform surface (idempotent).
+    [Throws=EngineError]
+    void stop();
+
+    /// Mirror one engine playback state outward (rate-limited
+    /// internally; `volume` mirrors the EngineSnapshot's volume and
+    /// serves the MPRIS Volume property; NaN fails safe to 0).
+    [Throws=EngineError]
+    void update_playback(PlaybackState state, u64 position_ms, u64 duration_ms, f32 rate, f32 volume);
+
+    /// Mirror now-playing metadata outward (identity changes —
+    /// title/artist/album/duration — reach the OS chrome immediately).
+    [Throws=EngineError]
+    void update_metadata(string title, string artist, string? album, u64 duration_ms, string? art_url);
+
+    /// The bound surface's stable id: "smtc", "mpris",
+    /// "apple-remote-command", "headless-fallback" or "inactive".
+    string active_surface();
+};
+
 /// Root handle to the Streamify core engine.
 ///
 /// Thread-safe by construction: interior state is shared behind
@@ -323,4 +412,20 @@ namespace streamify {
     /// mismatch. Bump ONLY on breaking contract changes after the
     /// Phase 3 freeze (additive fields with defaults do not bump).
     u32 contract_version();
+
+    /// Phase 5 (MP-CAP04): install the foreign secure-storage delegate
+    /// (the Android `EncryptedSharedPreferences`/KeyStore lane, or an
+    /// explicit shell override anywhere). Replaces any previously
+    /// installed delegate; without one the core uses its native
+    /// platform backend.
+    [Throws=EngineError]
+    void set_secure_store_delegate(SecureStoreDelegate delegate);
+
+    /// Phase 5 (MP-CAP04): startup self-test through whichever backend
+    /// is active (foreign delegate > native platform backend > in-memory
+    /// fallback): store → retrieve → byte-compare → delete → confirm
+    /// gone. Returns whether the full loop held — a false is a loud
+    /// signal that session-token persistence is degraded, not an error.
+    [Throws=EngineError]
+    boolean secure_store_roundtrip(string probe_key, bytes probe_value);
 };
