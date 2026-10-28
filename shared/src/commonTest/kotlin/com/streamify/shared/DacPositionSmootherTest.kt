@@ -160,8 +160,8 @@ class QueueListStateTest {
     fun `empty state degrades honestly`() {
         val state = QueueListState.EMPTY
         assertNull(state.current)
-        assertEquals(emptyList(), state.upNext)
-        assertEquals(emptyList(), state.played)
+        assertEquals(emptyList<Pair<Int, PresentationTrack>>(), state.upNext)
+        assertEquals(emptyList<Pair<Int, PresentationTrack>>(), state.played)
     }
 
     @Test
@@ -185,7 +185,7 @@ class QueueListStateTest {
     fun `last track has no up next`() {
         val state = QueueListState(tracks = tracks, currentIndex = 3, isPlaying = false)
         assertEquals("d", state.current?.id)
-        assertEquals(emptyList(), state.upNext)
+        assertEquals(emptyList<Pair<Int, PresentationTrack>>(), state.upNext)
         assertEquals(listOf("a", "b", "c"), state.played.map { it.second.id })
     }
 }
