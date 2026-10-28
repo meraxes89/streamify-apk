@@ -1,0 +1,170 @@
+name: Desktop CI & Size Budget (Phase 4b)
+
+# Phase 4b / MP-HAL10 (Beta): the Desktop lane of the CI matrix.
+#
+#   • desktop-jna-smoke — builds the host engine cdylib + the UniFFI JNA
+#     bindings, then runs the headless DesktopJnaEngineSmokeTest that proves
+#     the Desktop JVM runner reaches the sovereign Rust core in JNA mode
+#     (engine init, EngineEventListener initial push, debounced lifecycle).
+#
+#   • desktop-package-size-budget — packages the Desktop distribution via
+#     jpackage (Deb on ubuntu, Msi on windows) and enforces the master plan
+#     threshold: every distributable artifact (installer + app image) must be
+#     STRICTLY < 250 MiB, with an informative budget breakdown on violation.
+#
+# The heavy lifting (cargo release build, Compose compilation, jpackage)
+# intentionally lives here per the Phase 4b workstation strategy: lightweight
+# local iteration, heavyweight verification on Actions runners.
+
+on:
+  push:
+    branches: [ main, 'feat/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Desktop JNA engine binding verification (deliverable 2)
+  # ─────────────────────────────────────────────────────────────────────────
+  desktop-jna-smoke:
+    name: "Desktop JNA engine smoke (${{ matrix.os-name }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        # MP-DEC-08 phase scope: Desktop = Windows + Linux (macOS joins later).
+        include:
+          - os: ubuntu-latest
+            os-name: linux
+          - os: windows-latest
+            os-name: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout (Phase 4b branch)
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Rust toolchain (host target)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Cache cargo build tree
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: desktop-cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            desktop-cargo-${{ runner.os }}-
+
+      - name: Desktop JNA smoke suite (engine init, listener push, lifecycle)
+        shell: bash
+        run: |
+          chmod +x gradlew
+          # --configure-on-demand keeps the desktop lane hermetic: only
+          # :desktop is configured, so the AGP/:app configuration (which
+          # requires an Android SDK) never runs on these runners.
+          ./gradlew :desktop:test --no-daemon --configure-on-demand --stacktrace
+
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-jna-smoke-reports-${{ matrix.os-name }}
+          path: desktop/build/reports/tests/**
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Desktop packaging + MP-HAL10 size budget enforcement (deliverable 1)
+  # ─────────────────────────────────────────────────────────────────────────
+  desktop-package-size-budget:
+    name: "Desktop package & size budget (${{ matrix.os-name }})"
+    needs: desktop-jna-smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: linux
+          - os: windows-latest
+            os-name: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout (Phase 4b branch)
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Rust toolchain (host target)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore cargo build tree
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: desktop-cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            desktop-cargo-${{ runner.os }}-
+
+      # jpackage's MSI packager shells out to WiX 3.x (candle/light). Install
+      # it explicitly so the runner image's software set can never regress
+      # the packaging lane; jpackage locates the toolset via the WIX env var.
+      - name: Install WiX Toolset 3.14 (jpackage MSI prerequisite)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $wixRoot = "${env:ProgramFiles(x86)}\WiX Toolset v3.14"
+          if (Test-Path "$wixRoot\bin\light.exe") {
+            Write-Host "WiX 3.14 already present at $wixRoot"
+          } else {
+            choco install wixtoolset --version=3.14.0.6526 -y --no-progress
+          }
+          "WIX=$wixRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: "Package desktop distribution (jpackage - deb on linux, msi on windows)"
+        shell: bash
+        run: |
+          chmod +x gradlew
+          # verifyDesktopNativeHygiene + verifyDesktopSizeBudget run as
+          # finalizers of the resource/packaging lifecycle inside this pass.
+          # --configure-on-demand: desktop lane never configures :app/AGP.
+          ./gradlew :desktop:packageDistributionForCurrentOS --no-daemon --configure-on-demand --stacktrace
+
+      - name: MP-HAL10 size budget report (strictly < 250 MiB)
+        shell: bash
+        run: ./gradlew :desktop:verifyDesktopSizeBudget --no-daemon --configure-on-demand
+
+      - name: Upload desktop distribution artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: streamify-desktop-${{ matrix.os-name }}-${{ github.sha }}
+          path: desktop/build/compose/binaries/**
+          if-no-files-found: error
