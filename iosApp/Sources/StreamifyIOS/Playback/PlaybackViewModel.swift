@@ -14,7 +14,7 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────────
 
 @MainActor
-final class PlaybackViewModel: ObservableObject, AudioSessionResponding {
+final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteCommandRouting {
 
     @Published private(set) var state = PlaybackUiState.idle
 
@@ -24,20 +24,33 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding {
     let gateway: EngineGateway
     let audioSession: IOSAudioSessionAdapter
 
+    /// MP-UI01: the lockscreen / now-playing surface, rate-limited to 1 Hz
+    /// (leading-edge admission + trailing-edge flush, so the LAST state of
+    /// a burst always lands on the lockscreen).
+    private let nowPlayingInfo: NowPlayingInfoPublisher
+
+    /// MP-UI01: the lockscreen / Control Center transport controls, routed
+    /// onto the same command plane as the in-app UI.
+    private let remoteCommands: RemoteCommandAdapter
+
     private var collectTask: Task<Void, Never>?
 
     init(
         gateway: EngineGateway,
-        audioSession: IOSAudioSessionAdapter? = nil
+        audioSession: IOSAudioSessionAdapter? = nil,
+        nowPlayingInfoPublisher: NowPlayingInfoPublisher = NowPlayingInfoPublisher()
     ) {
         self.gateway = gateway
         // Default wiring: the adapter drives THIS holder's pause/resume.
         self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
+        self.nowPlayingInfo = nowPlayingInfoPublisher
+        self.remoteCommands = RemoteCommandAdapter(router: self)
     }
 
     /// Cold-start hydration + push-flow collection. Idempotent.
     func start() {
         guard collectTask == nil else { return }
+        remoteCommands.activate()
         do {
             try audioSession.activate()
         } catch {
@@ -49,18 +62,24 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding {
             guard let self else { return }
             if let seeded = await self.gateway.currentSnapshot() {
                 self.state = PlaybackUiState(seeded)
+                self.nowPlayingInfo.publish(state: self.state)
             }
             for await snapshot in self.gateway.snapshots {
                 self.state = PlaybackUiState(snapshot)
+                self.nowPlayingInfo.publish(state: self.state)
             }
         }
     }
 
-    /// Clean teardown: stops collection, deactivates the audio session
-    /// (observer removal included), releases the gateway bridge.
+    /// Clean teardown: stops collection, tears the lockscreen surfaces down
+    /// (remote commands off, now-playing info cleared), deactivates the
+    /// audio session (observer removal included), releases the gateway
+    /// bridge.
     func stop() {
         collectTask?.cancel()
         collectTask = nil
+        remoteCommands.deactivate()
+        nowPlayingInfo.clear()
         audioSession.deactivate()
         gateway.shutdown()
         state = PlaybackUiState.idle
@@ -103,5 +122,18 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding {
 
     func audioSessionRequestsResume(reason: String) {
         dispatch(.play)
+    }
+
+    // MARK: - RemoteCommandRouting (MP-UI01 lockscreen transport)
+
+    func remoteCommandReceived(_ command: RemoteCommand) {
+        switch command {
+        case .play: dispatch(.play)
+        case .pause: dispatch(.pause)
+        case .togglePlayPause: dispatch(.togglePlayPause)
+        case .next: dispatch(.next)
+        case .previous: dispatch(.previous)
+        case .seek(let positionMs): dispatch(.seek(positionMs: positionMs))
+        }
     }
 }

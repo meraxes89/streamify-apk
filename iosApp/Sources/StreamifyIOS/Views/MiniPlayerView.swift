@@ -4,11 +4,12 @@ import SwiftUI
 // Phase 5 (MP-UI01 / Beta): the docked mini player + volume control — the
 // SwiftUI counterparts of the shared CMP components (MiniPlayerBar /
 // VolumeSlider). State comes from the pushed engine snapshots; intent goes
-// out through the same command plane as the Home transport and the
-// audio-session reactions.
+// out through the same command plane as the NowPlaying transport, the
+// audio-session reactions and the lockscreen remote commands. Elapsed-time
+// text renders the 1 Hz-quantized display position.
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct NowPlayingBar: View {
+struct MiniPlayerView: View {
     @EnvironmentObject private var model: PlaybackViewModel
 
     var body: some View {
@@ -87,7 +88,10 @@ struct NowPlayingBar: View {
     }
 
     private var subtitle: String {
-        let position = model.state.positionMs.map(PlaybackFormatting.formatPlaybackTime)
+        // 1 Hz-quantized display position (see PlaybackUiState.
+        // positionForDisplayMs) — the readout advances at most once per
+        // second of content, never per push.
+        let position = model.state.positionForDisplayMs.map(PlaybackFormatting.formatPlaybackTime)
         let duration = model.state.durationMs.map(PlaybackFormatting.formatPlaybackTime)
         let track = model.state.currentTrack
         switch (track, position, duration) {

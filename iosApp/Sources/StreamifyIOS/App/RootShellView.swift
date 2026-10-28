@@ -2,9 +2,9 @@ import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 5 (MP-UI01 / Beta): the root shell — TabView navigation (Home /
-// Search / Library / Jam Sessions) with a persistent NowPlayingBar docked
+// Search / Library / Jam Sessions) with a persistent MiniPlayerView docked
 // above the tab bar, mirroring the desktop shell's adaptive rail sections
-// (the iOS idiom for the same four destinations).
+// (the iOS idiom for the same destinations).
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct RootShellView: View {
@@ -13,7 +13,7 @@ struct RootShellView: View {
     var body: some View {
         ZStack {
             TabView {
-                HomeView()
+                NowPlayingView()
                     .tabItem { Label("Home", systemImage: "house.fill") }
 
                 SearchView()
@@ -32,7 +32,7 @@ struct RootShellView: View {
             // idiom for the desktop shell's MiniPlayerBar dock).
             VStack(spacing: 0) {
                 Spacer()
-                NowPlayingBar()
+                MiniPlayerView()
                     .padding(.horizontal, 12)
                     .padding(.bottom, 58)
             }
@@ -41,10 +41,13 @@ struct RootShellView: View {
     }
 }
 
-// MARK: - Home
+// MARK: - Now Playing
 
-struct HomeView: View {
+/// The now-playing surface (the directive's NowPlayingView): transport,
+/// progress, volume, engine health — plus the queue sheet entry point.
+struct NowPlayingView: View {
     @EnvironmentObject private var model: PlaybackViewModel
+    @State private var queuePresented = false
 
     var body: some View {
         NavigationStack {
@@ -60,6 +63,28 @@ struct HomeView: View {
             .background(StreamifyTheme.bgBase)
             .navigationTitle("Now Playing")
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        queuePresented = true
+                    } label: {
+                        Image(systemName: "music.note.list")
+                    }
+                }
+            }
+            .sheet(isPresented: $queuePresented) {
+                NavigationStack {
+                    QueueView(
+                        state: QueueListState.empty,
+                        onTrackClick: nil
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { queuePresented = false }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -115,7 +140,9 @@ struct HomeView: View {
     }
 
     private var positionLabel: some View {
-        Text(model.state.positionMs.map(PlaybackFormatting.formatPlaybackTime) ?? "--:--")
+        // 1 Hz-quantized display position (positionForDisplayMs): the
+        // readout advances at most once per second of content.
+        Text(model.state.positionForDisplayMs.map(PlaybackFormatting.formatPlaybackTime) ?? "--:--")
             .font(.system(size: 11).monospacedDigit())
             .foregroundColor(StreamifyTheme.textTertiary)
     }

@@ -115,6 +115,16 @@ struct PlaybackUiState: Equatable, Sendable {
     /// sample arrives.
     var positionMs: Int? { PlaybackFormatting.positionMs(from: snapshot.clock) }
     var durationMs: Int? { currentTrack?.durationMs }
+
+    /// The 1 Hz-quantized position the now-playing surfaces RENDER (the
+    /// directive's "rate-limit now-playing updates to 1 Hz", applied to the
+    /// in-app clock readouts): the displayed value advances at most once
+    /// per second OF CONTENT, so higher-cadence DAC pushes repaint the
+    /// transport without churning the elapsed-time text. The lockscreen
+    /// surface gets the same discipline through NowPlayingInfoPublisher's
+    /// admission gate.
+    var positionForDisplayMs: Int? { positionMs.map { ($0 / 1000) * 1000 } }
+
     var progressFraction: Double? {
         PlaybackFormatting.progressFraction(positionMs: positionMs, durationMs: durationMs)
     }
