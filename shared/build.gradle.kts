@@ -67,15 +67,20 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
         }
 
-        desktopMain.dependencies {
-            // Skiko-backed desktop runtime (window/animation primitives).
-            implementation(compose.desktop.currentOs)
+        // NOTE: single-target KMP modules do NOT get generated per-target
+        // source-set accessors (only the common ones) — resolve the
+        // desktop main set by name instead.
+        val desktopMain by getting {
+            dependencies {
+                // Skiko-backed desktop runtime (window/animation primitives).
+                implementation(compose.desktop.currentOs)
 
-            // MP-DEC-02 desktop JNA binding mode: the generated
-            // `uniffi.streamify` proxies dispatch through com.sun.jna. Plain
-            // JVM artifact, version-locked to the same 5.14.0 line as
-            // app/build.gradle.kts and desktop/build.gradle.kts.
-            implementation("net.java.dev.jna:jna:5.14.0")
+                // MP-DEC-02 desktop JNA binding mode: the generated
+                // `uniffi.streamify` proxies dispatch through com.sun.jna. Plain
+                // JVM artifact, version-locked to the same 5.14.0 line as
+                // app/build.gradle.kts and desktop/build.gradle.kts.
+                implementation("net.java.dev.jna:jna:5.14.0")
+            }
         }
 
         commonTest.dependencies {
