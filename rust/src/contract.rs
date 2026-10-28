@@ -1056,21 +1056,38 @@ impl StreamifyEngine {
     /// Apply an accepted media command to the sovereign state machine.
     fn apply_media_command(&self, command: MediaCommand) {
         match command {
-            MediaCommand::Play => self.set_playback_state(PlaybackState::Playing),
-            MediaCommand::Pause => self.set_playback_state(PlaybackState::Paused),
-            MediaCommand::TogglePlayPause => {
-                let current = *self
+            MediaCommand::Play => {
+                *self
                     .shared
                     .state
-                    .read()
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Playing;
+            }
+            MediaCommand::Pause => {
+                *self
+                    .shared
+                    .state
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Paused;
+            }
+            MediaCommand::TogglePlayPause => {
+                let mut state = self
+                    .shared
+                    .state
+                    .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                let next = match current {
+                *state = match *state {
                     PlaybackState::Playing => PlaybackState::Paused,
                     _ => PlaybackState::Playing,
                 };
-                self.set_playback_state(next);
             }
-            MediaCommand::Stop => self.set_playback_state(PlaybackState::Idle),
+            MediaCommand::Stop => {
+                *self
+                    .shared
+                    .state
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Idle;
+            }
             MediaCommand::SetVolume { volume } => {
                 // Same clamp semantics as set_volume (NaN -> full mute).
                 let clamped = if volume.is_nan() {
