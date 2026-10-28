@@ -1,4 +1,4 @@
-name: Desktop CI & Size Budget (Phase 4b)
+name: Desktop CI & Size Budget (Phase 4b + Phase 5)
 
 # Phase 4b / MP-HAL10 (Beta): the Desktop lane of the CI matrix.
 #
@@ -7,10 +7,22 @@ name: Desktop CI & Size Budget (Phase 4b)
 #     the Desktop JVM runner reaches the sovereign Rust core in JNA mode
 #     (engine init, EngineEventListener initial push, debounced lifecycle).
 #
+#   • desktop-ui-smoke (Phase 5 / MP-UI04) — headless Compose Multiplatform
+#     UI smoke tests: the desktop shell's pure decision machinery (adaptive
+#     navigation-rail breakpoints, keyboard-shortcut mapping, engine-port-
+#     backed controller wiring) plus the shared presentation-layer suite
+#     (:shared:desktopTest — theme/component state derivations over
+#     FakeEnginePort). No window opens; the CMP compilation itself is proven
+#     by the :shared/:desktop compilation in the same steps.
+#
 #   • desktop-package-size-budget — packages the Desktop distribution via
 #     jpackage (Deb on ubuntu, Msi on windows) and enforces the master plan
 #     threshold: every distributable artifact (installer + app image) must be
 #     STRICTLY < 250 MiB, with an informative budget breakdown on violation.
+#
+# Phase 5 note: the UniFFI binding generation + 0.28.3 shim moved from
+# :desktop to :shared (MP-UI03) — the generated-bindings debug artifact now
+# uploads from shared/build/generated/uniffi/.
 #
 # Windows legs are PROBE-GATED (MP-DEC-08 matrix kept honest): the engine
 # crate does not yet compile on Windows because rust/src/task_orchestrator.rs
@@ -109,15 +121,36 @@ jobs:
             echo "  unconditionally via 'pub mod task_orchestrator' in rust/src/lib.rs)"
           fi
 
-      - name: Desktop JNA smoke suite (engine init, listener push, lifecycle)
+      # ── Phase 5 (MP-UI04): headless CMP UI smoke lane ──────────────────
+      # The desktop shell's pure decision machinery + engine-port-backed
+      # controller wiring — deterministic on Linux AND Windows runners
+      # (engine-free: the desktop-local FakeEnginePort stands in for the
+      # JNA lane). Runs before the engine-tied suite below so a shell
+      # regression reports with its own step name. NOTE: the --tests filter
+      # is invocation-global in Gradle, so the shared suite runs in the
+      # NEXT step (unfiltered) rather than here.
+      - name: "Headless desktop UI smoke tests (CMP shell + shared layer)"
         if: ${{ runner.os != 'Windows' || env.ENGINE_BUILDABLE == '1' }}
         shell: bash
         run: |
           chmod +x gradlew
           # --configure-on-demand keeps the desktop lane hermetic: only
-          # :desktop is configured, so the AGP/:app configuration (which
-          # requires an Android SDK) never runs on these runners.
-          ./gradlew :desktop:test --no-daemon --configure-on-demand --stacktrace
+          # :desktop + :shared are configured (both AGP-free), so the
+          # Android-SDK-dependent projects never configure on these runners.
+          ./gradlew :desktop:test \
+            --tests "com.streamify.desktop.shell.*" \
+            --no-daemon --configure-on-demand --stacktrace
+
+      - name: Desktop JNA smoke suite (engine init, listener push, lifecycle)
+        if: ${{ runner.os != 'Windows' || env.ENGINE_BUILDABLE == '1' }}
+        shell: bash
+        run: |
+          chmod +x gradlew
+          # Full desktop suite (the JNA engine smoke test included) + the
+          # shared presentation-layer suite. The uniffi proxies now compile
+          # inside :shared (MP-UI03 relocation) — this lane verifies them
+          # end-to-end exactly as before.
+          ./gradlew :desktop:test :shared:desktopTest --no-daemon --configure-on-demand --stacktrace
 
       - name: Windows engine blocked (known rust/ blocker — see notice)
         if: ${{ runner.os == 'Windows' && env.ENGINE_BUILDABLE == '0' }}
@@ -140,15 +173,16 @@ jobs:
 
       # Debug aid for codegen iteration: the raw (pre-shim) and patched
       # (post-shim) uniffi Kotlin bindings, so any future compile failure in
-      # the generated sources can be diagnosed without a rerun. See
-      # patchDesktopUniffiBindings in desktop/build.gradle.kts for the
-      # uniffi-rs 0.28.3 EngineException/Internal(`message`) shim.
+      # the generated sources can be diagnosed without a rerun. The codegen
+      # moved to :shared in Phase 5 (MP-UI03) — see patchSharedUniffiBindings
+      # in shared/build.gradle.kts for the uniffi-rs 0.28.3
+      # EngineException/Internal(`message`) shim.
       - name: Upload generated uniffi bindings (debug aid)
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: desktop-uniffi-bindings-${{ matrix.os-name }}
-          path: desktop/build/generated/uniffi/
+          path: shared/build/generated/uniffi/
           if-no-files-found: ignore
 
       - name: Upload test reports (on failure)
