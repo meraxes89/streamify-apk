@@ -35,6 +35,8 @@
 #if defined(__linux__)
 
 // The entire driver under test (white-box: pwabi, loaders, driver, facade).
+// codeql[cpp/include-non-header] Suppress unity-include in white-box unit test
+// lgtm[cpp/include-non-header]
 #include "../audio/pipewire_driver.cpp"
 
 #include <chrono>
