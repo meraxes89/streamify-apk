@@ -14,7 +14,19 @@ the JNA-mode engine lane, CI packaging on the Windows/Linux matrix, and the
 | Size budget gate (`verifyDesktopSizeBudget`) | this module | `desktop/build.gradle.kts` |
 | Asset hygiene gate (`verifyDesktopNativeHygiene`) | this module | `desktop/build.gradle.kts` |
 | WASAPI / PipeWire HAL drivers | Alpha (Phase 4b, MP-HAL08/09) | `rust/**`, `native/**` |
+| Windows engine compilability (`task_orchestrator.rs` cfg gating) | Alpha (follow-up, see below) | `rust/src/task_orchestrator.rs` |
 | Full responsive Compose shell | Phase 5 (MP-UI04) | — |
+
+**Windows legs are probe-gated**: `rust/src/task_orchestrator.rs` imports
+Linux-only libc APIs (`cpu_set_t`, `sched_setaffinity`, `CPU_SET`, `CPU_ZERO`,
+`setpriority`, `PRIO_PROCESS`) with no cfg gate, and `rust/src/lib.rs` compiles
+the module on every target — so the engine cdylib (and even the bindgen, which
+compiles the package lib) cannot build on Windows today. Each Windows CI leg
+runs a cheap `cargo check --lib` probe first: while the blocker stands the leg
+reports GREEN with a loud blocker notice; the moment the rust tree compiles on
+Windows, the full smoke/packaging suite activates automatically. The durable
+fix (`#[cfg(target_os = "linux")]` on the module + a no-op stub elsewhere —
+its only caller is the Android-gated `jni_bridge.rs`) is Alpha's to land.
 
 `Main.kt` is intentionally a minimal, engine-free Compose window. The Phase 4b
 mission is packaging, the size budget and headless JNA verification; wiring
