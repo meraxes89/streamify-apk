@@ -202,16 +202,16 @@ class RustAudioPipelineTest {
             burstFrames = 64,
             clockSampleInterval = 1,
         )
+        val frames = 256
+        val ramp = FloatArray(frames * 2) { it / 1000f }
+        var written = 0
+        while (written < ramp.size) {
+            val accepted = ring.writeSamples(ramp, written, ramp.size - written)
+            if (accepted > 0) written += accepted
+        }
         assertTrue(pipeline.start())
         try {
-            val frames = 256
-            val ramp = FloatArray(frames * 2) { it / 1000f }
-            var written = 0
-            while (written < ramp.size) {
-                val accepted = ring.writeSamples(ramp, written, ramp.size - written)
-                if (accepted > 0) written += accepted
-                pipeline.onProducerActivity()
-            }
+            pipeline.onProducerActivity()
             await("output drained the ramp") { output.totalFrames() >= frames }
             val drained = output.drained()
             // The ramp must appear as a contiguous prefix (silence bursts
