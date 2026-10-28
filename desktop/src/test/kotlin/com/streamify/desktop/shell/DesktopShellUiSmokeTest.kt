@@ -7,6 +7,7 @@ import com.streamify.shared.model.PlaybackSnapshot
 import com.streamify.shared.model.PlaybackStatus
 import com.streamify.shared.model.PlayerCommand
 import com.streamify.shared.state.PlaybackController
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -27,6 +28,7 @@ import org.junit.Test
  * stays engine-free: FakeEnginePort stands in for the JNA lane, so the
  * suite is deterministic on both Linux and Windows runners.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class DesktopShellUiSmokeTest {
 
     // ── Adaptive navigation rail ────────────────────────────────────────
