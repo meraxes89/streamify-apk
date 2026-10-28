@@ -64,9 +64,9 @@
 ### 🖥️ Phase 4b: Desktop Audio (Windows & Linux)
 * **Lead Engineer:** Alpha (Desktop HALs) & Beta (Desktop CI & Packaging)
 
-- [ ] **MP-HAL08**: Implement Windows WASAPI exclusive/shared event-driven pull adapter (`IAudioClient3` + `AvSetMmThreadCharacteristics`).
-- [ ] **MP-HAL09**: Implement Linux PipeWire native process callback adapter (`pw_stream_events`) with ALSA fallback.
-- [ ] **MP-HAL10**: Establish CI size budget for packaged Desktop CMP apps (<250MB).
+- [x] **MP-HAL08**: Implement Windows WASAPI exclusive/shared event-driven pull adapter (`IAudioClient3` + `AvSetMmThreadCharacteristics`) — `native/audio/wasapi_pull_adapter.cpp` (`#if _WIN32`): `IAudioClient3` shared-low-latency engine period (fundamental-grid aligned, canonical-format fast path) → standard shared `AUTOCONVERTPCM` fallback → event-driven exclusive `WAVEFORMATEXTENSIBLE` f32; `AvSetMmThreadCharacteristicsW(L"Pro Audio")` render thread; `IAudioClock::GetPosition` → `DacPresentationClock`. RT path = host-testable `WasapiRenderCore` (`native/include/wasapi_render_core.h`); audited by `desktop_hal_render_core_test_suite` on every host + mock-consumer twin in `rust/src/desktop_hal_models.rs` (`rust/tests/test_desktop_hal_contracts.rs`). Cross-verified against real Windows SDK headers (MinGW-w64).
+- [x] **MP-HAL09**: Implement Linux PipeWire native process callback adapter (`pw_stream_events`) with ALSA fallback — `native/audio/pipewire_driver.cpp` (`#if __linux__`): `pw_stream` RT process callback pulling f32 straight from `AudioSink`, `pw_time` clock ingestion (lock-free `pw_stream_get_time` snapshot), and a dlopen'd ALSA `snd_pcm_writei` fallback that triggers when `libpipewire-0.3.so.0` / the daemon is unavailable. ZERO dev-package link deps: the PipeWire/SPA ABI is embedded frozen (`native/include/linuxhal_embedded_abi.h`, static-asserted + byte-identical EnumFormat pod, cross-checked against real 0.3.65 & 1.4.2 headers) so the driver compiles on any Linux toolchain. RT paths = host-testable `PipeWireRenderCore` / `AlsaRenderCore`; audited by `desktop_hal_render_core_test_suite` + `linux_hal_driver_test_suite` (white-box: live PipeWire→ALSA fallback drive on the deviceless ALSA `null` PCM) + the Rust mock-consumer twin.
+- [ ] **MP-HAL10**: Establish CI size budget for packaged Desktop CMP apps (<250MB). *(Beta: Desktop CI & Packaging.)*
 
 ---
 

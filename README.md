@@ -133,6 +133,11 @@ cd ..
 cd native
 cmake -B build -S . -DENABLE_TESTS=ON
 cmake --build build --target test_audio_sink_ringbuffer
+# Phase 4b desktop HAL lanes (WASAPI/PipeWire/ALSA render cores on every
+# host; the dlopen'd Linux driver + ALSA fallback on Linux hosts — no
+# PipeWire/ALSA dev packages or audio hardware required):
+cmake --build build --target desktop_hal_render_core_test_suite
+cmake --build build --target linux_hal_driver_test_suite  # Linux only
 ctest --test-dir build --output-on-failure
 cd ..
 
