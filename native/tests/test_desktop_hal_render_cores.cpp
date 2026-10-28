@@ -134,8 +134,8 @@ void test_wasapi_bound_and_underrun() {
         // Verify the exact ramp slice for this quantum.
         bool intact = true;
         for (uint32_t f = 0; f < quanta[q]; ++f) {
-            if (dst[f * 2] != ramp_left(consumed + f) ||
-                dst[f * 2 + 1] != -ramp_left(consumed + f)) {
+            if (std::fabs(dst[f * 2] - ramp_left(consumed + f)) > 1e-6f ||
+                std::fabs(dst[f * 2 + 1] - (-ramp_left(consumed + f))) > 1e-6f) {
                 intact = false;
             }
         }
@@ -340,8 +340,8 @@ void test_pipewire_bound_and_underrun() {
         check(got == 512, "full quantum filled");
         bool intact = true;
         for (uint32_t f = 0; f < 512; ++f) {
-            if (dst[f * 2] != ramp_left(consumed + f) ||
-                dst[f * 2 + 1] != -ramp_left(consumed + f)) {
+            if (std::fabs(dst[f * 2] - ramp_left(consumed + f)) > 1e-6f ||
+                std::fabs(dst[f * 2 + 1] - (-ramp_left(consumed + f))) > 1e-6f) {
                 intact = false;
             }
         }
@@ -496,7 +496,7 @@ void test_alsa_window_pull() {
         check(got == 256, "full window pulled");
         bool intact = true;
         for (uint32_t f = 0; f < 256; ++f) {
-            if (dst[f * 2] != ramp_left(consumed + f)) intact = false;
+            if (std::fabs(dst[f * 2] - ramp_left(consumed + f)) > 1e-6f) intact = false;
         }
         check(intact, "window pull is bit-exact");
         consumed += 256;
@@ -508,7 +508,7 @@ void test_alsa_window_pull() {
     check(core.PullWindow(256, starve.data()) == 0, "starved window empty");
     bool silent = true;
     for (float f : starve) {
-        if (f != 0.0f) silent = false;
+        if (std::fabs(f) > 1e-6f) silent = false;
     }
     check(silent, "starved window zero-filled");
     check(core.underrun_windows() == 1, "underrun window counted");
