@@ -94,6 +94,11 @@ pub mod tick_matrix;
 // contract headless on every CI runner. Pure-Rust twin of
 // native/include/virtual_hal.h.
 pub mod virtual_hal;
+// Phase 4b (MP-HAL08/MP-HAL09, deliverable 3): the desktop HAL mock
+// models — WASAPI event-driven / PipeWire process-callback / ALSA
+// fallback consumers driven against the VirtualHAL double (host-only,
+// no UniFFI surface).
+pub mod desktop_hal_models;
 pub mod waveform_indexer;
 // Audit #22 item 6: shared little-endian wire-field readers —
 // panic-free ingress parsing for every wire codec.
@@ -142,6 +147,15 @@ pub use virtual_hal::{
     AdversarialModes, AdversarialProfile, AudioHalConsumer, DacClockInterpolator,
     HalPullReport, ScenarioReport, VirtualHalCallback, VirtualHalConfig, VirtualHalSink,
     VirtualHalStats, INTERPOLATION_ACCEPTANCE_MS,
+};
+// Phase 4b (MP-HAL08/MP-HAL09): the desktop HAL mock models + their
+// clock-plane conversion helpers (the pure-Rust twins of the C++ render
+// cores' helpers).
+pub use desktop_hal_models::{
+    alsa_presented_frames, pipewire_ticks_to_frames, wasapi_frames_to_render,
+    wasapi_qpc100_to_ns, wasapi_scale_device_position, DesktopHalFlavor,
+    DesktopHalModel, DesktopHalModelConfig, DesktopHalTelemetry,
+    DESKTOP_CANONICAL_RATE_HZ,
 };
 // Multiplatform Phase 3 (MP-C15): observability entry points for the
 // client shells (Beta's init wiring).
