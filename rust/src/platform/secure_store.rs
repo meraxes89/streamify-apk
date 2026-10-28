@@ -701,12 +701,14 @@ mod secret_service {
     /// documented constraint as the resolver's own blocking helpers).
     pub struct SecretServiceStore;
 
-    /// Cached availability probe: connecting + building the service
-    /// proxy answers within milliseconds when a Secret Service
-    /// implementation (gnome-keyring / kwallet) is registered on the
-    /// session bus; anything else (headless host, bare bus) means the
-    /// native backend cannot serve and [`default_secure_store`] falls
-    /// back with a loud warning.
+    /// Cached availability probe: a live session bus + a service name
+    /// is NOT proof the service can serve — CI runners often carry
+    /// D-Bus activation but a locked or policy-denied keyring, where
+    /// proxy construction succeeds and every actual secret operation
+    /// is denied (measured: `Storage { kind: Permission }`). The only
+    /// honest probe is a real round-trip of a throwaway secret through
+    /// the same path [`store_secret`] uses; anything less falls back
+    /// to [`InMemorySecureStore`] with a loud warning.
     static SERVICE_AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
     impl SecretServiceStore {
@@ -714,20 +716,26 @@ mod secret_service {
             Self
         }
 
-        /// Whether a Secret Service is reachable on the session bus
-        /// (cached after the first probe).
+        /// Whether a Secret Service can actually serve secrets on this
+        /// host (cached after the first probe).
         pub fn is_available() -> bool {
             *SERVICE_AVAILABLE.get_or_init(|| {
                 if !crate::platform::linux::mpris::session_bus_available() {
                     return false;
                 }
-                crate::resolver::get_runtime()
-                    .block_on(async {
-                        let conn = Connection::session().await.ok()?;
-                        SecretServiceProxy::new(&conn).await.ok()?;
-                        Some(true)
-                    })
-                    .unwrap_or(false)
+                let probe = SecretServiceStore;
+                let probe_key = "streamify.availability.probe";
+                match SecureStoreProvider::store_secret(&probe, probe_key, b"probe") {
+                    Ok(()) => {
+                        // Best-effort cleanup: a lingering probe entry is
+                        // inert (namespaced, non-secret payload), so a
+                        // failed delete must not fail the availability
+                        // verdict.
+                        let _ = SecureStoreProvider::delete_secret(&probe, probe_key);
+                        true
+                    }
+                    Err(_) => false,
+                }
             })
         }
     }
