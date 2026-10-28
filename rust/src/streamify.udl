@@ -158,7 +158,7 @@ enum CryptoErrorKind {
 ///
 /// The `Internal` variant is also the panic channel: every UniFFI
 /// entrypoint is wrapped in `catch_unwind` and converts a Rust panic
-/// into `Internal { message, backtrace }` (MP-C06) — a panic never
+/// into `Internal { error_message, backtrace }` (MP-C06) — a panic never
 /// unwinds into Kotlin or Swift.
 [Error]
 interface EngineError {
@@ -174,9 +174,18 @@ interface EngineError {
     /// Key material / cipher operation failure.
     Crypto(CryptoErrorKind kind);
     /// Unexpected internal fault, INCLUDING marshaled Rust panics
-    /// (`message` carries the panic text, `backtrace` the captured
-    /// stack when available). Requires diagnostics.
-    Internal(string message, string? backtrace);
+    /// (`error_message` carries the panic text, `backtrace` the
+    /// captured stack when available). Requires diagnostics.
+    ///
+    /// NAMING NOTE (Phase 5 upstream fix from Beta): the field is
+    /// deliberately `error_message`, NOT `message` — uniffi 0.28.3's
+    /// Kotlin backend emits a `message`-named constructor property
+    /// that collides with kotlin.Throwable's shadowed `message`
+    /// getter (the generated `InternalException` does not compile as
+    /// emitted). The rename lets Beta's Gradle
+    /// `patchDesktopUniffiBindings` shim retire to its documented
+    /// no-op path instead of patching the raw codegen.
+    Internal(string error_message, string? backtrace);
 };
 
 /// Reverse control plane: hardware / headset media commands pushed INTO
@@ -284,7 +293,12 @@ interface OsMediaIntegration {
     /// Attach the platform media surface. `window_handle` is the
     /// shell's top-level HWND on Windows (0 = headless fallback);
     /// ignored elsewhere. Returns true when a real OS surface
-    /// attached, false for the headless no-op fallback.
+    /// attached, false for the headless no-op fallback. On iOS the
+    /// attach ALSO activates the MP-UI02 audio-session adapter
+    /// (AVAudioSessionCategoryPlayback + duckOthers; an interruption
+    /// pauses and — when the OS permits — resumes, a lost route pauses
+    /// immediately) — best-effort, degrading interruption handling
+    /// only, never the surface itself.
     [Throws=EngineError]
     boolean start(u64 window_handle);
 
@@ -316,7 +330,8 @@ interface OsMediaIntegration {
 ///
 /// Every method is `[Throws=EngineError]` (Phase 3 / MP-C06): all
 /// entrypoints are panic-shielded, and a panic anywhere under a method
-/// surfaces as `EngineError.Internal { message, backtrace }` instead of
+/// surfaces as `EngineError.Internal { error_message, backtrace }` instead
+/// of
 /// unwinding across the FFI boundary.
 interface StreamifyEngine {
     constructor();

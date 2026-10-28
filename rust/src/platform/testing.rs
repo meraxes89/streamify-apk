@@ -80,7 +80,7 @@ impl MediaCommandSink for RecordingCommandSink {
         self.dispatch_count.fetch_add(1, Ordering::AcqRel);
         if self.refuse_all.load(Ordering::Acquire) {
             return Err(EngineError::Internal {
-                message: "injected dispatch fault".to_string(),
+                error_message: "injected dispatch fault".to_string(),
                 backtrace: None,
             });
         }
