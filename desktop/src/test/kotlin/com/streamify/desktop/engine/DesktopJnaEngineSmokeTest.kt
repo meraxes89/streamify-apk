@@ -12,7 +12,7 @@ import uniffi.streamify.EngineEventListener
 import uniffi.streamify.EngineSnapshot
 import uniffi.streamify.MediaCommand
 import uniffi.streamify.PlaybackState
-import uniffi.streamify.StreamifyEngineImpl
+import uniffi.streamify.StreamifyEngine
 import uniffi.streamify.contractVersion
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -54,7 +54,7 @@ class DesktopJnaEngineSmokeTest {
 
     private fun jnaBindingsOnClasspath(): Boolean = try {
         Class.forName(
-            "uniffi.streamify.StreamifyEngineImpl",
+            "uniffi.streamify.StreamifyEngine",
             false,
             DesktopJnaEngineSmokeTest::class.java.classLoader,
         )
@@ -98,7 +98,11 @@ class DesktopJnaEngineSmokeTest {
         assertTrue("contract_version must be a positive ABI marker (got $abi)", abi > 0u)
 
         // ── 4. Engine lifecycle: construct + initialize (Idle → Buffering) ──
-        val engine = StreamifyEngineImpl()
+        // uniffi-rs 0.28.3 object naming: the Rust-implemented object's
+        // CONCRETE class is `StreamifyEngine` (object_names() appends Impl
+        // only to foreign/callback objects); `StreamifyEngineInterface` is
+        // the abstract side nobody instantiates.
+        val engine = StreamifyEngine()
         engine.initialize()
         assertEquals(
             "initialize() must advance the one-way Idle -> Buffering transition",

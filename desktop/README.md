@@ -53,11 +53,32 @@ The durable fix — adding `cdylib_name = "streamify_core_rs"` under
 (Alpha) and is flagged for follow-up. The same latent mismatch exists for the
 Android module's generated proxies.
 
+### uniffi-rs 0.28.3 codegen shim (`patchDesktopUniffiBindings`)
+
+The Kotlin backend renames error types (`EngineError` → `EngineException`)
+and, for non-flat error variants, emits **both** a constructor property and an
+`override val message` formatted-getter for every field literally named
+`message`. The UDL's `EngineError.Internal(message, backtrace)` hits exactly
+that, and the generated `streamify.kt` does not compile as emitted
+(conflicting `message` declarations + a self-recursive getter). This module's
+CI lane was the first lane anywhere to actually compile the generated
+bindings — the app reaches them reflectively and its CI shards run with
+`-PskipExternalNativeBuild` — so the defect surfaced here first.
+
+Since `rust/**` is Alpha's subtree, the desktop lane lowers the RAW codegen
+through a one-token rename before compilation: every backticked `` `message` ``
+field reference becomes `` `errorMessage` `` (only the `Internal` variant
+carries a `message` field, audited against the whole UDL). The durable fix —
+renaming the UDL field, or pinning a codegen release that stops shadowing
+`kotlin.Throwable.message` — is flagged in the PR description. The shim task
+fails loudly if the generated error surface ever drifts.
+
 ## Gradle tasks
 
 | Task | Purpose |
 |---|---|
-| `generateDesktopUniffiBindings` | `cargo run --bin uniffi-bindgen -- generate rust/src/streamify.udl --language kotlin` into `build/generated/uniffi/kotlin` |
+| `generateDesktopUniffiBindings` | `cargo run --bin uniffi-bindgen -- generate rust/src/streamify.udl --language kotlin` into `build/generated/uniffi/kotlin-raw` |
+| `patchDesktopUniffiBindings` | uniffi 0.28.3 shim: renames the Throwable-shadowing `` Internal(`message`) `` field to `` `errorMessage` `` in the raw codegen, lowering it into `build/generated/uniffi/kotlin` (the compiled srcDir) |
 | `buildDesktopEngineLibrary` | `cargo build --release --lib` (host target; release profile is `strip = true`) |
 | `prepareDesktopEngineResources` | stages the single host-arch cdylib at the resource root (JNA classpath loading; single-arch by construction) |
 | `verifyDesktopNativeHygiene` | gate: exactly one host-arch engine lib, no debug-symbol files, no test fixtures, no Android-ABI artifacts |

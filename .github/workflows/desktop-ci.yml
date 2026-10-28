@@ -83,6 +83,19 @@ jobs:
           # requires an Android SDK) never runs on these runners.
           ./gradlew :desktop:test --no-daemon --configure-on-demand --stacktrace
 
+      # Debug aid for codegen iteration: the raw (pre-shim) and patched
+      # (post-shim) uniffi Kotlin bindings, so any future compile failure in
+      # the generated sources can be diagnosed without a rerun. See
+      # patchDesktopUniffiBindings in desktop/build.gradle.kts for the
+      # uniffi-rs 0.28.3 EngineException/Internal(`message`) shim.
+      - name: Upload generated uniffi bindings (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-uniffi-bindings-${{ matrix.os-name }}
+          path: desktop/build/generated/uniffi/
+          if-no-files-found: ignore
+
       - name: Upload test reports (on failure)
         if: failure()
         uses: actions/upload-artifact@v7
