@@ -245,10 +245,14 @@ kotlin.sourceSets.getByName("desktopMain") {
 }
 
 // Every desktop-target Kotlin compilation runs after the PATCHED bindings
-// exist (house pattern — covers compileKotlinDesktop and the desktop test
-// compilation; the shim task transitively depends on generation).
+// exist (house pattern — covers compileKotlinDesktop, the desktop test
+// compilation and any metadata compilation; the shim task transitively
+// depends on generation). NOTE the 'contains' filter: KMP target compile
+// tasks are named compile<Target>Kotlin (compileKotlinDesktop), so an
+// endsWith("Kotlin") filter silently misses them — that miss is exactly
+// what let compilation outrun codegen in the first CI pass.
 tasks.matching { task ->
-    task.name.startsWith("compile") && task.name.endsWith("Kotlin")
+    task.name.startsWith("compile") && task.name.contains("Kotlin")
 }.configureEach {
     dependsOn(patchSharedUniffiBindings)
 }

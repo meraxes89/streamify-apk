@@ -53,16 +53,6 @@ class DesktopEnginePort(
     private val engine: StreamifyEngine = StreamifyEngine(),
 ) : EnginePort {
 
-    init {
-        // Arm the engine: verify runtime invariants, advance the one-way
-        // Idle -> Buffering transition (idempotent per the UDL).
-        engine.initialize()
-        // Listener registration itself bumps the revision: the dispatcher
-        // pushes a full snapshot to the fresh listener on its next pass,
-        // which seeds the StateFlow without any one-shot read.
-        engine.addEventListener(bridgeListener)
-    }
-
     private val bridgeListener = object : EngineEventListener {
         override fun onEngineEvent(snapshot: EngineSnapshot) {
             // Engine dispatch thread: total, allocation-light mapping only.
@@ -73,6 +63,16 @@ class DesktopEnginePort(
     private val _snapshots = MutableStateFlow(PlaybackSnapshot.IDLE)
 
     override val snapshots: StateFlow<PlaybackSnapshot> = _snapshots.asStateFlow()
+
+    init {
+        // Arm the engine: verify runtime invariants, advance the one-way
+        // Idle -> Buffering transition (idempotent per the UDL).
+        engine.initialize()
+        // Listener registration itself bumps the revision: the dispatcher
+        // pushes a full snapshot to the fresh listener on its next pass,
+        // which seeds the StateFlow without any one-shot read.
+        engine.addEventListener(bridgeListener)
+    }
 
     override suspend fun send(command: PlayerCommand): PlayerCommandResult {
         return try {
