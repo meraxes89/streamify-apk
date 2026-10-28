@@ -42,8 +42,10 @@ shell/DesktopShellApp.kt     ← composition root: window + tray + engine lane
 shell/DesktopShell.kt        ← adaptive rail + content panes + mini player dock
 shell/WindowFrame.kt         ← custom undecorated title bar (drag / min / max / close)
 shell/SystemTraySupport.kt   ← tray menu: Play/Pause, Next, Previous, Mute, Show/Hide, Quit
-shell/KeyboardShortcuts.kt   ← Space toggle · Ctrl+←/→ skip · Ctrl+F search (pure map)
-shell/ShellNavModel.kt       ← adaptive rail breakpoints (pure)
+shell/KeyboardShortcuts.kt   ← Space toggle · ←/→ seek ±10s · ↑/↓ volume ±5% ·
+                               Ctrl+←/→ skip · Ctrl+F search (pure map + TransportSteps)
+shell/ShellNavModel.kt       ← adaptive rail breakpoints (pure) — 5 destinations
+                               (Home · Search · Library · Jam Sessions · Settings)
 shell/AppIcon.kt             ← runtime-drawn brand icon (zero binary assets)
 engine/EnginePortLoader.kt   ← reflective engine gateway load (hermetic-safe)
 ```
@@ -59,7 +61,19 @@ engine/EnginePortLoader.kt   ← reflective engine gateway load (hermetic-safe)
   (`EnginePortLoader`), so hermetic hosts still compile and run the module.
 * **Keyboard shortcuts** dispatch from a bubble-phase `onKeyEvent`, so focused
   text entry (the search field) keeps its own keys — typing a space inserts a
-  character; Ctrl+Left moves the caret.
+  character; Ctrl+Left moves the caret. The full directive map: Space =
+  play/pause, bare ←/→ = seek ±10 s, bare ↑/↓ = volume ±5%, Ctrl+→/← =
+  next/previous, Ctrl+F = focus search. Seek/volume nudges base off the
+  ENGINE-AUTHORITATIVE pushed position/volume (the smoothed playhead is
+  render-only) and clamp to track bounds (`TransportSteps`, pinned by the
+  smoke suite).
+* **Now-playing surface**: the Home pane renders the shared `PlaybackSeekbar`
+  (drag-to-scrub, commit-on-release) over the DAC-derived position with the
+  shared playhead guards (`rememberDacSmoothedPosition`), plus the shared
+  `QueueList` (honest empty state until the catalog/storage contract ships
+  the queue surface — the Android host lowers its Media3 queue onto the SAME
+  component). The Settings pane surfaces the engine lane status, the
+  shortcut reference and the shell behavior cards.
 * **System tray** actions route through the same `PlaybackController` command
   plane as the in-app transport and the shortcuts — tray and window can never
   disagree. Mute is a round trip: command out, pushed snapshot back.
@@ -160,7 +174,8 @@ lane only configures `:desktop` + `:shared` (both AGP-free), never the
 ./gradlew :desktop:packageDistributionForCurrentOS --no-daemon --configure-on-demand
 
 # Hermetic zero-toolchain pass (bindings/native tasks skip; the uniffi smoke
-# suite degrades to a JUnit assumption skip; shell/shared suites stay pure):
+# suite lives in src/testEngine and is registered ONLY when the engine lane
+# is live — the shell + shared suites stay pure and KEEP RUNNING):
 ./gradlew :desktop:test :shared:desktopTest --no-daemon --configure-on-demand \
     -Pstreamify.skipRust=true
 ```

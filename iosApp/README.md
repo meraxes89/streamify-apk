@@ -18,11 +18,15 @@ iosApp/
 ├── Sources/StreamifyIOS/
 │   ├── App/
 │   │   ├── StreamifyApp.swift             public StreamifyMainScene (host target composes it)
-│   │   ├── RootShellView.swift            TabView shell + Home/Search/Library/Jam sections
+│   │   ├── RootShellView.swift            TabView shell + NowPlaying/Search/Library/Jam sections
 │   │   └── AppTheme.swift                 brand tokens in Swift (shared-palette parity)
 │   ├── Playback/
 │   │   ├── PlaybackModels.swift           Swift mirrors of the shared presentation models
 │   │   └── PlaybackViewModel.swift        @MainActor state holder + AudioSessionResponding
+│   │                                    + RemoteCommandRouting (lockscreen transport)
+│   │                                    + 1 Hz-gated lockscreen publishing
+│   ├── Playback/NowPlayingInfoPublisher.swift  OneHertzGate · info-dict derivation ·
+│   │                                            RemoteCommandAdapter (MP-UI01)
 │   ├── Engine/
 │   │   ├── EngineGateway.swift            the seam protocol (Swift mirror of EnginePort)
 │   │   ├── UniFFIEngineGateway.swift      #if canImport(uniffi_streamify) — the REAL lane
@@ -31,10 +35,36 @@ iosApp/
 │   ├── AudioSession/
 │   │   └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below)
 │   └── Views/
-│       └── NowPlayingBar.swift            mini player + volume control (SwiftUI)
+│       ├── MiniPlayerView.swift         mini player + volume control (SwiftUI)
+│       └── QueueView.swift              the native queue surface (Swift mirror of
+│                                         the shared QueueList — now-playing / up-next
+│                                         projection, honest empty state)
 └── Tests/StreamifyIOSTests/
-    └── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity suites
+    └── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
+                                            1 Hz gate / lockscreen / queue suites
 ```
+
+## The 1 Hz lockscreen / now-playing discipline (MP-UI01)
+
+The directive mandates: "Rate-limit lockscreen and now-playing updates to
+1 Hz." Two surfaces implement it:
+
+* **Lockscreen (`NowPlayingInfoPublisher`)** — every pushed engine state
+  flows through a pure `OneHertzGate` (injectable clock: first value
+  admits, the 1 s window defers, the boundary re-opens) onto
+  `MPNowPlayingInfoCenter`. A trailing-edge flush guarantees the LAST state
+  of a burst always lands — a leading-edge-only limiter would freeze the
+  lockscreen on a stale elapsed time forever. `RemoteCommandAdapter` routes
+  the lockscreen / Control Center transport (play, pause, toggle, next,
+  previous, scrub-seek) onto the SAME `PlayerCommand` plane as the in-app UI
+  and the MP-UI02 audio-session reactions.
+* **In-app readouts** — `PlaybackUiState.positionForDisplayMs` quantizes the
+  DAC-derived position to whole seconds: the elapsed-time text changes at
+  most once per second OF CONTENT, never per push.
+
+The views carry the directive's names: `NowPlayingView` (the Home tab's
+now-playing surface, with the queue sheet entry point), `MiniPlayerView`
+(the docked mini player) and `QueueView`.
 
 ## `IOSAudioSessionAdapter` (MP-UI02 — the directive contract)
 

@@ -17,8 +17,11 @@ shared/
 ├── src/
 │   ├── commonMain/kotlin/com/streamify/shared/
 │   │   ├── theme/     StreamifyTheme.kt      (colors · typography · spacing · shapes)
-│   │   ├── components/ MiniPlayerBar · TrackListItem · VolumeSlider
-│   │   ├── model/     PlaybackModels · PlaybackFormatting (pure derivations)
+│   │   ├── components/ MiniPlayerBar · TrackListItem · VolumeSlider ·
+│   │   │               PlaybackSeekbar (drag-to-seek + rememberDacSmoothedPosition) ·
+│   │   │               QueueList (now-playing / up-next projection)
+│   │   ├── model/     PlaybackModels · PlaybackFormatting (pure derivations) ·
+│   │   │               PlaybackSmoothing (DacPositionSmoother playhead guards)
 │   │   ├── state/     PlaybackController     (the platform-independent "ViewModel")
 │   │   └── engine/    EnginePort             (the platform seam)
 │   ├── desktopEngine/kotlin/…/desktop/DesktopEnginePort.kt
@@ -26,7 +29,8 @@ shared/
 │   │        attached to the desktop target only when the binding lane runs
 │   ├── androidMain/kotlin/…/android/dogfood/RustAudioDogfoodPanel.kt
 │   │      ← Android consumption of the shared tokens/models (MP-CUT01 panel)
-│   └── commonTest/kotlin/         SharedPlaybackLogicTest (+ FakeEnginePort)
+│   └── commonTest/kotlin/         SharedPlaybackLogicTest · DacPositionSmootherTest
+│   │                              (+ FakeEnginePort)
 └── android/
     └── build.gradle.kts           ← :shared-android — AGP library compiling
                                       commonMain + androidMain against androidx Compose
@@ -54,6 +58,19 @@ line).
 Push-only state discipline (MP-DEC-04): the port exposes a `snapshots`
 `Flow` with strictly monotonic revisions; UI shells collect it and never
 poll. `currentSnapshot()` exists solely for cold-start hydration.
+
+## Playhead smoothing doctrine (`DacPositionSmoother`)
+
+The DAC presentation clock is the SOLE clock master (MP-DEC-03): the
+engine pushes positions derived strictly from hardware frame counters, and
+no wall-clock interpolation ever enters the derivation. The presentation
+layer adds one filter between those pushes and the seekbar — NOT an EMA
+(which would introduce steady-state lag and misrepresent where the DAC
+actually is), but pure transition guards: forward hardware deltas pass
+through verbatim, backward jitter is held while playing, paused re-anchors
+accept, seek/track-change magnitudes snap, and clock-less snapshots never
+fabricate. The same discipline exists on iOS as the 1 Hz display
+quantization + lockscreen admission gate (`NowPlayingInfoPublisher`).
 
 ## Build / verify
 
