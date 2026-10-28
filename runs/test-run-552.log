@@ -1,0 +1,1527 @@
+========================================================================
+STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #552
+COMMIT: 03d0671f53c8adda11adc540082610ae4820b93f
+========================================================================
+
+==================================================
+SHARD: jvm-unit-suite
+DESCRIPTION: Full JVM unit suite: CAD identity gates, fuzzy title/artist matching, dedup hashing
+STATUS: FAILED ❌
+==================================================
+
+openjdk version "17.0.20.1" 2026-08-18
+OpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)
+OpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: testDebugUnitTest
+> Task :app:generateUniffiKotlinBindings SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:checkDebugAarMetadata
+> Task :app:mergeDebugResources FROM-CACHE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:102:21 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/ExportifyParser.kt:239:37 Variable 'durFormatted' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:35:24 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:39:25 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/lyrics/LyricsCacheManager.kt:105:34 'getter for isBluetoothA2dpOn: Boolean' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:173:17 Variable 'version' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:176:17 Variable 'textPoolLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:178:17 Variable 'flags' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:186:21 Variable 'sylStartIdx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:187:21 Variable 'sylCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:86:9 Parameter 'seedTitle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:87:9 Parameter 'seedArtist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:194:37 'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:197:56 'getter for host: InetAddress!' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:225:37 Parameter 'userId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:24:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:26:20 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:28:15 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/ParallelStreamDownloader.kt:108:41 Variable 'expectedLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:20:28 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:22:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:24:23 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeMusicRadioApi.kt:635:9 Parameter 'rendererKey' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeStreamResolver.kt:582:9 Parameter 'statuses' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:61:21 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:115:21 Variable 'artistName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:22:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:96:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:113:29 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/NuclearResetManager.kt:44:21 Variable 'currentPlaylists' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/SmartOfflineVaultEngine.kt:67:39 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:116:9 Parameter 'encoding' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:168:25 Variable 'lraDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:169:25 Variable 'truePeakDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:68:47 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:241:13 Variable 'tombstone' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:358:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:388:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:476:82 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:5:33 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:6:33 'MasterKey' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:116:25 'MasterKey' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:116:35 'Builder' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:117:27 'MasterKey' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:117:37 'KeyScheme' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:119:21 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:123:13 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:123:40 'PrefKeyEncryptionScheme' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:124:13 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:124:40 'PrefValueEncryptionScheme' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/supabase/SupabaseAdminClient.kt:211:24 Variable 'resp' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:249:43 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:250:42 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:35 Parameter 'counts' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:55 Parameter 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:307:66 Parameter 'cloudTopTrack' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:356:37 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:357:35 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:439:13 Variable 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:470:40 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:471:38 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:516:36 Unsafe use of a nullable receiver of type Any?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:538:61 Type mismatch: inferred type is Any? but Any was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:539:56 Type mismatch: inferred type is Any? but Any was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:540:52 Type mismatch: inferred type is Any? but Any was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:710:71 Type mismatch: inferred type is ClassLoader? but ClassLoader was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:725:68 Type mismatch: inferred type is ClassLoader? but ClassLoader was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:745:64 Type mismatch: inferred type is ClassLoader? but ClassLoader was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/update/StreamifyUpdateManager.kt:182:74 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/PlaylistLinkScraper.kt:459:92 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/YtSessionExtractor.kt:20:9 Parameter 'onError' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:1615:73 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JoinFabric.kt:327:27 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:99:13 Variable 'senderId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:102:13 Variable 'sequence' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:103:13 Variable 'timestampMonoNs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/StreamifyAudioProcessor.kt:463:64 Parameter 'channelCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/SyncAudioProcessor.kt:106:13 Variable 'kalmanActive' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:25:48 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:84:28 Variable 'finalBpm' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:85:28 Variable 'finalKey' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:98:21 Name shadowed: trackKey
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:287:41 Parameter 'mode' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:305:37 Parameter 'playlist' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:121:63 Parameter 'limit' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:310:53 Parameter 'rawJson' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CanvasVideoSurface.kt:141:9 Variable 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:163:42 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:73 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:98 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:523:56 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:119:5 Parameter 'onAddToPlaylistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:190:37 'PlaylistPlay: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistPlay
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:201:37 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:228:41 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:335:37 'PlaylistAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistAdd
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:260:65 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:261:53 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/FriendActivityCard.kt:185:49 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/HeartButton.kt:43:9 Variable 'tint' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QrShareCard.kt:147:5 Parameter 'qrBitmap' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QuantumSonicTokenController.kt:217:37 Parameter 'heightPx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/RelatedDiscoverSheet.kt:46:9 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:197:94 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:199:38 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtPlaylistHeroHeader.kt:181:102 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtQueueTrackItem.kt:42:5 Parameter 'onReplay' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSortFilterBar.kt:52:56 'ViewList: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ViewList
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSyllableLine.kt:191:5 Parameter 'startSearchOffset' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtThumbnail.kt:45:5 Parameter 'artist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:191:39 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:352:53 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:368:53 'Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:419:13 Duplicate label in when
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AlbumScreen.kt:307:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ArtistScreen.kt:92:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:50:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:355:5 Parameter 'onClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:414:26 Parameter 'friendName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:68:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:260:68 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:364:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:459:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/EqualizerScreen.kt:56:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:164:5 Parameter 'progressFlow' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:178:5 Parameter 'onQueueClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:179:5 Parameter 'onLyricsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:182:5 Parameter 'isAutoPlayEnabled' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:183:5 Parameter 'onAutoPlayToggle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheetPanes.kt:425:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:40:5 Parameter 'dominantColor' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:42:5 Parameter 'onSettingsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:57:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:103:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:772:56 'ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ExitToApp
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:1224:5 Parameter 'votes' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionWidgets.kt:107:5 Parameter 'isHost' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:52:9 Variable 'downloadTasks' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:56:9 Variable 'user' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:88:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:694:21 Variable 'gridColumns' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1204:43 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1374:5 Parameter 'onMoveToFolder' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1392:44 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/PlayerScreen.kt:14:33 Parameter 'onCollapse' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:46:9 Variable 'spotifyAuth' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:43:5 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:428:33 Parameter 'index' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:93:35 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:454:75 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:668:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:736:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:783:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:800:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:983:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:69:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:244:33 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:148:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:272:5 Parameter 'onArtistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:106:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:412:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:473:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:529:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:607:52 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/FleetConfig.kt:204:29 Parameter 'd' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/SLog.kt:97:15 Unnecessary safe call on a non-null receiver of type Throwable
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/newpipe/NewPipeDownloaderImpl.kt:25:39 'create(MediaType?, ByteArray, Int = ..., Int = ...): RequestBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/HomeViewModel.kt:74:18 This declaration is in a preview state and can be changed in a backwards-incompatible manner with a best-effort migration. Its usage should be marked with '@kotlinx.coroutines.FlowPreview' or '@OptIn(kotlinx.coroutines.FlowPreview::class)' if you accept the drawback of relying on preview API
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:186:43 Parameter '_peers' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:193:56 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:198:40 Parameter 'currentPosition' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerHousekeeping.kt:36:46 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:351:92 Elvis operator (?:) always returns the left operand of non-nullable type Int?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:447:29 Name shadowed: currentT
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:805:93 Unnecessary safe call on a non-null receiver of type Track?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:1020:50 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:296:9 Parameter 'allOnlineResults' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:298:9 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:399:25 Variable 'coverUrl' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
+
+> Task :app:processDebugJavaRes
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+
+> Task :app:testDebugUnitTest
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.
+
+com.streamify.app.jam.JamPairingTest > qr encodes and decodes the pairing payload FAILED
+    com.google.zxing.NotFoundException
+
+586 tests completed, 1 failed
+
+> Task :app:testDebugUnitTest FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/jvm_test-1793200425252.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:testDebugUnitTest'.
+> There were failing tests. See the report at: file:///home/runner/work/streamify-apk/streamify-apk/app/build/reports/tests/testDebugUnitTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:testDebugUnitTest'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:282)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
+	at org.gradle.execution.plan.DefaultPlanExecutor.process(DefaultPlanExecutor.java:116)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.executeWithServices(DefaultTaskExecutionGraph.java:138)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.execute(DefaultTaskExecutionGraph.java:123)
+	at org.gradle.execution.SelectedTaskExecutionAction.execute(SelectedTaskExecutionAction.java:35)
+	at org.gradle.execution.DryRunBuildExecutionAction.execute(DryRunBuildExecutionAction.java:51)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:54)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:43)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor.execute(BuildOperationFiringBuildWorkerExecutor.java:40)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.lambda$executeTasks$10(DefaultBuildLifecycleController.java:313)
+	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
+	at org.gradle.internal.model.StateTransitionController.lambda$tryTransition$8(StateTransitionController.java:177)
+	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:44)
+	at org.gradle.internal.model.StateTransitionController.tryTransition(StateTransitionController.java:177)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.executeTasks(DefaultBuildLifecycleController.java:304)
+	at org.gradle.internal.build.DefaultBuildWorkGraphController$DefaultBuildWorkGraph.runWork(DefaultBuildWorkGraphController.java:220)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:264)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:128)
+	at org.gradle.composite.internal.DefaultBuildController.doRun(DefaultBuildController.java:181)
+	at org.gradle.composite.internal.DefaultBuildController.access$000(DefaultBuildController.java:50)
+	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.lambda$run$0(DefaultBuildController.java:198)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.run(DefaultBuildController.java:198)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+Caused by: org.gradle.api.internal.exceptions.MarkedVerificationException: There were failing tests. See the report at: file:///home/runner/work/streamify-apk/streamify-apk/app/build/reports/tests/testDebugUnitTest/index.html
+	at org.gradle.api.tasks.testing.AbstractTestTask.handleTestFailures(AbstractTestTask.java:691)
+	at org.gradle.api.tasks.testing.AbstractTestTask.handleCollectedResults(AbstractTestTask.java:533)
+	at org.gradle.api.tasks.testing.AbstractTestTask.executeTests(AbstractTestTask.java:528)
+	at org.gradle.api.tasks.testing.Test.executeTests(Test.java:715)
+	at com.android.build.gradle.tasks.factory.AndroidUnitTest.executeTests(AndroidUnitTest.java:118)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.run(DefaultBuildOperationExecutor.java:68)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:41)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:74)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:67)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:45)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeAndStoreInCache(BuildCacheStep.java:145)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$executeWithCache$4(BuildCacheStep.java:101)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$executeWithCache$5(BuildCacheStep.java:101)
+	at org.gradle.internal.Try$Success.map(Try.java:164)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithCache(BuildCacheStep.java:85)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$0(BuildCacheStep.java:74)
+	at org.gradle.internal.Either$Left.fold(Either.java:115)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:76)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:54)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:54)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:106)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:55)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:61)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
+	at org.gradle.execution.plan.DefaultPlanExecutor.process(DefaultPlanExecutor.java:116)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.executeWithServices(DefaultTaskExecutionGraph.java:138)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.execute(DefaultTaskExecutionGraph.java:123)
+	at org.gradle.execution.SelectedTaskExecutionAction.execute(SelectedTaskExecutionAction.java:35)
+	at org.gradle.execution.DryRunBuildExecutionAction.execute(DryRunBuildExecutionAction.java:51)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:54)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:43)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor.execute(BuildOperationFiringBuildWorkerExecutor.java:40)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.lambda$executeTasks$10(DefaultBuildLifecycleController.java:313)
+	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
+	at org.gradle.internal.model.StateTransitionController.lambda$tryTransition$8(StateTransitionController.java:177)
+	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:44)
+	at org.gradle.internal.model.StateTransitionController.tryTransition(StateTransitionController.java:177)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.executeTasks(DefaultBuildLifecycleController.java:304)
+	at org.gradle.internal.build.DefaultBuildWorkGraphController$DefaultBuildWorkGraph.runWork(DefaultBuildWorkGraphController.java:220)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:264)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:128)
+	at org.gradle.composite.internal.DefaultBuildController.doRun(DefaultBuildController.java:181)
+	at org.gradle.composite.internal.DefaultBuildController.access$000(DefaultBuildController.java:50)
+	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.lambda$run$0(DefaultBuildController.java:198)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.run(DefaultBuildController.java:198)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+
+
+BUILD FAILED in 2m 26s
+24 actionable tasks: 17 executed, 7 from cache
+Configuration cache entry stored.
+==================================================
+SHARD: native-dsp
+DESCRIPTION: KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Native DSP Test Suite...
+[TEST] Phase 1: Native DSP, Audiophile Fidelity & 32-Peer Jam
+  - Phase1/BS.1770: calibration anchors
+  - Phase1/BS.1770: dual gating
+  - Phase1/normalize: -8 LUFS -> -14 target
+  - Phase1/limiter: true-peak ceiling + inter-sample
+  - Phase1/channels: constant-power balance + mono
+  - Phase1/ring: SPSC correctness
+  - Phase1/mix: 32-peer pool + saturation
+  - Phase1/silentPLL: bypass + PTP lock + takeover
+  - Phase1/chain: end-to-end -14 LUFS @ -1 dBTP
+  - Phase1/rate: legacy paths honor the configured fs
+  - Phase1/rate: rate-aware legacy surface PASSED
+  - Phase1/perf: limiter hot-path benchmark
+    SoftKneeLimiter 2048f stereo hot   1117532.6 ns/block  545.67 ns/frame  (~1.87% of an A55 core, est.)
+    PeerMixPool::saturate 4096 hot      75247.0 ns/block   18.37 ns/frame  (~0.06% of an A55 core, est.)
+    std::tanh x4096 (arg 0..9)          69974.1 ns/block   17.08 ns/frame  (~0.06% of an A55 core, est.)
+    std::pow(10,x*0.05) x4096           27231.7 ns/block    6.65 ns/frame  (~0.02% of an A55 core, est.)
+  - Phase1/perf: zero-alloc hot paths
+  - Phase1/perf: zero-alloc audit PASSED
+[TEST] Phase 1: all 231 checks passed
+[TEST] Phase 2: Harmonic Transition Engine, Candidate Fast-Math & Circadian Curves
+  [harmonic] candidate ID hashing
+  [harmonic] candidate dedup kernels
+  [harmonic] Camelot key transition matrix
+  [harmonic] BPM transition + combined coefficient
+  [harmonic] circadian daypart curves
+    (24h max per-second jump: 6.44e-05)
+  [harmonic] perf budgets + zero-alloc audit
+    (256x256 masks+union: 16.6 us, best of 5)
+    (bulk hash 20k x 21-char ids: 434 us)
+[TEST] Phase 2: all 150 checks passed (0 failed)
+[phase3] canvas loop + AGSL ambient glow
+  [canvas] loop phase primitives
+  [canvas] boundary crossfade weights
+  [canvas] blended-signal seam continuity (C0 + C1)
+  [canvas] bit-exact frame periodicity (both strategies)
+  [canvas] renderer clock discipline
+  [agsl] shader source + uniform tables
+  [agsl] runtime param generation
+  [agsl] fuzz-regression: hostile time/period quotients
+[phase3] canvas/AGSL: 169 passed, 0 failed
+[phase3] audio remuxer & bitstream validators
+  [opus] TOC codes 0-3 + RFC 6716 accounting
+  [adts] header ladder + strict rates
+  [remux] Ogg Opus structural audit
+  [remux] ADTS normalization + lifecycle
+  [remux] degenerate streams + io failure
+  [remux] randomized corrupt-stream soak (500 packets)
+  [remux] zero-allocation per-packet path
+[phase3] audio remuxer: 158 passed, 0 failed
+[phase3] bitmap palette extractor
+  [palette] role colors on synthetic art
+  [palette] WCAG contrast discipline
+  [palette] formats, sizes, malformed ladder
+  [palette] determinism
+  [palette] zero-alloc hot path + perf smoke
+    perf: 1024x1024 RGBA in 8.66 ms
+  [palette] fuzz-regression: median-cut termination
+[phase3] palette: 48 passed, 0 failed
+[phase4] audio sinks: SPSC ring, SIMD converter, Wear codec
+  [sink] CRC32 known vectors + rate codes
+  [sink] SIMD Float32->PCM16 accuracy + saturation
+    max SIMD-vs-scalar delta: 0 LSB
+  [sink] SIMD stereo->mono downmix
+  [sink] FIR decimator: DC, passband, anti-alias, counts
+  [sink] SPSC ring basic IO + wraparound + byte reads
+  [sink] telemetry: watermarks, fullness, latency, xruns
+  [sink] cooperative flush semantics (AMP-10)
+  [sink] cooperative flush under concurrent read stress
+  [sink] canonical f32 pull path: no premature quantization (MP-C08)
+  [sink] generational flush protocol (MP-C10)
+  [sink] cache-line alignment discipline (MP-C08)
+  [sink] zero-allocation hot paths (AllocGuard)
+  [sink] SPSC stress: 10,000,000 frames, 2 threads
+    0.04 s wall, 278.1 Mframes/s (unsanitized sanitizer build)
+  [sink] SPSC pipeline stress: downmix + decimate, 2 threads
+  [sink] packetizer roundtrip + MTU chunking
+  [sink] packetizer corruption ladder (hostile input)
+  [sink] zero-run compressor roundtrip + bounds
+  [sink] token-bucket rate limiter (deterministic clock)
+  [sink] packetizer pacing + backpressure telemetry
+  [sink] sink registry + stats wire layout
+[phase4] audio sinks: 8507 passed, 0 failed
+  [Phase-5] Palette SIMD & WCAG contrast engine
+    perf: 1080x1080 worst-case (full noise) best-of-3: 2.116 ms
+  [Phase-5] palette suite: 5050 checks passed, 0 failed
+  [Phase-5] Frame pacer & jank monitor
+    stress: 1,000,000 ticks, 141756 consistent snapshots, j120=199423 j60=80674 mis=584594 stale=368
+  [Phase-5] frame pacer suite: 76 checks passed, 0 failed
+  - SoftKneeLimiter transient pass-through: PASSED
+  - SoftKneeLimiter sustained soft-knee limit: PASSED
+  - SoftKneeLimiter short limit: PASSED
+  - LufsNormalizer: PASSED
+  - KissFFTR 1024 Transform: PASSED
+[TEST] All Native DSP Tests Passed Successfully! (ASan/UBSan Verified)
+==================================================
+SHARD: native-libfuzzer
+DESCRIPTION: Deep LibFuzzer Crash Hunt
+STATUS: PASSED ✅
+==================================================
+
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 3706076238
+INFO: Loaded 1 modules   (7462 inline 8-bit counters): 7462 [0x560216789ec0, 0x56021678bbe6), 
+INFO: Loaded 1 PC tables (7462 PCs): 7462 [0x56021678bbe8,0x5602167a8e48), 
+INFO:     1403 files found in ../fuzz/corpus
+INFO: seed corpus: files: 1403 min: 16b max: 776b total: 203636b rss: 45Mb
+#1405	INITED cov: 3514 ft: 12782 corp: 1058/160Kb exec/s: 702 rss: 333Mb
+#1406	NEW    cov: 3515 ft: 12784 corp: 1059/160Kb lim: 782 exec/s: 703 rss: 333Mb L: 519/773 MS: 1 ShuffleBytes-
+#1459	NEW    cov: 3516 ft: 12785 corp: 1060/160Kb lim: 782 exec/s: 729 rss: 333Mb L: 12/773 MS: 3 CMP-ShuffleBytes-EraseBytes- DE: "\376\377\377\377"-
+#1745	NEW    cov: 3516 ft: 12787 corp: 1061/160Kb lim: 782 exec/s: 872 rss: 333Mb L: 91/773 MS: 1 ChangeBit-
+#1902	REDUCE cov: 3516 ft: 12787 corp: 1061/160Kb lim: 782 exec/s: 951 rss: 333Mb L: 202/773 MS: 2 PersAutoDict-EraseBytes- DE: "\376\377\377\377"-
+#1928	NEW    cov: 3516 ft: 12788 corp: 1062/160Kb lim: 782 exec/s: 964 rss: 333Mb L: 41/773 MS: 1 ChangeBinInt-
+#2048	pulse  cov: 3516 ft: 12788 corp: 1062/160Kb lim: 782 exec/s: 1024 rss: 333Mb
+#2259	NEW    cov: 3517 ft: 12791 corp: 1063/160Kb lim: 782 exec/s: 753 rss: 333Mb L: 49/773 MS: 1 InsertByte-
+#2901	REDUCE cov: 3517 ft: 12791 corp: 1063/160Kb lim: 782 exec/s: 967 rss: 343Mb L: 49/773 MS: 2 ShuffleBytes-EraseBytes-
+#3062	NEW    cov: 3517 ft: 12792 corp: 1064/160Kb lim: 782 exec/s: 765 rss: 350Mb L: 275/773 MS: 1 ChangeByte-
+#3178	REDUCE cov: 3517 ft: 12792 corp: 1064/160Kb lim: 782 exec/s: 794 rss: 357Mb L: 36/773 MS: 1 EraseBytes-
+#3309	NEW    cov: 3517 ft: 12795 corp: 1065/161Kb lim: 782 exec/s: 827 rss: 369Mb L: 770/773 MS: 1 InsertRepeatedBytes-
+#3372	REDUCE cov: 3517 ft: 12795 corp: 1065/161Kb lim: 782 exec/s: 843 rss: 372Mb L: 76/773 MS: 3 InsertByte-EraseBytes-EraseBytes-
+#4096	pulse  cov: 3517 ft: 12795 corp: 1065/161Kb lim: 782 exec/s: 819 rss: 378Mb
+#4298	REDUCE cov: 3517 ft: 12795 corp: 1065/161Kb lim: 791 exec/s: 859 rss: 378Mb L: 150/773 MS: 1 EraseBytes-
+#4965	NEW    cov: 3517 ft: 12797 corp: 1066/162Kb lim: 791 exec/s: 827 rss: 378Mb L: 710/773 MS: 2 ChangeBinInt-CopyPart-
+#5373	REDUCE cov: 3517 ft: 12797 corp: 1066/162Kb lim: 791 exec/s: 767 rss: 378Mb L: 116/773 MS: 3 InsertByte-ChangeBit-EraseBytes-
+#6313	REDUCE cov: 3517 ft: 12797 corp: 1066/162Kb lim: 800 exec/s: 789 rss: 378Mb L: 16/773 MS: 5 CopyPart-EraseBytes-CrossOver-CMP-EraseBytes- DE: "\002\002"-
+#6326	REDUCE cov: 3517 ft: 12797 corp: 1066/162Kb lim: 800 exec/s: 790 rss: 378Mb L: 52/773 MS: 3 InsertByte-ChangeByte-EraseBytes-
+#6638	NEW    cov: 3517 ft: 12799 corp: 1067/163Kb lim: 800 exec/s: 829 rss: 378Mb L: 665/773 MS: 2 ShuffleBytes-InsertByte-
+#7539	NEW    cov: 3517 ft: 12802 corp: 1068/163Kb lim: 800 exec/s: 753 rss: 378Mb L: 781/781 MS: 1 InsertRepeatedBytes-
+#8192	pulse  cov: 3517 ft: 12802 corp: 1068/163Kb lim: 800 exec/s: 819 rss: 378Mb
+#8563	NEW    cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 778 rss: 378Mb L: 705/781 MS: 4 InsertByte-InsertByte-InsertByte-CopyPart-
+#8659	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 787 rss: 378Mb L: 22/781 MS: 1 EraseBytes-
+#9373	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 781 rss: 378Mb L: 317/781 MS: 4 ChangeBinInt-ChangeByte-ChangeBinInt-EraseBytes-
+#9747	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 749 rss: 378Mb L: 258/781 MS: 4 InsertByte-EraseBytes-InsertByte-PersAutoDict- DE: "\376\377\377\377"-
+#10330	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 794 rss: 378Mb L: 95/781 MS: 3 ChangeByte-ChangeByte-EraseBytes-
+#10466	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 747 rss: 378Mb L: 6/781 MS: 1 EraseBytes-
+#10957	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 782 rss: 378Mb L: 20/781 MS: 1 EraseBytes-
+#11155	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 796 rss: 378Mb L: 74/781 MS: 3 ShuffleBytes-ShuffleBytes-EraseBytes-
+#11877	REDUCE cov: 3517 ft: 12804 corp: 1069/164Kb lim: 809 exec/s: 791 rss: 378Mb L: 17/781 MS: 2 ChangeByte-EraseBytes-
+#12401	NEW    cov: 3517 ft: 12805 corp: 1070/165Kb lim: 809 exec/s: 775 rss: 378Mb L: 793/793 MS: 4 CrossOver-InsertRepeatedBytes-ChangeByte-PersAutoDict- DE: "\376\377\377\377"-
+#12495	NEW    cov: 3517 ft: 12827 corp: 1071/165Kb lim: 809 exec/s: 780 rss: 378Mb L: 771/793 MS: 4 CrossOver-CrossOver-CMP-CopyPart- DE: "\377\027"-
+#13112	NEW    cov: 3517 ft: 12828 corp: 1072/166Kb lim: 809 exec/s: 771 rss: 378Mb L: 797/797 MS: 2 CopyPart-InsertRepeatedBytes-
+#14260	REDUCE cov: 3517 ft: 12828 corp: 1072/166Kb lim: 818 exec/s: 750 rss: 378Mb L: 581/797 MS: 3 CopyPart-CrossOver-EraseBytes-
+#14556	REDUCE cov: 3517 ft: 12828 corp: 1072/166Kb lim: 818 exec/s: 766 rss: 378Mb L: 40/797 MS: 1 EraseBytes-
+#15007	REDUCE cov: 3517 ft: 12828 corp: 1072/166Kb lim: 818 exec/s: 750 rss: 378Mb L: 229/797 MS: 1 EraseBytes-
+#15115	NEW    cov: 3517 ft: 12832 corp: 1073/167Kb lim: 818 exec/s: 755 rss: 378Mb L: 660/797 MS: 3 ShuffleBytes-ShuffleBytes-CrossOver-
+#16181	REDUCE cov: 3517 ft: 12832 corp: 1073/167Kb lim: 827 exec/s: 770 rss: 378Mb L: 528/797 MS: 1 EraseBytes-
+#16313	REDUCE cov: 3517 ft: 12832 corp: 1073/167Kb lim: 827 exec/s: 776 rss: 378Mb L: 52/797 MS: 2 ChangeByte-EraseBytes-
+#16384	pulse  cov: 3517 ft: 12832 corp: 1073/167Kb lim: 827 exec/s: 744 rss: 378Mb
+#17470	REDUCE cov: 3517 ft: 12832 corp: 1073/167Kb lim: 836 exec/s: 759 rss: 378Mb L: 129/797 MS: 2 ChangeByte-EraseBytes-
+#17490	REDUCE cov: 3517 ft: 12832 corp: 1073/167Kb lim: 836 exec/s: 760 rss: 378Mb L: 64/797 MS: 5 PersAutoDict-EraseBytes-CMP-ShuffleBytes-EraseBytes- DE: "\377\027"-"\000\000\000\000\000\000\000<"-
+#18161	REDUCE cov: 3517 ft: 12832 corp: 1073/167Kb lim: 836 exec/s: 756 rss: 378Mb L: 113/797 MS: 1 EraseBytes-
+#18173	REDUCE cov: 3517 ft: 12832 corp: 1073/167Kb lim: 836 exec/s: 757 rss: 378Mb L: 80/797 MS: 2 EraseBytes-InsertByte-
+#19375	NEW    cov: 3517 ft: 12834 corp: 1074/167Kb lim: 845 exec/s: 745 rss: 378Mb L: 400/797 MS: 2 InsertByte-CopyPart-
+#19631	REDUCE cov: 3517 ft: 12834 corp: 1074/167Kb lim: 845 exec/s: 755 rss: 378Mb L: 106/797 MS: 1 EraseBytes-
+#21421	NEW    cov: 3517 ft: 12836 corp: 1075/168Kb lim: 854 exec/s: 765 rss: 378Mb L: 736/797 MS: 5 CrossOver-ShuffleBytes-ChangeByte-ShuffleBytes-PersAutoDict- DE: "\377\027"-
+#21450	REDUCE cov: 3517 ft: 12838 corp: 1076/169Kb lim: 854 exec/s: 766 rss: 378Mb L: 766/797 MS: 4 PersAutoDict-PersAutoDict-InsertRepeatedBytes-CopyPart- DE: "\376\377\377\377"-"\002\002"-
+#21592	NEW    cov: 3517 ft: 12839 corp: 1077/169Kb lim: 854 exec/s: 744 rss: 378Mb L: 853/853 MS: 2 CopyPart-CopyPart-
+#21826	REDUCE cov: 3517 ft: 12839 corp: 1077/169Kb lim: 854 exec/s: 752 rss: 378Mb L: 37/853 MS: 4 EraseBytes-ShuffleBytes-InsertByte-PersAutoDict- DE: "\002\002"-
+#22122	REDUCE cov: 3517 ft: 12839 corp: 1077/169Kb lim: 854 exec/s: 762 rss: 378Mb L: 24/853 MS: 1 EraseBytes-
+#22615	REDUCE cov: 3517 ft: 12839 corp: 1077/169Kb lim: 854 exec/s: 753 rss: 378Mb L: 675/797 MS: 3 ChangeBinInt-ShuffleBytes-EraseBytes-
+#23187	REDUCE cov: 3517 ft: 12839 corp: 1077/169Kb lim: 854 exec/s: 747 rss: 378Mb L: 110/797 MS: 2 ChangeBit-EraseBytes-
+#23439	NEW    cov: 3517 ft: 12840 corp: 1078/170Kb lim: 854 exec/s: 756 rss: 378Mb L: 853/853 MS: 2 CopyPart-InsertRepeatedBytes-
+#23651	REDUCE cov: 3517 ft: 12840 corp: 1078/170Kb lim: 854 exec/s: 762 rss: 378Mb L: 37/853 MS: 2 ChangeBinInt-EraseBytes-
+#24412	REDUCE cov: 3517 ft: 12840 corp: 1078/170Kb lim: 854 exec/s: 762 rss: 378Mb L: 16/853 MS: 1 EraseBytes-
+#24647	REDUCE cov: 3517 ft: 12840 corp: 1078/170Kb lim: 854 exec/s: 746 rss: 378Mb L: 296/853 MS: 5 InsertByte-CMP-ShuffleBytes-EraseBytes-CopyPart- DE: "\001\000\177\375^`\311\020"-
+#24648	NEW    cov: 3518 ft: 12841 corp: 1079/170Kb lim: 854 exec/s: 746 rss: 378Mb L: 160/853 MS: 1 ChangeByte-
+#25834	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 863 exec/s: 759 rss: 378Mb L: 248/853 MS: 1 EraseBytes-
+#27242	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 872 exec/s: 756 rss: 378Mb L: 114/853 MS: 3 PersAutoDict-CMP-EraseBytes- DE: "\001\000\177\375^`\311\020"-"\002\000\000\000\000\000\000\000"-
+#27854	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 872 exec/s: 752 rss: 378Mb L: 45/853 MS: 2 ShuffleBytes-EraseBytes-
+#30585	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 899 exec/s: 745 rss: 378Mb L: 102/853 MS: 1 EraseBytes-
+#32101	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 908 exec/s: 746 rss: 378Mb L: 28/853 MS: 1 EraseBytes-
+#32292	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 908 exec/s: 750 rss: 378Mb L: 78/853 MS: 1 EraseBytes-
+#32768	pulse  cov: 3518 ft: 12841 corp: 1079/170Kb lim: 908 exec/s: 744 rss: 378Mb
+#32999	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 908 exec/s: 749 rss: 378Mb L: 233/853 MS: 2 ChangeBit-EraseBytes-
+#33085	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 908 exec/s: 751 rss: 378Mb L: 98/853 MS: 1 EraseBytes-
+#33737	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 908 exec/s: 749 rss: 378Mb L: 24/853 MS: 2 CrossOver-EraseBytes-
+#34984	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 917 exec/s: 744 rss: 378Mb L: 669/853 MS: 2 ShuffleBytes-EraseBytes-
+#35876	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 917 exec/s: 747 rss: 378Mb L: 43/853 MS: 2 ChangeBinInt-EraseBytes-
+#36054	REDUCE cov: 3518 ft: 12841 corp: 1079/170Kb lim: 917 exec/s: 751 rss: 378Mb L: 4/853 MS: 3 ChangeBit-ChangeBinInt-EraseBytes-
+#36725	NEW    cov: 3518 ft: 12851 corp: 1080/171Kb lim: 917 exec/s: 749 rss: 378Mb L: 861/861 MS: 1 CopyPart-
+#38397	REDUCE cov: 3518 ft: 12851 corp: 1080/171Kb lim: 926 exec/s: 738 rss: 378Mb L: 66/861 MS: 2 InsertByte-EraseBytes-
+#38917	NEW    cov: 3518 ft: 12852 corp: 1081/172Kb lim: 926 exec/s: 748 rss: 378Mb L: 891/891 MS: 5 EraseBytes-EraseBytes-ChangeBit-ChangeByte-CopyPart-
+#41715	REDUCE cov: 3518 ft: 12852 corp: 1081/172Kb lim: 953 exec/s: 744 rss: 378Mb L: 675/891 MS: 3 PersAutoDict-EraseBytes-InsertByte- DE: "\376\377\377\377"-
+#43787	REDUCE cov: 3518 ft: 12852 corp: 1081/172Kb lim: 971 exec/s: 742 rss: 378Mb L: 660/891 MS: 2 CMP-EraseBytes- DE: "\032\000\000\000\000\000\000\000"-
+#43865	NEW    cov: 3518 ft: 12853 corp: 1082/172Kb lim: 971 exec/s: 743 rss: 378Mb L: 80/891 MS: 3 ChangeByte-ChangeByte-CopyPart-
+#44838	NEW    cov: 3518 ft: 12855 corp: 1083/172Kb lim: 980 exec/s: 735 rss: 378Mb L: 672/891 MS: 3 ShuffleBytes-ChangeBinInt-PersAutoDict- DE: "\032\000\000\000\000\000\000\000"-
+#46194	REDUCE cov: 3518 ft: 12855 corp: 1083/172Kb lim: 989 exec/s: 745 rss: 378Mb L: 16/891 MS: 1 EraseBytes-
+#46275	REDUCE cov: 3518 ft: 12855 corp: 1083/172Kb lim: 989 exec/s: 734 rss: 378Mb L: 16/891 MS: 1 EraseBytes-
+#46564	REDUCE cov: 3518 ft: 12855 corp: 1083/172Kb lim: 989 exec/s: 739 rss: 378Mb L: 251/891 MS: 4 ShuffleBytes-ChangeBit-EraseBytes-CopyPart-
+#46585	REDUCE cov: 3518 ft: 12855 corp: 1083/172Kb lim: 989 exec/s: 739 rss: 378Mb L: 527/891 MS: 1 EraseBytes-
+#47710	REDUCE cov: 3518 ft: 12855 corp: 1083/172Kb lim: 998 exec/s: 745 rss: 378Mb L: 438/891 MS: 5 ChangeBinInt-PersAutoDict-ChangeByte-ChangeBit-EraseBytes- DE: "\002\000\000\000\000\000\000\000"-
+#48026	REDUCE cov: 3518 ft: 12855 corp: 1083/172Kb lim: 998 exec/s: 738 rss: 378Mb L: 319/891 MS: 1 EraseBytes-
+#48413	NEW    cov: 3518 ft: 12856 corp: 1084/173Kb lim: 998 exec/s: 744 rss: 378Mb L: 775/891 MS: 2 PersAutoDict-InsertByte- DE: "\032\000\000\000\000\000\000\000"-
+#49011	NEW    cov: 3518 ft: 12871 corp: 1085/174Kb lim: 998 exec/s: 742 rss: 378Mb L: 742/891 MS: 3 ChangeBinInt-CrossOver-CopyPart-
+#49209	REDUCE cov: 3518 ft: 12871 corp: 1085/174Kb lim: 998 exec/s: 734 rss: 378Mb L: 60/891 MS: 3 EraseBytes-ChangeByte-InsertByte-
+#49248	NEW    cov: 3518 ft: 12872 corp: 1086/174Kb lim: 998 exec/s: 735 rss: 378Mb L: 328/891 MS: 4 ChangeByte-ChangeByte-InsertRepeatedBytes-CopyPart-
+#50923	NEW    cov: 3518 ft: 12874 corp: 1087/175Kb lim: 1007 exec/s: 738 rss: 378Mb L: 917/917 MS: 5 ChangeBinInt-ChangeByte-PersAutoDict-CopyPart-CopyPart- DE: "\032\000\000\000\000\000\000\000"-
+#51764	REDUCE cov: 3518 ft: 12874 corp: 1087/175Kb lim: 1007 exec/s: 739 rss: 378Mb L: 477/917 MS: 1 EraseBytes-
+#52390	NEW    cov: 3518 ft: 12875 corp: 1088/175Kb lim: 1007 exec/s: 737 rss: 378Mb L: 328/917 MS: 1 CrossOver-
+#52858	NEW    cov: 3518 ft: 12876 corp: 1089/176Kb lim: 1007 exec/s: 734 rss: 378Mb L: 403/917 MS: 3 CrossOver-ChangeBinInt-CrossOver-
+#53177	REDUCE cov: 3518 ft: 12876 corp: 1089/176Kb lim: 1007 exec/s: 738 rss: 378Mb L: 22/917 MS: 4 PersAutoDict-EraseBytes-EraseBytes-ChangeBinInt- DE: "\032\000\000\000\000\000\000\000"-
+#53273	REDUCE cov: 3518 ft: 12876 corp: 1089/176Kb lim: 1007 exec/s: 739 rss: 378Mb L: 87/917 MS: 1 EraseBytes-
+#54023	NEW    cov: 3518 ft: 12877 corp: 1090/176Kb lim: 1007 exec/s: 740 rss: 378Mb L: 701/917 MS: 5 InsertByte-CopyPart-CopyPart-InsertRepeatedBytes-CopyPart-
+#54284	REDUCE cov: 3518 ft: 12877 corp: 1090/176Kb lim: 1007 exec/s: 733 rss: 378Mb L: 30/917 MS: 1 EraseBytes-
+#54314	REDUCE cov: 3518 ft: 12877 corp: 1090/176Kb lim: 1007 exec/s: 733 rss: 378Mb L: 68/917 MS: 5 ShuffleBytes-ChangeBit-PersAutoDict-ChangeBit-EraseBytes- DE: "\000\000\000\000\000\000\000<"-
+#54461	REDUCE cov: 3518 ft: 12877 corp: 1090/176Kb lim: 1007 exec/s: 735 rss: 378Mb L: 153/917 MS: 2 ChangeBinInt-EraseBytes-
+#55393	NEW    cov: 3518 ft: 12878 corp: 1091/176Kb lim: 1016 exec/s: 738 rss: 378Mb L: 175/917 MS: 2 PersAutoDict-CopyPart- DE: "\376\377\377\377"-
+#56064	REDUCE cov: 3518 ft: 12878 corp: 1091/176Kb lim: 1016 exec/s: 737 rss: 378Mb L: 192/917 MS: 1 EraseBytes-
+#56162	NEW    cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1016 exec/s: 738 rss: 378Mb L: 941/941 MS: 3 ShuffleBytes-CopyPart-ChangeByte-
+#56688	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1016 exec/s: 736 rss: 378Mb L: 137/941 MS: 1 EraseBytes-
+#58335	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 738 rss: 378Mb L: 27/941 MS: 2 ChangeASCIIInt-EraseBytes-
+#59070	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 738 rss: 378Mb L: 260/941 MS: 5 CopyPart-CrossOver-ChangeByte-InsertRepeatedBytes-EraseBytes-
+#59326	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 732 rss: 378Mb L: 110/941 MS: 1 EraseBytes-
+#60058	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 732 rss: 378Mb L: 17/941 MS: 2 InsertByte-EraseBytes-
+#60119	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 733 rss: 378Mb L: 44/941 MS: 1 EraseBytes-
+#60616	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 739 rss: 378Mb L: 493/941 MS: 2 PersAutoDict-EraseBytes- DE: "\002\000\000\000\000\000\000\000"-
+#61387	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 739 rss: 378Mb L: 52/941 MS: 1 EraseBytes-
+#61843	REDUCE cov: 3518 ft: 12880 corp: 1092/177Kb lim: 1025 exec/s: 736 rss: 378Mb L: 148/941 MS: 1 EraseBytes-
+#62868	NEW    cov: 3518 ft: 12881 corp: 1093/178Kb lim: 1035 exec/s: 739 rss: 378Mb L: 954/954 MS: 5 ChangeBit-CrossOver-CopyPart-ChangeBinInt-CopyPart-
+#65246	NEW    cov: 3518 ft: 12922 corp: 1094/179Kb lim: 1055 exec/s: 733 rss: 378Mb L: 1032/1032 MS: 3 CopyPart-ChangeBit-InsertRepeatedBytes-
+#65377	REDUCE cov: 3518 ft: 12922 corp: 1094/179Kb lim: 1055 exec/s: 734 rss: 378Mb L: 101/1032 MS: 1 EraseBytes-
+#65536	pulse  cov: 3518 ft: 12922 corp: 1094/179Kb lim: 1055 exec/s: 736 rss: 378Mb
+#65748	REDUCE cov: 3518 ft: 12922 corp: 1094/179Kb lim: 1055 exec/s: 730 rss: 378Mb L: 58/1032 MS: 1 EraseBytes-
+#65806	REDUCE cov: 3518 ft: 12922 corp: 1094/179Kb lim: 1055 exec/s: 731 rss: 378Mb L: 34/1032 MS: 3 InsertRepeatedBytes-PersAutoDict-EraseBytes- DE: "\001\000\177\375^`\311\020"-
+#66474	NEW    cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 730 rss: 378Mb L: 1040/1040 MS: 3 ChangeByte-PersAutoDict-CMP- DE: "\032\000\000\000\000\000\000\000"-"\201\000\000\000\000\000\000\000"-
+#66707	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 733 rss: 378Mb L: 344/1040 MS: 3 InsertRepeatedBytes-CrossOver-EraseBytes-
+#67059	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 728 rss: 378Mb L: 186/1040 MS: 2 ChangeBinInt-EraseBytes-
+#67256	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 731 rss: 378Mb L: 51/1040 MS: 2 CopyPart-EraseBytes-
+#67783	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 728 rss: 378Mb L: 87/1040 MS: 2 ChangeBinInt-EraseBytes-
+#68024	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 731 rss: 378Mb L: 21/1040 MS: 1 EraseBytes-
+#68325	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 734 rss: 378Mb L: 75/1040 MS: 1 EraseBytes-
+#68366	REDUCE cov: 3518 ft: 12936 corp: 1095/180Kb lim: 1055 exec/s: 735 rss: 378Mb L: 242/1040 MS: 1 CrossOver-
+#68430	NEW    cov: 3518 ft: 12937 corp: 1096/181Kb lim: 1055 exec/s: 727 rss: 378Mb L: 669/1040 MS: 4 CrossOver-EraseBytes-ShuffleBytes-CopyPart-
+#68722	REDUCE cov: 3518 ft: 12937 corp: 1096/181Kb lim: 1055 exec/s: 731 rss: 378Mb L: 305/1040 MS: 2 ShuffleBytes-EraseBytes-
+#68730	REDUCE cov: 3518 ft: 12938 corp: 1097/182Kb lim: 1055 exec/s: 731 rss: 378Mb L: 1027/1040 MS: 3 CopyPart-InsertRepeatedBytes-InsertRepeatedBytes-
+#69368	REDUCE cov: 3518 ft: 12938 corp: 1097/181Kb lim: 1055 exec/s: 730 rss: 378Mb L: 770/1040 MS: 3 ShuffleBytes-ChangeBit-EraseBytes-
+#69385	NEW    cov: 3518 ft: 12941 corp: 1098/182Kb lim: 1055 exec/s: 730 rss: 378Mb L: 830/1040 MS: 2 CopyPart-CopyPart-
+#69611	REDUCE cov: 3518 ft: 12941 corp: 1098/182Kb lim: 1055 exec/s: 732 rss: 378Mb L: 712/1040 MS: 1 EraseBytes-
+#70123	REDUCE cov: 3518 ft: 12942 corp: 1099/182Kb lim: 1055 exec/s: 730 rss: 378Mb L: 132/1040 MS: 2 ChangeBit-CopyPart-
+#70177	NEW    cov: 3518 ft: 12943 corp: 1100/183Kb lim: 1055 exec/s: 731 rss: 378Mb L: 1047/1047 MS: 4 PersAutoDict-InsertByte-CrossOver-InsertRepeatedBytes- DE: "\032\000\000\000\000\000\000\000"-
+#70391	NEW    cov: 3518 ft: 12944 corp: 1101/184Kb lim: 1055 exec/s: 733 rss: 378Mb L: 303/1047 MS: 4 ChangeByte-ChangeBinInt-ChangeBinInt-InsertByte-
+#70579	NEW    cov: 3518 ft: 12945 corp: 1102/185Kb lim: 1055 exec/s: 735 rss: 378Mb L: 1052/1052 MS: 3 ChangeByte-CopyPart-CopyPart-
+#71279	REDUCE cov: 3518 ft: 12945 corp: 1102/185Kb lim: 1055 exec/s: 734 rss: 378Mb L: 40/1052 MS: 5 ShuffleBytes-InsertRepeatedBytes-ChangeBit-EraseBytes-EraseBytes-
+#71673	REDUCE cov: 3518 ft: 12945 corp: 1102/185Kb lim: 1055 exec/s: 731 rss: 378Mb L: 47/1052 MS: 4 PersAutoDict-PersAutoDict-InsertByte-EraseBytes- DE: "\032\000\000\000\000\000\000\000"-"\002\002"-
+#72058	REDUCE cov: 3518 ft: 12945 corp: 1102/185Kb lim: 1055 exec/s: 727 rss: 378Mb L: 106/1052 MS: 5 ChangeBit-ChangeBit-InsertByte-InsertByte-EraseBytes-
+#72320	NEW    cov: 3518 ft: 12946 corp: 1103/186Kb lim: 1055 exec/s: 730 rss: 378Mb L: 898/1052 MS: 2 CopyPart-PersAutoDict- DE: "\032\000\000\000\000\000\000\000"-
+#72344	NEW    cov: 3518 ft: 12950 corp: 1104/187Kb lim: 1055 exec/s: 730 rss: 378Mb L: 1052/1052 MS: 4 ChangeByte-InsertRepeatedBytes-InsertByte-CrossOver-
+#72370	REDUCE cov: 3518 ft: 12950 corp: 1104/186Kb lim: 1055 exec/s: 731 rss: 378Mb L: 367/1052 MS: 1 EraseBytes-
+#72590	REDUCE cov: 3518 ft: 12950 corp: 1104/186Kb lim: 1055 exec/s: 733 rss: 378Mb L: 73/1052 MS: 5 InsertByte-ChangeBit-ShuffleBytes-PersAutoDict-EraseBytes- DE: "\002\000\000\000\000\000\000\000"-
+#72876	REDUCE cov: 3518 ft: 12950 corp: 1104/186Kb lim: 1055 exec/s: 728 rss: 378Mb L: 101/1052 MS: 1 EraseBytes-
+#72918	NEW    cov: 3518 ft: 12951 corp: 1105/188Kb lim: 1055 exec/s: 729 rss: 378Mb L: 1055/1055 MS: 2 InsertRepeatedBytes-InsertRepeatedBytes-
+#73470	REDUCE cov: 3518 ft: 12951 corp: 1105/188Kb lim: 1055 exec/s: 727 rss: 378Mb L: 128/1055 MS: 2 ShuffleBytes-EraseBytes-
+#73720	REDUCE cov: 3518 ft: 12951 corp: 1105/187Kb lim: 1055 exec/s: 729 rss: 378Mb L: 734/1055 MS: 5 ChangeByte-ShuffleBytes-ChangeBit-ChangeByte-EraseBytes-
+#74521	REDUCE cov: 3518 ft: 12951 corp: 1105/187Kb lim: 1055 exec/s: 730 rss: 378Mb L: 67/1055 MS: 1 EraseBytes-
+#75207	REDUCE cov: 3518 ft: 12951 corp: 1105/187Kb lim: 1055 exec/s: 730 rss: 378Mb L: 2/1055 MS: 1 EraseBytes-
+#75443	REDUCE cov: 3518 ft: 12951 corp: 1105/187Kb lim: 1055 exec/s: 725 rss: 378Mb L: 119/1055 MS: 1 EraseBytes-
+#77057	REDUCE cov: 3518 ft: 12960 corp: 1106/188Kb lim: 1065 exec/s: 726 rss: 378Mb L: 1056/1056 MS: 4 CrossOver-ChangeByte-CopyPart-InsertRepeatedBytes-
+#77101	NEW    cov: 3518 ft: 12961 corp: 1107/190Kb lim: 1065 exec/s: 727 rss: 378Mb L: 1065/1065 MS: 4 InsertByte-CopyPart-EraseBytes-InsertRepeatedBytes-
+#77788	REDUCE cov: 3518 ft: 12961 corp: 1107/189Kb lim: 1065 exec/s: 726 rss: 378Mb L: 219/1065 MS: 2 ShuffleBytes-EraseBytes-
+#77876	NEW    cov: 3518 ft: 12964 corp: 1108/190Kb lim: 1065 exec/s: 727 rss: 378Mb L: 866/1065 MS: 3 ChangeBit-ShuffleBytes-CopyPart-
+#78237	NEW    cov: 3518 ft: 13010 corp: 1109/191Kb lim: 1065 exec/s: 724 rss: 378Mb L: 1032/1065 MS: 1 CopyPart-
+#78309	REDUCE cov: 3518 ft: 13010 corp: 1109/191Kb lim: 1065 exec/s: 725 rss: 378Mb L: 52/1065 MS: 2 EraseBytes-InsertByte-
+#78441	REDUCE cov: 3518 ft: 13010 corp: 1109/191Kb lim: 1065 exec/s: 726 rss: 378Mb L: 56/1065 MS: 2 ChangeBit-EraseBytes-
+#79423	REDUCE cov: 3518 ft: 13010 corp: 1109/191Kb lim: 1065 exec/s: 722 rss: 378Mb L: 184/1065 MS: 2 ChangeBit-EraseBytes-
+#79569	REDUCE cov: 3518 ft: 13010 corp: 1109/191Kb lim: 1065 exec/s: 723 rss: 378Mb L: 76/1065 MS: 1 EraseBytes-
+#80400	NEW    cov: 3518 ft: 13042 corp: 1110/192Kb lim: 1065 exec/s: 724 rss: 378Mb L: 1037/1065 MS: 1 CrossOver-
+#81746	NEW    cov: 3518 ft: 13085 corp: 1111/193Kb lim: 1075 exec/s: 723 rss: 378Mb L: 1036/1065 MS: 1 CrossOver-
+#81782	NEW    cov: 3518 ft: 13086 corp: 1112/194Kb lim: 1075 exec/s: 723 rss: 378Mb L: 947/1065 MS: 1 CopyPart-
+#82065	NEW    cov: 3518 ft: 13087 corp: 1113/195Kb lim: 1075 exec/s: 726 rss: 378Mb L: 1013/1065 MS: 3 EraseBytes-InsertByte-CopyPart-
+#82196	NEW    cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1075 exec/s: 727 rss: 378Mb L: 1028/1065 MS: 1 InsertByte-
+#82277	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1075 exec/s: 721 rss: 378Mb L: 349/1065 MS: 1 EraseBytes-
+#82403	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1075 exec/s: 722 rss: 378Mb L: 16/1065 MS: 1 EraseBytes-
+#82566	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1075 exec/s: 724 rss: 378Mb L: 160/1065 MS: 3 CMP-ChangeByte-EraseBytes- DE: "\225\224\006\000@P\000\000"-
+#83257	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1075 exec/s: 723 rss: 378Mb L: 605/1065 MS: 1 EraseBytes-
+#83850	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1075 exec/s: 722 rss: 378Mb L: 38/1065 MS: 3 CrossOver-ChangeBit-EraseBytes-
+#85005	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1085 exec/s: 720 rss: 378Mb L: 241/1065 MS: 5 ShuffleBytes-ChangeByte-ChangeBit-PersAutoDict-EraseBytes- DE: "\032\000\000\000\000\000\000\000"-
+#86143	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1095 exec/s: 723 rss: 378Mb L: 720/1065 MS: 3 CMP-ChangeBinInt-EraseBytes- DE: "\000\022"-
+#86243	REDUCE cov: 3518 ft: 13110 corp: 1114/196Kb lim: 1095 exec/s: 718 rss: 378Mb L: 394/1065 MS: 5 ShuffleBytes-ChangeByte-ShuffleBytes-CMP-EraseBytes- DE: "\377\377\377\377\377\377\377\377"-
+#86809	NEW    cov: 3518 ft: 13112 corp: 1115/197Kb lim: 1095 exec/s: 723 rss: 378Mb L: 1088/1088 MS: 1 InsertRepeatedBytes-
+#87194	REDUCE cov: 3518 ft: 13112 corp: 1115/197Kb lim: 1095 exec/s: 720 rss: 378Mb L: 199/1088 MS: 5 ChangeByte-EraseBytes-CMP-InsertByte-CopyPart- DE: "\014\000\000\000"-
+#87582	REDUCE cov: 3518 ft: 13112 corp: 1115/197Kb lim: 1095 exec/s: 717 rss: 378Mb L: 67/1088 MS: 3 CMP-ChangeBit-EraseBytes- DE: "\001\000\000\000\000\000\000\002"-
+#88275	REDUCE cov: 3518 ft: 13112 corp: 1115/197Kb lim: 1095 exec/s: 717 rss: 378Mb L: 138/1088 MS: 3 ShuffleBytes-ChangeBit-EraseBytes-
+#88314	NEW    cov: 3518 ft: 13113 corp: 1116/197Kb lim: 1095 exec/s: 718 rss: 378Mb L: 671/1088 MS: 4 InsertByte-InsertByte-ChangeBit-CMP- DE: "\000\021\001\311"-
+#88576	REDUCE cov: 3518 ft: 13113 corp: 1116/197Kb lim: 1095 exec/s: 720 rss: 378Mb L: 54/1088 MS: 2 ChangeBit-EraseBytes-
+#88641	NEW    cov: 3518 ft: 13114 corp: 1117/198Kb lim: 1095 exec/s: 720 rss: 378Mb L: 671/1088 MS: 5 ChangeBit-ShuffleBytes-ChangeBit-ShuffleBytes-ChangeBit-
+#88675	NEW    cov: 3518 ft: 13115 corp: 1118/199Kb lim: 1095 exec/s: 720 rss: 378Mb L: 1094/1094 MS: 4 ShuffleBytes-InsertByte-ShuffleBytes-CopyPart-
+#88720	NEW    cov: 3518 ft: 13119 corp: 1119/200Kb lim: 1095 exec/s: 721 rss: 378Mb L: 1089/1094 MS: 5 CopyPart-InsertByte-InsertByte-CMP-CrossOver- DE: "\001\013"-
+#88793	NEW    cov: 3518 ft: 13120 corp: 1120/201Kb lim: 1095 exec/s: 721 rss: 378Mb L: 1044/1094 MS: 3 ChangeBinInt-PersAutoDict-CopyPart- DE: "\000\021\001\311"-
+#89678	REDUCE cov: 3518 ft: 13120 corp: 1120/201Kb lim: 1095 exec/s: 717 rss: 378Mb L: 805/1094 MS: 5 ChangeBinInt-InsertByte-CopyPart-EraseBytes-PersAutoDict- DE: "\000\022"-
+#91734	REDUCE cov: 3518 ft: 13120 corp: 1120/201Kb lim: 1115 exec/s: 716 rss: 378Mb L: 728/1094 MS: 1 EraseBytes-
+#91864	NEW    cov: 3518 ft: 13121 corp: 1121/202Kb lim: 1115 exec/s: 717 rss: 378Mb L: 944/1094 MS: 5 InsertRepeatedBytes-InsertByte-CopyPart-CopyPart-InsertRepeatedBytes-
+#92610	REDUCE cov: 3518 ft: 13121 corp: 1121/202Kb lim: 1115 exec/s: 717 rss: 378Mb L: 34/1094 MS: 1 EraseBytes-
+#93938	NEW    cov: 3518 ft: 13123 corp: 1122/203Kb lim: 1125 exec/s: 717 rss: 378Mb L: 663/1094 MS: 3 CrossOver-ShuffleBytes-InsertByte-
+#95016	NEW    cov: 3518 ft: 13124 corp: 1123/204Kb lim: 1135 exec/s: 714 rss: 378Mb L: 1133/1133 MS: 3 CopyPart-ChangeByte-InsertRepeatedBytes-
+#96406	REDUCE cov: 3518 ft: 13124 corp: 1123/204Kb lim: 1145 exec/s: 714 rss: 378Mb L: 96/1133 MS: 5 EraseBytes-ShuffleBytes-ChangeASCIIInt-ChangeBit-CrossOver-
+#96677	NEW    cov: 3518 ft: 13125 corp: 1124/205Kb lim: 1145 exec/s: 710 rss: 378Mb L: 681/1133 MS: 1 InsertRepeatedBytes-
+#98045	NEW    cov: 3518 ft: 13126 corp: 1125/206Kb lim: 1155 exec/s: 710 rss: 378Mb L: 1115/1133 MS: 3 ChangeBit-PersAutoDict-CopyPart- DE: "\032\000\000\000\000\000\000\000"-
+#98388	REDUCE cov: 3518 ft: 13126 corp: 1125/206Kb lim: 1155 exec/s: 712 rss: 378Mb L: 823/1133 MS: 3 InsertByte-EraseBytes-InsertRepeatedBytes-
+#99055	REDUCE cov: 3518 ft: 13129 corp: 1126/207Kb lim: 1155 exec/s: 712 rss: 378Mb L: 1055/1133 MS: 2 CMP-CrossOver- DE: "\000\002\000\000\000\000\000\000"-
+#100306	REDUCE cov: 3518 ft: 13129 corp: 1126/207Kb lim: 1165 exec/s: 711 rss: 378Mb L: 38/1133 MS: 1 EraseBytes-
+#100480	REDUCE cov: 3518 ft: 13129 corp: 1126/207Kb lim: 1165 exec/s: 707 rss: 378Mb L: 21/1133 MS: 4 ShuffleBytes-ShuffleBytes-PersAutoDict-EraseBytes- DE: "\201\000\000\000\000\000\000\000"-
+#100759	NEW    cov: 3518 ft: 13144 corp: 1127/208Kb lim: 1165 exec/s: 709 rss: 378Mb L: 1163/1163 MS: 4 InsertRepeatedBytes-InsertByte-ChangeBit-InsertRepeatedBytes-
+#100795	REDUCE cov: 3518 ft: 13144 corp: 1127/208Kb lim: 1165 exec/s: 709 rss: 378Mb L: 453/1163 MS: 1 EraseBytes-
+#101314	REDUCE cov: 3518 ft: 13144 corp: 1127/208Kb lim: 1165 exec/s: 708 rss: 378Mb L: 1/1163 MS: 4 ShuffleBytes-CrossOver-ChangeByte-EraseBytes-
+#101451	REDUCE cov: 3518 ft: 13144 corp: 1127/208Kb lim: 1165 exec/s: 709 rss: 378Mb L: 107/1163 MS: 2 InsertByte-EraseBytes-
+#101590	REDUCE cov: 3518 ft: 13144 corp: 1127/208Kb lim: 1165 exec/s: 710 rss: 378Mb L: 575/1163 MS: 4 PersAutoDict-ChangeBit-EraseBytes-CrossOver- DE: "\000\021\001\311"-
+#103046	NEW    cov: 3518 ft: 13146 corp: 1128/209Kb lim: 1175 exec/s: 705 rss: 378Mb L: 1041/1163 MS: 1 CopyPart-
+#103872	NEW    cov: 3518 ft: 13151 corp: 1129/210Kb lim: 1175 exec/s: 706 rss: 378Mb L: 1157/1163 MS: 1 CopyPart-
+#104728	REDUCE cov: 3518 ft: 13151 corp: 1129/210Kb lim: 1175 exec/s: 707 rss: 378Mb L: 38/1163 MS: 1 EraseBytes-
+#105004	NEW    cov: 3518 ft: 13152 corp: 1130/210Kb lim: 1175 exec/s: 704 rss: 378Mb L: 510/1163 MS: 1 ChangeBinInt-
+#105250	NEW    cov: 3518 ft: 13155 corp: 1131/211Kb lim: 1175 exec/s: 706 rss: 378Mb L: 1174/1174 MS: 1 CopyPart-
+#105525	REDUCE cov: 3518 ft: 13155 corp: 1131/211Kb lim: 1175 exec/s: 708 rss: 378Mb L: 98/1174 MS: 5 CopyPart-CrossOver-ShuffleBytes-CMP-EraseBytes- DE: "\000\000\000<"-
+#105886	REDUCE cov: 3518 ft: 13155 corp: 1131/211Kb lim: 1175 exec/s: 705 rss: 378Mb L: 53/1174 MS: 1 EraseBytes-
+#106800	REDUCE cov: 3518 ft: 13155 corp: 1131/211Kb lim: 1175 exec/s: 707 rss: 378Mb L: 239/1174 MS: 4 ChangeBinInt-ChangeBit-ChangeByte-EraseBytes-
+#107454	REDUCE cov: 3518 ft: 13155 corp: 1131/211Kb lim: 1175 exec/s: 706 rss: 378Mb L: 709/1174 MS: 4 InsertByte-ChangeBinInt-PersAutoDict-EraseBytes- DE: "\225\224\006\000@P\000\000"-
+#108132	REDUCE cov: 3518 ft: 13155 corp: 1131/211Kb lim: 1175 exec/s: 706 rss: 378Mb L: 615/1174 MS: 3 PersAutoDict-ShuffleBytes-EraseBytes- DE: "\000\022"-
+#108539	NEW    cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 704 rss: 378Mb L: 1030/1174 MS: 2 CrossOver-CopyPart-
+#109244	REDUCE cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 704 rss: 378Mb L: 567/1174 MS: 5 ChangeBinInt-InsertByte-PersAutoDict-InsertByte-EraseBytes- DE: "\002\002"-
+#109325	REDUCE cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 705 rss: 378Mb L: 640/1174 MS: 1 EraseBytes-
+#109886	REDUCE cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 704 rss: 378Mb L: 1046/1174 MS: 1 CrossOver-
+#110044	REDUCE cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 705 rss: 378Mb L: 1033/1174 MS: 3 ChangeBit-InsertByte-EraseBytes-
+#110368	REDUCE cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 702 rss: 378Mb L: 246/1174 MS: 4 InsertByte-CopyPart-CopyPart-EraseBytes-
+#110689	REDUCE cov: 3518 ft: 13160 corp: 1132/212Kb lim: 1175 exec/s: 705 rss: 378Mb L: 106/1174 MS: 1 EraseBytes-
+#110772	NEW    cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1175 exec/s: 705 rss: 378Mb L: 1024/1174 MS: 3 InsertByte-CrossOver-PersAutoDict- DE: "\014\000\000\000"-
+#111486	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1175 exec/s: 705 rss: 378Mb L: 121/1174 MS: 4 ShuffleBytes-CrossOver-CrossOver-EraseBytes-
+#112605	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1185 exec/s: 703 rss: 378Mb L: 280/1174 MS: 4 ChangeBit-ChangeByte-CopyPart-EraseBytes-
+#112964	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1185 exec/s: 701 rss: 378Mb L: 400/1174 MS: 4 EraseBytes-CopyPart-ChangeBinInt-InsertByte-
+#113138	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1185 exec/s: 702 rss: 378Mb L: 37/1174 MS: 4 ChangeBit-ChangeBinInt-EraseBytes-PersAutoDict- DE: "\376\377\377\377"-
+#113279	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1185 exec/s: 703 rss: 378Mb L: 36/1174 MS: 1 EraseBytes-
+#114701	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1195 exec/s: 699 rss: 378Mb L: 39/1174 MS: 2 ChangeBit-EraseBytes-
+#114819	REDUCE cov: 3518 ft: 13161 corp: 1133/213Kb lim: 1195 exec/s: 700 rss: 378Mb L: 695/1174 MS: 3 InsertRepeatedBytes-PersAutoDict-EraseBytes- DE: "\000\021\001\311"-
+#114848	NEW    cov: 3518 ft: 13164 corp: 1134/214Kb lim: 1195 exec/s: 700 rss: 378Mb L: 1191/1191 MS: 4 InsertByte-EraseBytes-ChangeBinInt-InsertRepeatedBytes-
+#115379	REDUCE cov: 3518 ft: 13164 corp: 1134/214Kb lim: 1195 exec/s: 703 rss: 378Mb L: 645/1191 MS: 1 EraseBytes-
+#115815	REDUCE cov: 3518 ft: 13164 corp: 1134/214Kb lim: 1195 exec/s: 701 rss: 378Mb L: 81/1191 MS: 1 EraseBytes-
+#116184	NEW    cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1195 exec/s: 699 rss: 378Mb L: 862/1191 MS: 4 PersAutoDict-ChangeByte-InsertByte-ChangeBinInt- DE: "\377\027"-
+#116502	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1195 exec/s: 701 rss: 378Mb L: 572/1191 MS: 3 EraseBytes-CopyPart-EraseBytes-
+#117514	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1205 exec/s: 699 rss: 378Mb L: 117/1191 MS: 2 InsertByte-EraseBytes-
+#117538	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1205 exec/s: 699 rss: 378Mb L: 42/1191 MS: 4 ChangeBinInt-InsertByte-ChangeBinInt-EraseBytes-
+#117994	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1205 exec/s: 698 rss: 378Mb L: 79/1191 MS: 1 EraseBytes-
+#118256	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1205 exec/s: 699 rss: 378Mb L: 258/1191 MS: 2 ChangeBinInt-EraseBytes-
+#118429	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1205 exec/s: 700 rss: 378Mb L: 236/1191 MS: 3 ShuffleBytes-ShuffleBytes-EraseBytes-
+#118430	REDUCE cov: 3518 ft: 13165 corp: 1135/215Kb lim: 1205 exec/s: 700 rss: 378Mb L: 528/1191 MS: 1 EraseBytes-
+#118539	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 697 rss: 378Mb L: 1138/1191 MS: 4 PersAutoDict-InsertByte-InsertByte-CrossOver- DE: "\377\377\377\377\377\377\377\377"-
+#119030	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 700 rss: 378Mb L: 49/1191 MS: 1 EraseBytes-
+#119232	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 697 rss: 378Mb L: 29/1191 MS: 2 ChangeBinInt-EraseBytes-
+#119474	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 698 rss: 378Mb L: 113/1191 MS: 2 ChangeASCIIInt-EraseBytes-
+#120012	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 697 rss: 378Mb L: 17/1191 MS: 3 ChangeByte-InsertByte-EraseBytes-
+#121013	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 695 rss: 378Mb L: 120/1191 MS: 1 EraseBytes-
+#121789	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 695 rss: 378Mb L: 42/1191 MS: 1 EraseBytes-
+#122051	REDUCE cov: 3518 ft: 13168 corp: 1136/216Kb lim: 1205 exec/s: 697 rss: 378Mb L: 18/1191 MS: 2 EraseBytes-CopyPart-
+#122097	NEW    cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 697 rss: 378Mb L: 1066/1191 MS: 1 InsertRepeatedBytes-
+#122308	REDUCE cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 694 rss: 378Mb L: 611/1191 MS: 1 EraseBytes-
+#123094	REDUCE cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 695 rss: 378Mb L: 208/1191 MS: 1 EraseBytes-
+#123855	REDUCE cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 695 rss: 378Mb L: 78/1191 MS: 1 EraseBytes-
+#124470	REDUCE cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 695 rss: 378Mb L: 126/1191 MS: 5 ShuffleBytes-ChangeBit-ChangeBinInt-CrossOver-EraseBytes-
+#124523	REDUCE cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 695 rss: 378Mb L: 45/1191 MS: 3 ChangeBit-ChangeBinInt-EraseBytes-
+#125218	REDUCE cov: 3518 ft: 13169 corp: 1137/217Kb lim: 1205 exec/s: 695 rss: 378Mb L: 64/1191 MS: 5 EraseBytes-InsertByte-CrossOver-EraseBytes-CrossOver-
+#125316	REDUCE cov: 3518 ft: 13171 corp: 1138/218Kb lim: 1205 exec/s: 696 rss: 378Mb L: 1131/1191 MS: 3 InsertRepeatedBytes-CopyPart-InsertRepeatedBytes-
+#125562	NEW    cov: 3518 ft: 13182 corp: 1139/218Kb lim: 1205 exec/s: 697 rss: 378Mb L: 628/1191 MS: 1 CopyPart-
+#127304	REDUCE cov: 3518 ft: 13184 corp: 1140/219Kb lim: 1215 exec/s: 695 rss: 378Mb L: 720/1191 MS: 2 ShuffleBytes-CopyPart-
+#128359	NEW    cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 693 rss: 378Mb L: 1217/1217 MS: 5 ChangeBit-CrossOver-CopyPart-CopyPart-CrossOver-
+#128490	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 694 rss: 378Mb L: 1037/1217 MS: 1 EraseBytes-
+#129246	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 694 rss: 378Mb L: 48/1217 MS: 1 EraseBytes-
+#129277	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 695 rss: 378Mb L: 20/1217 MS: 1 EraseBytes-
+#129913	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 694 rss: 378Mb L: 151/1217 MS: 1 EraseBytes-
+#130640	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 694 rss: 378Mb L: 42/1217 MS: 2 EraseBytes-InsertByte-
+#130979	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 693 rss: 378Mb L: 446/1217 MS: 4 InsertRepeatedBytes-ChangeBinInt-ShuffleBytes-CrossOver-
+#131072	pulse  cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 693 rss: 378Mb
+#131397	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 695 rss: 378Mb L: 704/1217 MS: 3 PersAutoDict-EraseBytes-InsertByte- DE: "\002\002"-
+#131877	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 694 rss: 378Mb L: 20/1217 MS: 5 PersAutoDict-CopyPart-ChangeByte-EraseBytes-ChangeBit- DE: "\000\021\001\311"-
+#132530	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 693 rss: 378Mb L: 41/1217 MS: 3 ChangeBit-ChangeBinInt-EraseBytes-
+#132546	REDUCE cov: 3518 ft: 13187 corp: 1141/220Kb lim: 1225 exec/s: 693 rss: 378Mb L: 97/1217 MS: 1 EraseBytes-
+#133034	NEW    cov: 3518 ft: 13251 corp: 1142/221Kb lim: 1225 exec/s: 692 rss: 378Mb L: 1200/1217 MS: 3 CopyPart-ChangeByte-InsertRepeatedBytes-
+#133460	NEW    cov: 3518 ft: 13252 corp: 1143/222Kb lim: 1225 exec/s: 695 rss: 378Mb L: 862/1217 MS: 1 CMP- DE: "\025(\177\000\000\000\000\000"-
+#133853	REDUCE cov: 3518 ft: 13252 corp: 1143/222Kb lim: 1225 exec/s: 693 rss: 378Mb L: 893/1217 MS: 3 InsertByte-ChangeBit-EraseBytes-
+#134269	NEW    cov: 3518 ft: 13253 corp: 1144/223Kb lim: 1225 exec/s: 692 rss: 378Mb L: 1174/1217 MS: 1 CopyPart-
+#135095	REDUCE cov: 3518 ft: 13253 corp: 1144/223Kb lim: 1225 exec/s: 692 rss: 378Mb L: 28/1217 MS: 1 EraseBytes-
+#135615	REDUCE cov: 3518 ft: 13254 corp: 1145/224Kb lim: 1225 exec/s: 691 rss: 378Mb L: 1192/1217 MS: 5 ChangeBit-CopyPart-ChangeBinInt-CrossOver-CopyPart-
+#136676	REDUCE cov: 3518 ft: 13254 corp: 1145/224Kb lim: 1235 exec/s: 690 rss: 378Mb L: 67/1217 MS: 1 EraseBytes-
+#136684	NEW    cov: 3518 ft: 13256 corp: 1146/225Kb lim: 1235 exec/s: 690 rss: 378Mb L: 1227/1227 MS: 3 CopyPart-CopyPart-ChangeBinInt-
+#136686	NEW    cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 690 rss: 378Mb L: 460/1227 MS: 2 ChangeByte-CopyPart-
+#137404	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 690 rss: 378Mb L: 1093/1227 MS: 3 InsertRepeatedBytes-ChangeBinInt-EraseBytes-
+#137650	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 691 rss: 378Mb L: 74/1227 MS: 1 EraseBytes-
+#137923	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 689 rss: 378Mb L: 1125/1227 MS: 3 InsertRepeatedBytes-ChangeByte-CrossOver-
+#138804	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 690 rss: 378Mb L: 30/1227 MS: 1 EraseBytes-
+#139135	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 688 rss: 378Mb L: 41/1227 MS: 1 EraseBytes-
+#139502	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 690 rss: 378Mb L: 584/1227 MS: 2 CMP-EraseBytes- DE: "\005\000"-
+#139573	REDUCE cov: 3518 ft: 13257 corp: 1147/226Kb lim: 1235 exec/s: 690 rss: 378Mb L: 44/1227 MS: 1 EraseBytes-
+#140331	NEW    cov: 3518 ft: 13258 corp: 1148/226Kb lim: 1235 exec/s: 691 rss: 378Mb L: 786/1227 MS: 3 ShuffleBytes-CrossOver-InsertByte-
+#140348	REDUCE cov: 3518 ft: 13258 corp: 1148/226Kb lim: 1235 exec/s: 691 rss: 378Mb L: 1095/1227 MS: 2 ChangeByte-EraseBytes-
+#141901	REDUCE cov: 3518 ft: 13263 corp: 1149/227Kb lim: 1245 exec/s: 688 rss: 378Mb L: 1216/1227 MS: 3 ShuffleBytes-ChangeByte-CrossOver-
+#142085	REDUCE cov: 3518 ft: 13263 corp: 1149/227Kb lim: 1245 exec/s: 689 rss: 378Mb L: 593/1227 MS: 4 EraseBytes-ShuffleBytes-ShuffleBytes-CopyPart-
+#142231	REDUCE cov: 3518 ft: 13263 corp: 1149/227Kb lim: 1245 exec/s: 690 rss: 378Mb L: 81/1227 MS: 1 EraseBytes-
+#143134	REDUCE cov: 3518 ft: 13263 corp: 1149/227Kb lim: 1245 exec/s: 688 rss: 378Mb L: 140/1227 MS: 3 ChangeByte-ChangeByte-EraseBytes-
+#143300	NEW    cov: 3518 ft: 13266 corp: 1150/229Kb lim: 1245 exec/s: 688 rss: 378Mb L: 1216/1227 MS: 1 ShuffleBytes-
+#143340	NEW    cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1245 exec/s: 689 rss: 378Mb L: 1217/1227 MS: 5 ChangeBit-ChangeBit-CrossOver-ChangeBit-CopyPart-
+#143461	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1245 exec/s: 689 rss: 378Mb L: 969/1227 MS: 1 EraseBytes-
+#143742	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1245 exec/s: 687 rss: 378Mb L: 39/1227 MS: 1 EraseBytes-
+#144827	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1255 exec/s: 686 rss: 378Mb L: 1050/1227 MS: 5 ShuffleBytes-CopyPart-CopyPart-InsertRepeatedBytes-EraseBytes-
+#145353	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1255 exec/s: 688 rss: 378Mb L: 892/1227 MS: 1 EraseBytes-
+#145768	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1255 exec/s: 687 rss: 378Mb L: 1123/1227 MS: 5 CrossOver-EraseBytes-PersAutoDict-InsertRepeatedBytes-InsertRepeatedBytes- DE: "\377\377\377\377\377\377\377\377"-
+#146990	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1265 exec/s: 686 rss: 378Mb L: 17/1227 MS: 2 EraseBytes-ChangeBit-
+#147858	REDUCE cov: 3518 ft: 13270 corp: 1151/230Kb lim: 1265 exec/s: 687 rss: 378Mb L: 24/1227 MS: 3 EraseBytes-EraseBytes-CopyPart-
+#148138	NEW    cov: 3518 ft: 13271 corp: 1152/231Kb lim: 1265 exec/s: 685 rss: 378Mb L: 1086/1227 MS: 5 CopyPart-InsertByte-InsertByte-InsertByte-InsertRepeatedBytes-
+#148779	REDUCE cov: 3518 ft: 13271 corp: 1152/231Kb lim: 1265 exec/s: 685 rss: 378Mb L: 130/1227 MS: 1 EraseBytes-
+#149100	REDUCE cov: 3518 ft: 13271 corp: 1152/231Kb lim: 1265 exec/s: 687 rss: 378Mb L: 20/1227 MS: 1 EraseBytes-
+#149301	REDUCE cov: 3518 ft: 13271 corp: 1152/231Kb lim: 1265 exec/s: 684 rss: 378Mb L: 156/1227 MS: 1 EraseBytes-
+#151362	NEW    cov: 3520 ft: 13277 corp: 1153/232Kb lim: 1285 exec/s: 684 rss: 378Mb L: 1282/1282 MS: 1 CrossOver-
+#151501	REDUCE cov: 3520 ft: 13277 corp: 1153/232Kb lim: 1285 exec/s: 685 rss: 378Mb L: 295/1282 MS: 4 ChangeBinInt-ChangeBinInt-ChangeBit-CrossOver-
+#151672	REDUCE cov: 3520 ft: 13277 corp: 1153/232Kb lim: 1285 exec/s: 683 rss: 378Mb L: 66/1282 MS: 1 EraseBytes-
+#152828	REDUCE cov: 3520 ft: 13277 corp: 1153/232Kb lim: 1295 exec/s: 685 rss: 378Mb L: 732/1282 MS: 1 EraseBytes-
+#153567	REDUCE cov: 3520 ft: 13278 corp: 1154/233Kb lim: 1295 exec/s: 682 rss: 378Mb L: 1066/1282 MS: 4 CrossOver-EraseBytes-ChangeByte-CopyPart-
+#155578	REDUCE cov: 3520 ft: 13278 corp: 1154/233Kb lim: 1315 exec/s: 682 rss: 378Mb L: 826/1282 MS: 1 EraseBytes-
+#155627	REDUCE cov: 3520 ft: 13278 corp: 1154/233Kb lim: 1315 exec/s: 682 rss: 378Mb L: 735/1282 MS: 4 PersAutoDict-InsertRepeatedBytes-CopyPart-EraseBytes- DE: "\377\377\377\377\377\377\377\377"-
+#155925	NEW    cov: 3520 ft: 13280 corp: 1155/234Kb lim: 1315 exec/s: 683 rss: 378Mb L: 1307/1307 MS: 3 ChangeByte-InsertRepeatedBytes-CopyPart-
+#156617	REDUCE cov: 3521 ft: 13303 corp: 1156/235Kb lim: 1315 exec/s: 683 rss: 378Mb L: 1285/1307 MS: 2 ChangeByte-CopyPart-
+#156865	NEW    cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1315 exec/s: 682 rss: 378Mb L: 1286/1307 MS: 3 CopyPart-ChangeBinInt-InsertByte-
+#157157	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1315 exec/s: 683 rss: 378Mb L: 73/1307 MS: 2 InsertRepeatedBytes-EraseBytes-
+#157447	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1315 exec/s: 681 rss: 378Mb L: 59/1307 MS: 5 ShuffleBytes-InsertRepeatedBytes-ChangeByte-CrossOver-EraseBytes-
+#158887	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1325 exec/s: 681 rss: 378Mb L: 505/1307 MS: 5 EraseBytes-ChangeBinInt-ChangeBinInt-InsertByte-InsertRepeatedBytes-
+#159091	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1325 exec/s: 682 rss: 378Mb L: 611/1307 MS: 4 EraseBytes-InsertRepeatedBytes-ChangeASCIIInt-ChangeBinInt-
+#160973	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1335 exec/s: 682 rss: 378Mb L: 106/1307 MS: 2 InsertRepeatedBytes-EraseBytes-
+#161555	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1335 exec/s: 681 rss: 378Mb L: 37/1307 MS: 2 EraseBytes-CrossOver-
+#162216	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1335 exec/s: 681 rss: 378Mb L: 20/1307 MS: 1 EraseBytes-
+#162868	REDUCE cov: 3521 ft: 13304 corp: 1157/237Kb lim: 1335 exec/s: 681 rss: 378Mb L: 323/1307 MS: 2 EraseBytes-InsertRepeatedBytes-
+#163124	NEW    cov: 3521 ft: 13305 corp: 1158/238Kb lim: 1335 exec/s: 679 rss: 378Mb L: 1086/1307 MS: 1 ChangeBinInt-
+#163134	REDUCE cov: 3521 ft: 13305 corp: 1158/238Kb lim: 1335 exec/s: 679 rss: 378Mb L: 115/1307 MS: 5 ChangeByte-ShuffleBytes-CopyPart-EraseBytes-PersAutoDict- DE: "\001\000\000\000\000\000\000\002"-
+#163616	REDUCE cov: 3521 ft: 13305 corp: 1158/238Kb lim: 1335 exec/s: 681 rss: 378Mb L: 18/1307 MS: 2 ChangeBinInt-EraseBytes-
+#163984	REDUCE cov: 3521 ft: 13305 corp: 1158/238Kb lim: 1335 exec/s: 680 rss: 378Mb L: 108/1307 MS: 3 CopyPart-EraseBytes-CrossOver-
+#164088	REDUCE cov: 3521 ft: 13306 corp: 1159/239Kb lim: 1335 exec/s: 680 rss: 378Mb L: 1287/1307 MS: 4 PersAutoDict-InsertRepeatedBytes-ChangeByte-CopyPart- DE: "\000\022"-
+#164589	NEW    cov: 3521 ft: 13310 corp: 1160/240Kb lim: 1335 exec/s: 680 rss: 378Mb L: 1326/1326 MS: 1 CopyPart-
+#164723	NEW    cov: 3521 ft: 13311 corp: 1161/241Kb lim: 1335 exec/s: 680 rss: 378Mb L: 1137/1326 MS: 4 EraseBytes-CrossOver-PersAutoDict-CrossOver- DE: "\001\013"-
+#166719	REDUCE cov: 3521 ft: 13311 corp: 1161/241Kb lim: 1345 exec/s: 677 rss: 378Mb L: 894/1326 MS: 1 EraseBytes-
+#167056	REDUCE cov: 3521 ft: 13311 corp: 1161/241Kb lim: 1345 exec/s: 679 rss: 378Mb L: 135/1326 MS: 2 CopyPart-EraseBytes-
+#167534	NEW    cov: 3521 ft: 13312 corp: 1162/242Kb lim: 1345 exec/s: 678 rss: 378Mb L: 675/1326 MS: 3 ChangeByte-PersAutoDict-CMP- DE: "\376\377\377\377"-"\000\000\000\004\377\200\002i"-
+#168498	REDUCE cov: 3521 ft: 13312 corp: 1162/242Kb lim: 1345 exec/s: 679 rss: 378Mb L: 51/1326 MS: 4 CMP-CMP-EraseBytes-ChangeBinInt- DE: "\001\377"-"\377\020"-
+#168661	REDUCE cov: 3521 ft: 13312 corp: 1162/242Kb lim: 1345 exec/s: 677 rss: 378Mb L: 131/1326 MS: 3 ChangeBit-ChangeByte-EraseBytes-
+#169657	REDUCE cov: 3521 ft: 13312 corp: 1162/242Kb lim: 1345 exec/s: 678 rss: 378Mb L: 37/1326 MS: 1 EraseBytes-
+#170134	REDUCE cov: 3521 ft: 13312 corp: 1162/242Kb lim: 1345 exec/s: 677 rss: 378Mb L: 49/1326 MS: 2 CopyPart-EraseBytes-
+#172908	NEW    cov: 3521 ft: 13313 corp: 1163/243Kb lim: 1365 exec/s: 678 rss: 378Mb L: 1090/1326 MS: 4 PersAutoDict-ChangeBinInt-ChangeByte-PersAutoDict- DE: "\000\022"-"\002\002"-
+#174319	NEW    cov: 3521 ft: 13316 corp: 1164/244Kb lim: 1375 exec/s: 675 rss: 378Mb L: 1369/1369 MS: 1 CopyPart-
+#175015	REDUCE cov: 3521 ft: 13316 corp: 1164/244Kb lim: 1375 exec/s: 675 rss: 378Mb L: 612/1369 MS: 1 EraseBytes-
+#175164	REDUCE cov: 3521 ft: 13316 corp: 1164/244Kb lim: 1375 exec/s: 676 rss: 378Mb L: 32/1369 MS: 4 ChangeBinInt-CopyPart-EraseBytes-CopyPart-
+#175592	REDUCE cov: 3521 ft: 13316 corp: 1164/244Kb lim: 1375 exec/s: 675 rss: 378Mb L: 232/1369 MS: 3 ChangeBinInt-InsertByte-EraseBytes-
+#176015	REDUCE cov: 3521 ft: 13316 corp: 1164/244Kb lim: 1375 exec/s: 676 rss: 378Mb L: 451/1369 MS: 3 CopyPart-CopyPart-EraseBytes-
+#176549	NEW    cov: 3521 ft: 13317 corp: 1165/245Kb lim: 1375 exec/s: 676 rss: 378Mb L: 1042/1369 MS: 4 ChangeBinInt-CrossOver-InsertByte-CrossOver-
+#176723	REDUCE cov: 3521 ft: 13317 corp: 1165/245Kb lim: 1375 exec/s: 674 rss: 378Mb L: 41/1369 MS: 4 EraseBytes-ChangeBit-CMP-CopyPart- DE: "\377\377\377\377"-
+#176944	REDUCE cov: 3521 ft: 13317 corp: 1165/245Kb lim: 1375 exec/s: 675 rss: 378Mb L: 28/1369 MS: 1 EraseBytes-
+#177276	REDUCE cov: 3521 ft: 13317 corp: 1165/245Kb lim: 1375 exec/s: 674 rss: 378Mb L: 104/1369 MS: 2 ChangeBit-EraseBytes-
+#179847	REDUCE cov: 3521 ft: 13318 corp: 1166/246Kb lim: 1395 exec/s: 673 rss: 378Mb L: 1329/1369 MS: 1 CopyPart-
+#180746	NEW    cov: 3521 ft: 13319 corp: 1167/248Kb lim: 1395 exec/s: 674 rss: 378Mb L: 1334/1369 MS: 4 PersAutoDict-InsertByte-InsertRepeatedBytes-PersAutoDict- DE: "\377\027"-"\376\377\377\377"-
+#181098	NEW    cov: 3521 ft: 13320 corp: 1168/249Kb lim: 1395 exec/s: 673 rss: 378Mb L: 1212/1369 MS: 2 CopyPart-CrossOver-
+#181222	NEW    cov: 3521 ft: 13324 corp: 1169/250Kb lim: 1395 exec/s: 673 rss: 378Mb L: 1376/1376 MS: 4 CopyPart-ShuffleBytes-InsertByte-CopyPart-
+#182210	REDUCE cov: 3521 ft: 13324 corp: 1169/250Kb lim: 1395 exec/s: 674 rss: 378Mb L: 1080/1376 MS: 3 ChangeBit-CopyPart-EraseBytes-
+#182325	NEW    cov: 3521 ft: 13329 corp: 1170/251Kb lim: 1395 exec/s: 672 rss: 378Mb L: 1387/1387 MS: 5 CopyPart-InsertRepeatedBytes-InsertByte-ChangeBit-PersAutoDict- DE: "\376\377\377\377"-
+#183267	REDUCE cov: 3521 ft: 13329 corp: 1170/251Kb lim: 1395 exec/s: 673 rss: 378Mb L: 97/1387 MS: 2 ChangeByte-EraseBytes-
+#184584	REDUCE cov: 3521 ft: 13329 corp: 1170/251Kb lim: 1405 exec/s: 673 rss: 378Mb L: 460/1387 MS: 2 ShuffleBytes-EraseBytes-
+#184670	REDUCE cov: 3521 ft: 13329 corp: 1170/251Kb lim: 1405 exec/s: 671 rss: 378Mb L: 16/1387 MS: 1 EraseBytes-
+#185588	NEW    cov: 3521 ft: 13330 corp: 1171/252Kb lim: 1405 exec/s: 672 rss: 378Mb L: 672/1387 MS: 3 CopyPart-ChangeBinInt-CopyPart-
+#185941	REDUCE cov: 3521 ft: 13330 corp: 1171/252Kb lim: 1405 exec/s: 673 rss: 378Mb L: 32/1387 MS: 3 ChangeBit-ChangeByte-EraseBytes-
+#186043	REDUCE cov: 3521 ft: 13330 corp: 1171/252Kb lim: 1405 exec/s: 671 rss: 378Mb L: 1306/1387 MS: 2 InsertByte-EraseBytes-
+#186458	NEW    cov: 3521 ft: 13338 corp: 1172/253Kb lim: 1405 exec/s: 673 rss: 378Mb L: 1402/1402 MS: 5 InsertByte-PersAutoDict-CopyPart-PersAutoDict-CopyPart- DE: "\377\377\377\377\377\377\377\377"-"\377\027"-
+#186491	REDUCE cov: 3521 ft: 13338 corp: 1172/253Kb lim: 1405 exec/s: 673 rss: 378Mb L: 37/1402 MS: 3 CopyPart-CrossOver-EraseBytes-
+#186812	REDUCE cov: 3521 ft: 13338 corp: 1172/253Kb lim: 1405 exec/s: 671 rss: 378Mb L: 102/1402 MS: 1 EraseBytes-
+#187292	REDUCE cov: 3521 ft: 13339 corp: 1173/255Kb lim: 1405 exec/s: 671 rss: 378Mb L: 1400/1402 MS: 5 ChangeByte-PersAutoDict-CopyPart-ChangeASCIIInt-CopyPart- DE: "\000\002\000\000\000\000\000\000"-
+==================================================
+SHARD: native-simd-physics
+DESCRIPTION: 128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting SIMD & Physics Test Suite...
+  - AirDrop RK4 ODE Simulation: PASSED
+  - VectorStore 64-D Cosine Search: PASSED
+[TEST] All SIMD Physics Tests Passed Successfully!
+==================================================
+SHARD: native-telemetry-storage
+DESCRIPTION: Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL
+STATUS: PASSED ✅
+==================================================
+
+[TEST] Starting Storage & Telemetry Test Suite...
+  - Lock-Free MPMC Ring Buffer: PASSED
+[streamify:StreamifyNative] [StreamifyDB] Migration error: no such column: play_count
+  - SQLite WAL Database CRUD: PASSED
+[TEST] All Storage & Telemetry Tests Passed Successfully!
+==================================================
+SHARD: rust-core-engine
+DESCRIPTION: Zero-Copy SIMD JSON, Lofty Metadata, Lyric Precompiler & PTP
+STATUS: FAILED ❌
+==================================================
+
+[1m[92m    Updating[0m crates.io index
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m scroll_derive v0.12.1
+[1m[92m  Downloaded[0m adler2 v2.0.1
+[1m[92m  Downloaded[0m scroll v0.12.0
+[1m[92m  Downloaded[0m semver v1.0.28
+[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
+[1m[92m  Downloaded[0m serde_core v1.0.229
+[1m[92m  Downloaded[0m serde_derive v1.0.229
+[1m[92m  Downloaded[0m itoa v1.0.18
+[1m[92m  Downloaded[0m serde v1.0.229
+[1m[92m  Downloaded[0m serde_urlencoded v0.7.1
+[1m[92m  Downloaded[0m serde_json v1.0.154
+[1m[92m  Downloaded[0m sha2 v0.11.1
+[1m[92m  Downloaded[0m ipnet v2.12.2
+[1m[92m  Downloaded[0m sharded-slab v0.1.7
+[1m[92m  Downloaded[0m sha1 v0.11.0
+[1m[92m  Downloaded[0m urlencoding v2.1.3
+[1m[92m  Downloaded[0m lazy_static v1.5.1
+[1m[92m  Downloaded[0m version_check v0.9.5
+[1m[92m  Downloaded[0m thread_local v1.1.10
+[1m[92m  Downloaded[0m signature v2.2.0
+[1m[92m  Downloaded[0m stable_deref_trait v1.2.1
+[1m[92m  Downloaded[0m sync_wrapper v1.0.2
+[1m[92m  Downloaded[0m tower-service v0.3.3
+[1m[92m  Downloaded[0m uniffi_udl v0.28.3
+[1m[92m  Downloaded[0m zlib-rs v0.6.8
+[1m[92m  Downloaded[0m uniffi v0.28.3
+[1m[92m  Downloaded[0m uniffi_build v0.28.3
+[1m[92m  Downloaded[0m universal-hash v0.6.1
+[1m[92m  Downloaded[0m utf8parse v0.2.2
+[1m[92m  Downloaded[0m zerofrom-derive v0.1.8
+[1m[92m  Downloaded[0m lofty_attr v0.13.0
+[1m[92m  Downloaded[0m subtle v2.6.1
+[1m[92m  Downloaded[0m tower-layer v0.3.3
+[1m[92m  Downloaded[0m try-lock v0.2.5
+[1m[92m  Downloaded[0m uniffi_testing v0.28.3
+[1m[92m  Downloaded[0m uniffi_checksum_derive v0.28.3
+[1m[92m  Downloaded[0m clap_lex v1.1.1
+[1m[92m  Downloaded[0m transpose v0.2.3
+[1m[92m  Downloaded[0m serde_repr v0.1.21
+[1m[92m  Downloaded[0m strsim v0.11.1
+[1m[92m  Downloaded[0m percent-encoding v2.3.2
+[1m[92m  Downloaded[0m untrusted v0.9.0
+[1m[92m  Downloaded[0m siphasher v0.3.11
+[1m[92m  Downloaded[0m utf8_iter v1.0.4
+[1m[92m  Downloaded[0m uniffi_meta v0.28.3
+[1m[92m  Downloaded[0m yoke-derive v0.8.4
+[1m[92m  Downloaded[0m lru-slab v0.1.3
+[1m[92m  Downloaded[0m signal-hook-registry v1.4.8
+[1m[92m  Downloaded[0m zerofrom v0.1.8
+[1m[92m  Downloaded[0m mime v0.3.17
+[1m[92m  Downloaded[0m mime_guess v2.0.5
+[1m[92m  Downloaded[0m num-complex v0.4.6
+[1m[92m  Downloaded[0m num-integer v0.1.47
+[1m[92m  Downloaded[0m once_cell v1.21.4
+[1m[92m  Downloaded[0m thiserror v2.0.21
+[1m[92m  Downloaded[0m unicase v2.10.0
+[1m[92m  Downloaded[0m zeroize v1.9.1
+[1m[92m  Downloaded[0m futures-macro v0.3.34
+[1m[92m  Downloaded[0m generic-array v0.14.7
+[1m[92m  Downloaded[0m shlex v2.0.1
+[1m[92m  Downloaded[0m simd-adler32 v0.3.10
+[1m[92m  Downloaded[0m slab v0.4.12
+[1m[92m  Downloaded[0m smawk v0.3.3
+[1m[92m  Downloaded[0m strength_reduce v0.2.4
+[1m[92m  Downloaded[0m thiserror-impl v1.0.69
+[1m[92m  Downloaded[0m thiserror-impl v2.0.21
+[1m[92m  Downloaded[0m tokio-macros v2.7.2
+[1m[92m  Downloaded[0m tracing-journald v0.3.2
+[1m[92m  Downloaded[0m want v0.3.2
+[1m[92m  Downloaded[0m weedle2 v5.0.0
+[1m[92m  Downloaded[0m writeable v0.6.4
+[1m[92m  Downloaded[0m zbus_utils v6.0.0
+[1m[92m  Downloaded[0m zcheapstr v1.1.0
+[1m[92m  Downloaded[0m block-buffer v0.12.1
+[1m[92m  Downloaded[0m endi v1.1.1
+[1m[92m  Downloaded[0m rand_chacha v0.3.1
+[1m[92m  Downloaded[0m synstructure v0.14.0
+[1m[92m  Downloaded[0m tinystr v0.8.5
+[1m[92m  Downloaded[0m zerovec-derive v0.11.7
+[1m[92m  Downloaded[0m spki v0.7.3
+[1m[92m  Downloaded[0m thiserror v1.0.69
+[1m[92m  Downloaded[0m digest v0.10.7
+[1m[92m  Downloaded[0m find-msvc-tools v0.1.15
+[1m[92m  Downloaded[0m rustc_version v0.4.1
+[1m[92m  Downloaded[0m static_assertions v1.1.0
+[1m[92m  Downloaded[0m tokio-rustls v0.26.6
+[1m[92m  Downloaded[0m tracing-attributes v0.1.31
+[1m[92m  Downloaded[0m tracing-log v0.2.0
+[1m[92m  Downloaded[0m uniffi_core v0.28.3
+[1m[92m  Downloaded[0m uniffi_macros v0.28.3
+[1m[92m  Downloaded[0m yoke v0.8.4
+[1m[92m  Downloaded[0m zbus_macros v6.1.0
+[1m[92m  Downloaded[0m sha2 v0.10.9
+[1m[92m  Downloaded[0m smallvec v1.16.4
+[1m[92m  Downloaded[0m toml v0.5.11
+[1m[92m  Downloaded[0m tempfile v3.27.0
+[1m[92m  Downloaded[0m unicode-ident v1.0.27
+[1m[92m  Downloaded[0m hashlink v0.9.1
+[1m[92m  Downloaded[0m pkg-config v0.3.34
+[1m[92m  Downloaded[0m clap_derive v4.6.7
+[1m[92m  Downloaded[0m block-buffer v0.10.4
+[1m[92m  Downloaded[0m curve25519-dalek-derive v0.1.1
+[1m[92m  Downloaded[0m httparse v1.10.1
+[1m[92m  Downloaded[0m icu_provider v2.4.0
+[1m[92m  Downloaded[0m litemap v0.8.3
+[1m[92m  Downloaded[0m matchers v0.2.0
+[1m[92m  Downloaded[0m ogg_pager v0.7.2
+[1m[92m  Downloaded[0m plain v0.2.3
+[1m[92m  Downloaded[0m potential_utf v0.1.6
+[1m[92m  Downloaded[0m primal-check v0.3.4
+[1m[92m  Downloaded[0m rand_pcg v0.10.2
+[1m[92m  Downloaded[0m rustc-hash v2.1.3
+[1m[92m  Downloaded[0m socket2 v0.5.10
+[1m[92m  Downloaded[0m socket2 v0.6.5
+[1m[92m  Downloaded[0m textwrap v0.16.4
+[1m[92m  Downloaded[0m tinyvec v1.13.3
+[1m[92m  Downloaded[0m tracing-core v0.1.36
+[1m[92m  Downloaded[0m url v2.5.8
+[1m[92m  Downloaded[0m uuid v1.29.0
+[1m[92m  Downloaded[0m zerotrie v0.2.5
+[1m[92m  Downloaded[0m askama_escape v0.10.3
+[1m[92m  Downloaded[0m chacha20poly1305 v0.11.0
+[1m[92m  Downloaded[0m digest v0.11.3
+[1m[92m  Downloaded[0m displaydoc v0.2.7
+[1m[92m  Downloaded[0m crypto-common v0.2.2
+[1m[92m  Downloaded[0m futures-io v0.3.34
+[1m[92m  Downloaded[0m hyper-rustls v0.27.10
+[1m[92m  Downloaded[0m constant_time_eq v0.4.2
+[1m[92m  Downloaded[0m data-encoding v2.11.1
+[1m[92m  Downloaded[0m ed25519 v2.2.3
+[1m[92m  Downloaded[0m h3-quinn v0.0.10
+[1m[92m  Downloaded[0m atomic-waker v1.1.2
+[1m[92m  Downloaded[0m colorchoice v1.0.5
+[1m[92m  Downloaded[0m heck v0.5.0
+[1m[92m  Downloaded[0m icu_normalizer_data v2.4.0
+[1m[92m  Downloaded[0m inout v0.2.5
+[1m[92m  Downloaded[0m log v0.4.34
+[1m[92m  Downloaded[0m nu-ansi-term v0.50.3
+[1m[92m  Downloaded[0m num-traits v0.2.19
+[1m[92m  Downloaded[0m ordered-stream v0.2.0
+[1m[92m  Downloaded[0m paste v1.0.15
+[1m[92m  Downloaded[0m rand_core v0.6.4
+[1m[92m  Downloaded[0m rand_core v0.10.1
+[1m[92m  Downloaded[0m tower v0.5.3
+[1m[92m  Downloaded[0m typenum v1.20.1
+[1m[92m  Downloaded[0m zerovec v0.11.9
+[1m[92m  Downloaded[0m anstyle v1.0.14
+[1m[92m  Downloaded[0m anstyle-parse v1.0.0
+[1m[92m  Downloaded[0m anstyle-query v1.1.5
+[1m[92m  Downloaded[0m askama v0.12.1
+[1m[92m  Downloaded[0m async-trait v0.1.92
+[1m[92m  Downloaded[0m autocfg v1.5.1
+[1m[92m  Downloaded[0m cargo-platform v0.1.9
+[1m[92m  Downloaded[0m chacha20 v0.10.2
+[1m[92m  Downloaded[0m der v0.7.10
+[1m[92m  Downloaded[0m getrandom v0.4.3
+[1m[92m  Downloaded[0m glob v0.3.4
+[1m[92m  Downloaded[0m icu_collections v2.4.0
+[1m[92m  Downloaded[0m icu_locale_core v2.4.0
+[1m[92m  Downloaded[0m tokio-util v0.7.20
+[1m[92m  Downloaded[0m uniffi_bindgen v0.28.3
+[1m[92m  Downloaded[0m cc v1.10.0
+[1m[92m  Downloaded[0m syn v2.0.119
+[1m[92m  Downloaded[0m tower-http v0.6.11
+[1m[92m  Downloaded[0m clap v4.6.7
+[1m[92m  Downloaded[0m futures-util v0.3.34
+[1m[92m  Downloaded[0m icu_properties v2.4.0
+[1m[92m  Downloaded[0m pin-project-lite v0.2.17
+[1m[92m  Downloaded[0m ppv-lite86 v0.2.21
+[1m[92m  Downloaded[0m rustversion v1.0.23
+[1m[92m  Downloaded[0m webpki-roots v1.0.11
+[1m[92m  Downloaded[0m winnow v1.0.4
+[1m[92m  Downloaded[0m aead v0.6.1
+[1m[92m  Downloaded[0m ahash v0.8.12
+[1m[92m  Downloaded[0m anstream v1.0.0
+[1m[92m  Downloaded[0m askama_derive v0.12.5
+[1m[92m  Downloaded[0m askama_parser v0.2.1
+[1m[92m  Downloaded[0m base64ct v1.8.3
+[1m[92m  Downloaded[0m bincode v1.3.3
+[1m[92m  Downloaded[0m byteorder v1.5.0
+[1m[92m  Downloaded[0m camino v1.2.6
+[1m[92m  Downloaded[0m cargo_metadata v0.15.4
+[1m[92m  Downloaded[0m cmov v0.5.4
+[1m[92m  Downloaded[0m ctutils v0.4.6
+[1m[92m  Downloaded[0m fs-err v2.11.0
+[1m[92m  Downloaded[0m futures-sink v0.3.34
+[1m[92m  Downloaded[0m futures-task v0.3.34
+[1m[92m  Downloaded[0m goblin v0.8.2
+[1m[92m  Downloaded[0m hashbrown v0.14.5
+[1m[92m  Downloaded[0m hex v0.4.3
+[1m[92m  Downloaded[0m http-body v1.1.0
+[1m[92m  Downloaded[0m icu_properties_data v2.4.0
+[1m[92m  Downloaded[0m metrics v0.24.6
+[1m[92m  Downloaded[0m pkcs8 v0.10.2
+[1m[92m  Downloaded[0m quinn-udp v0.5.16
+[1m[92m  Downloaded[0m rustls-pki-types v1.15.1
+[1m[92m  Downloaded[0m tracing-subscriber v0.3.23
+[1m[92m  Downloaded[0m vcpkg v0.2.15
+[1m[92m  Downloaded[0m arrayvec v0.7.8
+[1m[92m  Downloaded[0m clap_builder v4.6.7
+[1m[92m  Downloaded[0m crypto-common v0.1.7
+[1m[92m  Downloaded[0m form_urlencoded v1.2.2
+[1m[92m  Downloaded[0m futures-executor v0.3.34
+[1m[92m  Downloaded[0m getrandom v0.2.17
+[1m[92m  Downloaded[0m hyper v1.12.0
+[1m[92m  Downloaded[0m syn v3.0.9
+[1m[92m  Downloaded[0m unicode-width v0.2.2
+[1m[92m  Downloaded[0m cfg-if v1.0.5
+[1m[92m  Downloaded[0m cfg_aliases v0.2.2
+[1m[92m  Downloaded[0m cipher v0.5.2
+[1m[92m  Downloaded[0m cpufeatures v0.2.17
+[1m[92m  Downloaded[0m zerocopy v0.8.63
+[1m[92m  Downloaded[0m ed25519-dalek v2.2.0
+[1m[92m  Downloaded[0m zbus v6.1.0
+[1m[92m  Downloaded[0m curve25519-dalek v4.1.3
+[1m[92m  Downloaded[0m fastrand v2.5.0
+[1m[92m  Downloaded[0m futures-core v0.3.34
+[1m[92m  Downloaded[0m tracing v0.1.44
+[1m[92m  Downloaded[0m fallible-iterator v0.3.0
+[1m[92m  Downloaded[0m const-oid v0.10.2
+[1m[92m  Downloaded[0m icu_normalizer v2.4.0
+[1m[92m  Downloaded[0m futures v0.3.34
+[1m[92m  Downloaded[0m idna v1.1.0
+[1m[92m  Downloaded[0m idna_adapter v1.2.2
+[1m[92m  Downloaded[0m poly1305 v0.9.1
+[1m[92m  Downloaded[0m quote v1.0.47
+[1m[92m  Downloaded[0m realfft v3.5.1
+[1m[92m  Downloaded[0m zmij v1.0.23
+[1m[92m  Downloaded[0m futures-channel v0.3.34
+[1m[92m  Downloaded[0m cpufeatures v0.3.1
+[1m[92m  Downloaded[0m errno v0.3.14
+[1m[92m  Downloaded[0m tokio v1.54.1
+[1m[92m  Downloaded[0m http-body-util v0.1.5
+[1m[92m  Downloaded[0m proc-macro2 v1.0.107
+[1m[92m  Downloaded[0m rubato v0.15.0
+[1m[92m  Downloaded[0m ryu v1.0.23
+[1m[92m  Downloaded[0m anyhow v1.0.104
+[1m[92m  Downloaded[0m bitflags v2.13.2
+[1m[92m  Downloaded[0m base64 v0.22.1
+[1m[92m  Downloaded[0m const-oid v0.9.6
+[1m[92m  Downloaded[0m crc32fast v1.5.3
+[1m[92m  Downloaded[0m hmac v0.13.0
+[1m[92m  Downloaded[0m miniz_oxide v0.9.1
+[1m[92m  Downloaded[0m bytes v1.12.1
+[1m[92m  Downloaded[0m hybrid-array v0.4.15
+[1m[92m  Downloaded[0m rapidhash v4.5.1
+[1m[92m  Downloaded[0m rustls-webpki v0.103.16
+[1m[92m  Downloaded[0m base64 v0.23.1
+[1m[92m  Downloaded[0m basic-toml v0.1.10
+[1m[92m  Downloaded[0m minimal-lexical v0.2.1
+[1m[92m  Downloaded[0m nom v7.1.3
+[1m[92m  Downloaded[0m rand v0.8.8
+[1m[92m  Downloaded[0m flate2 v1.1.10
+[1m[92m  Downloaded[0m memchr v2.8.3
+[1m[92m  Downloaded[0m quinn v0.11.12
+[1m[92m  Downloaded[0m rand v0.10.3
+[1m[92m  Downloaded[0m fallible-streaming-iterator v0.1.9
+[1m[92m  Downloaded[0m http v1.5.0
+[1m[92m  Downloaded[0m mio v1.2.4
+[1m[92m  Downloaded[0m h3 v0.0.8
+[1m[92m  Downloaded[0m regex v1.13.1
+[1m[92m  Downloaded[0m hyper-util v0.1.21
+[1m[92m  Downloaded[0m reqwest v0.12.28
+[1m[92m  Downloaded[0m rusqlite v0.31.0
+[1m[92m  Downloaded[0m aho-corasick v1.1.5
+[1m[92m  Downloaded[0m blake3 v1.8.7
+[1m[92m  Downloaded[0m lofty v0.25.4
+[1m[92m  Downloaded[0m quinn-proto v0.11.19
+[1m[92m  Downloaded[0m regex-syntax v0.8.11
+[1m[92m  Downloaded[0m rustfft v6.4.1
+[1m[92m  Downloaded[0m rustls v0.23.46
+[1m[92m  Downloaded[0m rustix v1.1.5
+[1m[92m  Downloaded[0m zruntime v0.2.1
+[1m[92m  Downloaded[0m regex-automata v0.4.18
+[1m[92m  Downloaded[0m libc v0.2.191
+[1m[92m  Downloaded[0m ring v0.17.14
+[1m[92m  Downloaded[0m linux-raw-sys v0.12.1
+[1m[92m  Downloaded[0m libsqlite3-sys v0.28.0
+[1m[92m   Compiling[0m proc-macro2 v1.0.107
+[1m[92m   Compiling[0m unicode-ident v1.0.27
+[1m[92m   Compiling[0m quote v1.0.47
+[1m[92m   Compiling[0m serde_core v1.0.229
+[1m[92m   Compiling[0m cfg-if v1.0.5
+[1m[92m   Compiling[0m libc v0.2.191
+[1m[92m   Compiling[0m serde v1.0.229
+[1m[92m   Compiling[0m once_cell v1.21.4
+[1m[92m   Compiling[0m autocfg v1.5.1
+[1m[92m   Compiling[0m bytes v1.12.1
+[1m[92m   Compiling[0m memchr v2.8.3
+[1m[92m   Compiling[0m syn v3.0.9
+[1m[92m   Compiling[0m syn v2.0.119
+[1m[92m   Compiling[0m typenum v1.20.1
+[1m[92m   Compiling[0m itoa v1.0.18
+[1m[92m   Compiling[0m find-msvc-tools v0.1.15
+[1m[92m   Compiling[0m shlex v2.0.1
+[1m[92m   Compiling[0m cc v1.10.0
+[1m[92m   Compiling[0m semver v1.0.28
+[1m[92m   Compiling[0m version_check v0.9.5
+[1m[92m   Compiling[0m stable_deref_trait v1.2.1
+[1m[92m   Compiling[0m synstructure v0.14.0
+[1m[92m   Compiling[0m getrandom v0.4.3
+[1m[92m   Compiling[0m anyhow v1.0.104
+[1m[92m   Compiling[0m zmij v1.0.23
+[1m[92m   Compiling[0m pin-project-lite v0.2.17
+[1m[92m   Compiling[0m hybrid-array v0.4.15
+[1m[92m   Compiling[0m serde_json v1.0.154
+[1m[92m   Compiling[0m serde_derive v1.0.229
+[1m[92m   Compiling[0m zerovec-derive v0.11.7
+[1m[92m   Compiling[0m zerofrom-derive v0.1.8
+[1m[92m   Compiling[0m yoke-derive v0.8.4
+[1m[92m   Compiling[0m camino v1.2.6
+[1m[92m   Compiling[0m minimal-lexical v0.2.1
+[1m[92m   Compiling[0m futures-core v0.3.34
+[1m[92m   Compiling[0m rand_core v0.10.1
+[1m[92m   Compiling[0m nom v7.1.3
+[1m[92m   Compiling[0m displaydoc v0.2.7
+[1m[92m   Compiling[0m zerofrom v0.1.8
+[1m[92m   Compiling[0m yoke v0.8.4
+[1m[92m   Compiling[0m zerovec v0.11.9
+[1m[92m   Compiling[0m fs-err v2.11.0
+[1m[92m   Compiling[0m thiserror v1.0.69
+[1m[92m   Compiling[0m unicase v2.10.0
+[1m[92m   Compiling[0m mime_guess v2.0.5
+[1m[92m   Compiling[0m thiserror-impl v1.0.69
+[1m[92m   Compiling[0m smallvec v1.16.4
+[1m[92m   Compiling[0m paste v1.0.15
+[1m[92m   Compiling[0m cargo-platform v0.1.9
+[1m[92m   Compiling[0m crypto-common v0.2.2
+[1m[92m   Compiling[0m scroll_derive v0.12.1
+[1m[92m   Compiling[0m uniffi_checksum_derive v0.28.3
+[1m[92m   Compiling[0m siphasher v0.3.11
+[1m[92m   Compiling[0m mime v0.3.17
+[1m[92m   Compiling[0m scroll v0.12.0
+[1m[92m   Compiling[0m cargo_metadata v0.15.4
+[1m[92m   Compiling[0m uniffi_meta v0.28.3
+[1m[92m   Compiling[0m tinystr v0.8.5
+[1m[92m   Compiling[0m basic-toml v0.1.10
+[1m[92m   Compiling[0m askama_parser v0.2.1
+[1m[92m   Compiling[0m tokio-macros v2.7.2
+[1m[92m   Compiling[0m socket2 v0.6.5
+[1m[92m   Compiling[0m getrandom v0.2.17
+[1m[92m   Compiling[0m mio v1.2.4
+[1m[92m   Compiling[0m num-traits v0.2.19
+[1m[92m   Compiling[0m litemap v0.8.3
+[1m[92m   Compiling[0m plain v0.2.3
+[1m[92m   Compiling[0m heck v0.5.0
+[1m[92m   Compiling[0m zeroize v1.9.1
+[1m[92m   Compiling[0m zerocopy v0.8.63
+[1m[92m   Compiling[0m log v0.4.34
+[1m[92m   Compiling[0m writeable v0.6.4
+[1m[92m   Compiling[0m smawk v0.3.3
+[1m[92m   Compiling[0m icu_locale_core v2.4.0
+[1m[92m   Compiling[0m textwrap v0.16.4
+[1m[92m   Compiling[0m askama_derive v0.12.5
+[1m[92m   Compiling[0m tokio v1.54.1
+[1m[92m   Compiling[0m uniffi_testing v0.28.3
+[1m[92m   Compiling[0m zerotrie v0.2.5
+[1m[92m   Compiling[0m toml v0.5.11
+[1m[92m   Compiling[0m potential_utf v0.1.6
+[1m[92m   Compiling[0m weedle2 v5.0.0
+[1m[92m   Compiling[0m ring v0.17.14
+[1m[92m   Compiling[0m generic-array v0.14.7
+[1m[92m   Compiling[0m icu_normalizer_data v2.4.0
+[1m[92m   Compiling[0m askama_escape v0.10.3
+[1m[92m   Compiling[0m utf8_iter v1.0.4
+[1m[92m   Compiling[0m cmov v0.5.4
+[1m[92m   Compiling[0m icu_properties_data v2.4.0
+[1m[92m   Compiling[0m ctutils v0.4.6
+[1m[92m   Compiling[0m icu_collections v2.4.0
+[1m[92m   Compiling[0m uniffi_udl v0.28.3
+[1m[92m   Compiling[0m askama v0.12.1
+[1m[92m   Compiling[0m icu_provider v2.4.0
+[1m[92m   Compiling[0m block-buffer v0.12.1
+[1m[92m   Compiling[0m http v1.5.0
+[1m[92m   Compiling[0m glob v0.3.4
+[1m[92m   Compiling[0m percent-encoding v2.3.2
+[1m[92m   Compiling[0m http-body v1.1.0
+[1m[92m   Compiling[0m rustls-pki-types v1.15.1
+[1m[92m   Compiling[0m futures-macro v0.3.34
+[1m[92m   Compiling[0m tracing-core v0.1.36
+[1m[92m   Compiling[0m untrusted v0.9.0
+[1m[92m   Compiling[0m cpufeatures v0.3.1
+[1m[92m   Compiling[0m futures-task v0.3.34
+[1m[92m   Compiling[0m httparse v1.10.1
+[1m[92m   Compiling[0m slab v0.4.12
+[1m[92m   Compiling[0m subtle v2.6.1
+[1m[92m   Compiling[0m bitflags v2.13.2
+[1m[92m   Compiling[0m icu_properties v2.4.0
+[1m[92m   Compiling[0m icu_normalizer v2.4.0
+[1m[92m   Compiling[0m futures-util v0.3.34
+[1m[92m   Compiling[0m num-integer v0.1.47
+[1m[92m   Compiling[0m tracing-attributes v0.1.31
+[1m[92m   Compiling[0m ahash v0.8.12
+[1m[92m   Compiling[0m tower-service v0.3.3
+[1m[92m   Compiling[0m utf8parse v0.2.2
+[1m[92m   Compiling[0m try-lock v0.2.5
+[1m[92m   Compiling[0m rustls v0.23.46
+[1m[92m   Compiling[0m want v0.3.2
+[1m[92m   Compiling[0m goblin v0.8.2
+[1m[92m   Compiling[0m anstyle-parse v1.0.0
+[1m[92m   Compiling[0m idna_adapter v1.2.2
+[1m[92m   Compiling[0m crypto-common v0.1.7
+[1m[92m   Compiling[0m block-buffer v0.10.4
+[1m[92m   Compiling[0m form_urlencoded v1.2.2
+[1m[92m   Compiling[0m inout v0.2.5
+[1m[92m   Compiling[0m rustc_version v0.4.1
+[1m[92m   Compiling[0m tracing v0.1.44
+[1m[92m   Compiling[0m aho-corasick v1.1.5
+[1m[92m   Compiling[0m anstyle-query v1.1.5
+[1m[92m   Compiling[0m atomic-waker v1.1.2
+[1m[92m   Compiling[0m strength_reduce v0.2.4
+[1m[92m   Compiling[0m winnow v1.0.4
+[1m[92m   Compiling[0m rustls-webpki v0.103.16
+[1m[92m   Compiling[0m crc32fast v1.5.3
+[1m[92m   Compiling[0m const-oid v0.10.2
+[1m[92m   Compiling[0m rustversion v1.0.23
+[1m[92m   Compiling[0m anstyle v1.0.14
+[1m[92m   Compiling[0m pkg-config v0.3.34
+[1m[92m   Compiling[0m colorchoice v1.0.5
+[1m[92m   Compiling[0m regex-syntax v0.8.11
+[1m[92m   Compiling[0m rustix v1.1.5
+[1m[92m   Compiling[0m vcpkg v0.2.15
+[1m[92m   Compiling[0m is_terminal_polyfill v1.70.2
+[1m[92m   Compiling[0m anstream v1.0.0
+[1m[92m   Compiling[0m digest v0.11.3
+[1m[92m   Compiling[0m regex-automata v0.4.18
+[1m[92m   Compiling[0m libsqlite3-sys v0.28.0
+[1m[92m   Compiling[0m uniffi_bindgen v0.28.3
+[1m[92m   Compiling[0m transpose v0.2.3
+[1m[92m   Compiling[0m hyper v1.12.0
+[1m[92m   Compiling[0m curve25519-dalek v4.1.3
+[1m[92m   Compiling[0m digest v0.10.7
+[1m[92m   Compiling[0m idna v1.1.0
+[1m[92m   Compiling[0m primal-check v0.3.4
+[1m[92m   Compiling[0m num-complex v0.4.6
+[1m[92m   Compiling[0m sync_wrapper v1.0.2
+[1m[92m   Compiling[0m futures-channel v0.3.34
+[1m[92m   Compiling[0m base64 v0.23.1
+[1m[92m   Compiling[0m clap_lex v1.1.1
+[1m[92m   Compiling[0m simd-adler32 v0.3.10
+[1m[92m   Compiling[0m strsim v0.11.1
+[1m[92m   Compiling[0m cpufeatures v0.2.17
+[1m[92m   Compiling[0m linux-raw-sys v0.12.1
+[1m[92m   Compiling[0m ipnet v2.12.2
+[1m[92m   Compiling[0m adler2 v2.0.1
+[1m[92m   Compiling[0m tower-layer v0.3.3
+[1m[92m   Compiling[0m tower v0.5.3
+[1m[92m   Compiling[0m hyper-util v0.1.21
+[1m[92m   Compiling[0m miniz_oxide v0.9.1
+[1m[92m   Compiling[0m clap_builder v4.6.7
+[1m[92m   Compiling[0m rustfft v6.4.1
+[1m[92m   Compiling[0m url v2.5.8
+[1m[92m   Compiling[0m hashbrown v0.14.5
+[1m[92m   Compiling[0m uniffi_build v0.28.3
+[1m[92m   Compiling[0m tokio-rustls v0.26.6
+[1m[92m   Compiling[0m zbus_utils v6.0.0
+[1m[92m   Compiling[0m cipher v0.5.2
+[1m[92m   Compiling[0m webpki-roots v1.0.11
+[1m[92m   Compiling[0m ppv-lite86 v0.2.21
+[1m[92m   Compiling[0m universal-hash v0.6.1
+[1m[92m   Compiling[0m clap_derive v4.6.7
+[1m[92m   Compiling[0m rand_core v0.6.4
+[1m[92m   Compiling[0m bincode v1.3.3
+[1m[92m   Compiling[0m curve25519-dalek-derive v0.1.1
+[1m[92m   Compiling[0m blake3 v1.8.7
+[1m[92m   Compiling[0m lazy_static v1.5.1
+[1m[92m   Compiling[0m byteorder v1.5.0
+[1m[92m   Compiling[0m signature v2.2.0
+[1m[92m   Compiling[0m static_assertions v1.1.0
+[1m[92m   Compiling[0m futures-io v0.3.34
+[1m[92m   Compiling[0m ryu v1.0.23
+[1m[92m   Compiling[0m serde_urlencoded v0.7.1
+[1m[92m   Compiling[0m zruntime v0.2.1
+[1m[92m   Compiling[0m clap v4.6.7
+[1m[92m   Compiling[0m uniffi_core v0.28.3
+[1m[92m   Compiling[0m ed25519 v2.2.3
+[1m[92m   Compiling[0m ogg_pager v0.7.2
+[1m[92m   Compiling[0m sharded-slab v0.1.7
+[1m[92m   Compiling[0m uniffi_macros v0.28.3
+[1m[92m   Compiling[0m rand_chacha v0.3.1
+[1m[92m   Compiling[0m poly1305 v0.9.1
+[1m[92m   Compiling[0m hyper-rustls v0.27.10
+[1m[92m   Compiling[0m zbus_macros v6.1.0
+[1m[92m   Compiling[0m chacha20 v0.10.2
+[1m[92m   Compiling[0m rapidhash v4.5.1
+[1m[92m   Compiling[0m flate2 v1.1.10
+[1m[92m   Compiling[0m hashlink v0.9.1
+[1m[92m   Compiling[0m streamify_core_rs v1.0.0 (/home/runner/work/streamify-apk/streamify-apk/rust)
+[1m[92m   Compiling[0m tower-http v0.6.11
+[1m[92m   Compiling[0m realfft v3.5.1
+[1m[92m   Compiling[0m sha2 v0.10.9
+[1m[92m   Compiling[0m matchers v0.2.0
+[1m[92m   Compiling[0m aead v0.6.1
+[1m[92m   Compiling[0m tracing-log v0.2.0
+[1m[92m   Compiling[0m http-body-util v0.1.5
+[1m[92m   Compiling[0m zcheapstr v1.1.0
+[1m[92m   Compiling[0m ordered-stream v0.2.0
+[1m[92m   Compiling[0m serde_repr v0.1.21
+[1m[92m   Compiling[0m async-trait v0.1.92
+[1m[92m   Compiling[0m lofty_attr v0.13.0
+[1m[92m   Compiling[0m uuid v1.29.0
+[1m[92m   Compiling[0m thread_local v1.1.10
+[1m[92m   Compiling[0m endi v1.1.1
+[1m[92m   Compiling[0m nu-ansi-term v0.50.3
+[1m[92m   Compiling[0m data-encoding v2.11.1
+[1m[92m   Compiling[0m base64 v0.22.1
+[1m[92m   Compiling[0m fallible-iterator v0.3.0
+[1m[92m   Compiling[0m hex v0.4.3
+[1m[92m   Compiling[0m constant_time_eq v0.4.2
+[1m[92m   Compiling[0m fallible-streaming-iterator v0.1.9
+[1m[92m   Compiling[0m arrayvec v0.7.8
+[1m[92m   Compiling[0m zbus v6.1.0
+[1m[92m   Compiling[0m reqwest v0.12.28
+[1m[92m   Compiling[0m lofty v0.25.4
+[1m[92m   Compiling[0m tracing-subscriber v0.3.23
+[1m[92m   Compiling[0m rusqlite v0.31.0
+[1m[92m   Compiling[0m uniffi v0.28.3
+[1m[92m   Compiling[0m chacha20poly1305 v0.11.0
+[1m[92m   Compiling[0m ed25519-dalek v2.2.0
+[1m[92m   Compiling[0m rubato v0.15.0
+[1m[92m   Compiling[0m metrics v0.24.6
+[1m[92m   Compiling[0m rand v0.8.8
+[1m[92m   Compiling[0m regex v1.13.1
+[1m[92m   Compiling[0m hmac v0.13.0
+[1m[92m   Compiling[0m sha1 v0.11.0
+[1m[92m   Compiling[0m sha2 v0.11.1
+[1m[92m   Compiling[0m socket2 v0.5.10
+[1m[92m   Compiling[0m urlencoding v2.1.3
+[1m[92m   Compiling[0m fastrand v2.5.0
+[1m[92m   Compiling[0m tempfile v3.27.0
