@@ -126,6 +126,8 @@ val engineLibraryFile: File = File(rustTargetReleaseDir, engineLibraryName)
 // classpath root under its platform-mapped name, which is exactly where JNA's
 // classpath fallback looks for it — this is what makes the library loadable
 // identically from :desktop:test, :desktop:run and the jpackaged image.
+val engineResourceDir: File = layout.buildDirectory.dir("engine-native").get().asFile
+
 // The srcDir registration is load-bearing: without it the staged cdylib never
 // enters the resource graph, processResources reports NO-SOURCE and the
 // hygiene finalizer fails the pass (the exact regression this line restored).
