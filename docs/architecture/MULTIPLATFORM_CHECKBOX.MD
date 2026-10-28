@@ -49,14 +49,15 @@
 
 ### 📱 Phase 4a: Mobile First Audio Parity (Android + iOS + VirtualHAL)
 * **Lead Engineer:** Alpha (Native Pull / Audio) & Beta (Test Double & Android Bridge)
+* **Status:** **COMPLETED & MERGED** (PR #113 [Alpha / VirtualHAL & CoreAudio] & PR #114 [Beta / AAudio & Clock Bridge] landed on `main`)
 
-- [ ] **MP-HAL01**: Implement `VirtualHAL` in C++/Rust: deterministic in-memory null sink with simulated hardware DAC clock.
-- [ ] **MP-HAL02**: Extend `VirtualHAL` with adversarial conditions (callback size variance 256/512/1024, ±10% timing jitter, injected underruns/overruns, rate change events).
-- [ ] **MP-HAL03**: Establish 48kHz golden-vector test suite verifying bit-exact DSP, LUFS normalizer, and EQ output across x86_64 and ARM64.
-- [ ] **MP-HAL04**: Implement Apple CoreAudio native pull adapter (`AURenderCallback`) pulling `f32` directly from `AudioSink`.
-- [ ] **MP-HAL05**: Refactor Android AAudio/Oboe native callback to pull directly from the hardened float `AudioSink`.
-- [ ] **MP-HAL06**: Verify `<5ms` latency estimation error for `DacPresentationClock` on Android and iOS hardware.
-- [ ] **MP-HAL07**: Scaffold Android feature flag `BuildConfig.USE_RUST_AUDIO` for parallel dogfood testing.
+- [x] **MP-HAL01**: Implement `VirtualHAL` in C++/Rust: deterministic in-memory null sink with simulated hardware DAC clock.
+- [x] **MP-HAL02**: Extend `VirtualHAL` with adversarial conditions (callback size variance 256/512/1024, ±10% timing jitter, injected underruns/overruns, rate change events).
+- [x] **MP-HAL03**: Establish 48kHz golden-vector test suite verifying bit-exact DSP, LUFS normalizer, and EQ output across x86_64 and ARM64.
+- [x] **MP-HAL04**: Implement Apple CoreAudio native pull adapter (`AURenderCallback`) pulling `f32` directly from `AudioSink`.
+- [x] **MP-HAL05**: Refactor Android AAudio/Oboe native callback to pull directly from the hardened float `AudioSink`.
+- [x] **MP-HAL06**: Verify `<5ms` latency estimation error for `DacPresentationClock` on Android and iOS hardware.
+- [x] **MP-HAL07**: Scaffold Android feature flag `BuildConfig.USE_RUST_AUDIO` for parallel dogfood testing.
 
 ---
 
