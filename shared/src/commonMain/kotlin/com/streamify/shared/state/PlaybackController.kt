@@ -80,6 +80,20 @@ class PlaybackController(
     }
 
     /**
+     * Creates the Jam session and awaits its outcome — the shell's Jam pane
+     * path (returns the session name, or null when the lane is unavailable
+     * or the engine rejected the name).
+     */
+    suspend fun createJamSessionAndAwait(sessionName: String): String? =
+        port.createJamSession(sessionName)
+
+    /**
+     * Deterministic BLAKE3 state hash of the active Jam session's canonical
+     * CRDT fold, or null when no session is live.
+     */
+    suspend fun jamStateHash(): String? = port.jamStateHash()
+
+    /**
      * Convenience transport wrappers — the exact intent vocabulary of the
      * shared components (MiniPlayerBar / VolumeSlider / keyboard shortcuts).
      */
