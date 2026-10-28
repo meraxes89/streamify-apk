@@ -124,7 +124,11 @@ fun WindowScope.DesktopShell(
     val scope = rememberCoroutineScope()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(StreamifyPalette.BgBase)) {
-        val railMode = effectiveRailMode(maxWidth, manualRailToggle, manualRailBand)
+        // Capture the constraint explicitly: the toggle callback below is a
+        // plain (non-composable) lambda, where the BoxWithConstraintsScope
+        // receiver is not implicitly in scope.
+        val contentWidth = maxWidth
+        val railMode = effectiveRailMode(contentWidth, manualRailToggle, manualRailBand)
 
         Column(modifier = Modifier.fillMaxSize()) {
             WindowFrame(
@@ -153,7 +157,7 @@ fun WindowScope.DesktopShell(
                             RailMode.EXPANDED
                         }
                         manualRailToggle = next
-                        manualRailBand = defaultRailModeFor(maxWidth)
+                        manualRailBand = defaultRailModeFor(contentWidth)
                     },
                 )
 
