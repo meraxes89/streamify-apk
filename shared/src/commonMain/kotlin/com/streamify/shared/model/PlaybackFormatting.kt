@@ -16,9 +16,13 @@ import kotlin.math.roundToLong
  * `m:ss` under one hour, `h:mm:ss` from one hour up. Negative and null-ish
  * inputs clamp to zero — a position renderer must never show garbage for a
  * missing clock sample.
+ *
+ * Semantics: TRUNCATION toward zero — the 59_999th millisecond still renders
+ * as `0:59`. Players must not advertise a second that has not elapsed (the
+ * rounding variant flips `0:59` to `1:00` one millisecond early).
  */
 fun formatPlaybackTime(positionMs: Long): String {
-    val totalSeconds = (positionMs.coerceAtLeast(0L) + 500L) / 1000L
+    val totalSeconds = positionMs.coerceAtLeast(0L) / 1000L
     val hours = totalSeconds / 3600L
     val minutes = (totalSeconds % 3600L) / 60L
     val seconds = totalSeconds % 60L

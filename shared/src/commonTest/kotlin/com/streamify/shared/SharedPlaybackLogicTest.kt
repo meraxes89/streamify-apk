@@ -11,6 +11,11 @@ import com.streamify.shared.model.formatPlaybackTime
 import com.streamify.shared.model.positionMsFromDacClock
 import com.streamify.shared.model.progressFraction
 import com.streamify.shared.state.PlaybackController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -101,10 +106,11 @@ class SharedPlaybackLogicTest {
     @Test
     fun detectsPositiveDriftWhenDeviceRunsFast() {
         val older = DacClockSample(0L, 48_000, 0L)
-        // 10 s nominal, 481 frames extra -> ~10020 ppm
+        // 10 s nominal at 48 kHz -> 480_000 expected frames; 481 presented
+        // extra -> 481/480_000 = 0.1002 % -> ~1002 ppm.
         val newer = DacClockSample(48_000L * 10L + 481L, 48_000, 10_000_000_000L)
         val drift = dacDriftPpm(older, newer)
-        assertTrue(drift != null && drift > 9_000f && drift < 11_000f, "expected ~10k ppm, got $drift")
+        assertTrue(drift != null && drift > 900f && drift < 1_100f, "expected ~1000 ppm, got $drift")
     }
 
     @Test
@@ -115,57 +121,67 @@ class SharedPlaybackLogicTest {
     }
 
     // ── PlaybackController (MP-DEC-04 push discipline) ──────────────────
+    //
+    // Test-scope strategy: the controller is handed a scope backed by an
+    // UnconfinedTestDispatcher over the SAME test scheduler. Coroutines
+    // 1.8.0's runTest models background tasks as "protected" while the test
+    // body executes, so `backgroundScope.launch` + `advanceUntilIdle()`
+    // silently skips them on some hosts (kotlinx.coroutines#3746's exclusive
+    // execution model). The unconfined dispatcher makes the controller's
+    // collectors start eagerly and StateFlow pushes propagate synchronously
+    // on the pushing thread — deterministic on every coroutines line.
+    private fun TestScope.controllerScope(): CoroutineScope =
+        CoroutineScope(UnconfinedTestDispatcher(testScheduler) + Job())
 
     @Test
     fun controllerHydratesFromColdStartAndFollowsPushes() = runTest {
         val seeded = snapshot(rev = 7L, status = PlaybackStatus.BUFFERING, volume = 0.4f)
         val port = FakeEnginePort(initial = seeded)
-        val controller = PlaybackController(port, scope = backgroundScope)
+        val controller = PlaybackController(port, scope = controllerScope())
 
-        advanceUntilIdle()
         assertEquals(7L, controller.lastRevision)
         assertEquals(PlaybackStatus.BUFFERING, controller.state.value.status)
 
-        port.controller.value = snapshot(rev = 8L, status = PlaybackStatus.PLAYING, volume = 0.9f)
-        advanceUntilIdle()
+        port.push(snapshot(rev = 8L, status = PlaybackStatus.PLAYING, volume = 0.9f))
         assertEquals(8L, controller.lastRevision)
         assertEquals(PlaybackStatus.PLAYING, controller.state.value.status)
         assertEquals(0.9f, controller.state.value.volume)
+        controller.close()
 
     }
 
     @Test
     fun controllerKeepsNewestSnapshotAndDerivesUiState() = runTest {
         val port = FakeEnginePort()
-        val controller = PlaybackController(port, scope = backgroundScope)
-        advanceUntilIdle()
+        val controller = PlaybackController(port, scope = controllerScope())
 
         val clock = DacClockSample(
             framePosition = 48_000L * 61L,
             sampleRateHz = 48_000,
             monotonicNs = 61_000_000_000L,
         )
-        port.controller.value = PlaybackSnapshot(
-            rev = 2L,
-            status = PlaybackStatus.PLAYING,
-            volume = 0.5f,
-            clock = clock,
+        port.push(
+            PlaybackSnapshot(
+                rev = 2L,
+                status = PlaybackStatus.PLAYING,
+                volume = 0.5f,
+                clock = clock,
+            ),
         )
-        advanceUntilIdle()
 
         val ui = controller.state.value
         assertEquals(61_000L, ui.positionMs)
         assertTrue(ui.isPlaying)
         // No duration known -> indeterminate progress, never fabricated.
         assertNull(ui.progressFraction)
+        controller.close()
 
     }
 
     @Test
     fun controllerDispatchesTransportCommandsToThePort() = runTest {
         val port = FakeEnginePort()
-        val controller = PlaybackController(port, scope = backgroundScope)
-        advanceUntilIdle()
+        val controller = PlaybackController(port, scope = controllerScope())
 
         controller.togglePlayPause()
         controller.next()
@@ -184,14 +200,14 @@ class SharedPlaybackLogicTest {
             ),
             port.dispatchedCommands,
         )
+        controller.close()
 
     }
 
     @Test
     fun sendAndAwaitSurfacesDebounceAndFailurePaths() = runTest {
         val port = FakeEnginePort()
-        val controller = PlaybackController(port, scope = backgroundScope)
-        advanceUntilIdle()
+        val controller = PlaybackController(port, scope = controllerScope())
 
         assertEquals(PlayerCommandResult.APPLIED, controller.sendAndAwait(PlayerCommand.Play))
 

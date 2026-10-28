@@ -101,13 +101,14 @@ class DogfoodTelemetryTest {
         assertNotNull(drift)
         assertTrue("expected ~0 ppm, got $drift", kotlin.math.abs(drift!!) < 1.0f)
 
-        // Device running fast: +481 frames over 10 s -> ~+10020 ppm.
-        DogfoodTelemetry.recordDacClockSample(dacClock(48_000L * 10L + 481L, 20_000_000_000L))
+        // Device running fast: cumulative 20 s counter +481 frames over the last
+        // 10 s window at 48 kHz -> 481/480_000 = 0.1002 % -> ~+1002 ppm.
+        DogfoodTelemetry.recordDacClockSample(dacClock(48_000L * 20L + 481L, 20_000_000_000L))
         val fast = DogfoodTelemetry.snapshot.value.dacDriftPpm
         assertNotNull(fast)
         assertTrue(
-            "expected ~10k ppm, got $fast",
-            fast!! > 9_000f && fast < 11_000f,
+            "expected ~1000 ppm, got $fast",
+            fast!! > 900f && fast < 1_100f,
         )
     }
 

@@ -126,9 +126,18 @@ jobs:
       # controller wiring — deterministic on Linux AND Windows runners
       # (engine-free: the desktop-local FakeEnginePort stands in for the
       # JNA lane). Runs before the engine-tied suite below so a shell
-      # regression reports with its own step name. NOTE: the --tests filter
-      # is invocation-global in Gradle, so the shared suite runs in the
-      # NEXT step (unfiltered) rather than here.
+      # regression reports with its own step name.
+      #
+      # Two invocations, deliberately: the --tests filter is
+      # invocation-global in Gradle, so a single
+      # `:desktop:test --tests shell.* :shared:desktopTest` call would
+      # apply the filter to the shared suite too (no matching class there
+      # -> "No tests found for given includes" hard-fails the step). The
+      # shared presentation-layer suite (theme derivations, DAC-clock
+      # math, controller push discipline) therefore runs as its own
+      # unfiltered invocation in THIS step — the step's name says "shared
+      # layer", so the shared tests actually run here, on BOTH runners,
+      # engine or not.
       - name: "Headless desktop UI smoke tests (CMP shell + shared layer)"
         if: ${{ runner.os != 'Windows' || env.ENGINE_BUILDABLE == '1' }}
         shell: bash
@@ -139,6 +148,8 @@ jobs:
           # Android-SDK-dependent projects never configure on these runners.
           ./gradlew :desktop:test \
             --tests "com.streamify.desktop.shell.*" \
+            --no-daemon --configure-on-demand --stacktrace
+          ./gradlew :shared:desktopTest \
             --no-daemon --configure-on-demand --stacktrace
 
       - name: Desktop JNA smoke suite (engine init, listener push, lifecycle)

@@ -7,7 +7,11 @@ import com.streamify.shared.model.PlaybackSnapshot
 import com.streamify.shared.model.PlaybackStatus
 import com.streamify.shared.model.PlayerCommand
 import com.streamify.shared.state.PlaybackController
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -118,26 +122,38 @@ class DesktopShellUiSmokeTest {
     }
 
     // ── Engine-port-backed shell state wiring ───────────────────────────
+    //
+    // Test-scope strategy: the controller is handed a scope backed by an
+    // UnconfinedTestDispatcher over the SAME test scheduler as runTest.
+    // Coroutines 1.8.0's runTest models tasks posted from backgroundScope
+    // while the body executes as "protected" from concurrent execution,
+    // and advanceUntilIdle() skips them (platform-timing-dependent — the
+    // exact linux-CI flake this suite hit). The unconfined dispatcher makes
+    // the controller's collectors start eagerly and StateFlow pushes
+    // propagate synchronously on the pushing thread — deterministic on
+    // every coroutines line and both CI operating systems.
+    private fun TestScope.controllerScope(): CoroutineScope =
+        CoroutineScope(UnconfinedTestDispatcher(testScheduler) + Job())
 
     @Test
     fun controllerBackedShellStateReflectsEnginePushesAndCommands() = runTest {
         val port = FakeEnginePort()
-        val controller = PlaybackController(port, scope = backgroundScope)
-        advanceUntilIdle()
+        val controller = PlaybackController(port, scope = controllerScope())
 
         // Engine pushes a playing snapshot with a live DAC clock sample —
         // the exact wiring the shell's Home pane + MiniPlayerBar render.
-        port.controller.value = PlaybackSnapshot(
-            rev = 3L,
-            status = PlaybackStatus.PLAYING,
-            volume = 0.65f,
-            clock = DacClockSample(
-                framePosition = 48_000L * 125L,
-                sampleRateHz = 48_000,
-                monotonicNs = 125_000_000_000L,
+        port.push(
+            PlaybackSnapshot(
+                rev = 3L,
+                status = PlaybackStatus.PLAYING,
+                volume = 0.65f,
+                clock = DacClockSample(
+                    framePosition = 48_000L * 125L,
+                    sampleRateHz = 48_000,
+                    monotonicNs = 125_000_000_000L,
+                ),
             ),
         )
-        advanceUntilIdle()
 
         val ui = controller.state.value
         assertEquals(PlaybackStatus.PLAYING, ui.status)
@@ -163,5 +179,6 @@ class DesktopShellUiSmokeTest {
             ),
             port.dispatchedCommands,
         )
+        controller.close()
     }
 }

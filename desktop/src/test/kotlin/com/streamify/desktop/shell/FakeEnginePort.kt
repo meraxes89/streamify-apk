@@ -4,6 +4,7 @@ import com.streamify.shared.engine.EnginePort
 import com.streamify.shared.model.PlaybackSnapshot
 import com.streamify.shared.model.PlayerCommand
 import com.streamify.shared.model.PlayerCommandResult
+import com.streamify.shared.model.positionMsFromDacClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,23 @@ class FakeEnginePort(
     private val _snapshots = MutableStateFlow(initial)
 
     val controller: MutableStateFlow<PlaybackSnapshot> = _snapshots
+
+    /**
+     * Pushes a snapshot onto the flow, deriving
+     * [PlaybackSnapshot.positionMs] from [PlaybackSnapshot.clock] exactly
+     * the way the real desktop gateway lowers engine snapshots
+     * (`DesktopEnginePort`'s lowering) — keeps this double faithful to the
+     * port contract the shell renders against.
+     */
+    fun push(snapshot: PlaybackSnapshot) {
+        val clock = snapshot.clock
+        _snapshots.value =
+            if (snapshot.positionMs == null && clock != null) {
+                snapshot.copy(positionMs = positionMsFromDacClock(clock))
+            } else {
+                snapshot
+            }
+    }
 
     val dispatchedCommands = mutableListOf<PlayerCommand>()
 
