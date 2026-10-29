@@ -1,22 +1,6 @@
 # Target-specific linker acceleration (resp7 Pillar 7)
-# Linux uses lld for ~2.5x faster cdylib linking.
-# Windows uses rust-lld to bypass MSVC link.exe and slow PDB generation.
-# Apple Darwin / iOS use lld-based linking for large object graphs.
+# Linux uses lld for ~2.5x faster cdylib linking (-fuse-ld=lld via gcc/clang driver).
+# macOS and Windows use split-debuginfo = "unpacked" in profile.dev to avoid slow PDB/dSYM packaging.
 
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-Clink-arg=-fuse-ld=lld"]
-
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-Clinker-features=+lld"]
-
-[target.aarch64-apple-darwin]
-rustflags = ["-Clinker-features=+lld"]
-
-[target.x86_64-apple-darwin]
-rustflags = ["-Clinker-features=+lld"]
-
-[target.aarch64-apple-ios-sim]
-rustflags = ["-Clinker-features=+lld"]
-
-[target.aarch64-apple-ios]
-rustflags = ["-Clinker-features=+lld"]
