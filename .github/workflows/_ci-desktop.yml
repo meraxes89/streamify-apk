@@ -77,11 +77,19 @@ jobs:
       - name: Set up Rust toolchain (host target)
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Rust cache (host)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: desktop-${{ matrix.os-name }}
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Setup sccache (mandatory compiler caching, resp6 §3)
         uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Set up Gradle (with dependency cache)
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
@@ -115,27 +123,9 @@ jobs:
             echo "engine lib does NOT compile on $(uname -s) yet — engine-tied lane will report a blocker notice"
           fi
 
-      # ── 1. Headless CMP UI smoke tests (engine-free, all legs) ─────────────
-      # Two invocations, deliberately: the --tests filter is invocation-global
-      # in Gradle, so the shared suite runs as its own unfiltered call.
-      - name: "Headless desktop UI smoke tests (CMP shell + shared layer)"
-        shell: bash
-        run: |
-          chmod +x gradlew
-          # --configure-on-demand keeps the desktop lane hermetic: only
-          # :desktop + :shared are configured (both AGP-free).
-          ./gradlew :desktop:test \
-            --tests "com.streamify.desktop.shell.*" \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --no-daemon --configure-on-demand --stacktrace
-          ./gradlew :shared:desktopTest \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --no-daemon --configure-on-demand --stacktrace
-        env:
-          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
-
-      # ── 2. Desktop JNA engine smoke suite (engine-tied) ────────────────────
-      - name: Desktop JNA smoke suite (engine init, listener push, lifecycle)
+      # ── 1. Desktop Test Suite (Single combined pass, resp7 Pillar 4) ──────
+      # Single combined invocation reuses Gradle daemon state, workers, and bytecode cache.
+      - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"
         if: ${{ runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1' }}
         shell: bash
         env:
@@ -144,7 +134,19 @@ jobs:
           chmod +x gradlew
           ./gradlew :desktop:test :shared:desktopTest \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --no-daemon --configure-on-demand --stacktrace
+            --parallel --build-cache --configuration-cache --stacktrace
+
+      # Mock engine fallback for unbuildable non-Linux hosts:
+      - name: "Headless desktop UI smoke tests (mock engine fallback)"
+        if: ${{ runner.os != 'Linux' && env.ENGINE_BUILDABLE == '0' }}
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:test \
+            --tests "com.streamify.desktop.shell.*" \
+            --parallel --build-cache --configuration-cache --stacktrace
+          ./gradlew :shared:desktopTest \
+            --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Engine blocked upstream (reported, not failed)
         if: ${{ runner.os != 'Linux' && env.ENGINE_BUILDABLE == '0' }}
@@ -159,7 +161,7 @@ jobs:
           echo " lands — the probe is the gate (MP-DEC-08)."
           echo "=============================================================================="
 
-      # ── 3. Installer packaging + strict size budget (gated) ────────────────
+      # ── 2. Installer packaging + strict size budget (gated) ────────────────
       - name: Install WiX Toolset 3.14 (jpackage MSI prerequisite)
         if: ${{ inputs.package_installers && runner.os == 'Windows' && env.ENGINE_BUILDABLE == '1' }}
         shell: pwsh
@@ -183,7 +185,7 @@ jobs:
           # finalizers of the packaging lifecycle inside this pass.
           ./gradlew :desktop:packageDistributionForCurrentOS \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --no-daemon --configure-on-demand --stacktrace
+            --parallel --build-cache --configuration-cache --stacktrace
 
       - name: MP-HAL10 size budget report (strictly < 250 MiB)
         if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
@@ -193,7 +195,7 @@ jobs:
         run: |
           ./gradlew :desktop:verifyDesktopSizeBudget \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --no-daemon --configure-on-demand
+            --parallel --build-cache --configuration-cache
 
       - name: Upload desktop installers
         if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
