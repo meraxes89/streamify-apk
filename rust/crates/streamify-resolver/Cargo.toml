@@ -45,7 +45,16 @@ time = { workspace = true }
 # evaluator deobfuscates the signature/n-cipher transforms, and its
 # client-fallback ladder walks Desktop -> iOS -> TV so SABR-era tracks
 # resolve natively on every platform, no Android WebView).
-rustypipe = "0.11"
+# default-features = false: rustypipe's `default` feature enables
+# reqwest's `default-tls` (native-tls -> openssl-sys), which feature
+# unification then grafts onto the WHOLE graph — and openssl-sys cannot
+# cross-compile for aarch64-linux-android (the Native ABI CI shards all
+# fail in its build script: "pkg-config has not been configured to
+# support cross-compilation"). The engine's TLS doctrine (MP-C14) is
+# rustls + webpki roots ONLY — the single reqwest in the graph picks
+# that up from the workspace dependency entry below, and rustypipe's
+# HTTP rides the same unified backend.
+rustypipe = { version = "0.11", default-features = false }
 #
 # rustypipe-botguard (Proof-of-Origin token minter) — OPTIONAL, feature-
 # gated. Discussion #120 staged this as a plain dependency; verification

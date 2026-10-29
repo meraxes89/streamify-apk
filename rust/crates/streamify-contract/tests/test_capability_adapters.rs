@@ -274,7 +274,7 @@ fn apple_c_abi_codes_match_the_native_header() {
     // C _Static_asserts and the .mm emission share one frozen ABI.
     let header = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../native/include/apple_remote_command.h"
+        "/../../../native/include/apple_remote_command.h"
     ))
     .expect("native/include/apple_remote_command.h must exist next to the rust/ tree");
     use streamify_contract::platform::media_sync as codes;
@@ -769,7 +769,7 @@ fn ios_session_c_abi_codes_match_the_native_header() {
     // _Static_asserts and the .mm emission share one frozen ABI.
     let header = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../native/include/ios_audio_session.h"
+        "/../../../native/include/ios_audio_session.h"
     ))
     .expect("native/include/ios_audio_session.h must exist next to the rust/ tree");
     for (name, value) in [

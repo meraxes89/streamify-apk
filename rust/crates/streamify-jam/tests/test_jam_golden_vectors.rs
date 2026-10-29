@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use streamify_jam::jam_crdt::JamOp;
 
 fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/jam_golden_vectors.json")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/jam_golden_vectors.json")
 }
 
 struct GoldenOp {
