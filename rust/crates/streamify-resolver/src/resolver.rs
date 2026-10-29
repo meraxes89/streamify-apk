@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
+use streamify_core::{EngineError, NetworkErrorKind};
 use streamify_storage::db_pool::{self, Lane};
 use crate::json::{ParsedCandidate, ResolvedStreamFormat};
 
@@ -161,6 +162,15 @@ pub async fn execute_resolution(
     // every cache access below goes through the pool, so the schema is
     // guaranteed by construction before any query runs.
 
+    // Part B.4: the first resolve that carries the shell's database path
+    // also lends that path to the resolver's persistent memo tables
+    // (CDN format sets, search pages, rustypipe deobf transforms) — the
+    // shells have passed this exact path since Phase 0, so the modern
+    // cache needs no shell-side wiring to activate on production builds.
+    if !db_path.is_empty() {
+        streamify_storage::resolver_cache::bind_cache_db_path(db_path);
+    }
+
     // TIER 1: Check Local SQLite Cache (Zero network cost)
     if !db_path.is_empty() && !cad_id.is_empty() {
         if let Some(video_id) = check_local_cache(db_path, cad_id) {
@@ -232,9 +242,40 @@ pub async fn execute_resolution(
     Err(())
 }
 
-/// Queries YouTube Music Innertube API and parses every shelf result into a
-/// verified-able SearchCandidate (videoId + title + artist + duration).
+/// Queries YouTube Music for track candidates and maps every shelf
+/// result into an identity-verifiable [`SearchCandidate`] (videoId +
+/// title + artist + duration).
+///
+/// Discussion #120, Part B.3: the PRIMARY source is the RustyPipe YTM
+/// search (rustypipe's parsed mobile-search clients with in-process
+/// deobfuscation); the legacy raw WEB_REMIX Innertube request remains
+/// as the degraded tier for the case where the rustypipe client is
+/// unavailable (latched construction failure — see
+/// [`crate::rustypipe_engine::client`]). Both tiers return
+/// YouTube-relevance-ordered candidates; the identity verdict in
+/// [`execute_resolution`] stays the single trust boundary either way.
 pub async fn innertube_search_candidates(
+    query: &str,
+    auth_header: &str,
+    cookies: &str,
+) -> Vec<SearchCandidate> {
+    // Tier 1 — RustyPipe YTM search (PO-token-aware, deobfuscated,
+    // cross-platform identical).
+    match crate::rustypipe_engine::music_search_candidates(query, 32).await {
+        Ok(candidates) => return candidates,
+        // Any failure falls through to the legacy request below — a
+        // rustypipe construction fault must not take the resolver below
+        // the pre-Part-B production behavior.
+        Err(_) => {}
+    }
+
+    // Tier 2 — legacy raw WEB_REMIX Innertube search.
+    legacy_innertube_search_candidates(query, auth_header, cookies).await
+}
+
+/// The legacy raw WEB_REMIX Innertube search request (pre-Part-B
+/// behavior, preserved as the degraded tier — see [`innertube_search_candidates`]).
+async fn legacy_innertube_search_candidates(
     query: &str,
     auth_header: &str,
     cookies: &str,
@@ -943,24 +984,186 @@ impl StreamResolver {
     const INNERTUBE_PLAYER_URL: &'static str = "https://www.youtube.com/youtubei/v1/player";
     const INNERTUBE_SEARCH_URL: &'static str = "https://music.youtube.com/youtubei/v1/search";
 
-    /// Resolves direct playable CDN stream URLs synchronously
-    pub fn resolve_stream(video_id: &str) -> Result<Vec<ResolvedStreamFormat>, String> {
+    /// Resolve the playable stream-format set for one video id (Part B.2
+    /// of Discussion #120).
+    ///
+    /// Tier order:
+    ///
+    ///   1. **Persistent cache hit** — a format set still inside its
+    ///      `valid_until - safety margin` TTL answers in microseconds
+    ///      (the sub-10 ms repeat-resolve budget); zero network.
+    ///   2. **RustyPipe player query** — the pure-Rust extraction engine
+    ///      (in-process JS cipher deciphering; PO tokens via the
+    ///      configured botguard binary), audio-only formats prioritized
+    ///      and mapped with their accurate bitrate/duration (see
+    ///      [`crate::rustypipe_engine::map_player_to_formats`]).
+    ///      Successful resolutions are cached with the response's own
+    ///      TTL.
+    ///   3. **Legacy raw-Innertube cascade** — the pre-Part-B anonymous
+    ///      ANDROID_VR path (one format row, metadata by assumption);
+    ///      only reached when the rustypipe tier failed outright, so a
+    ///      rustypipe regression can never take the engine below the
+    ///      old production behavior.
+    ///
+    /// Fails with the typed taxonomy (MP-C04) — network classes route
+    /// the retry policy, extraction faults surface as Internal.
+    pub fn resolve_stream(video_id: &str) -> Result<Vec<ResolvedStreamFormat>, EngineError> {
+        let video_id = video_id.trim();
+        if video_id.is_empty() {
+            // House pattern (see create_jam_session): a blank argument
+            // is rejected as Internal — it is a caller fault, not a
+            // network condition any retry policy could fix.
+            return Err(EngineError::Internal {
+                error_message: "resolve_stream: empty video id".to_string(),
+                backtrace: None,
+            });
+        }
+
+        // Tier 1 — persistent cache (Part B.4).
+        if let Some(cached_json) =
+            streamify_storage::resolver_cache::get_stream_formats(video_id)
+        {
+            if let Ok(formats) = serde_json::from_str::<Vec<ResolvedStreamFormat>>(&cached_json) {
+                if !formats.is_empty() {
+                    return Ok(formats);
+                }
+            }
+            // A corrupt row is a cache fault, never a resolve fault:
+            // fall through and re-resolve; the put below overwrites it.
+        }
+
         let rt = get_runtime();
-        let client = get_client();
         rt.block_on(async {
-            let cdn_url = fetch_innertube_cdn(client, video_id, "", "").await?;
-            Ok(vec![ResolvedStreamFormat {
-                url: cdn_url,
-                mime_type: "audio/mp4".to_string(),
-                bitrate: 128000,
-                duration_sec: 0,
-                is_audio_only: true,
-            }])
+            // Tier 2 — RustyPipe (pure-Rust extraction + PO tokens);
+            // caches on success with the response's own TTL. The typed
+            // error is kept: if the degraded tier below fails too, it
+            // is the more precise diagnosis (extraction classes, HTTP
+            // statuses) and the one the retry policy should see.
+            let rustypipe_result =
+                crate::rustypipe_engine::resolve_stream_formats(video_id).await;
+            let rustypipe_error = match rustypipe_result {
+                Ok(formats) => return Ok(formats),
+                Err(e) => e,
+            };
+
+            // Tier 3 — legacy raw-Innertube cascade (degraded; single
+            // format row, metadata by assumption — the honest minimum
+            // the pre-Part-B path could ever report).
+            let client = get_client();
+            match fetch_innertube_cdn(client, video_id, "", "").await {
+                Ok(cdn_url) => {
+                    let formats = vec![ResolvedStreamFormat {
+                        url: cdn_url,
+                        mime_type: "audio/mp4".to_string(),
+                        bitrate: 128_000,
+                        duration_sec: 0,
+                        is_audio_only: true,
+                    }];
+                    // Legacy rows carry no server-provided lifetime:
+                    // cache on the conservative 60 s floor of the margin
+                    // discipline so an immediate repeat resolve still
+                    // skips the network.
+                    if let Ok(json) = serde_json::to_string(&formats) {
+                        streamify_storage::resolver_cache::put_stream_formats(
+                            video_id, &json, 60,
+                        );
+                    }
+                    Ok(formats)
+                }
+                Err(_) => Err(rustypipe_error),
+            }
         })
     }
 
-    /// Searches YouTube Music and returns parsed candidates
+    /// Search YouTube Music tracks (Part B.3 — the `search_tracks`
+    /// surface from Discussion #120).
+    ///
+    /// Tier order: persistent search-page cache (24 h TTL) -> RustyPipe
+    /// YTM search -> legacy raw WEB_REMIX Innertube search. Results
+    /// keep YouTube's relevance order, mirrored into the descending
+    /// `score` field for the legacy sorting surfaces.
+    pub fn search_tracks(query: &str, limit: usize) -> Result<Vec<ParsedCandidate>, EngineError> {
+        let query = query.trim();
+        if query.is_empty() {
+            // House pattern: blank argument -> Internal (see
+            // resolve_stream).
+            return Err(EngineError::Internal {
+                error_message: "search_tracks: empty query".to_string(),
+                backtrace: None,
+            });
+        }
+        let limit = limit.clamp(1, 50);
+
+        // Tier 1 — persistent cache (Part B.4).
+        if let Some(cached_json) =
+            streamify_storage::resolver_cache::get_search_results(query, limit)
+        {
+            if let Ok(candidates) = serde_json::from_str::<Vec<ParsedCandidate>>(&cached_json) {
+                if !candidates.is_empty() {
+                    return Ok(candidates);
+                }
+            }
+        }
+
+        let rt = get_runtime();
+        rt.block_on(async {
+            // Tier 2 — RustyPipe YTM search (caches on success). Typed
+            // error kept for the both-tiers-failed report below.
+            let rustypipe_result =
+                crate::rustypipe_engine::search_tracks(query, limit).await;
+            let rustypipe_error = match rustypipe_result {
+                Ok(candidates) if !candidates.is_empty() => return Ok(candidates),
+                Ok(_) => EngineError::Network {
+                    kind: NetworkErrorKind::Http,
+                    status: 404,
+                    retry_after: 0,
+                },
+                Err(e) => e,
+            };
+
+            // Tier 3 — legacy raw Innertube search.
+            Self::legacy_search_candidates(query, limit)
+                .await
+                .map(|mut candidates| {
+                    if let Ok(json) = serde_json::to_string(&candidates) {
+                        streamify_storage::resolver_cache::put_search_results(
+                            query,
+                            limit,
+                            &json,
+                            crate::rustypipe_engine::SEARCH_CACHE_TTL_SEC,
+                        );
+                    }
+                    candidates.truncate(limit);
+                    candidates
+                })
+                .map_err(|legacy| EngineError::Internal {
+                    // Both tiers failed: fold the legacy diagnostic into
+                    // the typed taxonomy; the rustypipe class stays the
+                    // routing error (it is the primary tier).
+                    error_message: format!(
+                        "rustypipe: {rustypipe_error}; innertube: {legacy}"
+                    ),
+                    backtrace: None,
+                })
+        })
+    }
+
+    /// Legacy YouTube Music search surface (pre-Part-B signature).
+    ///
+    /// Kept for source compatibility with in-tree callers; new code
+    /// uses [`Self::search_tracks`] (typed errors, two-tier caching,
+    /// rustypipe primary).
     pub fn search_music(query: &str, limit: usize) -> Result<Vec<ParsedCandidate>, String> {
+        Self::search_tracks(query, limit).map_err(|e| e.to_string())
+    }
+
+    /// The legacy raw WEB_REMIX Innertube search request behind
+    /// [`Self::search_tracks`]' degraded tier (pre-Part-B behavior
+    /// preserved verbatim).
+    async fn legacy_search_candidates(
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<ParsedCandidate>, String> {
         // Multiplatform Phase 3 (MP-C14): the blocking ureq one-shot is
         // retired — the sync surface now drives the SAME shared async
         // client (single OnceLock runtime, resolver::get_runtime) with

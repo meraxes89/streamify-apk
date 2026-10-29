@@ -14,6 +14,7 @@ pub mod backup;
 pub mod crypto;
 pub mod db_pool;
 pub mod repository;
+pub mod resolver_cache;
 
 // Root re-exports (mirror the old monolith root surface).
 pub use backup::{BackupArchiveEngine, BackupRecord};

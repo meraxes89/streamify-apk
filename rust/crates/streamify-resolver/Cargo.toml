@@ -37,18 +37,63 @@ lofty = { workspace = true }
 # the same pooled SQLite lane discipline as streamify-storage.
 rusqlite = { workspace = true }
 sha2 = { workspace = true }
+# OffsetDateTime for the CDN cache TTL (valid_until minus safety margin —
+# see rustypipe_engine::cdn_ttl_seconds).
+time = { workspace = true }
 # Pure-Rust NewPipe replacement: RustyPipe (YouTube/YouTube Music client
-# with full JavaScript cipher deciphering) + rustypipe-botguard
-# (Proof-of-Origin token minting) — identical native stream resolution
-# on Android, iOS, Windows, Linux and macOS, no Android WebView.
+# with full JavaScript cipher deciphering — its own embedded QuickJS
+# evaluator deobfuscates the signature/n-cipher transforms, and its
+# client-fallback ladder walks Desktop -> iOS -> TV so SABR-era tracks
+# resolve natively on every platform, no Android WebView).
 rustypipe = "0.11"
-rustypipe-botguard = "0.1"
+#
+# rustypipe-botguard (Proof-of-Origin token minter) — OPTIONAL, feature-
+# gated. Discussion #120 staged this as a plain dependency; verification
+# against the published artifact surface showed that is not shippable for
+# the unified cdylib:
+#
+#   * The 0.1.x lib runs botguard challenges inside deno_core, which
+#     embeds the `v8` crate. rusty_v8 publishes prebuilt static archives
+#     ONLY for desktop triples — the release URLs for
+#     aarch64-linux-android / x86_64-linux-android / aarch64-apple-ios
+#     404 (probed 2026-10-29) — so every mobile cross-build falls back
+#     to a full v8 source build (Chromium GN + ninja + NDK download,
+#     multi-GB, far outside the 4 GB RAM / 9 GB disk budget and the CI
+#     runner budgets). Part C's blocking build gates (cargo ndk
+#     aarch64-linux-android, XCFramework) cannot link v8 today.
+#   * rustypipe 0.11.4 consumes PO tokens exclusively through the
+#     companion-BINARY protocol (`rustypipe-botguard --snapshot-file …
+#     <idents>`), spawning the CLI and parsing the `valid_until=` tail;
+#     it has no in-process token-injection API. The deployment story on
+#     Android is to ship the companion binary in nativeLibraryDir (the
+#     one app-writable-executable directory) and point the engine at
+#     it via `set_botguard_binary_path` / STREAMIFY_BOTGUARD_BIN; on
+#     iOS, where process spawning is forbidden, the resolver degrades
+#     gracefully to rustypipe's PO-free client ladder (iOS/TV), which
+#     still resolves streams.
+#
+# Keeping the dependency entry (now optional) preserves the lockfile pin
+# of rustypipe-botguard 0.1.2 so the companion binary built from THIS
+# lockfile (`cargo build --release -p rustypipe-botguard --bin
+# rustypipe-botguard` with the feature on) stays API-version-locked to
+# the rustypipe 0.11.4 spawn protocol (rustypipe verifies the
+# `rustypipe-botguard-api 1` version string at client build time).
+#
+# Host tooling and desktop builds that want IN-PROCESS PO-token minting
+# for the in-tree botguard helper compile with
+# `--features streamify-resolver/botguard`; the default (off) keeps v8
+# out of the mobile artifacts entirely.
+rustypipe-botguard = { version = "0.1", optional = true }
 
 [features]
 default = []
 # Experimental HTTP/3 (QUIC) transport — DISABLED by default per MP-C14:
 # re-enable per-artifact for telemetry-gated canaries only.
 http3 = ["reqwest/http3"]
+# In-process rustypipe-botguard PO-token engine (v8/deno_core linked into
+# the artifact). HOST builds only — see the dependency note above for
+# why mobile builds must not enable this.
+botguard = ["dep:rustypipe-botguard"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -22,6 +22,7 @@ pub mod neuro_queue;
 pub mod playlist_parser;
 pub mod radio_scorer;
 pub mod resolver;
+pub mod rustypipe_engine;
 pub mod search;
 pub mod spotify_ingest;
 pub mod tagger;
@@ -38,5 +39,8 @@ pub use radio_scorer::{
     GroupBlendScorer, RadioAntiDriftEngine, ScoredCandidate,
 };
 pub use resolver::StreamResolver;
+pub use rustypipe_engine::{
+    cdn_ttl_seconds, client, map_player_to_formats, map_rp_error, set_botguard_binary_path,
+};
 pub use search::{FuzzySearchEngine, SearchCandidate};
 pub use tagger::AudioMetadataEngine;

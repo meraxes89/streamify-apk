@@ -112,6 +112,11 @@ metrics = "0.24"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tempfile = "3.10"
 futures-util = "0.3"
+# OffsetDateTime arithmetic for the resolver cache TTL discipline (Part B.4
+# of Discussion #120: resolved CDN URLs cache with the player response's
+# own valid_until minus a safety margin). Version-locked with the copy
+# rustypipe 0.11 carries, so the workspace links exactly one `time`.
+time = "0.3"
 
 # Phase 1: the 32-peer mesh simulation is allocation-bound in the default
 # unoptimized test profile (7× slower than release — measured: 208 ms
