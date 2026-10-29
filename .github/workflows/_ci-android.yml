@@ -1,0 +1,235 @@
+# ============================================================================
+# _ci-android.yml — Tier 2 reusable spoke: Android app, NDK consumption & APK.
+# (resp6.md §2 hub-and-spoke; extracted from the retired
+# extreme-test-matrix.yml build/test lanes + release.yml's release path.)
+#
+# Callable ONLY via workflow_call, from:
+#   * ci.yml      (PR / merge_group / push-main hub, release_mode: false)
+#   * release.yml (tag-driven release, release_mode: true)
+#
+# Jobs:
+#   jvm-unit       the :app:testDebugUnitTest suite (skipExternalNativeBuild:
+#                  the UniFFI bindgen still runs on the host, the NDK lanes
+#                  do not — the monolith's proven hermetic split).
+#   assemble-apk   consumes the jniLibs-<abi> artifacts cross-compiled ONCE by
+#                  _ci-engine.yml (build-once / fan-out, resp6 §3), stages
+#                  them into app/src/main/jniLibs, then assembles the APK
+#                  with -PciPrebuiltNativeDir + -PskipExternalNativeBuild so
+#                  Gradle never recompiles Rust/C++ here.
+#
+# ABI scope: arm64-v8a + x86_64 (matches the engine factory).
+#
+# release_mode: true switches assembleDebug -> assembleRelease with the SEC-04
+# production keystore (fail-fast, no debug-signing fallback) and renames the
+# APK to Streamify-v<tag>.apk for the release publish job.
+# ============================================================================
+name: CI Android (App, NDK & APK)
+
+on:
+  workflow_call:
+    inputs:
+      release_mode:
+        description: Assemble a signed release APK (Streamify-v<tag>.apk) instead of the debug APK.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── JVM unit suite: state machines, chaos, CAD identity gates ───────────────
+  jvm-unit:
+    name: "Android JVM unit suite"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Android NDK & CMake
+        id: ndk-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/26.1.10909125
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: ${{ runner.os }}-ndk-26.1.10909125-cmake-3.22.1
+
+      - name: Install Android NDK for AGP sync
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Run :app:testDebugUnitTest
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest \
+            -PskipExternalNativeBuild=true \
+            --stacktrace
+
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-jvm-test-reports
+          path: app/build/reports/tests/**
+          if-no-files-found: ignore
+
+  # ── APK assembly over the prebuilt engine artifacts ─────────────────────────
+  assemble-apk:
+    name: ${{ inputs.release_mode && 'Assemble release APK (signed)' || 'Assemble debug APK (universal 2-ABI)' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # audit #44 P0-1 — fail FAST on any external fun in NativeBridge.kt
+      # with no JNI export, before any runner time is spent on Gradle.
+      - name: JNI ABI parity gate (source-level, fail-fast)
+        run: python3 scripts/jni_parity_check.py --source
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Pre-compile Kotlin, resources & D8 dex
+        run: |
+          chmod +x gradlew
+          ./gradlew \
+            :app:compileDebugKotlin \
+            :app:compileDebugJavaWithJavac \
+            :app:processDebugResources \
+            :app:dexBuilderDebug \
+            :app:mergeExtDexDebug \
+            :app:mergeProjectDexDebug \
+            -PskipExternalNativeBuild=true \
+            --build-cache --configuration-cache
+
+      # Build-once / fan-out: the engine spoke already cross-compiled these.
+      - name: Download jniLibs bundles (arm64-v8a, x86_64)
+        uses: actions/download-artifact@v8
+        with:
+          pattern: jniLibs-*
+          path: staged-jni
+
+      - name: Stage prebuilt .so into app/src/main/jniLibs
+        run: |
+          for ABI in arm64-v8a x86_64; do
+            mkdir -p app/src/main/jniLibs/$ABI
+            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} app/src/main/jniLibs/$ABI/ \;
+          done
+          echo "Staged JNI libraries:"
+          ls -lR app/src/main/jniLibs
+
+      - name: Decode release keystore (SEC-04: no debug-signing fallback)
+        if: inputs.release_mode
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
+            echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "FATAL: no RELEASE_KEYSTORE_B64 secret — assembleRelease will fail fast (SEC-04)." >&2
+            exit 1
+          fi
+
+      - name: Assemble debug APK (prebuilt natives, no Rust rebuild)
+        if: ${{ !inputs.release_mode }}
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug \
+            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+            -PskipExternalNativeBuild=true \
+            --build-cache --configuration-cache \
+            --stacktrace 2>&1 | tee build.log
+
+      - name: Assemble release APK (prebuilt natives, signed)
+        if: inputs.release_mode
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease \
+            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+            -PskipExternalNativeBuild=true \
+            --build-cache --configuration-cache \
+            --stacktrace 2>&1 | tee build.log
+
+      # Hard verification: the universal APK must carry BOTH beta ABIs.
+      - name: Verify both architectures exist in the final APK
+        run: |
+          APK=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "FATAL: no APK produced!" >&2
+            exit 1
+          fi
+          for ABI in arm64-v8a x86_64; do
+            unzip -l "$APK" | grep -q "lib/$ABI/" || { echo "FATAL: missing $ABI in $APK" >&2; exit 1; }
+          done
+          echo "Verified universal APK contains arm64-v8a and x86_64."
+
+      # audit #44 P0-1 — authoritative link-time parity gate on the shipped .so.
+      - name: JNI ABI parity gate (nm on shipped .so)
+        run: |
+          NDK_DIR="${ANDROID_NDK_HOME:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/ndk/26.1.10909125}"
+          NM="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          if [ ! -x "$NM" ]; then NM=nm; fi
+          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
+            --so-glob 'app/src/main/jniLibs/**/*.so'
+
+      - name: Upload build log (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Upload debug APK artifact
+        if: ${{ !inputs.release_mode }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Streamify-Debug-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Stage release APK as Streamify-v<tag>.apk
+        if: inputs.release_mode
+        run: |
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "FATAL: no release APK produced!" >&2
+            exit 1
+          fi
+          cp "$APK" "Streamify-${GITHUB_REF_NAME}.apk"
+          ls -la "Streamify-${GITHUB_REF_NAME}.apk"
+
+      - name: Upload release APK artifact
+        if: inputs.release_mode
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-release-apk
+          path: Streamify-*.apk
+          if-no-files-found: error
