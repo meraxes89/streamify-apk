@@ -10,11 +10,17 @@ import Foundation
 
 final class PreviewEngineGateway: EngineGateway {
 
+    private let lock = NSLock()
     private var state = PlaybackSnapshot.idle
     private var continuation: AsyncStream<PlaybackSnapshot>.Continuation?
     private var demoTask: Task<Void, Never>?
 
-    private(set) var dispatchedCommands: [PlayerCommand] = []
+    private var _dispatchedCommands: [PlayerCommand] = []
+    var dispatchedCommands: [PlayerCommand] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _dispatchedCommands
+    }
     var nextResult: PlayerCommandResult = .applied
     var failAll = false
 
@@ -26,7 +32,9 @@ final class PreviewEngineGateway: EngineGateway {
     }
 
     func send(_ command: PlayerCommand) async -> PlayerCommandResult {
-        dispatchedCommands.append(command)
+        lock.lock()
+        _dispatchedCommands.append(command)
+        lock.unlock()
         return failAll ? .failed : nextResult
     }
 

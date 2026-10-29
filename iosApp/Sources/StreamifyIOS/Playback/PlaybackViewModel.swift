@@ -34,6 +34,7 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     private(set) var remoteCommands: RemoteCommandAdapter!
 
     private var collectTask: Task<Void, Never>?
+    private var dispatchChain: Task<Void, Never>?
 
     init(
         gateway: EngineGateway,
@@ -83,6 +84,8 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     func stop() {
         collectTask?.cancel()
         collectTask = nil
+        dispatchChain?.cancel()
+        dispatchChain = nil
         remoteCommands.deactivate()
         nowPlayingInfo.clear()
         audioSession.deactivate()
@@ -113,10 +116,17 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     }
 
     private func dispatch(_ command: PlayerCommand) {
-        Task { [weak self] in
+        let previousTask = dispatchChain
+        dispatchChain = Task { [weak self] in
+            _ = await previousTask?.value
             guard let self else { return }
             self.lastResult = await self.gateway.send(command)
         }
+    }
+
+    /// Flushes all pending asynchronous dispatches into the engine gateway (strict FIFO).
+    func flushDispatches() async {
+        _ = await dispatchChain?.value
     }
 
     // MARK: - AudioSessionResponding (MP-UI02 reactions)

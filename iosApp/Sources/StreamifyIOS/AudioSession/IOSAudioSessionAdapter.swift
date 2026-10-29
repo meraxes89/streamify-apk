@@ -47,6 +47,7 @@ enum AudioSessionDecision: Equatable, Sendable {
 
 /// Anything that can serve the adapter's playback reactions (the shell's
 /// PlaybackViewModel conforms; tests install a recording stub).
+@MainActor
 protocol AudioSessionResponding: AnyObject {
     func audioSessionRequestsPause(reason: String)
     func audioSessionRequestsResume(reason: String)
