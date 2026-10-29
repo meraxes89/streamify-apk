@@ -62,8 +62,6 @@ jobs:
             os-name: linux
           - os: windows-latest
             os-name: windows
-          - os: macos-14
-            os-name: macos
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -93,7 +91,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      # ── Engine provisioning: prebuilt fan-out across all 3 platforms ─────
+      # ── Engine provisioning: prebuilt fan-out across Linux & Windows ─────
       - name: Download prebuilt Linux engine cdylib (build-once / fan-out)
         if: runner.os == 'Linux'
         uses: actions/download-artifact@v8
@@ -108,13 +106,6 @@ jobs:
           name: engine-windows-x86_64
           path: staged-engine
 
-      - name: Download prebuilt macOS engine cdylib (build-once / fan-out)
-        if: runner.os == 'macOS'
-        uses: actions/download-artifact@v8
-        with:
-          name: engine-macos
-          path: staged-engine
-
       - name: Set prebuilt engine environment
         shell: bash
         run: |
@@ -122,8 +113,6 @@ jobs:
             echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.so" >> "$GITHUB_ENV"
           elif [ "${{ runner.os }}" = "Windows" ]; then
             echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.dylib" >> "$GITHUB_ENV"
           fi
           echo "ENGINE_BUILDABLE=1" >> "$GITHUB_ENV"
 
