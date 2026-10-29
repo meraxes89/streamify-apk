@@ -22,7 +22,7 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     @Published private(set) var lastResult: PlayerCommandResult?
 
     let gateway: EngineGateway
-    let audioSession: IOSAudioSessionAdapter
+    private(set) var audioSession: IOSAudioSessionAdapter!
 
     /// MP-UI01: the lockscreen / now-playing surface, rate-limited to 1 Hz
     /// (leading-edge admission + trailing-edge flush, so the LAST state of
@@ -31,7 +31,7 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
 
     /// MP-UI01: the lockscreen / Control Center transport controls, routed
     /// onto the same command plane as the in-app UI.
-    private let remoteCommands: RemoteCommandAdapter
+    private(set) var remoteCommands: RemoteCommandAdapter!
 
     private var collectTask: Task<Void, Never>?
 
@@ -46,9 +46,9 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
         nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil
     ) {
         self.gateway = gateway
-        // Default wiring: the adapter drives THIS holder's pause/resume.
-        self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
         self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
+        // Two-phase initialization: properties above are set before referencing `self`.
+        self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
         self.remoteCommands = RemoteCommandAdapter(router: self)
     }
 

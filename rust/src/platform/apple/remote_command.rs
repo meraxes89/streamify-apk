@@ -33,8 +33,6 @@ use crate::platform::adapter::{
 };
 use crate::platform::media_sync::{
     apple_command_to_command, apple_now_playing_info, AppleCommandKind, NowPlayingSnapshot,
-    SF_APPLE_CMD_NEXT, SF_APPLE_CMD_PAUSE, SF_APPLE_CMD_PLAY, SF_APPLE_CMD_PREVIOUS,
-    SF_APPLE_CMD_SEEK, SF_APPLE_CMD_TOGGLE,
 };
 use crate::platform::{APPLE_NOW_PLAYING_MIN_INTERVAL, MediaCommandSink};
 use std::ffi::{CStr, CString};
