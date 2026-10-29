@@ -145,11 +145,33 @@ jobs:
         working-directory: rust
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Pillar B: UniFFI checked-in bindings drift check against UDL contract
+      - name: Verify UniFFI bindings parity (drift check)
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          mkdir -p /tmp/uniffi-drift
+          cargo run --manifest-path rust/Cargo.toml --bin uniffi-bindgen -- \
+            generate rust/crates/streamify-contract/src/streamify.udl \
+            --language kotlin \
+            --out-dir /tmp/uniffi-drift \
+            --config rust/crates/streamify-contract/uniffi.toml
+          # Apply the uniffi-rs 0.28.3 Kotlin codegen defect shim (rename `message` to `errorMessage`)
+          sed -i 's/`message`/`errorMessage`/g' /tmp/uniffi-drift/uniffi/streamify/streamify.kt
+          if ! diff -u shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt /tmp/uniffi-drift/uniffi/streamify/streamify.kt; then
+            echo "::error::UniFFI bindings in shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt are out of sync with streamify.udl!"
+            echo "::error::Run gradle with UNIFFI_REGENERATE=1 or update the checked-in bindings."
+            exit 1
+          fi
+          echo "UniFFI bindings are in sync with UDL."
+
   # The engine spoke doubles as the BUILD-ONCE / FAN-OUT artifact factory
   # (resp6 §3): it runs whenever the engine tests OR any artifact consumer
-  # (android jniLibs / linux desktop cdylib) is in scope, with per-input
-  # granularity so an app-only PR skips the test suite but still gets its
-  # prebuilt natives.
+  # (android jniLibs / linux, windows, macos desktop cdylibs) is in scope,
+  # with per-input granularity so an app-only PR skips the test suite but
+  # still gets its prebuilt natives.
   engine_dsp:
     name: "Core Engine & C++ DSP"
     needs: preflight
@@ -161,6 +183,7 @@ jobs:
     with:
       run_tests: ${{ needs.preflight.outputs.run_engine == 'true' }}
       build_android_native: ${{ needs.preflight.outputs.run_android == 'true' }}
+      build_desktop_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
       build_linux_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
 
   android:
