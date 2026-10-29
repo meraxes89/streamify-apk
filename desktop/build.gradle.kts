@@ -72,9 +72,10 @@ compose.desktop {
         nativeDistributions {
             // One canonical installer per CI matrix leg: jpackage deb needs
             // only dpkg-deb (present on ubuntu runners), msi needs WiX 3.x
-            // (installed by .github/workflows/desktop-ci.yml on windows
-            // runners). rpm/dmg/pkg stay out of the Phase 4b matrix.
-            targetFormats(TargetFormat.Deb, TargetFormat.Msi)
+            // (installed by _ci-desktop.yml on windows runners), dmg needs
+            // only hdiutil (present on macos runners). rpm/pkg stay out of
+            // the Beta matrix.
+            targetFormats(TargetFormat.Deb, TargetFormat.Msi, TargetFormat.Dmg)
 
             // Lowercase on purpose: dpkg package names must match
             // [a-z0-9][a-z0-9+.-]* — "Streamify" would be rejected.
@@ -166,6 +167,35 @@ kotlin {
 
 // ── Host-platform engine build + single-arch resource preparation ───────────
 
+// CI build-once / fan-out seam (resp6 §3): when _ci-engine.yml has already
+// cross-compiled the host cdylib on a cheap Linux runner, the artifact is
+// staged on disk and passed here so this lane never invokes cargo for the
+// engine library. Windows/macOS legs leave it unset and build natively
+// (behind the ENGINE_BUILDABLE probe in _ci-desktop.yml).
+val prebuiltEngineLib: String? =
+    providers.gradleProperty("streamify.prebuiltEngineLib").orNull?.takeIf { it.isNotBlank() }
+
+val stagePrebuiltEngineLibrary by tasks.registering {
+    group = "native"
+    description = "Stages the CI-prebuilt host engine cdylib at the cargo output path (build-once / fan-out)."
+
+    // Configuration-cache contract (matches every other native task here):
+    // task graph references must never capture the enclosing SCRIPT object.
+    // Copy the script-level vals into locals of this configuration block so
+    // the serialized task state holds plain values, not script references.
+    val prebuilt: String? = prebuiltEngineLib
+    val dst: File = engineLibraryFile
+
+    onlyIf { prebuilt != null && File(prebuilt!!).isFile }
+
+    doLast {
+        val src = File(prebuilt!!)
+        dst.parentFile.mkdirs()
+        src.copyTo(dst, overwrite = true)
+        logger.lifecycle("staged prebuilt engine cdylib {} -> {}", src, dst)
+    }
+}
+
 val buildDesktopEngineLibrary by tasks.registering(Exec::class) {
     group = "native"
     description = "Builds the streamify_core_rs cdylib for the HOST platform (JNA mode, release, stripped)."
@@ -173,8 +203,12 @@ val buildDesktopEngineLibrary by tasks.registering(Exec::class) {
     val crateDir = rustCrateDir
     val outLib = engineLibraryFile
     val skip = skipDesktopNative
+    // Local copy: same configuration-cache discipline as above — never
+    // capture the script-level property from task-graph code.
+    val prebuilt: String? = prebuiltEngineLib
 
-    onlyIf { !skip }
+    // A prebuilt cdylib replaces the cargo invocation entirely (CI fan-out).
+    onlyIf { !skip && prebuilt == null }
 
     inputs.dir(File(crateDir, "src"))
     inputs.file(File(crateDir, "Cargo.toml"))
@@ -190,7 +224,7 @@ val prepareDesktopEngineResources by tasks.registering(Sync::class) {
     group = "native"
     description = "Stages the host engine cdylib at the resource root for JNA classpath loading (single-arch by construction)."
 
-    dependsOn(buildDesktopEngineLibrary)
+    dependsOn(buildDesktopEngineLibrary, stagePrebuiltEngineLibrary)
     from(engineLibraryFile)
     into(engineResourceDir)
 }

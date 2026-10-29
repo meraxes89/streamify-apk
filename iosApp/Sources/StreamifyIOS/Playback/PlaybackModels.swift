@@ -101,6 +101,10 @@ struct PlaybackSnapshot: Equatable, Sendable {
 struct PlaybackUiState: Equatable, Sendable {
     let snapshot: PlaybackSnapshot
 
+    /// The pre-engine surface state (same shape as `PlaybackSnapshot.idle`,
+    /// one UI-level constant so call sites never nest the raw default).
+    static let idle = PlaybackUiState()
+
     init(_ snapshot: PlaybackSnapshot = .idle) {
         self.snapshot = snapshot
     }
@@ -136,9 +140,9 @@ enum PlaybackFormatting {
 
     /// `m:ss` under one hour, `h:mm:ss` from one hour up; negatives clamp
     /// to zero — a position renderer must never show garbage for a missing
-    /// clock sample.
+    /// clock sample. Truncation toward zero (59_999ms renders as 0:59).
     static func formatPlaybackTime(_ positionMs: Int) -> String {
-        let totalSeconds = (max(0, positionMs) + 500) / 1000
+        let totalSeconds = max(0, positionMs) / 1000
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60

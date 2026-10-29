@@ -22,7 +22,7 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     @Published private(set) var lastResult: PlayerCommandResult?
 
     let gateway: EngineGateway
-    let audioSession: IOSAudioSessionAdapter
+    private(set) var audioSession: IOSAudioSessionAdapter!
 
     /// MP-UI01: the lockscreen / now-playing surface, rate-limited to 1 Hz
     /// (leading-edge admission + trailing-edge flush, so the LAST state of
@@ -31,19 +31,25 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
 
     /// MP-UI01: the lockscreen / Control Center transport controls, routed
     /// onto the same command plane as the in-app UI.
-    private let remoteCommands: RemoteCommandAdapter
+    private(set) var remoteCommands: RemoteCommandAdapter!
 
     private var collectTask: Task<Void, Never>?
+    private var dispatchChain: Task<Void, Never>?
 
     init(
         gateway: EngineGateway,
         audioSession: IOSAudioSessionAdapter? = nil,
-        nowPlayingInfoPublisher: NowPlayingInfoPublisher = NowPlayingInfoPublisher()
+        // Optional-with-nil-default instead of a `NowPlayingInfoPublisher()`
+        // default expression: default arguments are evaluated in a
+        // NONISOLATED context, so a @MainActor-isolated initializer call
+        // there is a compile error. The fallback constructs on the main
+        // actor, inside this isolated init body.
+        nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil
     ) {
         self.gateway = gateway
-        // Default wiring: the adapter drives THIS holder's pause/resume.
+        self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
+        // Two-phase initialization: properties above are set before referencing `self`.
         self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
-        self.nowPlayingInfo = nowPlayingInfoPublisher
         self.remoteCommands = RemoteCommandAdapter(router: self)
     }
 
@@ -78,6 +84,8 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     func stop() {
         collectTask?.cancel()
         collectTask = nil
+        dispatchChain?.cancel()
+        dispatchChain = nil
         remoteCommands.deactivate()
         nowPlayingInfo.clear()
         audioSession.deactivate()
@@ -108,10 +116,17 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     }
 
     private func dispatch(_ command: PlayerCommand) {
-        Task { [weak self] in
+        let previousTask = dispatchChain
+        dispatchChain = Task { [weak self] in
+            _ = await previousTask?.value
             guard let self else { return }
             self.lastResult = await self.gateway.send(command)
         }
+    }
+
+    /// Flushes all pending asynchronous dispatches into the engine gateway (strict FIFO).
+    func flushDispatches() async {
+        _ = await dispatchChain?.value
     }
 
     // MARK: - AudioSessionResponding (MP-UI02 reactions)

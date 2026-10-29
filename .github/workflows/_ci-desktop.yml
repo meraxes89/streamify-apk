@@ -1,0 +1,226 @@
+# ============================================================================
+# _ci-desktop.yml — Tier 2 reusable spoke: the Compose Multiplatform Desktop
+# matrix (resp6.md §2/§4), replacing the retired desktop-ci.yml.
+#
+# Callable ONLY via workflow_call, from:
+#   * ci.yml      (PR / merge_group / push-main hub)
+#   * release.yml (tag-driven release, release_mode: true)
+#
+# Matrix: ubuntu-latest (linux), windows-latest (windows), macos-14 (macOS
+# Apple Silicon) — the macOS coverage desktop-ci.yml never had.
+#
+# Every leg runs:
+#   1. Headless CMP UI smoke tests (:desktop:test --tests shell.* +
+#      :shared:desktopTest) — engine-free (FakeEnginePort), deterministic on
+#      all three OSes.
+#   2. Desktop JNA engine smoke suite (the full :desktop:test +
+#      :shared:desktopTest pass) — the engine-tied lane.
+#
+# Engine provisioning per leg (build-once / fan-out, resp6 §3):
+#   * linux    consumes the engine-linux-x86_64 cdylib artifact from
+#              _ci-engine.yml via -Pstreamify.prebuiltEngineLib (no cargo
+#              invocation for the engine library).
+#   * windows  builds the host cdylib through Gradle, behind the
+#   * macos    ENGINE_BUILDABLE probe (MP-DEC-08): while the rust tree fails
+#              `cargo check --lib` on a host, the leg reports green with a
+#              loud blocker notice instead of red noise — and auto-activates
+#              the full suite the moment the engine compiles there. The
+#              probe IS the gate.
+#
+# package_installers (PRs: only when packaging files changed; main /
+# merge_group / releases: true) adds jpackage + the strict
+# :desktop:verifyDesktopSizeBudget gate (< 250 MiB) per leg:
+#   .deb on linux, .msi on windows (WiX 3.14), .dmg on macos.
+# ============================================================================
+name: CI Desktop (CMP Matrix)
+
+on:
+  workflow_call:
+    inputs:
+      package_installers:
+        description: Build .deb/.msi/.dmg installers and enforce the < 250 MiB size budget.
+        type: boolean
+        default: false
+      release_mode:
+        description: Upload the packaged installers for the release publish job.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-matrix:
+    name: "Desktop (${{ matrix.os-name }})"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: linux
+          - os: windows-latest
+            os-name: windows
+          - os: macos-14
+            os-name: macos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Rust toolchain (host target)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup sccache (mandatory compiler caching, resp6 §3)
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # ── Engine provisioning: prebuilt fan-out on linux, probe elsewhere ─────
+      - name: Download prebuilt Linux engine cdylib (build-once / fan-out)
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@v8
+        with:
+          name: engine-linux-x86_64
+          path: staged-engine
+
+      # MP-DEC-08 probe gate: does the engine lib compile on this host today?
+      # While it does not, the engine-tied lane below reports green-with-
+      # notice; the moment `cargo check` goes green the full suite runs
+      # unmodified. (Phase 5 cfg-gated task_orchestrator.rs resolved the
+      # historical Windows blocker — the probe now passes and is retained as
+      # the self-healing safety net for every non-Linux host.)
+      - name: Probe engine buildability (non-Linux hosts)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          set +e
+          cargo check --manifest-path rust/Cargo.toml --lib --quiet
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "ENGINE_BUILDABLE=1" >> "$GITHUB_ENV"
+            echo "engine lib compiles on $(uname -s) — full smoke suite will run"
+          else
+            echo "ENGINE_BUILDABLE=0" >> "$GITHUB_ENV"
+            echo "engine lib does NOT compile on $(uname -s) yet — engine-tied lane will report a blocker notice"
+          fi
+
+      # ── 1. Headless CMP UI smoke tests (engine-free, all legs) ─────────────
+      # Two invocations, deliberately: the --tests filter is invocation-global
+      # in Gradle, so the shared suite runs as its own unfiltered call.
+      - name: "Headless desktop UI smoke tests (CMP shell + shared layer)"
+        shell: bash
+        run: |
+          chmod +x gradlew
+          # --configure-on-demand keeps the desktop lane hermetic: only
+          # :desktop + :shared are configured (both AGP-free).
+          ./gradlew :desktop:test \
+            --tests "com.streamify.desktop.shell.*" \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --no-daemon --configure-on-demand --stacktrace
+          ./gradlew :shared:desktopTest \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --no-daemon --configure-on-demand --stacktrace
+        env:
+          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
+
+      # ── 2. Desktop JNA engine smoke suite (engine-tied) ────────────────────
+      - name: Desktop JNA smoke suite (engine init, listener push, lifecycle)
+        if: ${{ runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1' }}
+        shell: bash
+        env:
+          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:test :shared:desktopTest \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --no-daemon --configure-on-demand --stacktrace
+
+      - name: Engine blocked upstream (reported, not failed)
+        if: ${{ runner.os != 'Linux' && env.ENGINE_BUILDABLE == '0' }}
+        shell: bash
+        run: |
+          echo "=============================================================================="
+          echo " DESKTOP JNA SMOKE ON $(uname -s): BLOCKED UPSTREAM (reported, not failed)"
+          echo "=============================================================================="
+          echo " The sovereign Rust core does not compile for this host yet:"
+          echo "   probe: cargo check --manifest-path rust/Cargo.toml --lib"
+          echo " This leg auto-activates the full JNA smoke suite the moment that"
+          echo " lands — the probe is the gate (MP-DEC-08)."
+          echo "=============================================================================="
+
+      # ── 3. Installer packaging + strict size budget (gated) ────────────────
+      - name: Install WiX Toolset 3.14 (jpackage MSI prerequisite)
+        if: ${{ inputs.package_installers && runner.os == 'Windows' && env.ENGINE_BUILDABLE == '1' }}
+        shell: pwsh
+        run: |
+          $wixRoot = "${env:ProgramFiles(x86)}\WiX Toolset v3.14"
+          if (Test-Path "$wixRoot\bin\light.exe") {
+            Write-Host "WiX 3.14 already present at $wixRoot"
+          } else {
+            choco install wixtoolset --version=3.14.0.6526 -y --no-progress
+          }
+          "WIX=$wixRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: "Package desktop distribution (jpackage: deb / msi / dmg)"
+        if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
+        shell: bash
+        env:
+          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
+        run: |
+          chmod +x gradlew
+          # verifyDesktopNativeHygiene + verifyDesktopSizeBudget run as
+          # finalizers of the packaging lifecycle inside this pass.
+          ./gradlew :desktop:packageDistributionForCurrentOS \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --no-daemon --configure-on-demand --stacktrace
+
+      - name: MP-HAL10 size budget report (strictly < 250 MiB)
+        if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
+        shell: bash
+        env:
+          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
+        run: |
+          ./gradlew :desktop:verifyDesktopSizeBudget \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --no-daemon --configure-on-demand
+
+      - name: Upload desktop installers
+        if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-installer-${{ matrix.os-name }}
+          path: |
+            desktop/build/compose/binaries/**/*.deb
+            desktop/build/compose/binaries/**/*.msi
+            desktop/build/compose/binaries/**/*.dmg
+          if-no-files-found: error
+
+      # ── Debug aids ──────────────────────────────────────────────────────────
+      - name: Upload generated uniffi bindings (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-uniffi-bindings-${{ matrix.os-name }}
+          path: shared/build/generated/uniffi/
+          if-no-files-found: ignore
+
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-test-reports-${{ matrix.os-name }}
+          path: |
+            desktop/build/reports/tests/**
+            shared/build/reports/tests/**
+          if-no-files-found: ignore

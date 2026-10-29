@@ -10,11 +10,15 @@ import Foundation
 
 final class PreviewEngineGateway: EngineGateway {
 
+    private let lock = NSLock()
     private var state = PlaybackSnapshot.idle
     private var continuation: AsyncStream<PlaybackSnapshot>.Continuation?
     private var demoTask: Task<Void, Never>?
 
-    private(set) var dispatchedCommands: [PlayerCommand] = []
+    private var _dispatchedCommands: [PlayerCommand] = []
+    var dispatchedCommands: [PlayerCommand] {
+        lock.withLock { _dispatchedCommands }
+    }
     var nextResult: PlayerCommandResult = .applied
     var failAll = false
 
@@ -25,8 +29,14 @@ final class PreviewEngineGateway: EngineGateway {
         }
     }
 
+    private func recordCommand(_ command: PlayerCommand) {
+        lock.withLock {
+            _dispatchedCommands.append(command)
+        }
+    }
+
     func send(_ command: PlayerCommand) async -> PlayerCommandResult {
-        dispatchedCommands.append(command)
+        recordCommand(command)
         return failAll ? .failed : nextResult
     }
 
@@ -60,8 +70,11 @@ final class PreviewEngineGateway: EngineGateway {
     /// movement — pure UI exercise, clearly not engine truth).
     func startDemo() {
         guard demoTask == nil else { return }
-        var rev = 1
         demoTask = Task { [weak self] in
+            // Local to the task's closure: a captured-and-mutated outer var
+            // is a data race in concurrently-executing code (compile error
+            // under strict concurrency; a local is exactly as deterministic).
+            var rev = 1
             while !Task.isCancelled {
                 guard let self else { return }
                 let playing = rev % 8 != 0
