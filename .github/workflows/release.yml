@@ -50,22 +50,23 @@ jobs:
     secrets: inherit
 
   desktop:
-    name: "Desktop installers (.deb/.msi/.dmg)"
+    name: "Desktop installers (.deb / .msi)"
     needs: engine
     uses: ./.github/workflows/_ci-desktop.yml
     with:
       package_installers: true
       release_mode: true
 
-  ios:
-    name: "iOS StreamifyCore.xcframework"
+  apple:
+    name: "Apple Unified (.dmg & xcframework)"
     uses: ./.github/workflows/_ci-ios.yml
     with:
+      package_installers: true
       release_mode: true
 
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [engine, android, desktop, ios]
+    needs: [engine, android, desktop, apple]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -83,8 +84,9 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Download iOS xcframework
+      - name: Download iOS xcframework (optional)
         uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           name: ios-xcframework
           path: dist
@@ -102,27 +104,32 @@ jobs:
           echo "── release manifest:"
           ls -la release/
 
-          # Hard verification of the expected payload classes (directive C):
+          # Hard verification of the expected production installer classes:
           ls release/Streamify-v*.apk            >/dev/null || { echo "FATAL: missing Streamify-v*.apk" >&2; exit 1; }
           ls release/streamify_*_amd64.deb      >/dev/null || { echo "FATAL: missing streamify_*_amd64.deb" >&2; exit 1; }
           ls release/Streamify-*.msi            >/dev/null || { echo "FATAL: missing Streamify-*.msi" >&2; exit 1; }
           ls release/Streamify-*.dmg            >/dev/null || { echo "FATAL: missing Streamify-*.dmg" >&2; exit 1; }
-          ls release/StreamifyCore.xcframework.zip >/dev/null || { echo "FATAL: missing StreamifyCore.xcframework.zip" >&2; exit 1; }
+
+          # Optional iOS framework (reported if present, non-fatal if probe gated)
+          if ls release/StreamifyCore.xcframework.zip >/dev/null 2>&1; then
+            echo "Found StreamifyCore.xcframework.zip"
+          else
+            echo "StreamifyCore.xcframework.zip not present (Apple target gated upstream by MP-DEC-08)"
+          fi
 
       - name: Generate SHA256SUMS
         run: |
           cd release
-          sha256sum Streamify-v*.apk streamify_*_amd64.deb Streamify-*.msi Streamify-*.dmg StreamifyCore.xcframework.zip > SHA256SUMS
+          for f in *; do
+            if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+              sha256sum "$f"
+            fi
+          done > SHA256SUMS
           cat SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            release/Streamify-v*.apk
-            release/streamify_*_amd64.deb
-            release/Streamify-*.msi
-            release/Streamify-*.dmg
-            release/StreamifyCore.xcframework.zip
-            release/SHA256SUMS
+            release/*
           generate_release_notes: true

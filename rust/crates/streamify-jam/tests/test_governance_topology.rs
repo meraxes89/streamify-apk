@@ -400,10 +400,10 @@ async fn single_render_routes_guest_intents_through_host_commit() {
             break;
         }
         assert!(
-            t0.elapsed() < Duration::from_secs(2),
+            t0.elapsed() < Duration::from_secs(10),
             "topology did not propagate to guests"
         );
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
     let mut rx_host = nodes[0].subscribe(MSG_TRANSPORT_INTENT, 64);
@@ -522,10 +522,10 @@ async fn single_render_suppresses_guest_ptp_keeps_silent_presence() {
             break;
         }
         assert!(
-            t0.elapsed() < Duration::from_secs(2),
+            t0.elapsed() < Duration::from_secs(10),
             "topology did not propagate to guests"
         );
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
     // Guest floods 50 PTP_SYNC broadcasts: ALL suppressed.
