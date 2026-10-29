@@ -37,8 +37,12 @@ on:
         description: Cross-compile the arm64-v8a + x86_64 jniLibs artifacts.
         type: boolean
         default: true
+      build_desktop_native:
+        description: Cross-compile desktop JNA cdylib artifacts (Linux, Windows, macOS).
+        type: boolean
+        default: true
       build_linux_native:
-        description: Cross-compile the Linux desktop JNA cdylib artifact.
+        description: Cross-compile the Linux desktop JNA cdylib artifact (backward compatibility).
         type: boolean
         default: true
       nextest_profile:
@@ -270,7 +274,7 @@ jobs:
   # ── BUILD-ONCE / FAN-OUT: Linux desktop cdylib for the JNA lane ────────────
   linux-desktop-native:
     name: "Linux desktop cdylib (x86_64-unknown-linux-gnu)"
-    if: inputs.build_linux_native
+    if: inputs.build_desktop_native || inputs.build_linux_native
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -309,3 +313,46 @@ jobs:
           path: rust/target/x86_64-unknown-linux-gnu/release/libstreamify_core_rs.so
           if-no-files-found: error
           compression-level: 1
+
+  # ── BUILD-ONCE / FAN-OUT: Windows desktop cdylib for the JNA lane ──────────
+  windows-desktop-native:
+    name: "Windows desktop cdylib (x86_64-pc-windows-msvc)"
+    if: inputs.build_desktop_native || inputs.build_linux_native
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "native-windows-x86_64"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Compile Windows engine cdylib (release, stripped)
+        shell: bash
+        run: cargo build --manifest-path rust/Cargo.toml --release --lib --target x86_64-pc-windows-msvc
+
+      - name: Upload engine cdylib
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-windows-x86_64
+          path: rust/target/x86_64-pc-windows-msvc/release/streamify_core_rs.dll
+          if-no-files-found: error
+          compression-level: 1
+
+

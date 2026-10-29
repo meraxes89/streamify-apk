@@ -1,18 +1,11 @@
 # ============================================================================
-# _ci-ios.yml — Tier 2 reusable spoke: Apple iOS native lane (MP-CAP03 /
-# Multiplatform invariant 2), the coverage the repo never had.
+# _ci-ios.yml — Tier 2 reusable spoke: Apple Unified Lane (resp8/resp9).
+# Combines iOS Swift tests, XCFramework probe, macOS engine cdylib build,
+# and macOS desktop UI & JNA smoke suite into ONE SINGLE macos-14 runner job.
 #
-# Callable ONLY via workflow_call, from:
-#   * ci.yml      (PR / merge_group / push-main hub)
-#   * release.yml (tag-driven release, release_mode: true)
-#
-# Runner: macos-14 (Apple Silicon).
-#
-# Consolidated single-runner architecture: combines xcodebuild simulator
-# tests and xcframework probe into ONE macos-14 runner to eliminate macOS
-# runner queue starvation and prevent queue timeouts.
+# Eliminates macOS runner queue starvation and prevents 15-minute queue timeouts.
 # ============================================================================
-name: CI iOS (XCFramework & Swift)
+name: CI Apple Unified (iOS & macOS)
 
 on:
   workflow_call:
@@ -21,15 +14,19 @@ on:
         description: Build the xcframework in release profile and upload StreamifyCore.xcframework.zip.
         type: boolean
         default: false
+      package_installers:
+        description: Package the desktop macOS distribution (DMG).
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  ios:
-    name: "iOS XCFramework & Swift Tests"
+  apple:
+    name: "Apple Unified (iOS Tests, XCFramework, macOS Desktop)"
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       STREAMIFY_IOS_PROFILE: ${{ inputs.release_mode && 'release' || 'debug' }}
     steps:
@@ -82,23 +79,87 @@ jobs:
           path: iosApp/xcodebuild-test.log
           if-no-files-found: ignore
 
-      # ── 2. Rust Core / XCFramework Probe & Assembly ───────────────────────
-      - name: Set up Rust toolchain (iOS targets)
+      # ── 2. Rust Core / XCFramework Probe & macOS Native Build (resp8 Pillar A) ──
+      - name: Set up Rust toolchain (Apple targets)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin
 
-      - name: Setup Rust cache (iOS targets)
+      - name: Setup Rust cache (Apple targets)
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "rust -> rust/target"
-          shared-key: ios-targets
+          shared-key: apple-targets
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup sccache (mandatory compiler caching, resp6 §3)
         uses: mozilla-actions/sccache-action@v0.0.11
 
+      # ── BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane (resp8 Pillar A)
+      - name: Build macOS desktop cdylib (release, stripped)
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release --lib --target aarch64-apple-darwin
+          mkdir -p dist/desktop/macos
+          cp rust/target/aarch64-apple-darwin/release/libstreamify_core_rs.dylib dist/desktop/macos/libstreamify_core_rs.dylib
+          strip -x dist/desktop/macos/libstreamify_core_rs.dylib
+
+      - name: Upload macOS engine cdylib
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-macos
+          path: dist/desktop/macos/libstreamify_core_rs.dylib
+          if-no-files-found: error
+          compression-level: 1
+
+      # ── 3. macOS Desktop Test Suite (CMP UI shell + shared desktopTest + JNA smoke) ──
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: "Desktop test suite (macOS CMP UI shell + shared desktopTest + JNA smoke)"
+        env:
+          PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:test :shared:desktopTest \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache --stacktrace
+
+      # ── 4. macOS Packaging (jpackage DMG, gated) ──────────────────────────
+      - name: "Package desktop distribution (macOS DMG)"
+        if: ${{ inputs.package_installers }}
+        env:
+          PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:packageDistributionForCurrentOS \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache --stacktrace
+          ./gradlew :desktop:verifyDesktopSizeBudget \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache
+
+      - name: Upload macOS desktop installer
+        if: ${{ inputs.package_installers }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-installer-macos
+          path: desktop/build/compose/binaries/**/*.dmg
+          if-no-files-found: error
+
+      # ── 5. Rust Core / XCFramework Probe & Assembly (MP-DEC-08) ────────────
       # MP-DEC-08: does the engine compile for the Apple targets TODAY?
       # Probes both slices the xcframework assembles (device + arm64 sim;
       # x86_64 sim shares the same source cfg tree). While either fails,

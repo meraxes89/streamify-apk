@@ -62,8 +62,6 @@ jobs:
             os-name: linux
           - os: windows-latest
             os-name: windows
-          - os: macos-14
-            os-name: macos
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -93,7 +91,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      # ── Engine provisioning: prebuilt fan-out on linux, probe elsewhere ─────
+      # ── Engine provisioning: prebuilt fan-out across Linux & Windows ─────
       - name: Download prebuilt Linux engine cdylib (build-once / fan-out)
         if: runner.os == 'Linux'
         uses: actions/download-artifact@v8
@@ -101,26 +99,28 @@ jobs:
           name: engine-linux-x86_64
           path: staged-engine
 
-      # MP-DEC-08 probe gate: does the engine lib compile on this host today?
-      # While it does not, the engine-tied lane below reports green-with-
-      # notice; the moment `cargo check` goes green the full suite runs
-      # unmodified. (Phase 5 cfg-gated task_orchestrator.rs resolved the
-      # historical Windows blocker — the probe now passes and is retained as
-      # Sovereign engine is buildable on Windows and macOS; enable engine lane.
-      - name: Probe engine buildability (non-Linux hosts)
-        if: runner.os != 'Linux'
+      - name: Download prebuilt Windows engine cdylib (build-once / fan-out)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v8
+        with:
+          name: engine-windows-x86_64
+          path: staged-engine
+
+      - name: Set prebuilt engine environment
         shell: bash
         run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.so" >> "$GITHUB_ENV"
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
+          fi
           echo "ENGINE_BUILDABLE=1" >> "$GITHUB_ENV"
-          echo "engine lib build enabled on $(uname -s)"
 
       # ── 1. Desktop Test Suite (Single combined pass, resp7 Pillar 4) ──────
       # Single combined invocation reuses Gradle daemon state, workers, and bytecode cache.
       - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"
         if: ${{ runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1' }}
         shell: bash
-        env:
-          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
         run: |
           chmod +x gradlew
           ./gradlew :desktop:test :shared:desktopTest \
@@ -168,8 +168,6 @@ jobs:
       - name: "Package desktop distribution (jpackage: deb / msi / dmg)"
         if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
         shell: bash
-        env:
-          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
         run: |
           chmod +x gradlew
           # verifyDesktopNativeHygiene + verifyDesktopSizeBudget run as
@@ -181,8 +179,6 @@ jobs:
       - name: MP-HAL10 size budget report (strictly < 250 MiB)
         if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
         shell: bash
-        env:
-          PREBUILT_ENGINE: ${{ runner.os == 'Linux' && format('{0}/staged-engine/libstreamify_core_rs.so', github.workspace) || '' }}
         run: |
           ./gradlew :desktop:verifyDesktopSizeBudget \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \

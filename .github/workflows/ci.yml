@@ -145,11 +145,33 @@ jobs:
         working-directory: rust
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Pillar B: UniFFI checked-in bindings drift check against UDL contract
+      - name: Verify UniFFI bindings parity (drift check)
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          mkdir -p /tmp/uniffi-drift
+          cargo run --manifest-path rust/Cargo.toml --bin uniffi-bindgen -- \
+            generate rust/crates/streamify-contract/src/streamify.udl \
+            --language kotlin \
+            --out-dir /tmp/uniffi-drift \
+            --config rust/crates/streamify-contract/uniffi.toml
+          # Apply the uniffi-rs 0.28.3 Kotlin codegen defect shim (rename `message` to `errorMessage`)
+          sed -i 's/`message`/`errorMessage`/g' /tmp/uniffi-drift/uniffi/streamify/streamify.kt
+          if ! diff -u shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt /tmp/uniffi-drift/uniffi/streamify/streamify.kt; then
+            echo "::error::UniFFI bindings in shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt are out of sync with streamify.udl!"
+            echo "::error::Run gradle with UNIFFI_REGENERATE=1 or update the checked-in bindings."
+            exit 1
+          fi
+          echo "UniFFI bindings are in sync with UDL."
+
   # The engine spoke doubles as the BUILD-ONCE / FAN-OUT artifact factory
   # (resp6 §3): it runs whenever the engine tests OR any artifact consumer
-  # (android jniLibs / linux desktop cdylib) is in scope, with per-input
-  # granularity so an app-only PR skips the test suite but still gets its
-  # prebuilt natives.
+  # (android jniLibs / linux, windows, macos desktop cdylibs) is in scope,
+  # with per-input granularity so an app-only PR skips the test suite but
+  # still gets its prebuilt natives.
   engine_dsp:
     name: "Core Engine & C++ DSP"
     needs: preflight
@@ -161,6 +183,7 @@ jobs:
     with:
       run_tests: ${{ needs.preflight.outputs.run_engine == 'true' }}
       build_android_native: ${{ needs.preflight.outputs.run_android == 'true' }}
+      build_desktop_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
       build_linux_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
 
   android:
@@ -173,8 +196,23 @@ jobs:
       (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
     uses: ./.github/workflows/_ci-android.yml
 
+  # Apple spoke runs as the single consolidated macos-14 runner job (resp8/resp9):
+  # combines iOS headless simulator tests, xcframework probe, macOS cdylib,
+  # and macOS desktop UI & JNA smoke suite into ONE session.
+  # This eliminates macOS runner pool queue starvation and prevents 15-minute queue timeouts.
+  apple:
+    name: "Apple Unified (iOS Tests, XCFramework, macOS Desktop)"
+    needs: preflight
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      (needs.preflight.outputs.run_ios == 'true' || needs.preflight.outputs.run_desktop == 'true')
+    uses: ./.github/workflows/_ci-ios.yml
+    with:
+      package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
+
   desktop:
-    name: "Desktop Matrix (Linux, Windows, macOS)"
+    name: "Desktop Matrix (Linux, Windows)"
     needs: [preflight, engine_dsp]
     if: |
       always() &&
@@ -184,16 +222,6 @@ jobs:
     uses: ./.github/workflows/_ci-desktop.yml
     with:
       package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
-
-  # iOS spoke is decoupled from engine_dsp (resp7 Pillar 1) — runs directly at t=20s.
-  ios:
-    name: "iOS XCFramework & Swift Tests"
-    needs: preflight
-    if: |
-      always() &&
-      needs.preflight.result == 'success' &&
-      needs.preflight.outputs.run_ios == 'true'
-    uses: ./.github/workflows/_ci-ios.yml
 
   # =========================================================================
   # TIER 3: The Single Blocking Merge Gate
@@ -206,7 +234,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, ios]
+    needs: [preflight, clippy, engine_dsp, android, desktop, apple]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)

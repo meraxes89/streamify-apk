@@ -133,16 +133,23 @@ val skipSharedNative: Boolean = providers.gradleProperty("streamify.skipRust")
     .orElse(providers.gradleProperty("streamify.skipUniffiBindgen").map { it.toBoolean() })
     .getOrElse(false)
 
+val checkedInBindings: File = file("src/desktopMain/kotlin/uniffi/streamify/streamify.kt")
+
+val regenerateUniffi: Boolean = providers.environmentVariable("UNIFFI_REGENERATE")
+    .map { it == "1" }
+    .orElse(providers.gradleProperty("streamify.regenerateUniffi").map { it.toBoolean() })
+    .getOrElse(false)
+
 val generateSharedUniffiBindings by tasks.registering(Exec::class) {
     group = "native"
-    description = "Generates the desktop JNA-mode UniFFI Kotlin bindings from rust/src/streamify.udl (Phase 5, relocated from :desktop)."
+    description = "Generates the desktop JNA-mode UniFFI Kotlin bindings from rust/crates/streamify-contract/src/streamify.udl (Phase 5, relocated from :desktop)."
 
     val crateDir = rustCrateDir
     val udlFile = uniffiUdlFile
     val configFile = uniffiConfigFile
     val bindgenFile = uniffiBindgenEntryFile
     val outDir = uniffiGeneratedRawSourcesDir
-    val skip = skipSharedNative
+    val skip = skipSharedNative || (!regenerateUniffi && checkedInBindings.isFile)
 
     onlyIf { !skip && udlFile.isFile && bindgenFile.isFile }
 
@@ -189,7 +196,8 @@ val patchSharedUniffiBindings by tasks.registering {
 
     val rawDir = uniffiGeneratedRawSourcesDir
     val finalDir = uniffiGeneratedSourcesDir
-    val skip = skipSharedNative
+    val checkedIn = checkedInBindings
+    val skip = skipSharedNative || (!regenerateUniffi && checkedIn.isFile)
     val rawKtFile = File(rawDir, "uniffi/streamify/streamify.kt")
 
     onlyIf { !skip && rawKtFile.isFile }
@@ -226,7 +234,12 @@ val patchSharedUniffiBindings by tasks.registering {
             val dest = File(finalDir, f.relativeTo(rawDir).path)
             dest.parentFile.mkdirs()
             if (f.name.endsWith(".kt")) {
-                dest.writeText(f.readText().replace("`message`", "`errorMessage`"))
+                val patched = f.readText().replace("`message`", "`errorMessage`")
+                dest.writeText(patched)
+                if (f.name == "streamify.kt") {
+                    checkedIn.parentFile.mkdirs()
+                    checkedIn.writeText(patched)
+                }
             } else {
                 f.copyTo(dest, overwrite = true)
             }
@@ -240,12 +253,13 @@ val patchSharedUniffiBindings by tasks.registering {
 // attached unconditionally: on hermetic hosts it simply does not exist and
 // costs nothing.
 kotlin.sourceSets.getByName("desktopMain") {
-    kotlin.srcDir(uniffiGeneratedSourcesDir)
+    if (!checkedInBindings.isFile) {
+        kotlin.srcDir(uniffiGeneratedSourcesDir)
+    }
 
     // The engine gateway is the ONLY uniffi-referencing shared code: attach
-    // it only when the binding lane is active so hermetic hosts
-    // (-Pstreamify.skipRust=true) still compile commonMain + desktopMain.
-    if (!skipSharedNative) {
+    // it when the binding lane is active or checked-in bindings exist.
+    if (!skipSharedNative || checkedInBindings.isFile) {
         kotlin.srcDir(file("src/desktopEngine/kotlin"))
     }
 }
