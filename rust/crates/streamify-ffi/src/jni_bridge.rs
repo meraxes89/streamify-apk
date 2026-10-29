@@ -158,6 +158,49 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeFetchVir
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResolveStreamFormats(
+    mut env: JNIEnv,
+    _class: JClass,
+    video_id: JString,
+    db_path: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let video_id_str: String = env
+            .get_string(&video_id)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        if video_id_str.trim().is_empty() {
+            return std::ptr::null_mut();
+        }
+
+        let db_path_str: String = if db_path.is_null() {
+            String::new()
+        } else {
+            env.get_string(&db_path)
+                .map(|s| s.into())
+                .unwrap_or_default()
+        };
+
+        if !db_path_str.trim().is_empty() {
+            streamify_storage::resolver_cache::set_cache_db_path(&db_path_str);
+        }
+
+        match streamify_resolver::resolver::StreamResolver::resolve_stream(&video_id_str) {
+            Ok(formats) => {
+                let json = serde_json::to_string(&formats).unwrap_or_default();
+                match env.new_string(json) {
+                    Ok(s) => s.into_raw(),
+                    Err(_) => std::ptr::null_mut(),
+                }
+            }
+            Err(_) => std::ptr::null_mut(),
+        }
+    }));
+
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResolveTrack(
     mut env: JNIEnv,
     _class: JClass,

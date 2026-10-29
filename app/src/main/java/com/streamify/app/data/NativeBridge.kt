@@ -102,6 +102,44 @@ object NativeBridge {
     // ═══════════════════════════════════════════════════════════════
     // PHASE 2: JIT STREAM RESOLVER & CDN EXTRACTION
     // ═══════════════════════════════════════════════════════════════
+    private external fun nativeResolveStreamFormats(videoId: String, dbPath: String): String?
+
+    fun resolveStreamFormats(videoId: String, dbPath: String = ""): List<com.streamify.app.data.network.ResolvedStream>? {
+        val json = try {
+            nativeResolveStreamFormats(videoId, dbPath)
+        } catch (e: Throwable) {
+            SLog.e("NativeBridge", "nativeResolveStreamFormats failed for $videoId", e)
+            null
+        } ?: return null
+
+        if (json.isBlank()) return null
+        return try {
+            val array = org.json.JSONArray(json)
+            val list = mutableListOf<com.streamify.app.data.network.ResolvedStream>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val url = obj.optString("url")
+                val mimeType = obj.optString("mime_type", "audio/mp4")
+                val bitrate = obj.optInt("bitrate", 128000)
+                val durationSec = obj.optInt("duration_sec", 0)
+                if (url.isNotBlank()) {
+                    list.add(
+                        com.streamify.app.data.network.ResolvedStream(
+                            streamUrl = url,
+                            mimeType = mimeType,
+                            bitrate = bitrate,
+                            durationSec = durationSec
+                        )
+                    )
+                }
+            }
+            list.ifEmpty { null }
+        } catch (e: Throwable) {
+            SLog.e("NativeBridge", "Failed to parse stream formats JSON: $json", e)
+            null
+        }
+    }
+
     private const val VIDEO_ID_BUFFER_SIZE = 16
     private val videoIdBuffer = ByteArray(VIDEO_ID_BUFFER_SIZE)
 

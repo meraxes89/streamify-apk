@@ -13,7 +13,7 @@ com.streamify.app/
 ├── navigation/  the Compose nav graph
 ├── ui/          Compose UI (screens, components, theme)
 ├── viewmodel/   presentation state
-├── util/        cross-cutting utilities (+ newpipe/)
+├── util/        cross-cutting utilities
 └── worker/      foreground workers
 ```
 

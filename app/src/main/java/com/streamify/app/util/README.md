@@ -14,6 +14,5 @@
 | `TrackShareCard.kt` | Share-card rendering. |
 | `StreamifyHapticEngine.kt` | Haptic feedback patterns. |
 | `FleetConfig.kt` | Remote-adaptive Innertube client fleet (pairs with `fleet-config.json` at repo root and `tools/write_fleet_config.py`). |
-| `newpipe/` | NewPipe-Extractor bootstrap + BotGuard PO-token WebView pipeline. |
 
 `SLog` is imported essentially everywhere — treat its API as frozen.
