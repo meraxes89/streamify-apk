@@ -409,6 +409,9 @@ async fn single_render_routes_guest_intents_through_host_commit() {
     let mut rx_host = nodes[0].subscribe(MSG_TRANSPORT_INTENT, 64);
     let mut rx_guest = nodes[2].subscribe(MSG_TRANSPORT_INTENT, 64);
 
+    // Grace period for topology and peer discovery state to stabilize across all nodes
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
     // Guest (node 1) submits a transport intent.
     nodes[1]
         .submit_transport_intent(IntentKind::Pause, body_of(0))

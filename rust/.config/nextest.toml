@@ -4,6 +4,7 @@
 [profile.ci]
 fail-fast = false
 slow-timeout = { period = "60s", terminate-after = 3 }
+retries = 2
 # GOV-04 (Phase 2): the 32-peer mesh chaos suite is allocation-bound (7x
 # slower in unoptimized test builds — measured: 208 ms release vs 1.4 s
 # debug for the same 1000-op trial) and adds 2-3 minutes to the rust

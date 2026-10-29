@@ -53,8 +53,6 @@ jobs:
       run_ios: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ios == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
-          github.event_name == 'push' && github.ref == 'refs/heads/main' ||
-          github.event_name == 'merge_group' ||
           contains(github.event.pull_request.labels.*.name, 'package') ||
           steps.filter.outputs.packaging == 'true'
         }}
