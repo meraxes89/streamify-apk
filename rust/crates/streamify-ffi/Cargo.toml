@@ -1,0 +1,70 @@
+# streamify-ffi — the umbrella artifact crate (Discussion #120).
+#
+# Compiles the FINAL unified binaries the shells load:
+#   * Android/Linux: libstreamify_core_rs.so (cdylib)
+#   * Windows:       streamify_core_rs.dll   (cdylib)
+#   * iOS/macOS:     StreamifyCore.xcframework slices (staticlib)
+#
+# The [lib] name is pinned to `streamify_core_rs` — the exact artifact
+# name every consumer already loads (uniffi.toml's cdylib_name, the
+# desktop JNA Native.load mapping, the iOS xcframework script's slice
+# paths) — and the Rust-level crate identifier `streamify_core_rs` is
+# what the workspace's integration tests import. ABI export names (the
+# extern "C" surface in ffi.rs, the Java_* JNI symbols in
+# jni_bridge*.rs and the uniffi_* trampolines compiled into
+# streamify-contract) remain 100% backward-compatible: consumers in
+# shared/, app/, desktop/ and iosApp/ link unchanged.
+#
+# This crate is the workspace's default-run member (see the root
+# Cargo.toml's default-members) so `cargo run --bin uniffi-bindgen`
+# from the workspace root resolves HERE — the Gradle UniFFI tasks and
+# scripts/build_ios_xcframework.sh depend on that.
+[package]
+name = "streamify-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify umbrella FFI artifact: unified cdylib/staticlib + JNI bridges"
+
+[lib]
+name = "streamify_core_rs"
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+streamify-audio = { workspace = true }
+streamify-storage = { workspace = true }
+streamify-jam = { workspace = true }
+streamify-resolver = { workspace = true }
+streamify-contract = { workspace = true }
+# The crate-local bindgen CLI consumed by the Gradle tasks
+# (`cargo run --bin uniffi-bindgen`) and the iOS xcframework script.
+uniffi = { workspace = true, features = ["cli"] }
+# C-ABI helpers: SAPISIDHASH (auth), thermal governor, LITTLE-core
+# affinity (task_orchestrator), chunk cipher (cache).
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+hex = { workspace = true }
+libc = { workspace = true }
+tokio = { workspace = true }
+
+# ── Android: the direct-JNI lane (MP-C12/MP-C13) ────────────────────────────
+# The `jni` crate is ONLY for the Android target: every other platform
+# reaches the core through UniFFI, so a desktop or iOS build must not
+# even compile the JNI bridge (jni_bridge.rs / jni_bridge_p2p.rs carry
+# matching cfg gates in lib.rs).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", default-features = false }
+
+[features]
+default = []
+# Pass-through to the contract crate's observability subscribers so the
+# packaging matrix can enable exactly one per artifact from the umbrella.
+obs-android = ["streamify-contract/obs-android"]
+obs-oslog = ["streamify-contract/obs-oslog"]
+obs-journald = ["streamify-contract/obs-journald"]
+obs-etw = ["streamify-contract/obs-etw"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"

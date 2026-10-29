@@ -382,7 +382,9 @@ val cargoBuildRust by tasks.registering(Exec::class) {
 
     onlyIf { !skip }
 
-    inputs.dir(File(workDir, "src"))
+    // Workspace (Discussion #120): source roots now live under crates/;
+    // the workspace manifests pin the rest.
+    inputs.dir(File(workDir, "crates"))
     inputs.file(File(workDir, "Cargo.toml"))
     outputs.dir(outDir)
 
@@ -421,8 +423,11 @@ if (!skipNativeBuild) {
 //
 // Escape hatch: -Pstreamify.skipUniffiBindgen=true forces the skip for
 // environments that have the UDL present but no cargo toolchain.
-val uniffiUdlFile: File = File(rustCrateDir, "src/streamify.udl")
-val uniffiConfigFile: File = File(rustCrateDir, "uniffi.toml")
+// Workspace-modularization note (Discussion #120): the UDL + uniffi.toml
+// moved to their owning crate (rust/crates/streamify-contract/) and the
+// bindgen entry point to the umbrella crate (rust/crates/streamify-ffi).
+val uniffiUdlFile: File = File(rustCrateDir, "crates/streamify-contract/src/streamify.udl")
+val uniffiConfigFile: File = File(rustCrateDir, "crates/streamify-contract/uniffi.toml")
 
 val skipUniffiBindgen: Boolean = providers.gradleProperty("streamify.skipUniffiBindgen")
     .map { it.toBoolean() }
@@ -439,7 +444,7 @@ val generateUniffiKotlinBindings by tasks.registering(Exec::class) {
     val configFile = uniffiConfigFile
     val crateDir = rustCrateDir
     val outDir = uniffiGeneratedSourcesDir
-    val bindgenFile = File(crateDir, "src/bin/uniffi-bindgen.rs")
+    val bindgenFile = File(crateDir, "crates/streamify-ffi/src/bin/uniffi-bindgen.rs")
     val skip = skipUniffiBindgen || skipNativeBuild || !bindgenFile.isFile
 
     // No-op until bindgen entry point exists and native build is enabled;

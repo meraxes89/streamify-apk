@@ -1,0 +1,54 @@
+# streamify-resolver — the stream extraction crate (Discussion #120).
+#
+# YouTube Music extraction (RustyPipe pure-Rust engine + botguard PO
+# tokens), Innertube parsing, fuzzy search, radio/blend scorers, the
+# neural continuation queue, lyrics compilation/alignment, tagger,
+# downloader and Spotify playlist ingestion. All network I/O rides the
+# engine's single shared multi-threaded tokio runtime
+# (resolver::get_runtime()) over the shared reqwest client.
+[package]
+name = "streamify-resolver"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify resolver: RustyPipe YouTube Music extraction, search, stream ranking"
+
+[lib]
+name = "streamify_resolver"
+crate-type = ["rlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+streamify-storage = { workspace = true }
+tokio = { workspace = true }
+# Multiplatform Phase 3 (MP-C14): reqwest (HTTP/2 + TLS 1.3 via rustls,
+# webpki roots) over the single shared tokio runtime. `rustls-tls` is
+# reqwest's umbrella alias for the webpki-roots rustls backend (no
+# native-tls, no system cert store — hermetic on Android and
+# cross-compiled desktop targets).
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }
+urlencoding = { workspace = true }
+strsim = { workspace = true }
+lofty = { workspace = true }
+# Local cache binding (video-id ↔ CAD-id, resolved-URL memo tables) rides
+# the same pooled SQLite lane discipline as streamify-storage.
+rusqlite = { workspace = true }
+sha2 = { workspace = true }
+# Pure-Rust NewPipe replacement: RustyPipe (YouTube/YouTube Music client
+# with full JavaScript cipher deciphering) + rustypipe-botguard
+# (Proof-of-Origin token minting) — identical native stream resolution
+# on Android, iOS, Windows, Linux and macOS, no Android WebView.
+rustypipe = "0.11"
+rustypipe-botguard = "0.1"
+
+[features]
+default = []
+# Experimental HTTP/3 (QUIC) transport — DISABLED by default per MP-C14:
+# re-enable per-artifact for telemetry-gated canaries only.
+http3 = ["reqwest/http3"]
+
+[dev-dependencies]
+tempfile = { workspace = true }

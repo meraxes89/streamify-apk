@@ -1,0 +1,38 @@
+# streamify-jam — the serverless P2P mesh crate (Discussion #120).
+#
+# LAN discovery + mesh transport, gossip broadcast, CRDT consensus and
+# the collaborative playlist state machines, chunk swarmer/verifier,
+# Kalman-PLL + PTP clock discipline, WearOS compact sync, remote intent
+# dispatch. Runs on the engine's shared tokio runtime; ed25519 signs
+# ephemeral room identities, directives and kicks.
+[package]
+name = "streamify-jam"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify Jam: serverless P2P mesh, gossip, CRDT consensus, Kalman-PLL, PTP"
+
+[lib]
+name = "streamify_jam"
+crate-type = ["rlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+streamify-storage = { workspace = true }
+tokio = { workspace = true }
+socket2 = { workspace = true }
+rand = { workspace = true }
+blake3 = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Phase 1 governance: ephemeral room identities + signed directives/kicks.
+# Pure-Rust, no_std-friendly; the 32-byte host ephemeral key in the LAN
+# beacon descriptor (directive B) is an Ed25519 verifying key by design.
+ed25519-dalek = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

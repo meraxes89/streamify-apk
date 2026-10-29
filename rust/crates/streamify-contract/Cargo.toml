@@ -1,0 +1,107 @@
+# streamify-contract — the UniFFI contract crate (Discussion #120).
+#
+# Owns streamify.udl's scaffolding (build.rs + include_scaffolding!),
+# the StreamifyEngine object, the OS capability adapters (SMTC / MPRIS /
+# RemoteCommandCenter / SecureStore), the observability façade and the
+# playback queue orchestration. The UDL itself stays at the workspace
+# root's src/streamify.udl (shared/build.gradle.kts, app/build.gradle.kts
+# and scripts/build_ios_xcframework.sh pin that exact path).
+#
+# The contract's DATA types (EngineError, DacPresentationClock, ...) are
+# defined in streamify-core and re-exported here at the crate root — the
+# uniffi 0.28 FfiConverter<UT> tag pattern lets the scaffolding bind
+# cross-crate types through these re-exports.
+[package]
+name = "streamify-contract"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify UniFFI contract: engine object, OS capability adapters, observability"
+
+[lib]
+name = "streamify_contract"
+crate-type = ["rlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+streamify-jam = { workspace = true }
+streamify-storage = { workspace = true }
+streamify-resolver = { workspace = true }
+# Phase 2 (UFFI-01): typed, type-safe Kotlin<->Rust bindings for the
+# control-plane and metadata flows. The audio real-time data-plane keeps
+# the frozen JNI contract (see jni_bridge_dsp.cc, AMP-10).
+uniffi = { workspace = true, features = ["build"] }
+# Multiplatform Phase 3 (MP-C15, Alpha half): tracing + metrics façade
+# with per-platform subscribers (feature-gated target deps below).
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+metrics = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+blake3 = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+
+[build-dependencies]
+# Scaffolding generation at build time; "builtin-bindgen" embeds the
+# bindgen so no external uniffi-bindgen binary is needed on CI runners.
+uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true }
+futures-util = { workspace = true }
+
+[features]
+default = []
+# Per-platform tracing subscribers (exactly one is enabled per artifact
+# by the packaging matrix; see obs.rs for the layer wiring).
+obs-android = ["dep:tracing-android"]
+obs-oslog = ["dep:tracing-oslog"]
+obs-journald = ["dep:tracing-journald"]
+obs-etw = ["dep:tracing-etw"]
+
+# ── Apple: unified logging for macOS and iOS shells ─────────────────────────
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+tracing-oslog = { version = "0.3", optional = true }
+# Phase 5 (MP-CAP03/MP-CAP04): Apple platform capability adapters. The
+# RemoteCommandCenter/NowPlayingInfoCenter bridge resolves its C ABI at
+# runtime (dlsym — the .mm object links from the XCFramework), so only
+# the Keychain provider needs a compile-time crate.
+security-framework = "3"
+
+# ── Linux desktop: journald (degrades to fmt-only without a socket) ─────────
+[target.'cfg(target_os = "linux")'.dependencies]
+tracing-journald = { version = "0.3", optional = true }
+# Phase 5 (MP-CAP02/MP-CAP04): the MPRIS D-Bus adapter and the Secret
+# Service keyring provider. zbus is the pure-Rust D-Bus connection (NO
+# libdbus link dep), and the tokio feature runs it on the engine's
+# shared runtime (resolver::get_runtime).
+zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service"] }
+
+# ── Windows desktop: Event Tracing for Windows ──────────────────────────────
+[target.'cfg(target_os = "windows")'.dependencies]
+tracing-etw = { version = "0.3", optional = true }
+# Phase 5 (MP-CAP01/MP-CAP04): the SMTC adapter (WinRT
+# Windows.Media.SystemMediaTransportControls via GetForWindow interop)
+# and the DPAPI secure store. Features are the minimal projection set.
+windows = { version = "0.62", features = [
+    "Foundation",                              # TimeSpan, TypedEventHandler
+    "Media",                                   # SMTC + MediaPlaybackStatus enums
+    "Media_MediaProperties",                   # MusicProperties (DisplayUpdater)
+    "Win32_Foundation",                        # HWND
+    "Win32_System_Com",                        # CoIncrementMTAUsage (event apartment)
+    "Win32_System_WinRT",                      # ISystemMediaTransportControlsInterop (GetForWindow)
+    "Win32_Security_Cryptography",             # DPAPI CryptProtectData/Unprotect + DATA_BLOB
+] }
+
+# ── Android: the JNI lane lives in streamify-ffi; the contract crate's
+#    only Android-specific dependency is the optional logcat tracing
+#    subscriber behind the obs-android feature. ────────────────────────
+[target.'cfg(target_os = "android")'.dependencies]
+tracing-android = { version = "0.2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+zbus = { version = "6", default-features = false, features = ["tokio", "proxy"] }

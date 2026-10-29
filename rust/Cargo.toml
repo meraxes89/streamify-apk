@@ -1,41 +1,89 @@
-[package]
-name = "streamify_core_rs"
+# ─────────────────────────────────────────────────────────────────────────────
+#  Streamify Cargo Workspace root (Discussion #120 — post-Phase 5
+#  modularization).
+#
+#  The former monolithic `streamify_core_rs` crate (~43k LOC, 71 source
+#  files) is decomposed into 7 focused crates under crates/, organized as
+#  a strict DAG:
+#
+#     streamify-core       pure leaf types, DacPresentationClock,
+#                          EngineError, atomic primitives, leaf compute
+#     streamify-audio      hard real-time DSP — ZERO async / DB / network
+#                          dependencies (compile-time RT boundary)
+#     streamify-storage    SQLite pool, migrations, cache encryption
+#     streamify-jam        serverless P2P mesh, gossip, CRDT, Kalman-PLL,
+#                          PTP
+#     streamify-resolver   YouTube Music extractor (RustyPipe), search &
+#                          stream ranking
+#     streamify-contract   UniFFI contract (UDL scaffolding), engine
+#                          object, OS capability adapters
+#     streamify-ffi        umbrella cdylib/staticlib producing the
+#                          unified libstreamify_core_rs.so / .dll /
+#                          StreamifyCore.xcframework
+#
+#  Build-matrix compatibility contract (DO NOT break — external build
+#  systems invoke cargo against this root):
+#    * `cargo check --manifest-path rust/Cargo.toml --lib`
+#        (desktop-ci.yml probe gate)
+#    * `cargo build [--release] [--lib] [--target <triple>]`
+#        (gradle cargoBuildRust / buildDesktopEngineLibrary /
+#         scripts/build_ios_xcframework.sh)
+#    * `cargo ndk -t <abi> -o <dir> build --release`
+#        (app Gradle + extreme-test-matrix.yml Tier 1)
+#    * `cargo run --bin uniffi-bindgen -- generate ...`
+#        (Gradle uniffi tasks + iOS script — the bin lives in the
+#         streamify-ffi crate)
+#    * `cargo clippy --lib --tests` / `cargo test --lib --tests` /
+#      `cargo nextest run --manifest-path rust/Cargo.toml`
+#        (CI gates — must cover EVERY member)
+#
+#  `default-members` lists ALL members so bare workspace-root commands
+#  (no `-p`) select the full workspace — preserving the semantics the
+#  CI matrix and Gradle tasks relied on when this root was a package.
+#
+#  The UDL stays at src/streamify.udl and uniffi.toml stays at the
+#  workspace root: shared/build.gradle.kts, app/build.gradle.kts and
+#  scripts/build_ios_xcframework.sh reference those exact paths.
+# ─────────────────────────────────────────────────────────────────────────────
+[workspace]
+resolver = "2"
+members = [
+    "crates/streamify-core",
+    "crates/streamify-audio",
+    "crates/streamify-storage",
+    "crates/streamify-jam",
+    "crates/streamify-resolver",
+    "crates/streamify-contract",
+    "crates/streamify-ffi",
+]
+default-members = [
+    "crates/streamify-core",
+    "crates/streamify-audio",
+    "crates/streamify-storage",
+    "crates/streamify-jam",
+    "crates/streamify-resolver",
+    "crates/streamify-contract",
+    "crates/streamify-ffi",
+]
+
+[workspace.package]
 version = "1.0.0"
 edition = "2021"
 authors = ["Streamify Team"]
 description = "High-performance Rust engine for Streamify APK"
+repository = "https://github.com/meraxes89/streamify-apk"
+license = "MIT"
 
-[lib]
-name = "streamify_core_rs"
-crate-type = ["cdylib", "rlib", "staticlib"]
+# Shared dependency versions (single source of truth; crates inherit via
+# `workspace = true` so Dependabot bumps land atomically across members).
+[workspace.dependencies]
+streamify-core = { path = "crates/streamify-core" }
+streamify-audio = { path = "crates/streamify-audio" }
+streamify-storage = { path = "crates/streamify-storage" }
+streamify-jam = { path = "crates/streamify-jam" }
+streamify-resolver = { path = "crates/streamify-resolver" }
+streamify-contract = { path = "crates/streamify-contract" }
 
-# Phase 3 (UFFI-03): the crate-local bindgen CLI consumed by the Gradle
-# task `generateUniffiKotlinBindings` (`cargo run --bin uniffi-bindgen`).
-# Host-only codegen entry point — see src/bin/uniffi-bindgen.rs for why
-# it lives in-crate instead of being installed separately on runners.
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  Multiplatform Phase 3 artifact matrix (MP-C12 / MP-C13, master plan
-#  invariant 2):
-#
-#    target          crate-type consumed as        binding mode
-#    ──────────────  ───────────────────────────  ────────────────────────
-#    android (aarch64, armv7, x86_64: the .aar)  cdylib  → direct JNI
-#                                                  (JNA prohibited there)
-#    desktop JVM (win/mac/linux: streamify-jvm.jar) cdylib → JNA bindings
-#    iOS/iPadOS (XCFramework)                    staticlib → direct Swift
-#
-#  The JNI surface compiles ONLY on Android: the `jni` crate is gated
-#  under [target.'cfg(target_os = "android")'.dependencies] (MP-C13) and
-#  the jni_bridge modules are cfg-gated to match in lib.rs. Desktop JVM
-#  and Apple shells reach the core exclusively through the UniFFI
-#  contract — no second bridge, no dead exports on foreign targets.
-# ─────────────────────────────────────────────────────────────────────────────
-
-[dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lofty = "0.25"
@@ -55,126 +103,15 @@ miniz_oxide = "0.9"
 base64 = "0.22"
 strsim = "0.11"
 libc = "0.2"
-# Phase 1 governance: ephemeral room identities + signed directives/kicks.
-# Pure-Rust, no_std-friendly; the 32-byte host ephemeral key in the LAN
-# beacon descriptor (directive B) is an Ed25519 verifying key by design.
 ed25519-dalek = "2.1"
-
-# Phase 2 (UFFI-01): typed, type-safe Kotlin<->Rust bindings for the
-# control-plane and metadata flows, replacing the raw extern "C" JNI
-# edges on those paths. The audio real-time data-plane keeps the frozen
-# JNI contract (see jni_bridge_dsp.cc, AMP-10).
 uniffi = { version = "0.28", features = ["cli", "build"] }
-
-# Multiplatform Phase 3 (MP-C11): producer-side polyphase sinc SRC to the
-# canonical 48 kHz f32 rate — rubato SincFixedOut on the decode thread.
-# Pinned to 0.15 (the directive's audited line); the resampler kernel is
-# bit-stability-sensitive, so bumps are golden-vector-gated decisions.
 rubato = "0.15"
-
-# Multiplatform Phase 3 (MP-C15, Alpha half): tracing + metrics façade
-# with per-platform subscribers. The platform layers are optional,
-# feature-gated target deps (below); the shell selects exactly one per
-# artifact. Beta's client init calls `obs::init_observability()`.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 metrics = "0.24"
-
-# Multiplatform Phase 3 (MP-C14): network stack consolidation — reqwest
-# (HTTP/2 + TLS 1.3 via rustls, webpki roots) over the single shared
-# tokio runtime (resolver::get_runtime's OnceLock). The blocking ureq
-# client is RETIRED; the remaining sync call sites block_on the async
-# client through the same runtime. `rustls-tls` is reqwest's umbrella
-# alias for the webpki-roots rustls backend (no native-tls, no system
-# cert store — hermetic on Android and cross-compiled desktop targets).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-
-[build-dependencies]
-# Scaffolding generation at build time; "builtin-bindgen" embeds the
-# bindgen so no external uniffi-bindgen binary is needed on CI runners.
-uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
-
-[dev-dependencies]
 tempfile = "3.10"
-# Phase 5: nameable tokio for the capability adapter suite's timeouts
-# (the runtime itself is the engine's shared one — resolver::get_runtime).
-tokio = "1.38"
-# Phase 5 (MP-CAP02 e2e): the MPRIS end-to-end lane drives the REAL
-# service over a private dbus-daemon with a plain zbus client (Linux
-# hosts only — auto-skipped elsewhere, the same lane the desktop CI
-# runners execute).
 futures-util = "0.3"
-
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-zbus = { version = "6", default-features = false, features = ["tokio", "proxy"] }
-
-[features]
-default = []
-# Experimental HTTP/3 (QUIC) transport — DISABLED by default per MP-C14:
-# re-enable per-artifact for telemetry-gated canaries only.
-http3 = ["reqwest/http3"]
-# Per-platform tracing subscribers (exactly one is enabled per artifact
-# by the packaging matrix; see src/obs.rs for the layer wiring).
-obs-android = ["dep:tracing-android"]
-obs-oslog = ["dep:tracing-oslog"]
-obs-journald = ["dep:tracing-journald"]
-obs-etw = ["dep:tracing-etw"]
-
-# ── Android: the direct-JNI lane (MP-C12/MP-C13) ────────────────────────────
-# The `jni` crate is ONLY for the Android target: every other platform
-# reaches the core through UniFFI, so a desktop or iOS build must not
-# even compile the JNI bridge (jni_bridge.rs / jni_bridge_p2p.rs carry
-# matching cfg gates in lib.rs).
-[target.'cfg(target_os = "android")'.dependencies]
-jni = { version = "0.21", default-features = false }
-tracing-android = { version = "0.2", optional = true }
-
-# ── Apple: unified logging for macOS and iOS shells ─────────────────────────
-[target.'cfg(target_os = "macos")'.dependencies]
-tracing-oslog = { version = "0.3", optional = true }
-
-# Phase 5 (MP-CAP03/MP-CAP04): Apple platform capability adapters. The
-# RemoteCommandCenter/NowPlayingInfoCenter bridge resolves its C ABI at
-# runtime (dlsym, see platform/apple/remote_command.rs — the .mm object
-# links from the XCFramework / CMake static lib, same zero-link-dep
-# discipline as the Phase 4b PipeWire dlopen driver), so only the
-# Keychain provider needs a compile-time crate: security-framework
-# (pure-Rust Security.framework bindings, audited by `cargo check
-# --target aarch64-apple-ios` on every host lane).
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-security-framework = "3"
-
-# ── Linux desktop: journald (degrades to fmt-only without a socket) ─────────
-[target.'cfg(target_os = "linux")'.dependencies]
-tracing-journald = { version = "0.3", optional = true }
-# Phase 5 (MP-CAP02/MP-CAP04): the MPRIS D-Bus adapter and the Secret
-# Service keyring provider. zbus is the pure-Rust D-Bus connection (NO
-# libdbus link dep — the wire protocol is implemented in Rust, per the
-# Phase 5 "avoid heavy hard runtime link dependencies" mandate), and the
-# tokio feature runs it on the engine's shared runtime
-# (resolver::get_runtime) instead of spawning a second executor.
-zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service"] }
-
-# ── Windows desktop: Event Tracing for Windows ──────────────────────────────
-[target.'cfg(target_os = "windows")'.dependencies]
-tracing-etw = { version = "0.3", optional = true }
-# Phase 5 (MP-CAP01/MP-CAP04): the SMTC adapter (WinRT
-# Windows.Media.SystemMediaTransportControls via GetForWindow interop)
-# and the DPAPI secure store (CryptProtectData/CryptUnprotectData).
-# Pure-Rust WinRT/Win32 projections — one bridge, one language, and
-# `cargo check --target x86_64-pc-windows-gnu` audits the exact code
-# the Windows shell runs from every host lane. Features are the minimal
-# projection set (no full Windows.* surface: keeps the check tree and
-# the cdylib size lean).
-windows = { version = "0.62", features = [
-    "Foundation",                              # TimeSpan, TypedEventHandler
-    "Media",                                   # SMTC + MediaPlaybackStatus enums
-    "Media_MediaProperties",                   # MusicProperties (DisplayUpdater)
-    "Win32_Foundation",                        # HWND
-    "Win32_System_Com",                        # CoIncrementMTAUsage (event apartment)
-    "Win32_System_WinRT",                      # ISystemMediaTransportControlsInterop (GetForWindow)
-    "Win32_Security_Cryptography",             # DPAPI CryptProtectData/Unprotect + DATA_BLOB
-] }
 
 # Phase 1: the 32-peer mesh simulation is allocation-bound in the default
 # unoptimized test profile (7× slower than release — measured: 208 ms
@@ -208,10 +145,5 @@ codegen-units = 1
 # downstream binary that links this crate as an rlib and overrides the
 # panic strategy back to unwind. The panic→EngineError::Internal
 # marshaling path is unit-tested under the (unwinding) test profile.
-# NOTE: the pre-Phase-3 profile deliberately chose "unwind" so shields
-# could convert panics into error codes on-device; the flip to "abort"
-# follows MULTIPLATFORM_PLAN_27_10 §2.8 (approved) — if release-on-
-# device marshaling is still wanted, flip this single line back and the
-# shields resume primary duty (they are compiled either way).
 panic = "abort"
 strip = true

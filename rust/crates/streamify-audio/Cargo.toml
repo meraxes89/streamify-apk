@@ -1,0 +1,40 @@
+# streamify-audio — the hard real-time DSP crate (Discussion #120).
+#
+# RT-SAFETY INVARIANT (the reason this crate exists): the render
+# callback path must never block, heap-allocate behind a lock, or touch
+# an async runtime. Enforced structurally:
+#   * dependencies are EXACTLY { streamify-core, rubato } — no tokio,
+#     no rusqlite, no reqwest, no socket2. `cargo tree -p
+#     streamify-audio` in CI must never show an async or DB crate.
+#   * streamify-core is std-only, so nothing async can leak in
+#     transitively through the leaf.
+#   * rubato is pinned to 0.15 (bit-stability-sensitive resampler
+#     kernel; bumps are golden-vector-gated decisions).
+#
+# `cargo test -p streamify-audio` runs the golden-vector DSP suite in
+# isolation — no networking or SQLite compilation, sub-300 MB RAM.
+[package]
+name = "streamify-audio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify hard real-time audio DSP: Rubato Sinc SRC, LUFS, limiters, HAL models"
+
+[lib]
+name = "streamify_audio"
+crate-type = ["rlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+# Observability facade — zero-cost when no subscriber is installed; NOT an
+# async crate (the RT boundary forbids tokio/rusqlite/reqwest, not the
+# tracing facade). Real-time paths log through it without blocking.
+tracing = { workspace = true }
+# Multiplatform Phase 3 (MP-C11): producer-side polyphase sinc SRC to the
+# canonical 48 kHz f32 rate (rubato SincFixedOut on the decode thread).
+rubato = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# golden-vector fixture codec (tests only — never the RT library surface)
+serde_json = { workspace = true }

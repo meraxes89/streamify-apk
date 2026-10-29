@@ -1,0 +1,28 @@
+# streamify-core — the workspace's leaf crate (Discussion #120).
+#
+# Pure leaf types, the DAC presentation clock record, the structured
+# EngineError taxonomy, MediaCommand, atomic primitives and dependency-
+# free leaf compute (gesture physics, LE wire readers). NOTHING else in
+# the workspace sits below this crate, and this crate depends on NOTHING
+# outside std — that is the invariant that lets every other member (and
+# the real-time audio crate in particular) share the contract vocabulary
+# without pulling a single external dependency.
+#
+# The UDL-declared data types (PlaybackState, TrackMetadata,
+# AudioStreamConfig, BufferStats, DacPresentationClock, EngineSnapshot,
+# JamSessionHandle, JamSyncResult, the error-kind enums, EngineError,
+# MediaCommand) live here; streamify-contract re-exports them at its
+# root so the UniFFI scaffolding (FfiConverter<UT> tag pattern) binds
+# them from this crate without orphan-rule violations.
+[package]
+name = "streamify-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify core leaf types: contract records, EngineError, clocks, atomic primitives"
+
+[lib]
+name = "streamify_core"
+crate-type = ["rlib"]
+
+[dependencies]

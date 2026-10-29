@@ -100,7 +100,8 @@ def kotlin_surface() -> dict[str, set[str]]:
 def source_exports() -> set[str]:
     """JNI export symbol names declared in C/C++/Rust sources."""
     exports: set[str] = set()
-    roots = [REPO / "native", REPO / "rust/src"]
+    # Workspace (Discussion #120): Rust sources live under the crates/ tree.
+    roots = [REPO / "native", REPO / "rust" / "crates"]
     exts = {".cc", ".cpp", ".c", ".h", ".hpp", ".rs"}
     for root in roots:
         if not root.exists():

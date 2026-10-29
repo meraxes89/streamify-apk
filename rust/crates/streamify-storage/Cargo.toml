@@ -1,0 +1,28 @@
+# streamify-storage — device-local encrypted storage (Discussion #120).
+#
+# SQLite connection pool (Tier 0 B1 lane discipline), schema migrations,
+# the repository layer and the cache encryption envelope (VaultCryptoEngine).
+# Device-local ONLY: per-device keys from the OS keychain; the Jam mesh
+# syncs CRDT ops, never the DB (resp5 §2.5).
+[package]
+name = "streamify-storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify storage: SQLite pool, migrations, repository, cache encryption envelope"
+
+[lib]
+name = "streamify_storage"
+crate-type = ["rlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

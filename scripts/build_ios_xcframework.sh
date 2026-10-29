@@ -194,7 +194,7 @@ if [[ "${SKIP_BINDINGS}" -ne 1 ]]; then
     #  deliberately keeps generator defaults (module `streamify` from
     #  the namespace), so no --config is passed here.
     ( cd "${RUST_DIR}" && cargo run --bin uniffi-bindgen -- generate \
-        src/streamify.udl \
+        crates/streamify-contract/src/streamify.udl \
         --language swift \
         --out-dir "${BINDINGS_DIR}" )
     echo "── Swift module: ${BINDINGS_DIR}"

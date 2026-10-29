@@ -20,7 +20,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-BRIDGES = sorted((REPO / "rust" / "src").glob("jni_bridge*.rs"))
+# Workspace (Discussion #120): the JNI bridges moved to the umbrella
+# streamify-ffi crate.
+BRIDGES = sorted((REPO / "rust" / "crates" / "streamify-ffi" / "src").glob("jni_bridge*.rs"))
 
 FN_RE = re.compile(r"\bfn\s+(Java_[A-Za-z0-9_]+)\s*\(")
 
