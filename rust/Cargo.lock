@@ -3659,6 +3659,7 @@ dependencies = [
  "streamify-jam",
  "streamify-resolver",
  "streamify-storage",
+ "tempfile",
  "tokio",
  "uniffi",
 ]

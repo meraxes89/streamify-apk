@@ -17,6 +17,7 @@ pub mod obs;
 pub mod playlist_import;
 pub mod platform;
 pub mod queue_engine;
+pub mod resolver_api;
 
 
 // ── Root re-exports: the contract surface ──────────────────────────────────
@@ -47,6 +48,14 @@ pub use obs::{init_observability, register_core_metrics};
 // Collaborative playlist import glue (spans the jam + resolver domains;
 // lives here in the composition layer by design).
 pub use playlist_import::import_parsed_playlist;
+// Discussion #120, Part C: the modularized StreamResolver surface —
+// namespace functions (`resolve_stream_formats`, `search_music_tracks`,
+// `set_resolver_cache_db`) plus the record types the UDL declares
+// (their canonical home is the owning domain crate; the scaffolding
+// binds them through these re-exports exactly like the core types
+// above).
+pub use resolver_api::{resolve_stream_formats, search_music_tracks, set_resolver_cache_db};
+pub use streamify_resolver::json::{ParsedCandidate, ResolvedStreamFormat};
 
 // ─── Phase 2 (UFFI-01): UniFFI scaffolding ────────────────────────────────
 // Generated at build time from the workspace-root src/streamify.udl by

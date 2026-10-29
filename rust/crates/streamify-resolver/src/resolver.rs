@@ -260,13 +260,11 @@ pub async fn innertube_search_candidates(
     cookies: &str,
 ) -> Vec<SearchCandidate> {
     // Tier 1 — RustyPipe YTM search (PO-token-aware, deobfuscated,
-    // cross-platform identical).
-    match crate::rustypipe_engine::music_search_candidates(query, 32).await {
-        Ok(candidates) => return candidates,
-        // Any failure falls through to the legacy request below — a
-        // rustypipe construction fault must not take the resolver below
-        // the pre-Part-B production behavior.
-        Err(_) => {}
+    // cross-platform identical). Any failure falls through to the
+    // legacy request below — a rustypipe construction fault must not
+    // take the resolver below the pre-Part-B production behavior.
+    if let Ok(candidates) = crate::rustypipe_engine::music_search_candidates(query, 32).await {
+        return candidates;
     }
 
     // Tier 2 — legacy raw WEB_REMIX Innertube search.

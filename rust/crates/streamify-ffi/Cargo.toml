@@ -56,6 +56,12 @@ tokio = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21", default-features = false }
 
+# Test-only: tempdir-backed resolver memo databases for the
+# resolver→audio SPSC integration smoke test (Discussion #120, Part C.3)
+# and any future cache-lifecycle integration suites.
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default = []
 # Pass-through to the contract crate's observability subscribers so the

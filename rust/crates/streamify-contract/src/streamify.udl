@@ -101,6 +101,46 @@ dictionary JamSyncResult {
     boolean needs_rebalance;
 };
 
+/// One playable stream format resolved for a video id (Discussion #120,
+/// Part C: the modularized StreamResolver surface over UniFFI).
+///
+/// Ordering contract: every audio-only row precedes every muxed row,
+/// m4a before webm/opus, then bitrate descending — `is_audio_only` is a
+/// prefix property, so foreign consumers can take element 0 without a
+/// scan. Bitrate is the SUSTAINED (average) rate the buffer sizing
+/// should plan against; `duration_sec` is the stream's own length when
+/// the player response carries it, otherwise the video-level duration.
+dictionary ResolvedStreamFormat {
+    /// Direct CDN URL (deciphered, de-throttled; PO-token-backed when a
+    /// botguard binary is configured).
+    string url;
+    /// Full MIME type incl. codec parameters ("audio/mp4; codecs=mp4a.40.2").
+    string mime_type;
+    /// Sustained bitrate, bits/second.
+    u32 bitrate;
+    /// Stream length in seconds.
+    u32 duration_sec;
+    /// Audio-only row (the prioritized class; always a list prefix).
+    boolean is_audio_only;
+};
+
+/// One YouTube Music search result mapped onto the engine's candidate
+/// record (Discussion #120, Part B.3). Relevance order is preserved and
+/// mirrored into a descending `score`.
+dictionary ParsedCandidate {
+    /// YouTube video id.
+    string id;
+    string title;
+    /// Multi-artist rows are joined ("Alpha & Beta").
+    string artist;
+    string album;
+    u32 duration_sec;
+    string thumbnail_url;
+    /// Relevance mirror, 100 (head) down to 1 (long-tail clamp; 0 is
+    /// reserved for "score unknown").
+    u8 score;
+};
+
 /// Network failure taxonomy for `EngineError.Network` (Phase 3 / MP-C04).
 /// The kind routes the retry policy; `status` carries the HTTP status
 /// code where applicable (0 when no response was received).
@@ -443,4 +483,31 @@ namespace streamify {
     /// signal that session-token persistence is degraded, not an error.
     [Throws=EngineError]
     boolean secure_store_roundtrip(string probe_key, bytes probe_value);
+
+    /// Discussion #120, Part C: resolve the playable stream-format set
+    /// for one YouTube video id through the modularized resolver
+    /// (persistent cache → RustyPipe pure-Rust extraction → legacy
+    /// Innertube tier). Audio-only rows are prioritized and form the
+    /// head of the returned list. Blocks the calling thread on the
+    /// engine's shared runtime until resolution completes.
+    [Throws=EngineError]
+    sequence<ResolvedStreamFormat> resolve_stream_formats(string video_id);
+
+    /// Discussion #120, Part C: search YouTube Music tracks through the
+    /// RustyPipe YTM endpoints (persistent cache → rustypipe → legacy
+    /// Innertube tier). Results keep YouTube's relevance order,
+    /// mirrored into a descending `score` on each record.
+    [Throws=EngineError]
+    sequence<ParsedCandidate> search_music_tracks(string query, u32 limit);
+
+    /// Discussion #120, Part C: bind the resolver's persistent memo
+    /// database (resolved CDN format sets, search pages, the rustypipe
+    /// deobfuscation transforms). Idempotent; the FIRST call wins — a
+    /// live RustyPipe client reads its deobfuscation cache from the
+    /// first bound file, and silently moving the database under it
+    /// would fork the cache identity. Without an explicit bind, the
+    /// first track resolve that carries the shell's database path
+    /// lends that path automatically.
+    [Throws=EngineError]
+    void set_resolver_cache_db(string db_path);
 };

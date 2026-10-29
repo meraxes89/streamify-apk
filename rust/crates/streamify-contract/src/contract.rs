@@ -138,7 +138,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 /// which still shows the FFI entry path that faulted; it is captured with
 /// `Backtrace::force_capture()` so it is populated even without
 /// `RUST_BACKTRACE=1`.
-fn ffi_shield<F, T>(op: &str, body: F) -> Result<T, EngineError>
+pub(crate) fn ffi_shield<F, T>(op: &str, body: F) -> Result<T, EngineError>
 where
     F: FnOnce() -> Result<T, EngineError>,
 {

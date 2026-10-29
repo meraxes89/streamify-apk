@@ -380,7 +380,7 @@ mod tests {
         // leaks: the bind is a process-lifetime OnceLock and cannot
         // borrow a dropped tempdir. ─────────────────────────────────
         let dir = tempfile::tempdir().expect("temp dir");
-        let db_file = dir.into_path().join("resolver_cache_test.db");
+        let db_file = dir.keep().join("resolver_cache_test.db");
         let leaked = db_file.to_string_lossy().into_owned();
         bind_cache_db_path(&leaked);
         let db = cache_db_path().expect("a path must be bound");
