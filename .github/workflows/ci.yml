@@ -1,0 +1,214 @@
+# ============================================================================
+# ci.yml — THE HUB of the 3-Tier Hub-and-Spoke CI DAG (resp6.md blueprint).
+#
+#   Tier 1  preflight      fast-fail gates + dorny/paths-filter impact
+#                           analysis (ubuntu, ~2 min)
+#   Tier 2  engine_dsp /   reusable workflow_call shards, dispatched in
+#          android /        parallel, each skipped-by-condition (never
+#          desktop / ios    missing) when its subtree is untouched
+#   Tier 3  ci-gate         "CI Gate (Blocking)" — the ONE required status
+#                           check in Branch Protection. Passes on success OR
+#                           skipped, fails loudly on failure/cancelled.
+#
+# Why this shape (resp6 §1): standalone per-OS workflow files with top-level
+# `on: pull_request: paths:` filters + platform leaf jobs registered as
+# required checks deadlock Branch Protection ("Expected — Waiting for status
+# to be reported"). Here every PR runs the hub unconditionally; path filters
+# live INSIDE the preflight job, skipped shards report `skipped`, and the
+# single gate folds the verdict. Zero deadlocks by construction.
+#
+# Cost shape (resp6 §3): path-filtered shards + build-once/fan-out engine
+# artifacts + the concurrency group below (rapid force-pushes kill orphaned
+# windows/macos runners immediately).
+# ============================================================================
+name: Unified CI Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+  push:
+    branches: [main]
+
+# Kill superseded PR runs immediately to save macOS/Windows quota.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # =========================================================================
+  # TIER 1: Fast-Fail Preflight & Impact Analysis (ubuntu, fast)
+  # =========================================================================
+  preflight:
+    name: "Tier 1: Fast-Fail & Path Filter"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      run_engine: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_ios: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ios == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_installers: ${{ steps.filter.outputs.packaging == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+    steps:
+      # fetch-depth 0: gitleaks resolves the PR/push commit range (base^..head)
+      # instead of the shallow HEAD snapshot.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Impact analysis. Skipped on merge_group/push — those events run the
+      # FULL matrix (fail-safe: a queue entry must never under-test).
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            core:
+              - 'rust/**'
+              - 'native/**'
+            android:
+              - 'app/**'
+              - 'shared/android/**'
+            desktop:
+              - 'desktop/**'
+              - 'shared/**'
+            ios:
+              - 'iosApp/**'
+              - 'scripts/build_ios_xcframework.sh'
+            packaging:
+              - '**/*.gradle.kts'
+              - 'gradle/**'
+              - 'gradle.properties'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - 'native/**'
+            ci:
+              - '.github/workflows/**'
+
+      # SEC-05 secret scan, blocking, at t=0. PR/push events only: on
+      # merge_group a full-history scan would re-flag the pre-existing
+      # historical leaks already tracked for rotation (SEC-01/SEC-03).
+      - name: Gitleaks secret scan (blocking)
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # audit #44 P2-5: every Java_* export in rust/src/jni_bridge*.rs must
+      # wrap its body in catch_unwind. Pure source check, no toolchain.
+      - name: JNI panic-boundary convention gate
+        if: steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request'
+        run: python3 scripts/jni_panic_boundary_check.py
+
+      # audit #44 P1-3: clippy with -D warnings on the full target surface.
+      # (No cargo fmt --check yet: the tree is not rustfmt-formatted, tracked
+      # on #44 — the gate switches on after that repo-wide format PR.)
+      - name: Set up Rust toolchain
+        if: steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Setup sccache
+        if: steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request'
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Clippy (workspace, all targets, warnings are errors)
+        if: steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request'
+        env:
+          RUSTC_WRAPPER: sccache
+          CARGO_INCREMENTAL: "0"
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # =========================================================================
+  # TIER 2: Modular Domain Shards (Reusable Workflows, parallel dispatch)
+  # =========================================================================
+  # The engine spoke doubles as the BUILD-ONCE / FAN-OUT artifact factory
+  # (resp6 §3): it runs whenever the engine tests OR any artifact consumer
+  # (android jniLibs / linux desktop cdylib) is in scope, with per-input
+  # granularity so an app-only PR skips the test suite but still gets its
+  # prebuilt natives.
+  engine_dsp:
+    name: "Core Engine & C++ DSP"
+    needs: preflight
+    if: >-
+      needs.preflight.outputs.run_engine == 'true' ||
+      needs.preflight.outputs.run_android == 'true' ||
+      needs.preflight.outputs.run_desktop == 'true'
+    uses: ./.github/workflows/_ci-engine.yml
+    with:
+      run_tests: ${{ needs.preflight.outputs.run_engine == 'true' }}
+      build_android_native: ${{ needs.preflight.outputs.run_android == 'true' }}
+      build_linux_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
+
+  android:
+    name: "Android Matrix"
+    needs: [preflight, engine_dsp]
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.run_android == 'true' &&
+      (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
+    uses: ./.github/workflows/_ci-android.yml
+
+  desktop:
+    name: "Desktop Matrix (Linux, Windows, macOS)"
+    needs: [preflight, engine_dsp]
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.run_desktop == 'true' &&
+      (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
+    uses: ./.github/workflows/_ci-desktop.yml
+    with:
+      package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
+
+  ios:
+    name: "iOS XCFramework & Swift Tests"
+    needs: [preflight, engine_dsp]
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.run_ios == 'true' &&
+      (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
+    uses: ./.github/workflows/_ci-ios.yml
+
+  # =========================================================================
+  # TIER 3: The Single Blocking Merge Gate
+  # =========================================================================
+  # Register exactly this ONE check ("CI Gate (Blocking)") in Branch
+  # Protection — never the platform leaf jobs (resp6 §1). `if: always()`
+  # makes it run after any failure; the explicit state scan makes it FAIL on
+  # that failure. Skipped is a PASS: path-filtered skips are the design.
+  ci-gate:
+    name: "CI Gate (Blocking)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [preflight, engine_dsp, android, desktop, ios]
+    if: always()
+    steps:
+      - name: Evaluate all shards (pass on success or skipped, fail otherwise)
+        env:
+          NEEDS_CONTEXT: ${{ toJSON(needs) }}
+        run: |
+          python3 - << 'PY'
+          import json, os, sys
+          needs = json.loads(os.environ['NEEDS_CONTEXT'])
+          failures = []
+          print("Shard verdicts:")
+          for job, info in sorted(needs.items()):
+              result = info['result']
+              print(f"  {job}: {result}")
+              if result not in ('success', 'skipped'):
+                  failures.append(f"{job}: {result}")
+          if failures:
+              print("::error::CI Gate (Blocking) failed — blocking shard(s) not green:")
+              for f in failures:
+                  print(f"::error::  - {f}")
+              sys.exit(1)
+          print("CI Gate (Blocking) passed — every shard green or intentionally skipped.")
+          PY
