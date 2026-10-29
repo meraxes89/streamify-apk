@@ -185,7 +185,7 @@ jobs:
   # makes it run after any failure; the explicit state scan makes it FAIL on
   # that failure. Skipped is a PASS: path-filtered skips are the design.
   ci-gate:
-    name: "CI Gate (Blocking)"
+    name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [preflight, engine_dsp, android, desktop, ios]
