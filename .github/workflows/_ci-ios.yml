@@ -59,6 +59,14 @@ jobs:
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
+      - name: Setup Rust cache (iOS targets)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: ios-targets
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Setup sccache (mandatory compiler caching, resp6 §3)
         uses: mozilla-actions/sccache-action@v0.0.11
 
@@ -71,6 +79,7 @@ jobs:
       - name: Probe Apple-target engine buildability (MP-DEC-08)
         env:
           RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
           CARGO_INCREMENTAL: "0"
         run: |
           set +e
@@ -91,6 +100,7 @@ jobs:
         if: env.ENGINE_APPLE_BUILDABLE == '1'
         env:
           RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
           CARGO_INCREMENTAL: "0"
         run: bash scripts/build_ios_xcframework.sh
 
@@ -140,6 +150,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: Cache DerivedData & SwiftPM (resp7 risk register)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/.swiftpm
+          key: ${{ runner.os }}-xcode-${{ hashFiles('iosApp/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-
 
       - name: Discover an available iOS Simulator
         run: |
