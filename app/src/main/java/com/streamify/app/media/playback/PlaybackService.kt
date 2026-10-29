@@ -160,34 +160,50 @@ class PlaybackService : MediaSessionService() {
         // pipeline failed to start) keeps the untouched DefaultAudioSink
         // chain below - graceful fallback, never a broken player.
         val audioRoute = AudioRoutePolicy.resolve()
+        // PHASE 5 (MP-CUT01) — ZERO-CRASH DOGFOOD ARMING: the entire Rust
+        // pipeline construction is wrapped in a catch-all, so ANY failure
+        // on the native lane (ring factory rejection, feeder spawn error,
+        // even a Throwable from code we have not imagined yet) degrades to
+        // the byte-identical legacy DefaultAudioSink chain with ONE logged
+        // reason and ONE telemetry counter — never a crash, never silence.
+        // RustAudioPipeline.start() already guards its own factories; this
+        // belt-and-braces layer completes the guarantee the directive
+        // mandates for unrecoverable initialization errors.
         rustAudioPipeline = if (audioRoute.route == AudioRoutePolicy.Route.RUST_AUDIO_PULL) {
-            RustAudioPipeline(
-                ringFactory = {
-                    // The seam binding is guaranteed present here: the
-                    // route resolved RUST_AUDIO_PULL, which requires
-                    // probeEdges() to have reported the full f32 pull
-                    // path (a present binding is a precondition of that
-                    // report).
-                    val jni = requireNotNull(com.streamify.app.media.audio.RustAudioSinkJni.binding) {
-                        "RUST_AUDIO_PULL resolved but the sink JNI binding is absent"
-                    }
-                    val handle = jni.createSink(
-                        AudioTrackPullOutput.CANONICAL_SAMPLE_RATE_HZ,
-                        AudioTrackPullOutput.CANONICAL_CHANNELS,
-                        RUST_SINK_RING_CAPACITY_FRAMES,
-                    )
-                    check(handle >= 0L) {
-                        "nativeCreateSink rejected the dogfood configuration " +
-                            "(handle=$handle)"
-                    }
-                    NativeFloatSinkEdge(
-                        handle,
-                        AudioTrackPullOutput.CANONICAL_CHANNELS,
-                    )
-                },
-                outputFactory = { AudioTrackPullOutput() },
-                clockRecorder = { clock -> StreamifyEngineBridge.recordDacClock(clock) },
-            ).takeIf { it.start() }
+            try {
+                RustAudioPipeline(
+                    ringFactory = {
+                        // The seam binding is guaranteed present here: the
+                        // route resolved RUST_AUDIO_PULL, which requires
+                        // probeEdges() to have reported the full f32 pull
+                        // path (a present binding is a precondition of that
+                        // report).
+                        val jni = requireNotNull(com.streamify.app.media.audio.RustAudioSinkJni.binding) {
+                            "RUST_AUDIO_PULL resolved but the sink JNI binding is absent"
+                        }
+                        val handle = jni.createSink(
+                            AudioTrackPullOutput.CANONICAL_SAMPLE_RATE_HZ,
+                            AudioTrackPullOutput.CANONICAL_CHANNELS,
+                            RUST_SINK_RING_CAPACITY_FRAMES,
+                        )
+                        check(handle >= 0L) {
+                            "nativeCreateSink rejected the dogfood configuration " +
+                                "(handle=$handle)"
+                        }
+                        NativeFloatSinkEdge(
+                            handle,
+                            AudioTrackPullOutput.CANONICAL_CHANNELS,
+                        )
+                    },
+                    outputFactory = { AudioTrackPullOutput() },
+                    clockRecorder = { clock -> StreamifyEngineBridge.recordDacClock(clock) },
+                ).takeIf { it.start() }
+            } catch (e: Throwable) {
+                com.streamify.app.media.audio.DogfoodTelemetry.recordLegacyFallback(
+                    "pipeline init failed: ${e.javaClass.simpleName}: ${e.message}"
+                )
+                null
+            }
         } else {
             null
         }
@@ -197,6 +213,12 @@ class PlaybackService : MediaSessionService() {
                 "RUST_AUDIO_PULL route requested but the pipeline failed to start - " +
                     "falling back to the legacy DefaultAudioSink chain"
             )
+        }
+        // MP-CUT01: the dogfood window's measurement surface collects the
+        // live pipeline's telemetry + DAC clock pushes (route decisions
+        // were recorded inside AudioRoutePolicy.resolve above).
+        rustAudioPipeline?.let { dogfood ->
+            com.streamify.app.media.audio.DogfoodTelemetry.attachPipeline(dogfood)
         }
 
         // ─── AUDIO RENDER CHAIN (DIRECT CDN STREAMING) ──────────────────────────────
@@ -235,13 +257,25 @@ class PlaybackService : MediaSessionService() {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): androidx.media3.exoplayer.audio.AudioSink {
-                // PHASE 4a (MP-HAL05/07): dogfood branch. The pipeline is
-                // non-null ONLY when AudioRoutePolicy resolved
-                // RUST_AUDIO_PULL and start() succeeded above - every
-                // other path (flag off, native edges unresolved, start
-                // failure) builds the byte-identical legacy chain.
+                // PHASE 4a (MP-HAL05/07) + PHASE 5 (MP-CUT01): dogfood
+                // branch, zero-crash hardened. The pipeline is non-null
+                // ONLY when AudioRoutePolicy resolved RUST_AUDIO_PULL and
+                // start() succeeded above - every other path (flag off,
+                // native edges unresolved, start failure) builds the
+                // byte-identical legacy chain. A RustMedia3AudioSink
+                // construction failure (unrecoverable initialization error)
+                // likewise falls through to the legacy sink with ONE
+                // telemetry counter — the automatic, zero-crash fallback
+                // the MP-CUT01 directive mandates.
                 rustAudioPipeline?.let { dogfood ->
-                    return RustMedia3AudioSink(dogfood)
+                    try {
+                        return RustMedia3AudioSink(dogfood)
+                    } catch (e: Throwable) {
+                        com.streamify.app.media.audio.DogfoodTelemetry.recordLegacyFallback(
+                            "RustMedia3AudioSink init failed: " +
+                                "${e.javaClass.simpleName}: ${e.message}"
+                        )
+                    }
                 }
                 return DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
@@ -829,6 +863,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        // PHASE 5 (MP-CUT01): detach the dogfood telemetry collectors
+        // before the pipeline stops (they ride the pipeline's own conflated
+        // StateFlows; the stop below completes the generation).
+        com.streamify.app.media.audio.DogfoodTelemetry.detachPipeline()
         // PHASE 4a (MP-HAL07 clean-switching law): tear the dogfood pull
         // pipeline down FIRST - its feeder/publisher threads and the
         // AudioTrack must die before the engine FFI plane below, and the

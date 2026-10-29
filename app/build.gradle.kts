@@ -262,6 +262,13 @@ if (!releaseKeystoreConfigured) {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.02.00")
     implementation(composeBom)
+
+    // Phase 5 (MP-UI03 / Beta): the shared CMP presentation layer — theme
+    // tokens, presentation models and derivation math (the dogfood panel
+    // in Settings renders from :shared-android's RustAudioDogfoodPanel).
+    // Single edge; :shared-android compiles shared/src/{commonMain,androidMain}
+    // against this module's exact Compose pair.
+    implementation(project(":shared-android"))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     // Installs baseline profiles when they ship; required before the

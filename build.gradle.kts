@@ -10,4 +10,11 @@ plugins {
     // the app module already ships as kotlinCompilerExtensionVersion).
     id("org.jetbrains.kotlin.jvm") version "1.9.22" apply false
     id("org.jetbrains.compose") version "1.6.1" apply false
+
+    // Phase 5 (MP-UI03 / Beta): the shared CMP module. Kotlin Multiplatform
+    // stays on the same 1.9.22 line (one KGP per build), and the library
+    // flavor of AGP backs `:shared-android` — the Android consumption seam
+    // for shared/src/{commonMain,androidMain}.
+    id("org.jetbrains.kotlin.multiplatform") version "1.9.22" apply false
+    id("com.android.library") version "8.2.2" apply false
 }

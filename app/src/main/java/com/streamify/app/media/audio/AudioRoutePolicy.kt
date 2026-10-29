@@ -76,6 +76,10 @@ object AudioRoutePolicy {
     /**
      * Resolves the effective route ONCE per call site (the playback
      * service invokes this while building its renderers factory).
+     *
+     * MP-CUT01 (Phase 5): every resolution is recorded into
+     * [DogfoodTelemetry] — the dogfood window's route-decision log —
+     * alongside the SLog line below.
      */
     fun resolve(): RouteDecision {
         val decision = resolveWith(
@@ -85,6 +89,7 @@ object AudioRoutePolicy {
             edges = RustAudioSinkJni.probeEdges(),
         )
         _lastDecision.value = decision
+        DogfoodTelemetry.recordRouteDecision(decision)
         return decision
     }
 

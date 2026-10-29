@@ -393,6 +393,22 @@ fun SettingsScreen(
             }
 
             item {
+                // ── RUST AUDIO DOGFOOD (Phase 5 / MP-CUT01) ────────────────
+                // Debug builds only: the USE_RUST_AUDIO two-week dogfood
+                // window's observability surface — route decisions, underrun
+                // rate, DAC drift, cold-start latency and the zero-crash
+                // fallback tally, rendered by the SHARED CMP component
+                // (:shared-android — MP-UI03's Android consumption edge).
+                // R8 removes the dead branch in release builds entirely.
+                if (BuildConfig.DEBUG) {
+                    SectionHeader("Rust Audio Dogfood (MP-CUT01)")
+                    Spacer(modifier = Modifier.height(StreamifyDimens.SpaceMD))
+                    RustAudioDogfoodSection()
+                    Spacer(modifier = Modifier.height(StreamifyDimens.SpaceMD))
+                }
+            }
+
+            item {
                 SectionHeader("Storage & Integration")
                 Spacer(modifier = Modifier.height(StreamifyDimens.SpaceMD))
                 
