@@ -1,0 +1,129 @@
+# ============================================================================
+# _ci-ios.yml — Tier 2 reusable spoke: Apple iOS native lane (MP-CAP03 /
+# Multiplatform invariant 2), the coverage the repo never had.
+#
+# Callable ONLY via workflow_call, from:
+#   * ci.yml      (PR / merge_group / push-main hub)
+#   * release.yml (tag-driven release, release_mode: true)
+#
+# Runner: macos-14 (Apple Silicon).
+#
+# Jobs:
+#   xcframework  scripts/build_ios_xcframework.sh — assembles
+#                StreamifyCore.xcframework (device aarch64-apple-ios +
+#                fat simulator aarch64/x86_64-apple-ios-sim slices, Rust
+#                staticlib + ObjC++ remote-command/audio-session glue,
+#                dlsym contract sanity-checked) and generates the UniFFI
+#                Swift bindings. Debug profile on PRs (link-and-smoke
+#                artifact), release profile when release_mode: true.
+#   swift-tests  the iosApp Swift package suite (StreamifyIOSTests) on the
+#                iOS Simulator via headless xcodebuild. The package declares
+#                platforms: [.iOS(.v16)] and imports SwiftUI/MediaPlayer/
+#                AVFoundation, so `swift test` on the macOS host cannot
+#                target the iOS deployment — xcodebuild against the
+#                simulator is the sanctioned headless form (the simulator
+#                destination is discovered at runtime, never hardcoded).
+# ============================================================================
+name: CI iOS (XCFramework & Swift)
+
+on:
+  workflow_call:
+    inputs:
+      release_mode:
+        description: Build the xcframework in release profile and upload StreamifyCore.xcframework.zip.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  xcframework:
+    name: "StreamifyCore.xcframework (${{ inputs.release_mode && 'release' || 'debug' }})"
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      STREAMIFY_IOS_PROFILE: ${{ inputs.release_mode && 'release' || 'debug' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain (iOS targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Setup sccache (mandatory compiler caching, resp6 §3)
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Build StreamifyCore.xcframework + UniFFI Swift bindings
+        env:
+          RUSTC_WRAPPER: sccache
+          CARGO_INCREMENTAL: "0"
+        run: bash scripts/build_ios_xcframework.sh
+
+      - name: Zip the xcframework
+        run: |
+          cd dist/ios
+          # ditto preserves the bundle structure + resource forks that
+          # zip(1) would mangle for .framework payloads.
+          ditto -c -k --sequesterRsrc --keepParent \
+            StreamifyCore.xcframework StreamifyCore.xcframework.zip
+          ls -la StreamifyCore.xcframework.zip
+
+      - name: Upload xcframework artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-xcframework
+          path: dist/ios/StreamifyCore.xcframework.zip
+          if-no-files-found: error
+
+      - name: Upload Swift bindings (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-swift-bindings
+          path: dist/ios/swift/
+          if-no-files-found: ignore
+
+  swift-tests:
+    name: "iOS Swift test suite (simulator)"
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Discover an available iOS Simulator
+        run: |
+          SIM_NAME="$(xcrun simctl list devices -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          names = [d["name"] for v in devices.values() for d in v if d.get("isAvailable")]
+          iphones = [n for n in names if "iPhone" in n]
+          print(iphones[0] if iphones else (names[0] if names else ""))
+          ')"
+          if [ -z "$SIM_NAME" ]; then
+            echo "FATAL: no available iOS Simulator on this runner" >&2
+            exit 1
+          fi
+          echo "Using simulator: $SIM_NAME"
+          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+
+      # The Swift package compiles TODAY against the preview gateway (the
+      # real engine lane is #if canImport(uniffi_streamify)-gated), so the
+      # suite runs without linking the xcframework.
+      - name: Run StreamifyIOSTests (headless xcodebuild)
+        run: |
+          cd iosApp
+          set -o pipefail
+          xcodebuild test \
+            -scheme StreamifyIOS \
+            -destination "platform=iOS Simulator,name=${SIM_NAME}" \
+            -quiet 2>&1 | tee xcodebuild-test.log
+
+      - name: Upload xcodebuild log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-xcodebuild-log
+          path: iosApp/xcodebuild-test.log
+          if-no-files-found: ignore
