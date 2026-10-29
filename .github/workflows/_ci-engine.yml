@@ -52,12 +52,17 @@ permissions:
 jobs:
   # ── Rust core: unit + integration suite (VirtualHAL double, golden vectors) ──
   rust-core:
-    name: "Rust core: nextest (${{ inputs.nextest_profile }})"
+    name: "Rust core: nextest (${{ inputs.nextest_profile }} ${{ matrix.partition }}/2)"
     if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [1, 2]
     env:
       RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
       RUSTFLAGS: "-Clink-arg=-fuse-ld=lld"
     steps:
@@ -65,6 +70,14 @@ jobs:
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache (target and dependencies)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "engine-nextest"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
@@ -75,19 +88,22 @@ jobs:
       # GOV-04: the ci profile excludes the 32-peer mesh chaos suite (the
       # documented flake lane); the nightly profile runs it serialized in the
       # serial-heavy-mesh test group. --all-targets keeps examples compiled.
+      # resp7 Pillar 2: 2-way hash partition gives statistically balanced shards.
       - name: Run workspace test suite (VirtualHAL double, golden vectors, all integration suites)
         run: |
           cargo nextest run \
             --manifest-path rust/Cargo.toml \
             --config-file rust/.config/nextest.toml \
             --profile "${{ inputs.nextest_profile }}" \
-            --workspace --all-targets --verbose
+            --workspace --all-targets \
+            --partition "hash:${{ matrix.partition }}/2" \
+            --verbose
 
       - name: Upload test log on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: engine-rust-core-log
+          name: engine-rust-core-log-${{ matrix.partition }}
           path: rust/target/nextest/**/*.xml
           if-no-files-found: ignore
 
@@ -167,11 +183,20 @@ jobs:
             rust_target: x86_64-linux-android
     env:
       RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "native-android-${{ matrix.abi }}"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
@@ -250,9 +275,18 @@ jobs:
     timeout-minutes: 30
     env:
       RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "native-linux-x86_64"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable

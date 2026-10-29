@@ -77,7 +77,7 @@ jobs:
           chmod +x gradlew
           ./gradlew testDebugUnitTest \
             -PskipExternalNativeBuild=true \
-            --stacktrace
+            --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Upload test reports (on failure)
         if: failure()

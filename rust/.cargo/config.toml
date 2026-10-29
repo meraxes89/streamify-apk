@@ -1,0 +1,6 @@
+# Target-specific linker acceleration (resp7 Pillar 7)
+# Linux uses lld for ~2.5x faster cdylib linking (-fuse-ld=lld via gcc/clang driver).
+# macOS and Windows use split-debuginfo = "unpacked" in profile.dev to avoid slow PDB/dSYM packaging.
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clink-arg=-fuse-ld=lld"]
