@@ -101,6 +101,10 @@ struct PlaybackSnapshot: Equatable, Sendable {
 struct PlaybackUiState: Equatable, Sendable {
     let snapshot: PlaybackSnapshot
 
+    /// The pre-engine surface state (same shape as `PlaybackSnapshot.idle`,
+    /// one UI-level constant so call sites never nest the raw default).
+    static let idle = PlaybackUiState()
+
     init(_ snapshot: PlaybackSnapshot = .idle) {
         self.snapshot = snapshot
     }

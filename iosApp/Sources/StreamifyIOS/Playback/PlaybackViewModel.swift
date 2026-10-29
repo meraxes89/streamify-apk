@@ -38,12 +38,17 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     init(
         gateway: EngineGateway,
         audioSession: IOSAudioSessionAdapter? = nil,
-        nowPlayingInfoPublisher: NowPlayingInfoPublisher = NowPlayingInfoPublisher()
+        // Optional-with-nil-default instead of a `NowPlayingInfoPublisher()`
+        // default expression: default arguments are evaluated in a
+        // NONISOLATED context, so a @MainActor-isolated initializer call
+        // there is a compile error. The fallback constructs on the main
+        // actor, inside this isolated init body.
+        nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil
     ) {
         self.gateway = gateway
         // Default wiring: the adapter drives THIS holder's pause/resume.
         self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
-        self.nowPlayingInfo = nowPlayingInfoPublisher
+        self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
         self.remoteCommands = RemoteCommandAdapter(router: self)
     }
 

@@ -60,8 +60,11 @@ final class PreviewEngineGateway: EngineGateway {
     /// movement — pure UI exercise, clearly not engine truth).
     func startDemo() {
         guard demoTask == nil else { return }
-        var rev = 1
         demoTask = Task { [weak self] in
+            // Local to the task's closure: a captured-and-mutated outer var
+            // is a data race in concurrently-executing code (compile error
+            // under strict concurrency; a local is exactly as deterministic).
+            var rev = 1
             while !Task.isCancelled {
                 guard let self else { return }
                 let playing = rev % 8 != 0

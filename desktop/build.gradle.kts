@@ -179,11 +179,17 @@ val stagePrebuiltEngineLibrary by tasks.registering {
     group = "native"
     description = "Stages the CI-prebuilt host engine cdylib at the cargo output path (build-once / fan-out)."
 
-    onlyIf { prebuiltEngineLib != null && File(prebuiltEngineLib!!).isFile }
+    // Configuration-cache contract (matches every other native task here):
+    // task graph references must never capture the enclosing SCRIPT object.
+    // Copy the script-level vals into locals of this configuration block so
+    // the serialized task state holds plain values, not script references.
+    val prebuilt: String? = prebuiltEngineLib
+    val dst: File = engineLibraryFile
+
+    onlyIf { prebuilt != null && File(prebuilt!!).isFile }
 
     doLast {
-        val src = File(prebuiltEngineLib!!)
-        val dst = engineLibraryFile
+        val src = File(prebuilt!!)
         dst.parentFile.mkdirs()
         src.copyTo(dst, overwrite = true)
         logger.lifecycle("staged prebuilt engine cdylib {} -> {}", src, dst)
@@ -197,9 +203,12 @@ val buildDesktopEngineLibrary by tasks.registering(Exec::class) {
     val crateDir = rustCrateDir
     val outLib = engineLibraryFile
     val skip = skipDesktopNative
+    // Local copy: same configuration-cache discipline as above — never
+    // capture the script-level property from task-graph code.
+    val prebuilt: String? = prebuiltEngineLib
 
     // A prebuilt cdylib replaces the cargo invocation entirely (CI fan-out).
-    onlyIf { !skip && prebuiltEngineLib == null }
+    onlyIf { !skip && prebuilt == null }
 
     inputs.dir(File(crateDir, "src"))
     inputs.file(File(crateDir, "Cargo.toml"))

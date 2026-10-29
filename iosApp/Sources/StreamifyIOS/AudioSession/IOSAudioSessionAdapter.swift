@@ -100,7 +100,7 @@ final class IOSAudioSessionAdapter: ObservableObject {
         options: AVAudioSession.InterruptionOptions = []
     ) -> [AnyHashable: Any] {
         [
-            AVAudioSessionInterruptionNotificationTypeKey: type.rawValue,
+            AVAudioSessionInterruptionTypeKey: type.rawValue,
             AVAudioSessionInterruptionOptionKey: options.rawValue,
         ]
     }
@@ -117,7 +117,7 @@ final class IOSAudioSessionAdapter: ObservableObject {
         _ userInfo: [AnyHashable: Any]?
     ) -> (type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions)? {
         guard let userInfo else { return nil }
-        guard let typeRaw = userInfo[AVAudioSessionInterruptionNotificationTypeKey] as? UInt,
+        guard let typeRaw = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeRaw) else { return nil }
         let optionsRaw = (userInfo[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
         let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
