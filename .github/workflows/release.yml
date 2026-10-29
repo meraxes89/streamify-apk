@@ -1,101 +1,128 @@
-name: Release APK
+# ============================================================================
+# release.yml — deterministic release orchestration (resp6.md §5).
+#
+# Triggered by v* tags. NEVER scrapes artifacts from prior workflow runs
+# (artifacts expire, commit SHAs drift, debug flags leak): the release
+# invokes the EXACT SAME reusable workflows the ci.yml hub uses, directly on
+# the release tag SHA, then collects everything in one atomic publish job.
+#
+#   engine   _ci-engine.yml  — full Rust suite + sanitizer matrix + the
+#                             NDK artifacts the Android lane consumes
+#                             (audit #44 P1-3 continuity: no binary is
+#                             published before its tests ran — the retired
+#                             release.yml ran cargo test + the JVM suite
+#                             inline for exactly this reason).
+#   android  _ci-android.yml  (release_mode)  -> Streamify-v<tag>.apk
+#   desktop  _ci-desktop.yml  (installers)    -> .deb / .msi / .dmg
+#   ios      _ci-ios.yml      (release_mode)  -> StreamifyCore.xcframework.zip
+#
+# publish-release downloads every artifact, emits SHA256SUMS, and attaches
+# all binaries to the GitHub Release.
+# ============================================================================
+name: Release
+
 on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  engine:
+    name: "Engine (tests + release artifacts)"
+    uses: ./.github/workflows/_ci-engine.yml
+    with:
+      run_tests: true
+      build_android_native: true
+      build_linux_native: true
+
+  android:
+    name: "Android release APK"
+    needs: engine
+    uses: ./.github/workflows/_ci-android.yml
+    with:
+      release_mode: true
+    secrets: inherit
+
+  desktop:
+    name: "Desktop installers (.deb/.msi/.dmg)"
+    needs: engine
+    uses: ./.github/workflows/_ci-desktop.yml
+    with:
+      package_installers: true
+      release_mode: true
+
+  ios:
+    name: "iOS StreamifyCore.xcframework"
+    uses: ./.github/workflows/_ci-ios.yml
+    with:
+      release_mode: true
+
+  publish-release:
+    name: "Publish release (SHA256SUMS + binaries)"
+    needs: [engine, android, desktop, ios]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      
-      - name: Set up JDK 17 + NDK
-        uses: actions/setup-java@v6
+      - name: Download Android release APK
+        uses: actions/download-artifact@v8
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          name: android-release-apk
+          path: dist
+          merge-multiple: true
 
-      - name: Install NDK
-        run: sdkmanager "ndk;26.1.10909125"
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Download desktop installers (.deb/.msi/.dmg)
+        uses: actions/download-artifact@v8
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          pattern: desktop-installer-*
+          path: dist
+          merge-multiple: true
 
-      - name: Install cargo-ndk
-        run: which cargo-ndk || cargo install cargo-ndk --locked
-
-      - name: Cache Gradle
-        uses: actions/cache@v6
+      - name: Download iOS xcframework
+        uses: actions/download-artifact@v8
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
+          name: ios-xcframework
+          path: dist
+          merge-multiple: true
 
-      - name: Cache Cargo
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-          key: cargo-release-${{ hashFiles('rust/Cargo.lock') }}
-
-      - name: Decode release keystore
-        env:
-          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+      - name: Stage release binaries & verify the manifest
         run: |
-          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
-            echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
-          else
-            echo "No RELEASE_KEYSTORE_B64 secret set; assembleRelease will fail fast (SEC-04): release builds no longer fall back to debug signing."
-          fi
+          set -euo pipefail
+          mkdir -p release
+          # Flatten every downloaded payload (installer artifacts keep their
+          # jpackage directory structure inside the artifact zip).
+          find dist -type f \( \
+            -name '*.apk' -o -name '*.deb' -o -name '*.msi' -o \
+            -name '*.dmg' -o -name '*.zip' \) -exec cp -v {} release/ \;
+          echo "── release manifest:"
+          ls -la release/
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+          # Hard verification of the expected payload classes (directive C):
+          ls release/Streamify-v*.apk            >/dev/null || { echo "FATAL: missing Streamify-v*.apk" >&2; exit 1; }
+          ls release/streamify_*_amd64.deb      >/dev/null || { echo "FATAL: missing streamify_*_amd64.deb" >&2; exit 1; }
+          ls release/Streamify-*.msi            >/dev/null || { echo "FATAL: missing Streamify-*.msi" >&2; exit 1; }
+          ls release/Streamify-*.dmg            >/dev/null || { echo "FATAL: missing Streamify-*.dmg" >&2; exit 1; }
+          ls release/StreamifyCore.xcframework.zip >/dev/null || { echo "FATAL: missing StreamifyCore.xcframework.zip" >&2; exit 1; }
 
-      # audit #44 P1-3 — the release path used to build + publish APKs on
-      # tag push without running a single test. Tags don't match the
-      # branch filters on the extreme-test-matrix workflow, so nothing
-      # upstream guarded them either. The full suite now runs HERE, in the
-      # release job itself, before any artifact is signed and published:
-      #   1. Rust: every unit + integration test binary (same suite the
-      #      test matrix runs).
-      #   2. Kotlin: the full JVM unit suite (skipRust — the native libs
-      #      are built for Android targets below).
-      #   3. JNI ABI parity, both modes: source-level and link-level on
-      #      the Android .so files the APK actually ships.
-      # A red suite aborts the release before the keystore is ever touched.
-      - name: Rust test suite (unit + integration)
-        working-directory: rust
-        run: cargo test --lib --tests
-
-      - name: Kotlin JVM unit suite
-        run: ./gradlew testDebugUnitTest -Pstreamify.skipRust=true --stacktrace
-
-      - name: JNI ABI parity gate (source-level)
-        run: python3 scripts/jni_parity_check.py --source
-
-      - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
-      - name: JNI ABI parity gate (nm on shipped .so)
+      - name: Generate SHA256SUMS
         run: |
-          NDK_DIR="${ANDROID_NDK_HOME:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/ndk/26.1.10909125}"
-          NM="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
-          if [ ! -x "$NM" ]; then NM=nm; fi
-          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
-            --so-glob 'app/build/**/*.so'
-          
+          cd release
+          sha256sum Streamify-v*.apk streamify_*_amd64.deb Streamify-*.msi Streamify-*.dmg StreamifyCore.xcframework.zip > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: app/build/outputs/apk/**/*.apk
+          files: |
+            release/Streamify-v*.apk
+            release/streamify_*_amd64.deb
+            release/Streamify-*.msi
+            release/Streamify-*.dmg
+            release/StreamifyCore.xcframework.zip
+            release/SHA256SUMS
           generate_release_notes: true
