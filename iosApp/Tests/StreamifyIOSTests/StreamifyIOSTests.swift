@@ -302,7 +302,6 @@ final class NowPlayingInfoPublisherTests: XCTestCase {
         }
     }
 
-    @MainActor
     private func playingState(
         positionMs: Int,
         title: String? = "Nightcall",

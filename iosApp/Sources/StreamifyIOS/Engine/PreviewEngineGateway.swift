@@ -17,9 +17,7 @@ final class PreviewEngineGateway: EngineGateway {
 
     private var _dispatchedCommands: [PlayerCommand] = []
     var dispatchedCommands: [PlayerCommand] {
-        lock.lock()
-        defer { lock.unlock() }
-        return _dispatchedCommands
+        lock.withLock { _dispatchedCommands }
     }
     var nextResult: PlayerCommandResult = .applied
     var failAll = false
@@ -31,10 +29,14 @@ final class PreviewEngineGateway: EngineGateway {
         }
     }
 
+    private func recordCommand(_ command: PlayerCommand) {
+        lock.withLock {
+            _dispatchedCommands.append(command)
+        }
+    }
+
     func send(_ command: PlayerCommand) async -> PlayerCommandResult {
-        lock.lock()
-        _dispatchedCommands.append(command)
-        lock.unlock()
+        recordCommand(command)
         return failAll ? .failed : nextResult
     }
 
