@@ -111,9 +111,15 @@ kotlin {
 
 val rustCrateDir: File = layout.projectDirectory.dir("../rust").asFile
 
-val uniffiUdlFile: File = File(rustCrateDir, "src/streamify.udl")
-val uniffiConfigFile: File = File(rustCrateDir, "uniffi.toml")
-val uniffiBindgenEntryFile: File = File(rustCrateDir, "src/bin/uniffi-bindgen.rs")
+// Workspace-modularization note (Discussion #120): the UDL and the uniffi
+// binding config live with their owning crate —
+// rust/crates/streamify-contract/ — and the bindgen entry point with the
+// umbrella crate — rust/crates/streamify-ffi/src/bin/ (streamify-ffi is a
+// default-run member of the workspace, so `cargo run --bin uniffi-bindgen`
+// from the rust/ workspace root still resolves).
+val uniffiUdlFile: File = File(rustCrateDir, "crates/streamify-contract/src/streamify.udl")
+val uniffiConfigFile: File = File(rustCrateDir, "crates/streamify-contract/uniffi.toml")
+val uniffiBindgenEntryFile: File = File(rustCrateDir, "crates/streamify-ffi/src/bin/uniffi-bindgen.rs")
 val uniffiGeneratedSourcesDir: File =
     layout.buildDirectory.dir("generated/uniffi/kotlin").get().asFile
 

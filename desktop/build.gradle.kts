@@ -210,10 +210,12 @@ val buildDesktopEngineLibrary by tasks.registering(Exec::class) {
     // A prebuilt cdylib replaces the cargo invocation entirely (CI fan-out).
     onlyIf { !skip && prebuilt == null }
 
-    inputs.dir(File(crateDir, "src"))
+    // Workspace (Discussion #120): source roots live under crates/; the
+    // contract crate's build.rs owns the UniFFI scaffolding generation.
+    inputs.dir(File(crateDir, "crates"))
     inputs.file(File(crateDir, "Cargo.toml"))
     inputs.file(File(crateDir, "Cargo.lock"))
-    inputs.file(File(crateDir, "build.rs"))
+    inputs.file(File(crateDir, "crates/streamify-contract/build.rs"))
     outputs.file(outLib)
 
     workingDir = crateDir

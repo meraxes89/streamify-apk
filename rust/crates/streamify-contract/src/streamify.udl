@@ -1,0 +1,513 @@
+/// Coarse playback lifecycle state reported by the core engine.
+enum PlaybackState {
+    "Idle",
+    "Buffering",
+    "Playing",
+    "Paused",
+    "Error"
+};
+
+/// Canonical descriptive metadata for one playable track.
+dictionary TrackMetadata {
+    string id;
+    string title;
+    string artist;
+    u64 duration_ms;
+    string? stream_url;
+    string? album_art_url;
+};
+
+/// Geometry of the audio pipeline feeding the engine.
+dictionary AudioStreamConfig {
+    u32 sample_rate;
+    u8 channels;
+    u8 bit_depth;
+    u32 buffer_frames;
+};
+
+/// Live buffering health snapshot for telemetry surfaces.
+dictionary BufferStats {
+    u64 buffered_duration_ms;
+    u32 underrun_count;
+    f32 fill_ratio;
+};
+
+/// Hardware DAC presentation clock sample (Phase 3 / MP-C01, MP-DEC-03).
+///
+/// The hardware HAL callback is the SOLE clock master: playback position,
+/// seek confirmation and visualization sync derive strictly from these
+/// hardware presentation timestamps — never from wall-clock interpolation
+/// (`System.currentTimeMillis()` is banned from every position estimate).
+/// The platform adapter records one sample per HAL callback via
+/// `record_dac_clock`; the engine republishes the latest sample inside
+/// every pushed `EngineSnapshot` (acceptance target: <5 ms position error
+/// vs a loopback reference per platform HAL, verified in Phase 4a).
+///
+/// Replaces the retired `RenderClock` concept (master plan invariant 3;
+/// the name change encodes the semantics: these are DAC-side presentation
+/// counters, not render-side estimates).
+dictionary DacPresentationClock {
+    /// Hardware-consumed frame counter (monotonic per device stream).
+    u64 dac_frame_position;
+    /// Device DAC nominal rate in Hz (e.g. 48000).
+    u32 sample_rate;
+    /// OS monotonic presentation timestamp in nanoseconds.
+    u64 monotonic_ns;
+};
+
+/// Coalesced engine state snapshot pushed to listeners (Phase 3 / MP-C02,
+/// MP-DEC-04). Carries a strictly monotonic `rev`: every accepted state
+/// mutation bumps the revision BEFORE the wake is dispatched, so a
+/// listener can drop stale snapshots, deduplicate re-deliveries and order
+/// concurrent sessions without any wall-clock reasoning. UI shells use
+/// this push channel instead of polling `get_playback_state()`.
+dictionary EngineSnapshot {
+    /// Monotonic revision; strictly increases across dispatched snapshots.
+    u64 rev;
+    /// Playback lifecycle state at snapshot time.
+    PlaybackState state;
+    /// Output volume scalar in [0.0, 1.0].
+    f32 volume;
+    /// Buffering health at snapshot time.
+    BufferStats buffer_stats;
+    /// Latest hardware DAC presentation sample; absent until the first
+    /// `record_dac_clock` of this engine instance.
+    DacPresentationClock? clock;
+};
+
+/// Opaque handle to the engine's active Jam session (UFFI-03/04).
+///
+/// The handle is data, not behavior: the session object itself stays
+/// inside the engine behind the typed contract, so the Kotlin side can
+/// never hold a stale raw pointer into CRDT interior state.
+dictionary JamSessionHandle {
+    u64 session_id;
+    string session_name;
+    u64 created_at_unix_ms;
+};
+
+/// Outcome of atomically applying one Jam CRDT delta batch (UFFI-03/04).
+///
+/// `state_hash` is the deterministic BLAKE3 image of the session's
+/// canonical CRDT fold (queue + tombstones + vote ledger, order-free):
+/// two replicas that merged the same op set — in any arrival order —
+/// derive the identical string. That makes it the diff currency for
+/// Merkle reconciliation on the Kotlin side (root compare, then branch
+/// walk, then delta exchange — all through this contract).
+dictionary JamSyncResult {
+    u32 ops_applied;
+    u32 ops_rejected;
+    string state_hash;
+    boolean needs_rebalance;
+};
+
+/// One playable stream format resolved for a video id (Discussion #120,
+/// Part C: the modularized StreamResolver surface over UniFFI).
+///
+/// Ordering contract: every audio-only row precedes every muxed row,
+/// m4a before webm/opus, then bitrate descending — `is_audio_only` is a
+/// prefix property, so foreign consumers can take element 0 without a
+/// scan. Bitrate is the SUSTAINED (average) rate the buffer sizing
+/// should plan against; `duration_sec` is the stream's own length when
+/// the player response carries it, otherwise the video-level duration.
+dictionary ResolvedStreamFormat {
+    /// Direct CDN URL (deciphered, de-throttled; PO-token-backed when a
+    /// botguard binary is configured).
+    string url;
+    /// Full MIME type incl. codec parameters ("audio/mp4; codecs=mp4a.40.2").
+    string mime_type;
+    /// Sustained bitrate, bits/second.
+    u32 bitrate;
+    /// Stream length in seconds.
+    u32 duration_sec;
+    /// Audio-only row (the prioritized class; always a list prefix).
+    boolean is_audio_only;
+};
+
+/// One YouTube Music search result mapped onto the engine's candidate
+/// record (Discussion #120, Part B.3). Relevance order is preserved and
+/// mirrored into a descending `score`.
+dictionary ParsedCandidate {
+    /// YouTube video id.
+    string id;
+    string title;
+    /// Multi-artist rows are joined ("Alpha & Beta").
+    string artist;
+    string album;
+    u32 duration_sec;
+    string thumbnail_url;
+    /// Relevance mirror, 100 (head) down to 1 (long-tail clamp; 0 is
+    /// reserved for "score unknown").
+    u8 score;
+};
+
+/// Network failure taxonomy for `EngineError.Network` (Phase 3 / MP-C04).
+/// The kind routes the retry policy; `status` carries the HTTP status
+/// code where applicable (0 when no response was received).
+enum NetworkErrorKind {
+    "Timeout",
+    "Dns",
+    "Tls",
+    "Connect",
+    "Http",
+    "Cancelled"
+};
+
+/// Audio-subsystem failure taxonomy for `EngineError.Audio` (MP-C04).
+enum AudioErrorKind {
+    "DeviceUnavailable",
+    "FormatUnsupported",
+    "InvalidClock",
+    "Underrun",
+    "Init"
+};
+
+/// Storage-subsystem failure taxonomy for `EngineError.Storage` (MP-C04).
+enum StorageErrorKind {
+    "Io",
+    "NotFound",
+    "Corrupt",
+    "Permission",
+    "Full"
+};
+
+/// Cryptography failure taxonomy for `EngineError.Crypto` (MP-C04).
+enum CryptoErrorKind {
+    "KeyUnavailable",
+    "DecryptFailed",
+    "EncryptFailed",
+    "InvalidKeyMaterial"
+};
+
+/// Structured, nested engine failure taxonomy crossing the FFI boundary
+/// (Phase 3 / MP-C04, master plan invariant 8).
+///
+/// Non-exhaustive BY DESIGN: the Rust-side enum carries
+/// `#[non_exhaustive]` so the core can grow categories without breaking
+/// in-crate consumers, and the stable numeric codes (see below) are the
+/// foreign-side forward-compat currency. TOOLCHAIN NOTE: uniffi 0.28's
+/// UDL grammar cannot express `[NonExhaustive]` on the interface syntax
+/// used for fielded variants (its attribute validator rejects the
+/// combination — verified against uniffi_udl 0.28.3), so the generated
+/// bindings are exhaustive until the uniffi upgrade; the Rust enum is
+/// `#[non_exhaustive]` as mandated, and new variants MUST only append.
+/// Stable numeric codes are exposed Rust-side via
+/// `EngineError::stable_code()` (category byte | kind byte | status
+/// half-word) — see `rust/src/contract.rs`; the codes are pinned by unit
+/// tests and MUST NOT be renumbered.
+///
+/// The `Internal` variant is also the panic channel: every UniFFI
+/// entrypoint is wrapped in `catch_unwind` and converts a Rust panic
+/// into `Internal { error_message, backtrace }` (MP-C06) — a panic never
+/// unwinds into Kotlin or Swift.
+[Error]
+interface EngineError {
+    /// Stream acquisition / transport failure. `status` is the HTTP status
+    /// when a response arrived (0 otherwise); `retry_after` is the
+    /// server-advised or engine-estimated retry hint in MILLISECONDS.
+    Network(NetworkErrorKind kind, u16 status, u32 retry_after);
+    /// Audio subsystem failure (device, format, clock, underrun, init).
+    /// `device_id` identifies the HAL device when known.
+    Audio(AudioErrorKind kind, string? device_id);
+    /// Device-local encrypted storage failure.
+    Storage(StorageErrorKind kind);
+    /// Key material / cipher operation failure.
+    Crypto(CryptoErrorKind kind);
+    /// Unexpected internal fault, INCLUDING marshaled Rust panics
+    /// (`error_message` carries the panic text, `backtrace` the
+    /// captured stack when available). Requires diagnostics.
+    ///
+    /// NAMING NOTE (Phase 5 upstream fix from Beta): the field is
+    /// deliberately `error_message`, NOT `message` — uniffi 0.28.3's
+    /// Kotlin backend emits a `message`-named constructor property
+    /// that collides with kotlin.Throwable's shadowed `message`
+    /// getter (the generated `InternalException` does not compile as
+    /// emitted). The rename lets Beta's Gradle
+    /// `patchDesktopUniffiBindings` shim retire to its documented
+    /// no-op path instead of patching the raw codegen.
+    Internal(string error_message, string? backtrace);
+};
+
+/// Reverse control plane: hardware / headset media commands pushed INTO
+/// the engine (Phase 3 / MP-C03, MP-DEC-07). The platform adapter maps
+/// its media-key surface (Bluetooth headset toggles, MPRIS / SMTC /
+/// RemoteCommandCenter, Auto play/pause) onto these variants and feeds
+/// them through `on_media_command`, which applies a 50-150 ms debounce
+/// against duplicate hardware events.
+[Enum]
+interface MediaCommand {
+    Play();
+    Pause();
+    TogglePlayPause();
+    Next();
+    Previous();
+    /// Seek to `position_ms` within the current track.
+    Seek(u64 position_ms);
+    /// Apply `volume` (clamped to [0.0, 1.0]; NaN fails safe to mute).
+    SetVolume(f32 volume);
+    Stop();
+};
+
+/// Push event listener for coalesced engine state (Phase 3 / MP-C02,
+/// MP-DEC-04).
+///
+/// Register via `StreamifyEngine::add_event_listener`. The engine
+/// dispatches `on_engine_event` on a DEDICATED background thread — never
+/// the real-time audio thread, never the registration thread, never
+/// re-entrantly (a listener that mutates engine state only schedules the
+/// next dispatch; it never recurses). Snapshots are coalesced: bursts of
+/// state changes collapse into one dispatch carrying the newest revision.
+///
+/// Implementations are invoked from an arbitrary engine thread and MUST
+/// be thread-safe (the Rust trait carries Send + Sync). A listener must
+/// not throw across the boundary: a foreign exception (or a Rust panic
+/// during dispatch) is caught by the engine's panic shield and logged;
+/// the dispatch thread survives.
+callback interface EngineEventListener {
+    /// One coalesced snapshot with a strictly monotonic `rev`.
+    void on_engine_event(EngineSnapshot snapshot);
+};
+
+/// Outcome of one foreign secure-storage operation (Phase 5 /
+/// MP-CAP04): maps one-to-one onto `EngineError.Storage`'s kind
+/// taxonomy plus `Success`, so a foreign backend routes errors
+/// without carrying the full engine taxonomy across the boundary.
+enum SecureStoreOpStatus {
+    "Success",
+    "NotFound",
+    "Permission",
+    "Corrupt",
+    "Io"
+};
+
+/// Result payload of a foreign secure-storage retrieval: the status
+/// plus the secret bytes when found. One round-trip, no
+/// status-vs-payload race.
+dictionary SecureFetchResult {
+    SecureStoreOpStatus status;
+    bytes? secret;
+};
+
+/// Foreign secure-storage delegate (Phase 5 / MP-CAP04, Android /
+/// fallback lane).
+///
+/// Implemented by the Android shell on top of
+/// `EncryptedSharedPreferences`/KeyStore and installed at app start
+/// via `set_secure_store_delegate`. Absent → the core uses the native
+/// platform backend (Windows DPAPI, Linux Secret Service, Apple
+/// Keychain; an in-memory fallback with a loud log where none exists).
+/// `Send + Sync` semantics: calls may arrive from any engine thread.
+callback interface SecureStoreDelegate {
+    /// Upsert `secret` under `key`.
+    SecureStoreOpStatus store_secret(string key, bytes secret);
+    /// Fetch the secret under `key` (`NotFound` status when absent).
+    SecureFetchResult retrieve_secret(string key);
+    /// Remove the entry under `key` (idempotent).
+    SecureStoreOpStatus delete_secret(string key);
+};
+
+/// Phase 5 (MP-CAP01..03): the OS media-controls facade the desktop
+/// and mobile shells drive.
+///
+/// `start(window_handle)` binds the platform surface — Windows SMTC
+/// (needs the shell's top-level HWND; 0 = headless), Linux MPRIS
+/// (`org.mpris.MediaPlayer2.streamify` on the session bus), Apple
+/// RemoteCommandCenter (through the core's C-ABI bridge) — and OS
+/// transport-control events flow back into the engine's debounced
+/// `on_media_command` automatically. Headless / no-surface hosts
+/// return `false` and the object becomes the documented no-op: never
+/// a crash (the graceful fallback mandate).
+///
+/// The shell mirrors engine state outward by feeding every
+/// `EngineSnapshot` push through `update_playback` (state + timeline
+/// + volume, rate-limited internally: 200 ms SMTC/MPRIS cadence, the
+/// Apple bridge's mandated 1 Hz ceiling) and track changes through
+/// `update_metadata` (identity changes bypass the cadence so the OS
+/// chrome swaps tracks immediately).
+interface OsMediaIntegration {
+    /// Bind to one engine. The engine is both the command sink (OS
+    /// transport controls) and the canonical state source the shell
+    /// mirrors outward.
+    constructor(StreamifyEngine engine);
+
+    /// Attach the platform media surface. `window_handle` is the
+    /// shell's top-level HWND on Windows (0 = headless fallback);
+    /// ignored elsewhere. Returns true when a real OS surface
+    /// attached, false for the headless no-op fallback. On iOS the
+    /// attach ALSO activates the MP-UI02 audio-session adapter
+    /// (AVAudioSessionCategoryPlayback + duckOthers; an interruption
+    /// pauses and — when the OS permits — resumes, a lost route pauses
+    /// immediately) — best-effort, degrading interruption handling
+    /// only, never the surface itself.
+    [Throws=EngineError]
+    boolean start(u64 window_handle);
+
+    /// Detach the platform surface (idempotent).
+    [Throws=EngineError]
+    void stop();
+
+    /// Mirror one engine playback state outward (rate-limited
+    /// internally; `volume` mirrors the EngineSnapshot's volume and
+    /// serves the MPRIS Volume property; NaN fails safe to 0).
+    [Throws=EngineError]
+    void update_playback(PlaybackState state, u64 position_ms, u64 duration_ms, f32 rate, f32 volume);
+
+    /// Mirror now-playing metadata outward (identity changes —
+    /// title/artist/album/duration — reach the OS chrome immediately).
+    [Throws=EngineError]
+    void update_metadata(string title, string artist, string? album, u64 duration_ms, string? art_url);
+
+    /// The bound surface's stable id: "smtc", "mpris",
+    /// "apple-remote-command", "headless-fallback" or "inactive".
+    string active_surface();
+};
+
+/// Root handle to the Streamify core engine.
+///
+/// Thread-safe by construction: interior state is shared behind
+/// `Arc` + `RwLock`/atomics, so the handle can be cloned into any
+/// Kotlin coroutine dispatcher or thread without external locking.
+///
+/// Every method is `[Throws=EngineError]` (Phase 3 / MP-C06): all
+/// entrypoints are panic-shielded, and a panic anywhere under a method
+/// surfaces as `EngineError.Internal { error_message, backtrace }` instead
+/// of
+/// unwinding across the FFI boundary.
+interface StreamifyEngine {
+    constructor();
+
+    /// Arm the engine: verify runtime environment invariants, then
+    /// advance the lifecycle one-way Idle -> Buffering. Idempotent;
+    /// a progressed state is never pulled back.
+    [Throws=EngineError]
+    void initialize();
+
+    /// Apply the output gain scalar. Clamped to [0.0, 1.0]; a NaN input
+    /// fails safe to full mute. Stored lock-free (Release/Acquire).
+    [Throws=EngineError]
+    void set_volume(f32 volume);
+
+    /// Current playback lifecycle state (one-shot read; UI shells should
+    /// prefer the push channel via `add_event_listener` — MP-DEC-04).
+    [Throws=EngineError]
+    PlaybackState get_playback_state();
+
+    /// Current buffering health snapshot (one-shot read).
+    [Throws=EngineError]
+    BufferStats get_buffer_stats();
+
+    /// Latest coalesced engine snapshot (the same image pushed to
+    /// listeners; one-shot read for cold-start UI hydration).
+    [Throws=EngineError]
+    EngineSnapshot get_engine_snapshot();
+
+    /// Register a push event listener (MP-C02). The registration itself
+    /// bumps the revision, so every listener — including the fresh one —
+    /// receives a full snapshot on the dispatcher's next pass. Returns
+    /// the number of registered listeners after the call.
+    [Throws=EngineError]
+    u32 add_event_listener(EngineEventListener listener);
+
+    /// Feed one live telemetry sample from the playback buffer and the
+    /// acoustic pipeline. Malformed samples (NaN/±inf fill ratio) are
+    /// rejected; out-of-range fill ratios clamp to [0.0, 1.0].
+    [Throws=EngineError]
+    void record_buffer_stats(u64 buffered_duration_ms, u32 underrun_count, f32 fill_ratio);
+
+    /// Record one hardware DAC presentation clock sample (MP-C01). The
+    /// platform HAL adapter calls this from its callback (never the
+    /// engine's audio thread). The sample is validated (rate within the
+    /// supported DAC range) and republished in every pushed snapshot.
+    [Throws=EngineError]
+    void record_dac_clock(DacPresentationClock clock);
+
+    /// Feed one reverse-plane media command (MP-C03). Applies the
+    /// mandated 50-150 ms hardware debounce: an IDENTICAL command
+    /// (same variant, same payload) arriving inside the window is
+    /// swallowed. Returns true when applied, false when debounced.
+    [Throws=EngineError]
+    boolean on_media_command(MediaCommand command);
+
+    /// Create the engine's active Jam session (UFFI-03/04). Creating
+    /// while a session is live replaces it with a fresh, empty replica
+    /// (the engine is the room's local mirror; a new room means a new
+    /// mirror). A blank or oversized name is rejected as Internal.
+    [Throws=EngineError]
+    JamSessionHandle create_jam_session(string session_name);
+
+    /// Atomically apply one Jam CRDT delta batch: `delta` is a
+    /// concatenation of 48-byte little-endian wire ops (the frozen
+    /// `rust_48` image pinned by fixtures/jam_golden_vectors.json). The
+    /// whole batch merges under one lock acquisition; corrupt rows are
+    /// counted in `ops_rejected` and skipped, never aborting the batch.
+    /// A length that is not a multiple of 48 fails as Internal.
+    [Throws=EngineError]
+    JamSyncResult apply_jam_delta(bytes delta);
+
+    /// Deterministic BLAKE3 state hash (64 hex chars) of the active
+    /// session's canonical CRDT fold. Requires a live session.
+    [Throws=EngineError]
+    string get_jam_state_hash();
+};
+
+/// Streamify core engine: typed UniFFI contract (Phase 2 UFFI-01,
+/// wired to live dispatch and telemetry in Phase 3 UFFI-03, extended
+/// with the Jam CRDT session surface in Phase 4 UFFI-03/04, frozen for
+/// multiplatform in Phase 3 of MULTIPLATFORM_PLAN_27_10).
+///
+/// Type-safe Kotlin/Swift bindings for the control-plane and metadata
+/// flows, replacing the raw extern "C" JNI edges on those paths. The
+/// audio real-time data-plane keeps the frozen JNI contract in
+/// jni_bridge_dsp.cc (zero-allocation, zero-lock, direct-ByteBuffer hot
+/// path; AMP-10).
+namespace streamify {
+    /// FFI contract version (Phase 3 / MP-C05) for fail-fast startup ABI
+    /// verification: a client shell compares the loaded library's value
+    /// against its compiled-in expectation and refuses to start on
+    /// mismatch. Bump ONLY on breaking contract changes after the
+    /// Phase 3 freeze (additive fields with defaults do not bump).
+    u32 contract_version();
+
+    /// Phase 5 (MP-CAP04): install the foreign secure-storage delegate
+    /// (the Android `EncryptedSharedPreferences`/KeyStore lane, or an
+    /// explicit shell override anywhere). Replaces any previously
+    /// installed delegate; without one the core uses its native
+    /// platform backend.
+    [Throws=EngineError]
+    void set_secure_store_delegate(SecureStoreDelegate delegate);
+
+    /// Phase 5 (MP-CAP04): startup self-test through whichever backend
+    /// is active (foreign delegate > native platform backend > in-memory
+    /// fallback): store → retrieve → byte-compare → delete → confirm
+    /// gone. Returns whether the full loop held — a false is a loud
+    /// signal that session-token persistence is degraded, not an error.
+    [Throws=EngineError]
+    boolean secure_store_roundtrip(string probe_key, bytes probe_value);
+
+    /// Discussion #120, Part C: resolve the playable stream-format set
+    /// for one YouTube video id through the modularized resolver
+    /// (persistent cache → RustyPipe pure-Rust extraction → legacy
+    /// Innertube tier). Audio-only rows are prioritized and form the
+    /// head of the returned list. Blocks the calling thread on the
+    /// engine's shared runtime until resolution completes.
+    [Throws=EngineError]
+    sequence<ResolvedStreamFormat> resolve_stream_formats(string video_id);
+
+    /// Discussion #120, Part C: search YouTube Music tracks through the
+    /// RustyPipe YTM endpoints (persistent cache → rustypipe → legacy
+    /// Innertube tier). Results keep YouTube's relevance order,
+    /// mirrored into a descending `score` on each record.
+    [Throws=EngineError]
+    sequence<ParsedCandidate> search_music_tracks(string query, u32 limit);
+
+    /// Discussion #120, Part C: bind the resolver's persistent memo
+    /// database (resolved CDN format sets, search pages, the rustypipe
+    /// deobfuscation transforms). Idempotent; the FIRST call wins — a
+    /// live RustyPipe client reads its deobfuscation cache from the
+    /// first bound file, and silently moving the database under it
+    /// would fork the cache identity. Without an explicit bind, the
+    /// first track resolve that carries the shell's database path
+    /// lends that path automatically.
+    [Throws=EngineError]
+    void set_resolver_cache_db(string db_path);
+};
