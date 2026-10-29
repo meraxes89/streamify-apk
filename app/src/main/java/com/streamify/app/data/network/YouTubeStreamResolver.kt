@@ -366,28 +366,27 @@ object YouTubeStreamResolver {
             )
             return@withContext Result.success(nativeResolved)
         }
-        SLog.w("LadderTrace", "${com.streamify.app.util.Trace.pfx()}R1 MISS vid=$videoId — entering R-NP (NewPipe + PoToken)")
+        SLog.w("LadderTrace", "${com.streamify.app.util.Trace.pfx()}R1 MISS vid=$videoId — entering R-RP (RustyPipe pure-Rust extraction)")
 
-        // 3.5 Tier R-NP: NewPipe Extractor with BotGuard PO tokens.
-        // Pure-Kotlin path that defeats SABR URL-stripping: the hidden WebView
-        // mints web-client PO tokens, unlocking direct progressive/audio URLs
-        // even for licensed content our bare fleet cannot see.
-        val npResolved = try {
-            resolveViaNewPipe(videoId)
+        // 3.5 Tier R-RP: Pure-Rust RustyPipe extraction engine.
+        // In-process QuickJS cipher deciphering + botguard PO tokens;
+        // provides identical native resolution across Android, Desktop, and iOS.
+        val rpResolved = try {
+            resolveViaRustyPipe(videoId)
         } catch (t: Throwable) {
-            SLog.e("LadderTrace", "${com.streamify.app.util.Trace.pfx()}R-NP threw for $videoId: ${t.message}")
+            SLog.e("LadderTrace", "${com.streamify.app.util.Trace.pfx()}R-RP threw for $videoId: ${t.message}")
             null
         }
-        if (npResolved != null && npResolved.streamUrl.isNotBlank()) {
-            StreamEdgeCache.putStream(videoId, npResolved)
-            ConnectionWarmer.preWarmCDN(npResolved.streamUrl)
+        if (rpResolved != null && rpResolved.streamUrl.isNotBlank()) {
+            StreamEdgeCache.putStream(videoId, rpResolved)
+            ConnectionWarmer.preWarmCDN(rpResolved.streamUrl)
             SLog.i(
                 "LadderTrace",
-                "${com.streamify.app.util.Trace.pfx()}R-NP HIT vid=$videoId mime=${npResolved.mimeType.substringBefore(';')} br=${npResolved.bitrate}"
+                "${com.streamify.app.util.Trace.pfx()}R-RP HIT vid=$videoId mime=${rpResolved.mimeType.substringBefore(';')} br=${rpResolved.bitrate}"
             )
-            return@withContext Result.success(npResolved)
+            return@withContext Result.success(rpResolved)
         }
-        SLog.w("LadderTrace", "${com.streamify.app.util.Trace.pfx()}R-NP MISS vid=$videoId — entering R2 alternate-upload search")
+        SLog.w("LadderTrace", "${com.streamify.app.util.Trace.pfx()}R-RP MISS vid=$videoId — entering R2 alternate-upload search")
 
         // 4. Tier 2: Alternate-upload search fallback
         try {
@@ -494,57 +493,38 @@ object YouTubeStreamResolver {
     }
 
     /**
-     * Tier R-NP: resolve through NewPipe Extractor (pure Kotlin) with BotGuard
-     * PO tokens minted in a hidden WebView. Runs after the native fleet race
-     * fails and before the alternate-upload search.
+     * Tier R-RP: resolve through pure-Rust RustyPipe engine (in-process QuickJS
+     * cipher deciphering + botguard PO token extraction, cross-platform parity).
      */
-    private suspend fun resolveViaNewPipe(videoId: String): ResolvedStream? =
+    private suspend fun resolveViaRustyPipe(videoId: String): ResolvedStream? =
         withContext(Dispatchers.IO) {
-            com.streamify.app.util.newpipe.NewPipeBootstrap.ensure()
-            val url = "https://www.youtube.com/watch?v=$videoId"
-            SLog.d("ResolveGate", "${com.streamify.app.util.Trace.pfx()}R-NP StreamInfo.getInfo($videoId)")
+            val dbPath = appContext?.getDatabasePath("streamify_universal.db")?.absolutePath ?: ""
+            SLog.d("ResolveGate", "${com.streamify.app.util.Trace.pfx()}R-RP NativeBridge.resolveStreamFormats($videoId)")
 
-            val info = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(url)
-
-            val durationSec = info.duration.toInt().coerceAtLeast(0)
-            val audioStreams = info.audioStreams ?: emptyList<org.schabi.newpipe.extractor.stream.AudioStream>()
-
-            // Perceptual pick: m4a AAC first for ExoPlayer friendliness, then opus,
-            // then anything; within same family prefer higher average bitrate.
-            val best = audioStreams
-                .filter { !it.content.isNullOrBlank() }
-                .maxByOrNull { stream ->
-                    val fmt = runCatching { stream.format }.getOrNull()
-                    val suffix = runCatching { fmt?.suffix }.getOrNull() ?: ""
-                    val family = when {
-                        suffix == "m4a" -> 2000
-                        suffix == "webm" || suffix == "opus" -> 1500
-                        else -> 500
-                    }
-                    val br = runCatching { stream.bitrate }.getOrDefault(0)
-                    family + br / 1000
-                }
-
-            if (best == null) {
-                SLog.w("ResolveGate", "${com.streamify.app.util.Trace.pfx()}R-NP OK status but zero usable audio streams")
+            val formats = com.streamify.app.data.NativeBridge.resolveStreamFormats(videoId, dbPath)
+            if (formats.isNullOrEmpty()) {
+                SLog.w("ResolveGate", "${com.streamify.app.util.Trace.pfx()}R-RP returned zero formats for $videoId")
                 return@withContext null
             }
 
-            val mime = when (runCatching { best.format?.suffix }.getOrNull()) {
-                "m4a" -> "audio/mp4"
-                "webm", "opus" -> "audio/webm"
-                else -> "audio/mpeg"
-            }
-            val bitrate = runCatching { best.bitrate }.getOrDefault(0)
-                .takeIf { it > 0 } ?: 128000
+            // Prefer highest bitrate audio-only format (Opus/m4a), fallback to any audio
+            val best = formats
+                .filter { it.mimeType.startsWith("audio/") }
+                .maxByOrNull { stream ->
+                    val family = when {
+                        stream.mimeType.contains("mp4") || stream.mimeType.contains("m4a") -> 2000
+                        stream.mimeType.contains("webm") || stream.mimeType.contains("opus") -> 1500
+                        else -> 500
+                    }
+                    family + stream.bitrate / 1000
+                } ?: formats.firstOrNull()
 
-            ResolvedStream(
-                streamUrl = best.content,
-                mimeType = mime,
-                bitrate = bitrate,
-                durationSec = durationSec,
-                loudnessDb = null
-            )
+            if (best == null || best.streamUrl.isBlank()) {
+                SLog.w("ResolveGate", "${com.streamify.app.util.Trace.pfx()}R-RP zero usable stream URLs in format set")
+                return@withContext null
+            }
+
+            best
         }
 
     private suspend fun raceClientEndpoints(videoId: String): ResolvedStream? = coroutineScope {

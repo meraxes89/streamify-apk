@@ -11,5 +11,5 @@ Session management and bulk import from YouTube Music.
 | `PlaylistLinkScraper.kt` | Scrapes playlist pages into `ScrapedPlaylist`/`ScrapedTrack`. |
 
 The heavy stream machinery (InnerTube racing, PO tokens, CDN decode)
-lives in `data/network/` and `util/newpipe/`; this package is only the
+lives in `data/network/` (with pure-Rust RustyPipe extraction in the Rust core); this package is only the
 YTM account/import surface.
