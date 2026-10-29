@@ -104,5 +104,26 @@ http3 = ["reqwest/http3"]
 # why mobile builds must not enable this.
 botguard = ["dep:rustypipe-botguard"]
 
+# ── Mobile targets: generate rquickjs-sys's QuickJS bindings at build
+# time. rustypipe's deobfuscation engine embeds QuickJS via rquickjs-sys,
+# which ships PREGENERATED bindings only for desktop triples
+# (aarch64/x86_64 unknown-linux-gnu|musl|apple-darwin, windows-msvc);
+# aarch64-linux-android and aarch64-apple-ios are absent and the crate
+# hard-fails with "couldn't find file .../bindings/<triple>.rs" unless
+# its `bindgen` feature generates them (bindgen-rs + the host's
+# libclang — present on the ubuntu-latest Android shard runners and the
+# macOS XCFramework runners). Target-gated so desktop builds keep using
+# the shipped bindings (no libclang requirement there), and cargo
+# feature unification propagates this to the single rquickjs-sys build
+# in the graph. ────────────────────────────────────────────────────
+[target.'cfg(target_os = "android")'.dependencies]
+rquickjs-sys = { version = "0.9", features = ["bindgen"] }
+
+# iOS slices of the XCFramework (aarch64-apple-ios) are equally absent
+# from the shipped bindings set. macOS slices keep the shipped
+# *-apple-darwin bindings.
+[target.'cfg(target_os = "ios")'.dependencies]
+rquickjs-sys = { version = "0.9", features = ["bindgen"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }
