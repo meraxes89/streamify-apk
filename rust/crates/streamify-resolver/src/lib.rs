@@ -15,6 +15,7 @@
 //! onto THAT runtime; redundant background runtimes are forbidden.
 
 pub mod aligner;
+pub mod continuum_engine;
 pub mod downloader;
 pub mod json;
 pub mod lyrics;
