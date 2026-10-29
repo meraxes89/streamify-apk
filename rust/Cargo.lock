@@ -3654,6 +3654,7 @@ dependencies = [
  "blake3",
  "futures-util",
  "hex",
+ "libc",
  "metrics",
  "rand 0.8.8",
  "rusqlite",

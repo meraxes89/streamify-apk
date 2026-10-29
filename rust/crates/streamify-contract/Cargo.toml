@@ -31,6 +31,7 @@ streamify-resolver = { workspace = true }
 # control-plane and metadata flows. The audio real-time data-plane keeps
 # the frozen JNI contract (see jni_bridge_dsp.cc, AMP-10).
 uniffi = { workspace = true, features = ["build"] }
+libc = { workspace = true }
 # Multiplatform Phase 3 (MP-C15, Alpha half): tracing + metrics façade
 # with per-platform subscribers (feature-gated target deps below).
 tracing = { workspace = true }
