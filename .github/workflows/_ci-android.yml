@@ -140,7 +140,7 @@ jobs:
           echo "Staged JNI libraries:"
           ls -lR app/src/main/jniLibs
 
-      - name: Decode release keystore (SEC-04: no debug-signing fallback)
+      - name: "Decode release keystore (SEC-04 — no debug-signing fallback)"
         if: inputs.release_mode
         env:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
