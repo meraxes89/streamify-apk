@@ -1,0 +1,106 @@
+# ============================================================================
+# codeql.yml — CodeQL static analysis, extracted from the retired
+# extreme-test-matrix.yml (audit trail: run #349 language-mode fix).
+#
+# Standalone by design: CodeQL results are NOT a Branch Protection required
+# check (only "CI Gate (Blocking)" is — resp6 §1), so an independent
+# pull_request/push trigger here cannot deadlock the merge queue. It merely
+# keeps the security scanning cadence the monolith had: every PR, every
+# push to main, and nightly.
+#
+# Language matrix (opposite extraction modes — the run #349 lesson):
+#   c-cpp       build-mode none. Source-level extraction: no NDK, no
+#               toolchain, fast at t=0.
+#   java-kotlin TRACED build. GitHub's buildless Java extractor does NOT
+#               process Kotlin, and this codebase is pure Kotlin — the
+#               traced path restores the JDK + Gradle compile for the
+#               extractor to trace.
+# ============================================================================
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql-analysis:
+    name: "CodeQL (${{ matrix.language }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            codeql-build-mode: none
+          - language: java-kotlin
+            # empty = unset = traced extraction (build-mode none is NOT
+            # valid for Kotlin sources — see header comment)
+            codeql-build-mode: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Android NDK & CMake
+        if: matrix.language == 'java-kotlin'
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+
+      - name: Setup Gradle
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Prepare RAM-backed CodeQL database directory
+        run: mkdir -p /dev/shm/codeql-db
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+          build-mode: ${{ matrix.codeql-build-mode }}
+          db-location: /dev/shm/codeql-db
+
+      - name: Manual build for CodeQL tracing
+        if: matrix.language == 'java-kotlin'
+        run: |
+          chmod +x gradlew
+          # Trace ONLY Kotlin/Java AST extraction: bypass C++ CMake, Rust
+          # cargo-ndk, and D8 dexing via -PskipExternalNativeBuild=true.
+          ./gradlew compileDebugKotlin compileDebugJavaWithJavac \
+            -PskipExternalNativeBuild=true \
+            -Pkotlin.incremental=false \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Dorg.gradle.jvmargs="-Xmx4608m -XX:+UseParallelGC -XX:MaxMetaspaceSize=1g" \
+            --build-cache --no-daemon \
+            --stacktrace
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+          threads: 0
+          ram: 6144

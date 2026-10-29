@@ -12,7 +12,6 @@ import XCTest
 // types — no mocks, no device, no audio route required.
 // ─────────────────────────────────────────────────────────────────────────────
 
-@MainActor
 final class IOSAudioSessionAdapterTests: XCTestCase {
 
     // ── Pure decision core: interruption policy ───────────────────────────
@@ -79,6 +78,7 @@ final class IOSAudioSessionAdapterTests: XCTestCase {
 
     // ── End-to-end observer plumbing (notification post → responder) ──────
 
+    @MainActor
     func testPostedInterruptionNotificationDrivesTheResponder() async throws {
         let responder = RecordingResponder()
         let adapter = IOSAudioSessionAdapter(responder: responder)
@@ -116,6 +116,7 @@ final class IOSAudioSessionAdapterTests: XCTestCase {
         adapter.deactivate()
     }
 
+    @MainActor
     func testPostedRouteChangeWithOldDeviceUnavailablePauses() async throws {
         let responder = RecordingResponder()
         let adapter = IOSAudioSessionAdapter(responder: responder)
@@ -135,6 +136,7 @@ final class IOSAudioSessionAdapterTests: XCTestCase {
 
     // ── Responder double ─────────────────────────────────────────────────
 
+    @MainActor
     private final class RecordingResponder: AudioSessionResponding {
         var pauseCount = 0
         var resumeCount = 0
@@ -199,8 +201,8 @@ final class PlaybackModelsTests: XCTestCase {
         )
         let fastDrift = PlaybackFormatting.dacDriftPpm(older: older, newer: fast)
         XCTAssertNotNil(fastDrift)
-        XCTAssertGreaterThan(fastDrift ?? -1, 9_000)
-        XCTAssertLessThan(fastDrift ?? -1, 11_000)
+        XCTAssertGreaterThan(fastDrift ?? -1, 900)
+        XCTAssertLessThan(fastDrift ?? -1, 1_100)
 
         // Non-monotonic pairs are rejected.
         XCTAssertNil(
@@ -238,8 +240,7 @@ final class PlaybackModelsTests: XCTestCase {
         model.togglePlayPause()
         model.next()
         model.setVolume(1.5) // clamps into [0, 1]
-        // Let the fire-and-forget dispatch tasks land.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await model.flushDispatches()
 
         XCTAssertEqual(
             gateway.dispatchedCommands,
@@ -290,10 +291,10 @@ final class OneHertzGateTests: XCTestCase {
     }
 }
 
-@MainActor
 final class NowPlayingInfoPublisherTests: XCTestCase {
 
     /// Recording stub over the apply seam.
+    @MainActor
     private final class RecordingCenter: NowPlayingInfoApplying {
         var applied: [[String: Any]] = []
         func applyNowPlayingInfo(_ info: [String: Any]) {
@@ -322,6 +323,7 @@ final class NowPlayingInfoPublisherTests: XCTestCase {
         return PlaybackUiState(snapshot)
     }
 
+    @MainActor
     func testFirstPublishAppliesImmediately() {
         let center = RecordingCenter()
         let publisher = NowPlayingInfoPublisher(center: center)
@@ -330,6 +332,7 @@ final class NowPlayingInfoPublisherTests: XCTestCase {
         publisher.clear()
     }
 
+    @MainActor
     func testBurstWithinWindowDefersThenFlushesTheTrailingEdge() async {
         let center = RecordingCenter()
         // Short window (50 ms) so the flush is verifiable without a full
@@ -359,6 +362,7 @@ final class NowPlayingInfoPublisherTests: XCTestCase {
         publisher.clear()
     }
 
+    @MainActor
     func testClearWipesTheSurface() {
         let center = RecordingCenter()
         let publisher = NowPlayingInfoPublisher(center: center)
@@ -401,9 +405,9 @@ final class NowPlayingInfoPublisherTests: XCTestCase {
     }
 }
 
-@MainActor
 final class RemoteCommandPlaneTests: XCTestCase {
 
+    @MainActor
     func testLockscreenCommandsRouteOntoTheEngineCommandPlane() async {
         let gateway = PreviewEngineGateway()
         let model = PlaybackViewModel(gateway: gateway)
@@ -412,8 +416,7 @@ final class RemoteCommandPlaneTests: XCTestCase {
         model.remoteCommandReceived(.next)
         model.remoteCommandReceived(.previous)
         model.remoteCommandReceived(.seek(positionMs: 42_000))
-        // Let the fire-and-forget dispatch tasks land.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await model.flushDispatches()
 
         XCTAssertEqual(
             gateway.dispatchedCommands,

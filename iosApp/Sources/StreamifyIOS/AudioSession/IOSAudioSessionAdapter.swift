@@ -47,6 +47,7 @@ enum AudioSessionDecision: Equatable, Sendable {
 
 /// Anything that can serve the adapter's playback reactions (the shell's
 /// PlaybackViewModel conforms; tests install a recording stub).
+@MainActor
 protocol AudioSessionResponding: AnyObject {
     func audioSessionRequestsPause(reason: String)
     func audioSessionRequestsResume(reason: String)
@@ -100,7 +101,7 @@ final class IOSAudioSessionAdapter: ObservableObject {
         options: AVAudioSession.InterruptionOptions = []
     ) -> [AnyHashable: Any] {
         [
-            AVAudioSessionInterruptionNotificationTypeKey: type.rawValue,
+            AVAudioSessionInterruptionTypeKey: type.rawValue,
             AVAudioSessionInterruptionOptionKey: options.rawValue,
         ]
     }
@@ -117,7 +118,7 @@ final class IOSAudioSessionAdapter: ObservableObject {
         _ userInfo: [AnyHashable: Any]?
     ) -> (type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions)? {
         guard let userInfo else { return nil }
-        guard let typeRaw = userInfo[AVAudioSessionInterruptionNotificationTypeKey] as? UInt,
+        guard let typeRaw = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeRaw) else { return nil }
         let optionsRaw = (userInfo[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
         let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)

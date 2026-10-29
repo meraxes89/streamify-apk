@@ -82,11 +82,15 @@ final class NowPlayingInfoPublisher {
     private let intervalNs: UInt64
 
     init(
-        center: NowPlayingInfoApplying = SystemNowPlayingInfoCenter(),
+        // Optional-with-nil-default: default arguments evaluate in a
+        // NONISOLATED context, so constructing the @MainActor
+        // SystemNowPlayingInfoCenter there would not compile. The fallback
+        // runs inside this isolated init body instead.
+        center: NowPlayingInfoApplying? = nil,
         clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
         intervalNs: UInt64 = OneHertzGate.intervalNs
     ) {
-        self.center = center
+        self.center = center ?? SystemNowPlayingInfoCenter()
         self.clock = clock
         self.intervalNs = intervalNs
         self.gate = OneHertzGate(intervalNs: intervalNs)
