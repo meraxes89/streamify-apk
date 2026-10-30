@@ -107,31 +107,6 @@ struct MiniPlayerView: View {
     }
 }
 
-struct VolumeSliderView: View {
-    let volume: Double
-    let onVolumeChange: (Double) -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                // Mute toggle round-trips through the engine (command out,
-                // pushed snapshot back) — never local echo.
-                onVolumeChange(volume > 0 ? 0 : 0.8)
-            } label: {
-                Image(systemName: volume <= 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(volume <= 0 ? StreamifyTheme.primary : StreamifyTheme.textSecondary)
-            }
-            .buttonStyle(.plain)
-
-            Slider(value: Binding(
-                get: { min(max(volume, 0), 1) },
-                set: { onVolumeChange($0) }
-            ))
-
-            Text("\(Int((min(max(volume, 0), 1) * 100).rounded()))%")
-                .font(.system(size: 11).monospacedDigit())
-                .foregroundColor(StreamifyTheme.textTertiary)
-        }
-    }
-}
+// VolumeSliderView now lives in Components/Common/MiniPlayerBar.swift (the
+// SW-ENG2-09 port); this legacy view is replaced by MiniPlayerBar when the
+// adaptive shell (SW-ENG2-02) lands.
