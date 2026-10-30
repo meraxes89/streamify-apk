@@ -41,6 +41,11 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     /// the in-app UI.
     private(set) var remoteCommands: RemoteCommandCenterAdapter!
 
+    /// SW-ENG3-06: the widget plane mirror — the snapshot store refresh +
+    /// the intent mailbox drain, both riding the engine push cadence (the
+    /// 1 Hz collect loop: exactly the cadence the mailbox was designed for).
+    private let widgetRefresher: WidgetPlaybackRefresher?
+
     private var collectTask: Task<Void, Never>?
     private var dispatchChain: Task<Void, Never>?
 
@@ -53,7 +58,8 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
         // there is a compile error. The fallback constructs on the main
         // actor, inside this isolated init body.
         nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil,
-        remoteCommandWindowNs: UInt64 = MediaCommandDebouncePolicy.defaultWindowNs
+        remoteCommandWindowNs: UInt64 = MediaCommandDebouncePolicy.defaultWindowNs,
+        widgetRefresher: WidgetPlaybackRefresher? = nil
     ) {
         self.gateway = gateway
         self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
@@ -63,6 +69,7 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
             router: self,
             windowNs: remoteCommandWindowNs
         )
+        self.widgetRefresher = widgetRefresher ?? WidgetPlaybackRefresher()
     }
 
     /// Cold-start hydration + push-flow collection. Idempotent.
@@ -81,11 +88,23 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
             if let seeded = await self.gateway.currentSnapshot() {
                 self.state = PlaybackUiState(seeded)
                 self.nowPlayingInfo.publish(state: self.state)
+                await self.mirrorWidgetPlane()
             }
             for await snapshot in self.gateway.snapshots {
                 self.state = PlaybackUiState(snapshot)
                 self.nowPlayingInfo.publish(state: self.state)
+                await self.mirrorWidgetPlane()
             }
+        }
+    }
+
+    /// SW-ENG3-06: mirrors the state into the widget store (fingerprint-
+    /// gated: zero I/O on unchanged rendered values) and drains the widget
+    /// / intent / menu-bar command mailbox onto the shared command plane.
+    private func mirrorWidgetPlane() async {
+        await widgetRefresher?.refresh(state: state)
+        widgetRefresher?.drainCommands { [weak self] command in
+            self?.remoteCommandReceived(command)
         }
     }
 
