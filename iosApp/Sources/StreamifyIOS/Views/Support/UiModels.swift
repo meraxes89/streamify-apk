@@ -517,6 +517,62 @@ public struct JamPeer: Identifiable, Hashable, Sendable {
 // NOTE: EqualizerBand lives in ViewModels/Support/PresentationModels.swift
 // (Engineer 4's lane, merged from main) — the single canonical band type.
 
+// MARK: - Equalizer / DSP (audiophile surfaces)
+
+    public var frequencyLabel: String {
+        freqHz >= 1_000 ? "\(Int(freqHz / 1_000)) kHz" : "\(freqHz) Hz"
+    }
+}
+
+public struct EqualizerPreset: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let gainsDb: [Double]
+
+    public init(id: String, name: String, gainsDb: [Double]) {
+        self.id = id
+        self.name = name
+        self.gainsDb = gainsDb
+    }
+}
+
+/// "Audio Quality & DSP" settings model (Android DspPreferences):
+/// LUFS normalization, gapless, crossfade, mono/balance, true-peak limiter.
+public struct DspPreferences: Hashable, Sendable {
+    public var loudnessNormalization: Bool
+    /// EBU R128 target: −23.0 … −11.0 LUFS (default −14.0).
+    public var targetLufs: Double
+    public var gaplessPlayback: Bool
+    /// 0 … 12 s.
+    public var crossfadeSeconds: Double
+    public var monoOutput: Bool
+    /// −100 … +100 %.
+    public var stereoBalance: Double
+    /// −1.0 … 0.0 dBFS ceiling.
+    public var truePeakDb: Double
+
+    public init(
+        loudnessNormalization: Bool = true,
+        targetLufs: Double = -14.0,
+        gaplessPlayback: Bool = true,
+        crossfadeSeconds: Double = 0,
+        monoOutput: Bool = false,
+        stereoBalance: Double = 0,
+        truePeakDb: Double = -1.0
+    ) {
+        self.loudnessNormalization = loudnessNormalization
+        self.targetLufs = targetLufs
+        self.gaplessPlayback = gaplessPlayback
+        self.crossfadeSeconds = crossfadeSeconds
+        self.monoOutput = monoOutput
+        self.stereoBalance = stereoBalance
+        self.truePeakDb = truePeakDb
+    }
+
+    public static let `default` = DspPreferences()
+}
+
+
 // MARK: - Downloads
 
 public enum DownloadState: Hashable, Sendable {

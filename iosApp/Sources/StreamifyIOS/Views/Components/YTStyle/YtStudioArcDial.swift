@@ -166,7 +166,7 @@ private struct ArcDialDemo: View {
         YtStudioArcDial(
             value: $gain,
             range: -12...12,
-            label: "\(PreviewCatalog.eqBands[0].frequencyLabel) band gain"
+            label: "\(PreviewCatalog.eqBandsDb[0].label) band gain"
         )
     }
 }
