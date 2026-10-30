@@ -67,7 +67,11 @@ struct QueueView: View {
         }
         .background(StreamifyTheme.bgBase)
         .navigationTitle("Queue")
+        #if os(iOS)
+        // macOS navigation titles are inline by construction — the
+        // display-mode modifier is an iOS-only spelling.
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     private var list: some View {
