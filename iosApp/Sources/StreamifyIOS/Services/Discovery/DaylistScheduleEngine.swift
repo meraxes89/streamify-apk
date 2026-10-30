@@ -311,7 +311,7 @@ actor DaylistScheduleEngine {
     ) async -> [DaylistTrack] {
         let queries = DaylistTimeBuckets.moodQueries(for: bucket, topArtists: topArtists)
         // Concurrent harvest across the mood pools (structured fan-out).
-        await withTaskGroup(of: [DaylistTrack].self) { group in
+        return await withTaskGroup(of: [DaylistTrack].self) { group in
             for query in queries {
                 group.addTask { [trackSearcher] in
                     let rows = await trackSearcher(query, Self.maxPerQuery)

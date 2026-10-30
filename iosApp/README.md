@@ -29,19 +29,43 @@ iosApp/
 │   │                                            RemoteCommandAdapter (MP-UI01)
 │   ├── Engine/
 │   │   ├── EngineGateway.swift            the seam protocol (Swift mirror of EnginePort)
+│   │   │                                  + the SW-ENG1-04 typed data lane
+│   │   ├── EngineContract.swift           lane-neutral Engine* mirrors of the SW-ENG1-03
+│   │   │                                  UniFFI records (Track/SearchResult/QueueItem/
+│   │   │                                  EqualizerBand/JamRoomState)
 │   │   ├── UniFFIEngineGateway.swift      #if canImport(uniffi_streamify) — the REAL lane
+│   │   │                                  (single-stream push bridge + typed lane mapping)
 │   │   ├── EngineGatewayLoader.swift      one-place lane selection
-│   │   └── PreviewEngineGateway.swift     always-available deterministic stand-in
+│   │   ├── PreviewEngineGateway.swift     always-available deterministic stand-in with
+│   │   │                                  the full typed data lane over a fixture catalog
+│   │   └── Generated/                     (gitignored) probe-gated uniffi_streamify.swift
+│   │                                      emitted by scripts/build_ios_xcframework.sh
+│   ├── Services/                          SW-ENG1-05..08 native data services
+│   │   ├── Auth/AppleKeychainStore.swift  Security.framework token vault
+│   │   │                                  (EncryptedSharedPreferences successor)
+│   │   ├── Storage/BackgroundDownloadService.swift  background URLSession downloads
+│   │   │                                  with resume-data persistence + recovery
+│   │   ├── Discovery/DaylistScheduleEngine.swift  circadian daylist port + AntiDrift
+│   │   │                                  scoring core (SW-ENG1-07)
+│   │   └── Network/CanvasScraperService.swift    canvas loops + artist clips fleet
+│   │                                      scraper with in-memory SWR caches (SW-ENG1-06)
 │   ├── AudioSession/
-│   │   └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below)
+│   │   └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below; iOS lane
+│   │                                      real, macOS same-API no-op fallback)
 │   └── Views/
 │       ├── MiniPlayerView.swift         mini player + volume control (SwiftUI)
 │       └── QueueView.swift              the native queue surface (Swift mirror of
 │                                         the shared QueueList — now-playing / up-next
 │                                         projection, honest empty state)
+├── Frameworks/                            (gitignored) StreamifyCore.xcframework lands
+│                                          here via --output iosApp/Frameworks to light
+│                                          the real lane up
 └── Tests/StreamifyIOSTests/
-    └── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
-                                            1 Hz gate / lockscreen / queue suites
+    ├── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
+    │                                      1 Hz gate / lockscreen / queue suites
+    └── EngineTests/UniFFIContractTests.swift  SW-ENG1-03/04 contract tests: real-lane
+                                           FFI round-trips (probe-gated) + always-on
+                                           typed-lane/daylist/anti-drift/parser suites
 ```
 
 ## The 1 Hz lockscreen / now-playing discipline (MP-UI01)
