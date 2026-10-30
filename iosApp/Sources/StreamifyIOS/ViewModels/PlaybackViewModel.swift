@@ -93,8 +93,10 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
             if let seeded = await self.gateway.currentSnapshot() {
                 self.ingest(seeded)
             }
+            // The VM is app-lifetime (root environment); holding self for
+            // the stream's duration is intended — the loop ends when the
+            // gateway's snapshot stream finishes.
             for await snapshot in self.gateway.snapshots {
-                guard let self else { return }
                 self.ingest(snapshot)
             }
         }

@@ -24,7 +24,7 @@ final class CommunityViewModel {
     private(set) var state: State = .idle
     private(set) var isRefreshing = false
 
-    private var loadTask: Task<Void, Never>?
+    nonisolated(unsafe) private var loadTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
 

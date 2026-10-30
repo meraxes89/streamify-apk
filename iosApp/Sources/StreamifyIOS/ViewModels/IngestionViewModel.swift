@@ -18,7 +18,7 @@ final class IngestionViewModel {
 
     private(set) var tasks: [IngestionTask] = []
 
-    private var collectTask: Task<Void, Never>?
+    nonisolated(unsafe) private var collectTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
 

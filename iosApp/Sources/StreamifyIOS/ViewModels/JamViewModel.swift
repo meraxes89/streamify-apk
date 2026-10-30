@@ -44,7 +44,7 @@ final class JamViewModel {
     private(set) var room: JamRoomSnapshot?
 
     private var lastRev = 0
-    private var collectTask: Task<Void, Never>?
+    nonisolated(unsafe) private var collectTask: Task<Void, Never>?
 
     // ── Nearby-room discovery (BLE beacon projection) ──────────────────────
 

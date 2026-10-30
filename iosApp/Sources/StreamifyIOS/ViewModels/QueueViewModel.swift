@@ -27,7 +27,7 @@ final class QueueViewModel {
     private(set) var autoMixEnabled = true
 
     private(set) var lastRev = 0
-    private var collectTask: Task<Void, Never>?
+    nonisolated(unsafe) private var collectTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
 

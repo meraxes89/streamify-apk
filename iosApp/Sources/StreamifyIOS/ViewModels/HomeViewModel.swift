@@ -28,7 +28,7 @@ final class HomeViewModel {
     /// The circadian slot for the current hour (drives the hero section).
     private(set) var circadianSlot: CircadianSlot = .lateNight
 
-    private var loadTask: Task<Void, Never>?
+    nonisolated(unsafe) private var loadTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
 

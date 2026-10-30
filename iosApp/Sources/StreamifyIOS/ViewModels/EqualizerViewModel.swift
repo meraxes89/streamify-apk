@@ -30,7 +30,7 @@ final class EqualizerViewModel {
 
     private let library: any FeatureLibrary
     private let settings: SettingsStore
-    private var applyTask: Task<Void, Never>?
+    nonisolated(unsafe) private var applyTask: Task<Void, Never>?
 
     /// The preview sample rate (canonical 48 kHz internal DSP).
     static let previewSampleRateHz: Double = 48_000

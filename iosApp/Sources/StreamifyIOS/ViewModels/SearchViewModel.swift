@@ -41,9 +41,9 @@ final class SearchViewModel {
     /// Test seam: debounce interval (nanoseconds).
     let debounceIntervalNs: UInt64
 
-    private var searchTask: Task<Void, Never>?
-    private var suggestTask: Task<Void, Never>?
-    private var historyCommitTask: Task<Void, Never>?
+    nonisolated(unsafe) private var searchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var suggestTask: Task<Void, Never>?
+    nonisolated(unsafe) private var historyCommitTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
     private let settings: SettingsStore

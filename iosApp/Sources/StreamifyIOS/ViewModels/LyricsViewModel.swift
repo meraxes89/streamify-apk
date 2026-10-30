@@ -27,7 +27,7 @@ final class LyricsViewModel {
     let pacer = LyricPacerService()
 
     private let library: any FeatureLibrary
-    private var fetchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var fetchTask: Task<Void, Never>?
 
     init(library: any FeatureLibrary = AppServices.library) {
         self.library = library

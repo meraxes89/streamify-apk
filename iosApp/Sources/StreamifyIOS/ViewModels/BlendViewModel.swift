@@ -27,7 +27,7 @@ final class BlendViewModel {
     /// an identical request never regenerates an existing result.
     private var generatedKey: String?
 
-    private var generateTask: Task<Void, Never>?
+    nonisolated(unsafe) private var generateTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
 
