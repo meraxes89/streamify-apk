@@ -98,7 +98,7 @@ public struct WaveformProgressSlider: View {
                 context.stroke(
                     head,
                     with: .color(StreamifyColors.activeControl),
-                    style: PathStrokeStyle(lineWidth: 1.5, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
                 )
             }
             .frame(height: StreamifyDimens.miniPlayerHeight * 0.72)
@@ -157,7 +157,7 @@ public struct WaveformProgressSlider: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard let durationUs, durationUs > 0 else { return }
-                guard let width = Self.trackedWidthHint, width > 0 else { return }
+                guard let width = trackedWidthHint, width > 0 else { return }
                 let raw = Double(value.location.x)
                 // Microsecond target: round to 1 μs — the drag resolution
                 // floor at typical widths is ~100 ns per pixel.

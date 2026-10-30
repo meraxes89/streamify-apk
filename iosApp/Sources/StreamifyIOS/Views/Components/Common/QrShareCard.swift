@@ -226,21 +226,23 @@ private struct AudioWaveStrip: View {
 
     var body: some View {
         Canvas { context, size in
-            let bars = 24.0
-            let gap = size.width / (bars * 1.6)
-            let barWidth = (size.width - gap * (bars - 1)) / bars
+            // Coherent CGFloat locals: the Double↔CGFloat implicit-conversion
+            // overloads make mixed '/' expressions ambiguous.
+            let bars: CGFloat = 24
+            let gap: CGFloat = size.width / (bars * 1.6)
+            let barWidth: CGFloat = (size.width - gap * (bars - 1)) / bars
             let seedValue = Double(seedHash(seed) % 97) / 97.0
             for i in 0..<Int(bars) {
                 let mix = abs(
                     sin(Double(i) * 1.7 + seedValue * 6.28)
                     + 0.5 * sin(Double(i) * 0.6 + seedValue * 3.1)
                 ) / 1.5
-                let height = size.height * (0.22 + 0.62 * mix)
-                let x = Double(i) * Double(barWidth + gap)
+                let height: CGFloat = size.height * (0.22 + 0.62 * CGFloat(mix))
+                let x: CGFloat = CGFloat(i) * (barWidth + gap)
                 let rect = CGRect(
                     x: x,
                     y: (size.height - height) / 2,
-                    width: Double(barWidth),
+                    width: barWidth,
                     height: height
                 )
                 context.fill(

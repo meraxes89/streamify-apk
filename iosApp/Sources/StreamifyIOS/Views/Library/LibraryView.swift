@@ -152,12 +152,13 @@ public struct LibraryView: View {
 
     private var derivedAlbums: [VirtualShelfTrack] {
         let presentArtists = Set(likedTracks.map(\.artist))
-        return [
+        let catalog: [(name: String, artist: String)] = [
             ("Meridian", "Aurora Nine"),
             ("Obsidian Sunrise", "Sireen"),
             ("Neon Hallway", "Vetra"),
             ("48k Meridian", "DAC Kingsley"),
         ]
+        return catalog
         .filter { presentArtists.contains($0.artist) }
         .map { VirtualShelfTrack(id: "album-\($0.name)", title: $0.name, artist: $0.artist, durationSec: 0) }
     }

@@ -117,7 +117,7 @@ private struct JamMeshRadar: View {
                     }
                     let count = max(peers.count, 1)
                     for (index, peer) in peers.enumerated() {
-                        let angle = Double(stableHash(peer.id) % 360) + Double(index) * 7.0 / Double(count)
+                        let angle = Double(Self.stableHash(peer.id) % 360) + Double(index) * 7.0 / Double(count)
                         let radians = angle * .pi / 180
                         let fraction: CGFloat = peer.rttMs <= 50 ? 0.36 : (peer.rttMs <= 150 ? 0.68 : 0.94)
                         let px = center.x + maxR * fraction * CGFloat(cos(radians))

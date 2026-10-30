@@ -39,8 +39,14 @@ public struct QuantumSonicTokenOverlay: View {
             TimelineView(
                 .animation(minimumInterval: 1.0 / 120.0, paused: controller.stage != .flying)
             ) { context in
-                let frame = stepPose(context.date, in: proxy.size)
-                tokenScene(frame, in: proxy.size)
+                // TimelineView's render closure is nonisolated; the token
+                // controller is @MainActor (the 120 Hz pose producer).
+                // SwiftUI renders TimelineView content on the main thread —
+                // assume the actor and step the physics there.
+                MainActor.assumeIsolated {
+                    let frame = stepPose(context.date, in: proxy.size)
+                    tokenScene(frame, in: proxy.size)
+                }
             }
         }
         .allowsHitTesting(false)
