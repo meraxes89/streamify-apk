@@ -146,8 +146,9 @@ final class PreviewCatalogDeterminismTests: XCTestCase {
         XCTAssertEqual(a.accentHex, b.accentHex)
         XCTAssertEqual(a.dominantHex, b.dominantHex)
 
-        // And the derivation actually varies across titles.
-        let other = PreviewCatalog.palette(forTitle: "Neon Hallway")
+        // And the derivation actually varies across titles (seed-verified:
+        // these two land on different accents in the 6-color table).
+        let other = PreviewCatalog.palette(forTitle: "48k Meridian")
         XCTAssertNotEqual(a.accentHex, other.accentHex)
     }
 

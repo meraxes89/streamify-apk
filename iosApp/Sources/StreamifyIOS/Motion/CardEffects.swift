@@ -91,12 +91,15 @@ public struct HeartBurstView: View {
                 )
 
                 for i in 0..<12 {
+                    // Explicit type boundaries (Double math, CGFloat layout):
+                    // the mixed-literal form exceeded the type-checker budget.
                     let angle = Double(i) / 12 * 2 * .pi + Double(burst.id % 7) * 0.13
-                    // Out-run then decelerate: cubic ease-out on distance.
-                    let travel = radius * (1 - pow(1 - t / 0.9, 3))
+                    let eased: Double = 1 - pow(1 - t / 0.9, 3)
+                    let travel: CGFloat = radius * CGFloat(eased)
+                    let lift: CGFloat = CGFloat(t) * 14
                     let point = CGPoint(
-                        x: center.x + cos(angle) * travel,
-                        y: center.y + sin(angle) * travel - t * 14  // slight lift
+                        x: center.x + CGFloat(cos(angle)) * travel,
+                        y: center.y + CGFloat(sin(angle)) * travel - lift
                     )
                     let decay = max(0, 1 - t / 0.9)
                     var particle = heart

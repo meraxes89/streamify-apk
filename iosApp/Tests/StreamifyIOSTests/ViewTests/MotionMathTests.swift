@@ -39,7 +39,8 @@ final class GestureSpringSolverTests: XCTestCase {
         let instant = GestureSpringSolver.solveSnap(progress: 1.0, velocityPerSec: 0)
         XCTAssertEqual(instant.settleDurationMs, 0, "already at target")
 
-        let distant = GestureSpringSolver.solveSnap(progress: 0.0, velocityPerSec: 0)
+        // 0.2 of the way open, released dead: ~302 ms on the settle spring.
+        let distant = GestureSpringSolver.solveSnap(progress: 0.2, velocityPerSec: 0)
         XCTAssertTrue((80...1_200).contains(distant.settleDurationMs))
     }
 

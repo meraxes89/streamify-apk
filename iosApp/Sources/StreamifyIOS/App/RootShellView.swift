@@ -217,7 +217,15 @@ public struct RootShellView: View {
 
     private var splitShell: some View {
         NavigationSplitView {
-            List(selection: $sidebarSection) {
+            // iOS's List selection init takes an OPTIONAL Hashable binding
+            // (the non-optional variant is macOS-only) — bridge it; the
+            // tap-set value is never nil in practice.
+            List(selection: Binding<SidebarSection?>(
+                get: { sidebarSection },
+                set: { tapped in
+                    if let tapped { sidebarSection = tapped }
+                }
+            )) {
                 Section("Listen") {
                     sidebarLabel(.home)
                     sidebarLabel(.search)
@@ -280,7 +288,8 @@ public struct RootShellView: View {
         case .updates: UpdatesHubView()
         case .community: CommunityHubView()
         case .wrapped: StatsWrappedView()
-        case .blend: BlendView()
+        case .blend:
+            BlendView(onPlayTrack: { play(track: $0) })
         case .profileSelection: ProfileSelectionView()
         case .admin: AdminDashboardView()
         case .diagnostics: DiagnosticsView()
@@ -444,7 +453,7 @@ public struct RootShellView: View {
             CommunityHubView()
 
         case .blend:
-            BlendView()
+            BlendView(onPlayTrack: { play(track: $0) })
 
         case .jam:
             jamScreen
