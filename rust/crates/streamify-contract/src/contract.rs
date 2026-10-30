@@ -77,6 +77,21 @@ use streamify_jam::jam_crdt::{JamCrdtState, JamOp, JAM_OP_SIZE};
 
 use streamify_core::media_command_key;
 
+// SW-ENG1-03: hard bound on the engine's typed playback queue. The
+// queue is an in-engine staging surface (the CRDT is the sovereign
+// shared-queue currency for Jam rooms); the cap bounds the Vec's
+// memory so a runaway foreign loop cannot grow it unbounded. 10 000
+// rows is ~50x beyond any interactive session's working set.
+const MAX_QUEUE_ROWS: usize = 10_000;
+
+/// One staged row of the engine's typed playback queue (interior;
+/// the FFI lane reads it back as [`QueueItem`] with the row's index).
+#[derive(Debug, Clone)]
+struct QueuedTrack {
+    track: Track,
+    enqueued_by: String,
+}
+
 // Re-export the contract's data types from their canonical home in
 // streamify-core (Discussion #120): the UniFFI scaffolding resolves
 // every UDL-declared type by bare name through these re-exports, and
@@ -85,9 +100,10 @@ use streamify_core::media_command_key;
 pub use streamify_core::{
     contract_version, AudioErrorKind, AudioStreamConfig, BufferStats, CryptoErrorKind,
     DacPresentationClock, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE, EngineError,
-    EngineSnapshot, JamSessionHandle, JamSyncResult, MAX_JAM_DELTA_BYTES,
-    MAX_JAM_SESSION_NAME_BYTES, MediaCommand, MEDIA_COMMAND_DEBOUNCE_MS, NetworkErrorKind,
-    PlaybackState, StorageErrorKind, TrackMetadata, CONTRACT_VERSION,
+    EngineSnapshot, EqualizerBand, JamRoomState, JamSessionHandle, JamSyncResult,
+    MAX_JAM_DELTA_BYTES, MAX_JAM_SESSION_NAME_BYTES, MediaCommand, MEDIA_COMMAND_DEBOUNCE_MS,
+    NetworkErrorKind, PlaybackState, PlaylistSummary, QueueItem, SearchResult, StorageErrorKind,
+    Track, TrackMetadata, CONTRACT_VERSION, EQUALIZER_BAND_COUNT,
 };
 
 
@@ -223,6 +239,14 @@ struct EngineShared {
     /// Debounce slot for the reverse media plane (MP-C03): the last
     /// ACCEPTED command's identity and acceptance instant.
     last_media_command: Mutex<Option<(u8, u64, Instant)>>,
+    // ── SW-ENG1-03: the typed catalog lane's interior state ──────────
+    /// The staged playback queue (typed lane). Read-snapshotted under
+    /// one lock; NOT part of the pushed EngineSnapshot (that shape is
+    /// frozen — see the UDL note on the typed catalog lane).
+    queue: Mutex<Vec<QueuedTrack>>,
+    /// The ten-band equalizer curve. Starts at the flat preset; band
+    /// writes replace one row under the same lock.
+    eq_bands: Mutex<Vec<EqualizerBand>>,
 }
 
 impl fmt::Debug for EngineShared {
@@ -281,6 +305,8 @@ impl EngineShared {
             listeners: Mutex::new(Vec::new()),
             dispatch_tx: OnceLock::new(),
             last_media_command: Mutex::new(None),
+            queue: Mutex::new(Vec::new()),
+            eq_bands: Mutex::new(EqualizerBand::default_set()),
         }
     }
 
@@ -948,6 +974,170 @@ impl StreamifyEngine {
                 backtrace: None,
             })?;
             Ok(canonical_jam_state_hash(&session.crdt))
+        })
+    }
+
+    // ── SW-ENG1-03: the typed catalog lane (queue / equalizer / jam) ──
+
+    /// Append one track to the engine's staged playback queue.
+    ///
+    /// Returns the row's index (its position at insert time). A blank
+    /// `enqueued_by` is normalized to `"local"`; the row cap
+    /// ([`MAX_QUEUE_ROWS`]) is rejected as `Internal` BEFORE any state
+    /// is touched. Lock poisoning is recovered from (house rule), so a
+    /// panicked writer never takes the queue out.
+    ///
+    /// Deliberately does NOT bump the push revision: the frozen
+    /// `EngineSnapshot` carries playback lifecycle state, not queue
+    /// pages — a rev bump without queue content would be noise, and
+    /// queue surfaces re-read after their own mutations (the UDL's
+    /// typed-catalog-lane note).
+    pub fn enqueue_track(
+        &self,
+        track: Track,
+        enqueued_by: String,
+    ) -> Result<u32, EngineError> {
+        ffi_shield("StreamifyEngine::enqueue_track", move || {
+            let mut queue = self
+                .shared
+                .queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if queue.len() >= MAX_QUEUE_ROWS {
+                return Err(EngineError::Internal {
+                    error_message: format!(
+                        "invalid state: playback queue at the {MAX_QUEUE_ROWS}-row cap"
+                    ),
+                    backtrace: None,
+                });
+            }
+            let by = if enqueued_by.trim().is_empty() {
+                "local".to_string()
+            } else {
+                enqueued_by
+            };
+            let index = queue.len() as u32;
+            queue.push(QueuedTrack { track, enqueued_by: by });
+            Ok(index)
+        })
+    }
+
+    /// Read the whole staged queue as one consistent page.
+    ///
+    /// One lock acquisition covers the whole mapping, so the returned
+    /// indices are gapless 0..n and every row belongs to the same
+    /// generation (a concurrent enqueue either landed before the read —
+    /// visible — or after — absent; never torn).
+    pub fn get_queue(&self) -> Result<Vec<QueueItem>, EngineError> {
+        ffi_shield("StreamifyEngine::get_queue", move || {
+            let queue = self
+                .shared
+                .queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Ok(queue
+                .iter()
+                .enumerate()
+                .map(|(index, row)| QueueItem {
+                    index: index as u32,
+                    track: row.track.clone(),
+                    enqueued_by: row.enqueued_by.clone(),
+                })
+                .collect())
+        })
+    }
+
+    /// Drop every staged queue row (idempotent; an empty queue is a
+    /// success path, not an error).
+    pub fn clear_queue(&self) -> Result<(), EngineError> {
+        ffi_shield("StreamifyEngine::clear_queue", move || {
+            self.shared
+                .queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clear();
+            Ok(())
+        })
+    }
+
+    /// The current ten-band equalizer curve.
+    ///
+    /// Starts at the flat preset (`EqualizerBand::default_set`: the
+    /// octave-spaced centers pinned by the DSP crate, 0 dB, Butterworth
+    /// Q). The returned Vec is a clone under one lock — internally
+    /// consistent by construction.
+    pub fn get_equalizer_bands(&self) -> Result<Vec<EqualizerBand>, EngineError> {
+        ffi_shield("StreamifyEngine::get_equalizer_bands", move || {
+            let bands = self
+                .shared
+                .eq_bands
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Ok(bands.clone())
+        })
+    }
+
+    /// Overwrite one band of the equalizer curve.
+    ///
+    /// Validation ([`EqualizerBand::validate`]) rejects an index outside
+    /// 0..[`EQUALIZER_BAND_COUNT`], non-finite floats and non-positive Q
+    /// as `Internal` before any state is touched. The stored band keeps
+    /// the caller's frequency/Q (a foreign surface may tune them); the
+    /// band INDEX is authoritative for which row is replaced.
+    pub fn set_equalizer_band(&self, band: EqualizerBand) -> Result<(), EngineError> {
+        ffi_shield("StreamifyEngine::set_equalizer_band", move || {
+            band.validate()?;
+            let mut bands = self
+                .shared
+                .eq_bands
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let slot = bands
+                .iter_mut()
+                .find(|b| b.band_index == band.band_index)
+                // default_set() is gapless 0..10 and validate() rejected
+                // out-of-range indices, so the slot always exists; the
+                // fallback is belt-and-braces against future preset drift.
+                .ok_or_else(|| EngineError::Internal {
+                    error_message: format!(
+                        "invalid state: equalizer slot {} missing from the preset",
+                        band.band_index
+                    ),
+                    backtrace: None,
+                })?;
+            *slot = band;
+            Ok(())
+        })
+    }
+
+    /// Presentation state of the engine's active Jam room
+    /// (SW-ENG1-03).
+    ///
+    /// `room_code` is the session name the host minted; `is_host` is
+    /// true because the local replica that minted the room is by
+    /// definition its host (a joined guest replica arrives with the
+    /// mesh lane and will carry its own flag); `sync_offset_ms` is 0.0
+    /// until the PTP Kalman-PLL offset crosses this contract;
+    /// `participants` starts with the local replica's label and grows
+    /// with the mesh roster. Requires a live session (`Internal`
+    /// otherwise — same contract as `get_jam_state_hash`).
+    pub fn get_jam_room_state(&self) -> Result<JamRoomState, EngineError> {
+        ffi_shield("StreamifyEngine::get_jam_room_state", move || {
+            let guard = self
+                .shared
+                .jam
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let session = guard.as_ref().ok_or_else(|| EngineError::Internal {
+                error_message: "invalid state: no live Jam session for room state".to_string(),
+                backtrace: None,
+            })?;
+            Ok(JamRoomState {
+                room_code: session.session_name.clone(),
+                is_host: true,
+                sync_offset_ms: 0.0,
+                participants: vec![format!("local:{}", session.session_id)],
+            })
         })
     }
 

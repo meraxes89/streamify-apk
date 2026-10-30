@@ -1,0 +1,34 @@
+# gitleaks configuration — extends the full default rule set, with ONE
+# narrowly-scoped, documented exception.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ALLOWLISTED: the YouTube Music PUBLIC InnerTube web-client key
+#   AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk
+#
+# Why this is not a secret:
+#   * It is the client identifier music.youtube.com ships to EVERY browser
+#     (visible in any YTM web-client network trace, documented across the
+#     public InnerTube-ecosystem clients).
+#   * InnerTube is NOT a billable Google Cloud API: the key grants no
+#     privileges, has no quota owner to abuse, and cannot be "leaked" in
+#     any meaningful sense — it ships in the client.
+#   * The SAME key has been committed on main since the Kotlin scrapers
+#     landed (CanvasScraperApi.kt / ArtistClipsApi.kt); the default
+#     gcp-api-key rule only flagged the NEW Swift port because gitleaks
+#     scans the PR diff, not history.
+#
+# Scope: the allowlist matches the exact key string only. It is referenced
+# once, as a documented constant (InnerTubeFleet.innertubeWebClientKey).
+# Every other default rule stays fully active.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[extend]
+useDefault = true
+
+[allowlist]
+id = "public-innertube-web-client-key"
+description = "YouTube Music's public InnerTube web-client key (ships in every YTM web client; not a GCP credential — see header above)"
+regexTarget = "match"
+regexes = [
+    '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
+]

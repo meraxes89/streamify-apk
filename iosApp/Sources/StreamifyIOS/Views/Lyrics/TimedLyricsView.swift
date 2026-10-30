@@ -40,7 +40,11 @@ struct TimedLyricsView: View {
             }
             .background(StreamifyTheme.bgBase)
             .navigationTitle("Lyrics")
+            #if os(iOS)
+            // navigationBarTitleDisplayMode is iOS-only;
+            // macOS titles are inline by construction.
             .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
         .onAppear {
             if lyricsModel == nil {

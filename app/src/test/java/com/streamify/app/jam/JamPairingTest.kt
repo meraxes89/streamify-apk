@@ -118,18 +118,25 @@ class JamPairingTest {
                     com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M
             )
         )
-        // Render the BitMatrix into ARGB pixels with a 1-module quiet zone.
+        // Render the BitMatrix into ARGB pixels. The QR spec mandates a
+        // >=4-module quiet zone; the encoder was asked for MARGIN 0 (the
+        // Compose widget draws its own padding), so the renderer supplies
+        // the full 4-module border itself. A thinner border let random
+        // high-density key patterns defeat the HybridBinarizer's finder
+        // detection intermittently (zxing NotFoundException) — a 1-in-N
+        // flake that surfaced in CI.
         val n = matrix.width
         val scale = 8
-        val dim = (n + 2) * scale
+        val quietZone = 4
+        val dim = (n + 2 * quietZone) * scale
         val pixels = IntArray(dim * dim) { androidColor(255, 255, 255) }
         for (y in 0 until n) {
             for (x in 0 until n) {
                 if (matrix.get(x, y)) {
                     for (dy in 0 until scale) {
                         for (dx in 0 until scale) {
-                            val px = (x + 1) * scale + dx
-                            val py = (y + 1) * scale + dy
+                            val px = (x + quietZone) * scale + dx
+                            val py = (y + quietZone) * scale + dy
                             pixels[py * dim + px] = androidColor(0, 0, 0)
                         }
                     }

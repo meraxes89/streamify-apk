@@ -39,7 +39,11 @@ struct BlendView: View {
             }
             .background(StreamifyTheme.bgBase)
             .navigationTitle("Blend")
+            #if os(iOS)
+            // navigationBarTitleDisplayMode is iOS-only;
+            // macOS titles are inline by construction.
             .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
         .task {
             blendModel.generateBlend(friendName: friendName, friendSeeds: friendSeeds)

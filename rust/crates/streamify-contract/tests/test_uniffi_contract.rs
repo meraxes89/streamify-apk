@@ -832,3 +832,163 @@ fn buffer_stats_report_under_underrun_simulation() {
     };
     assert_ne!(underrun.stable_code(), internal.stable_code());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SW-ENG1-03: the typed catalog lane (queue / equalizer / jam room state),
+//  exercised through the same public surface the UniFFI trampolines
+//  dispatch to — hermetic by construction (no network, no fixtures).
+// ═══════════════════════════════════════════════════════════════════════════
+
+use streamify_contract::{
+    search_tracks, self_test_search_result, EqualizerBand, JamRoomState, PlaylistSummary,
+    QueueItem, SearchResult, Track, EQUALIZER_BAND_COUNT,
+};
+
+/// A fully populated typed track (the shape the Swift lane round-trips).
+fn typed_track(n: u32) -> Track {
+    Track {
+        id: format!("typed_{n:02}_abcdefghij"),
+        title: format!("Typed Track {n:02}"),
+        artist: "Fixture Artist".to_string(),
+        album: "Typed Lane LP".to_string(),
+        duration_ms: 180_000 + n as u64 * 1_000,
+        thumbnail_url: Some(format!("https://i.ytimg.com/vi/typed_{n:02}/mqdefault.jpg")),
+        // Alternating so the queue-lifecycle spot-check has both flag
+        // values crossing the lane (index 2 is explicit, index 1 is not).
+        is_explicit: n.is_multiple_of(2),
+        resolved_stream_url: None,
+    }
+}
+
+/// Queue lifecycle: enqueue returns gapless indices, the page reads back
+/// with the enqueued_by attribution intact, and clear is idempotent.
+#[test]
+fn typed_queue_lifecycle_round_trips() {
+    let engine = StreamifyEngine::new();
+
+    // Blank attribution normalizes to "local" (the house default).
+    let i0 = engine.enqueue_track(typed_track(0), "   ".to_string()).unwrap();
+    let i1 = engine.enqueue_track(typed_track(1), "jam:peer-7".to_string()).unwrap();
+    let i2 = engine.enqueue_track(typed_track(2), "local".to_string()).unwrap();
+    assert_eq!((i0, i1, i2), (0, 1, 2));
+
+    let queue: Vec<QueueItem> = engine.get_queue().unwrap();
+    assert_eq!(queue.len(), 3);
+    assert_eq!(queue[0].index, 0);
+    assert_eq!(queue[0].enqueued_by, "local");
+    assert_eq!(queue[1].enqueued_by, "jam:peer-7");
+    // The typed Track crosses the lane field-for-field.
+    assert_eq!(queue[2].track, typed_track(2));
+    assert_eq!(queue[2].track.duration_ms, 182_000);
+    assert!(queue[2].track.is_explicit);
+
+    engine.clear_queue().unwrap();
+    engine.clear_queue().unwrap(); // idempotent
+    assert!(engine.get_queue().unwrap().is_empty());
+}
+
+/// Equalizer curve: the default set matches the DSP band plan, one band
+/// write lands exactly, and hostile bands are rejected at the boundary.
+#[test]
+fn typed_equalizer_curve_reads_and_writes() {
+    let engine = StreamifyEngine::new();
+
+    let flat = engine.get_equalizer_bands().unwrap();
+    assert_eq!(flat.len(), EQUALIZER_BAND_COUNT);
+    for (i, band) in flat.iter().enumerate() {
+        assert_eq!(band.band_index as usize, i);
+        assert_eq!(band.gain_db, 0.0);
+        assert_eq!(band.q_factor, EqualizerBand::DEFAULT_Q);
+    }
+    // The band centers are the DSP crate's octave plan (31.25 Hz … 16 kHz).
+    assert_eq!(flat[0].frequency_hz, 31.25);
+    assert_eq!(flat[9].frequency_hz, 16_000.0);
+
+    let boosted = EqualizerBand {
+        band_index: 3,
+        frequency_hz: 250.0,
+        gain_db: -4.5,
+        q_factor: 0.8,
+    };
+    engine.set_equalizer_band(boosted).unwrap();
+    let after = engine.get_equalizer_bands().unwrap();
+    assert_eq!(after.len(), EQUALIZER_BAND_COUNT);
+    assert_eq!(after[3], boosted);
+    assert_eq!(after[2].gain_db, 0.0, "untouched bands stay flat");
+
+    // Hostile input: out-of-range index, NaN gain, non-positive Q.
+    let out_of_range = EqualizerBand {
+        band_index: EQUALIZER_BAND_COUNT as u8,
+        ..EqualizerBand::flat(0)
+    };
+    assert_internal(engine.set_equalizer_band(out_of_range));
+    let nan_gain = EqualizerBand {
+        gain_db: f32::NAN,
+        ..EqualizerBand::flat(1)
+    };
+    assert_internal(engine.set_equalizer_band(nan_gain));
+    let zero_q = EqualizerBand {
+        q_factor: 0.0,
+        ..EqualizerBand::flat(1)
+    };
+    assert_internal(engine.set_equalizer_band(zero_q));
+    // Rejection left the curve untouched.
+    assert_eq!(engine.get_equalizer_bands().unwrap()[1].q_factor, EqualizerBand::DEFAULT_Q);
+}
+
+/// Jam room state mirrors the active session and errors identically to
+/// the hash surface when no session is live.
+#[test]
+fn typed_jam_room_state_mirrors_the_active_session() {
+    let engine = StreamifyEngine::new();
+    assert_internal(engine.get_jam_room_state());
+
+    let handle = engine
+        .create_jam_session("Studio Listening Room".to_string())
+        .unwrap();
+    let room: JamRoomState = engine.get_jam_room_state().unwrap();
+    assert_eq!(room.room_code, "Studio Listening Room");
+    assert!(room.is_host);
+    assert_eq!(room.sync_offset_ms, 0.0);
+    assert_eq!(room.participants.len(), 1);
+    // The local replica's label carries the session id — the mesh
+    // roster grows this list as peers join.
+    assert_eq!(room.participants[0], format!("local:{}", handle.session_id));
+}
+
+/// The deterministic self-test fixture populates every SearchResult
+/// field (the cross-FFI deserialization surface the Swift
+/// UniFFIContractTests pin from the other side of the boundary).
+#[test]
+fn self_test_fixture_populates_every_field() {
+    let page: SearchResult = self_test_search_result(5).unwrap();
+    assert_eq!(page.tracks.len(), 5);
+    assert_eq!(page.playlists.len(), 1);
+    assert_eq!(page.continuation_token.as_deref(), Some("selftest-continuation-token"));
+
+    let first = &page.tracks[0];
+    assert!(first.id.starts_with("selftest_00_"));
+    assert_eq!(first.duration_ms, 60_000);
+    assert!(first.thumbnail_url.is_some());
+    // Explicit flags vary across the fixture (every 5th row: 0, 5, 10…).
+    assert!(page.tracks[0].is_explicit);
+    assert!(!page.tracks[1].is_explicit);
+    assert!(!page.tracks[4].is_explicit);
+    assert!(page.tracks.iter().all(|t| t.resolved_stream_url.is_none()));
+
+    let playlist: &PlaylistSummary = &page.playlists[0];
+    assert_eq!(playlist.track_count, 12);
+    assert!(playlist.thumbnail_url.is_some());
+
+    // The clamp: a hostile count is bounded, never a huge allocation.
+    let clamped = self_test_search_result(10_000).unwrap();
+    assert_eq!(clamped.tracks.len(), 64);
+}
+
+/// The typed search lane is a pure mapping over the resolver pipeline:
+/// a blank query surfaces the resolver's own blank-argument Internal
+/// error through the typed channel (hermetic — no network involved).
+#[test]
+fn typed_search_lane_rejects_blank_queries_through_the_channel() {
+    assert_internal(search_tracks("   ".to_string(), 10));
+}
