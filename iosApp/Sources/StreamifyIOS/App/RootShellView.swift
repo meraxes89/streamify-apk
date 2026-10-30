@@ -29,6 +29,7 @@ import SwiftUI
 // contract's next surface).
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 public struct RootShellView: View {
 
     // Engineer 4's @Observable state holder (merged from main): consumed
@@ -291,7 +292,10 @@ public struct RootShellView: View {
         case .community: CommunityHubView()
         case .wrapped: StatsWrappedView()
         case .blend:
-            BlendView()
+            BlendView(
+            friendName: "Mira",
+            friendSeeds: ["Obsidian Sunrise", "Quartz Bloom"]
+        )
         case .profileSelection: ProfileSelectionView()
         case .admin: AdminDashboardView()
         case .diagnostics: DiagnosticsView()
@@ -455,7 +459,10 @@ public struct RootShellView: View {
             CommunityHubView()
 
         case .blend:
-            BlendView()
+            BlendView(
+            friendName: "Mira",
+            friendSeeds: ["Obsidian Sunrise", "Quartz Bloom"]
+        )
 
         case .jam:
             jamScreen
