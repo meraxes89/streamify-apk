@@ -10,7 +10,7 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct MiniPlayerView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var model
 
     var body: some View {
         HStack(spacing: 12) {
