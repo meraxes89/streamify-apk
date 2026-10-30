@@ -8,7 +8,7 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct RootShellView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var model
 
     var body: some View {
         ZStack {
@@ -45,8 +45,9 @@ struct RootShellView: View {
 
 /// The now-playing surface (the directive's NowPlayingView): transport,
 /// progress, volume, engine health — plus the queue sheet entry point.
+@MainActor
 struct NowPlayingView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var model
     @State private var queuePresented = false
 
     var body: some View {
@@ -256,7 +257,7 @@ struct LibraryView: View {
 // MARK: - Jam Sessions
 
 struct JamSessionsView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var model
     @State private var sessionName = "Pocket listening room"
     @State private var sessionInfo: String?
     @State private var busy = false

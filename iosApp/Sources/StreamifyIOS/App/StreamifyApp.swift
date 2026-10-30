@@ -20,18 +20,21 @@ import SwiftUI
 
 public struct StreamifyMainScene: Scene {
 
-    @StateObject private var model: PlaybackViewModel
+    @State private var model: PlaybackViewModel
 
-    public init() {
-        _model = StateObject(
-            wrappedValue: PlaybackViewModel(gateway: EngineGatewayLoader.load())
+    // @MainActor: the @Observable model's initializer is main-actor-isolated
+    // (SW-DEC-02); Scene bodies already run there, and the host's 3-line App
+    // struct calls this init from its own @MainActor body.
+    @MainActor public init() {
+        _model = State(
+            initialValue: PlaybackViewModel(gateway: EngineGatewayLoader.load())
         )
     }
 
     public var body: some Scene {
         WindowGroup {
             RootShellView()
-                .environmentObject(model)
+                .environment(model)
                 .preferredColorScheme(StreamifyTheme.shellColorScheme)
                 .task { model.start() }
                 .onDisappear { model.stop() }

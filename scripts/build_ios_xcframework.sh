@@ -86,7 +86,16 @@ fi
 DEVICE_TARGET="aarch64-apple-ios"
 SIM_ARM_TARGET="aarch64-apple-ios-sim"
 SIM_X86_TARGET="x86_64-apple-ios"
-for target in "${DEVICE_TARGET}" "${SIM_ARM_TARGET}" "${SIM_X86_TARGET}"; do
+
+SKIP_X86_SIM="${STREAMIFY_IOS_SKIP_X86_SIM:-0}"
+TARGETS=("${DEVICE_TARGET}" "${SIM_ARM_TARGET}")
+if [[ "${SKIP_X86_SIM}" -ne 1 ]]; then
+    TARGETS+=("${SIM_X86_TARGET}")
+else
+    echo "── info: skipping legacy x86_64 simulator slice (fast PR mode active)"
+fi
+
+for target in "${TARGETS[@]}"; do
     if ! rustup target list --installed 2>/dev/null | grep -q "^${target}"; then
         echo "FATAL: rust target \`${target}\` missing — fix: rustup target add ${target}" >&2
         exit 69
@@ -108,7 +117,7 @@ echo "── iphonesimulator SDK: ${IPHONESIM_SDK_PATH}"
 #  Flip PROFILE=release when the Phase 6 shell lands.
 PROFILE="${STREAMIFY_IOS_PROFILE:-debug}"
 LIB_SUFFIX="a"
-for target in "${DEVICE_TARGET}" "${SIM_ARM_TARGET}" "${SIM_X86_TARGET}"; do
+for target in "${TARGETS[@]}"; do
     echo "── [1/4] cargo build --target ${target} (${PROFILE})"
     ( cd "${RUST_DIR}" && cargo build --target "${target}" --profile "${PROFILE}" --lib )
 done
@@ -134,8 +143,11 @@ compile_glue "arm64-apple-ios"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/
 compile_glue "arm64-apple-ios"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"   "${WORK_DIR}/ias_device.o"
 compile_glue "arm64-apple-simulator"  "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"  "${WORK_DIR}/rc_sim_arm64.o"
 compile_glue "arm64-apple-simulator"  "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"  "${WORK_DIR}/ias_sim_arm64.o"
-compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"  "${WORK_DIR}/rc_sim_x86_64.o"
-compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"  "${WORK_DIR}/ias_sim_x86_64.o"
+
+if [[ "${SKIP_X86_SIM}" -ne 1 ]]; then
+    compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"  "${WORK_DIR}/rc_sim_x86_64.o"
+    compile_glue "x86_64-apple-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"  "${WORK_DIR}/ias_sim_x86_64.o"
+fi
 
 #  Each slice = Rust staticlib + glue object, merged with libtool (Apple's
 #  ar): the app links ONE library per platform, dlsym finds the glue.
@@ -147,13 +159,21 @@ xcrun libtool -static -o "$(SLICE_LIB device)" \
     "${WORK_DIR}/rc_device.o" \
     "${WORK_DIR}/ias_device.o"
 
-xcrun libtool -static -o "${WORK_DIR}/StreamifyCore_simulator.a" \
-    "${WORK_DIR}/rc_sim_arm64.o" \
-    "${WORK_DIR}/ias_sim_arm64.o" \
-    "${WORK_DIR}/rc_sim_x86_64.o" \
-    "${WORK_DIR}/ias_sim_x86_64.o" \
-    "${RUST_DIR}/target/${SIM_ARM_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}" \
-    "${RUST_DIR}/target/${SIM_X86_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}"
+SIM_OBJECTS=(
+    "${WORK_DIR}/rc_sim_arm64.o"
+    "${WORK_DIR}/ias_sim_arm64.o"
+    "${RUST_DIR}/target/${SIM_ARM_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}"
+)
+
+if [[ "${SKIP_X86_SIM}" -ne 1 ]]; then
+    SIM_OBJECTS+=(
+        "${WORK_DIR}/rc_sim_x86_64.o"
+        "${WORK_DIR}/ias_sim_x86_64.o"
+        "${RUST_DIR}/target/${SIM_X86_TARGET}/${OUT_SUBDIR}/libstreamify_core_rs.${LIB_SUFFIX}"
+    )
+fi
+
+xcrun libtool -static -o "${WORK_DIR}/StreamifyCore_simulator.a" "${SIM_OBJECTS[@]}"
 
 # --- 4. xcframework + Swift bindings -----------------------------------------
 rm -rf "${OUTPUT_DIR}"
