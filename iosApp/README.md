@@ -14,7 +14,7 @@ UniFFI bindings* from Alpha's `StreamifyCore.xcframework` and nothing else.
 
 ```
 iosApp/
-├── Package.swift                          (iOS 16+, Swift 5.9, zero external deps)
+├── Package.swift                          (iOS 17+ & macOS 14+, Swift 5.9, zero external deps)
 ├── Sources/StreamifyIOS/
 │   ├── App/
 │   │   ├── StreamifyApp.swift             public StreamifyMainScene (host target composes it)
@@ -129,8 +129,17 @@ husk:
 
 ## Building / testing
 
-The package is iOS-only (`.iOS(.v16)`), so tests run through `xcodebuild`
-with a simulator destination (Xcode 15+):
+SW-ENG1-01: the package is UNIVERSAL (`.iOS(.v17)` + `.macOS(.v14)`, the
+SW-DEC-04 shared shell). A plain macOS host build is the first acceptance
+gate (zero errors, zero warnings):
+
+```bash
+swift build --package-path iosApp
+```
+
+The XCTest suite runs through `xcodebuild` with a simulator destination
+(Xcode 15+; the AVAudioSession surface is `#if canImport(UIKit)`-gated,
+matching its implementation):
 
 ```bash
 cd iosApp
@@ -138,7 +147,9 @@ xcodebuild test -scheme StreamifyIOS \
     -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
-A macOS CI lane for this package is deliberately NOT added in this PR —
-Apple-hosted runners are Alpha's XCFramework packaging scope (the master
-plan's responsibility matrix), and the lane belongs with the framework it
-verifies.
+The REAL engine lane links conditionally: run
+`./scripts/build_ios_xcframework.sh --output iosApp/Frameworks` on a Mac
+and the manifest's probe picks `Frameworks/StreamifyCore.xcframework` up
+as an SPM binary target — `import uniffi_streamify` resolves straight
+out of the framework (no Kotlin/Native, no Obj-C shim; MP-DEC-02) and
+the UniFFI-gated code paths light up with zero source edits.
