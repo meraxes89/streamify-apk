@@ -158,7 +158,9 @@ impl IosAudioSessionBridge {
             sink,
             policy: Mutex::new(IosAudioSessionPolicy::new()),
         }));
-        self.context.store(context, Ordering::Release);
+        // AtomicPtr<c_void>: erase the SessionContext type at the boundary
+        // (the pointer is reclaimed with its real type in unbind).
+        self.context.store(context.cast::<c_void>(), Ordering::Release);
 
         let start_fn: SfStartFn = unsafe { std::mem::transmute(start) };
         let status = unsafe { start_fn(category_options, session_trampoline, context as *mut c_void) };
@@ -199,10 +201,12 @@ impl IosAudioSessionBridge {
             let _ = unsafe { stop_fn() };
         }
         // The native side no longer holds the callback: safe to
-        // reclaim the context.
+        // reclaim the context — with its REAL type, so the sink Arc and
+        // the policy Mutex actually drop (and the allocator sees the
+        // layout the Box was allocated with).
         let context = self.context.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if !context.is_null() {
-            unsafe { drop(Box::from_raw(context)) };
+            unsafe { drop(Box::from_raw(context.cast::<SessionContext>())) };
         }
         self.start_fn.store(std::ptr::null_mut(), Ordering::Release);
     }
