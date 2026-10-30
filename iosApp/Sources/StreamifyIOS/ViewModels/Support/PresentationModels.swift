@@ -500,6 +500,12 @@ enum QueueEvent: Sendable {
 
 enum PresentationFormatting {
 
+    /// Host monotonic uptime in ns (the DAC/beacon time base; ns since boot —
+    /// the same epoch the Rust core's CLOCK_MONOTONIC uses on Apple).
+    static func monotonicNs() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds
+    }
+
     /// Countdown chip text for a release ETA (mirror of `countdownLabel`).
     static func countdownLabel(to expectedAt: Date, from now: Date) -> String {
         let remaining = expectedAt.timeIntervalSince(now)
