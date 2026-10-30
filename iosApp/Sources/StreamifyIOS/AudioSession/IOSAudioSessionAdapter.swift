@@ -363,7 +363,7 @@ final class IOSAudioSessionAdapter: ObservableObject {
             preInterruptionPlaying: preInterruptionPlaying
         )
         lastInterruptionDescription =
-            "interruption \(parsed.type.rawValue), options \(parsed.options.rawValue), wasPlaying \(preInterruptionPlaying.map(String.init(describing:)) ?? "unknown") -> \(decision)"
+            "interruption \(parsed.type.rawValue), options \(parsed.options.rawValue), wasPlaying \(preInterruptionPlaying.map { String($0) } ?? "unknown") -> \(decision)"
         if parsed.type == .ended {
             // The memory describes ONE interruption cycle: consume it.
             interruptionMemory = nil
