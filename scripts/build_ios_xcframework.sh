@@ -375,18 +375,41 @@ xcodebuild -create-xcframework \
 #  Slice sanity, per architecture of every slice: BOTH glue symbol
 #  families AND the UniFFI namespace trampoline must be resolvable (the
 #  dlsym + canImport contracts the bridges depend on — fail the build,
-#  not the app). `nm -arch` checks each fat member, so a silently dropped
-#  architecture cannot pass.
+#  not the app). Per-arch probing catches a silently dropped fat member.
+#
+#  THIN vs FAT (the 2026-10-30 Apple-lane lesson): cctools nm(1) defines
+#  -arch ONLY 'when the file is a universal file'. slice_ios_arm64.a (and
+#  the degraded arm64-only simulator slice) are THIN archives — nm -arch
+#  on them fails with empty stdout, and the old `2>/dev/null` swallowed
+#  the diagnostic, so the sanity pass reported EVERY symbol as missing on
+#  the very first probe (run 41034917279: "sf_apple_remote_command_start
+#  missing in slice_ios_arm64.a"). Probe thin archives with plain
+#  `nm -gU` (they are already single-arch); keep -arch filtering for the
+#  fat ones. Symbol output is captured via command substitution — no
+#  grep -q early-exit / SIGPIPE interplay under `set -o pipefail`, and
+#  nm's own error text stays visible in the FATAL dump.
 for lib in \
     "${WORK_DIR}/slice_ios_arm64.a" \
     "${WORK_DIR}/StreamifyCore_simulator.a" \
     "${WORK_DIR}/StreamifyCore_macos.a"
 do
+    is_thin=0
+    if lipo -info "${lib}" 2>/dev/null | grep -q "^Non-fat file:"; then
+        is_thin=1
+    fi
     while read -r arch; do
         [[ -z "${arch}" ]] && continue
+        if [[ "${is_thin}" -eq 1 ]]; then
+            probe_output="$(nm -gU "${lib}" 2>&1 || true)"
+        else
+            probe_output="$(nm -arch "${arch}" -gU "${lib}" 2>&1 || true)"
+        fi
         for symbol in sf_apple_remote_command_start sf_ios_audio_session_start uniffi_streamify_contract_fn_func_contract_version; do
-            if ! nm -arch "${arch}" -gU "${lib}" 2>/dev/null | grep -q "${symbol}"; then
+            if [[ "${probe_output}" != *"${symbol}"* ]]; then
                 echo "FATAL: ${symbol} missing in ${lib} (${arch}) — ABI contract broken" >&2
+                echo "── nm probe output (first 12 lines; a tool error here means the" >&2
+                echo "   probe itself is broken, not necessarily the symbol):" >&2
+                printf '%s\n' "${probe_output}" | head -12 >&2 || true
                 exit 70
             fi
         done
