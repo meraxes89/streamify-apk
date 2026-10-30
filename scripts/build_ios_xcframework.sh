@@ -144,8 +144,14 @@ done
 # `rustup toolchain install` fails the whole install, which is why the CI
 # lane lists only the four required triples). Probe-installing it here must
 # NOT be fatal: degrade to an arm64-only simulator slice instead.
+# STREAMIFY_IOS_SKIP_X86_SIM=1 (the fast PR mode the Apple CI lane sets on
+# non-release runs) forces the skip outright — no rustup probe, no Intel
+# sim objects — while release_mode builds the full universal matrix.
 SIM_X86_AVAILABLE=0
-if rustup target list --installed 2>/dev/null | grep -q "^${SIM_X86_TARGET}"; then
+if [[ "${STREAMIFY_IOS_SKIP_X86_SIM:-0}" -eq 1 ]]; then
+    echo "── NOTE: STREAMIFY_IOS_SKIP_X86_SIM=1 — legacy Intel-simulator slice"
+    echo "   skipped (fast PR mode); release_mode builds the full universal matrix."
+elif rustup target list --installed 2>/dev/null | grep -q "^${SIM_X86_TARGET}"; then
     SIM_X86_AVAILABLE=1
 elif rustup target add "${SIM_X86_TARGET}" >/dev/null 2>&1; then
     SIM_X86_AVAILABLE=1

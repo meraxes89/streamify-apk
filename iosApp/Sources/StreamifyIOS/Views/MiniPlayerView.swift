@@ -9,8 +9,9 @@ import SwiftUI
 // text renders the 1 Hz-quantized display position.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 struct MiniPlayerView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var model
 
     var body: some View {
         HStack(spacing: 12) {

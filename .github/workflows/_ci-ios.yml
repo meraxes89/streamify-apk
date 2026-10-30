@@ -109,7 +109,6 @@ jobs:
           workspaces: "rust -> rust/target"
           shared-key: apple-targets
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup sccache (mandatory compiler caching, resp6 §3)
         uses: mozilla-actions/sccache-action@v0.0.11
@@ -177,14 +176,39 @@ jobs:
           path: desktop/build/compose/binaries/**/*.dmg
           if-no-files-found: error
 
-      # ── 5. Rust Core / XCFramework Probe & Assembly (MP-DEC-08) ────────────
-      # MP-DEC-08: does the engine compile for the Apple targets TODAY?
-      # Probes both slices the xcframework assembles (device + arm64 sim;
-      # x86_64 sim shares the same source cfg tree). While either fails,
-      # the real build is reported as blocked upstream — green with a loud
-      # notice, never red noise — and re-arms automatically once the rust
-      # tree heals.
+      # ── 5. Rust Core / XCFramework Content-Addressed Binary Cache ────────
+      # The fingerprint covers rust/ + native/ AND the assembly script
+      # itself: a scripts/build_ios_xcframework.sh change (slice matrix,
+      # sanity pass, glue flags) must invalidate the cached artifact —
+      # otherwise a stale xcframework would be re-uploaded unvalidated.
+      - name: Compute Apple Engine Fingerprint
+        id: engine_fingerprint
+        run: |
+          ENGINE_HASH=$(git ls-tree -r HEAD rust/ native/ scripts/build_ios_xcframework.sh | python3 -c "
+          import sys, hashlib
+          h = hashlib.sha256()
+          for line in sys.stdin:
+              parts = line.strip().split()
+              if len(parts) >= 3:
+                  h.update(parts[2].encode())
+          print(h.hexdigest()[:16])
+          ")
+          echo "ENGINE_HASH=${ENGINE_HASH}" >> "$GITHUB_ENV"
+          echo "hash=${ENGINE_HASH}" >> "$GITHUB_OUTPUT"
+          echo "Apple engine fingerprint: ${ENGINE_HASH}"
+
+      - name: Restore Prebuilt StreamifyCore.xcframework (5-second cache)
+        id: xcframework_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            dist/ios/StreamifyCore.xcframework
+            dist/ios/swift
+          key: apple-xcframework-${{ runner.os }}-${{ env.ENGINE_HASH }}
+
+      # Probe Apple targets only if cache missed
       - name: Probe Apple-target engine buildability (MP-DEC-08)
+        if: steps.xcframework_cache.outputs.cache-hit != 'true'
         env:
           RUSTC_WRAPPER: sccache
           SCCACHE_GHA_ENABLED: "true"
@@ -205,15 +229,16 @@ jobs:
           fi
 
       - name: Build StreamifyCore.xcframework + UniFFI Swift bindings
-        if: env.ENGINE_APPLE_BUILDABLE == '1'
+        if: steps.xcframework_cache.outputs.cache-hit != 'true' && env.ENGINE_APPLE_BUILDABLE == '1'
         env:
           RUSTC_WRAPPER: sccache
           SCCACHE_GHA_ENABLED: "true"
           CARGO_INCREMENTAL: "0"
+          STREAMIFY_IOS_SKIP_X86_SIM: ${{ inputs.release_mode && '0' || '1' }}
         run: bash scripts/build_ios_xcframework.sh
 
       - name: Engine blocked upstream (reported, not failed)
-        if: env.ENGINE_APPLE_BUILDABLE == '0'
+        if: steps.xcframework_cache.outputs.cache-hit != 'true' && env.ENGINE_APPLE_BUILDABLE == '0'
         run: |
           echo "=============================================================================="
           echo " STREAMIFYCORE.XCFRAMEWORK: BLOCKED UPSTREAM (reported, not failed)"
@@ -227,7 +252,7 @@ jobs:
           echo "=============================================================================="
 
       - name: Zip the xcframework
-        if: env.ENGINE_APPLE_BUILDABLE == '1'
+        if: steps.xcframework_cache.outputs.cache-hit == 'true' || env.ENGINE_APPLE_BUILDABLE == '1'
         run: |
           cd dist/ios
           ditto -c -k --sequesterRsrc --keepParent \
@@ -235,7 +260,7 @@ jobs:
           ls -la StreamifyCore.xcframework.zip
 
       - name: Upload xcframework artifact
-        if: env.ENGINE_APPLE_BUILDABLE == '1'
+        if: steps.xcframework_cache.outputs.cache-hit == 'true' || env.ENGINE_APPLE_BUILDABLE == '1'
         uses: actions/upload-artifact@v7
         with:
           name: ios-xcframework
