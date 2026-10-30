@@ -63,13 +63,17 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     ) {
         self.gateway = gateway
         self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
-        // Two-phase initialization: properties above are set before referencing `self`.
+        self.widgetRefresher = widgetRefresher ?? WidgetPlaybackRefresher()
+        // Two-phase initialization: every remaining stored property is a
+        // var-optional (implicitly nil-initialized) or already assigned, so
+        // `self` is FULLY initialized by the time the adapters below capture
+        // it (a `let` optional such as widgetRefresher has no implicit nil —
+        // it must be assigned BEFORE the first `self` escape).
         self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
         self.remoteCommands = RemoteCommandCenterAdapter(
             router: self,
             windowNs: remoteCommandWindowNs
         )
-        self.widgetRefresher = widgetRefresher ?? WidgetPlaybackRefresher()
     }
 
     /// Cold-start hydration + push-flow collection. Idempotent.
