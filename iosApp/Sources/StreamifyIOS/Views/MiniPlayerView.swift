@@ -9,6 +9,7 @@ import SwiftUI
 // text renders the 1 Hz-quantized display position.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 struct MiniPlayerView: View {
     @Environment(PlaybackViewModel.self) private var model
 
