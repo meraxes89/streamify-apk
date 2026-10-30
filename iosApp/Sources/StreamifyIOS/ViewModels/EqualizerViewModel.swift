@@ -36,9 +36,11 @@ final class EqualizerViewModel {
     static let previewSampleRateHz: Double = 48_000
 
     init(
-        library: any FeatureLibrary = AppServices.library,
-        settings: SettingsStore = AppServices.settings
+        library: (any FeatureLibrary)? = nil,
+        settings: SettingsStore? = nil
     ) {
+        let library = library ?? AppServices.library
+        let settings = settings ?? AppServices.settings
         self.library = library
         self.settings = settings
         self.profile = settings.loadEqualizerProfile()

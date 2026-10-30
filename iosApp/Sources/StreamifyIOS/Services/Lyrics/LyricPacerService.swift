@@ -279,8 +279,8 @@ final class LyricPacerService {
 
     private let settings: SettingsStore
 
-    init(settings: SettingsStore = AppServices.settings) {
-        self.settings = settings
+    init(settings: SettingsStore? = nil) {
+        self.settings = settings ?? AppServices.settings
     }
 
     // MARK: - Bind / parse

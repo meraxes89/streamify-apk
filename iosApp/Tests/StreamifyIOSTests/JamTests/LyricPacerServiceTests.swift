@@ -8,7 +8,6 @@ import XCTest
 // tier-2 LRC grammar) and the cursor math at single-millisecond resolution.
 // ─────────────────────────────────────────────────────────────────────────────
 
-@MainActor
 final class LyricPacerServiceTests: XCTestCase {
 
     // ── Parser: line + word timestamps ─────────────────────────────────────
@@ -150,6 +149,7 @@ final class LyricPacerServiceTests: XCTestCase {
 
     // ── Pacer service (bind, offset persistence, cursor) ───────────────────
 
+    @MainActor
     func testBindTrackRestoresPersistedOffset() {
         let settings = SettingsStore.ephemeral()
         settings.setLyricOffset(500, forKey: SettingsStore.lyricKey(title: "Nightcall", artist: "Kavinsky"))
@@ -169,6 +169,7 @@ final class LyricPacerServiceTests: XCTestCase {
         XCTAssertEqual(0, syncedDoc().activeLineIndex(atMs: 1_600))
     }
 
+    @MainActor
     func testAdjustOffsetPersistsAndResetClears() {
         let settings = SettingsStore.ephemeral()
         let pacer = LyricPacerService(settings: settings)
@@ -186,6 +187,7 @@ final class LyricPacerServiceTests: XCTestCase {
         XCTAssertEqual(0, settings.lyricOffset(forKey: SettingsStore.lyricKey(title: "T", artist: "A")))
     }
 
+    @MainActor
     func testUnsyncedDocumentsReportNoActiveLine() {
         let pacer = LyricPacerService(settings: SettingsStore.ephemeral())
         pacer.bindTrack(id: "t1", title: "T", artist: "A", lrcContent: "plain text only")
