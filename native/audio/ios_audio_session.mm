@@ -134,7 +134,11 @@ static uint32_t sf_ios_audio_session_start_impl(uint32_t category_options,
             result = SF_IOSAS_ERR_CATEGORY;
             return;
         }
-        if (![session setActive:YES options:0 error:&error]) {
+        // The modern activation spelling (iOS 6+): the selector is
+        // setActive:withOptions:error: — 'setActive:options:error:' does
+        // not exist on AVAudioSession and never compiled before this
+        // TU entered the xcframework lane.
+        if (![session setActive:YES withOptions:0 error:&error]) {
             result = SF_IOSAS_ERR_CATEGORY;
             return;
         }
@@ -222,8 +226,8 @@ uint32_t sf_ios_audio_session_stop(void) {
             // failure here is logged by the OS and never fatal — the
             // observers are gone either way.
             [session setActive:NO
-                        options:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
-                          error:&error];
+                     withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+                           error:&error];
         }
     });
     return SF_IOSAS_OK;

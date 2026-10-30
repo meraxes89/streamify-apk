@@ -14,6 +14,7 @@
 //! binds them through the `FfiConverter<UT>` tag pattern — the same
 //! definitions serve the FFI surface and every in-workspace consumer.
 
+pub mod catalog;
 pub mod error;
 pub mod gesture_physics;
 pub mod jam_session;
@@ -26,6 +27,10 @@ pub mod wire_le;
 
 // Root re-exports: the contract vocabulary (mirrors the old monolith
 // root surface for these items so downstream paths keep resolving).
+pub use catalog::{
+    EqualizerBand, JamRoomState, PlaylistSummary, QueueItem, SearchResult, Track,
+    EQUALIZER_BAND_COUNT,
+};
 pub use error::{
     AudioErrorKind, CryptoErrorKind, EngineError, NetworkErrorKind, StorageErrorKind,
 };

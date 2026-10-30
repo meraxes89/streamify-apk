@@ -79,11 +79,29 @@ jobs:
           path: iosApp/xcodebuild-test.log
           if-no-files-found: ignore
 
+      # ── 1b. SPM Compile Gate (macOS host) — SW-ENG1-01 acceptance ──────────
+      # The universal package's macOS leg: `swift build --package-path
+      # iosApp` must complete with zero errors on a Mac host (the manifest
+      # probes iosApp/Frameworks/ — absent here — so this compiles the
+      # preview-gateway lane, the standalone shape the acceptance
+      # checklist pins). --build-tests also compiles the universal test
+      # target: the UIKit divergence is #if canImport(UIKit)-gated with a
+      # same-API macOS no-op lane, so the suite builds for both platforms.
+      - name: SPM compile gate (macOS host, SW-ENG1-01)
+        run: swift build --package-path iosApp --build-tests
+
       # ── 2. Rust Core / XCFramework Probe & macOS Native Build (resp8 Pillar A) ──
       - name: Set up Rust toolchain (Apple targets)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin
+          # SW-ENG1-02 universal matrix: iOS device, Apple Silicon
+          # simulator, and both macOS arches for the fat darwin slice.
+          # (x86_64-apple-ios-sim — the Intel SIMULATOR triple — is NOT
+          # distributed in any Rust stable channel: requesting it fails
+          # the whole `rustup toolchain install`. build_ios_xcframework.sh
+          # probes for it separately and degrades the simulator slice to
+          # arm64-only when the std is unavailable.)
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Setup Rust cache (Apple targets)
         uses: Swatinem/rust-cache@v2
@@ -159,10 +177,14 @@ jobs:
           if-no-files-found: error
 
       # ── 5. Rust Core / XCFramework Content-Addressed Binary Cache ────────
+      # The fingerprint covers rust/ + native/ AND the assembly script
+      # itself: a scripts/build_ios_xcframework.sh change (slice matrix,
+      # sanity pass, glue flags) must invalidate the cached artifact —
+      # otherwise a stale xcframework would be re-uploaded unvalidated.
       - name: Compute Apple Engine Fingerprint
         id: engine_fingerprint
         run: |
-          ENGINE_HASH=$(git ls-tree -r HEAD rust/ native/ | python3 -c "
+          ENGINE_HASH=$(git ls-tree -r HEAD rust/ native/ scripts/build_ios_xcframework.sh | python3 -c "
           import sys, hashlib
           h = hashlib.sha256()
           for line in sys.stdin:

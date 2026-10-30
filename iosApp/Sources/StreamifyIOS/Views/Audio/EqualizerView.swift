@@ -36,7 +36,11 @@ struct EqualizerView: View {
             }
             .background(StreamifyTheme.bgBase)
             .navigationTitle("Equalizer")
+            #if os(iOS)
+            // navigationBarTitleDisplayMode is iOS-only;
+            // macOS titles are inline by construction.
             .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
     }
 

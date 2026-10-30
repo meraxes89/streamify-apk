@@ -1,0 +1,5 @@
+# StreamifyCore.xcframework is emitted here by:
+#   ./scripts/build_ios_xcframework.sh --output iosApp/Frameworks
+# It is a build artifact (hundreds of MB) — never committed.
+*
+!.gitignore

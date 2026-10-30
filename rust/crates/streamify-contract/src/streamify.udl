@@ -17,6 +17,90 @@ dictionary TrackMetadata {
     string? album_art_url;
 };
 
+/// Fully typed playable track — the search/library currency of the
+/// typed Apple lane (SW-ENG1-03).
+///
+/// Richer than `TrackMetadata` (which stays the frozen snapshot-lane
+/// currency): carries album, artwork, the upstream explicit flag and
+/// the LAZILY resolved CDN URL. `resolved_stream_url` is null on
+/// search rows by design — resolution is an explicit cache-backed step
+/// (`resolve_stream_formats`), so list payloads never pin rotting
+/// de-throttled URLs.
+dictionary Track {
+    /// YouTube video id (the resolver's currency).
+    string id;
+    string title;
+    /// Multi-artist rows are joined ("Alpha & Beta").
+    string artist;
+    string album;
+    u64 duration_ms;
+    /// Best-effort artwork; null when the upstream row carried none.
+    string? thumbnail_url;
+    /// Upstream explicit flag — false means "not flagged", not
+    /// "provably clean" (YTM search rows do not always carry it).
+    boolean is_explicit;
+    /// Playable CDN url once resolved (null on search rows).
+    string? resolved_stream_url;
+};
+
+/// One playlist row in a search result page (SW-ENG1-03).
+dictionary PlaylistSummary {
+    string id;
+    string title;
+    string? thumbnail_url;
+    u32 track_count;
+};
+
+/// One typed search response (SW-ENG1-03): relevance-ordered tracks,
+/// the playlist rail and the paging cursor when the backend provides
+/// one.
+dictionary SearchResult {
+    sequence<Track> tracks;
+    sequence<PlaylistSummary> playlists;
+    string? continuation_token;
+};
+
+/// One row of the playback queue as read through the typed lane
+/// (SW-ENG1-03). `index` is the row's stable position at read time;
+/// a whole page is read-snapshotted under one lock, so it is always
+/// internally consistent.
+dictionary QueueItem {
+    u32 index;
+    Track track;
+    /// Who added the row ("local", a Jam participant label, …).
+    string enqueued_by;
+};
+
+/// One parametric equalizer band (SW-ENG1-03) — the vocabulary mirrors
+/// `streamify_audio`'s StudioEqualizer: ten octave-spaced bands, low
+/// shelf on band 0, high shelf on band 9, Butterworth Q by default.
+dictionary EqualizerBand {
+    /// Band position, 0..10.
+    u8 band_index;
+    /// Center (shelf corner) frequency in Hz.
+    f32 frequency_hz;
+    /// Gain in dB (positive boosts, negative cuts).
+    f32 gain_db;
+    /// Filter Q factor (1.414 ≡ Butterworth by default).
+    f32 q_factor;
+};
+
+/// Live Jam room state as the jam surfaces render it (SW-ENG1-03):
+/// the presentation mirror of the engine's active Jam replica. The
+/// interior CRDT session stays behind the contract; `sync_offset_ms`
+/// carries the PTP presentation offset (0.0 while the room is a fresh
+/// local mirror, until the PTP lane crosses this contract).
+dictionary JamRoomState {
+    /// The room's human code (the session name the host minted).
+    string room_code;
+    /// Whether this device's replica minted the room (the host).
+    boolean is_host;
+    /// PTP presentation offset in milliseconds.
+    f64 sync_offset_ms;
+    /// Known participant labels; starts with the local replica.
+    sequence<string> participants;
+};
+
 /// Geometry of the audio pipeline feeding the engine.
 dictionary AudioStreamConfig {
     u32 sample_rate;
@@ -448,6 +532,45 @@ interface StreamifyEngine {
     /// session's canonical CRDT fold. Requires a live session.
     [Throws=EngineError]
     string get_jam_state_hash();
+
+    // ── SW-ENG1-03: the typed catalog lane (queue / equalizer / jam) ──
+    // These are explicit typed reads, deliberately NOT part of the
+    // pushed EngineSnapshot: the push channel carries playback
+    // lifecycle state (frozen shape); the queue and EQ curves are
+    // read-after-action surfaces, so a UI re-reads them exactly when
+    // the user's own action could have changed them (and Engineer 4's
+    // ViewModels layer their own observation on top). No polling of
+    // playback state is involved either way (MP-DEC-04).
+
+    /// Append one track to the engine's playback queue. Returns the
+    /// row's index. A blank `enqueued_by` is normalized to "local"; a
+    /// queue beyond the hard cap is rejected as Internal.
+    [Throws=EngineError]
+    u32 enqueue_track(Track track, string enqueued_by);
+
+    /// Read the whole queue as one consistent page.
+    [Throws=EngineError]
+    sequence<QueueItem> get_queue();
+
+    /// Drop every queued row (idempotent).
+    [Throws=EngineError]
+    void clear_queue();
+
+    /// The current ten-band equalizer curve (band 0..9, octave-spaced;
+    /// flat 0 dB preset by default).
+    [Throws=EngineError]
+    sequence<EqualizerBand> get_equalizer_bands();
+
+    /// Overwrite one band of the equalizer curve. A band index outside
+    /// 0..10, a non-finite float or a non-positive Q is rejected as
+    /// Internal before any state is touched.
+    [Throws=EngineError]
+    void set_equalizer_band(EqualizerBand band);
+
+    /// Presentation state of the engine's active Jam room. Requires a
+    /// live session (Internal otherwise).
+    [Throws=EngineError]
+    JamRoomState get_jam_room_state();
 };
 
 /// Streamify core engine: typed UniFFI contract (Phase 2 UFFI-01,
@@ -499,6 +622,22 @@ namespace streamify {
     /// mirrored into a descending `score` on each record.
     [Throws=EngineError]
     sequence<ParsedCandidate> search_music_tracks(string query, u32 limit);
+
+    /// SW-ENG1-03: the typed search lane — the same resolver pipeline
+    /// as `search_music_tracks`, mapped onto the fully typed `Track`
+    /// records the SwiftUI surfaces render. `limit` clamps to [1, 50].
+    /// The playlist rail is empty until the resolver's playlist tier
+    /// crosses this contract; `continuation_token` is null on the
+    /// current single-page mapping.
+    [Throws=EngineError]
+    SearchResult search_tracks(string query, u32 limit);
+
+    /// SW-ENG1-03: deterministic, network-free contract self-test
+    /// fixture — a fully populated `SearchResult` (tracks, one
+    /// playlist, a continuation token) for the Swift UniFFI binding
+    /// tests. `track_count` clamps to [0, 64].
+    [Throws=EngineError]
+    SearchResult self_test_search_result(u32 track_count);
 
     /// Discussion #120, Part C: bind the resolver's persistent memo
     /// database (resolved CDN format sets, search pages, the rustypipe

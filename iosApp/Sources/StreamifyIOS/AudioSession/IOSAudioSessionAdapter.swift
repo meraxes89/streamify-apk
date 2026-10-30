@@ -1,9 +1,15 @@
-import AVFoundation
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 5 (MP-UI02 / Beta): the iOS audio-session adapter — AVAudioSession
 // governance for the native SwiftUI shell.
+//
+// SW-ENG1-01 (multiplatform note): AVAudioSession exists on iOS/Catalyst
+// only — macOS has no audio-session concept (CoreAudio output is
+// configured by the HAL, not a session object). The REAL adapter below
+// compiles behind `#if canImport(UIKit)`; macOS gets a same-API no-op
+// fallback at the bottom of this file so the unified StreamifyIOS module
+// compiles for BOTH platforms with zero call-site changes (SW-DEC-04).
 //
 // Directive contract:
 //  * CONFIGURE — category `.playback`, mode `.default`, options `[]` (an
@@ -52,6 +58,9 @@ protocol AudioSessionResponding: AnyObject {
     func audioSessionRequestsPause(reason: String)
     func audioSessionRequestsResume(reason: String)
 }
+
+#if canImport(UIKit)
+import AVFoundation
 
 @MainActor
 final class IOSAudioSessionAdapter: ObservableObject {
@@ -276,3 +285,48 @@ final class IOSAudioSessionAdapter: ObservableObject {
         return route.outputs.first?.portName
     }
 }
+
+#else  // !canImport(UIKit): the macOS no-op lane (SW-ENG1-01)
+
+/// macOS fallback adapter: AVAudioSession does not exist on macOS (the
+/// HAL owns output configuration), so the session lifecycle is a no-op
+/// with honest bookkeeping. The API mirrors the iOS adapter exactly, so
+/// `PlaybackViewModel` and the tests compile for both platforms without
+/// a single conditional at the call sites. `activate()` still `throws`
+/// (and never fails) so `try adapter.activate()` stays legal everywhere.
+@MainActor
+final class IOSAudioSessionAdapter: ObservableObject {
+
+    enum Lifecycle: Equatable, Sendable {
+        case configured
+        case active
+        case deactivated
+    }
+
+    private weak var responder: AudioSessionResponding?
+    private(set) var lifecycle: Lifecycle = .deactivated
+
+    /// Intentionally inert on macOS (no session to observe).
+    @Published private(set) var lastInterruptionDescription: String?
+    @Published private(set) var lastRouteChangeDescription: String?
+
+    init(responder: AudioSessionResponding) {
+        self.responder = responder
+    }
+
+    func activate() throws {
+        // No AVAudioSession on macOS — CoreAudio output needs no category
+        // activation. Record the state transition and succeed.
+        lifecycle = .active
+    }
+
+    func deactivate() {
+        lifecycle = .deactivated
+    }
+
+    func updateResponder(_ responder: AudioSessionResponding) {
+        self.responder = responder
+    }
+}
+
+#endif  // canImport(UIKit)
