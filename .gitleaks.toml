@@ -25,7 +25,7 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
+[allowlist]
 id = "public-innertube-web-client-key"
 description = "YouTube Music's public InnerTube web-client key (ships in every YTM web client; not a GCP credential — see header above)"
 regexTarget = "match"
