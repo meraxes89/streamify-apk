@@ -29,6 +29,15 @@ on:
   merge_group:
   push:
     branches: [main]
+  # Manual escape hatch (2026-10-30): GitHub's pull_request event delivery
+  # silently dropped every event for feat/apple-eng3-audio-platform
+  # (opened/reopened/synchronize on PRs #135 and #136 — zero runs created,
+  # platform status green, identical workflow blob on all refs). A
+  # workflow_dispatch run evaluates the same full matrix (preflight treats
+  # non-pull_request events as run-everything, fail-safe) and attaches its
+  # check runs to the head sha, so the "CI Gate (Blocking)" required check
+  # is satisfied exactly as a pull_request run would.
+  workflow_dispatch:
 
 # Parallel-safe multi-engineer concurrency:
 # Isolate runs by branch (head_ref) so multiple engineers pushing in parallel
