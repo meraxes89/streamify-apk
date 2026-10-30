@@ -373,7 +373,7 @@ for lib in \
 do
     while read -r arch; do
         [[ -z "${arch}" ]] && continue
-        for symbol in sf_apple_remote_command_start sf_ios_audio_session_start uniffi_streamify_fn_contract_version; do
+        for symbol in sf_apple_remote_command_start sf_ios_audio_session_start uniffi_streamify_contract_fn_func_contract_version; do
             if ! nm -arch "${arch}" -gU "${lib}" 2>/dev/null | grep -q "${symbol}"; then
                 echo "FATAL: ${symbol} missing in ${lib} (${arch}) — ABI contract broken" >&2
                 exit 70
