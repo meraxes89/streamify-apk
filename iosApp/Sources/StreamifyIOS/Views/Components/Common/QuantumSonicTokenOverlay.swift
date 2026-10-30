@@ -13,6 +13,7 @@ import SwiftUI
 // Fixtures: PreviewCatalog.tracks.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 public struct QuantumSonicTokenOverlay: View {
     public var controller: QuantumSonicTokenController
     public var title: String = ""
@@ -45,7 +46,7 @@ public struct QuantumSonicTokenOverlay: View {
                 // assume the actor and step the physics there.
                 MainActor.assumeIsolated {
                     let frame = stepPose(context.date, in: proxy.size)
-                    tokenScene(frame, in: proxy.size)
+                    return tokenScene(frame, in: proxy.size)
                 }
             }
         }
