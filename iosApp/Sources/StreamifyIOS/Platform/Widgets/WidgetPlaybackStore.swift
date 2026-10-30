@@ -204,7 +204,11 @@ struct WidgetPlaybackStore {
         let fresh = entries.filter {
             reference.timeIntervalSince($0.postedAt) < Self.maxCommandAgeSeconds
         }
-        write(fresh.isEmpty ? nil : fresh)
+        // A drain ALWAYS empties the mailbox: the returned commands are
+        // the caller's responsibility now — re-writing the fresh tail would
+        // re-deliver them on every subsequent drain (the round-trip test
+        // pins this), and stale entries are dropped outright.
+        write(nil)
         return fresh.compactMap(Self.resolve)
     }
 

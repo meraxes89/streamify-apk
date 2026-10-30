@@ -62,6 +62,9 @@ jobs:
       # The Swift package compiles TODAY against the preview gateway (the
       # real engine lane is #if canImport(uniffi_streamify)-gated), so the
       # suite runs without linking the xcframework.
+      # No -quiet: assertion-level failure messages (expected vs actual) are
+      # the primary debugging surface for this lane — a failing XCTAssert
+      # carries its operands, which -quiet suppresses entirely.
       - name: Run StreamifyIOSTests (headless xcodebuild)
         run: |
           cd iosApp
@@ -69,7 +72,7 @@ jobs:
           xcodebuild test \
             -scheme StreamifyIOS \
             -destination "platform=iOS Simulator,name=${SIM_NAME}" \
-            -quiet 2>&1 | tee xcodebuild-test.log
+            2>&1 | tee xcodebuild-test.log
 
       - name: Upload xcodebuild log (on failure)
         if: failure()

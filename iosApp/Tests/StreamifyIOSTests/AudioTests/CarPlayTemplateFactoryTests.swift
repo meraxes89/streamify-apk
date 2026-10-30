@@ -34,12 +34,21 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
 
     func testTabBarComposesExactlyThreeTabsInTheDirectivesOrder() {
         let tabBar = makeTabBar()
-        XCTAssertEqual(tabBar.templates.count, 3)
+        let templates = tabBar.templates
+        // Diagnostic guard: a headless (scene-less) construction must still
+        // expose the init-time template list — the failure message carries
+        // what the SDK actually returned.
+        guard templates.count == 3 else {
+            XCTFail(
+                "expected a 3-tab bar, got \(templates.count): \(templates)"
+            )
+            return
+        }
         // Home first, Playlists second (CPListTemplate tabs)...
-        XCTAssertTrue(tabBar.templates[0] is CPListTemplate)
-        XCTAssertTrue(tabBar.templates[1] is CPListTemplate)
+        XCTAssertTrue(templates[0] is CPListTemplate, "tab 0: \(templates[0])")
+        XCTAssertTrue(templates[1] is CPListTemplate, "tab 1: \(templates[1])")
         // ...Now Playing third (the shared CPNowPlayingTemplate).
-        XCTAssertTrue(tabBar.templates[2] is CPNowPlayingTemplate)
+        XCTAssertTrue(templates[2] is CPNowPlayingTemplate, "tab 2: \(templates[2])")
 
         XCTAssertEqual(
             CarPlayTemplateFactory.tabTitles(of: tabBar),

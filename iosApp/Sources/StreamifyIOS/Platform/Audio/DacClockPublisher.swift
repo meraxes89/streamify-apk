@@ -72,8 +72,14 @@ enum DacClockTranslator {
         if deltaNs > maxAgeNs {
             return anchorMs
         }
-        let advancedMs =
-            Double(deltaNs) * Double(anchor.sampleRateHz) / 1_000_000_000.0 * 1000.0
+        // Content advanced over the monotonic delta at the NOMINAL slope:
+        //   frames = deltaNs * rate / 1e9
+        //   ms     = frames / rate * 1000  ==  deltaNs / 1e6
+        // (the rate cancels — one millisecond of monotonic time is one
+        // millisecond of content at the nominal rate; the DAC's actual
+        // drift over the fresh-anchor window is the residual the <5 ms
+        // budget governs).
+        let advancedMs = Double(deltaNs) / 1_000_000.0
         return anchorMs + Int(advancedMs)
     }
 

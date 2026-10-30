@@ -49,15 +49,16 @@ final class CoreAudioRenderCoreTests: XCTestCase {
     }
 
     func testSimulatedDriverDriftAdvancesFramesBeyondNominal() {
-        // 27.4 ppm fast oscillator: 100 s of wall time presents ~274 extra
-        // frames — the drift regime the <5 ms gate must survive.
+        // 27.4 ppm fast oscillator: 100 s of wall time presents ~131 extra
+        // frames (100 s × 27.4e-6 × 48 kHz = 131.52 — the drift regime the
+        // <5 ms gate must survive).
         let driver = SimulatedCoreAudioDriver(driftPpm: 27.4)
         driver.start(sinkHandle: 1)
         driver.advance(byDurationNs: 100_000_000_000)
         let clock = driver.latestClock()
         XCTAssertEqual(clock?.monotonicNs, 10_000_000_000 + 100_000_000_000)
-        // 4_800_000 nominal + ~274 drifted frames.
-        XCTAssertEqual(clock!.framePosition, 4_800_274)
+        // 4_800_000 nominal + 131 drifted frames (Int truncation of 131.52).
+        XCTAssertEqual(clock!.framePosition, 4_800_131)
         driver.stop()
     }
 
