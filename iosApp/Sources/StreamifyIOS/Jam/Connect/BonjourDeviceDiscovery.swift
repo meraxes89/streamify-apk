@@ -424,15 +424,15 @@ final class BonjourDeviceDiscovery: @unchecked Sendable {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
             let listener = try NWListener(using: params)
-            let txt = NWTXTRecord()
-            // NWTXTRecord is written through its String subscript
-            // (there is no setValue/setStringValue — verified against the
-            // Network framework interface).
-            txt["nm"] = deviceName
-            txt["pf"] = platform
-            txt["did"] = deviceId
-            txt["cap"] = "lan"
-            txt["ver"] = "1"
+            // NWTXTRecord is a VALUE type with a mutating subscript — build
+            // it from the dictionary initializer instead of mutating a let.
+            let txt = NWTXTRecord([
+                "nm": deviceName,
+                "pf": platform,
+                "did": deviceId,
+                "cap": "lan",
+                "ver": "1",
+            ])
             listener.service = NWListener.Service(
                 name: deviceId,
                 type: Self.serviceType,
