@@ -1,17 +1,16 @@
 // swift-tools-version: 5.9
 // ─────────────────────────────────────────────────────────────────────────────
-// SW-ENG1-01 (Swift migration, Engineer 1): the UNIVERSAL Apple package —
+// SW-ENG1-01 / SW-ENG2-02 (Swift migration): the UNIVERSAL Apple package —
 // one module, two platforms (iOS 17+ / macOS 14+), zero external
 // dependencies.
 //
-// A Swift package carrying the ENTIRE app surface: the SwiftUI shell
-// (RootShellView + views), the PlaybackViewModel state holder, the
-// EngineGateway seam, the native data services (Keychain, background
-// downloads, daylist scheduling, canvas scraping — SW-ENG1-05..08) and
-// the audio-session adapter. The package is a LIBRARY by construction —
-// an Xcode app target wraps it (see iosApp/README.md "Host app target")
-// because SPM cannot emit an App Store bundle on its own. Everything
-// real lives here so the app target stays a thin shell.
+// A Swift package carrying the ENTIRE app surface: the adaptive SwiftUI shell
+// (RootShellView + 30 screens + 70 ported components), the motion system, the
+// theme, the PlaybackViewModel state holder, the EngineGateway seam, the native
+// data services (Keychain, background downloads, daylist scheduling, canvas
+// scraping — SW-ENG1-05..08) and the audio-session adapter. The package is a
+// LIBRARY by construction — an Xcode app target wraps it (see iosApp/README.md
+// "Host app target") because SPM cannot emit an App Store bundle on its own.
 //
 // PLATFORM RULES (SW-DEC-04)
 //   * Both .iOS(.v17) and .macOS(.v14) consume the unified StreamifyIOS
@@ -73,6 +72,9 @@ if realLaneLinked {
 let package = Package(
     name: "StreamifyIOS",
     platforms: [
+        // SW-DEC-02: the Observation stack (@Observable) requires iOS 17 /
+        // macOS 14; the macOS platform declaration lands here alongside the
+        // SW-ENG2 multiplatform shell (the universal views target both).
         .iOS(.v17),
         .macOS(.v14)
     ],

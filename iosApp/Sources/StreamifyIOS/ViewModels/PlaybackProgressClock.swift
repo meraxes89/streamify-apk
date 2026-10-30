@@ -88,7 +88,7 @@ final class PlaybackProgressClock {
         self.durationMs = durationMs
 
         // Seek-timeout admission: an unconfirmed optimistic seek expires.
-        if let optimisticSeekMs, hostUptimeNs >= seekDeadlineUptimeNs {
+        if optimisticSeekMs != nil, hostUptimeNs >= seekDeadlineUptimeNs {
             self.optimisticSeekMs = nil
         }
 

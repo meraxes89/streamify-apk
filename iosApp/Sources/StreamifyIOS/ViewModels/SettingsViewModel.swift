@@ -39,9 +39,11 @@ final class SettingsViewModel {
     private let library: any FeatureLibrary
 
     init(
-        settings: SettingsStore = AppServices.settings,
-        library: any FeatureLibrary = AppServices.library
+        settings: SettingsStore? = nil,
+        library: (any FeatureLibrary)? = nil
     ) {
+        let settings = settings ?? AppServices.settings
+        let library = library ?? AppServices.library
         self.settings = settings
         self.library = library
         self.streamBitrate = settings.streamBitrate()

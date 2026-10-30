@@ -29,8 +29,8 @@ final class UserProfileViewModel {
 
     private let library: any FeatureLibrary
 
-    init(library: any FeatureLibrary = AppServices.library) {
-        self.library = library
+    init(library: (any FeatureLibrary)? = nil) {
+        self.library = library ?? AppServices.library
         self.chronotype = Chronotype.chronotype(forHour: Calendar.current.component(.hour, from: Date()))
     }
 

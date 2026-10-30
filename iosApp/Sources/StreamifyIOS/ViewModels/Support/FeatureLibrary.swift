@@ -339,15 +339,15 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
     // ── Test/preview push helpers (the `push` counterparts of the gateway) ─
 
     func push(queueEvent: QueueEvent) {
-        lock.withLock { queueContinuation?.yield(queueEvent) }
+        _ = lock.withLock { queueContinuation?.yield(queueEvent) }
     }
 
     func push(roomEvent: JamRoomEvent) {
-        lock.withLock { roomContinuation?.yield(roomEvent) }
+        _ = lock.withLock { roomContinuation?.yield(roomEvent) }
     }
 
     func push(ingestionEvent: IngestionEvent) {
-        lock.withLock { ingestionContinuation?.yield(ingestionEvent) }
+        _ = lock.withLock { ingestionContinuation?.yield(ingestionEvent) }
     }
 
     func finishAllStreams() {

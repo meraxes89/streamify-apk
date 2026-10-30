@@ -65,11 +65,11 @@ final class JamViewModel {
     private let displayName: String
 
     init(
-        library: any FeatureLibrary = AppServices.library,
+        library: (any FeatureLibrary)? = nil,
         discovery: any JamRoomDiscovering = CoreBluetoothJamBeacon(),
         displayName: String = "Listener"
     ) {
-        self.library = library
+        self.library = library ?? AppServices.library
         self.discovery = discovery
         self.displayName = displayName
     }

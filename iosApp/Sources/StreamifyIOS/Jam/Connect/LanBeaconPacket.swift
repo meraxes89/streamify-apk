@@ -99,7 +99,8 @@ enum LanBeaconPacket {
         guard b[2] == protoVersion else { return nil }
         guard b[3] == msgBeacon else { return nil }
 
-        let senderId = readU64(b, 4)
+        // Header sender id (bytes 4..<12) is integrity-covered by the FNV
+        // checksum below; the surfaced identity is the payload's peerId.
         let sessionIdBytes = Array(b[12..<28])
         let payloadLen = Int(readU16(b, 40))
         let checksumStored = readU32(b, 42)

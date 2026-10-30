@@ -29,8 +29,8 @@ final class LyricsViewModel {
     private let library: any FeatureLibrary
     nonisolated(unsafe) private var fetchTask: Task<Void, Never>?
 
-    init(library: any FeatureLibrary = AppServices.library) {
-        self.library = library
+    init(library: (any FeatureLibrary)? = nil) {
+        self.library = library ?? AppServices.library
     }
 
     deinit {
