@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import MediaPlayer
 import UIKit
 import XCTest
@@ -400,3 +401,5 @@ final class LiveActivityStateTests: XCTestCase {
         return image.pngData()!
     }
 }
+
+#endif  // canImport(UIKit)

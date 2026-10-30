@@ -1,3 +1,4 @@
+#if canImport(CarPlay)
 import CarPlay
 import XCTest
 @testable import StreamifyIOS
@@ -177,3 +178,5 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
         delegate.reloadBrowseContent()
     }
 }
+
+#endif  // canImport(CarPlay)
