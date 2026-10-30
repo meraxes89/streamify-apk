@@ -110,7 +110,7 @@ pub fn self_test_search_result(track_count: u32) -> Result<SearchResult, EngineE
             .map(|i| Track {
                 id: format!("selftest_{i:02}_abcdefghij"),
                 title: format!("Self Test Track {i:02}"),
-                artist: format!("Contract Fixture Artist {i % 3}"),
+                artist: format!("Contract Fixture Artist {}", i % 3),
                 album: "UniFFI Contract Round-Trip".to_string(),
                 duration_ms: 60_000 + (i as u64) * 1_000,
                 thumbnail_url: Some(format!("https://i.ytimg.com/vi/selftest_{i:02}/mqdefault.jpg")),
