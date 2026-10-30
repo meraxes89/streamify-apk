@@ -92,10 +92,24 @@ struct InnerTubeClientSpec {
 
 /// The frozen fleet: WEB_REMIX first, ANDROID_MUSIC as the fallback.
 enum InnerTubeFleet {
-    static let playerURL = URL(string: "https://music.youtube.com/youtubei/v1/player?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk")!
-    static let nextURL = URL(string: "https://music.youtube.com/youtubei/v1/next?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk")!
-    static let searchURL = URL(string: "https://music.youtube.com/youtubei/v1/search?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk")!
-    static let browseURL = URL(string: "https://music.youtube.com/youtubei/v1/browse?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk")!
+    /// YouTube Music's PUBLIC InnerTube web-client key — the same
+    /// identifier music.youtube.com ships to every browser (and the one
+    /// the Kotlin scrapers already carry on main). It is NOT a Google
+    /// Cloud credential: InnerTube is not a billable GCP API, the key
+    /// grants no privileges, and it is documented across the public
+    /// InnerTube-ecosystem clients. Allowlisted in .gitleaks.toml with
+    /// this justification (the scanner's gcp-api-key pattern cannot know
+    /// it is a public client id, not a secret).
+    static let innertubeWebClientKey = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk"
+
+    private static func innertube(_ endpoint: String) -> URL {
+        URL(string: "https://music.youtube.com/youtubei/v1/\(endpoint)?key=\(innertubeWebClientKey)")!
+    }
+
+    static let playerURL = innertube("player")
+    static let nextURL = innertube("next")
+    static let searchURL = innertube("search")
+    static let browseURL = innertube("browse")
 
     static let desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     static let androidMusicUserAgent = "com.google.android.apps.youtube.music/8.6.53.52 (Linux; U; Android 14) US"
