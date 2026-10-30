@@ -24,7 +24,10 @@ import PackageDescription
 let package = Package(
     name: "StreamifyIOS",
     platforms: [
-        .iOS(.v16)
+        // SW-DEC-02: the Observation stack (@Observable) requires iOS 17 /
+        // macOS 14; the macOS platform declaration itself lands with
+        // SW-ENG1-01 once the scaffold's iOS-only surfaces are guarded.
+        .iOS(.v17)
     ],
     products: [
         .library(name: "StreamifyIOS", targets: ["StreamifyIOS"])
