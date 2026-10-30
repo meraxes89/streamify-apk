@@ -23,7 +23,7 @@ public struct EqualizerView: View {
     public init(
         presets: [EqualizerPreset] = PreviewCatalog.eqPresets,
         bands: [EqualizerBand] = PreviewCatalog.eqBands,
-        onBandsChange: @escaping ([EqualizerBand]) -> Void = {}
+        onBandsChange: @escaping ([EqualizerBand]) -> Void = { _ in }
     ) {
         self.presets = presets
         self.onBandsChange = onBandsChange

@@ -52,9 +52,9 @@ public struct DownloadsView: View {
 
     public init(
         transfers: [DownloadTransfer] = PreviewCatalog.downloads,
-        onRetry: @escaping (String) -> Void = {},
-        onPauseResume: @escaping (String) -> Void = {},
-        onRemove: @escaping (String) -> Void = {}
+        onRetry: @escaping (String) -> Void = { _ in },
+        onPauseResume: @escaping (String) -> Void = { _ in },
+        onRemove: @escaping (String) -> Void = { _ in }
     ) {
         self.transfers = transfers
         self.onRetry = onRetry

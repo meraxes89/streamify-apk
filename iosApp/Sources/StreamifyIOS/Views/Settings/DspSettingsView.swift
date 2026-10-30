@@ -28,7 +28,7 @@ public struct DspSettingsView: View {
 
     public init(
         dsp: DspPreferences = PreviewCatalog.dsp,
-        onChange: @escaping (DspPreferences) -> Void = {}
+        onChange: @escaping (DspPreferences) -> Void = { _ in }
     ) {
         self._prefs = State(initialValue: dsp)
         self.onChange = onChange

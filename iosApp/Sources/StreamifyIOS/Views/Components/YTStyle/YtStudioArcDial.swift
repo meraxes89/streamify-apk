@@ -78,8 +78,8 @@ public struct YtStudioArcDial: View {
             track.addArc(
                 center: center,
                 radius: radius,
-                startAngle: sectorStart,
-                endAngle: sectorEnd,
+                startAngle: .radians(Double(sectorStart)),
+                endAngle: .radians(Double(sectorEnd)),
                 clockwise: true
             )
             context.stroke(
@@ -110,8 +110,8 @@ public struct YtStudioArcDial: View {
                 progress.addArc(
                     center: center,
                     radius: radius,
-                    startAngle: sectorStart,
-                    endAngle: CGFloat((startAngle + sweepAngle * fraction) * .pi / 180),
+                    startAngle: .radians(Double(sectorStart)),
+                    endAngle: .radians(Double((startAngle + sweepAngle * fraction) * .pi / 180)),
                     clockwise: true
                 )
                 context.stroke(

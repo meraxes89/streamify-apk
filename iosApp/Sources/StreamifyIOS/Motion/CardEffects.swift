@@ -152,8 +152,8 @@ extension View {
             // tap — feel the 0.95 / 0.85 press
         } label: {
             VStack(alignment: .leading) {
-                Text("Obsidian Sunrise").font(.songTitle)
-                Text("Sireen · 4:11").font(.songArtist)
+                Text("Obsidian Sunrise").font(StreamifyType.songTitle)
+                Text("Sireen · 4:11").font(StreamifyType.songArtist)
             }
             .frame(width: 260, alignment: .leading)
             .padding(16)

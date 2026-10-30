@@ -22,7 +22,7 @@ public struct OnboardingView: View {
 
     public init(
         onFinished: @escaping () -> Void = {},
-        onConnect: @escaping (String) -> Void = {}
+        onConnect: @escaping (String) -> Void = { _ in }
     ) {
         self.onFinished = onFinished
         self.onConnect = onConnect

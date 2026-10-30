@@ -28,7 +28,7 @@ public struct ArtistDetailView: View {
         artistName: String,
         tracks: [VirtualShelfTrack] = PreviewCatalog.tracks,
         isFollowing: Bool = false,
-        onFollow: ((Bool) -> Void)? = {},
+        onFollow: ((Bool) -> Void)? = { _ in },
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
         onOpenAlbum: @escaping (String) -> Void = { _ in },
         onBack: (() -> Void)? = {}

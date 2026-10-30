@@ -19,7 +19,7 @@ public struct UpdatesHubView: View {
 
     public init(
         updates: [UpdateEntry] = PreviewCatalog.updates,
-        onPreSave: @escaping (String) -> Void = {}
+        onPreSave: @escaping (String) -> Void = { _ in }
     ) {
         self.updates = updates
         self.onPreSave = onPreSave

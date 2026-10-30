@@ -24,7 +24,7 @@ public struct StatsWrappedView: View {
         genreStats: [GenreStat] = PreviewCatalog.genreStats,
         topTracks: [VirtualShelfTrack] = Array(PreviewCatalog.tracks[0..<5]),
         onShare: @escaping () -> Void = {},
-        onPlayTrack: @escaping (VirtualShelfTrack) -> Void = {}
+        onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in }
     ) {
         self.wrappedStats = wrappedStats
         self.genreStats = genreStats

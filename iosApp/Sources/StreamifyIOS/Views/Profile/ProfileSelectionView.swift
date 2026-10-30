@@ -22,7 +22,7 @@ public struct ProfileSelectionView: View {
     public init(
         profiles: [ProfileAccount] = PreviewCatalog.profiles,
         selectedId: String? = "p1",
-        onSelect: @escaping (ProfileAccount) -> Void = {},
+        onSelect: @escaping (ProfileAccount) -> Void = { _ in },
         onAddAccount: @escaping () -> Void = {}
     ) {
         self.profiles = profiles

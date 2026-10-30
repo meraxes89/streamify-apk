@@ -15,7 +15,7 @@ import SwiftUI
 
 public struct StreamifyPullToRefreshContainer<Content: View>: View {
     /// Pull travel needed to arm a refresh (pt).
-    public static let defaultThreshold: CGFloat = 72
+    public static var defaultThreshold: CGFloat { 72 }
 
     public let threshold: CGFloat
     public let onRefresh: (_ completion: @escaping () -> Void) -> Void

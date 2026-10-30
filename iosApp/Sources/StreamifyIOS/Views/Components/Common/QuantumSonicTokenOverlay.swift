@@ -168,6 +168,7 @@ private final class TokenHistory {
         .background(StreamifyColors.bgBase)
 }
 
+@MainActor
 private struct QuantumTokenOverlayHost: View {
     @State private var controller = QuantumSonicTokenController()
     let title: String

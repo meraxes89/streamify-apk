@@ -19,11 +19,11 @@ public struct SearchView: View {
     public var localResults: [VirtualShelfTrack] = PreviewCatalog.tracks
     public var onlineResults: [OnlineSearchResult] = PreviewCatalog.onlineResults
     public var isSearching: Bool = false
-    public var onSearch: (String) -> Void = {}
-    public var onSubmit: (String) -> Void = {}
-    public var onPlayTrack: (VirtualShelfTrack) -> Void = {}
-    public var onOpenResult: (OnlineSearchResult) -> Void = {}
-    public var onRemoveRecent: (String) -> Void = {}
+    public var onSearch: (String) -> Void = { _ in }
+    public var onSubmit: (String) -> Void = { _ in }
+    public var onPlayTrack: (VirtualShelfTrack) -> Void = { _ in }
+    public var onOpenResult: (OnlineSearchResult) -> Void = { _ in }
+    public var onRemoveRecent: (String) -> Void = { _ in }
     public var onClearRecents: () -> Void = {}
 
     // Ephemeral UI state: the live query + the active type filter (nil = All).

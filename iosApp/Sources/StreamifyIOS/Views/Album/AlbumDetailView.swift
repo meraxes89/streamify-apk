@@ -33,7 +33,7 @@ public struct AlbumDetailView: View {
         tracks: [VirtualShelfTrack] = PreviewCatalog.tracks,
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
         onOpenArtist: @escaping (String) -> Void = { _ in },
-        onLike: ((Bool) -> Void)? = {},
+        onLike: ((Bool) -> Void)? = { _ in },
         onBack: (() -> Void)? = {}
     ) {
         self.title = title

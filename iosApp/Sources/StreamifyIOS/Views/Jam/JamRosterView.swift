@@ -23,7 +23,7 @@ public struct JamRosterView: View {
         peers: [JamPeer],
         isHost: Bool = true,
         onDone: @escaping () -> Void = {},
-        onGovernate: @escaping (String, String) -> Void = {}
+        onGovernate: @escaping (String, String) -> Void = { _, _ in }
     ) {
         self.peers = peers
         self.isHost = isHost

@@ -28,10 +28,10 @@ private enum LibrarySegment: String, CaseIterable, Sendable {
 public struct LibraryView: View {
     public var likedTracks: [VirtualShelfTrack] = PreviewCatalog.tracks
     public var playlists: [LibraryPlaylistSummary] = [.init(name: "Obsidian Night Drive", count: 64), .init(name: "Focus Ladder", count: 48), .init(name: "Sunday Hardware", count: 81)]
-    public var onPlayTrack: (VirtualShelfTrack) -> Void = {}
-    public var onOpenPlaylist: (String) -> Void = {}
-    public var onOpenAlbum: (String) -> Void = {}
-    public var onOpenArtist: (String) -> Void = {}
+    public var onPlayTrack: (VirtualShelfTrack) -> Void = { _ in }
+    public var onOpenPlaylist: (String) -> Void = { _ in }
+    public var onOpenAlbum: (String) -> Void = { _ in }
+    public var onOpenArtist: (String) -> Void = { _ in }
     public var onCreatePlaylist: () -> Void = {}
     public var onSortTap: () -> Void = {}
     public var onFilterTap: () -> Void = {}

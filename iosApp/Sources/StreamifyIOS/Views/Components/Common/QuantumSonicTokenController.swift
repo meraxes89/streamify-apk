@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SW-ENG2 (Common wave B) — the flying "sonic token" physics producer.
@@ -147,6 +148,7 @@ public final class QuantumSonicTokenController {
         .background(StreamifyColors.bgBase)
 }
 
+@MainActor
 private struct QuantumTokenPreviewHost: View {
     @State private var controller = QuantumSonicTokenController()
     let title: String

@@ -313,6 +313,7 @@ public struct CanvasToggleChip: View {
         .background(StreamifyColors.bgBase)
 }
 
+@MainActor
 private struct CanvasLoopDemo: View {
     @State private var loop = CanvasLoopController(isLooping: true, startedAt: .now)
 

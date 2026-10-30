@@ -73,7 +73,7 @@ public struct SettingsView: View {
     public init(
         profile: ProfileAccount = PreviewCatalog.profiles[0],
         selectedMode: AppMode = .streamify,
-        onModeChange: @escaping (AppMode) -> Void = {},
+        onModeChange: @escaping (AppMode) -> Void = { _ in },
         onOpenAccounts: @escaping () -> Void = {},
         onOpenDsp: @escaping () -> Void = {},
         onOpenEqualizer: @escaping () -> Void = {},

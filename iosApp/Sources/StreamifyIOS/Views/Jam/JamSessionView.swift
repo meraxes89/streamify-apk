@@ -37,7 +37,7 @@ public struct JamSessionView: View {
         isHost: Bool = true, peers: [JamPeer] = PreviewCatalog.jamPeers,
         queueTracks: [VirtualShelfTrack] = Array(PreviewCatalog.tracks[0..<5]),
         onLeave: @escaping () -> Void = {}, onInvite: @escaping () -> Void = {},
-        onUpvote: @escaping (String) -> Void = {}, onGovernate: @escaping (String, String) -> Void = {},
+        onUpvote: @escaping (String) -> Void = { _ in }, onGovernate: @escaping (String, String) -> Void = { _, _ in },
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void
     ) {
         self.sessionName = sessionName; self.sessionCode = sessionCode; self.isHost = isHost
