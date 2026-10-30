@@ -107,10 +107,14 @@ public struct HeartBurstView: View {
         for i in 0..<12 {
             let angle: Double = Double(i) / 12 * 2 * .pi + Double(burst.id % 7) * 0.13
             let point: CGPoint = particlePoint(angle: angle, t: t, center: center, radius: radius)
-            var particle = heart
-            particle.opacity = decay
-            particle.transform = .scale(x: decay, y: decay)
-            context.draw(particle, at: point)
+            // ResolvedText carries no per-draw opacity/transform — a draw
+            // LAYER scopes both to this particle.
+            context.drawLayer { layer in
+                layer.opacity = decay
+                layer.translateBy(x: point.x, y: point.y)
+                layer.scaleBy(x: decay, y: decay)
+                layer.draw(heart, at: .zero)
+            }
         }
     }
 
