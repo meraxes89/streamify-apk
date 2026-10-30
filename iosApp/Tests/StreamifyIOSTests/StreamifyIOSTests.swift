@@ -140,6 +140,11 @@ final class IOSAudioSessionAdapterTests: XCTestCase {
     private final class RecordingResponder: AudioSessionResponding {
         var pauseCount = 0
         var resumeCount = 0
+        /// SW-ENG3-02: the pre-interruption memory source — the engine was
+        /// playing when the interruption began (the legacy test's scenario).
+        var playbackIsActive = true
+
+        var audioSessionPlaybackIsActive: Bool { playbackIsActive }
 
         func audioSessionRequestsPause(reason: String) { pauseCount += 1 }
         func audioSessionRequestsResume(reason: String) { resumeCount += 1 }

@@ -177,15 +177,11 @@ final class RemoteCommandCenterAdapter {
         ) {
             let target = command.addTarget { [weak self] _ in
                 guard let self else { return .commandFailed }
-                let intent = action()
-                guard self.admit(intent) else {
-                    // Swallowed duplicate: still acknowledge success — the
-                    // user pressed a real button; the engine simply already
-                    // has the intent (MP-DEC-07's "debounced is a success
-                    // path" contract).
-                    return .success
-                }
-                self.router.remoteCommandReceived(intent)
+                _ = self.receive(action())
+                // A swallowed duplicate still acknowledges success — the
+                // user pressed a real button; the engine simply already
+                // has the intent (MP-DEC-07's "debounced is a success
+                // path" contract).
                 return .success
             }
             targets.append((command, target))
@@ -246,17 +242,23 @@ final class RemoteCommandCenterAdapter {
 
     // MARK: - Debounce seams (exposed for the white-box test lane)
 
-    /// The leading-edge admission decision for a discrete command.
-    func admits(_ command: RemoteCommand, nowNs: UInt64) -> Bool {
-        gate.admits(command, nowNs: nowNs)
-    }
-
-    /// Leading-edge admission for discrete commands; records the admit.
-    private func admit(_ command: RemoteCommand) -> Bool {
+    /// The single funnel every MPRemoteCommandCenter target drives: the
+    /// leading-edge admission gate over the injectable clock; routes on
+    /// admission. Returns false when the command was swallowed as a
+    /// duplicate inside the window.
+    @discardableResult
+    func receive(_ command: RemoteCommand) -> Bool {
         let now = clock()
         guard gate.admits(command, nowNs: now) else { return false }
         gate = gate.admitting(command, nowNs: now)
+        router.remoteCommandReceived(command)
         return true
+    }
+
+    /// The leading-edge admission decision for a discrete command (pure —
+    /// no admission is recorded).
+    func admits(_ command: RemoteCommand, nowNs: UInt64) -> Bool {
+        gate.admits(command, nowNs: nowNs)
     }
 
     /// Trailing-edge seek debounce: rapid scrub events coalesce — only the

@@ -109,17 +109,24 @@ enum OutputBufferPolicy {
 
     /// Latency-proportional target: `outputLatency + headroom`, clamped
     /// into `[minimum, maximum]`. Degenerate bounds (non-positive or
-    /// inverted) fall back to the documented defaults; a negative reported
-    /// latency clamps to zero first (defensive — never fabricate).
+    /// inverted) fall back to the documented defaults for BOTH ends; a
+    /// negative reported latency clamps to zero first (defensive — never
+    /// fabricate).
     static func preferredIOBufferDuration(
         outputLatency: TimeInterval,
         minimum: TimeInterval,
         maximum: TimeInterval
     ) -> TimeInterval {
-        let minBound = minimum > 0 ? minimum : defaultMinimumSeconds
-        let maxBound = maximum >= minBound ? maximum : defaultMaximumSeconds
-        let latency = max(0, outputLatency)
-        let target = latency + headroomSeconds
+        let minBound: TimeInterval
+        let maxBound: TimeInterval
+        if minimum > 0 && maximum >= minimum {
+            minBound = minimum
+            maxBound = maximum
+        } else {
+            minBound = defaultMinimumSeconds
+            maxBound = defaultMaximumSeconds
+        }
+        let target = max(0, outputLatency) + headroomSeconds
         return min(max(target, minBound), maxBound)
     }
 }

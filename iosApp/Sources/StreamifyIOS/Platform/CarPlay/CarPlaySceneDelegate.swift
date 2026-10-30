@@ -99,14 +99,14 @@ enum CarPlayTemplateFactory {
         return [nowPlayingRow, playlistsRow]
     }
 
-    /// The Home tab: the launcher rows + the provider's shortcuts.
-    static func homeTemplate(
+    /// The Home tab's shortcut rows (the provider's browse content, each
+    /// carrying its selection command) — shared by the initial build and
+    /// `reloadBrowseContent`.
+    static func shortcutRows(
         shortcuts: [CarPlayBrowseItem],
-        onNowPlaying: @escaping () -> Void,
-        onPlaylists: @escaping () -> Void,
         onCommand: @escaping (RemoteCommand) -> Void
-    ) -> CPListTemplate {
-        let shortcutRows = shortcuts.map { item in
+    ) -> [CPListItem] {
+        shortcuts.map { item in
             CPListItem(
                 text: item.text,
                 detailText: item.detailText,
@@ -120,12 +120,20 @@ enum CarPlayTemplateFactory {
                 completion()
             }
         }
+    }
 
+    /// The Home tab: the launcher rows + the provider's shortcuts.
+    static func homeTemplate(
+        shortcuts: [CarPlayBrowseItem],
+        onNowPlaying: @escaping () -> Void,
+        onPlaylists: @escaping () -> Void,
+        onCommand: @escaping (RemoteCommand) -> Void
+    ) -> CPListTemplate {
         let section = CPListSection(
             items: launcherRows(
                 onNowPlaying: onNowPlaying,
                 onPlaylists: onPlaylists
-            ) + shortcutRows
+            ) + shortcutRows(shortcuts: shortcuts, onCommand: onCommand)
         )
         return CPListTemplate(
             title: homeTabTitle,
@@ -294,29 +302,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
                 items: CarPlayTemplateFactory.launcherRows(
                     onNowPlaying: { [weak self] in self?.presentNowPlaying() },
                     onPlaylists: { [weak self] in self?.pushPlaylistsBrowser() }
-                ) + browseRows(for: contentProvider.homeShortcuts())
+                ) + CarPlayTemplateFactory.shortcutRows(
+                    shortcuts: contentProvider.homeShortcuts()
+                ) { [weak self] command in
+                    self?.router?.remoteCommandReceived(command)
+                }
             )
         ])
         playlists.updateSections([
-            CPListSection(items: browseRows(for: contentProvider.playlists()))
-        ])
-    }
-
-    private func browseRows(for items: [CarPlayBrowseItem]) -> [CPListItem] {
-        items.map { item in
-            CPListItem(
-                text: item.text,
-                detailText: item.detailText,
-                image: item.artwork.map(CPListImage.init(image:)),
-                accessoryImage: nil,
-                accessoryType: .none
-            ) { [weak self] selected, completion in
-                if selected, let command = item.command {
+            CPListSection(
+                items: CarPlayTemplateFactory.shortcutRows(
+                    shortcuts: contentProvider.playlists()
+                ) { [weak self] command in
                     self?.router?.remoteCommandReceived(command)
                 }
-                completion()
-            }
-        }
+            )
+        ])
     }
 }
 

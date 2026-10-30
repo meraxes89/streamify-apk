@@ -317,7 +317,8 @@ final class PlaybackLiveActivityController: ObservableObject {
         do {
             activity = try Activity.request(
                 attributes: StreamifyPlaybackAttributes(trackId: trackId),
-                contentState: state
+                contentState: state,
+                pushType: nil
             )
             lastFingerprint = LiveActivityUpdatePolicy.renderedFingerprint(
                 title: title,
@@ -392,7 +393,7 @@ final class PlaybackLiveActivityController: ObservableObject {
     /// Ends the activity (playback stopped).
     func end() async {
         guard let activity else { return }
-        await activity.end(dismissalPolicy: .immediate)
+        await activity.end(using: nil, dismissalPolicy: .immediate)
         self.activity = nil
         lastFingerprint = nil
         lastUpdateFingerprint = nil
@@ -402,7 +403,7 @@ final class PlaybackLiveActivityController: ObservableObject {
     /// process lifetime (call once at app start).
     static func endAllStale() async {
         for stale in Activity<StreamifyPlaybackAttributes>.activities {
-            await stale.end(dismissalPolicy: .immediate)
+            await stale.end(using: nil, dismissalPolicy: .immediate)
         }
     }
 }
