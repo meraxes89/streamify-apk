@@ -1,32 +1,6 @@
+#if canImport(CarPlay) && canImport(UIKit)
 import Foundation
 import UIKit
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SW-ENG3-07 (Phase 5 / MP-CAP03): the Apple CarPlay integration —
-// `CPTemplateApplicationSceneDelegate` with a `CPTabBarTemplate` of three
-// tabs (Home, Playlists, Now Playing) and the `CPNowPlayingTemplate`.
-//
-// CONTROL WIRING (the directive's "hardware car knob and steering wheel
-// controls wired to EngineGateway"):
-//  * Steering-wheel / knob NEXT / PREV / PLAY-PAUSE arrive through
-//    MPRemoteCommandCenter — ALREADY bound by RemoteCommandCenterAdapter
-//    (SW-ENG3-03) onto the EngineGateway plane with the MP-DEC-07 debounce.
-//    CarPlay needs no second command path: the knob IS a remote command.
-//  * Template taps (list rows, tab picks) run the CPListItem activation
-//    handlers here, routing onto the SAME `RemoteCommandRouting` plane.
-//  * Browse content (playlists, shortcuts) comes from the injectable
-//    `CarPlayContentProviding` seam — the shell feeds library truth; the
-//    empty default renders honest "nothing here yet" rows, never
-//    fabricated content.
-//
-// HOST-APP WIRING (the wrapper target's responsibility — the library
-// compiles without it): Info.plist UIApplicationSceneManifest declares a
-// CPTemplateApplicationSceneSessionRoleApplication scene whose delegate
-// class is this type, the `com.apple.developer.carplay-audio` entitlement
-// is present, and `UIBackgroundModes` includes audio.
-// ─────────────────────────────────────────────────────────────────────────────
-
-#if canImport(CarPlay)
 import CarPlay
 
 // MARK: - Browse content seam
@@ -351,4 +325,4 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
     }
 }
 
-#endif  // canImport(CarPlay)
+#endif  // canImport(CarPlay) && canImport(UIKit)

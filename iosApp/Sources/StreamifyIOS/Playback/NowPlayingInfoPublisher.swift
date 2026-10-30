@@ -1,6 +1,8 @@
 import Foundation
 import MediaPlayer
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 5 (MP-UI01 / Beta) — hardened SW-ENG3-04 (Engineer 3): lockscreen /
@@ -69,6 +71,7 @@ protocol ArtworkProviding: AnyObject {
     func artwork(for urlString: String?) async -> MPMediaItemArtwork?
 }
 
+#if canImport(UIKit)
 /// Production artwork pipeline: `URLSession` download behind an injectable
 /// fetch seam, an `NSCache` keyed by URL (the artwork cache the storage
 /// budget accounts for), and `preparingForDisplay()` decoding so the
@@ -116,6 +119,13 @@ final class ArtworkLoader: ArtworkProviding {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 }
+#else
+@MainActor
+final class ArtworkLoader: ArtworkProviding {
+    init(fetch: @escaping @Sendable (URL) async -> Data? = { _ in nil }) {}
+    func artwork(for urlString: String?) async -> MPMediaItemArtwork? { nil }
+}
+#endif
 
 // MARK: - The publisher
 

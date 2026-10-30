@@ -1,42 +1,8 @@
+#if canImport(ActivityKit) && canImport(UIKit)
 import Foundation
 import SwiftUI
 import UIKit
 import WidgetKit
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SW-ENG3-05 (Phase 5 / MP-CAP03): Dynamic Island & Live Activities —
-// ActivityKit surface for iPhone 14 Pro+ (iOS 16.1+; interactive controls on
-// iOS 17+).
-//
-// PRESENTATION CONTRACT (the directive's mandate):
-//  * COMPACT — album thumbnail on the leading edge, animated live audio
-//    waveform bars on the trailing edge.
-//  * EXPANDED — full artwork, interactive Play/Pause + Next buttons (iOS 17
-//    AppIntent buttons — the same PlaybackIntents the widgets use), and an
-//    animated track scrubber that interpolates BETWEEN the 1 Hz content
-//    updates so it never stutters.
-//  * MINIMAL — waveform bars only (the system picks this presentation
-//    when the compact slots are taken by another activity).
-//
-// DISCIPLINES (same as every other OS surface in this subtree):
-//  * 1 Hz UPDATE ADMISSION — ActivityKit updates ride MediaPlayer-adjacent
-//    IPC; `LiveActivityUpdatePolicy` admits an update only when a
-//    RENDERED value actually changed (second-quantized position, transport
-//    state, track identity) — the same budget as NowPlayingInfoPublisher.
-//  * DETERMINISTIC ANIMATION — the waveform bars derive from a pure
-//    two-sine model over the TimelineView phase (`LiveWaveformModel`):
-//    zero mutable view state, zero timers, fully unit-testable heights.
-//  * CLOCK DISCIPLINE (MP-DEC-03) — the scrubber advances ONLY from the
-//    hardware DAC position + the monotonic delta since the content
-//    snapshot's `positionUpdatedAt` (`LiveActivityMath.progress`); no
-//    wall-clock position estimation anywhere.
-//
-// HOST-APP ENTITLEMENTS (the wrapper target's responsibility — the library
-// compiles without them): Info.plist `NSSupportsLiveActivities = YES`
-// (+ `NSSupportsLiveActivitiesFrequentUpdates` for the push lane).
-// ─────────────────────────────────────────────────────────────────────────────
-
-#if canImport(ActivityKit)
 import ActivityKit
 
 // MARK: - The activity contract
@@ -629,4 +595,4 @@ struct LiveTransportControlsView: View {
     }
 }
 
-#endif  // canImport(ActivityKit)
+#endif  // canImport(ActivityKit) && canImport(UIKit)
