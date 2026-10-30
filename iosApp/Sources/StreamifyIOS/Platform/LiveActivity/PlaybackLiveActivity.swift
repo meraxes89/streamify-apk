@@ -424,12 +424,10 @@ final class PlaybackLiveActivityController: ObservableObject {
 
 // MARK: - Views
 
-/// The lock-screen / banner presentation.
-///
-/// Host wiring (the widget-extension target): the `ActivityConfiguration`
-/// content closure passes the system context's state straight through —
-/// `PlaybackLiveActivityLockScreenView(state: context.state)` — keeping
-/// this library type decoupled from the SDK's context generics.
+/// The lock-screen / banner presentation: the `ActivityConfiguration`
+/// content closure inside `PlaybackLiveActivityWidget` passes the system
+/// context's state straight through — this type stays decoupled from the
+/// SDK's context generics.
 @available(iOS 16.1, *)
 struct PlaybackLiveActivityLockScreenView: View {
     let state: StreamifyPlaybackAttributes.ContentState
@@ -457,61 +455,65 @@ struct PlaybackLiveActivityLockScreenView: View {
     }
 }
 
-/// The Dynamic Island presentation: compact leading = thumbnail, compact
-/// trailing = waveform bars; expanded = artwork + interactive transport +
-/// animated scrubber.
+/// The Live Activity widget: the lock-screen/banner presentation AND the
+/// Dynamic Island configuration in one `ActivityConfiguration` — the real
+/// WidgetKit shape. `DynamicIsland` is an island CONFIGURATION consumed by
+/// `ActivityConfiguration`'s `dynamicIsland:` builder, not a standalone
+/// View (it cannot stand in a `View.body`); the presentation contract
+/// lives exactly where the system evaluates it.
 ///
-/// Host wiring (the widget-extension target): the `ActivityConfiguration`
-/// `dynamicIsland:` closure passes the system context's state straight
-/// through — `PlaybackLiveActivityDynamicIslandView(state:
-/// context.state)`.
+/// Host wiring (the widget-extension target): list this widget in the
+/// extension's `WidgetBundle` next to the home-screen widgets:
+/// `StreamifyWidgetsEntryPoint { PlaybackLiveActivityWidget() ... }`.
 @available(iOS 16.1, *)
-struct PlaybackLiveActivityDynamicIslandView: View {
-    let state: StreamifyPlaybackAttributes.ContentState
-
-    var body: some View {
-        DynamicIsland {
-            DynamicIslandExpandedRegion(.leading) {
-                LiveActivityArtworkView(
-                    artworkData: state.artwork,
-                    cornerRadius: 14
-                )
-                .frame(width: 64, height: 64)
-                .padding(.leading, 4)
-            }
-            DynamicIslandExpandedRegion(.center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(state.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(state.artist)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+struct PlaybackLiveActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: StreamifyPlaybackAttributes.self) { context in
+            PlaybackLiveActivityLockScreenView(state: context.state)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    LiveActivityArtworkView(
+                        artworkData: context.state.artwork,
+                        cornerRadius: 14
+                    )
+                    .frame(width: 64, height: 64)
+                    .padding(.leading, 4)
                 }
+                DynamicIslandExpandedRegion(.center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(context.state.title)
+                            .font(.headline)
+                            .lineLimit(1)
+                        Text(context.state.artist)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    LiveTransportControlsView(state: context.state)
+                        .padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    LiveScrubberView(state: context.state, tint: .accentColor)
+                        .padding(.horizontal, 4)
+                }
+            } compactLeading: {
+                LiveActivityArtworkView(
+                    artworkData: context.state.artwork,
+                    cornerRadius: 6
+                )
+                .frame(width: 22, height: 22)
+            } compactTrailing: {
+                LiveWaveformBarsView(isPlaying: context.state.isPlaying, tint: .accentColor)
+                    .frame(width: 34)
+            } minimal: {
+                LiveWaveformBarsView(isPlaying: context.state.isPlaying, tint: .accentColor)
+                    .frame(width: 22)
             }
-            DynamicIslandExpandedRegion(.trailing) {
-                LiveTransportControlsView(state: state)
-                    .padding(.trailing, 4)
-            }
-            DynamicIslandExpandedRegion(.bottom) {
-                LiveScrubberView(state: state, tint: .accentColor)
-                    .padding(.horizontal, 4)
-            }
-        } compactLeading: {
-            LiveActivityArtworkView(
-                artworkData: state.artwork,
-                cornerRadius: 6
-            )
-            .frame(width: 22, height: 22)
-        } compactTrailing: {
-            LiveWaveformBarsView(isPlaying: state.isPlaying, tint: .accentColor)
-                .frame(width: 34)
-        } minimal: {
-            LiveWaveformBarsView(isPlaying: state.isPlaying, tint: .accentColor)
-                .frame(width: 22)
+            .keylineTint(.accentColor)
         }
-        .keylineTint(.accentColor)
     }
 }
 

@@ -253,7 +253,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
         from window: CPWindow
     ) {
         Task { @MainActor in
-            disconnect(interfaceController: interfaceController)
+            disconnect()
         }
     }
 
@@ -290,8 +290,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
         interfaceController.setRootTemplate(tabBar, animated: false) { _, _ in }
     }
 
-    private func disconnect(interfaceController: CPInterfaceController) {
-        interfaceController.setRootTemplate(nil, animated: false) { _, _ in }
+    private func disconnect() {
+        // The scene is going away and the system discards the template
+        // hierarchy with it. setRootTemplate's Swift surface takes a
+        // NON-optional CPTemplate (nil is not expressible), and the
+        // documented didDisconnect contract is state cleanup — so: drop
+        // our references and let the teardown happen with the scene.
         self.interfaceController = nil
         homeTemplate = nil
         playlistsTemplate = nil
