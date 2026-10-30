@@ -58,12 +58,13 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
         XCTAssertEqual(rows[0].text, "Now Playing")
         XCTAssertEqual(rows[1].text, "Playlists")
 
-        // The activation handlers route (the knob-press path) — invoking
-        // with selected=true runs the intent; selected=false is a
-        // highlight-only event.
+        // The activation handlers route (the knob-press path): invoking
+        // the row's handler runs the intent — a CPListItem handler IS a
+        // selection (the system hands the row + the completion that clears
+        // its loading spinner).
         let expectation = expectation(description: "activation completes")
         if let handler = rows[0].handler {
-            handler(true) { expectation.fulfill() }
+            handler(rows[0]) { expectation.fulfill() }
         } else {
             XCTFail("launcher rows must carry activation handlers")
         }
@@ -87,17 +88,19 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
         XCTAssertEqual(rows[0].text, "Liked Songs")
         XCTAssertEqual(rows[0].detailText, "Your favorites")
 
-        // selected=false: a highlight pass — nothing routes.
-        let quiet = expectation(description: "highlight completes")
-        rows[0].handler?(false) { quiet.fulfill() }
-        wait(for: [quiet], timeout: 2)
-        XCTAssertEqual(routed, [])
-
-        // selected=true: the command lands on the shared plane.
+        // First activation: the command lands on the shared plane.
         let fired = expectation(description: "selection completes")
-        rows[0].handler?(true) { fired.fulfill() }
+        rows[0].handler?(rows[0]) { fired.fulfill() }
         wait(for: [fired], timeout: 2)
         XCTAssertEqual(routed, [.next])
+
+        // A second activation of the SAME row routes again — every
+        // handler invocation is a genuine selection (there is no
+        // highlight-only event in the CarPlay contract).
+        let again = expectation(description: "second selection completes")
+        rows[0].handler?(rows[0]) { again.fulfill() }
+        wait(for: [again], timeout: 2)
+        XCTAssertEqual(routed, [.next, .next])
     }
 
     func testEmptyPlaylistsRenderTheHonestPlaceholder() {

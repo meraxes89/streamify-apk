@@ -88,6 +88,18 @@ enum DacClockTranslator {
     }
 }
 
+/// Non-isolated constants home: default arguments evaluate in a
+/// NONISOLATED context, so a @MainActor-isolated static cannot back the
+/// initializer default below (Swift 6 makes that an error).
+enum DacClockPublisherPolicy {
+    /// Default drain cadence: 10 Hz. With anchor-and-extrapolate the
+    /// position error grows only with DAC drift over the staleness window
+    /// (27.4 ppm × 100 ms ≈ 3 µs — three orders of magnitude inside the
+    /// 5 ms budget), so 10 Hz is far beyond sufficient while staying
+    /// invisible on the CPU budget.
+    static let defaultDrainIntervalNs: UInt64 = 100_000_000
+}
+
 /// Duty-cycle clock publisher: drains the driver's latest hardware clock
 /// sample on a background cadence, republishes it to the UI as an
 /// `AsyncStream`, and mirrors each sample into the engine (the
@@ -102,13 +114,6 @@ enum DacClockTranslator {
 @MainActor
 final class DacClockPublisher {
 
-    /// Default drain cadence: 10 Hz. With anchor-and-extrapolate the
-    /// position error grows only with DAC drift over the staleness window
-    /// (27.4 ppm × 100 ms ≈ 3 µs — three orders of magnitude inside the
-    /// 5 ms budget), so 10 Hz is far beyond sufficient while staying
-    /// invisible on the CPU budget.
-    static let defaultDrainIntervalNs: UInt64 = 100_000_000
-
     private let driver: CoreAudioDriver
     private let clock: () -> UInt64
     private let drainIntervalNs: UInt64
@@ -122,7 +127,7 @@ final class DacClockPublisher {
 
     init(
         driver: CoreAudioDriver,
-        drainIntervalNs: UInt64 = DacClockPublisher.defaultDrainIntervalNs,
+        drainIntervalNs: UInt64 = DacClockPublisherPolicy.defaultDrainIntervalNs,
         clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
         onSample: ((DacClockSample) -> Void)? = nil
     ) {

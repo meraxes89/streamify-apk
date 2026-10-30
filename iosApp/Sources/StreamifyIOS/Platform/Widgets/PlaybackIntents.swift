@@ -91,7 +91,7 @@ struct PreviousTrackPlaybackIntent: AppIntent, AudioPlaybackIntent {
 struct SetVolumePlaybackIntent: AppIntent, AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Set Volume"
 
-    @Parameter(title: "Volume", in: 0.0...1.0)
+    @Parameter(title: "Volume")
     var volume: Double
 
     init() {}
@@ -101,7 +101,9 @@ struct SetVolumePlaybackIntent: AppIntent, AudioPlaybackIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        WidgetCommandDispatcher.postVolume(volume)
+        // The mailbox's latest-wins volume path clamps on arrival too —
+        // this clamp guards direct/Siri invocations of the bare parameter.
+        WidgetCommandDispatcher.postVolume(min(max(volume, 0), 1))
         return .result()
     }
 }

@@ -165,7 +165,7 @@ struct MenuBarScrubberView: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(.quaternary)
                 Capsule()
-                    .fill(.accentColor)
+                    .fill(Color.accentColor)
                     .frame(width: (fraction ?? 0) * proxy.size.width)
             }
         }

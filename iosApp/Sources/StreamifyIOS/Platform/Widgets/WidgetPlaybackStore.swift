@@ -230,7 +230,9 @@ struct WidgetPlaybackStore {
     /// skipped (identical rendered fingerprint — the 1 Hz discipline).
     @discardableResult
     mutating func refresh(snapshot: WidgetPlaybackSnapshot) -> Bool {
-        if let current = snapshot(), current.renderedFingerprint == snapshot.renderedFingerprint {
+        // `self.` disambiguates the reader method from the like-named
+        // parameter (a bare `snapshot()` would try to CALL the parameter).
+        if let current = self.snapshot(), current.renderedFingerprint == snapshot.renderedFingerprint {
             return false
         }
         if let data = try? JSONEncoder().encode(snapshot) {

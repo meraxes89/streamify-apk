@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import WidgetKit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SW-ENG3-05 (Phase 5 / MP-CAP03): Dynamic Island & Live Activities —
@@ -184,19 +185,30 @@ enum LiveActivityMath {
 
 // MARK: - Artwork (downsampled thumbnails for the ContentState)
 
+/// Non-isolated constants home: default arguments evaluate in a
+/// NONISOLATED context, so @MainActor-isolated statics cannot back the
+/// `downsample` defaults below (Swift 6 makes that an error).
+enum LiveActivityThumbnailPolicy {
+    /// Bounded thumbnail edge (the push-update lane's ~4 KB budget).
+    static let maxPixelSize: CGFloat = 192
+    static let jpegQuality: CGFloat = 0.75
+}
+
 /// Thumbnail pipeline for the ContentState: downloads the track artwork
 /// once per track and downsamples to a bounded JPEG payload (ContentState
 /// must stay small — the push-update lane has a hard ~4 KB budget).
 @MainActor
 final class LiveActivityArtworkProvider {
 
-    static let thumbnailMaxPixelSize: CGFloat = 192
-    static let thumbnailJpegQuality: CGFloat = 0.75
-
     private let fetch: @Sendable (URL) async -> Data?
     private var inFlight: [String: Task<Data?, Never>] = [:]
 
-    init(
+    /// NONISOLATED on purpose: default arguments such as the controller's
+    /// and the widget refresher's `artworkProvider: ... =
+    /// LiveActivityArtworkProvider()` evaluate in a nonisolated context —
+    /// this injected-seam initializer only stores the closure and touches
+    /// no isolated state.
+    nonisolated init(
         fetch: @escaping @Sendable (URL) async -> Data? = { url in
             guard let (data, response) = try? await URLSession.shared.data(from: url)
             else { return nil }
@@ -229,8 +241,8 @@ final class LiveActivityArtworkProvider {
     /// Pure downsample: decode → bounded resize → JPEG.
     nonisolated static func downsample(
         _ data: Data,
-        maxPixelSize: CGFloat = LiveActivityArtworkProvider.thumbnailMaxPixelSize,
-        jpegQuality: CGFloat = LiveActivityArtworkProvider.thumbnailJpegQuality
+        maxPixelSize: CGFloat = LiveActivityThumbnailPolicy.maxPixelSize,
+        jpegQuality: CGFloat = LiveActivityThumbnailPolicy.jpegQuality
     ) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
         let largest = max(image.size.width, image.size.height)
@@ -368,8 +380,10 @@ final class PlaybackLiveActivityController: ObservableObject {
             durationSeconds: durationSeconds
         ) else { return }
 
-        let artwork = activity.contentState.artwork
-            ?? await artworkProvider.thumbnail(for: artworkUrl)
+        var artwork = activity.contentState.artwork
+        if artwork == nil {
+            artwork = await artworkProvider.thumbnail(for: artworkUrl)
+        }
         let state = StreamifyPlaybackAttributes.ContentState(
             title: title,
             artist: artist,
@@ -411,26 +425,31 @@ final class PlaybackLiveActivityController: ObservableObject {
 // MARK: - Views
 
 /// The lock-screen / banner presentation.
+///
+/// Host wiring (the widget-extension target): the `ActivityConfiguration`
+/// content closure passes the system context's state straight through —
+/// `PlaybackLiveActivityLockScreenView(state: context.state)` — keeping
+/// this library type decoupled from the SDK's context generics.
 @available(iOS 16.1, *)
 struct PlaybackLiveActivityLockScreenView: View {
-    let context: ActivityViewContext<StreamifyPlaybackAttributes>
+    let state: StreamifyPlaybackAttributes.ContentState
 
     var body: some View {
         HStack(spacing: 12) {
-            LiveActivityArtworkView(artworkData: context.state.artwork, cornerRadius: 10)
+            LiveActivityArtworkView(artworkData: state.artwork, cornerRadius: 10)
                 .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
-                Text(context.state.title)
+                Text(state.title)
                     .font(.headline)
                     .lineLimit(1)
-                Text(context.state.artist)
+                Text(state.artist)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                LiveScrubberView(state: context.state, tint: .accentColor)
+                LiveScrubberView(state: state, tint: .accentColor)
             }
             Spacer(minLength: 4)
-            LiveWaveformBarsView(isPlaying: context.state.isPlaying, tint: .accentColor)
+            LiveWaveformBarsView(isPlaying: state.isPlaying, tint: .accentColor)
                 .frame(width: 42)
         }
         .padding(14)
@@ -441,15 +460,20 @@ struct PlaybackLiveActivityLockScreenView: View {
 /// The Dynamic Island presentation: compact leading = thumbnail, compact
 /// trailing = waveform bars; expanded = artwork + interactive transport +
 /// animated scrubber.
+///
+/// Host wiring (the widget-extension target): the `ActivityConfiguration`
+/// `dynamicIsland:` closure passes the system context's state straight
+/// through — `PlaybackLiveActivityDynamicIslandView(state:
+/// context.state)`.
 @available(iOS 16.1, *)
 struct PlaybackLiveActivityDynamicIslandView: View {
-    let context: ActivityViewContext<StreamifyPlaybackAttributes>
+    let state: StreamifyPlaybackAttributes.ContentState
 
     var body: some View {
         DynamicIsland {
             DynamicIslandExpandedRegion(.leading) {
                 LiveActivityArtworkView(
-                    artworkData: context.state.artwork,
+                    artworkData: state.artwork,
                     cornerRadius: 14
                 )
                 .frame(width: 64, height: 64)
@@ -457,34 +481,34 @@ struct PlaybackLiveActivityDynamicIslandView: View {
             }
             DynamicIslandExpandedRegion(.center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(context.state.title)
+                    Text(state.title)
                         .font(.headline)
                         .lineLimit(1)
-                    Text(context.state.artist)
+                    Text(state.artist)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
             DynamicIslandExpandedRegion(.trailing) {
-                LiveTransportControlsView(state: context.state)
+                LiveTransportControlsView(state: state)
                     .padding(.trailing, 4)
             }
             DynamicIslandExpandedRegion(.bottom) {
-                LiveScrubberView(state: context.state, tint: .accentColor)
+                LiveScrubberView(state: state, tint: .accentColor)
                     .padding(.horizontal, 4)
             }
         } compactLeading: {
             LiveActivityArtworkView(
-                artworkData: context.state.artwork,
+                artworkData: state.artwork,
                 cornerRadius: 6
             )
             .frame(width: 22, height: 22)
         } compactTrailing: {
-            LiveWaveformBarsView(isPlaying: context.state.isPlaying, tint: .accentColor)
+            LiveWaveformBarsView(isPlaying: state.isPlaying, tint: .accentColor)
                 .frame(width: 34)
         } minimal: {
-            LiveWaveformBarsView(isPlaying: context.state.isPlaying, tint: .accentColor)
+            LiveWaveformBarsView(isPlaying: state.isPlaying, tint: .accentColor)
                 .frame(width: 22)
         }
         .keylineTint(.accentColor)

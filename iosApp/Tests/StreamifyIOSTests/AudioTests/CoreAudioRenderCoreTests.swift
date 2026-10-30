@@ -63,6 +63,9 @@ final class CoreAudioRenderCoreTests: XCTestCase {
 
     // ── The facade ────────────────────────────────────────────────────────
 
+    // CoreAudioRenderCore is @MainActor: the facade tests ride the main
+    // actor explicitly (the driver-only tests below stay nonisolated).
+    @MainActor
     func testRenderCoreFacadeDelegatesToItsDriver() {
         let driver = SimulatedCoreAudioDriver()
         let core = CoreAudioRenderCore(driver: driver)
@@ -80,6 +83,7 @@ final class CoreAudioRenderCoreTests: XCTestCase {
         XCTAssertNil(core.latestClock())
     }
 
+    @MainActor
     func testRenderCoreFacadeRejectsMissingSinkHandle() {
         let core = CoreAudioRenderCore(driver: SimulatedCoreAudioDriver())
         XCTAssertEqual(core.start(sinkHandle: nil), .invalidSinkHandle)

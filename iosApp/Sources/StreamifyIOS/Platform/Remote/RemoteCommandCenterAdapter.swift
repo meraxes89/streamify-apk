@@ -211,7 +211,7 @@ final class RemoteCommandCenterAdapter {
         // or the system surfaces grey the buttons out entirely.
         let likeCommand = center.likeCommand
         likeCommand.isActive = true
-        likeCommand.title = "Like"
+        likeCommand.localizedTitle = "Like"
         let likeTarget = likeCommand.addTarget { [weak self] _ in
             self?.router.remoteFeedbackReceived(.like)
             return .success
@@ -220,7 +220,7 @@ final class RemoteCommandCenterAdapter {
 
         let dislikeCommand = center.dislikeCommand
         dislikeCommand.isActive = true
-        dislikeCommand.title = "Dislike"
+        dislikeCommand.localizedTitle = "Dislike"
         let dislikeTarget = dislikeCommand.addTarget { [weak self] _ in
             self?.router.remoteFeedbackReceived(.dislike)
             return .success

@@ -71,6 +71,10 @@ enum CarPlayTemplateFactory {
 
     /// The Home tab's launcher rows (Now Playing + a pushed Playlists
     /// browser) — shared by the initial build and `reloadBrowseContent`.
+    ///
+    /// `CPListItem`'s activation is the `handler` PROPERTY (the designated
+    /// initializer takes no trailing closure): the system hands the row + a
+    /// completion that MUST be called to clear the row's loading spinner.
     static func launcherRows(
         onNowPlaying: @escaping () -> Void,
         onPlaylists: @escaping () -> Void
@@ -80,9 +84,10 @@ enum CarPlayTemplateFactory {
             detailText: "Open the player",
             image: nil,
             accessoryImage: nil,
-            accessoryType: .playbackControls
-        ) { selected, completion in
-            if selected { onNowPlaying() }
+            accessoryType: .none
+        )
+        nowPlayingRow.handler = { _, completion in
+            onNowPlaying()
             completion()
         }
 
@@ -92,8 +97,9 @@ enum CarPlayTemplateFactory {
             image: nil,
             accessoryImage: nil,
             accessoryType: .disclosureIndicator
-        ) { selected, completion in
-            if selected { onPlaylists() }
+        )
+        playlistsRow.handler = { _, completion in
+            onPlaylists()
             completion()
         }
         return [nowPlayingRow, playlistsRow]
@@ -107,18 +113,20 @@ enum CarPlayTemplateFactory {
         onCommand: @escaping (RemoteCommand) -> Void
     ) -> [CPListItem] {
         shortcuts.map { item in
-            CPListItem(
+            let row = CPListItem(
                 text: item.text,
                 detailText: item.detailText,
-                image: item.artwork.map(CPListImage.init(image:)),
+                image: item.artwork,
                 accessoryImage: nil,
                 accessoryType: .none
-            ) { selected, completion in
-                if selected, let command = item.command {
+            )
+            row.handler = { _, completion in
+                if let command = item.command {
                     onCommand(command)
                 }
                 completion()
             }
+            return row
         }
     }
 
@@ -137,7 +145,6 @@ enum CarPlayTemplateFactory {
         )
         return CPListTemplate(
             title: homeTabTitle,
-            subtitle: nil,
             sections: [section]
         )
     }
@@ -155,28 +162,30 @@ enum CarPlayTemplateFactory {
                 image: nil,
                 accessoryImage: nil,
                 accessoryType: .none
-            ) { _, completion in completion() }
+            )
+            placeholder.handler = { _, completion in completion() }
             placeholder.isEnabled = false
             rows = [placeholder]
         } else {
             rows = playlists.map { item in
-                CPListItem(
+                let row = CPListItem(
                     text: item.text,
                     detailText: item.detailText,
-                    image: item.artwork.map(CPListImage.init(image:)),
+                    image: item.artwork,
                     accessoryImage: nil,
                     accessoryType: .disclosureIndicator
-                ) { selected, completion in
-                    if selected, let command = item.command {
+                )
+                row.handler = { _, completion in
+                    if let command = item.command {
                         onCommand(command)
                     }
                     completion()
                 }
+                return row
             }
         }
         return CPListTemplate(
             title: playlistsTabTitle,
-            subtitle: nil,
             sections: [CPListSection(items: rows)]
         )
     }
@@ -222,12 +231,33 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
     private var playlistsTemplate: CPListTemplate?
 
     // MARK: CPTemplateApplicationSceneDelegate (audio app variant)
+    //
+    // NONISOLATED witnesses: the protocol's requirements are nonisolated,
+    // and a @MainActor-isolated witness would only warn today (and harden
+    // into an error under Swift 6). CarPlay delivers these callbacks on
+    // the main thread; the bodies hop to the main actor explicitly.
 
-    func templateApplicationScene(
+    nonisolated func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
         didConnect interfaceController: CPInterfaceController,
         to window: CPWindow
     ) {
+        Task { @MainActor in
+            connect(interfaceController: interfaceController)
+        }
+    }
+
+    nonisolated func templateApplicationScene(
+        _ templateApplicationScene: CPTemplateApplicationScene,
+        didDisconnect interfaceController: CPInterfaceController,
+        from window: CPWindow
+    ) {
+        Task { @MainActor in
+            disconnect(interfaceController: interfaceController)
+        }
+    }
+
+    private func connect(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
 
         let home = CarPlayTemplateFactory.homeTemplate(
@@ -257,15 +287,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
         homeTemplate = home
         playlistsTemplate = playlists
 
-        interfaceController.setRootTemplates([tabBar], animated: false) { _, _ in }
+        interfaceController.setRootTemplate(tabBar, animated: false) { _, _ in }
     }
 
-    func templateApplicationScene(
-        _ templateApplicationScene: CPTemplateApplicationScene,
-        didDisconnect interfaceController: CPInterfaceController,
-        from window: CPWindow
-    ) {
-        interfaceController.setRootTemplates([], animated: false) { _, _ in }
+    private func disconnect(interfaceController: CPInterfaceController) {
+        interfaceController.setRootTemplate(nil, animated: false) { _, _ in }
         self.interfaceController = nil
         homeTemplate = nil
         playlistsTemplate = nil

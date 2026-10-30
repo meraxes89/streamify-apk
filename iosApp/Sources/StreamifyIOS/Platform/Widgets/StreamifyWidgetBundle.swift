@@ -202,7 +202,7 @@ struct NowPlayingWidgetEntryView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                WidgetScrubberView(snapshot: snapshot, at: entry.date)
+                WidgetScrubberView(snapshot: snapshot, date: entry.date)
                 WidgetTransportRow(
                     isPlaying: snapshot.isPlaying,
                     compact: false
@@ -263,7 +263,7 @@ struct LockScreenPlaybackWidgetEntryView: View {
                         .lineLimit(1)
                 }
             }
-            WidgetScrubberView(snapshot: snapshot, at: entry.date, accessory: true)
+            WidgetScrubberView(snapshot: snapshot, date: entry.date, accessory: true)
         }
         .widgetURL(URL(string: "streamify://player/open"))
     }
@@ -364,7 +364,7 @@ struct WidgetTransportIcon: View {
             )
             .background {
                 if primary {
-                    Circle().fill(.accentColor)
+                    Circle().fill(Color.accentColor)
                 }
             }
     }
@@ -378,7 +378,7 @@ struct WidgetPlayPauseButton: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(.accentColor.opacity(0.35))
+                .fill(Color.accentColor.opacity(0.35))
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 .font(.title2)
         }
@@ -389,7 +389,7 @@ struct WidgetPlayPauseButton: View {
 /// (`WidgetPlaybackMath` — MP-DEC-03), rendered at the entry's date.
 struct WidgetScrubberView: View {
     let snapshot: WidgetPlaybackSnapshot
-    let at date: Date
+    let date: Date
     var accessory: Bool = false
 
     var body: some View {
@@ -398,7 +398,7 @@ struct WidgetScrubberView: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(.quaternary)
                 Capsule()
-                    .fill(.accentColor)
+                    .fill(Color.accentColor)
                     .frame(width: (fraction ?? 0) * proxy.size.width)
             }
         }
