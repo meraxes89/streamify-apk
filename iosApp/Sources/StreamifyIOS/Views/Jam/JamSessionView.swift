@@ -498,7 +498,11 @@ private struct JamRosterSheet: View {
                 }
             }
         }
+        #if os(iOS)
+        // Sheet detents are iOS-only; on macOS a sheet is a freely resizable
+        // window — the .medium/.large constraint has no equivalent.
         .presentationDetents([.medium, .large])
+        #endif
     }
 }
 
@@ -540,7 +544,10 @@ struct JamQrShareSheet: View {
                 .padding(.bottom, 12)
         }
         .background(StreamifyTheme.bgBase)
+        #if os(iOS)
+        // Sheet detents are iOS-only (see the listener sheet above).
         .presentationDetents([.medium])
+        #endif
     }
 }
 
