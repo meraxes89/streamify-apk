@@ -32,7 +32,11 @@ struct JamSessionView: View {
             }
             .background(StreamifyTheme.bgBase)
             .navigationTitle("Jam")
+            #if os(iOS)
+            // navigationBarTitleDisplayMode is iOS-only;
+            // macOS titles are inline by construction.
             .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
         .task {
             jamModel.start()
@@ -483,14 +487,22 @@ private struct JamRosterSheet: View {
                 }
             }
             .navigationTitle("Manage listeners")
+            #if os(iOS)
+            // navigationBarTitleDisplayMode is iOS-only;
+            // macOS titles are inline by construction.
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
         }
+        #if os(iOS)
+        // Sheet detents are iOS-only; on macOS a sheet is a freely resizable
+        // window — the .medium/.large constraint has no equivalent.
         .presentationDetents([.medium, .large])
+        #endif
     }
 }
 
@@ -532,7 +544,10 @@ struct JamQrShareSheet: View {
                 .padding(.bottom, 12)
         }
         .background(StreamifyTheme.bgBase)
+        #if os(iOS)
+        // Sheet detents are iOS-only (see the listener sheet above).
         .presentationDetents([.medium])
+        #endif
     }
 }
 

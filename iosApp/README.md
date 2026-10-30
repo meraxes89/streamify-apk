@@ -14,7 +14,7 @@ UniFFI bindings* from Alpha's `StreamifyCore.xcframework` and nothing else.
 
 ```
 iosApp/
-├── Package.swift                          (iOS 16+, Swift 5.9, zero external deps)
+├── Package.swift                          (iOS 17+ & macOS 14+, Swift 5.9, zero external deps)
 ├── Sources/StreamifyIOS/
 │   ├── App/
 │   │   ├── StreamifyApp.swift             public StreamifyMainScene (host target composes it)
@@ -29,19 +29,43 @@ iosApp/
 │   │                                            ArtworkLoader (SW-ENG3-04 async artwork)
 │   ├── Engine/
 │   │   ├── EngineGateway.swift            the seam protocol (Swift mirror of EnginePort)
+│   │   │                                  + the SW-ENG1-04 typed data lane
+│   │   ├── EngineContract.swift           lane-neutral Engine* mirrors of the SW-ENG1-03
+│   │   │                                  UniFFI records (Track/SearchResult/QueueItem/
+│   │   │                                  EqualizerBand/JamRoomState)
 │   │   ├── UniFFIEngineGateway.swift      #if canImport(uniffi_streamify) — the REAL lane
+│   │   │                                  (single-stream push bridge + typed lane mapping)
 │   │   ├── EngineGatewayLoader.swift      one-place lane selection
-│   │   └── PreviewEngineGateway.swift     always-available deterministic stand-in
+│   │   ├── PreviewEngineGateway.swift     always-available deterministic stand-in with
+│   │   │                                  the full typed data lane over a fixture catalog
+│   │   └── Generated/                     (gitignored) probe-gated uniffi_streamify.swift
+│   │                                      emitted by scripts/build_ios_xcframework.sh
+│   ├── Services/                          SW-ENG1-05..08 native data services
+│   │   ├── Auth/AppleKeychainStore.swift  Security.framework token vault
+│   │   │                                  (EncryptedSharedPreferences successor)
+│   │   ├── Storage/BackgroundDownloadService.swift  background URLSession downloads
+│   │   │                                  with resume-data persistence + recovery
+│   │   ├── Discovery/DaylistScheduleEngine.swift  circadian daylist port + AntiDrift
+│   │   │                                  scoring core (SW-ENG1-07)
+│   │   └── Network/CanvasScraperService.swift    canvas loops + artist clips fleet
+│   │                                      scraper with in-memory SWR caches (SW-ENG1-06)
 │   ├── AudioSession/
-│   │   └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below)
+│   │   └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below; iOS lane
+│   │                                      real, macOS same-API no-op fallback)
 │   └── Views/
 │       ├── MiniPlayerView.swift         mini player + volume control (SwiftUI)
 │       └── QueueView.swift              the native queue surface (Swift mirror of
 │                                         the shared QueueList — now-playing / up-next
 │                                         projection, honest empty state)
+├── Frameworks/                            (gitignored) StreamifyCore.xcframework lands
+│                                          here via --output iosApp/Frameworks to light
+│                                          the real lane up
 └── Tests/StreamifyIOSTests/
-    └── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
-                                            1 Hz gate / lockscreen / queue suites
+    ├── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
+    │                                      1 Hz gate / lockscreen / queue suites
+    └── EngineTests/UniFFIContractTests.swift  SW-ENG1-03/04 contract tests: real-lane
+                                           FFI round-trips (probe-gated) + always-on
+                                           typed-lane/daylist/anti-drift/parser suites
 ```
 
 ## The 1 Hz lockscreen / now-playing discipline (MP-UI01)
@@ -131,8 +155,17 @@ husk:
 
 ## Building / testing
 
-The package is iOS-only (`.iOS(.v16)`), so tests run through `xcodebuild`
-with a simulator destination (Xcode 15+):
+SW-ENG1-01: the package is UNIVERSAL (`.iOS(.v17)` + `.macOS(.v14)`, the
+SW-DEC-04 shared shell). A plain macOS host build is the first acceptance
+gate (zero errors, zero warnings):
+
+```bash
+swift build --package-path iosApp
+```
+
+The XCTest suite runs through `xcodebuild` with a simulator destination
+(Xcode 15+; the AVAudioSession surface is `#if canImport(UIKit)`-gated,
+matching its implementation):
 
 ```bash
 cd iosApp
@@ -140,7 +173,9 @@ xcodebuild test -scheme StreamifyIOS \
     -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
-A macOS CI lane for this package is deliberately NOT added in this PR —
-Apple-hosted runners are Alpha's XCFramework packaging scope (the master
-plan's responsibility matrix), and the lane belongs with the framework it
-verifies.
+The REAL engine lane links conditionally: run
+`./scripts/build_ios_xcframework.sh --output iosApp/Frameworks` on a Mac
+and the manifest's probe picks `Frameworks/StreamifyCore.xcframework` up
+as an SPM binary target — `import uniffi_streamify` resolves straight
+out of the framework (no Kotlin/Native, no Obj-C shim; MP-DEC-02) and
+the UniFFI-gated code paths light up with zero source edits.

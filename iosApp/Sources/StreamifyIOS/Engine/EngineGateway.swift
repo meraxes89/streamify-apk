@@ -41,4 +41,37 @@ protocol EngineGateway: AnyObject {
 
     /// Releases bridge resources (idempotent).
     func shutdown()
+
+    // ── SW-ENG1-04: the typed data lane (SW-ENG1-03 contract surface) ──
+    // Lane-neutral currency (EngineContract.swift); the real gateway maps
+    // the UniFFI records at the seam, the preview gateway synthesizes
+    // fixtures. Failures degrade to empty pages / nil — never exceptions
+    // into UI code — except `searchTracks`, the one genuinely failable
+    // network operation, which throws.
+
+    /// Typed search through the resolver (RustyPipe YTM lane). Throws on
+    /// transport/resolver failure.
+    func searchTracks(_ query: String, limit: Int) async throws -> EngineSearchResult
+
+    /// Appends one track to the engine's staged queue; returns the row's
+    /// index, or nil when the lane refused the row.
+    func enqueue(track: EngineTrack, enqueuedBy: String) async -> Int?
+
+    /// The whole staged queue as one consistent page.
+    func queue() async -> [EngineQueueItem]
+
+    /// Drops every staged queue row (idempotent).
+    func clearQueue() async
+
+    /// The ten-band equalizer curve (flat preset by default).
+    func equalizerBands() async -> [EngineEqualizerBand]
+
+    /// Overwrites one equalizer band; invalid bands are swallowed by the
+    /// boundary (the engine rejects them as Internal — a read reflects
+    /// the unchanged curve).
+    func setEqualizerBand(_ band: EngineEqualizerBand) async
+
+    /// Presentation state of the active Jam room, or nil when no session
+    /// is live.
+    func jamRoomState() async -> EngineJamRoomState?
 }

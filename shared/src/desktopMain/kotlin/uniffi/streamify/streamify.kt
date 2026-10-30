@@ -834,6 +834,22 @@ internal open class UniffiVTableCallbackInterfaceSecureStoreDelegate(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -881,15 +897,25 @@ internal interface UniffiLib : Library {
     ): Int
     fun uniffi_streamify_contract_fn_method_streamifyengine_apply_jam_delta(`ptr`: Pointer,`delta`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_clear_queue(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_create_jam_session(`ptr`: Pointer,`sessionName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_enqueue_track(`ptr`: Pointer,`track`: RustBuffer.ByValue,`enqueuedBy`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
     fun uniffi_streamify_contract_fn_method_streamifyengine_get_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_method_streamifyengine_get_engine_snapshot(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_get_equalizer_bands(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_get_jam_room_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_method_streamifyengine_get_jam_state_hash(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_method_streamifyengine_get_playback_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_get_queue(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_method_streamifyengine_initialize(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -898,6 +924,8 @@ internal interface UniffiLib : Library {
     fun uniffi_streamify_contract_fn_method_streamifyengine_record_buffer_stats(`ptr`: Pointer,`bufferedDurationMs`: Long,`underrunCount`: Int,`fillRatio`: Float,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_record_dac_clock(`ptr`: Pointer,`clock`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_streamify_contract_fn_method_streamifyengine_set_equalizer_band(`ptr`: Pointer,`band`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_set_volume(`ptr`: Pointer,`volume`: Float,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -911,8 +939,12 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_func_search_music_tracks(`query`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_func_search_tracks(`query`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_func_secure_store_roundtrip(`probeKey`: RustBuffer.ByValue,`probeValue`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
+    fun uniffi_streamify_contract_fn_func_self_test_search_result(`trackCount`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_func_set_resolver_cache_db(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_streamify_contract_fn_func_set_secure_store_delegate(`delegate`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1035,7 +1067,11 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_streamify_contract_checksum_func_search_music_tracks(
     ): Short
+    fun uniffi_streamify_contract_checksum_func_search_tracks(
+    ): Short
     fun uniffi_streamify_contract_checksum_func_secure_store_roundtrip(
+    ): Short
+    fun uniffi_streamify_contract_checksum_func_self_test_search_result(
     ): Short
     fun uniffi_streamify_contract_checksum_func_set_resolver_cache_db(
     ): Short
@@ -1055,15 +1091,25 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_apply_jam_delta(
     ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_clear_queue(
+    ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_create_jam_session(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_enqueue_track(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_get_buffer_stats(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_get_engine_snapshot(
     ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_get_equalizer_bands(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_get_jam_room_state(
+    ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_get_jam_state_hash(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_get_playback_state(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_get_queue(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_initialize(
     ): Short
@@ -1072,6 +1118,8 @@ internal interface UniffiLib : Library {
     fun uniffi_streamify_contract_checksum_method_streamifyengine_record_buffer_stats(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_record_dac_clock(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_set_equalizer_band(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_set_volume(
     ): Short
@@ -1113,7 +1161,13 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_streamify_contract_checksum_func_search_music_tracks() != 55324.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_streamify_contract_checksum_func_search_tracks() != 42296.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_streamify_contract_checksum_func_secure_store_roundtrip() != 22388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_func_self_test_search_result() != 17643.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_func_set_resolver_cache_db() != 34358.toShort()) {
@@ -1143,7 +1197,13 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_apply_jam_delta() != 18467.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_clear_queue() != 45221.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_create_jam_session() != 63695.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_enqueue_track() != 44196.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_buffer_stats() != 63966.toShort()) {
@@ -1152,10 +1212,19 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_engine_snapshot() != 31083.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_equalizer_bands() != 37893.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_jam_room_state() != 59111.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_jam_state_hash() != 11363.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_playback_state() != 39867.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_get_queue() != 60407.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_initialize() != 61599.toShort()) {
@@ -1168,6 +1237,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_record_dac_clock() != 1004.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_set_equalizer_band() != 57170.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_set_volume() != 3649.toShort()) {
@@ -1350,6 +1422,29 @@ public object FfiConverterFloat: FfiConverter<Float, Float> {
 
     override fun write(value: Float, buf: ByteBuffer) {
         buf.putFloat(value)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterDouble: FfiConverter<Double, Double> {
+    override fun lift(value: Double): Double {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Double {
+        return buf.getDouble()
+    }
+
+    override fun lower(value: Double): Double {
+        return value
+    }
+
+    override fun allocationSize(value: Double) = 8UL
+
+    override fun write(value: Double, buf: ByteBuffer) {
+        buf.putDouble(value)
     }
 }
 
@@ -2046,12 +2141,24 @@ public interface StreamifyEngineInterface {
     fun `applyJamDelta`(`delta`: kotlin.ByteArray): JamSyncResult
     
     /**
+     * Drop every queued row (idempotent).
+     */
+    fun `clearQueue`()
+    
+    /**
      * Create the engine's active Jam session (UFFI-03/04). Creating
      * while a session is live replaces it with a fresh, empty replica
      * (the engine is the room's local mirror; a new room means a new
      * mirror). A blank or oversized name is rejected as Internal.
      */
     fun `createJamSession`(`sessionName`: kotlin.String): JamSessionHandle
+    
+    /**
+     * Append one track to the engine's playback queue. Returns the
+     * row's index. A blank `enqueued_by` is normalized to "local"; a
+     * queue beyond the hard cap is rejected as Internal.
+     */
+    fun `enqueueTrack`(`track`: Track, `enqueuedBy`: kotlin.String): kotlin.UInt
     
     /**
      * Current buffering health snapshot (one-shot read).
@@ -2065,6 +2172,18 @@ public interface StreamifyEngineInterface {
     fun `getEngineSnapshot`(): EngineSnapshot
     
     /**
+     * The current ten-band equalizer curve (band 0..9, octave-spaced;
+     * flat 0 dB preset by default).
+     */
+    fun `getEqualizerBands`(): List<EqualizerBand>
+    
+    /**
+     * Presentation state of the engine's active Jam room. Requires a
+     * live session (Internal otherwise).
+     */
+    fun `getJamRoomState`(): JamRoomState
+    
+    /**
      * Deterministic BLAKE3 state hash (64 hex chars) of the active
      * session's canonical CRDT fold. Requires a live session.
      */
@@ -2075,6 +2194,11 @@ public interface StreamifyEngineInterface {
      * prefer the push channel via `add_event_listener` — MP-DEC-04).
      */
     fun `getPlaybackState`(): PlaybackState
+    
+    /**
+     * Read the whole queue as one consistent page.
+     */
+    fun `getQueue`(): List<QueueItem>
     
     /**
      * Arm the engine: verify runtime environment invariants, then
@@ -2105,6 +2229,13 @@ public interface StreamifyEngineInterface {
      * supported DAC range) and republished in every pushed snapshot.
      */
     fun `recordDacClock`(`clock`: DacPresentationClock)
+    
+    /**
+     * Overwrite one band of the equalizer curve. A band index outside
+     * 0..10, a non-finite float or a non-positive Q is rejected as
+     * Internal before any state is touched.
+     */
+    fun `setEqualizerBand`(`band`: EqualizerBand)
     
     /**
      * Apply the output gain scalar. Clamped to [0.0, 1.0]; a NaN input
@@ -2258,6 +2389,21 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
 
     
     /**
+     * Drop every queued row (idempotent).
+     */
+    @Throws(EngineException::class)override fun `clearQueue`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_clear_queue(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Create the engine's active Jam session (UFFI-03/04). Creating
      * while a session is live replaces it with a fresh, empty replica
      * (the engine is the room's local mirror; a new room means a new
@@ -2269,6 +2415,24 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
     uniffiRustCallWithError(EngineException) { _status ->
     UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_create_jam_session(
         it, FfiConverterString.lower(`sessionName`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Append one track to the engine's playback queue. Returns the
+     * row's index. A blank `enqueued_by` is normalized to "local"; a
+     * queue beyond the hard cap is rejected as Internal.
+     */
+    @Throws(EngineException::class)override fun `enqueueTrack`(`track`: Track, `enqueuedBy`: kotlin.String): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_enqueue_track(
+        it, FfiConverterTypeTrack.lower(`track`),FfiConverterString.lower(`enqueuedBy`),_status)
 }
     }
     )
@@ -2310,6 +2474,40 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
 
     
     /**
+     * The current ten-band equalizer curve (band 0..9, octave-spaced;
+     * flat 0 dB preset by default).
+     */
+    @Throws(EngineException::class)override fun `getEqualizerBands`(): List<EqualizerBand> {
+            return FfiConverterSequenceTypeEqualizerBand.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_get_equalizer_bands(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Presentation state of the engine's active Jam room. Requires a
+     * live session (Internal otherwise).
+     */
+    @Throws(EngineException::class)override fun `getJamRoomState`(): JamRoomState {
+            return FfiConverterTypeJamRoomState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_get_jam_room_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Deterministic BLAKE3 state hash (64 hex chars) of the active
      * session's canonical CRDT fold. Requires a live session.
      */
@@ -2335,6 +2533,22 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
     callWithPointer {
     uniffiRustCallWithError(EngineException) { _status ->
     UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_get_playback_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read the whole queue as one consistent page.
+     */
+    @Throws(EngineException::class)override fun `getQueue`(): List<QueueItem> {
+            return FfiConverterSequenceTypeQueueItem.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_get_queue(
         it, _status)
 }
     }
@@ -2408,6 +2622,23 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
     uniffiRustCallWithError(EngineException) { _status ->
     UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_record_dac_clock(
         it, FfiConverterTypeDacPresentationClock.lower(`clock`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Overwrite one band of the equalizer curve. A band index outside
+     * 0..10, a non-finite float or a non-positive Q is rejected as
+     * Internal before any state is touched.
+     */
+    @Throws(EngineException::class)override fun `setEqualizerBand`(`band`: EqualizerBand)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_set_equalizer_band(
+        it, FfiConverterTypeEqualizerBand.lower(`band`),_status)
 }
     }
     
@@ -2679,6 +2910,122 @@ public object FfiConverterTypeEngineSnapshot: FfiConverterRustBuffer<EngineSnaps
 
 
 /**
+ * One parametric equalizer band (SW-ENG1-03) — the vocabulary mirrors
+ * `streamify_audio`'s StudioEqualizer: ten octave-spaced bands, low
+ * shelf on band 0, high shelf on band 9, Butterworth Q by default.
+ */
+data class EqualizerBand (
+    /**
+     * Band position, 0..10.
+     */
+    var `bandIndex`: kotlin.UByte, 
+    /**
+     * Center (shelf corner) frequency in Hz.
+     */
+    var `frequencyHz`: kotlin.Float, 
+    /**
+     * Gain in dB (positive boosts, negative cuts).
+     */
+    var `gainDb`: kotlin.Float, 
+    /**
+     * Filter Q factor (1.414 ≡ Butterworth by default).
+     */
+    var `qFactor`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeEqualizerBand: FfiConverterRustBuffer<EqualizerBand> {
+    override fun read(buf: ByteBuffer): EqualizerBand {
+        return EqualizerBand(
+            FfiConverterUByte.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: EqualizerBand) = (
+            FfiConverterUByte.allocationSize(value.`bandIndex`) +
+            FfiConverterFloat.allocationSize(value.`frequencyHz`) +
+            FfiConverterFloat.allocationSize(value.`gainDb`) +
+            FfiConverterFloat.allocationSize(value.`qFactor`)
+    )
+
+    override fun write(value: EqualizerBand, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`bandIndex`, buf)
+            FfiConverterFloat.write(value.`frequencyHz`, buf)
+            FfiConverterFloat.write(value.`gainDb`, buf)
+            FfiConverterFloat.write(value.`qFactor`, buf)
+    }
+}
+
+
+
+/**
+ * Live Jam room state as the jam surfaces render it (SW-ENG1-03):
+ * the presentation mirror of the engine's active Jam replica. The
+ * interior CRDT session stays behind the contract; `sync_offset_ms`
+ * carries the PTP presentation offset (0.0 while the room is a fresh
+ * local mirror, until the PTP lane crosses this contract).
+ */
+data class JamRoomState (
+    /**
+     * The room's human code (the session name the host minted).
+     */
+    var `roomCode`: kotlin.String, 
+    /**
+     * Whether this device's replica minted the room (the host).
+     */
+    var `isHost`: kotlin.Boolean, 
+    /**
+     * PTP presentation offset in milliseconds.
+     */
+    var `syncOffsetMs`: kotlin.Double, 
+    /**
+     * Known participant labels; starts with the local replica.
+     */
+    var `participants`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeJamRoomState: FfiConverterRustBuffer<JamRoomState> {
+    override fun read(buf: ByteBuffer): JamRoomState {
+        return JamRoomState(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: JamRoomState) = (
+            FfiConverterString.allocationSize(value.`roomCode`) +
+            FfiConverterBoolean.allocationSize(value.`isHost`) +
+            FfiConverterDouble.allocationSize(value.`syncOffsetMs`) +
+            FfiConverterSequenceString.allocationSize(value.`participants`)
+    )
+
+    override fun write(value: JamRoomState, buf: ByteBuffer) {
+            FfiConverterString.write(value.`roomCode`, buf)
+            FfiConverterBoolean.write(value.`isHost`, buf)
+            FfiConverterDouble.write(value.`syncOffsetMs`, buf)
+            FfiConverterSequenceString.write(value.`participants`, buf)
+    }
+}
+
+
+
+/**
  * Opaque handle to the engine's active Jam session (UFFI-03/04).
  *
  * The handle is data, not behavior: the session object itself stays
@@ -2839,6 +3186,94 @@ public object FfiConverterTypeParsedCandidate: FfiConverterRustBuffer<ParsedCand
 
 
 /**
+ * One playlist row in a search result page (SW-ENG1-03).
+ */
+data class PlaylistSummary (
+    var `id`: kotlin.String, 
+    var `title`: kotlin.String, 
+    var `thumbnailUrl`: kotlin.String?, 
+    var `trackCount`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePlaylistSummary: FfiConverterRustBuffer<PlaylistSummary> {
+    override fun read(buf: ByteBuffer): PlaylistSummary {
+        return PlaylistSummary(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PlaylistSummary) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterOptionalString.allocationSize(value.`thumbnailUrl`) +
+            FfiConverterUInt.allocationSize(value.`trackCount`)
+    )
+
+    override fun write(value: PlaylistSummary, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterOptionalString.write(value.`thumbnailUrl`, buf)
+            FfiConverterUInt.write(value.`trackCount`, buf)
+    }
+}
+
+
+
+/**
+ * One row of the playback queue as read through the typed lane
+ * (SW-ENG1-03). `index` is the row's stable position at read time;
+ * a whole page is read-snapshotted under one lock, so it is always
+ * internally consistent.
+ */
+data class QueueItem (
+    var `index`: kotlin.UInt, 
+    var `track`: Track, 
+    /**
+     * Who added the row ("local", a Jam participant label, …).
+     */
+    var `enqueuedBy`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeQueueItem: FfiConverterRustBuffer<QueueItem> {
+    override fun read(buf: ByteBuffer): QueueItem {
+        return QueueItem(
+            FfiConverterUInt.read(buf),
+            FfiConverterTypeTrack.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: QueueItem) = (
+            FfiConverterUInt.allocationSize(value.`index`) +
+            FfiConverterTypeTrack.allocationSize(value.`track`) +
+            FfiConverterString.allocationSize(value.`enqueuedBy`)
+    )
+
+    override fun write(value: QueueItem, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`index`, buf)
+            FfiConverterTypeTrack.write(value.`track`, buf)
+            FfiConverterString.write(value.`enqueuedBy`, buf)
+    }
+}
+
+
+
+/**
  * One playable stream format resolved for a video id (Discussion #120,
  * Part C: the modularized StreamResolver surface over UniFFI).
  *
@@ -2910,6 +3345,47 @@ public object FfiConverterTypeResolvedStreamFormat: FfiConverterRustBuffer<Resol
 
 
 /**
+ * One typed search response (SW-ENG1-03): relevance-ordered tracks,
+ * the playlist rail and the paging cursor when the backend provides
+ * one.
+ */
+data class SearchResult (
+    var `tracks`: List<Track>, 
+    var `playlists`: List<PlaylistSummary>, 
+    var `continuationToken`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSearchResult: FfiConverterRustBuffer<SearchResult> {
+    override fun read(buf: ByteBuffer): SearchResult {
+        return SearchResult(
+            FfiConverterSequenceTypeTrack.read(buf),
+            FfiConverterSequenceTypePlaylistSummary.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SearchResult) = (
+            FfiConverterSequenceTypeTrack.allocationSize(value.`tracks`) +
+            FfiConverterSequenceTypePlaylistSummary.allocationSize(value.`playlists`) +
+            FfiConverterOptionalString.allocationSize(value.`continuationToken`)
+    )
+
+    override fun write(value: SearchResult, buf: ByteBuffer) {
+            FfiConverterSequenceTypeTrack.write(value.`tracks`, buf)
+            FfiConverterSequenceTypePlaylistSummary.write(value.`playlists`, buf)
+            FfiConverterOptionalString.write(value.`continuationToken`, buf)
+    }
+}
+
+
+
+/**
  * Result payload of a foreign secure-storage retrieval: the status
  * plus the secret bytes when found. One round-trip, no
  * status-vs-payload race.
@@ -2941,6 +3417,89 @@ public object FfiConverterTypeSecureFetchResult: FfiConverterRustBuffer<SecureFe
     override fun write(value: SecureFetchResult, buf: ByteBuffer) {
             FfiConverterTypeSecureStoreOpStatus.write(value.`status`, buf)
             FfiConverterOptionalByteArray.write(value.`secret`, buf)
+    }
+}
+
+
+
+/**
+ * Fully typed playable track — the search/library currency of the
+ * typed Apple lane (SW-ENG1-03).
+ *
+ * Richer than `TrackMetadata` (which stays the frozen snapshot-lane
+ * currency): carries album, artwork, the upstream explicit flag and
+ * the LAZILY resolved CDN URL. `resolved_stream_url` is null on
+ * search rows by design — resolution is an explicit cache-backed step
+ * (`resolve_stream_formats`), so list payloads never pin rotting
+ * de-throttled URLs.
+ */
+data class Track (
+    /**
+     * YouTube video id (the resolver's currency).
+     */
+    var `id`: kotlin.String, 
+    var `title`: kotlin.String, 
+    /**
+     * Multi-artist rows are joined ("Alpha & Beta").
+     */
+    var `artist`: kotlin.String, 
+    var `album`: kotlin.String, 
+    var `durationMs`: kotlin.ULong, 
+    /**
+     * Best-effort artwork; null when the upstream row carried none.
+     */
+    var `thumbnailUrl`: kotlin.String?, 
+    /**
+     * Upstream explicit flag — false means "not flagged", not
+     * "provably clean" (YTM search rows do not always carry it).
+     */
+    var `isExplicit`: kotlin.Boolean, 
+    /**
+     * Playable CDN url once resolved (null on search rows).
+     */
+    var `resolvedStreamUrl`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrack: FfiConverterRustBuffer<Track> {
+    override fun read(buf: ByteBuffer): Track {
+        return Track(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Track) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`artist`) +
+            FfiConverterString.allocationSize(value.`album`) +
+            FfiConverterULong.allocationSize(value.`durationMs`) +
+            FfiConverterOptionalString.allocationSize(value.`thumbnailUrl`) +
+            FfiConverterBoolean.allocationSize(value.`isExplicit`) +
+            FfiConverterOptionalString.allocationSize(value.`resolvedStreamUrl`)
+    )
+
+    override fun write(value: Track, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`artist`, buf)
+            FfiConverterString.write(value.`album`, buf)
+            FfiConverterULong.write(value.`durationMs`, buf)
+            FfiConverterOptionalString.write(value.`thumbnailUrl`, buf)
+            FfiConverterBoolean.write(value.`isExplicit`, buf)
+            FfiConverterOptionalString.write(value.`resolvedStreamUrl`, buf)
     }
 }
 
@@ -3909,6 +4468,62 @@ public object FfiConverterOptionalTypeDacPresentationClock: FfiConverterRustBuff
 /**
  * @suppress
  */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeEqualizerBand: FfiConverterRustBuffer<List<EqualizerBand>> {
+    override fun read(buf: ByteBuffer): List<EqualizerBand> {
+        val len = buf.getInt()
+        return List<EqualizerBand>(len) {
+            FfiConverterTypeEqualizerBand.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<EqualizerBand>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeEqualizerBand.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<EqualizerBand>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeEqualizerBand.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeParsedCandidate: FfiConverterRustBuffer<List<ParsedCandidate>> {
     override fun read(buf: ByteBuffer): List<ParsedCandidate> {
         val len = buf.getInt()
@@ -3937,6 +4552,62 @@ public object FfiConverterSequenceTypeParsedCandidate: FfiConverterRustBuffer<Li
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypePlaylistSummary: FfiConverterRustBuffer<List<PlaylistSummary>> {
+    override fun read(buf: ByteBuffer): List<PlaylistSummary> {
+        val len = buf.getInt()
+        return List<PlaylistSummary>(len) {
+            FfiConverterTypePlaylistSummary.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<PlaylistSummary>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePlaylistSummary.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<PlaylistSummary>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePlaylistSummary.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeQueueItem: FfiConverterRustBuffer<List<QueueItem>> {
+    override fun read(buf: ByteBuffer): List<QueueItem> {
+        val len = buf.getInt()
+        return List<QueueItem>(len) {
+            FfiConverterTypeQueueItem.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<QueueItem>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeQueueItem.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<QueueItem>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeQueueItem.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeResolvedStreamFormat: FfiConverterRustBuffer<List<ResolvedStreamFormat>> {
     override fun read(buf: ByteBuffer): List<ResolvedStreamFormat> {
         val len = buf.getInt()
@@ -3955,6 +4626,34 @@ public object FfiConverterSequenceTypeResolvedStreamFormat: FfiConverterRustBuff
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeResolvedStreamFormat.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrack: FfiConverterRustBuffer<List<Track>> {
+    override fun read(buf: ByteBuffer): List<Track> {
+        val len = buf.getInt()
+        return List<Track>(len) {
+            FfiConverterTypeTrack.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<Track>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrack.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<Track>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrack.write(it, buf)
         }
     }
 }
@@ -4009,6 +4708,24 @@ public object FfiConverterSequenceTypeResolvedStreamFormat: FfiConverterRustBuff
     
 
         /**
+         * SW-ENG1-03: the typed search lane — the same resolver pipeline
+         * as `search_music_tracks`, mapped onto the fully typed `Track`
+         * records the SwiftUI surfaces render. `limit` clamps to [1, 50].
+         * The playlist rail is empty until the resolver's playlist tier
+         * crosses this contract; `continuation_token` is null on the
+         * current single-page mapping.
+         */
+    @Throws(EngineException::class) fun `searchTracks`(`query`: kotlin.String, `limit`: kotlin.UInt): SearchResult {
+            return FfiConverterTypeSearchResult.lift(
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_func_search_tracks(
+        FfiConverterString.lower(`query`),FfiConverterUInt.lower(`limit`),_status)
+}
+    )
+    }
+    
+
+        /**
          * Phase 5 (MP-CAP04): startup self-test through whichever backend
          * is active (foreign delegate > native platform backend > in-memory
          * fallback): store → retrieve → byte-compare → delete → confirm
@@ -4020,6 +4737,22 @@ public object FfiConverterSequenceTypeResolvedStreamFormat: FfiConverterRustBuff
     uniffiRustCallWithError(EngineException) { _status ->
     UniffiLib.INSTANCE.uniffi_streamify_contract_fn_func_secure_store_roundtrip(
         FfiConverterString.lower(`probeKey`),FfiConverterByteArray.lower(`probeValue`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * SW-ENG1-03: deterministic, network-free contract self-test
+         * fixture — a fully populated `SearchResult` (tracks, one
+         * playlist, a continuation token) for the Swift UniFFI binding
+         * tests. `track_count` clamps to [0, 64].
+         */
+    @Throws(EngineException::class) fun `selfTestSearchResult`(`trackCount`: kotlin.UInt): SearchResult {
+            return FfiConverterTypeSearchResult.lift(
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_func_self_test_search_result(
+        FfiConverterUInt.lower(`trackCount`),_status)
 }
     )
     }

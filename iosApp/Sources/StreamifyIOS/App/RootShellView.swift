@@ -63,9 +63,13 @@ struct NowPlayingView: View {
             }
             .background(StreamifyTheme.bgBase)
             .navigationTitle("Now Playing")
+            #if os(iOS)
+            // .navigationBar is an iOS-only ToolbarPlacement; on macOS the
+            // window chrome follows the shell-wide .preferredColorScheme.
             .toolbarColorScheme(.dark, for: .navigationBar)
+            #endif
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .shellTrailing) {
                     Button {
                         queuePresented = true
                     } label: {
@@ -80,7 +84,7 @@ struct NowPlayingView: View {
                         onTrackClick: nil
                     )
                     .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        ToolbarItem(placement: .shellTrailing) {
                             Button("Done") { queuePresented = false }
                         }
                     }

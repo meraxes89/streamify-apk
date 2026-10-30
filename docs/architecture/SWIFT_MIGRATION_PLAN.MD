@@ -147,16 +147,16 @@ Every Kotlin package and file in the Android codebase (311 production files) map
 
 ### ⚙️ Engineer 1: Foundation, UniFFI Bridge & Data Engines
 * **Lead:** Engineer 1 (Core & Data Specialist)
-* **Status:** In Progress
+* **Status:** In Progress — SW-ENG1-01..08 delivered on `feat/apple-eng1-ffi-core` (Apple Unified CI lane green target)
 
-- [ ] **SW-ENG1-01**: Configure `iosApp/Package.swift` as a universal library targeting both `.iOS(.v17)` and `.macOS(.v14)`.
-- [ ] **SW-ENG1-02**: Upgrade [`scripts/build_ios_xcframework.sh`](file:///data/data/com.termux/files/home/streamify-apk/scripts/build_ios_xcframework.sh) to emit a universal fat `StreamifyCore.xcframework` bundling `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios-sim`, and `aarch64-apple-darwin` + `x86_64-apple-darwin` (macOS).
-- [ ] **SW-ENG1-03**: Expand `rust/src/streamify.udl` and UniFFI exports to expose full `Track`, `Playlist`, `QueueItem`, `SearchResult`, `EqualizerBand`, and `JamState` structs.
-- [ ] **SW-ENG1-04**: Validate `EngineEventListener` callback dispatch from Rust worker threads into Swift `AsyncStream`.
-- [ ] **SW-ENG1-05**: Implement `AppleKeychainStore.swift` replacing Android `EncryptedSharedPreferences` for secure session token storage.
-- [ ] **SW-ENG1-06**: Port `CanvasScraperApi` and `ArtistClipsApi` into async Swift actors with HTTP/2 caching.
-- [ ] **SW-ENG1-07**: Port `DaylistScheduler.kt` and `AntiDriftScoringEngine.kt` to Swift domain services.
-- [ ] **SW-ENG1-08**: Implement `BackgroundDownloadService.swift` using `URLSessionConfiguration.background` for persistent audio caching.
+- [x] **SW-ENG1-01**: Configure `iosApp/Package.swift` as a universal library targeting both `.iOS(.v17)` and `.macOS(.v14)` (+ conditional StreamifyCore binary target so the real UniFFI lane lights up from `--output iosApp/Frameworks`; AVAudioSession surface `#if canImport(UIKit)`-gated with a macOS fallback adapter).
+- [x] **SW-ENG1-02**: Upgrade `scripts/build_ios_xcframework.sh` to a universal fat `StreamifyCore.xcframework` bundling `aarch64-apple-ios`, `aarch64-apple-ios-sim` + `x86_64-apple-ios-sim` (lipo fat sim slice; fixed the old Intel-DEVICE-triple bug), and `aarch64-apple-darwin` + `x86_64-apple-darwin` (lipo fat macOS slice); the UniFFI Swift FFI header + module map now ship INSIDE every slice. **Post-delivery correction:** the Rust stable distribution ships no `rust-std` for `x86_64-apple-ios-sim` (verified against channel manifests 1.82 → 1.99.1), so the Intel simulator slice is now CONDITIONAL — the script probes for the std, lipos it in when present, and otherwise ships an arm64-only simulator slice with a logged notice (mission acceptance — arm64-ios, arm64-simulator, darwin — holds either way; the CI lane no longer requests the unavailable triple).
+- [x] **SW-ENG1-03**: Expand `streamify.udl` (rust/crates/streamify-contract/src) with fully typed `Track`, `PlaylistSummary`, `SearchResult`, `QueueItem`, `EqualizerBand` and `JamRoomState` records + the queue/EQ/jam engine methods and the typed `search_tracks` lane, every entrypoint `ffi_shield`ed (MP-DEC-06 panic marshaling) with hermetic contract tests.
+- [x] **SW-ENG1-04**: Validate `EngineEventListener` callback dispatch from Rust worker threads into Swift `AsyncStream` — single-stream/single-listener bridge in `UniFFIEngineGateway` (newest-snapshot buffering, deterministic finish), covered by `UniFFIContractTests.testPushEventBridgeDeliversSnapshotsIntoTheAsyncStream` in the linked lane.
+- [x] **SW-ENG1-05**: Implement `AppleKeychainStore.swift` replacing Android `EncryptedSharedPreferences` for secure session token storage (kSecClassGenericPassword; SecItemAdd/SecItemUpdate upsert, idempotent delete, service-scoped wipe, typed OSStatus errors).
+- [x] **SW-ENG1-06**: Port `CanvasScraperApi` and `ArtistClipsApi` into async Swift actors with multi-client fleet fallback + in-memory SWR caches (`CanvasScraperService.swift` — loops 24h / clips 6h; never throws).
+- [x] **SW-ENG1-07**: Port `DaylistScheduler.kt` and `AntiDriftScoringEngine.kt` to Swift domain services (`DaylistScheduleEngine.swift` — circadian buckets, mood queries, hero rotation, SWR disk cache; AntiDrift pure scoring core with the fuzzy-matcher check injected as a hook for the search surfaces that own it).
+- [x] **SW-ENG1-08**: Implement `BackgroundDownloadService.swift` using `URLSessionConfiguration.background` for persistent audio caching (resume-data persistence + cold-launch recovery, progress streams, vault moves).
 
 ---
 

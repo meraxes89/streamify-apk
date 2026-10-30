@@ -1,4 +1,6 @@
+#if canImport(UIKit)
 import AVFoundation
+#endif
 import MediaPlayer
 import XCTest
 @testable import StreamifyIOS
@@ -7,11 +9,15 @@ import XCTest
 // Phase 5 (MP-UI01/MP-UI02 / Beta): the iOS scaffold's headless suites.
 //
 // Runs via `xcodebuild test -scheme StreamifyIOS -destination 'platform=iOS
-// Simulator,...'` (the package is iOS-only; see iosApp/README.md). The
-// MP-UI02 policy matrix is verified against the REAL AVAudioSession value
-// types — no mocks, no device, no audio route required.
+// Simulator,...'` (SW-ENG1-01: the package is now universal — iOS 17+ /
+// macOS 14+ — so the AVAudioSession surface is gated to the iOS/Catalyst
+// lanes exactly like its implementation; every other suite compiles and
+// runs on both platforms). The MP-UI02 policy matrix is verified against
+// the REAL AVAudioSession value types — no mocks, no device, no audio
+// route required.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#if canImport(UIKit)
 final class IOSAudioSessionAdapterTests: XCTestCase {
 
     // ── Pure decision core: interruption policy ───────────────────────────
@@ -150,6 +156,7 @@ final class IOSAudioSessionAdapterTests: XCTestCase {
         func audioSessionRequestsResume(reason: String) { resumeCount += 1 }
     }
 }
+#endif  // canImport(UIKit)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Presentation-model parity with the shared Kotlin suite (same edge cases).
