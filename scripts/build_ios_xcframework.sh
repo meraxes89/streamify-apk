@@ -218,16 +218,21 @@ compile_glue() {  # $1 = sdk name, $2 = clang -target triple, $3 = sdk path, $4 
         -o "$5"
 }
 echo "── [2/6] compiling apple glue per arch (remote command + audio session)"
-# iOS device (arm64)
-compile_glue "iphoneos" "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_ios_arm64.o"
-compile_glue "iphoneos" "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_ios_arm64.o"
+# iOS device (arm64). NOTE the clang triples are the CANONICAL Darwin
+# spellings and carry the deployment floor: rustc's aarch64-apple-ios-sim
+# compiles to the LLVM triple aarch64-apple-ios-SIMULATOR (platform
+# IOSSIMULATOR), while clang does not recognize a "-sim" environment —
+# it would stamp the objects as iOS DEVICE and xcodebuild would reject
+# the simulator archive for mixing platforms.
+compile_glue "iphoneos" "arm64-apple-ios17.0"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_ios_arm64.o"
+compile_glue "iphoneos" "arm64-apple-ios17.0"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_ios_arm64.o"
 # iOS simulator (arm64 always; x86_64 only when its sim std exists —
-# the SIMULATOR triples, per SW-ENG1-02)
-compile_glue "iphonesimulator" "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_arm64.o"
-compile_glue "iphonesimulator" "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_arm64.o"
+# the SIMULATOR environment, canonical -simulator spelling)
+compile_glue "iphonesimulator" "arm64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_arm64.o"
+compile_glue "iphonesimulator" "arm64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_arm64.o"
 if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
-    compile_glue "iphonesimulator" "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
-    compile_glue "iphonesimulator" "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
+    compile_glue "iphonesimulator" "x86_64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
+    compile_glue "iphonesimulator" "x86_64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
 fi
 # macOS desktop (arm64 + x86_64; the audio-session TU degrades to its stub)
 compile_glue "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_arm64.o"
