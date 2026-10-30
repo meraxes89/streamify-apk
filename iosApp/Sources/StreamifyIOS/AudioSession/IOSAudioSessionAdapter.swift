@@ -68,16 +68,20 @@ struct RouteChangeReaction: Equatable, Sendable {
 /// PlaybackViewModel conforms; tests install a recording stub).
 @MainActor
 protocol AudioSessionResponding: AnyObject {
+    /// Whether the engine is currently presenting audio — a REQUIREMENT,
+    /// not merely an extension member: the adapter consults it through the
+    /// protocol existential when an interruption BEGINS, and extension-only
+    /// members dispatch STATICALLY (the conformer's own answer would never
+    /// run — the pre-interruption memory would record the hardcoded false
+    /// forever). Conformers without their own answer get the default below.
+    var audioSessionPlaybackIsActive: Bool { get }
     func audioSessionRequestsPause(reason: String)
     func audioSessionRequestsResume(reason: String)
 }
 
 extension AudioSessionResponding {
-    /// Whether the engine is currently presenting audio — consulted when
-    /// an interruption BEGINS so the `.ended` resume decision knows what
-    /// the pre-interruption state actually was (SW-ENG3-02: "save
-    /// pre-interruption state"). Defaults to false: a responder that
-    /// cannot answer was (as far as the policy is concerned) not playing.
+    /// Default: a responder that cannot answer was (as far as the policy
+    /// is concerned) not playing.
     var audioSessionPlaybackIsActive: Bool { false }
 }
 

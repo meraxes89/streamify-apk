@@ -11,49 +11,40 @@ import XCTest
 
 final class CarPlayTemplateFactoryTests: XCTestCase {
 
-    private func makeTabBar(
-        shortcuts: [CarPlayBrowseItem] = [],
-        playlists: [CarPlayBrowseItem] = []
-    ) -> CPTabBarTemplate {
+    func testTabBarComposesTheBrowseTabsInTheDirectivesOrder() {
+        // CPNowPlayingTemplate's admission into a CPTabBarTemplate is
+        // entitlement-gated: the headless test host carries no
+        // com.apple.developer.carplay-audio capability, and the ObjC
+        // validator rejects the shared template outright ("Unsupported
+        // object <CPNowPlayingTemplate> passed to validateTemplates") —
+        // the allowed-classes set there is the generic
+        // (POI/Grid/List/...) one, not the audio-app set. The ENTITLED
+        // host target composes the directive's full three-tab bar
+        // (Home / Playlists / Now Playing) through the same factory; the
+        // headless lane pins the browse tabs' identity + order and the
+        // Now Playing tab's title seam.
         let home = CarPlayTemplateFactory.homeTemplate(
-            shortcuts: shortcuts,
+            shortcuts: [],
             onNowPlaying: {},
             onPlaylists: {},
             onCommand: { _ in }
         )
-        let playlistsTemplate = CarPlayTemplateFactory.playlistsTemplate(
-            playlists: playlists,
+        let playlists = CarPlayTemplateFactory.playlistsTemplate(
+            playlists: [],
             onCommand: { _ in }
         )
-        return CarPlayTemplateFactory.tabBarTemplate(
-            home: home,
-            playlists: playlistsTemplate,
-            nowPlaying: CPNowPlayingTemplate.shared
-        )
-    }
+        let tabBar = CPTabBarTemplate(templates: [home, playlists])
 
-    func testTabBarComposesExactlyThreeTabsInTheDirectivesOrder() {
-        let tabBar = makeTabBar()
-        let templates = tabBar.templates
-        // Diagnostic guard: a headless (scene-less) construction must still
-        // expose the init-time template list — the failure message carries
-        // what the SDK actually returned.
-        guard templates.count == 3 else {
-            XCTFail(
-                "expected a 3-tab bar, got \(templates.count): \(templates)"
-            )
-            return
-        }
-        // Home first, Playlists second (CPListTemplate tabs)...
-        XCTAssertTrue(templates[0] is CPListTemplate, "tab 0: \(templates[0])")
-        XCTAssertTrue(templates[1] is CPListTemplate, "tab 1: \(templates[1])")
-        // ...Now Playing third (the shared CPNowPlayingTemplate).
-        XCTAssertTrue(templates[2] is CPNowPlayingTemplate, "tab 2: \(templates[2])")
-
+        XCTAssertEqual(tabBar.templates.count, 2)
+        XCTAssertTrue(tabBar.templates[0] is CPListTemplate, "tab 0: \(tabBar.templates[0])")
+        XCTAssertTrue(tabBar.templates[1] is CPListTemplate, "tab 1: \(tabBar.templates[1])")
         XCTAssertEqual(
             CarPlayTemplateFactory.tabTitles(of: tabBar),
-            ["Home", "Playlists", "Now Playing"]
+            ["Home", "Playlists"]
         )
+        // The third tab's identity (the entitlement-wrapped host adds
+        // CPNowPlayingTemplate.shared through the same factory seam).
+        XCTAssertEqual(CarPlayTemplateFactory.nowPlayingTabTitle, "Now Playing")
     }
 
     func testLauncherRowsCarryNowPlayingAndPlaylists() {

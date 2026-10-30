@@ -95,45 +95,55 @@ final class CoreAudioRenderCoreTests: XCTestCase {
     // ── The <5 ms acceptance gate (the Swift twin of native section H) ────
 
     /// 60 s of drifted DAC playback with anchors refreshed only every
-    /// 250 ms (the publisher's staleness horizon): the estimator's worst
+    /// 200 ms (the publisher's staleness horizon): the estimator's worst
     /// error must stay under the MP-DEC-03 budget.
+    ///
+    /// Phase model: each 100 ms step splits into a 60% UI-tick phase (the
+    /// query instant) and the remaining 40%; anchors drain at every other
+    /// step END. The query instant is therefore always in the anchor's
+    /// PAST — exactly the live discipline (a published anchor can never be
+    /// from the UI's future; querying "before" a just-published anchor
+    /// would exercise the jitter clamp, not the drift budget).
     func testInterpolationErrorStaysUnderFiveMilliseconds() {
         let driftPpm = 27.4
         let driver = SimulatedCoreAudioDriver(driftPpm: driftPpm)
         driver.start(sinkHandle: 1)
 
-        // Virtual time driven entirely by the test: 100 ms steps.
+        // Virtual time driven entirely by the test.
         let stepNs = 100_000_000
+        let uiPhaseNs = 60_000_000  // the UI ticks at 60% of each step
         let steps = 600  // 60 s
         var anchor: DacClockSample?
         var worstErrorMs = 0.0
         var queries = 0
 
         for step in 1...steps {
-            driver.advance(byDurationNs: stepNs)
+            driver.advance(byDurationNs: uiPhaseNs)
+            // The UI query: the anchor is the latest DRAINED sample —
+            // always in the query instant's past.
+            if let anchor {
+                let nowNs = driver.monotonicNs
+                queries += 1
+                guard let estimated = DacClockTranslator.interpolatedPositionMs(
+                    anchor: anchor,
+                    nowNs: nowNs
+                ) else {
+                    XCTFail("estimator must answer with a fresh anchor")
+                    continue
+                }
+                // Ground truth: the true frame counter at `now`, converted
+                // at the nominal rate (what a screen renders).
+                let truthMs = Int(
+                    Double(driver.framePosition)
+                        / Double(driver.sampleRateHz) * 1000.0
+                )
+                let errorMs = abs(Double(estimated - truthMs))
+                worstErrorMs = max(worstErrorMs, errorMs)
+            }
+            driver.advance(byDurationNs: stepNs - uiPhaseNs)
             if step % 2 == 0 || step == 1 {  // ~5 Hz drain cadence
                 anchor = driver.latestClock()
             }
-            guard let anchor else { continue }
-            // The UI queries at an offset phase inside the step (60%).
-            let nowNs = driver.monotonicNs - Int(0.4 * Double(stepNs))
-            queries += 1
-            guard let estimated = DacClockTranslator.interpolatedPositionMs(
-                anchor: anchor,
-                nowNs: nowNs
-            ) else {
-                XCTFail("estimator must answer with a fresh anchor")
-                continue
-            }
-            // Ground truth: the true frame counter at `now`, converted at
-            // the nominal rate (what a screen renders).
-            let truthMs = Int(
-                Double(driver.framePosition - Int(0.4 * Double(stepNs)
-                    * Double(driver.sampleRateHz) / 1_000_000_000.0))
-                    / Double(driver.sampleRateHz) * 1000.0
-            )
-            let errorMs = abs(Double(estimated - truthMs))
-            worstErrorMs = max(worstErrorMs, errorMs)
         }
 
         XCTAssertGreaterThan(queries, 500)

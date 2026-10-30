@@ -194,6 +194,13 @@ final class NativeCoreAudioDriver: CoreAudioDriver {
 final class SimulatedCoreAudioDriver: CoreAudioDriver {
 
     private(set) var framePosition: Int = 0
+    /// Exact (fractional) frame counter: the DAC's oscillator error
+    /// accumulates CONTINUOUSLY — truncating each quantum's contribution
+    /// would erase the drift entirely (27.4 ppm × 100 ms ≈ 0.13 frames,
+    /// truncated away every step). The integer `framePosition` is the
+    /// presented value; the fraction carries between quanta like a real
+    /// PLL's phase accumulator.
+    private var exactFramePosition: Double = 0
     let sampleRateHz: Int
     /// Oscillator error applied by `advance(byDuration:)` (ppm; positive =
     /// the simulated DAC presents MORE frames than nominal).
@@ -222,17 +229,19 @@ final class SimulatedCoreAudioDriver: CoreAudioDriver {
 
     /// Presents exactly `frames` more frames at the NOMINAL rate.
     func advance(byFrames frames: Int) {
-        framePosition += frames
+        exactFramePosition += Double(frames)
+        framePosition = Int(exactFramePosition)
         monotonicNs += frames * 1_000_000_000 / sampleRateHz
     }
 
     /// Advances virtual wall time by `ns`; the frame counter advances with
-    /// the DRIFTED oscillator (frames = ns * rate * (1 + ppm/1e6)).
+    /// the DRIFTED oscillator (frames = ns * rate * (1 + ppm/1e6)), the
+    /// fractional part carrying across quanta.
     func advance(byDurationNs ns: Int) {
         monotonicNs += ns
-        let drifted = Double(ns) * Double(sampleRateHz)
+        exactFramePosition += Double(ns) * Double(sampleRateHz)
             * (1.0 + driftPpm / 1_000_000.0) / 1_000_000_000.0
-        framePosition += Int(drifted)
+        framePosition = Int(exactFramePosition)
     }
 
     func latestClock() -> DacClockSample? {
