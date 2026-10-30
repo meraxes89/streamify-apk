@@ -853,7 +853,9 @@ fn typed_track(n: u32) -> Track {
         album: "Typed Lane LP".to_string(),
         duration_ms: 180_000 + n as u64 * 1_000,
         thumbnail_url: Some(format!("https://i.ytimg.com/vi/typed_{n:02}/mqdefault.jpg")),
-        is_explicit: n % 4 == 0,
+        // Alternating so the queue-lifecycle spot-check has both flag
+        // values crossing the lane (index 2 is explicit, index 1 is not).
+        is_explicit: n.is_multiple_of(2),
         resolved_stream_url: None,
     }
 }
