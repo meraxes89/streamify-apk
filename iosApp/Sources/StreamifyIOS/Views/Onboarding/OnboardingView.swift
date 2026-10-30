@@ -42,7 +42,9 @@ public struct OnboardingView: View {
                 dspStep.tag(2)
                 readyStep.tag(3)
             }
+#if os(iOS)
             .tabViewStyle(.page(indexDisplayMode: .never))
+#endif
             bottomBar
         }
         .background(StreamifyColors.bgBase)

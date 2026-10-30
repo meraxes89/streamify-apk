@@ -58,12 +58,12 @@ public struct LibraryView: View {
         .navigationBarTitleDisplayMode(.inline)
 #endif
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .shellTrailing) {
                 Button(action: onCreatePlaylist) { Image(systemName: StreamifyIcon.plus) }
                     .accessibilityLabel("Create playlist")
             }
             if currentSegment != .playlists { // Playlists is always grid.
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .shellTrailing) {
                     Picker("View mode", selection: $isGrid) {
                         Image(systemName: StreamifyIcon.grid).tag(true)
                         Image(systemName: StreamifyIcon.list).tag(false)

@@ -239,9 +239,14 @@ public struct QueueView: View {
                 }
             }
         }
+#if os(iOS)
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .environment(\.editMode, .constant(.inactive))
+#else
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+#endif
     }
 
     private var emptyState: some View {
