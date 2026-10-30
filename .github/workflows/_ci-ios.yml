@@ -79,6 +79,17 @@ jobs:
           path: iosApp/xcodebuild-test.log
           if-no-files-found: ignore
 
+      # ── 1b. SPM Compile Gate (macOS host) — SW-ENG1-01 acceptance ──────────
+      # The universal package's macOS leg: `swift build --package-path
+      # iosApp` must complete with zero errors on a Mac host (the manifest
+      # probes iosApp/Frameworks/ — absent here — so this compiles the
+      # preview-gateway lane, the standalone shape the acceptance
+      # checklist pins). --build-tests also compiles the universal test
+      # target: the UIKit divergence is #if canImport(UIKit)-gated with a
+      # same-API macOS no-op lane, so the suite builds for both platforms.
+      - name: SPM compile gate (macOS host, SW-ENG1-01)
+        run: swift build --package-path iosApp --build-tests
+
       # ── 2. Rust Core / XCFramework Probe & macOS Native Build (resp8 Pillar A) ──
       - name: Set up Rust toolchain (Apple targets)
         uses: dtolnay/rust-toolchain@stable
