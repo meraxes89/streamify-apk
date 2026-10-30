@@ -27,10 +27,11 @@ pub mod resolver_api;
 // union so `streamify_core_rs::X` paths keep resolving for consumers.
 pub use contract::{
     contract_version, AudioErrorKind, AudioStreamConfig, BufferStats, CryptoErrorKind,
-    DacPresentationClock, EngineError, EngineEventListener, EngineSnapshot, JamSessionHandle,
-    JamSyncResult, MediaCommand, NetworkErrorKind, PlaybackState, StorageErrorKind,
-    StreamifyEngine, TrackMetadata, CONTRACT_VERSION, DAC_CLOCK_MAX_SAMPLE_RATE,
-    DAC_CLOCK_MIN_SAMPLE_RATE, MAX_JAM_DELTA_BYTES, MAX_JAM_SESSION_NAME_BYTES,
+    DacPresentationClock, EngineError, EngineEventListener, EngineSnapshot, EqualizerBand,
+    JamRoomState, JamSessionHandle, JamSyncResult, MediaCommand, NetworkErrorKind, PlaybackState,
+    PlaylistSummary, QueueItem, SearchResult, StorageErrorKind, StreamifyEngine, Track,
+    TrackMetadata, CONTRACT_VERSION, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE,
+    EQUALIZER_BAND_COUNT, MAX_JAM_DELTA_BYTES, MAX_JAM_SESSION_NAME_BYTES,
     MEDIA_COMMAND_DEBOUNCE_MS,
 };
 // Phase 5 (MP-CAP01..04): the platform capability surface for the
@@ -54,7 +55,10 @@ pub use playlist_import::import_parsed_playlist;
 // (their canonical home is the owning domain crate; the scaffolding
 // binds them through these re-exports exactly like the core types
 // above).
-pub use resolver_api::{resolve_stream_formats, search_music_tracks, set_resolver_cache_db};
+pub use resolver_api::{
+    resolve_stream_formats, search_music_tracks, search_tracks, self_test_search_result,
+    set_resolver_cache_db,
+};
 pub use streamify_resolver::json::{ParsedCandidate, ResolvedStreamFormat};
 
 // ─── Phase 2 (UFFI-01): UniFFI scaffolding ────────────────────────────────
