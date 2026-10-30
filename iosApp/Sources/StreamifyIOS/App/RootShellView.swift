@@ -31,7 +31,9 @@ import SwiftUI
 
 public struct RootShellView: View {
 
-    @EnvironmentObject private var model: PlaybackViewModel
+    // Engineer 4's @Observable state holder (merged from main): consumed
+    // through the environment (SW-DEC-02), not the ObservableObject plane.
+    @Environment(PlaybackViewModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     // Compact: the selected tab. Regular: the sidebar rail selection.
@@ -289,7 +291,7 @@ public struct RootShellView: View {
         case .community: CommunityHubView()
         case .wrapped: StatsWrappedView()
         case .blend:
-            BlendView(onPlayTrack: { play(track: $0) })
+            BlendView()
         case .profileSelection: ProfileSelectionView()
         case .admin: AdminDashboardView()
         case .diagnostics: DiagnosticsView()
@@ -453,7 +455,7 @@ public struct RootShellView: View {
             CommunityHubView()
 
         case .blend:
-            BlendView(onPlayTrack: { play(track: $0) })
+            BlendView()
 
         case .jam:
             jamScreen
@@ -547,14 +549,11 @@ public struct RootShellView: View {
         )
     }
 
-    /// Jam Sessions (the group-listening room).
+    /// Jam Sessions (the group-listening room). Engineer 4's VM-wired screen
+    /// (merged from main) owns itself: the JamViewModel drives pairing, the
+    /// roster, the queue voting and playback through the command plane.
     private var jamScreen: some View {
-        JamSessionView(
-            sessionName: model.state.snapshot.jamSessionName ?? "Pocket listening room",
-            sessionCode: "JAM-4471",
-            isHost: true,
-            onPlayTrack: { play(track: $0) }
-        )
+        JamSessionView()
     }
 
     /// Settings hub (SW-ENG2-08).

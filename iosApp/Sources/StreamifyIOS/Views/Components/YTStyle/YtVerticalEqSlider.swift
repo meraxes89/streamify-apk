@@ -10,16 +10,22 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────────
 
 public struct YtVerticalEqSlider: View {
-    public var band: EqualizerBand
+    /// Decoupled primitives (no band-model coupling): the frequency CAPTION
+    /// and the band's current gain — any producer (Eng 4's EqualizerBand or
+    /// preview fixtures) can drive the same component.
+    public var frequencyLabel: String
+    public var gainDb: Double
     public var range: ClosedRange<Double> = -12...12
     public var onGainChange: (Double) -> Void
 
     public init(
-        band: EqualizerBand,
+        frequencyLabel: String,
+        gainDb: Double,
         range: ClosedRange<Double> = -12...12,
         onGainChange: @escaping (Double) -> Void
     ) {
-        self.band = band
+        self.frequencyLabel = frequencyLabel
+        self.gainDb = gainDb
         self.range = range
         self.onGainChange = onGainChange
     }
@@ -30,7 +36,7 @@ public struct YtVerticalEqSlider: View {
 
     private var gainFraction: Double {
         guard span > 0 else { return 0.5 }
-        return min(max((band.gainDb - range.lowerBound) / span, 0), 1)
+        return min(max((gainDb - range.lowerBound) / span, 0), 1)
     }
 
     private var thumbY: CGFloat {
@@ -46,7 +52,7 @@ public struct YtVerticalEqSlider: View {
     }
 
     private var gainText: String {
-        let rounded = (band.gainDb * 2).rounded() / 2
+        let rounded = (gainDb * 2).rounded() / 2
         let body = rounded.truncatingRemainder(dividingBy: 1) == 0
             ? String(Int(rounded))
             : String(format: "%.1f", rounded)
@@ -59,7 +65,7 @@ public struct YtVerticalEqSlider: View {
                 .font(StreamifyType.seekbarTime)
                 .monospacedDigit()
                 .foregroundStyle(
-                    band.gainDb != 0 ? StreamifyColors.activeControl : StreamifyColors.textSecondary
+                    gainDb != 0 ? StreamifyColors.activeControl : StreamifyColors.textSecondary
                 )
 
             ZStack {
@@ -90,10 +96,10 @@ public struct YtVerticalEqSlider: View {
                         onGainChange((gain * 2).rounded() / 2)
                     }
             )
-            .accessibilityLabel("\(band.frequencyLabel) band gain")
+            .accessibilityLabel("\(frequencyLabel) band gain")
             .accessibilityValue(gainText)
 
-            Text(band.frequencyLabel)
+            Text(frequencyLabel)
                 .font(StreamifyType.songArtist)
                 .foregroundStyle(StreamifyColors.textSecondary)
         }
@@ -103,21 +109,14 @@ public struct YtVerticalEqSlider: View {
 }
 
 #Preview("Vertical EQ sliders") {
-    EqSliderDemo()
-        .background(StreamifyColors.bgBase)
-}
-
-private struct EqSliderDemo: View {
-    @State private var bands = PreviewCatalog.eqBands
-
-    var body: some View {
-        HStack(spacing: StreamifyDimens.spaceLG) {
-            ForEach(bands.indices, id: \.self) { index in
-                YtVerticalEqSlider(band: bands[index]) { gain in
-                    bands[index].gainDb = gain
-                }
-            }
+    HStack(spacing: StreamifyDimens.spaceXL) {
+        ForEach(PreviewCatalog.eqBandsDb, id: \.label) { fixture in
+            YtVerticalEqSlider(
+                frequencyLabel: fixture.label,
+                gainDb: fixture.gainDb
+            ) { _ in }
         }
-        .padding(24)
     }
+    .padding(40)
+    .background(StreamifyColors.bgBase)
 }

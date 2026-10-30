@@ -280,12 +280,11 @@ public enum PreviewCatalog {
         .init(id: "air", name: "Air", gainsDb: [0, 0, 0, 2, 4.5]),
     ]
 
-    public static let eqBands: [EqualizerBand] = [
-        .init(id: 0, freqHz: 60, gainDb: 3),
-        .init(id: 1, freqHz: 250, gainDb: 1),
-        .init(id: 2, freqHz: 1_000, gainDb: -0.5),
-        .init(id: 3, freqHz: 4_000, gainDb: 2),
-        .init(id: 4, freqHz: 16_000, gainDb: 4),
+    /// EQ band fixtures (frequency label + gain) — the slider takes
+    /// primitives; the canonical EqualizerBand is Eng 4's
+    /// (ViewModels/Support/PresentationModels.swift).
+    public static let eqBandsDb: [(label: String, gainDb: Double)] = [
+        ("60 Hz", 3), ("250 Hz", 1), ("1 kHz", -0.5), ("4 kHz", 2), ("16 kHz", 4),
     ]
 
     public static let dsp = DspPreferences(
