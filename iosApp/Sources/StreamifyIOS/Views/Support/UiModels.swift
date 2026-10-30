@@ -519,11 +519,6 @@ public struct JamPeer: Identifiable, Hashable, Sendable {
 
 // MARK: - Equalizer / DSP (audiophile surfaces)
 
-    public var frequencyLabel: String {
-        freqHz >= 1_000 ? "\(Int(freqHz / 1_000)) kHz" : "\(freqHz) Hz"
-    }
-}
-
 public struct EqualizerPreset: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
