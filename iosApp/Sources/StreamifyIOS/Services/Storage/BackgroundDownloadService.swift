@@ -161,9 +161,9 @@ final class BackgroundDownloadService: NSObject, @unchecked Sendable {
     /// `DownloadError.cancelled` after persisting resume data.
     func download(from url: URL) async throws -> URL {
         // Find or create the entry for this URL under one lock.
-        let entry: Entry = {
-            lock.lock()
-            defer { lock.unlock() }
+        // (withLock everywhere: NSLock.lock()/unlock() are flagged as
+        // unavailable from asynchronous contexts under Swift 6.)
+        let entry: Entry = lock.withLock {
             if let taskID = taskByURL[url], let live = entriesByTask[taskID] {
                 return live
             }
@@ -174,33 +174,31 @@ final class BackgroundDownloadService: NSObject, @unchecked Sendable {
             }
             fresh.progressContinuation = progressContinuation
             return fresh
-        }()
+        }
 
         // Register a download task when the entry has none — a live entry
         // reuses its in-flight task; a resumePersisted() entry already
         // carries one (both identified by membership in entriesByTask).
         let registeredTask: URLSessionDownloadTask?
-        lock.lock()
-        let hasTask = entriesByTask.values.contains { $0 === entry }
-        lock.unlock()
-        if hasTask {
+        if lock.withLock({ entriesByTask.values.contains { $0 === entry } }) {
             registeredTask = nil
         } else {
             let task = session.downloadTask(with: url)
-            lock.lock()
-            entriesByTask[task.taskIdentifier] = entry
-            taskByURL[url] = task.taskIdentifier
-            lock.unlock()
+            lock.withLock {
+                entriesByTask[task.taskIdentifier] = entry
+                taskByURL[url] = task.taskIdentifier
+            }
             registeredTask = task
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            lock.lock()
-            let alreadyAwaited = entry.continuation != nil
-            if !alreadyAwaited {
+            let alreadyAwaited = lock.withLock {
+                if entry.continuation != nil {
+                    return true
+                }
                 entry.continuation = continuation
+                return false
             }
-            lock.unlock()
             if alreadyAwaited {
                 continuation.resume(
                     throwing: DownloadError.transport("download already awaited")
