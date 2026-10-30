@@ -595,4 +595,15 @@ struct LiveTransportControlsView: View {
     }
 }
 
+#else  // !canImport(ActivityKit) || !canImport(UIKit) — macOS lane
+
+import Foundation
+
+@MainActor
+final class LiveActivityArtworkProvider {
+    nonisolated init(fetch: @escaping @Sendable (URL) async -> Data? = { _ in nil }) {}
+    func thumbnail(for urlString: String?) async -> Data? { nil }
+    nonisolated static func downsample(_ data: Data, maxPixelSize: Double = 160, jpegQuality: Double = 0.7) -> Data? { data }
+}
+
 #endif  // canImport(ActivityKit) && canImport(UIKit)
