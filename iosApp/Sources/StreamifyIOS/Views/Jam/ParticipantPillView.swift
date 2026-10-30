@@ -86,7 +86,7 @@ struct VolumeMeter: View {
     }
 
     var body: some View {
-        HStack(spacing: 2, alignment: .bottom) {
+        HStack(alignment: .bottom, spacing: 2) {
             ForEach(0..<5, id: \.self) { bar in
                 RoundedRectangle(cornerRadius: 1)
                     .fill(bar < litBars ? StreamifyTheme.primary : StreamifyTheme.bgCard)

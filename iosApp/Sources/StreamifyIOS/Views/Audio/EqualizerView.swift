@@ -10,6 +10,7 @@ import Observation
 // EqualizerViewModel's profile and renders its RBJ-cookbook preview math.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 struct EqualizerView: View {
     @State private var eqModel = EqualizerViewModel()
     @State private var selectedBand: Int?

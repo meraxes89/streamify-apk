@@ -13,6 +13,7 @@ import Observation
 // mirror the Kotlin entrance choreography (slide-in + overlap).
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 struct BlendView: View {
     @State private var blendModel = BlendViewModel()
     @State private var animatedPercent: Double = 0

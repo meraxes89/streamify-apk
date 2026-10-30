@@ -21,7 +21,11 @@ final class StatsWrappedViewModel {
 
     private(set) var state: State = .loading
 
-    private var loadTask: Task<Void, Never>?
+    /// The stored load task handle. `nonisolated(unsafe)`: the handle is
+    /// only mutated on the main actor (init / load()); `deinit` — which is
+    /// always nonisolated — reads it solely to cancel, and `Task.cancel()`
+    /// is itself thread-safe.
+    nonisolated(unsafe) private var loadTask: Task<Void, Never>?
     private let library: any FeatureLibrary
 
     init(library: any FeatureLibrary = AppServices.library) {
@@ -80,7 +84,7 @@ final class StatsWrappedViewModel {
 
     var topGenres: [StatsGenre] { stats?.topGenres ?? [] }
     var topTracks: [PresentationTrack] { stats?.topTracks ?? [] }
-    var topArtists: [(name: String, plays: Int)] { stats?.topArtists ?? [] }
+    var topArtists: [StatsArtist] { stats?.topArtists ?? [] }
     var monthlyMinutes: [MonthlyListening] { stats?.monthlyMinutes ?? [] }
     var milestones: [StatsMilestone] { stats?.milestones ?? [] }
 

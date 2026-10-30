@@ -72,9 +72,12 @@ struct DiscoveredJamRoom: Equatable, Sendable, Identifiable {
     var isWithinProximity: Bool { rssi >= BleJoinPayload.proximityRssiDbm }
 }
 
-/// The `@Observable` projection the Jam views read (main-actor only).
+/// The `@Observable` projection the Jam views read. Main-queue confined:
+/// every mutation arrives through the transport's `runOnMain` trampoline
+/// (no `@MainActor` — the transport class is nonisolated so it can own the
+/// CoreBluetooth managers on their own queues; the @MainActor closures in
+/// the trampoline keep the actual state writes on the main thread).
 @Observable
-@MainActor
 final class JamBeaconModel {
 
     // ── Transport availability (CBCentralManager state) ────────────────────

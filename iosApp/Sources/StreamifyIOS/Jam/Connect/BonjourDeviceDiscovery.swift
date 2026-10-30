@@ -253,9 +253,11 @@ struct DiscoveredConnectDevice: Equatable, Sendable, Identifiable {
     }
 }
 
-/// The main-actor projection the device picker reads.
+/// The `@Observable` projection the device picker reads. Main-queue
+/// confined: every mutation arrives through the transport's `runOnMain`
+/// trampoline (the transport is nonisolated so its DispatchQueues and NW
+/// callbacks stay off the main actor; the writes themselves still hop on).
 @Observable
-@MainActor
 final class ConnectDiscoveryModel {
 
     enum BrowserState: Equatable {
@@ -378,18 +380,19 @@ final class BonjourDeviceDiscovery: @unchecked Sendable {
     private func handleBrowseResults(_ results: Set<NWBrowser.Result>) {
         var devices: [DiscoveredConnectDevice] = []
         for result in results {
-            guard case let .service(name, _, _, txtRecord) = result.endpoint else { continue }
-            let pairs = Self.parseTxtRecord(txtRecord)
-            let displayName = pairs["nm"] ?? (name.isEmpty ? "Streamify device" : name)
-            let devicePlatform = pairs["pf"] ?? "streamify"
-            let id = pairs["did"] ?? (name.isEmpty ? "unknown" : name)
-            let supportsHandoff = pairs["cap"] != nil
+            // NWBrowser surfaces only the service endpoint — Network.framework
+            // browsing does NOT expose the DNS-SD TXT record (the 4th pattern
+            // component is the NWInterface, not the TXT data). Identity
+            // therefore falls back to the advertised service name, exactly
+            // like the TXT-less path of the Kotlin resolver.
+            guard case let .service(name, _, _, _) = result.endpoint else { continue }
+            let displayName = name.isEmpty ? "Streamify device" : name
             devices.append(
                 DiscoveredConnectDevice(
-                    deviceId: id,
+                    deviceId: name,
                     name: displayName,
-                    platform: devicePlatform,
-                    supportsHandoff: supportsHandoff
+                    platform: "streamify",
+                    supportsHandoff: true
                 )
             )
         }
@@ -422,11 +425,11 @@ final class BonjourDeviceDiscovery: @unchecked Sendable {
             params.allowLocalEndpointReuse = true
             let listener = try NWListener(using: params)
             let txt = NWTXTRecord()
-            txt.setStringValue(deviceName, for: "nm")
-            txt.setStringValue(platform, for: "pf")
-            txt.setStringValue(deviceId, for: "did")
-            txt.setStringValue("lan", for: "cap")
-            txt.setStringValue("1", for: "ver")
+            txt.setValue(deviceName, forKey: "nm")
+            txt.setValue(platform, forKey: "pf")
+            txt.setValue(deviceId, forKey: "did")
+            txt.setValue("lan", forKey: "cap")
+            txt.setValue("1", forKey: "ver")
             listener.service = NWListener.Service(
                 name: deviceId,
                 type: Self.serviceType,
@@ -628,9 +631,8 @@ final class BonjourDeviceDiscovery: @unchecked Sendable {
     }
 
     private func matches(_ result: NWBrowser.Result, device: DiscoveredConnectDevice) -> Bool {
-        guard case let .service(name, _, _, txtRecord) = result.endpoint else { return false }
-        if name == device.deviceId { return true }
-        return Self.parseTxtRecord(txtRecord)["did"] == device.deviceId
+        guard case let .service(name, _, _, _) = result.endpoint else { return false }
+        return name == device.deviceId || name == device.name
     }
 
     private func runOnMain(_ update: @escaping @MainActor () -> Void) {

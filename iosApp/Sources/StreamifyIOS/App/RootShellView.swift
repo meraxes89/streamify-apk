@@ -45,6 +45,7 @@ struct RootShellView: View {
 
 /// The now-playing surface (the directive's NowPlayingView): transport,
 /// progress, volume, engine health — plus the queue sheet entry point.
+@MainActor
 struct NowPlayingView: View {
     @Environment(PlaybackViewModel.self) private var model
     @State private var queuePresented = false

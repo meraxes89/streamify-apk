@@ -177,6 +177,8 @@ struct FriendActivity: Equatable, Sendable, Identifiable {
     var lastActiveAt: String = ""
     /// Non-nil → the friend is hosting a Jam room right now.
     var sessionCode: String? = nil
+
+    var id: String { userId }
 }
 
 struct CommunityFeed: Equatable, Sendable {
@@ -208,6 +210,14 @@ struct StatsMilestone: Equatable, Sendable, Identifiable {
     var id: String { title }
 }
 
+/// One top-artist row (a named struct, not a tuple — tuples cannot conform
+/// to Equatable and would break WrappedStats's synthesized conformance).
+struct StatsArtist: Equatable, Sendable, Identifiable {
+    let name: String
+    let plays: Int
+    var id: String { name }
+}
+
 struct WrappedStats: Equatable, Sendable {
     var totalMinutes: Int = 0
     var totalTracks: Int = 0
@@ -219,7 +229,7 @@ struct WrappedStats: Equatable, Sendable {
     var personaDescription: String = "Slow tempos, warm textures, late-night calm."
     var topGenres: [StatsGenre] = []
     var topTracks: [PresentationTrack] = []
-    var topArtists: [(name: String, plays: Int)] = []
+    var topArtists: [StatsArtist] = []
     /// Monthly listening minutes feeding the Wrapped bar chart.
     var monthlyMinutes: [MonthlyListening] = []
     var milestones: [StatsMilestone] = []

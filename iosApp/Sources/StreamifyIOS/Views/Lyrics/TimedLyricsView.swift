@@ -21,6 +21,7 @@ import Observation
 // (persisted per track by LyricPacerService).
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 struct TimedLyricsView: View {
     @Environment(PlaybackViewModel.self) private var playback
     @State private var lyricsModel: LyricsViewModel?
@@ -67,6 +68,7 @@ struct TimedLyricsView: View {
 
 // MARK: - The scrollable lyrics surface
 
+@MainActor
 private struct LyricsSurface: View {
     let lyricsModel: LyricsViewModel
     let progress: PlaybackProgressClock

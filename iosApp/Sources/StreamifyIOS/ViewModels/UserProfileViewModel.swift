@@ -21,7 +21,11 @@ final class UserProfileViewModel {
     /// True while viewing another listener's public profile.
     private(set) var isViewingOtherUser = false
 
-    private var loadTask: Task<Void, Never>?
+    /// The stored load task handle. `nonisolated(unsafe)`: the handle is
+    /// only mutated on the main actor (init / load()); `deinit` — which is
+    /// always nonisolated — reads it solely to cancel, and `Task.cancel()`
+    /// is itself thread-safe.
+    nonisolated(unsafe) private var loadTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
 

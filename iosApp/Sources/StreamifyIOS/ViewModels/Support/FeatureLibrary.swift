@@ -297,33 +297,43 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
         AsyncStream { continuation in
             lock.withLock { queueContinuation = continuation }
             continuation.onTermination = { [weak self] _ in
-                Task { @MainActor in
-                    self?.queueContinuation = nil
-                }
+                self?.clearQueueContinuation()
             }
         }
+    }
+
+    /// Termination cleanup — synchronous and lock-protected (the class is
+    /// @unchecked Sendable; no actor hop, so the slot frees immediately).
+    private func clearQueueContinuation() {
+        lock.withLock { queueContinuation = nil }
     }
 
     var jamRoomEvents: AsyncStream<JamRoomEvent> {
         AsyncStream { continuation in
             lock.withLock { roomContinuation = continuation }
             continuation.onTermination = { [weak self] _ in
-                Task { @MainActor in
-                    self?.roomContinuation = nil
-                }
+                self?.clearRoomContinuation()
             }
         }
+    }
+
+    /// Termination cleanup — synchronous and lock-protected.
+    private func clearRoomContinuation() {
+        lock.withLock { roomContinuation = nil }
     }
 
     var ingestionEvents: AsyncStream<IngestionEvent> {
         AsyncStream { continuation in
             lock.withLock { ingestionContinuation = continuation }
             continuation.onTermination = { [weak self] _ in
-                Task { @MainActor in
-                    self?.ingestionContinuation = nil
-                }
+                self?.clearIngestionContinuation()
             }
         }
+    }
+
+    /// Termination cleanup — synchronous and lock-protected.
+    private func clearIngestionContinuation() {
+        lock.withLock { ingestionContinuation = nil }
     }
 
     // ── Test/preview push helpers (the `push` counterparts of the gateway) ─

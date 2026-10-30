@@ -51,8 +51,8 @@ enum LanBeaconPacket {
         let caps: UInt16
         let meshPort: Int
 
-        var hasLan: Bool { caps & Self.capLan != 0 }
-        var hasWebRtc: Bool { caps & Self.capWebRtc != 0 }
+        var hasLan: Bool { caps & LanBeaconPacket.capLan != 0 }
+        var hasWebRtc: Bool { caps & LanBeaconPacket.capWebRtc != 0 }
     }
 
     // ── Checksum ──────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import Observation
 // (JamPairing); CoreImage renders it cross-platform (iOS + macOS).
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 struct JamSessionView: View {
     @State private var jamModel = JamViewModel()
     @State private var roomCodeInput = ""

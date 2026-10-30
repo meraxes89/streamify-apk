@@ -32,7 +32,7 @@ final class UiEventBus {
             }
             self.pending.removeAll()
             continuation.onTermination = { [weak self] _ in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     self?.continuations[id] = nil
                 }
             }

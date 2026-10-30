@@ -21,7 +21,11 @@ final class UpdatesHubViewModel {
     private(set) var isLoading = true
     private(set) var savedReleaseIds: Set<String> = []
 
-    private var loadTask: Task<Void, Never>?
+    /// The stored load task handle. `nonisolated(unsafe)`: the handle is
+    /// only mutated on the main actor (init / load()); `deinit` — which is
+    /// always nonisolated — reads it solely to cancel, and `Task.cancel()`
+    /// is itself thread-safe.
+    nonisolated(unsafe) private var loadTask: Task<Void, Never>?
 
     private let library: any FeatureLibrary
     private let settings: SettingsStore
@@ -106,8 +110,9 @@ final class UpdatesHubViewModel {
 
     private func upcomingOrder(_ lhs: ReleaseCandidate, _ rhs: ReleaseCandidate) -> Bool {
         let now = Date()
-        let rank = rank(lhs).compare(rank(rhs))
-        if rank != .orderedSame { return rank == .orderedDescending }
+        let lhRank = rank(lhs)
+        let rhRank = rank(rhs)
+        if lhRank != rhRank { return lhRank > rhRank }
         let lhsEta = lhs.expectedAt ?? now
         let rhsEta = rhs.expectedAt ?? now
         if lhsEta != rhsEta { return lhsEta < rhsEta }
