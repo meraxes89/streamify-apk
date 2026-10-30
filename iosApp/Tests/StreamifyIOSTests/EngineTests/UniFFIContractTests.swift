@@ -559,14 +559,19 @@ final class CanvasScraperParserTests: XCTestCase {
             "reelItemRenderer": [
                 "videoId": "ddddddddddd",
                 "headline": ["simpleText": "Reel Title"],
-                "thumbnail": ["thumbnails": [["url": "https://i.ytimg.com/vi/d/t1.jpg"], ["url": "https://i.ytimg.com/vi/d/t2.jpg"]]] as [String: Any],
+                "thumbnail": ["thumbnails": [
+                    ["url": "https://i.ytimg.com/vi/d/mqdefault.jpg"],
+                    ["url": "https://i.ytimg.com/vi/d/maxresdefault.jpg"],
+                ]] as [String: Any],
             ] as [String: Any],
         ]
         let reelClips = ClipsResponseParser.collectClips(reel, maxClips: 5)
         XCTAssertEqual(reelClips.count, 1)
         XCTAssertEqual(reelClips.first?.videoId, "ddddddddddd")
         XCTAssertEqual(reelClips.first?.title, "Reel Title")
-        XCTAssertEqual(reelClips.first?.thumbnailUrl, "https://i.ytimg.com/vi/d/t2.jpg") // largest wins
+        // Longest URL wins — Kotlin maxByOrNull { length } parity (ties
+        // would fall to the first, so the fixture uses distinct lengths).
+        XCTAssertEqual(reelClips.first?.thumbnailUrl, "https://i.ytimg.com/vi/d/maxresdefault.jpg")
 
         // clipRenderer (curated watch-next clip) with accessibility label.
         let curated: [String: Any] = [

@@ -520,9 +520,15 @@ enum AntiDriftScoringEngine {
             if titleLower.isEmpty || artistLower.isEmpty { continue }
             if junkKeywords.contains(where: { titleLower.contains($0) }) { continue }
 
-            // Duration sanity: filter 2-hour compilations unless the seed
-            // itself is long-form.
-            if (60...600).contains(seedTrack.durationSec),
+            // Duration sanity: filter 2-hour compilations and sub-35-second
+            // clips unless the seed itself is long-form. Kotlin's candidate
+            // pool is MediaStore rows that always carry a real duration;
+            // Apple-lane stream candidates may be un-analyzed, where 0
+            // means "no metadata yet" — an unknown duration falls through
+            // to the neutral baseline instead of being rejected as a
+            // 0-second clip.
+            if track.durationSec > 0,
+               (60...600).contains(seedTrack.durationSec),
                track.durationSec > 720 || track.durationSec < 35 {
                 continue
             }
