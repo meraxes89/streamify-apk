@@ -145,7 +145,10 @@ private struct GenerativeCoverContent: View {
 }
 
 #Preview("Track cover art") {
-    let palette = PreviewCatalog.palette(forTitle: "Obsidian Sunrise")
+    // Single-expression body: a `let` statement before the view leaves the
+    // macro's () -> any View closure uninferrable (the UIKit Preview inits
+    // then collide with SwiftUI's — the "ambiguous init(_:traits:body:)"
+    // runner failure).
     VStack(spacing: 20) {
         HStack(spacing: 14) {
             TrackCoverArt(
@@ -163,7 +166,7 @@ private struct GenerativeCoverContent: View {
             title: PreviewCatalog.tracks[2].title,
             artist: PreviewCatalog.tracks[2].artist,
             size: 220,
-            palette: palette
+            palette: PreviewCatalog.palette(forTitle: "Obsidian Sunrise")
         )
     }
     .padding(24)

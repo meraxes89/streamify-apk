@@ -78,35 +78,7 @@ public struct HeartBurstView: View {
             .animation(minimumInterval: 1.0 / 120.0, paused: burst == nil)
         ) { timeline in
             Canvas { context, size in
-                guard let burst else { return }
-                let t = timeline.date.timeIntervalSince(burst.startedAt)
-                guard t > 0, t < 0.9 else { return }
-
-                let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radius = min(size.width, size.height) * 0.5
-                let heart = context.resolve(
-                    Text(Image(systemName: StreamifyIcon.heartFill))
-                        .font(.system(size: 11))
-                        .foregroundColor(color)
-                )
-
-                for i in 0..<12 {
-                    // Explicit type boundaries (Double math, CGFloat layout):
-                    // the mixed-literal form exceeded the type-checker budget.
-                    let angle = Double(i) / 12 * 2 * .pi + Double(burst.id % 7) * 0.13
-                    let eased: Double = 1 - pow(1 - t / 0.9, 3)
-                    let travel: CGFloat = radius * CGFloat(eased)
-                    let lift: CGFloat = CGFloat(t) * 14
-                    let point = CGPoint(
-                        x: center.x + CGFloat(cos(angle)) * travel,
-                        y: center.y + CGFloat(sin(angle)) * travel - lift
-                    )
-                    let decay = max(0, 1 - t / 0.9)
-                    var particle = heart
-                    particle.opacity = decay
-                    particle.transform = .scale(x: decay, y: decay)
-                    context.draw(particle, at: point)
-                }
+                drawBurst(in: context, size: size, at: timeline.date)
             }
         }
         .allowsHitTesting(false)
@@ -118,6 +90,48 @@ public struct HeartBurstView: View {
                 if burst?.id == newValue { burst = nil }
             }
         }
+    }
+
+    // ─ Decomposed draw path: one small type-checkable unit per concern ──
+
+    private func drawBurst(in context: GraphicsContext, size: CGSize, at date: Date) {
+        guard let burst else { return }
+        let t: Double = date.timeIntervalSince(burst.startedAt)
+        guard t > 0, t < 0.9 else { return }
+
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let radius: CGFloat = min(size.width, size.height) * 0.5
+        let heart: GraphicsContext.ResolvedText = resolveHeart(context)
+        let decay: Double = max(0, 1 - t / 0.9)
+
+        for i in 0..<12 {
+            let angle: Double = Double(i) / 12 * 2 * .pi + Double(burst.id % 7) * 0.13
+            let point: CGPoint = particlePoint(angle: angle, t: t, center: center, radius: radius)
+            var particle = heart
+            particle.opacity = decay
+            particle.transform = .scale(x: decay, y: decay)
+            context.draw(particle, at: point)
+        }
+    }
+
+    /// One particle's position: radial ease-out travel + a slight lift.
+    private func particlePoint(angle: Double, t: Double, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let eased: Double = 1 - pow(1 - t / 0.9, 3)
+        let travel: CGFloat = radius * CGFloat(eased)
+        let lift: CGFloat = CGFloat(t) * 14
+        return CGPoint(
+            x: center.x + CGFloat(cos(angle)) * travel,
+            y: center.y + CGFloat(sin(angle)) * travel - lift
+        )
+    }
+
+    /// The resolved heart glyph every particle shares.
+    private func resolveHeart(_ context: GraphicsContext) -> GraphicsContext.ResolvedText {
+        context.resolve(
+            Text(Image(systemName: StreamifyIcon.heartFill))
+                .font(.system(size: 11))
+                .foregroundColor(color)
+        )
     }
 }
 
