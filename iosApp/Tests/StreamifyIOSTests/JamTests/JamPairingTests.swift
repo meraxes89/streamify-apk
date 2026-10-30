@@ -92,7 +92,9 @@ final class JamPairingTests: XCTestCase {
         let parsed = JamPairing.parsePayload(qrContent)
         XCTAssertEqual(identity.sessionCode, parsed?.sessionCode)
         XCTAssertEqual(identity.sessionId, parsed?.sessionId)
-        XCTAssertEqual(String(repeating: "ab", count: 32).count, parsed?.pairingKey.count)
+        // The key comes back as 32 BYTES (the hex string is its 64-char
+        // encoding) — compare the byte vector, not the hex length.
+        XCTAssertEqual([UInt8](repeating: 0xAB, count: JamPairing.keyBytes), parsed?.pairingKey)
     }
 
     func testFullUriPinIsCaseInsensitiveLikeBarePin() {
