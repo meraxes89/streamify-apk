@@ -49,13 +49,15 @@ final class SearchViewModel {
     private let settings: SettingsStore
 
     init(
-        library: any FeatureLibrary = AppServices.library,
-        settings: SettingsStore = AppServices.settings,
-        debounceIntervalNs: UInt64 = SearchViewModel.debounceNs
+        library: (any FeatureLibrary)? = nil,
+        settings: SettingsStore? = nil,
+        debounceIntervalNs: UInt64? = nil
     ) {
+        let library = library ?? AppServices.library
+        let settings = settings ?? AppServices.settings
         self.library = library
         self.settings = settings
-        self.debounceIntervalNs = debounceIntervalNs
+        self.debounceIntervalNs = debounceIntervalNs ?? Self.debounceNs
         self.searchHistory = settings.searchHistory()
     }
 
@@ -81,8 +83,9 @@ final class SearchViewModel {
         state = .loading
         let filter = filter
         let library = library
+        let debounceWindowNs = debounceIntervalNs
         searchTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: debounceIntervalNs)
+            try? await Task.sleep(nanoseconds: debounceWindowNs)
             guard !Task.isCancelled else { return }
             let results = await library.searchTracks(query: trimmed, filter: filter)
             guard !Task.isCancelled else { return }
@@ -90,7 +93,7 @@ final class SearchViewModel {
             self.finish(query: trimmed, results: results)
         }
         suggestTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: debounceIntervalNs)
+            try? await Task.sleep(nanoseconds: debounceWindowNs)
             guard !Task.isCancelled else { return }
             let suggestions = await library.searchSuggestions(query: trimmed)
             guard !Task.isCancelled, let self else { return }

@@ -22,8 +22,8 @@ final class IngestionViewModel {
 
     private let library: any FeatureLibrary
 
-    init(library: any FeatureLibrary = AppServices.library) {
-        self.library = library
+    init(library: (any FeatureLibrary)? = nil) {
+        self.library = library ?? AppServices.library
     }
 
     deinit {

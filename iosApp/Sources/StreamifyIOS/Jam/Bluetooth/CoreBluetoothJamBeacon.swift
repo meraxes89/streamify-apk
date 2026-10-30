@@ -228,7 +228,7 @@ final class CoreBluetoothJamBeacon: NSObject, @unchecked Sendable {
                 queueNonEmpty: queueNonEmpty
             )
         )
-        guard let advertisingRoom else { return }
+        guard advertisingRoom != nil else { return }
         if peripheralManager == nil {
             peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
         } else if peripheralManager?.state == .poweredOn {
