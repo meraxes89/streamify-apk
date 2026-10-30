@@ -39,7 +39,7 @@ streamify-apk/
 │   ├── navigation/  Compose navigation graph
 │   ├── ui/          screens · shared components · yt/ widget kit · theme
 │   ├── viewmodel/   presentation state (PlayerViewModel + companions)
-│   ├── util/        cross-cutting utilities + newpipe PO-token pipeline
+│   ├── util/        cross-cutting utilities
 │   └── worker/      foreground download worker
 ├── native/          C++20 DSP & physics core  (libstreamify_native_core.so)
 ├── rust/            Rust I/O & auth engine    (libstreamify_core_rs.so)

@@ -37,7 +37,7 @@ streamify-apk/
 │       ├── navigation/   Compose nav graph
 │       ├── ui/           screens, components (+yt/ kit), theme
 │       ├── viewmodel/    presentation state
-│       ├── util/         cross-cutting utils (+ newpipe/ PO-token pipeline)
+│       ├── util/         cross-cutting utils
 │       └── worker/       foreground workers
 ├── native/               C++20 DSP & physics core (libstreamify_native_core.so)
 ├── rust/                 Rust I/O engine (libstreamify_core_rs.so)
@@ -69,7 +69,7 @@ Every directory above has a `README.md` with its own file index.
 ├───────────────────────┴───────────┬────────────────────────────┤
 │  jam/  radio/  (domain engines)    │                            │
 ├────────────────────────────────────┴────────────────────────────┤
-│  di/  util/  (foundation: AppGraph, SLog, newpipe, haptics)     │
+│  di/  util/  (foundation: AppGraph, SLog, haptics)               │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -121,7 +121,7 @@ Kotlin                          Native
 data/NativeBridge.kt ──JNI──▶  rust/src/jni_bridge.rs    (I/O, auth, PTP, tag)
    ▲  140+ external funs ───▶  native/jni/jni_bridge.cc  (DSP, physics, storage)
    │
-   └── app/src/main/assets/po_token.html + util/newpipe/ (BotGuard WebView)
+   └── pure-Rust RustyPipe engine (QuickJS cipher deciphering in streamify-resolver)
 ```
 
 - JNI is **name-mangled**, not `RegisterNatives` — the class's package

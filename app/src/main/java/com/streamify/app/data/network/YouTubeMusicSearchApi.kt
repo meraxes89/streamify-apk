@@ -90,7 +90,26 @@ object YouTubeMusicSearchApi {
         val cleanQuery = query.trim()
         if (cleanQuery.isBlank()) return@withContext emptyList()
 
-        // 1. Try YouTube Music Parametric Search
+        // 1. Primary: Pure-Rust RustyPipe YTM search (in-process QuickJS parsing + SQLite cache)
+        if (filter == SearchFilter.ALL || filter == SearchFilter.SONGS) {
+            val rustResults = try {
+                val dbPath = YouTubeStreamResolver.appContext?.getDatabasePath("streamify_universal.db")?.absolutePath ?: ""
+                com.streamify.app.data.NativeBridge.searchTracks(cleanQuery, maxResults, dbPath)
+            } catch (t: Throwable) {
+                SLog.w("YouTubeMusicSearchApi", "RustyPipe search error for '$cleanQuery': ${t.message}")
+                null
+            }
+
+            if (!rustResults.isNullOrEmpty()) {
+                val filtered = rustResults.filterNot { SearchResultCleaner.isJunkModifier(it.title) }
+                if (filtered.isNotEmpty()) {
+                    SLog.d("YouTubeMusicSearchApi", "RustyPipe search HIT for '$cleanQuery' (${filtered.size} items)")
+                    return@withContext filtered
+                }
+            }
+        }
+
+        // 2. Fallback to YouTube Music Parametric Search
         val musicResults = executeInnertubeSearch(
             query = cleanQuery,
             endpointUrl = INNERTUBE_MUSIC_SEARCH_URL,
@@ -105,7 +124,7 @@ object YouTubeMusicSearchApi {
             return@withContext filteredMusicResults
         }
 
-        // 2. Fallback to standard YouTube Innertube search for maximum coverage
+        // 3. Fallback to standard YouTube Innertube search for maximum coverage
         val ytResults = executeInnertubeSearch(
             query = cleanQuery,
             endpointUrl = INNERTUBE_YT_SEARCH_URL,
