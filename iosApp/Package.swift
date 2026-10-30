@@ -53,7 +53,13 @@ var targets: [Target] = [
     ),
     .testTarget(
         name: "StreamifyIOSTests",
-        dependencies: ["StreamifyIOS"],
+        // The binary target is a direct dependency of the TEST target too,
+        // so `#if canImport(uniffi_streamify)` resolves inside the tests
+        // (SwiftPM only puts direct dependencies on a target's module
+        // search path) and the real-lane UniFFI contract tests compile.
+        dependencies: realLaneLinked
+            ? [.target(name: "StreamifyIOS"), .target(name: "StreamifyCore")]
+            : [.target(name: "StreamifyIOS")],
         path: "Tests/StreamifyIOSTests"
     ),
 ]

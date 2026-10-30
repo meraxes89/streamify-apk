@@ -414,3 +414,206 @@ actor DaylistScheduleEngine {
         try? data.write(to: file, options: .atomic)
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SW-ENG1-07 (companion): AntiDriftScoringEngine — the Swift port of
+// AntiDriftScoringEngine.kt's PURE scoring core (the plan maps both
+// discovery files onto this service): junk/compilation filtering, duplicate
+// variation elimination, strict artist saturation capping, and composite
+// acoustic affinity ranking (Gaussian BPM proximity + Camelot key distance +
+// artist diversity damping).
+//
+// DELIBERATELY NOT PORTED:
+//   * the JNI fast path (NativeBridge.rustScoreAndRankRadioCandidates) —
+//     the Apple lane has no such export on the typed contract yet; the
+//     pure path below IS the Kotlin fallback, verbatim semantics;
+//   * FuzzyTitleMatcher.isSameSongVariation — injected as a hook so the
+//     fuzzy matcher lands with the search surfaces that own it; nil skips
+//     the fuzzy check (signature dedup still applies).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One scorable radio candidate (the Kotlin Track's acoustic fields).
+struct DriftScorableTrack: Equatable, Sendable {
+    let id: String
+    let title: String
+    let artist: String
+    let album: String
+    var durationSec: Int = 0
+    /// Beats per minute; 0 = un-analyzed (neutral baseline).
+    var bpm: Float = 0
+    /// Camelot/musical key, e.g. "8A", "12B"; blank = unknown.
+    var key: String = ""
+
+    init(
+        id: String,
+        title: String,
+        artist: String,
+        album: String = "",
+        durationSec: Int = 0,
+        bpm: Float = 0,
+        key: String = ""
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.durationSec = durationSec
+        self.bpm = bpm
+        self.key = key
+    }
+
+    /// The Kotlin `signature()`: trimmed lowercase title:::artist.
+    var signature: String {
+        "\(title.trimmingCharacters(in: .whitespaces).lowercased()):::\(artist.trimmingCharacters(in: .whitespaces).lowercased())"
+    }
+}
+
+/// Filters out non-music compilations, eliminates duplicate song
+/// variations, caps artist saturation, and ranks candidates by acoustic
+/// and harmonic affinity — SW-ENG1-07 (port of AntiDriftScoringEngine).
+enum AntiDriftScoringEngine {
+
+    static let maxTracksPerArtist = 2
+    static let windowSize = 20
+
+    static let junkKeywords = [
+        "full album", "1 hour", "10 hours", "compilation", "greatest hits mix",
+        "best songs mix", "non stop", "jukebox", "podcast", "audiobook", "asmr",
+        "medley", "slowed + reverb mix", "workout mix",
+    ]
+
+    /// Fuzzy same-song-variation predicate over (titleA, artistA, titleB,
+    /// artistB) — the FuzzyTitleMatcher port injects itself here.
+    typealias VariationMatcher = @Sendable (String, String, String, String) -> Bool
+
+    static func filterAndRankCandidates(
+        _ candidates: [DriftScorableTrack],
+        seedTrack: DriftScorableTrack,
+        activeQueue: [DriftScorableTrack],
+        isSameSongVariation: VariationMatcher? = nil
+    ) -> [DriftScorableTrack] {
+        guard !candidates.isEmpty else { return [] }
+
+        var seenSignatures = Set<String>()
+        var artistCounts: [String: Int] = [:]
+        var ranked: [(track: DriftScorableTrack, score: Float)] = []
+
+        // 1. Prime historical artist saturation + seen tracks from the
+        // existing queue window.
+        let queueWindow = Array(activeQueue.suffix(windowSize))
+        for track in queueWindow {
+            let normArtist = track.artist.trimmingCharacters(in: .whitespaces).lowercased()
+            artistCounts[normArtist, default: 0] += 1
+            seenSignatures.insert(track.signature)
+        }
+        seenSignatures.insert(seedTrack.signature)
+
+        let seedBpm = seedTrack.bpm > 0 ? seedTrack.bpm : 120
+        let seedKey = seedTrack.key.trimmingCharacters(in: .whitespaces).uppercased()
+
+        // 2. Filter and score the candidate pool.
+        for track in candidates {
+            let titleLower = track.title.trimmingCharacters(in: .whitespaces).lowercased()
+            let artistLower = track.artist.trimmingCharacters(in: .whitespaces).lowercased()
+
+            // A. Junk & non-music compilation filter.
+            if titleLower.isEmpty || artistLower.isEmpty { continue }
+            if junkKeywords.contains(where: { titleLower.contains($0) }) { continue }
+
+            // Duration sanity: filter 2-hour compilations unless the seed
+            // itself is long-form.
+            if (60...600).contains(seedTrack.durationSec),
+               track.durationSec > 720 || track.durationSec < 35 {
+                continue
+            }
+
+            // B. Root title & fuzzy duplicate check.
+            let signature = track.signature
+            if seenSignatures.contains(signature) { continue }
+            if let isSameSongVariation,
+               queueWindow.contains(where: {
+                   isSameSongVariation($0.title, $0.artist, track.title, track.artist)
+               }) {
+                continue
+            }
+
+            // C. Strict artist saturation ceiling.
+            let currentArtistCount = artistCounts[artistLower] ?? 0
+            if currentArtistCount >= maxTracksPerArtist { continue }
+
+            // D. Composite acoustic score.
+            let score = compositeScore(
+                track,
+                seedBpm: seedBpm,
+                seedKey: seedKey,
+                artistFrequency: currentArtistCount
+            )
+            ranked.append((track, score))
+
+            seenSignatures.insert(signature)
+            artistCounts[artistLower] = currentArtistCount + 1
+        }
+
+        // 3. Highest affinity first.
+        return ranked
+            .sorted { $0.score > $1.score }
+            .map(\.track)
+    }
+
+    private static func compositeScore(
+        _ candidate: DriftScorableTrack,
+        seedBpm: Float,
+        seedKey: String,
+        artistFrequency: Int
+    ) -> Float {
+        var score: Float = 100
+
+        // 1. Gaussian BPM proximity (σ = 25 BPM).
+        if candidate.bpm > 0, seedBpm > 0 {
+            let bpmDiff = abs(candidate.bpm - seedBpm)
+            let exponent = -(Double(bpmDiff * bpmDiff)) / (2.0 * 25.0 * 25.0)
+            score += Float(exp(exponent)) * 30
+        } else {
+            // Neutral baseline affinity for un-analyzed or stream candidates.
+            score += 25
+        }
+
+        // 2. Camelot key harmonic compatibility.
+        if !candidate.key.isEmpty, !seedKey.isEmpty {
+            let keyDistance = camelotDistance(
+                candidate.key.trimmingCharacters(in: .whitespaces).uppercased(),
+                seedKey
+            )
+            switch keyDistance {
+            case 0: score += 25 // exact harmonic match
+            case 1: score += 15 // harmonic neighbor
+            default: score -= 5
+            }
+        }
+
+        // 3. Artist diversity penalty (mild damping for a same-artist
+        // follow-up).
+        if artistFrequency > 0 {
+            score -= 12 * Float(artistFrequency)
+        }
+
+        return score
+    }
+
+    private static func camelotDistance(_ keyA: String, _ keyB: String) -> Int {
+        let numA = Int(keyA.filter(\.isNumber))
+        let numB = Int(keyB.filter(\.isNumber))
+        let letterA = keyA.filter(\.isLetter)
+        let letterB = keyB.filter(\.isLetter)
+        guard let numA, let numB else { return 2 }
+
+        if letterA == letterB {
+            let diff = abs(numA - numB)
+            return diff > 6 ? 12 - diff : diff
+        }
+        if numA == numB {
+            return 1 // relative major/minor modulation
+        }
+        return 2
+    }
+}
