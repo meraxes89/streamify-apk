@@ -155,8 +155,14 @@ extension View {
     /// `content` escapes into fullScreenCover's presentation closure — the
     /// sheet builder itself still resolves the view once, at construction.
     public func fullPlayerSheet(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> some View) -> some View {
+        #if os(iOS)
         fullScreenCover(isPresented: isPresented) {
             InteractivePlayerSheet(isPresented: isPresented, content: content)
         }
+        #else
+        sheet(isPresented: isPresented) {
+            InteractivePlayerSheet(isPresented: isPresented, content: content)
+        }
+        #endif
     }
 }
