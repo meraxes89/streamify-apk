@@ -1,315 +1,609 @@
 import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 5 (MP-UI01 / Beta): the root shell — TabView navigation (Home /
-// Search / Library / Jam Sessions) with a persistent MiniPlayerView docked
-// above the tab bar, mirroring the desktop shell's adaptive rail sections
-// (the iOS idiom for the same destinations).
+// SW-ENG2-02 — the multiplatform responsive shell.
+//
+// ONE universal root, TWO native idioms (SW-DEC-04 — the same core SwiftUI
+// screens seamlessly adapt):
+//
+//   • COMPACT (iPhone): a fluid native TabView — Home / Search / Library /
+//     Jam / Settings — with the MiniPlayerBar docked above the tab bar and
+//     value-based NavigationStack pushes per tab (state survives tab
+//     switches, YTM-style).
+//
+//   • REGULAR (iPad / Mac): a native NavigationSplitView with the sidebar
+//     navigation rail (primary destinations + the discover/system group),
+//     top toolbar actions, and the detail canvas — the HIG Mac window.
+//
+// Value-based navigation: pushes are `AppRoute` VALUES, registered once per
+// stack through `.navigationDestination(for: AppRoute.self)`.
+//
+// THE DOCK (both idioms): the MiniPlayerBar — tap expands the FullPlayerView
+// interactive spring modal (SW-ENG2-05); horizontal swipe skips with the
+// rubber-band resistance (LiquidMorphGeometry).
+//
+// STATE DISCIPLINE: the engine pushes session snapshots (MP-DEC-04); the
+// shell owns NO engine truth — it lowers model state onto screens and routes
+// intent back through the command plane. The play QUEUE is host-owned queue
+// truth lowered onto [QueueListState] (the queue lane is the engine
+// contract's next surface).
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct RootShellView: View {
+public struct RootShellView: View {
+
     @EnvironmentObject private var model: PlaybackViewModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
-    var body: some View {
-        ZStack {
-            TabView {
-                NowPlayingView()
-                    .tabItem { Label("Home", systemImage: "house.fill") }
+    // Compact: the selected tab. Regular: the sidebar rail selection.
+    @State private var selectedTab = 0
+    @State private var sidebarSection = SidebarSection.home
 
-                SearchView()
-                    .tabItem { Label("Search", systemImage: "magnifyingglass") }
+    // Per-destination push paths (state survives tab switches on compact).
+    @State private var homePath = NavigationPath()
+    @State private var searchPath = NavigationPath()
+    @State private var libraryPath = NavigationPath()
+    @State private var jamPath = NavigationPath()
+    @State private var settingsPath = NavigationPath()
+    @State private var detailPath = NavigationPath()
 
-                LibraryView()
-                    .tabItem { Label("Library", systemImage: "music.note.list") }
+    // Host-owned queue truth (lowered onto QueueView / FullPlayerView).
+    @State private var queueState = PreviewCatalog.queueState
+    @State private var queueAutoMix = true
 
-                JamSessionsView()
-                    .tabItem { Label("Jam Sessions", systemImage: "person.3.fill") }
-            }
-            .preferredColorScheme(StreamifyTheme.shellColorScheme)
-            .tint(StreamifyTheme.primary)
-
-            // The docked mini player rides ABOVE the tab bar (the iOS
-            // idiom for the desktop shell's MiniPlayerBar dock).
-            VStack(spacing: 0) {
-                Spacer()
-                MiniPlayerView()
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 58)
-            }
-        }
-        .background(StreamifyTheme.bgBase.ignoresSafeArea())
-    }
-}
-
-// MARK: - Now Playing
-
-/// The now-playing surface (the directive's NowPlayingView): transport,
-/// progress, volume, engine health — plus the queue sheet entry point.
-struct NowPlayingView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
+    // Presentation surfaces.
+    @State private var fullPlayerPresented = false
     @State private var queuePresented = false
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    header
-                    transportCard
-                    volumeCard
-                    engineHealthCard
-                }
-                .padding(20)
-            }
-            .background(StreamifyTheme.bgBase)
-            .navigationTitle("Now Playing")
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        queuePresented = true
-                    } label: {
-                        Image(systemName: "music.note.list")
+    // Brand launch choreography (iPhone: the PrismaticSplashScreen port).
+    @State private var splashVisible = true
+
+    public init() {}
+
+    public var body: some View {
+        ZStack {
+            shellRoot
+
+            #if os(iOS)
+            if splashVisible {
+                SplashView {
+                    withAnimation(.easeOut(duration: Motion.slowDuration)) {
+                        splashVisible = false
                     }
                 }
+                .transition(.opacity)
+                .zIndex(1)
             }
-            .sheet(isPresented: $queuePresented) {
-                NavigationStack {
-                    QueueView(
-                        state: QueueListState.empty,
-                        onTrackClick: nil
-                    )
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { queuePresented = false }
-                        }
-                    }
+            #endif
+        }
+        .tint(StreamifyColors.primary)
+        .fullPlayerSheet(isPresented: $fullPlayerPresented) {
+            FullPlayerView(
+                state: model.state,
+                queueState: $queueState,
+                queueAutoMix: $queueAutoMix,
+                onDismiss: { fullPlayerPresented = false },
+                onPrevious: { model.previous() },
+                onToggle: { model.togglePlayPause() },
+                onNext: { model.next() },
+                onSeekUs: { us in model.seek(to: Int(us / 1_000)) },
+                onVolumeChange: { model.setVolume($0) },
+                onReorderQueue: { offsets, destination in
+                    queueState = queueState.movingUpNext(from: offsets, to: destination)
+                },
+                onDeleteQueue: { sectionIndex in
+                    queueState = queueState.removingUpNext(at: sectionIndex)
                 }
+            )
+        }
+        .sheet(isPresented: $queuePresented) {
+            queueSheet
+        }
+    }
+
+    // MARK: - Root idiom selection
+
+    @ViewBuilder
+    private var shellRoot: some View {
+        #if os(macOS)
+        splitShell
+        #else
+        if sizeClass == .compact {
+            compactShell
+        } else {
+            splitShell
+        }
+        #endif
+    }
+
+    // MARK: - Compact shell (iPhone)
+
+    private var compactShell: some View {
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selectedTab) {
+                stack($homePath) {
+                    homeScreen(path: $homePath)
+                        .toolbar { playerToolbar }
+                }
+                    .tabItem { Label("Home", systemImage: StreamifyIcon.home) }
+                    .tag(0)
+
+                stack($searchPath) { searchScreen(path: $searchPath) }
+                    .tabItem { Label("Search", systemImage: StreamifyIcon.search) }
+                    .tag(1)
+
+                stack($libraryPath) { libraryScreen(path: $libraryPath) }
+                    .tabItem { Label("Library", systemImage: StreamifyIcon.library) }
+                    .tag(2)
+
+                stack($jamPath) { jamScreen }
+                    .tabItem { Label("Jam", systemImage: StreamifyIcon.jam) }
+                    .tag(3)
+
+                stack($settingsPath) { settingsScreen(path: $settingsPath) }
+                    .tabItem { Label("Settings", systemImage: StreamifyIcon.settings) }
+                    .tag(4)
+            }
+            .onChange(of: selectedTab) { _, _ in
+                Haptics.play(.queueBoundaryTick)
+            }
+
+            // The docked mini player rides ABOVE the tab bar (SW-ENG2-02).
+            VStack(spacing: 0) {
+                Spacer()
+                miniPlayerDock
+                    .padding(.horizontal, StreamifyDimens.spaceSM)
+                    .padding(.bottom, 52)
+            }
+            .allowsHitTesting(true)
+        }
+        .background(StreamifyColors.bgBase.ignoresSafeArea())
+    }
+
+    // MARK: - Regular shell (iPad / Mac)
+
+    public enum SidebarSection: String, Hashable, Identifiable, CaseIterable, Sendable {
+        case home, search, library, jam, settings
+        case nowPlaying, equalizer, dsp, downloads, updates
+        case community, wrapped, blend, profileSelection, admin, diagnostics, dogfood, onboarding
+
+        public var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .home: return "Home"
+            case .search: return "Search"
+            case .library: return "Library"
+            case .jam: return "Jam Sessions"
+            case .settings: return "Settings"
+            case .nowPlaying: return "Now Playing"
+            case .equalizer: return "Equalizer"
+            case .dsp: return "Audio Quality & DSP"
+            case .downloads: return "Downloads"
+            case .updates: return "Your Updates"
+            case .community: return "Community"
+            case .wrapped: return "Wrapped"
+            case .blend: return "Blend"
+            case .profileSelection: return "Profiles"
+            case .admin: return "Admin"
+            case .diagnostics: return "Diagnostics"
+            case .dogfood: return "Rust Audio Dogfood"
+            case .onboarding: return "Connect & Onboarding"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .home: return StreamifyIcon.home
+            case .search: return StreamifyIcon.search
+            case .library: return StreamifyIcon.library
+            case .jam: return StreamifyIcon.jam
+            case .settings: return StreamifyIcon.settings
+            case .nowPlaying: return StreamifyIcon.wave
+            case .equalizer: return StreamifyIcon.eq
+            case .dsp: return StreamifyIcon.dac
+            case .downloads: return StreamifyIcon.cloudDownload
+            case .updates: return StreamifyIcon.related
+            case .community: return StreamifyIcon.friends
+            case .wrapped: return StreamifyIcon.star
+            case .blend: return StreamifyIcon.handshake
+            case .profileSelection: return StreamifyIcon.avatar
+            case .admin: return StreamifyIcon.crown
+            case .diagnostics: return StreamifyIcon.terminal
+            case .dogfood: return StreamifyIcon.bug
+            case .onboarding: return StreamifyIcon.songVideo
             }
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 4) {
-            Text(model.state.currentTrack?.title ?? "Control plane live — no track loaded")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(StreamifyTheme.textMain)
-                .lineLimit(1)
-            Text(model.state.status.displayName)
-                .font(.system(size: 13))
-                .foregroundColor(StreamifyTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var transportCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 0) {
-                positionLabel
-                ProgressView(value: model.state.progressFraction ?? 0)
-                    .tint(StreamifyTheme.primary)
-                    .padding(.horizontal, 8)
-                durationLabel
-            }
-
-            HStack(spacing: 44) {
-                Button { model.previous() } label: {
-                    Image(systemName: "backward.end.fill")
-                        .font(.system(size: 26))
-                        .foregroundColor(StreamifyTheme.textMain)
+    private var splitShell: some View {
+        NavigationSplitView {
+            List(selection: $sidebarSection) {
+                Section("Listen") {
+                    sidebarLabel(.home)
+                    sidebarLabel(.search)
+                    sidebarLabel(.library)
+                    sidebarLabel(.jam)
+                    sidebarLabel(.nowPlaying)
                 }
-                Button { model.togglePlayPause() } label: {
-                    ZStack {
-                        Circle()
-                            .fill(StreamifyTheme.primary)
-                            .frame(width: 64, height: 64)
-                        Image(systemName: model.state.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(StreamifyTheme.bgBase)
-                    }
+                Section("Sound & system") {
+                    sidebarLabel(.settings)
+                    sidebarLabel(.equalizer)
+                    sidebarLabel(.dsp)
+                    sidebarLabel(.downloads)
+                    sidebarLabel(.updates)
+                    sidebarLabel(.diagnostics)
+                    sidebarLabel(.dogfood)
                 }
-                Button { model.next() } label: {
-                    Image(systemName: "forward.end.fill")
-                        .font(.system(size: 26))
-                        .foregroundColor(StreamifyTheme.textMain)
+                Section("Discover") {
+                    sidebarLabel(.community)
+                    sidebarLabel(.wrapped)
+                    sidebarLabel(.blend)
+                    sidebarLabel(.profileSelection)
+                    sidebarLabel(.onboarding)
+                    sidebarLabel(.admin)
                 }
             }
-            .buttonStyle(.plain)
+            .navigationSplitViewColumnWidth(
+                min: 220, ideal: StreamifyDimens.sidebarRailWidth, max: 320
+            )
+            .navigationTitle("Streamify")
+        } detail: {
+            stack($detailPath) { sidebarDetail }
+                .onChange(of: sidebarSection) { _, _ in
+                    detailPath = NavigationPath()
+                }
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(StreamifyTheme.bgCard))
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            miniPlayerDock
+        }
     }
 
-    private var positionLabel: some View {
-        // 1 Hz-quantized display position (positionForDisplayMs): the
-        // readout advances at most once per second of content.
-        Text(model.state.positionForDisplayMs.map(PlaybackFormatting.formatPlaybackTime) ?? "--:--")
-            .font(.system(size: 11).monospacedDigit())
-            .foregroundColor(StreamifyTheme.textTertiary)
+    @ViewBuilder
+    private func sidebarLabel(_ section: SidebarSection) -> some View {
+        Label(section.label, systemImage: section.icon)
+            .tag(section)
     }
 
-    private var durationLabel: some View {
-        Text(model.state.durationMs.map(PlaybackFormatting.formatPlaybackTime) ?? "--:--")
-            .font(.system(size: 11).monospacedDigit())
-            .foregroundColor(StreamifyTheme.textTertiary)
+    @ViewBuilder
+    private var sidebarDetail: some View {
+        switch sidebarSection {
+        case .home:
+            homeScreen(path: $detailPath)
+                .toolbar { playerToolbar }
+        case .search: searchScreen(path: $detailPath)
+        case .library: libraryScreen(path: $detailPath)
+        case .jam: jamScreen
+        case .nowPlaying: nowPlayingScreen
+        case .equalizer: EqualizerView()
+        case .dsp: DspSettingsView()
+        case .downloads: DownloadsView()
+        case .updates: UpdatesHubView()
+        case .community: CommunityHubView()
+        case .wrapped: StatsWrappedView()
+        case .blend: BlendView()
+        case .profileSelection: ProfileSelectionView()
+        case .admin: AdminDashboardView()
+        case .diagnostics: DiagnosticsView()
+        case .dogfood: DogfoodPanelView()
+        case .onboarding: OnboardingView()
+        case .settings: settingsScreen(path: $detailPath)
+        }
     }
 
-    private var volumeCard: some View {
-        VolumeSliderView(
-            volume: model.state.volume,
-            onVolumeChange: { model.setVolume($0) }
+    // MARK: - Shared chrome
+
+    @ToolbarContentBuilder
+    private var playerToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                fullPlayerPresented = true
+            } label: {
+                Image(systemName: StreamifyIcon.wave)
+            }
+            .accessibilityLabel("Open full player")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                queuePresented = true
+            } label: {
+                Image(systemName: StreamifyIcon.queue)
+            }
+            .accessibilityLabel("Open queue")
+        }
+    }
+
+    private var miniPlayerDock: some View {
+        MiniPlayerBar(
+            state: model.state,
+            nextTrackTitle: queueState.upNext.first?.track.title,
+            previousTrackTitle: queueState.played.last?.track.title,
+            onPrevious: { model.previous() },
+            onToggle: { model.togglePlayPause() },
+            onNext: { model.next() },
+            onOpenPlayer: { fullPlayerPresented = true }
         )
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(StreamifyTheme.bgCard))
     }
 
-    private var engineHealthCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Engine health")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(StreamifyTheme.textMain)
-            metric("revision", "rev \(model.state.snapshot.rev)")
-            metric(
-                "buffer",
-                model.state.snapshot.buffer.map {
-                    "\($0.bufferedDurationMs / 1000)s buffered · \($0.underrunCount) underruns · \(Int($0.fillRatio * 100))% fill"
-                } ?? "no buffer stats yet"
-            )
-            metric(
-                "dac clock",
-                model.state.snapshot.clock.map {
-                    "\($0.framePosition) frames @ \($0.sampleRateHz) Hz"
-                } ?? "no hardware sample yet"
-            )
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(StreamifyTheme.bgCard))
-    }
-
-    private func metric(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundColor(StreamifyTheme.textTertiary)
-                .frame(width: 90, alignment: .leading)
-            Text(value)
-                .font(.system(size: 12).monospaced())
-                .foregroundColor(StreamifyTheme.textSecondary)
-        }
-    }
-}
-
-// MARK: - Search / Library (honest placeholders — same contract notes as desktop)
-
-struct SearchView: View {
-    @State private var query = ""
-    @FocusState private var queryFocused: Bool
-
-    var body: some View {
+    private var queueSheet: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                TextField("Search tracks, artists, sessions…", text: $query)
-                    .focused($queryFocused)
-                    .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(StreamifyTheme.bgSurfaceElevated))
-                    .padding(.horizontal, 20)
-                Spacer()
-                Image(systemName: "waveform")
-                    .font(.system(size: 36))
-                    .foregroundColor(StreamifyTheme.textTertiary)
-                Text("Catalog search lands with the storage contract")
-                    .font(.system(size: 14))
-                    .foregroundColor(StreamifyTheme.textSecondary)
-                Text("The engine control plane (playback, jam sessions) is live; track search over the local encrypted library is the next contract surface.")
-                    .font(.system(size: 11))
-                    .foregroundColor(StreamifyTheme.textTertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                Spacer()
-            }
-            .background(StreamifyTheme.bgBase)
-            .navigationTitle("Search")
-        }
-    }
-}
-
-struct LibraryView: View {
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                Spacer()
-                Text("Your library mirror renders here once the device-local encrypted storage contract ships.")
-                    .font(.system(size: 13))
-                    .foregroundColor(StreamifyTheme.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                Spacer()
-            }
-            .background(StreamifyTheme.bgBase)
-            .navigationTitle("Library")
-        }
-    }
-}
-
-// MARK: - Jam Sessions
-
-struct JamSessionsView: View {
-    @EnvironmentObject private var model: PlaybackViewModel
-    @State private var sessionName = "Pocket listening room"
-    @State private var sessionInfo: String?
-    @State private var busy = false
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    Text("The engine's local CRDT mirror — create a session, then inspect its deterministic BLAKE3 state hash (the Merkle reconciliation currency).")
-                        .font(.system(size: 13))
-                        .foregroundColor(StreamifyTheme.textSecondary)
-                        .padding(.horizontal, 8)
-
-                    TextField("Session name", text: $sessionName)
-                        .padding(12)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(StreamifyTheme.bgSurfaceElevated))
-
-                    Button {
-                        busy = true
-                        Task {
-                            let created = await model.createJamSession(name: sessionName)
-                            let hash = await model.jamStateHash()
-                            sessionInfo = created == nil
-                                ? "Session rejected (blank or oversized name)"
-                                : "Session '\(created!)' live — state hash \(hash ?? "unavailable")"
-                            busy = false
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "person.3.fill")
-                            Text(busy ? "Creating…" : "Create local session")
-                        }
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(StreamifyTheme.bgBase)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 12)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(StreamifyTheme.primary))
-                    }
-                    .disabled(busy)
-
-                    if let sessionInfo {
-                        Text(sessionInfo)
-                            .font(.system(size: 12).monospaced())
-                            .foregroundColor(StreamifyTheme.textSecondary)
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(StreamifyTheme.bgCard))
-                    }
+            QueueView(
+                state: $queueState,
+                autoMix: $queueAutoMix,
+                onTrackClick: { index in
+                    queueState = QueueListState(
+                        tracks: queueState.tracks,
+                        currentIndex: index,
+                        isPlaying: true
+                    )
+                    model.togglePlayPause()
+                },
+                onReorder: { offsets, destination in
+                    queueState = queueState.movingUpNext(from: offsets, to: destination)
+                },
+                onDelete: { sectionIndex in
+                    queueState = queueState.removingUpNext(at: sectionIndex)
                 }
-                .padding(20)
+            )
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { queuePresented = false }
+                }
             }
-            .background(StreamifyTheme.bgBase)
-            .navigationTitle("Jam Sessions")
         }
+    }
+
+    // MARK: - Per-stack wiring
+
+    private func stack(_ path: Binding<NavigationPath>, @ViewBuilder root: () -> some View) -> some View {
+        NavigationStack(path: path) {
+            root()
+                .navigationDestination(for: AppRoute.self) { route in
+                    routeDestination(route, path: path)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func routeDestination(_ route: AppRoute, path: Binding<NavigationPath>) -> some View {
+        switch route {
+        case .nowPlaying:
+            nowPlayingScreen
+
+        case .lyrics(let title, let artist):
+            RouteScreen { dismiss in
+                LyricsView(
+                    lyrics: PreviewCatalog.lyrics,
+                    trackTitle: title,
+                    trackArtist: artist,
+                    positionMs: Double(model.state.positionForDisplayMs ?? 0),
+                    onClose: { dismiss() }
+                )
+            }
+
+        case .artist(let name):
+            let catalog = PreviewCatalog.tracks.filter { $0.artist == name }
+            RouteScreen { dismiss in
+                ArtistDetailView(
+                    artistName: name,
+                    tracks: catalog.isEmpty ? PreviewCatalog.tracks : catalog,
+                    onPlayTrack: { play(track: $0) },
+                    onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: name)) },
+                    onBack: { dismiss() }
+                )
+            }
+
+        case .album(let title, let artist):
+            RouteScreen { dismiss in
+                AlbumDetailView(
+                    title: title,
+                    artist: artist,
+                    onPlayTrack: { play(track: $0) },
+                    onOpenArtist: { path.wrappedValue.append(AppRoute.artist(name: $0)) },
+                    onBack: { dismiss() }
+                )
+            }
+
+        case .mix(let id):
+            AlbumDetailView(
+                title: id,
+                artist: "Streamify mix",
+                kind: "MIX",
+                onPlayTrack: { play(track: $0) }
+            )
+
+        case .mood:
+            // Moods route into the community-hub filter rail (the Android
+            // mood → community shelf seam).
+            CommunityHubView()
+
+        case .queue:
+            queueRoute
+
+        case .equalizer:
+            EqualizerView()
+
+        case .dsp:
+            DspSettingsView()
+
+        case .downloads:
+            DownloadsView()
+
+        case .updatesHub:
+            UpdatesHubView()
+
+        case .wrapped:
+            StatsWrappedView()
+
+        case .userProfile:
+            UserProfileView()
+
+        case .profileSelection:
+            ProfileSelectionView()
+
+        case .community:
+            CommunityHubView()
+
+        case .blend:
+            BlendView()
+
+        case .jam:
+            jamScreen
+
+        case .adminDashboard:
+            AdminDashboardView()
+
+        case .diagnostics:
+            DiagnosticsView()
+
+        case .dogfood:
+            DogfoodPanelView()
+
+        case .onboarding:
+            OnboardingView()
+        }
+    }
+
+    /// The pushed-queue variant (dismisses via the environment pop).
+    private var queueRoute: some View {
+        QueueView(
+            state: $queueState,
+            autoMix: $queueAutoMix,
+            onReorder: { offsets, destination in
+                queueState = queueState.movingUpNext(from: offsets, to: destination)
+            },
+            onDelete: { sectionIndex in
+                queueState = queueState.removingUpNext(at: sectionIndex)
+            }
+        )
+    }
+
+    // MARK: - Screen builders (universal — the same code serves both idioms)
+
+    /// Home (SW-ENG2-03). `path` is whichever stack is hosting the screen,
+    /// so pushes land in the right stack.
+    private func homeScreen(path: Binding<NavigationPath>) -> some View {
+        HomeView(
+            onOpenTrack: { play(track: $0) },
+            onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: "")) },
+            onOpenArtist: { path.wrappedValue.append(AppRoute.artist(name: $0)) },
+            onOpenMood: { _ in
+                path.wrappedValue.append(AppRoute.mood(name: "Community"))
+            },
+            onOpenDaylist: {
+                path.wrappedValue.append(AppRoute.mix(id: "Daylist"))
+            },
+            onOpenMix: { path.wrappedValue.append(AppRoute.mix(id: $0)) },
+            onJoinJam: { _ in
+                path.wrappedValue.append(AppRoute.jam)
+            },
+            onOpenProfile: { _ in
+                path.wrappedValue.append(AppRoute.userProfile)
+            }
+        )
+    }
+
+    /// Search (SW-ENG2-04): native .searchable + debounced instant queries;
+    /// results are the deterministic catalog until the search engine lane
+    /// lands (Engineer 1's UniFFI contract surface).
+    private func searchScreen(path: Binding<NavigationPath>) -> some View {
+        SearchView(
+            onSearch: { _ in },
+            onSubmit: { _ in },
+            onPlayTrack: { play(track: $0) },
+            onOpenResult: { result in
+                switch result.type {
+                case .artist:
+                    path.wrappedValue.append(AppRoute.artist(name: result.title))
+                case .album, .playlist:
+                    path.wrappedValue.append(
+                        AppRoute.album(title: result.title, artist: result.uploader)
+                    )
+                case .song, .video:
+                    play(track: PreviewCatalog.tracks[0])
+                }
+            }
+        )
+    }
+
+    /// Library (SW-ENG2-07): segmented picker + grid/list switcher.
+    private func libraryScreen(path: Binding<NavigationPath>) -> some View {
+        LibraryView(
+            onPlayTrack: { play(track: $0) },
+            onOpenPlaylist: { path.wrappedValue.append(AppRoute.album(title: $0, artist: "Community")) },
+            onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: "")) },
+            onOpenArtist: { path.wrappedValue.append(AppRoute.artist(name: $0)) },
+            onCreatePlaylist: {},
+            onSortTap: {},
+            onFilterTap: {}
+        )
+    }
+
+    /// Jam Sessions (the group-listening room).
+    private var jamScreen: some View {
+        JamSessionView(
+            sessionName: model.state.snapshot.jamSessionName ?? "Pocket listening room",
+            sessionCode: "JAM-4471",
+            isHost: true,
+            onPlayTrack: { play(track: $0) }
+        )
+    }
+
+    /// Settings hub (SW-ENG2-08).
+    private func settingsScreen(path: Binding<NavigationPath>) -> some View {
+        SettingsView(
+            onModeChange: { _ in },
+            onOpenAccounts: { path.wrappedValue.append(AppRoute.profileSelection) },
+            onOpenDsp: { path.wrappedValue.append(AppRoute.dsp) },
+            onOpenEqualizer: { path.wrappedValue.append(AppRoute.equalizer) },
+            onOpenDownloads: { path.wrappedValue.append(AppRoute.downloads) },
+            onOpenUpdates: { path.wrappedValue.append(AppRoute.updatesHub) },
+            onOpenDiagnostics: { path.wrappedValue.append(AppRoute.diagnostics) }
+        )
+    }
+
+    /// The compact now-playing surface.
+    private var nowPlayingScreen: some View {
+        NowPlayingView(
+            state: model.state,
+            onPrevious: { model.previous() },
+            onToggle: { model.togglePlayPause() },
+            onNext: { model.next() },
+            onSeek: { model.seek(to: $0) },
+            onVolumeChange: { model.setVolume($0) },
+            onOpenQueue: { queuePresented = true },
+            onOpenFullPlayer: { fullPlayerPresented = true }
+        )
+    }
+
+    // MARK: - Intent lowering
+
+    /// Plays a tapped track: the shell owns queue TRUTH, so the tap lands on
+    /// the host queue (cursor to the tapped row) and the engine's command
+    /// plane receives the play intent — the pushed snapshot repaints.
+    private func play(track: VirtualShelfTrack) {
+        let tracks = PreviewCatalog.presentationTracks
+        let index = tracks.firstIndex(where: { $0.id == track.presentationTrack.id }) ?? 0
+        queueState = QueueListState(
+            tracks: tracks,
+            currentIndex: index,
+            isPlaying: true
+        )
+        model.togglePlayPause()
+    }
+}
+
+// MARK: - Route dismiss adapter
+
+private struct RouteScreen<Content: View>: View {
+    @Environment(\.dismiss) private var dismissAction
+
+    private let build: (DismissAction) -> Content
+
+    init(_ build: @escaping (DismissAction) -> Content) {
+        self.build = build
+    }
+
+    var body: some View {
+        build(dismissAction)
     }
 }
