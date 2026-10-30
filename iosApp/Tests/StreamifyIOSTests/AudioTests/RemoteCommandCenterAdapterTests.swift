@@ -209,6 +209,7 @@ final class RemoteCommandCenterAdapterTests: XCTestCase {
 // pre-interruption memory, resume safety, and the new-device buffer policy.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#if canImport(UIKit)
 final class IOSAudioSessionHardeningTests: XCTestCase {
 
     // ── Pre-interruption memory (the resume-safety core) ──────────────────
@@ -460,3 +461,4 @@ final class IOSAudioSessionHardeningTests: XCTestCase {
         adapter.deactivate()
     }
 }
+#endif
