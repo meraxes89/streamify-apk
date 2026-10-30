@@ -30,10 +30,12 @@ on:
   push:
     branches: [main]
 
-# Kill superseded PR runs immediately to save macOS/Windows quota.
+# Parallel-safe multi-engineer concurrency:
+# Isolate runs by branch (head_ref) so multiple engineers pushing in parallel
+# never collide or cancel each other. In-flight runs complete without premature abortion.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

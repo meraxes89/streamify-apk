@@ -73,6 +73,7 @@
 
 ### 🎨 Phase 5: Shell Assembly, iOS Adapter & Android Cutover
 * **Lead Engineer:** Beta (UI / Shell) & Alpha (Platform Integration)
+* **Detailed Apple Execution Ledger:** [`docs/architecture/SWIFT_MIGRATION_PLAN.MD`](file:///data/data/com.termux/files/home/streamify-apk/docs/architecture/SWIFT_MIGRATION_PLAN.MD) (4-Engineer Workstream & 398-file Kotlin-to-Swift mapping)
 
 - [ ] **MP-UI01**: Build native iOS SwiftUI shell wrapping direct Swift UniFFI bindings.
 - [ ] **MP-UI02**: Implement `IOSAudioSessionAdapter` handling `.playback` category, interruption notifications (`.began`, `.ended`), route changes (`.oldDeviceUnavailable` pause), and AirPlay teardowns.
