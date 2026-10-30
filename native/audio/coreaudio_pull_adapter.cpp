@@ -274,6 +274,23 @@ int32_t streamify_coreaudio_latest_clock(int64_t adapter_handle,
     return 1;
 }
 
+// Control-plane telemetry drain (SW-ENG3-01): cumulative render-callback and
+// underrun counters from the real-time core (relaxed atomics — safe from any
+// thread; NEVER call from the audio thread itself). Writes 1 on success.
+int32_t streamify_coreaudio_telemetry(int64_t adapter_handle,
+                                      uint64_t* out_callbacks,
+                                      uint64_t* out_underruns) {
+    if (adapter_handle == 0 || out_callbacks == nullptr ||
+        out_underruns == nullptr) {
+        return 0;
+    }
+    auto* adapter = reinterpret_cast<streamify::hal::CoreAudioPullAdapter*>(
+        adapter_handle);
+    *out_callbacks = adapter->core().callback_count();
+    *out_underruns = adapter->core().underrun_callbacks();
+    return 1;
+}
+
 }  // extern "C"
 
 #endif  // __APPLE__

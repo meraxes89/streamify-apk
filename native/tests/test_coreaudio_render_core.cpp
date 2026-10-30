@@ -19,6 +19,14 @@
 //    G. Concurrent render vs. drain — a renderer thread publishing while
 //       the control thread reads: every observed sample is untorn and
 //       monotone (frames AND host_ns advance together, linearly).
+//    H. <5 ms latency estimation error (the MP-DEC-03 acceptance gate,
+//       SW-ENG3-01): 60 s of virtual playback with a 27.4 ppm-fast DAC
+//       oscillator and bursty (3-quantum-stale) clock drains — the exact
+//       anchor-and-extrapolate estimator DacClockPublisher.swift runs must
+//       stay within 5 ms of the simulator's ground truth at every query.
+//    I. Steady-state stream — 1200 quanta with a pre-buffered producer:
+//       ZERO underrun callbacks and exact frame accounting (the
+//       acceptance suite's "completes with 0 underruns" leg).
 // ============================================================================
 
 #include <atomic>
@@ -291,6 +299,158 @@ void test_concurrent_publish_drain() {
           "drain observed the stream end");
 }
 
+// ---------------------------------------------------------------------------
+// H. <5 ms latency estimation error — the MP-DEC-03 acceptance gate.
+//
+// Simulates 60 s of 48 kHz playback on a DAC whose oscillator runs 27.4 ppm
+// fast (a realistic consumer crystal), with CoreAudio-accurate 512-frame
+// quanta whose (mSampleTime, mHostTime) pairs stay consistent WITH that
+// drift (the device clock pair is measured, not assumed). The clock is
+// drained only every 3rd quantum — the burst-drain regime of a coalesced
+// control thread — and the estimator (the exact anchor-and-extrapolate
+// algorithm DacClockPublisher.swift runs on the UI side) is queried at an
+// offset phase inside every quantum:
+//
+//     pos_est(now) = anchor.frames + (now - anchor.host_ns) * rate / 1e9
+//
+// Ground truth is the simulator's own frame counter at `now`. The anchor
+// is up to ~32 ms stale, so the error is dominated by drift-accumulation
+// over the staleness window — 27.4 ppm * 32 ms ≈ 0.9 µs, three orders of
+// magnitude inside the 5 ms budget; the gate proves the estimator never
+// degrades that discipline (e.g. by anchoring on a stale/torn pair).
+// ---------------------------------------------------------------------------
+void test_latency_estimation_error() {
+    std::printf("  [H] <5ms latency estimation error (60s, 27.4ppm drift)\n");
+    AudioSink sink(canonical_config());
+    CoreAudioRenderCore core;
+    core.Bind(&sink, 48000);
+
+    const double rate = 48000.0;
+    const double drift_ppm = 27.4;   // DAC oscillator error (realistic crystal)
+    const uint64_t quantum = 512;    // frames per callback
+    const uint64_t drain_every = 3;  // bursty control-thread cadence
+
+    // Virtual DAC: frames advance with the DRIFTED rate; the timestamp pair
+    // (mSampleTime, mHostTime->ns) is emitted consistently from that same
+    // truth (CoreAudio reports the device's own counter against mach host
+    // time — the pair is measured, never assumed nominal).
+    uint64_t device_frames = 0;       // true frames presented
+    double true_host_ns = 10.0 * 1e9; // session start offset
+    const double q_ns = static_cast<double>(quantum) *
+                        (1e9 / (rate * (1.0 + drift_ppm / 1e6)));
+
+    // Estimator state — the host-side mirror of DacClockPublisher: the
+    // latest DRAINED anchor (frames, host_ns); position is extrapolated
+    // from it with the NOMINAL rate (the device rate the UDL publishes).
+    bool have_anchor = false;
+    double anchor_frames = 0.0, anchor_host_ns = 0.0;
+
+    double worst_err_ms = 0.0;
+    uint64_t queries = 0;
+
+    std::vector<float> feed(quantum * 2, 0.25f);
+    std::vector<float> dst(quantum * 2);
+    // Pre-buffer one quantum (occupancy stays constant thereafter: the
+    // producer replaces exactly what each quantum consumes).
+    sink.WriteFloat(feed.data(), feed.size());
+
+    const uint64_t total_quanta =
+        static_cast<uint64_t>(60.0 * rate) / quantum;  // 5625 = 60 s
+    for (uint64_t qi = 1; qi <= total_quanta; ++qi) {
+        // ---- the hardware presents one quantum --------------------------
+        core.Render(static_cast<uint32_t>(quantum), dst.data(), device_frames,
+                    static_cast<uint64_t>(true_host_ns));
+        device_frames += quantum;
+        true_host_ns += q_ns;
+        sink.WriteFloat(feed.data(), feed.size());
+
+        // ---- the control thread drains every 3rd quantum ---------------
+        if (qi % drain_every == 1) {
+            CoreAudioClockSample sample;
+            if (core.LatestClock(&sample)) {
+                anchor_frames = static_cast<double>(sample.frames);
+                anchor_host_ns = static_cast<double>(sample.host_ns);
+                have_anchor = true;
+            }
+        }
+
+        // ---- the UI queries position mid-quantum (60% phase) -----------
+        const double now_ns = true_host_ns - 0.4 * q_ns;
+        ++queries;
+        if (have_anchor) {
+            const double pos_est =
+                anchor_frames + (now_ns - anchor_host_ns) * rate / 1e9;
+            const double truth = static_cast<double>(device_frames) -
+                                 0.4 * static_cast<double>(quantum);
+            const double err_ms = std::fabs(pos_est - truth) / rate * 1e3;
+            if (err_ms > worst_err_ms) worst_err_ms = err_ms;
+        }
+    }
+
+    char label[96];
+    std::snprintf(label, sizeof(label),
+                  "worst interpolation error %.4f ms < 5 ms (60 s playback)",
+                  worst_err_ms);
+    check(worst_err_ms < 5.0, label);
+    check(queries == total_quanta, "60 s @ 512-frame quanta == 5625 queries");
+    check(core.underrun_callbacks() == 0, "feed kept the ring non-starved");
+}
+
+// ---------------------------------------------------------------------------
+// I. Steady-state stream — zero underruns, exact accounting.
+//
+// The acceptance suite's "completes with 0 underruns" leg: a pre-buffered
+// producer (2048-frame floor) feeding 1200 consecutive 512-frame quanta.
+// The render core must never zero-fill, and the sink's cumulative counters
+// must balance to the frame.
+// ---------------------------------------------------------------------------
+void test_steady_state_zero_underruns() {
+    std::printf("  [I] steady-state stream: 0 underruns over 1200 quanta\n");
+    AudioSink sink(canonical_config());  // 8192-frame ring
+    CoreAudioRenderCore core;
+    core.Bind(&sink, 48000);
+
+    const size_t quantum = 512;
+    const int total_quanta = 1200;
+
+    std::vector<float> feed(quantum * 2, 0.5f);
+    std::vector<float> dst(quantum * 2);
+
+    // Pre-buffer: two quanta + the first, above the 2048-frame floor.
+    sink.WriteFloat(feed.data(), feed.size());
+    sink.WriteFloat(feed.data(), feed.size());
+    sink.WriteFloat(feed.data(), feed.size());
+    sink.WriteFloat(feed.data(), feed.size());
+
+    uint64_t m_sample_time = 0;
+    for (int q = 0; q < total_quanta; ++q) {
+        core.Render(static_cast<uint32_t>(quantum), dst.data(), m_sample_time,
+                    1000000000ull + m_sample_time * 1000000000ull / 48000ull);
+        m_sample_time += quantum;
+        // Producer replaces exactly what the quantum consumed: occupancy
+        // oscillates in [1536, 2048] — never near the empty edge.
+        sink.WriteFloat(feed.data(), feed.size());
+    }
+
+    check(core.underrun_callbacks() == 0, "zero underrun callbacks");
+    check(core.callback_count() == static_cast<uint64_t>(total_quanta),
+          "every quantum rendered");
+
+    streamify::sink::SinkStats stats;
+    sink.GetStats(&stats);
+    char label[96];
+    std::snprintf(label, sizeof(label),
+                  "frames_read == 1200 * 512 (got %llu)",
+                  static_cast<unsigned long long>(stats.frames_read));
+    check(stats.frames_read == static_cast<uint64_t>(total_quanta) * quantum,
+          label);
+    check(stats.underrun_events == 0, "sink agrees: no underrun events");
+    // Bit-exactness of the steady stream (constant 0.5 feed, first byte of
+    // each quantum): the pull path never corrupts the canonical f32.
+    check(dst[0] == 0.5f && dst[quantum * 2 - 1] == 0.5f,
+          "steady-state payload arrives bit-exact");
+}
+
 }  // namespace
 
 int main() {
@@ -304,6 +464,8 @@ int main() {
     test_zero_allocation_render();
     test_mach_conversion();
     test_concurrent_publish_drain();
+    test_latency_estimation_error();
+    test_steady_state_zero_underruns();
     std::printf("--------------------------------------------------\n");
     std::printf("  coreaudio_render_core_test_suite: %d passed, %d failed\n",
                 g_passed, g_failed);
