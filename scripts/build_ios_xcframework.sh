@@ -178,7 +178,22 @@ BUILD_TARGETS=("${REQUIRED_TARGETS[@]}")
 [[ "${SIM_X86_AVAILABLE}" -eq 1 ]] && BUILD_TARGETS+=("${SIM_X86_TARGET}")
 for target in "${BUILD_TARGETS[@]}"; do
     echo "── [1/6] cargo build --target ${target} (${PROFILE})"
-    ( cd "${RUST_DIR}" && cargo build --target "${target}" --profile "${PROFILE}" --lib )
+    case "${target}" in
+        *-apple-ios|*-apple-ios-sim)
+            # Rust's iOS triples default to a 10.0 deployment target,
+            # but the SDK's cc-crate objects (quickjs / ring / sqlite)
+            # reference ___chkstk_darwin — available from iOS 12 — so
+            # the cdylib LINK fails with undefined symbols. Build the
+            # engine at the package's own floor (.iOS(.v17), the same
+            # minimum the SPM target and the Xcode destinations use).
+            ( cd "${RUST_DIR}" && \
+              IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+              cargo build --target "${target}" --profile "${PROFILE}" --lib )
+            ;;
+        *)
+            ( cd "${RUST_DIR}" && cargo build --target "${target}" --profile "${PROFILE}" --lib )
+            ;;
+    esac
 done
 # `--profile debug` emits to target/<t>/debug, `--profile release` to release:
 OUT_SUBDIR="debug"; [[ "${PROFILE}" == "release" ]] && OUT_SUBDIR="release"
