@@ -1,27 +1,68 @@
-# Streamify iOS (Phase 5 — MP-UI01 / MP-UI02)
+# Streamify iOS (SW-ENG2 — Design System, Multiplatform Shell & 30 Screens)
 
-**Native iOS SwiftUI shell scaffold + `IOSAudioSessionAdapter`**
-Governing plan: `docs/architecture/MULTIPLATFORM_PLAN_27_10.MD` §4 Phase 5 ·
-Ledger: `docs/architecture/MULTIPLATFORM_CHECKBOX.MD` (MP-UI01, MP-UI02)
+**Adaptive SwiftUI shell · design system · 30 screens · 70 ported components · motion system**
+Governing plan: `docs/architecture/SWIFT_MIGRATION_PLAN.MD` (SW-ENG2-01…10) ·
+Ledger: `docs/architecture/MULTIPLATFORM_CHECKBOX.MD` (MP-UI01, MP-UI02, MP-UI04)
 
-A Swift package carrying the ENTIRE iOS app surface — the SwiftUI shell
-(TabView: Home / Search / Library / Jam Sessions + docked now-playing bar),
-the `PlaybackViewModel` state holder (the Swift counterpart of the shared
-`PlaybackController`), the `EngineGateway` seam, and the
-`IOSAudioSessionAdapter`. **Zero Kotlin/Native double-bridge** (the
-Apple-platform mandate, MP-DEC-02): the shell consumes the *direct Swift
-UniFFI bindings* from Alpha's `StreamifyCore.xcframework` and nothing else.
+A Swift package carrying the ENTIRE Apple app surface — the adaptive
+multiplatform shell (compact TabView + docked MiniPlayerBar on iPhone;
+NavigationSplitView sidebar rail on iPad / Mac, SW-ENG2-02), the SW-ENG2
+obsidian design system (dynamic Dark/Light tokens, SF Pro scale, SF Symbols 5
+catalog, Apple Materials incl. NSVisualEffectView on macOS, SW-ENG2-01), the
+full 30-screen surface (SW-ENG2-03…08), the 70-component port of the Android
+`ui.components.*` kits (SW-ENG2-09), and the fluid motion system (named
+springs, the GestureSpringSolver/LiquidMorphGeometry frozen-ABI ports,
+interactive rubber-band sheets, SW-ENG2-10). **Zero Kotlin/Native
+double-bridge** (the Apple-platform mandate, MP-DEC-02): the shell consumes
+the *direct Swift UniFFI bindings* from Alpha's `StreamifyCore.xcframework`
+and nothing else — until the xcframework lands, the deterministic
+`PreviewEngineGateway` lane keeps every surface fully navigable.
 
 ```
 iosApp/
-├── Package.swift                          (iOS 16+, Swift 5.9, zero external deps)
+├── Package.swift                          (iOS 17 / macOS 14, Swift 5.9, zero external deps)
 ├── Sources/StreamifyIOS/
 │   ├── App/
 │   │   ├── StreamifyApp.swift             public StreamifyMainScene (host target composes it)
-│   │   ├── RootShellView.swift            TabView shell + NowPlaying/Search/Library/Jam sections
-│   │   └── AppTheme.swift                 brand tokens in Swift (shared-palette parity)
+│   │   ├── RootShellView.swift            SW-ENG2-02 adaptive shell: compact TabView +
+│   │   │                                  docked MiniPlayerBar / NavigationSplitView
+│   │   │                                  sidebar rail (iPad + Mac)
+│   │   └── AppRoute.swift                 value-based type-safe push currency (Hashable)
+│   ├── Theme/                             SW-ENG2-01 design system
+│   │   ├── StreamifyColors.swift          dynamic asset-free light/dark tokens (exact
+│   │   │                                  Android obsidian ladder) + gradient presets
+│   │   ├── AppTheme.swift                 SF Pro typography, shapes, dimens, SF Symbols 5
+│   │   │                                  catalog, Materials, glassmorphic modifiers
+│   │   └── Materials.swift               VisualEffectBlur (NSVisualEffectView on macOS)
+│   ├── Motion/                            SW-ENG2-10 fluid motion
+│   │   ├── SpringInterpolators.swift      named springs (fluid = response 0.35 / 0.85)
+│   │   ├── GestureSpringSolver.swift       1:1 port of GestureSpringSolver.kt
+│   │   ├── LiquidMorphGeometry.swift       1:1 port of LiquidMorphGeometry.kt
+│   │   ├── InteractiveSheet.swift          rubber-band spring modal (FullPlayer host)
+│   │   ├── CardEffects.swift              press effects + HeartBurstView (120 Hz Canvas)
+│   │   └── Haptics.swift                  the HapticWaveform catalogue → UIKit/AppKit
+│   ├── Views/                             30 screens + 70 components
+│   │   ├── Home/ Artist/ Album/ Search/ Library/     discovery (SW-ENG2-03/04/07)
+│   │   ├── Player/ Queue/ Lyrics/                    audiophile suite (SW-ENG2-05/06):
+│   │   │                                  FullPlayerView (ambient MeshGradient bg),
+│   │   │                                  WaveformProgressSlider (μs-precision DAC-paced
+│   │   │                                  scrub), native List .onMove queue, karaoke panes
+│   │   ├── Settings/ Equalizer/ Downloads/ Updates/  system (SW-ENG2-08)
+│   │   ├── Jam/ Blend/ Community/ Stats/ Profile/    social
+│   │   ├── Admin/ Diagnostics/                        observability
+│   │   ├── Onboarding/ Splash/                       brand choreography
+│   │   ├── Support/                      UiModels (the UI currency) + PreviewCatalog
+│   │   │                                 (deterministic fixtures behind every #Preview)
+│   │   └── Components/
+│   │       ├── YTStyle/ (36)             YtDaylistHeroBanner, YtQuickPicksCarousel,
+│   │       │                             YtDailyMixRail, YtStudioArcDial, YtBottomNavBar …
+│   │       └── Common/ (34)              MiniPlayerBar (swipe-to-skip + peek), TrackCoverArt,
+│   │                                     DynamicMeshBackground (iOS 18 MeshGradient +
+│   │                                     layered fallback), CanvasVideoSurface (AVPlayerLayer),
+│   │                                     LyricsCanvas, QuantumSonicTokenOverlay, pull-to-refresh …
 │   ├── Playback/
-│   │   ├── PlaybackModels.swift           Swift mirrors of the shared presentation models
+│   │   ├── PlaybackModels.swift           public Swift mirrors of the shared presentation
+│   │   │                                  models (public: the library's screen currency)
 │   │   └── PlaybackViewModel.swift        @MainActor state holder + AudioSessionResponding
 │   │                                    + RemoteCommandRouting (lockscreen transport)
 │   │                                    + 1 Hz-gated lockscreen publishing
@@ -32,16 +73,15 @@ iosApp/
 │   │   ├── UniFFIEngineGateway.swift      #if canImport(uniffi_streamify) — the REAL lane
 │   │   ├── EngineGatewayLoader.swift      one-place lane selection
 │   │   └── PreviewEngineGateway.swift     always-available deterministic stand-in
-│   ├── AudioSession/
-│   │   └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below)
-│   └── Views/
-│       ├── MiniPlayerView.swift         mini player + volume control (SwiftUI)
-│       └── QueueView.swift              the native queue surface (Swift mirror of
-│                                         the shared QueueList — now-playing / up-next
-│                                         projection, honest empty state)
+│   └── AudioSession/
+│       └── IOSAudioSessionAdapter.swift   MP-UI02 deliverable (see below)
 └── Tests/StreamifyIOSTests/
-    └── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
-                                            1 Hz gate / lockscreen / queue suites
+    ├── StreamifyIOSTests.swift            MP-UI02 policy matrix + model parity +
+    │                                       1 Hz gate / lockscreen / queue suites
+    └── ViewTests/                         SW-ENG2 gates: motion-math invariants (solver /
+                                            morph / rubber-band), design-token parity with
+                                            Android, queue reorder section-local→array
+                                            projections, preview-catalog determinism
 ```
 
 ## The 1 Hz lockscreen / now-playing discipline (MP-UI01)
@@ -129,16 +169,15 @@ husk:
 
 ## Building / testing
 
-The package is iOS-only (`.iOS(.v16)`), so tests run through `xcodebuild`
-with a simulator destination (Xcode 15+):
+The package builds for iOS 17 / iPadOS / macOS 14 (SPM platforms per
+SW-ENG1-01); tests run through `xcodebuild` with a simulator destination
+(Xcode 15.3+):
 
 ```bash
 cd iosApp
-xcodebuild test -scheme StreamifyIOS \
+xcodebuild test -scheme StreamifyIOS \\
     -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
-A macOS CI lane for this package is deliberately NOT added in this PR —
-Apple-hosted runners are Alpha's XCFramework packaging scope (the master
-plan's responsibility matrix), and the lane belongs with the framework it
-verifies.
+`PreviewCatalog` fixtures drive every `#Preview` — deterministic, no
+network, no engine required.
