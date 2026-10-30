@@ -62,10 +62,15 @@ final class NowPlayingArtworkTests: XCTestCase {
     @MainActor
     func testArtworkLoaderRejectsNilUrlAndGarbageData() async {
         let garbage = ArtworkLoader(fetch: { _ in Data([0x00, 0x01, 0x02]) })
-        XCTAssertNil(await garbage.artwork(for: nil))
-        XCTAssertNil(await garbage.artwork(for: "not-a-url"))
+        // XCTAssertNil's autoclosure does not support concurrency — the
+        // awaits are hoisted into explicit bindings.
+        let noUrl = await garbage.artwork(for: nil)
+        XCTAssertNil(noUrl)
+        let malformed = await garbage.artwork(for: "not-a-url")
+        XCTAssertNil(malformed)
         // Decodable URL, undecodable payload: nil, never a crash.
-        XCTAssertNil(await garbage.artwork(for: "https://example.com/art.jpg"))
+        let undecodable = await garbage.artwork(for: "https://example.com/art.jpg")
+        XCTAssertNil(undecodable)
     }
 
     // ── The publisher's track-transition application ──────────────────────
@@ -146,7 +151,7 @@ final class NowPlayingArtworkTests: XCTestCase {
         let counter = FetchCounter()
         let artwork = ArtworkLoader(fetch: { _ in
             counter.increment()
-            return solidImageData()
+            return self.solidImageData()
         })
         let publisher = NowPlayingInfoPublisher(center: center, artworkProvider: artwork)
 
@@ -313,7 +318,8 @@ final class LiveActivityStateTests: XCTestCase {
                 isPlaying: true
             )
         )
-        // Beyond the end: clamps to 1.
+        // Beyond the end: clamps to 1 (unwrap: the accuracy-taking
+        // overload requires a non-optional).
         XCTAssertEqual(
             LiveActivityMath.progress(
                 positionSeconds: 250,
@@ -321,7 +327,7 @@ final class LiveActivityStateTests: XCTestCase {
                 durationSeconds: 252,
                 now: anchor.addingTimeInterval(10),
                 isPlaying: true
-            ),
+            ) ?? -1,
             1,
             accuracy: 1e-9
         )
@@ -333,7 +339,7 @@ final class LiveActivityStateTests: XCTestCase {
                 durationSeconds: 252,
                 now: anchor,
                 isPlaying: true
-            ),
+            ) ?? -1,
             0.5,
             accuracy: 1e-9
         )
