@@ -204,33 +204,36 @@ RUST_LIB() { echo "${RUST_DIR}/target/$1/${OUT_SUBDIR}/libstreamify_core_rs.${LI
 #  files self-gate (MediaPlayer availability / TARGET_OS_IPHONE) and carry
 #  an inert-stub branch, so the same sources build for the macOS slices.
 #  -fobjc-arc, no bitcode marker (Xcode 14+ dropped the requirement).
-compile_glue() {  # $1 = clang -target triple, $2 = sdk path, $3 = src .mm, $4 = out .o
-    xcrun -sdk "$(basename "$(dirname "$2")")" clang \
-        -target "$1" \
-        -isysroot "$2" \
+compile_glue() {  # $1 = sdk name, $2 = clang -target triple, $3 = sdk path, $4 = src .mm, $5 = out .o
+    # The sdk NAME must be passed explicitly (iphoneos / iphonesimulator /
+    # macosx): deriving it from the sdk path collapses to the literal
+    # directory name "SDKs", which xcrun cannot resolve.
+    xcrun -sdk "$1" clang \
+        -target "$2" \
+        -isysroot "$3" \
         -fobjc-arc -fmodules -O1 \
         -Wall -Werror \
         -I"${NATIVE_DIR}/include" \
-        -c "$3" \
-        -o "$4"
+        -c "$4" \
+        -o "$5"
 }
 echo "── [2/6] compiling apple glue per arch (remote command + audio session)"
 # iOS device (arm64)
-compile_glue "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_ios_arm64.o"
-compile_glue "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_ios_arm64.o"
+compile_glue "iphoneos" "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_ios_arm64.o"
+compile_glue "iphoneos" "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_ios_arm64.o"
 # iOS simulator (arm64 always; x86_64 only when its sim std exists —
 # the SIMULATOR triples, per SW-ENG1-02)
-compile_glue "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_arm64.o"
-compile_glue "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_arm64.o"
+compile_glue "iphonesimulator" "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_arm64.o"
+compile_glue "iphonesimulator" "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_arm64.o"
 if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
-    compile_glue "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
-    compile_glue "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
+    compile_glue "iphonesimulator" "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
+    compile_glue "iphonesimulator" "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
 fi
 # macOS desktop (arm64 + x86_64; the audio-session TU degrades to its stub)
-compile_glue "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_arm64.o"
-compile_glue "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_arm64.o"
-compile_glue "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_x86_64.o"
-compile_glue "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_x86_64.o"
+compile_glue "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_arm64.o"
+compile_glue "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_arm64.o"
+compile_glue "macosx" "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_x86_64.o"
+compile_glue "macosx" "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_x86_64.o"
 
 # --- 3. UniFFI Swift bindings (before assembly: the header ships in-slice) --
 #  Same invocation shape as the Gradle `generateUniffiKotlinBindings`
