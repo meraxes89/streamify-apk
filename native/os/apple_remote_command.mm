@@ -40,6 +40,9 @@
 #include "apple_remote_command.h"
 
 #import <Foundation/Foundation.h>
+// llround (the seek-position ms rounding) — Foundation does not
+// explicitly re-export math.h, so include it directly.
+#include <math.h>
 
 #if defined(__has_include)
 #if __has_include(<MediaPlayer/MediaPlayer.h>)
