@@ -54,6 +54,21 @@ struct DiscoveredJamRoom: Equatable, Sendable, Identifiable {
         return "Join \(host)'s Jam"
     }
 
+    /// One-tap prompt subtitle (Kotlin `promptSubtitle` parity).
+    var promptSubtitle: String {
+        if !hasSpace { return "Room is full (32/32)" }
+        if partyMode {
+            let host = hostName.isEmpty ? "the host" : hostName
+            return "Party mode — listening on \(host)'s speaker"
+        }
+        if queueNonEmpty {
+            let host = hostName.isEmpty ? "Host" : hostName
+            return "Listening together · \(host)'s room"
+        }
+        let host = hostName.isEmpty ? "the host" : hostName
+        return "Start listening together with \(host)"
+    }
+
     var isWithinProximity: Bool { rssi >= BleJoinPayload.proximityRssiDbm }
 }
 
