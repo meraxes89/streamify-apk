@@ -21,17 +21,25 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
     /// Diagnostics: command dispatch results, newest last (bounded).
     @Published private(set) var lastResult: PlayerCommandResult?
 
+    /// SW-ENG3-03: the last system-surface feedback intent (like/dislike),
+    /// surfaced for the shell to render (heart animation, library curation)
+    /// — feedback is a shell-level concern, not engine transport.
+    @Published private(set) var lastFeedback: RemoteFeedback?
+
     let gateway: EngineGateway
     private(set) var audioSession: IOSAudioSessionAdapter!
 
     /// MP-UI01: the lockscreen / now-playing surface, rate-limited to 1 Hz
     /// (leading-edge admission + trailing-edge flush, so the LAST state of
-    /// a burst always lands on the lockscreen).
+    /// a burst always lands on the lockscreen). SW-ENG3-04 adds the async
+    /// artwork pipeline on track transitions.
     private let nowPlayingInfo: NowPlayingInfoPublisher
 
-    /// MP-UI01: the lockscreen / Control Center transport controls, routed
-    /// onto the same command plane as the in-app UI.
-    private(set) var remoteCommands: RemoteCommandAdapter!
+    /// SW-ENG3-03: the lockscreen / Control Center / headset / CarPlay
+    /// transport controls, MP-DEC-07 hardware-debounced (50-150 ms
+    /// envelope, default 100 ms) and routed onto the same command plane as
+    /// the in-app UI.
+    private(set) var remoteCommands: RemoteCommandCenterAdapter!
 
     private var collectTask: Task<Void, Never>?
     private var dispatchChain: Task<Void, Never>?
@@ -44,13 +52,17 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
         // NONISOLATED context, so a @MainActor-isolated initializer call
         // there is a compile error. The fallback constructs on the main
         // actor, inside this isolated init body.
-        nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil
+        nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil,
+        remoteCommandWindowNs: UInt64 = MediaCommandDebouncePolicy.defaultWindowNs
     ) {
         self.gateway = gateway
         self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
         // Two-phase initialization: properties above are set before referencing `self`.
         self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
-        self.remoteCommands = RemoteCommandAdapter(router: self)
+        self.remoteCommands = RemoteCommandCenterAdapter(
+            router: self,
+            windowNs: remoteCommandWindowNs
+        )
     }
 
     /// Cold-start hydration + push-flow collection. Idempotent.
@@ -139,7 +151,14 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
         dispatch(.play)
     }
 
-    // MARK: - RemoteCommandRouting (MP-UI01 lockscreen transport)
+    /// SW-ENG3-02: the pre-interruption memory source — the engine is
+    /// "presenting" while playing OR refilling after a buffer starve
+    /// (buffering is a live playback session, not an idle one).
+    var audioSessionPlaybackIsActive: Bool {
+        state.isPlaying || state.isBuffering
+    }
+
+    // MARK: - RemoteCommandRouting (SW-ENG3-03 system transport)
 
     func remoteCommandReceived(_ command: RemoteCommand) {
         switch command {
@@ -150,5 +169,11 @@ final class PlaybackViewModel: ObservableObject, AudioSessionResponding, RemoteC
         case .previous: dispatch(.previous)
         case .seek(let positionMs): dispatch(.seek(positionMs: positionMs))
         }
+    }
+
+    /// SW-ENG3-03: like/dislike from the lockscreen / Control Center —
+    /// surfaced for the shell; engine transport is uninvolved.
+    func remoteFeedbackReceived(_ feedback: RemoteFeedback) {
+        lastFeedback = feedback
     }
 }
