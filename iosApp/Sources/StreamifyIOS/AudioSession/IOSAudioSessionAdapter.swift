@@ -409,27 +409,31 @@ final class IOSAudioSessionAdapter: ObservableObject {
     }
 
     /// Applies the new-device buffer policy (SW-ENG3-02): reads the CURRENT
-    /// route's output latency + the OS IO bounds, derives the
-    /// latency-proportional target through the pure `OutputBufferPolicy`,
-    /// and applies it with `setPreferredIOBufferDuration`. Never throws —
-    /// a refused preference is a diagnostic, not an error path.
+    /// route's output latency, derives the latency-proportional target
+    /// through the pure `OutputBufferPolicy`, and applies it with
+    /// `setPreferredIOBufferDuration`. Never throws — a refused preference
+    /// is a diagnostic, not an error path.
+    ///
+    /// IO bounds: this SDK's `AVAudioSession` exposes no
+    /// minimum/maximum IO-buffer-duration properties, so the policy's
+    /// DOCUMENTED default window stands in — and the OS itself clamps
+    /// `setPreferredIOBufferDuration` to the closest supported duration,
+    /// so the hardware window is enforced either way.
     @MainActor private func adaptBufferDurationToCurrentRoute() {
         let outputLatency = session.outputLatency
-        let reportedMin = session.minimumIOBufferDuration
-        let reportedMax = session.maximumIOBufferDuration
         let target = OutputBufferPolicy.preferredIOBufferDuration(
             outputLatency: outputLatency,
-            minimum: reportedMin,
-            maximum: reportedMax
+            minimum: OutputBufferPolicy.defaultMinimumSeconds,
+            maximum: OutputBufferPolicy.defaultMaximumSeconds
         )
         do {
             try session.setPreferredIOBufferDuration(target)
             lastBufferAdaptationDescription = String(
-                format: "IO buffer %.1f ms (latency %.1f ms, bounds [%.1f, %.1f] ms)",
+                format: "IO buffer %.1f ms (latency %.1f ms, documented bounds [%.1f, %.1f] ms)",
                 target * 1000.0,
                 outputLatency * 1000.0,
-                (reportedMin > 0 ? reportedMin : OutputBufferPolicy.defaultMinimumSeconds) * 1000.0,
-                (reportedMax > 0 ? reportedMax : OutputBufferPolicy.defaultMaximumSeconds) * 1000.0
+                OutputBufferPolicy.defaultMinimumSeconds * 1000.0,
+                OutputBufferPolicy.defaultMaximumSeconds * 1000.0
             )
         } catch {
             lastBufferAdaptationDescription = String(
