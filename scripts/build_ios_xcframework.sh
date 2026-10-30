@@ -31,12 +31,19 @@
 #  SLICES (universal fat matrix, SW-ENG1-02)
 #  -----------------------------------------
 #    ios-arm64            aarch64-apple-ios              iPhone / iPad devices
-#    ios-arm64_x86_64-sim aarch64-apple-ios-sim          Apple Silicon simulators
-#                         x86_64-apple-ios-sim            Intel simulators
-#                         (lipo'd into ONE fat simulator slice — note the
-#                         Intel SIMULATOR triple ends in `-sim`; the old
-#                         script built the Intel DEVICE triple, whose
-#                         objects cannot run in the simulator)
+#    ios-arm64[_x86_64]-  aarch64-apple-ios-sim          Apple Silicon simulators
+#    simulator            x86_64-apple-ios-sim           Intel simulators
+#                         (CONDITIONAL: the Rust stable distribution does
+#                         not ship a rust-std for the Intel SIMULATOR triple
+#                         — verified against the channel manifests 1.82 →
+#                         1.99.1; the DEVICE triple x86_64-apple-ios is
+#                         still distributed, but device objects cannot run
+#                         in the simulator. When the toolchain provides the
+#                         sim std, both arches are lipo'd into ONE fat
+#                         simulator slice; otherwise the slice ships
+#                         arm64-only and the build logs a notice. The
+#                         mission acceptance (arm64-ios, arm64-simulator,
+#                         darwin) holds either way.)
 #    macos-arm64_x86_64   aarch64-apple-darwin           Apple Silicon Macs
 #                         x86_64-apple-darwin             Intel Macs
 #                         (lipo'd into ONE fat macOS slice)
@@ -118,19 +125,37 @@ SIM_ARM_TARGET="aarch64-apple-ios-sim"
 SIM_X86_TARGET="x86_64-apple-ios-sim"
 MAC_ARM_TARGET="aarch64-apple-darwin"
 MAC_X86_TARGET="x86_64-apple-darwin"
-ALL_TARGETS=(
-    "${DEVICE_TARGET}" "${SIM_ARM_TARGET}" "${SIM_X86_TARGET}"
+REQUIRED_TARGETS=(
+    "${DEVICE_TARGET}" "${SIM_ARM_TARGET}"
     "${MAC_ARM_TARGET}" "${MAC_X86_TARGET}"
 )
 
 # Missing targets are installed on demand (the CI lane pins its own list;
 # a bare dev Mac should not have to know it by heart).
-for target in "${ALL_TARGETS[@]}"; do
+for target in "${REQUIRED_TARGETS[@]}"; do
     if ! rustup target list --installed 2>/dev/null | grep -q "^${target}"; then
         echo "── rustup target \`${target}\` missing — installing"
         rustup target add "${target}"
     fi
 done
+
+# OPTIONAL Intel simulator slice: the Rust stable distribution carries no
+# rust-std for x86_64-apple-ios-sim (removed upstream — requesting it in a
+# `rustup toolchain install` fails the whole install, which is why the CI
+# lane lists only the four required triples). Probe-installing it here must
+# NOT be fatal: degrade to an arm64-only simulator slice instead.
+SIM_X86_AVAILABLE=0
+if rustup target list --installed 2>/dev/null | grep -q "^${SIM_X86_TARGET}"; then
+    SIM_X86_AVAILABLE=1
+elif rustup target add "${SIM_X86_TARGET}" >/dev/null 2>&1; then
+    SIM_X86_AVAILABLE=1
+else
+    echo "── NOTE: \`${SIM_X86_TARGET}\` std is not in this toolchain's channel"
+    echo "   (removed from the Rust distribution upstream) — the iOS simulator"
+    echo "   slice will be arm64-only (Apple Silicon Macs). Intel-Mac simulator"
+    echo "   support returns the day a distribution ships that std again; every"
+    echo "   other slice of the universal matrix is unaffected."
+fi
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/streamify-xcframework.XXXXXX")"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -149,7 +174,9 @@ echo "── macosx SDK:          ${MACOSX_SDK_PATH}"
 #  Flip PROFILE=release when the Phase 6 shell lands.
 PROFILE="${STREAMIFY_IOS_PROFILE:-debug}"
 LIB_SUFFIX="a"
-for target in "${ALL_TARGETS[@]}"; do
+BUILD_TARGETS=("${REQUIRED_TARGETS[@]}")
+[[ "${SIM_X86_AVAILABLE}" -eq 1 ]] && BUILD_TARGETS+=("${SIM_X86_TARGET}")
+for target in "${BUILD_TARGETS[@]}"; do
     echo "── [1/6] cargo build --target ${target} (${PROFILE})"
     ( cd "${RUST_DIR}" && cargo build --target "${target}" --profile "${PROFILE}" --lib )
 done
@@ -176,11 +203,14 @@ echo "── [2/6] compiling apple glue per arch (remote command + audio session
 # iOS device (arm64)
 compile_glue "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_ios_arm64.o"
 compile_glue "arm64-apple-ios"         "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_ios_arm64.o"
-# iOS simulator (arm64 + x86_64 — the SIMULATOR triples, per SW-ENG1-02)
+# iOS simulator (arm64 always; x86_64 only when its sim std exists —
+# the SIMULATOR triples, per SW-ENG1-02)
 compile_glue "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_arm64.o"
 compile_glue "arm64-apple-ios-sim"     "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_arm64.o"
-compile_glue "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
-compile_glue "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
+if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
+    compile_glue "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
+    compile_glue "x86_64-apple-ios-sim"    "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
+fi
 # macOS desktop (arm64 + x86_64; the audio-session TU degrades to its stub)
 compile_glue "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_arm64.o"
 compile_glue "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_arm64.o"
@@ -242,14 +272,21 @@ xcrun libtool -static -o "${WORK_DIR}/slice_sim_arm64.a" \
     "$(RUST_LIB "${SIM_ARM_TARGET}")" \
     "${WORK_DIR}/rc_sim_arm64.o" \
     "${WORK_DIR}/ias_sim_arm64.o"
-xcrun libtool -static -o "${WORK_DIR}/slice_sim_x86_64.a" \
-    "$(RUST_LIB "${SIM_X86_TARGET}")" \
-    "${WORK_DIR}/rc_sim_x86_64.o" \
-    "${WORK_DIR}/ias_sim_x86_64.o"
-lipo -create \
-    "${WORK_DIR}/slice_sim_arm64.a" \
-    "${WORK_DIR}/slice_sim_x86_64.a" \
-    -output "${WORK_DIR}/StreamifyCore_simulator.a"
+if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
+    xcrun libtool -static -o "${WORK_DIR}/slice_sim_x86_64.a" \
+        "$(RUST_LIB "${SIM_X86_TARGET}")" \
+        "${WORK_DIR}/rc_sim_x86_64.o" \
+        "${WORK_DIR}/ias_sim_x86_64.o"
+    lipo -create \
+        "${WORK_DIR}/slice_sim_arm64.a" \
+        "${WORK_DIR}/slice_sim_x86_64.a" \
+        -output "${WORK_DIR}/StreamifyCore_simulator.a"
+else
+    # Degraded matrix: arm64-only simulator slice (see the target-matrix
+    # note above) — the slice keeps the same member name so the
+    # xcframework layout and sanity pass are unchanged.
+    cp "${WORK_DIR}/slice_sim_arm64.a" "${WORK_DIR}/StreamifyCore_simulator.a"
+fi
 
 xcrun libtool -static -o "${WORK_DIR}/slice_macos_arm64.a" \
     "$(RUST_LIB "${MAC_ARM_TARGET}")" \
