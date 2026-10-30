@@ -151,7 +151,10 @@ extension View {
 
     /// Presents the full player as an interactive spring modal
     /// (RootShellView's only presentation path for SW-ENG2-05).
-    public func fullPlayerSheet(isPresented: Binding<Bool>, @ViewBuilder content: () -> some View) -> some View {
+    ///
+    /// `content` escapes into fullScreenCover's presentation closure — the
+    /// sheet builder itself still resolves the view once, at construction.
+    public func fullPlayerSheet(isPresented: Binding<Bool>, @escaping @ViewBuilder content: () -> some View) -> some View {
         fullScreenCover(isPresented: isPresented) {
             InteractivePlayerSheet(isPresented: isPresented, content: content)
         }
