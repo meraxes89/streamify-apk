@@ -8,7 +8,7 @@
 | Subsystem Spec | Details |
 |---|---|
 | **Primary Sources** | `YouTubeStreamResolver.kt`, `ResilientMediaRouter.kt`, `ParallelStreamDownloader.kt`, `resolver.rs`, `downloader.rs` |
-| **Bypass & Security Modules** | `PoTokenWebView.kt`, `StreamifyPoTokenGenerator.kt`, `NewPipeBootstrap.kt`, `JavascriptUtil.kt`, `po_token.html` |
+| **Bypass & Security Modules** | Pure-Rust RustyPipe engine, embedded QuickJS cipher deciphering, `rustypipe-botguard` |
 | **Performance Envelope** | Tier 1 Cache Hit: **0 ms** · Tier 2 HTTP/2 Multi-Client Race: **<60 ms** · Tier 3 PO Token Extractor: **150–350 ms** |
 | **FFI Surface** | `resolve_track_cdn`, `fetch_stream_anonymous`, `resolve_stream_master`, `download_stream_to_file` |
 | **Integrity Guarantees** | HTTP 206 Byte-Range Enforcement, SHA-256 Digest Verification, Canonical CAD-ID Same-Song Proof Gate |
@@ -57,7 +57,7 @@ graph TB
         RMR[ResilientMediaRouter]
         SEC["StreamEdgeCache<br/>4-Hour LRU Cache"]
         CW["ConnectionWarmer<br/>DNS/Socket Pre-warming"]
-        NPB["NewPipeBootstrap & Extractor"]
+        NPB["RustyPipe Pure-Rust Engine (QuickJS)"]
         POT["StreamifyPoTokenGenerator"]
         PSD["ParallelStreamDownloader"]
     end
@@ -114,7 +114,7 @@ flowchart TD
     
     T2 --> C2{"Race Won with<br/>Direct Stream URL?"}
     C2 -- "Yes" --> R2["Store in EdgeCache + Return Stream"]
-    C2 -- "No" --> T3["Tier 3: NewPipe + BotGuard PO Token Extractor<br/>(Mint webPoSignalOutput in hidden WebView)"]
+    C2 -- "No" --> T3["Tier 3: Pure-Rust RustyPipe + QuickJS Cipher Deciphering<br/>(In-process native execution, zero WebView)"]
     
     T3 --> C3{"PO Token Extractor<br/>Returned Audio Stream?"}
     C3 -- "Yes" --> R3["Store in EdgeCache + Return Stream"]
@@ -142,7 +142,7 @@ flowchart TD
    - First client returning unencrypted `adaptiveFormats` completes the `CompletableDeferred` promise and immediately cancels slower sibling jobs.
 4. **Tier 3 (BotGuard PO Token Pipeline)**:
    - Invoked when YouTube returns SABR-stripped responses (missing direct URLs).
-   - Bootstraps `NewPipeBootstrap` and executes challenge JavaScript inside `PoTokenWebView` to mint a cryptographic `po_token` passed in request headers.
+   - Executes pure-Rust RustyPipe with embedded QuickJS in the Rust core to decipher player signatures and mint cryptographic tokens directly in-process.
 5. **Tier 4 (Alternate-Upload Fuzzy Candidate Search)**:
    - Queries YouTube Music search for `"{title} {artist}"`.
    - Applies strict candidate filtering:
@@ -220,7 +220,7 @@ When YouTube deploys server-side SABR streaming restrictions, requests without P
 ```mermaid
 sequenceDiagram
     autonumber
-    participant NP as NewPipe Extractor
+    participant NP as RustyPipe Engine
     participant GEN as StreamifyPoTokenGenerator
     participant WV as PoTokenWebView (Hidden)
     participant BG as BotGuard Server (/api/jnn/v1)

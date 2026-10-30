@@ -5,6 +5,8 @@ import com.streamify.app.data.models.RecommendationNative
 import com.streamify.app.data.models.TrackNative
 import com.streamify.app.util.SLog
 import com.streamify.app.data.repository.TrackRepository
+import com.streamify.app.viewmodel.OnlineSearchResult
+import com.streamify.app.viewmodel.SearchResultType
 
 object NativeBridge {
     init {
@@ -136,6 +138,47 @@ object NativeBridge {
             list.ifEmpty { null }
         } catch (e: Throwable) {
             SLog.e("NativeBridge", "Failed to parse stream formats JSON: $json", e)
+            null
+        }
+    }
+
+    private external fun nativeSearchTracks(query: String, limit: Int, dbPath: String): String?
+
+    fun searchTracks(query: String, limit: Int = 10, dbPath: String = ""): List<OnlineSearchResult>? {
+        val json = try {
+            nativeSearchTracks(query, limit, dbPath)
+        } catch (e: Throwable) {
+            SLog.e("NativeBridge", "nativeSearchTracks failed for $query", e)
+            null
+        } ?: return null
+
+        if (json.isBlank()) return null
+        return try {
+            val array = org.json.JSONArray(json)
+            val list = mutableListOf<OnlineSearchResult>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val id = obj.optString("id")
+                val title = obj.optString("title")
+                val artist = obj.optString("artist")
+                val durationSec = obj.optInt("duration_sec", 0)
+                val thumbnailUrl = obj.optString("thumbnail_url")
+                if (id.isNotBlank()) {
+                    list.add(
+                        OnlineSearchResult(
+                            title = title,
+                            uploader = artist,
+                            url = "https://www.youtube.com/watch?v=$id",
+                            duration = durationSec,
+                            thumbnail = thumbnailUrl,
+                            type = SearchResultType.SONG
+                        )
+                    )
+                }
+            }
+            list.ifEmpty { null }
+        } catch (e: Throwable) {
+            SLog.e("NativeBridge", "Failed to parse search tracks JSON: $json", e)
             null
         }
     }

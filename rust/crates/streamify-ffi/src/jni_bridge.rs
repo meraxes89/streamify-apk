@@ -201,6 +201,51 @@ pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResolveS
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeSearchTracks(
+    mut env: JNIEnv,
+    _class: JClass,
+    query: JString,
+    limit: jint,
+    db_path: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let query_str: String = env
+            .get_string(&query)
+            .map(|s| s.into())
+            .unwrap_or_default();
+        if query_str.trim().is_empty() {
+            return std::ptr::null_mut();
+        }
+
+        let db_path_str: String = if db_path.is_null() {
+            String::new()
+        } else {
+            env.get_string(&db_path)
+                .map(|s| s.into())
+                .unwrap_or_default()
+        };
+
+        if !db_path_str.trim().is_empty() {
+            streamify_storage::resolver_cache::set_cache_db_path(&db_path_str);
+        }
+
+        let max_results = (limit.max(1) as usize).min(50);
+        match streamify_resolver::resolver::StreamResolver::search_tracks(&query_str, max_results) {
+            Ok(candidates) => {
+                let json = serde_json::to_string(&candidates).unwrap_or_default();
+                match env.new_string(json) {
+                    Ok(s) => s.into_raw(),
+                    Err(_) => std::ptr::null_mut(),
+                }
+            }
+            Err(_) => std::ptr::null_mut(),
+        }
+    }));
+
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn Java_com_streamify_app_data_NativeBridge_nativeResolveTrack(
     mut env: JNIEnv,
     _class: JClass,

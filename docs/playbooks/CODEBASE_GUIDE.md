@@ -40,8 +40,7 @@
 | 29 | `com.streamify.app.ui.models` | 1 | UI presentation models (ProGuard-pinned). |
 | 30 | `com.streamify.app.ui.screens` | 23 | One file per destination (23 screens). |
 | 31 | `com.streamify.app.ui.theme` | 6 | Design tokens: color, type, shape, dimens, screen classes. |
-| 32 | `com.streamify.app.util` | 10 | Cross-cutting utilities + the newpipe PO-token pipeline. |
-| 33 | `com.streamify.app.util.newpipe` | 5 | NewPipe-Extractor bootstrap, BotGuard WebView, PO-token generation. |
+| 32 | `com.streamify.app.util` | 10 | Cross-cutting utilities. |
 | 34 | `com.streamify.app.viewmodel` | 13 | Presentation state (PlayerViewModel + companions + feature VMs). |
 | 35 | `com.streamify.app.worker` | 1 | Foreground download worker. |
 
@@ -472,18 +471,6 @@ Cross-cutting utilities + the newpipe PO-token pipeline.
 | `TimeGreeting.kt` | 33 |
 | `Trace.kt` | 31 |
 | `TrackShareCard.kt` | 41 |
-
-## `com.streamify.app.util.newpipe/`
-
-NewPipe-Extractor bootstrap, BotGuard WebView, PO-token generation.
-
-| File | Lines |
-|---|---|
-| `JavascriptUtil.kt` | 122 |
-| `NewPipeBootstrap.kt` | 37 |
-| `NewPipeDownloaderImpl.kt` | 63 |
-| `PoTokenWebView.kt` | 252 |
-| `StreamifyPoTokenGenerator.kt` | 118 |
 
 ## `com.streamify.app.viewmodel/`
 
