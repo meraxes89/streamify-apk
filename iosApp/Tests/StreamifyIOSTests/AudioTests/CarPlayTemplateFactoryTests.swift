@@ -149,10 +149,10 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
     @MainActor
     private final class StubContentProvider: CarPlayContentProviding {
         var shortcuts: [CarPlayBrowseItem] = []
-        var playlists: [CarPlayBrowseItem] = []
+        var playlistRows: [CarPlayBrowseItem] = []
 
         func homeShortcuts() -> [CarPlayBrowseItem] { shortcuts }
-        func playlists() -> [CarPlayBrowseItem] { playlists }
+        func playlists() -> [CarPlayBrowseItem] { playlistRows }
     }
 
     @MainActor

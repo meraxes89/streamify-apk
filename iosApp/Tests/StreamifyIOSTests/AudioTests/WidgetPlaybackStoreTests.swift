@@ -30,7 +30,10 @@ final class WidgetPlaybackStoreTests: XCTestCase {
     }
 
     private func makeStore() -> WidgetPlaybackStore {
-        WidgetPlaybackStore(defaults: defaults) { virtualNow }
+        // Escaping closure over the class property: explicit self so the
+        // capture semantics are visible (mutations of `virtualNow` later in
+        // a test remain observable through the store's virtual clock).
+        WidgetPlaybackStore(defaults: defaults) { self.virtualNow }
     }
 
     private func snapshot(
