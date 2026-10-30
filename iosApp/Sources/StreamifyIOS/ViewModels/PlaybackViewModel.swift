@@ -17,6 +17,14 @@ import Observation
 // SEPARATE `PlaybackProgressClock` observable (hardware DAC interpolation),
 // so display-synced per-frame reads invalidate only scrub-bar leaves. This
 // holder itself changes only when a pushed snapshot actually changes state.
+//
+// SW-ENG3 INTEGRATION (Engineer 3, merged on top): the transport controls
+// are the MP-DEC-07 hardware-debounced `RemoteCommandCenterAdapter`
+// (50-150 ms envelope — the ENG4 draft referenced an undefined
+// `RemoteCommandAdapter`; this merge binds the real adapter), the widget /
+// intent mailbox plane (`WidgetPlaybackRefresher`, SW-ENG3-06) mirrors
+// every admitted push, and the like/dislike feedback intent surfaces as
+// `lastFeedback` (SW-ENG3-03 — shell-level concern, not engine transport).
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Observable
@@ -31,6 +39,11 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
     private(set) var currentTrack: PresentationTrack?
     private(set) var jamSessionName: String?
     private(set) var lastResult: PlayerCommandResult?
+
+    /// SW-ENG3-03: the last system-surface feedback intent (like/dislike),
+    /// surfaced for the shell to render (heart animation, library curation)
+    /// — feedback is a shell-level concern, not engine transport.
+    private(set) var lastFeedback: RemoteFeedback?
 
     /// The last raw hardware DAC sample pushed by the engine (diagnostics).
     private(set) var lastDacSample: DacClockSample?
@@ -50,9 +63,16 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
     /// (leading-edge admission + trailing-edge flush).
     private let nowPlayingInfo: NowPlayingInfoPublisher
 
-    /// MP-UI01: the lockscreen / Control Center transport controls, routed
-    /// onto the same command plane as the in-app UI.
-    private(set) var remoteCommands: RemoteCommandAdapter!
+    /// SW-ENG3-03 / MP-DEC-07: the lockscreen / Control Center / headset /
+    /// CarPlay transport controls, hardware-debounced into the approved
+    /// 50-150 ms envelope and routed onto the same command plane as the
+    /// in-app UI.
+    private(set) var remoteCommands: RemoteCommandCenterAdapter!
+
+    /// SW-ENG3-06: the widget plane mirror — the snapshot store refresh +
+    /// the intent mailbox drain, both riding the engine push cadence (the
+    /// 1 Hz collect loop: exactly the cadence the mailbox was designed for).
+    private let widgetRefresher: WidgetPlaybackRefresher?
 
     private var collectTask: Task<Void, Never>?
     private var dispatchChain: Task<Void, Never>?
@@ -67,12 +87,28 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         // NONISOLATED context, so a @MainActor-isolated initializer call
         // there is a compile error. The fallback constructs on the main
         // actor, inside this isolated init body.
-        nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil
+        nowPlayingInfoPublisher: NowPlayingInfoPublisher? = nil,
+        // SW-ENG3-03: the MP-DEC-07 debounce window for the system
+        // transport controls (clamped into the approved envelope by the
+        // adapter itself).
+        remoteCommandWindowNs: UInt64 = MediaCommandDebouncePolicy.defaultWindowNs,
+        // SW-ENG3-06: the widget plane mirror (nil disables the cross-
+        // process plane — single-process / test mode).
+        widgetRefresher: WidgetPlaybackRefresher? = nil
     ) {
         self.gateway = gateway
         self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
+        self.widgetRefresher = widgetRefresher ?? WidgetPlaybackRefresher()
+        // Two-phase initialization: every remaining stored property is a
+        // var-optional (implicitly nil-initialized) or already assigned, so
+        // `self` is FULLY initialized by the time the adapters below capture
+        // it (a `let` optional such as widgetRefresher has no implicit nil —
+        // it must be assigned BEFORE the first `self` escape).
         self.audioSession = audioSession ?? IOSAudioSessionAdapter(responder: self)
-        self.remoteCommands = RemoteCommandAdapter(router: self)
+        self.remoteCommands = RemoteCommandCenterAdapter(
+            router: self,
+            windowNs: remoteCommandWindowNs
+        )
     }
 
     // MARK: - Snapshot ingestion (rev-guarded push consumer)
@@ -154,6 +190,26 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         )
 
         nowPlayingInfo.publish(state: state)
+        // SW-ENG3-06: mirror the admitted push into the widget plane
+        // (fingerprint-gated store refresh + intent-mailbox drain — the
+        // same push cadence the mailbox was designed for).
+        mirrorWidgetPlane()
+    }
+
+    /// SW-ENG3-06: the widget plane mirror — refreshes the cross-process
+    /// snapshot store (zero I/O on unchanged rendered values) and drains
+    /// the widget / intent / menu-bar command mailbox onto the shared
+    /// command plane. Fire-and-forget on the main actor: a push is already
+    /// an async boundary, and the store's fingerprint gate absorbs bursts.
+    private func mirrorWidgetPlane() {
+        guard let refresher = widgetRefresher else { return }
+        let uiState = state
+        Task { @MainActor [weak self] in
+            await refresher.refresh(state: uiState)
+            refresher.drainCommands { [weak self] command in
+                self?.remoteCommandReceived(command)
+            }
+        }
     }
 
     /// Host monotonic uptime in ns (the DAC interpolation time base; matches
@@ -244,5 +300,11 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         case .previous: dispatch(.previous)
         case .seek(let positionMs): dispatch(.seek(positionMs: positionMs))
         }
+    }
+
+    /// SW-ENG3-03: like/dislike from the lockscreen / Control Center /
+    /// CarPlay — surfaced for the shell; engine transport is uninvolved.
+    func remoteFeedbackReceived(_ feedback: RemoteFeedback) {
+        lastFeedback = feedback
     }
 }

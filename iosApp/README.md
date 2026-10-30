@@ -67,7 +67,7 @@ iosApp/
 │   │                                    + RemoteCommandRouting (lockscreen transport)
 │   │                                    + 1 Hz-gated lockscreen publishing
 │   ├── Playback/NowPlayingInfoPublisher.swift  OneHertzGate · info-dict derivation ·
-│   │                                            RemoteCommandAdapter (MP-UI01)
+│   │                                            ArtworkLoader (SW-ENG3-04 async artwork)
 │   ├── Engine/
 │   │   ├── EngineGateway.swift            the seam protocol (Swift mirror of EnginePort)
 │   │   │                                  + the SW-ENG1-04 typed data lane
@@ -121,10 +121,12 @@ The directive mandates: "Rate-limit lockscreen and now-playing updates to
   admits, the 1 s window defers, the boundary re-opens) onto
   `MPNowPlayingInfoCenter`. A trailing-edge flush guarantees the LAST state
   of a burst always lands — a leading-edge-only limiter would freeze the
-  lockscreen on a stale elapsed time forever. `RemoteCommandAdapter` routes
-  the lockscreen / Control Center transport (play, pause, toggle, next,
-  previous, scrub-seek) onto the SAME `PlayerCommand` plane as the in-app UI
-  and the MP-UI02 audio-session reactions.
+  lockscreen on a stale elapsed time forever. `RemoteCommandCenterAdapter`
+  (Platform/Remote, SW-ENG3-03) routes the lockscreen / Control Center /
+  headset transport (play, pause, toggle, next, previous, scrub-seek,
+  like/dislike) through the MP-DEC-07 hardware debounce (50-150 ms envelope)
+  onto the SAME `PlayerCommand` plane as the in-app UI and the MP-UI02
+  audio-session reactions.
 * **In-app readouts** — `PlaybackUiState.positionForDisplayMs` quantizes the
   DAC-derived position to whole seconds: the elapsed-time text changes at
   most once per second OF CONTENT, never per push.

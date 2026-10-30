@@ -30,15 +30,11 @@ on:
   push:
     branches: [main]
   # Manual escape hatch (2026-10-30): GitHub's pull_request event delivery
-  # silently dropped the synchronize event for feat/apple-eng1-ffi-core —
-  # the 09:07Z push of 50466f7 to PR #134 created ZERO runs (no check-runs
-  # attached to the head sha; the hub file was identical on the ref). The
-  # same failure mode was independently diagnosed on the eng3 branch, which
-  # carries the same fix. A workflow_dispatch run evaluates the same full
-  # matrix (preflight treats non-pull_request events as run-everything,
-  # fail-safe) and attaches its check runs to the head sha, so the
-  # "CI Gate (Blocking)" required check is satisfied exactly as a
-  # pull_request run would.
+  # occasionally drops events (diagnosed on both eng1 and eng3 feature PRs).
+  # A workflow_dispatch run evaluates the same full matrix (preflight treats
+  # non-pull_request events as run-everything, fail-safe) and attaches its
+  # check runs to the head sha, so the "CI Gate (Blocking)" required check
+  # is satisfied exactly as a pull_request run would.
   workflow_dispatch:
 
 # Parallel-safe multi-engineer concurrency:

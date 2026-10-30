@@ -1,8 +1,9 @@
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 5 (MP-UI02 / Beta): the iOS audio-session adapter — AVAudioSession
-// governance for the native SwiftUI shell.
+// Phase 5 (MP-UI02 / Beta) — hardened SW-ENG3-02 (Engineer 3): the iOS
+// audio-session adapter — AVAudioSession governance for the native
+// SwiftUI shell.
 //
 // SW-ENG1-01 (multiplatform note): AVAudioSession exists on iOS/Catalyst
 // only — macOS has no audio-session concept (CoreAudio output is
@@ -11,29 +12,40 @@ import Foundation
 // fallback at the bottom of this file so the unified StreamifyIOS module
 // compiles for BOTH platforms with zero call-site changes (SW-DEC-04).
 //
-// Directive contract:
-//  * CONFIGURE — category `.playback`, mode `.default`, options `[]` (an
-//    audiophile music player mixes with nothing, ducks for nothing, and
-//    keeps playing with the silent switch and the screen off).
+// Directive contract (SW-ENG3-02 / MP-UI02):
+//  * CONFIGURE — category `.playback`, mode `.default`, options
+//    `[.allowAirPlay]` (AirPlay sinks are first-class routes for an
+//    audiophile player; the option is belt-and-suspenders over the
+//    playback category's implicit default).
 //  * INTERRUPTION — `AVAudioSession.interruptionNotification`:
-//      `.began`                    → pause the engine;
-//      `.ended` + `.shouldResume`  → resume;
+//      `.began`                    → save the pre-interruption playback
+//                                   state, then pause the engine;
+//      `.ended` + `.shouldResume`  → resume ONLY if the engine was
+//                                   actually playing when the interruption
+//                                   began (phone call finished, Siri
+//                                   dismissed);
 //      `.ended` without the option → stay paused (the user/system decided).
-//  * ROUTE CHANGE — `AVAudioSession.routeChangeNotification`: the
-//    `.oldDeviceUnavailable` reason (wired headphones unplugged, AirPlay
-//    sink dropped) pauses playback — never blast the speaker after a
-//    private-listening route vanishes; AirPlay teardowns land here too,
-//    and the adapter deactivates its session bookkeeping cleanly.
+//  * ROUTE CHANGE — `AVAudioSession.routeChangeNotification`:
+//      `.oldDeviceUnavailable` (wired headphones unplugged, AirPods
+//      disconnected, Bluetooth car turned off) → pause IMMEDIATELY —
+//      never blast loud audio out of the suddenly-public phone speaker;
+//      the adapter also deactivates its session bookkeeping cleanly.
+//      `.newDeviceAvailable`       → adapt the session's preferred IO
+//                                   buffer duration to the new output
+//                                   device's latency (OutputBufferPolicy —
+//                                   latency-proportional, clamped into the
+//                                   OS-reported window).
 //  * CLEAN TEARDOWN — `deactivate()` removes every observer exactly once
 //    and is idempotent; the adapter never leaks NotificationCenter tokens
 //    across scene or engine re-lifecycles.
 //
-// DESIGN: the decision core is a pair of PURE functions over value enums —
-// `decision(forInterruption:)` / `decision(forRouteChange:)` — so the full
-// policy matrix is unit-testable without an audio route (XCTest drives the
-// real AVAudioSession value types; no mocks, no device). The observer
-// plumbing around the core is thin, main-actor isolated, and testable via
-// synthetic notification payloads (`interruptionPayload(type:options:)` /
+// DESIGN: the decision core is PURE functions over value enums —
+// `decision(forInterruption:)` / `decision(forRouteChange:)` /
+// `reaction(forRouteChange:)` / `OutputBufferPolicy` — so the full policy
+// matrix is unit-testable without an audio route (XCTest drives the real
+// AVAudioSession value types; no mocks, no device). The observer plumbing
+// around the core is thin, main-actor isolated, and testable via synthetic
+// notification payloads (`interruptionPayload(type:options:)` /
 // `routeChangePayload(reason:)` build the exact userInfo shapes AVFoundation
 // posts).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,12 +63,82 @@ enum AudioSessionDecision: Equatable, Sendable {
     case none
 }
 
+/// One route change's full effect on the session + engine (SW-ENG3-02):
+/// the engine reaction and the (independent) IO-buffer adaptation flag.
+struct RouteChangeReaction: Equatable, Sendable {
+    let engineDecision: AudioSessionDecision
+    let adaptsBufferDuration: Bool
+}
+
 /// Anything that can serve the adapter's playback reactions (the shell's
 /// PlaybackViewModel conforms; tests install a recording stub).
 @MainActor
 protocol AudioSessionResponding: AnyObject {
+    /// Whether the engine is currently presenting audio — a REQUIREMENT,
+    /// not merely an extension member: the adapter consults it through the
+    /// protocol existential when an interruption BEGINS, and extension-only
+    /// members dispatch STATICALLY (the conformer's own answer would never
+    /// run — the pre-interruption memory would record the hardcoded false
+    /// forever). Conformers without their own answer get the default below.
+    var audioSessionPlaybackIsActive: Bool { get }
     func audioSessionRequestsPause(reason: String)
     func audioSessionRequestsResume(reason: String)
+}
+
+extension AudioSessionResponding {
+    /// Default: a responder that cannot answer was (as far as the policy
+    /// is concerned) not playing.
+    var audioSessionPlaybackIsActive: Bool { false }
+}
+
+/// Pre-interruption playback state, recorded when an interruption begins
+/// and consumed by the `.ended` decision (SW-ENG3-02): auto-resume is only
+/// correct when the ENGINE was actually playing when the phone call / Siri
+/// stole the route — resuming a track the user had already paused would be
+/// a state fabrication, not a reaction.
+struct InterruptionMemory: Equatable, Sendable {
+    let wasPlaying: Bool
+}
+
+/// IO-buffer adaptation policy for a newly-arrived output route
+/// (SW-ENG3-02 / MP-UI02: "adapt buffer duration to the new output device
+/// latency"). Pure math over reported device facts — unit-tested; the
+/// application is a single `setPreferredIOBufferDuration` call.
+enum OutputBufferPolicy {
+
+    /// Headroom added on top of the device's output latency: one nominal
+    /// 48 kHz quantum (5 ms ≈ 240 frames) — enough that a latency-
+    /// proportional buffer still absorbs one scheduler hiccup without an
+    /// underrun, small enough to stay in the low-latency regime.
+    static let headroomSeconds: TimeInterval = 0.005
+
+    /// Fallback clamp window when the OS reports no IO bounds (older
+    /// systems report 0): Apple's documented typical range.
+    static let defaultMinimumSeconds: TimeInterval = 0.005
+    static let defaultMaximumSeconds: TimeInterval = 0.093
+
+    /// Latency-proportional target: `outputLatency + headroom`, clamped
+    /// into `[minimum, maximum]`. Degenerate bounds (non-positive or
+    /// inverted) fall back to the documented defaults for BOTH ends; a
+    /// negative reported latency clamps to zero first (defensive — never
+    /// fabricate).
+    static func preferredIOBufferDuration(
+        outputLatency: TimeInterval,
+        minimum: TimeInterval,
+        maximum: TimeInterval
+    ) -> TimeInterval {
+        let minBound: TimeInterval
+        let maxBound: TimeInterval
+        if minimum > 0 && maximum >= minimum {
+            minBound = minimum
+            maxBound = maximum
+        } else {
+            minBound = defaultMinimumSeconds
+            maxBound = defaultMaximumSeconds
+        }
+        let target = max(0, outputLatency) + headroomSeconds
+        return min(max(target, minBound), maxBound)
+    }
 }
 
 #if canImport(UIKit)
@@ -74,17 +156,37 @@ final class IOSAudioSessionAdapter: ObservableObject {
 
     // MARK: - Pure decision core (unit-tested)
 
-    /// Interruption policy: `.began` pauses; `.ended` resumes ONLY when the
-    /// system advises `.shouldResume`.
+    /// Interruption policy (flag-only view): `.began` pauses; `.ended`
+    /// resumes ONLY when the system advises `.shouldResume`.
     nonisolated static func decision(
         forInterruption type: AVAudioSession.InterruptionType,
         options: AVAudioSession.InterruptionOptions
+    ) -> AudioSessionDecision {
+        decision(
+            forInterruption: type,
+            options: options,
+            preInterruptionPlaying: nil
+        )
+    }
+
+    /// Interruption policy with pre-interruption memory (the SW-ENG3-02
+    /// directive's full contract): `.began` pauses; `.ended` resumes ONLY
+    /// when the OS advises `.shouldResume` AND the engine was playing when
+    /// the interruption began (`nil` memory — the began event was never
+    /// observed — falls back to the flag alone, matching pre-hardening
+    /// behavior).
+    nonisolated static func decision(
+        forInterruption type: AVAudioSession.InterruptionType,
+        options: AVAudioSession.InterruptionOptions,
+        preInterruptionPlaying: Bool?
     ) -> AudioSessionDecision {
         switch type {
         case .began:
             return .pauseEngine
         case .ended:
-            return options.contains(.shouldResume) ? .resumeEngine : .none
+            guard options.contains(.shouldResume) else { return .none }
+            guard let preInterruptionPlaying else { return .resumeEngine }
+            return preInterruptionPlaying ? .resumeEngine : .none
         @unknown default:
             return .none
         }
@@ -101,6 +203,18 @@ final class IOSAudioSessionAdapter: ObservableObject {
             return .pauseEngine
         }
         return .none
+    }
+
+    /// The FULL route-change reaction (SW-ENG3-02): the engine decision
+    /// PLUS whether the session's IO buffer duration should be re-adapted
+    /// to the newly-arrived output device.
+    nonisolated static func reaction(
+        forRouteChange reason: AVAudioSession.RouteChangeReason
+    ) -> RouteChangeReaction {
+        RouteChangeReaction(
+            engineDecision: reason == .oldDeviceUnavailable ? .pauseEngine : .none,
+            adaptsBufferDuration: reason == .newDeviceAvailable
+        )
     }
 
     // MARK: - Payload builders (test-shaped userInfo)
@@ -150,9 +264,16 @@ final class IOSAudioSessionAdapter: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private(set) var lifecycle: Lifecycle = .deactivated
 
+    /// Pre-interruption playback state (SW-ENG3-02): recorded when an
+    /// interruption begins, consumed (and cleared) by the `.ended` decision.
+    private(set) var interruptionMemory: InterruptionMemory?
+
     /// Last observed interruption/route state (diagnostics surface).
     @Published private(set) var lastInterruptionDescription: String?
     @Published private(set) var lastRouteChangeDescription: String?
+    /// Last IO-buffer adaptation (diagnostics surface for the new-device
+    /// policy: target duration + the device facts it derived from).
+    @Published private(set) var lastBufferAdaptationDescription: String?
 
     init(
         session: AVAudioSession = AVAudioSession.sharedInstance(),
@@ -172,10 +293,11 @@ final class IOSAudioSessionAdapter: ObservableObject {
 
     /// Applies the directive configuration and installs the observers.
     func activate() throws {
-        // Directive configuration: category .playback, mode .default,
-        // options [] — no mixing, no ducking; playback survives the silent
-        // switch and the locked screen.
-        try session.setCategory(.playback, mode: .default, options: [])
+        // Directive configuration (SW-ENG3-02): category .playback,
+        // mode .default, options [.allowAirPlay] — AirPlay sinks are
+        // first-class output routes; no mixing, no ducking; playback
+        // survives the silent switch and the locked screen.
+        try session.setCategory(.playback, mode: .default, options: [.allowAirPlay])
         try session.setActive(true)
         installObservers()
         lifecycle = .active
@@ -238,9 +360,27 @@ final class IOSAudioSessionAdapter: ObservableObject {
         parsed: (type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions)?
     ) {
         guard let parsed else { return }
-        let decision = Self.decision(forInterruption: parsed.type, options: parsed.options)
+        // SW-ENG3-02: record the pre-interruption state BEFORE reacting to
+        // `.began` (the pause itself flips `audioSessionPlaybackIsActive`).
+        let preInterruptionPlaying: Bool?
+        if parsed.type == .began {
+            let wasPlaying = responder?.audioSessionPlaybackIsActive ?? false
+            interruptionMemory = InterruptionMemory(wasPlaying: wasPlaying)
+            preInterruptionPlaying = wasPlaying
+        } else {
+            preInterruptionPlaying = interruptionMemory?.wasPlaying
+        }
+        let decision = Self.decision(
+            forInterruption: parsed.type,
+            options: parsed.options,
+            preInterruptionPlaying: preInterruptionPlaying
+        )
         lastInterruptionDescription =
-            "interruption \(parsed.type.rawValue), options \(parsed.options.rawValue) -> \(decision)"
+            "interruption \(parsed.type.rawValue), options \(parsed.options.rawValue), wasPlaying \(preInterruptionPlaying.map { String($0) } ?? "unknown") -> \(decision)"
+        if parsed.type == .ended {
+            // The memory describes ONE interruption cycle: consume it.
+            interruptionMemory = nil
+        }
         switch decision {
         case .pauseEngine:
             responder?.audioSessionRequestsPause(reason: "interruption-began")
@@ -256,10 +396,10 @@ final class IOSAudioSessionAdapter: ObservableObject {
         previous: String?
     ) {
         guard let reason else { return }
-        let decision = Self.decision(forRouteChange: reason)
+        let reaction = Self.reaction(forRouteChange: reason)
         lastRouteChangeDescription =
-            "route \(reason.rawValue) (was \(previous ?? "unknown")) -> \(decision)"
-        switch decision {
+            "route \(reason.rawValue) (was \(previous ?? "unknown")) -> \(reaction.engineDecision)\(reaction.adaptsBufferDuration ? ", adapting IO buffer" : "")"
+        switch reaction.engineDecision {
         case .pauseEngine:
             // Headphones unplugged or the AirPlay sink dropped: pause, and
             // (teardown discipline) mark the session bookkeeping inactive
@@ -273,6 +413,45 @@ final class IOSAudioSessionAdapter: ObservableObject {
             }
         case .resumeEngine, .none:
             break
+        }
+        if reaction.adaptsBufferDuration {
+            // SW-ENG3-02: a new output device just took the route — adapt
+            // the session's preferred IO buffer duration to ITS latency.
+            adaptBufferDurationToCurrentRoute()
+        }
+    }
+
+    /// Applies the new-device buffer policy (SW-ENG3-02): reads the CURRENT
+    /// route's output latency, derives the latency-proportional target
+    /// through the pure `OutputBufferPolicy`, and applies it with
+    /// `setPreferredIOBufferDuration`. Never throws — a refused preference
+    /// is a diagnostic, not an error path.
+    ///
+    /// IO bounds: this SDK's `AVAudioSession` exposes no
+    /// minimum/maximum IO-buffer-duration properties, so the policy's
+    /// DOCUMENTED default window stands in — and the OS itself clamps
+    /// `setPreferredIOBufferDuration` to the closest supported duration,
+    /// so the hardware window is enforced either way.
+    @MainActor private func adaptBufferDurationToCurrentRoute() {
+        let outputLatency = session.outputLatency
+        let target = OutputBufferPolicy.preferredIOBufferDuration(
+            outputLatency: outputLatency,
+            minimum: OutputBufferPolicy.defaultMinimumSeconds,
+            maximum: OutputBufferPolicy.defaultMaximumSeconds
+        )
+        do {
+            try session.setPreferredIOBufferDuration(target)
+            lastBufferAdaptationDescription = String(
+                format: "IO buffer %.1f ms (latency %.1f ms, documented bounds [%.1f, %.1f] ms)",
+                target * 1000.0,
+                outputLatency * 1000.0,
+                OutputBufferPolicy.defaultMinimumSeconds * 1000.0,
+                OutputBufferPolicy.defaultMaximumSeconds * 1000.0
+            )
+        } catch {
+            lastBufferAdaptationDescription = String(
+                format: "IO buffer adaptation refused at %.1f ms", target * 1000.0
+            )
         }
     }
 
@@ -309,6 +488,7 @@ final class IOSAudioSessionAdapter: ObservableObject {
     /// Intentionally inert on macOS (no session to observe).
     @Published private(set) var lastInterruptionDescription: String?
     @Published private(set) var lastRouteChangeDescription: String?
+    @Published private(set) var lastBufferAdaptationDescription: String?
 
     init(responder: AudioSessionResponding) {
         self.responder = responder
