@@ -1,5 +1,10 @@
 import SwiftUI
 import WidgetKit
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SW-ENG3-06 (Phase 5 / MP-CAP03): the WidgetKit bundle — iOS Home Screen
@@ -132,6 +137,7 @@ struct NowPlayingWidget: Widget {
     }
 }
 
+#if os(iOS)
 /// The Lock Screen widget: circular (play/pause), inline (track + timer),
 /// and rectangular (artwork + metadata + progress).
 struct LockScreenPlaybackWidget: Widget {
@@ -147,12 +153,15 @@ struct LockScreenPlaybackWidget: Widget {
         .supportedFamilies([.accessoryCircular, .accessoryInline, .accessoryRectangular])
     }
 }
+#endif
 
 /// The bundle (see the header for the host entry-point pattern).
 struct StreamifyWidgetBundle: WidgetBundle {
     var body: some Widget {
         NowPlayingWidget()
+        #if os(iOS)
         LockScreenPlaybackWidget()
+        #endif
     }
 }
 
@@ -214,6 +223,7 @@ struct NowPlayingWidgetEntryView: View {
     }
 }
 
+#if os(iOS)
 struct LockScreenPlaybackWidgetEntryView: View {
     let entry: PlaybackWidgetEntry
 
@@ -268,6 +278,7 @@ struct LockScreenPlaybackWidgetEntryView: View {
         .widgetURL(URL(string: "streamify://player/open"))
     }
 }
+#endif
 
 /// The pre-first-launch placeholder: an honest "open the app" affordance,
 /// never fabricated track data.
@@ -291,18 +302,35 @@ struct WidgetArtworkView: View {
     var cornerRadius: CGFloat = 8
 
     var body: some View {
+        #if canImport(UIKit)
         if let image = artworkData.flatMap(UIImage.init(data:)) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.quaternary)
-                Image(systemName: "music.note")
-                    .foregroundStyle(.secondary)
-            }
+            placeholder
+        }
+        #elseif canImport(AppKit)
+        if let data = artworkData, let image = NSImage(data: data) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            placeholder
+        }
+        #else
+        placeholder
+        #endif
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(.quaternary)
+            Image(systemName: "music.note")
+                .foregroundStyle(.secondary)
         }
     }
 }
