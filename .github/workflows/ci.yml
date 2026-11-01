@@ -74,7 +74,7 @@ jobs:
 
       # Impact analysis. Skipped on merge_group/push — those events run the
       # FULL matrix (fail-safe: a queue entry must never under-test).
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name == 'pull_request'
         with:

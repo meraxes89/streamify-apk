@@ -87,7 +87,7 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Set up Gradle (with dependency cache)
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
