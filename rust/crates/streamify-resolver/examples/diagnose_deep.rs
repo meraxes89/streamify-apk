@@ -2,7 +2,7 @@
 //! with-vs-without matching User-Agent, plus search-response shape probe.
 
 use serde_json::Value;
-use streamify_resolver::resolver::get_client;
+use streamify_resolver::resolver::{get_client, innertube_client_key};
 
 const VIDEO_ID: &str = "jNQXAC9IVRw";
 
@@ -105,10 +105,12 @@ fn main() {
             "context": { "client": { "clientName": "WEB_REMIX", "clientVersion": "1.20240401.01.00", "hl": "en", "gl": "US" }},
             "query": "never gonna give you up"
         });
-        // Public YouTube Web client Innertube API key (gitleaks:allow)
+        // SEC-07: key resolved through the shared fleet path (env override
+        // → documented public web-client fallback) instead of a split
+        // string literal smuggling the purged android-client key.
         let search_url = format!(
-            "https://music.youtube.com/youtubei/v1/search?alt=json&key={}{}",
-            "AIzaSy", "C9XL3ZjWddXya6X74uM32vM1tl8R0kC8"
+            "https://music.youtube.com/youtubei/v1/search?alt=json&key={}",
+            innertube_client_key(None)
         );
         let resp = get_client()
             .post(&search_url)

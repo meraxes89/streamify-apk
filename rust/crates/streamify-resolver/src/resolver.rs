@@ -63,6 +63,50 @@ pub fn get_client() -> &'static Client {
     })
 }
 
+// ─── SEC-07: InnerTube key plumbing ─────────────────────────────────────
+
+/// Public YouTube Music web-client InnerTube identifier (SEC-07).
+///
+/// This is the client identifier music.youtube.com ships to every browser
+/// — it grants no privileges and owns no billable quota (see the
+/// `public-innertube-web-client-key` allowlist entry in `.gitleaks.toml`
+/// for the full rationale). It is the SAME constant the Kotlin fleet
+/// scrapers ship (CanvasScraperApi / ArtistClipsApi / ReleaseWatcherApi),
+/// kept here as the documented last-resort fallback so the Rust resolver's
+/// degraded search tier stays coherent with the rest of the fleet. The
+/// previous resident of this slot was a *different* hardcoded key the
+/// allowlist did not match — one PR away from breaking preflight (lead
+/// plan R1.6 / SEC-07).
+pub const INNER_TUBE_WEB_CLIENT_KEY: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk";
+
+/// InnerTube base for the legacy WEB_REMIX degraded search tier.
+const INNERTUBE_LEGACY_SEARCH_URL: &str = "https://music.youtube.com/youtubei/v1/search?alt=json";
+
+/// SEC-07: InnerTube key resolution. Precedence:
+/// 1. explicit override (FFI/tests),
+/// 2. the `STREAMIFY_INNERTUBE_KEY` environment variable — the same
+///    fleet/rotation path as `STREAMIFY_BOTGUARD_BIN` and
+///    `STREAMIFY_ZHIPU_KEYS`, so a rotated key can be injected without a
+///    release,
+/// 3. the public web-client fallback constant above.
+pub fn innertube_client_key(key_override: Option<&str>) -> String {
+    if let Some(key) = key_override {
+        return key.to_string();
+    }
+    if let Ok(from_env) = std::env::var("STREAMIFY_INNERTUBE_KEY") {
+        let trimmed = from_env.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+    INNER_TUBE_WEB_CLIENT_KEY.to_string()
+}
+
+/// Build the legacy WEB_REMIX search URL for a resolved key (SEC-07).
+fn innertube_search_url(key: &str) -> String {
+    format!("{INNERTUBE_LEGACY_SEARCH_URL}&key={key}")
+}
+
 /// The FFI entry point. Blocks the calling thread until resolution completes.
 /// Returns the length of the videoId written to out_buf, or negative error code.
 #[no_mangle]
@@ -279,7 +323,10 @@ async fn legacy_innertube_search_candidates(
     cookies: &str,
 ) -> Vec<SearchCandidate> {
     let client = get_client();
-    let url = "https://music.youtube.com/youtubei/v1/search?alt=json&key=AIzaSyC9XL3ZjWddXya6X74uM32vM1tl8R0kC8";
+    // SEC-07: the hardcoded android-client key literal is gone — the URL is
+    // assembled from the resolved key (env override → public web-client
+    // fallback), matching the fleet key contract everywhere else.
+    let url = innertube_search_url(&innertube_client_key(None));
 
     let payload = serde_json::json!({
         "context": {
@@ -1309,5 +1356,59 @@ impl StreamResolver {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod sec07_tests {
+    use super::*;
+
+    /// SEC-07: with no override and no `STREAMIFY_INNERTUBE_KEY` in the
+    /// process environment, resolution lands on the single documented
+    /// public web-client fallback — the SAME string the `.gitleaks.toml`
+    /// allowlist entry `public-innertube-web-client-key` covers. (The
+    /// pre-SEC-07 code hardcoded a *different* key the allowlist did not
+    /// match — lead plan R1.6.)
+    #[test]
+    fn fallback_is_the_allowlisted_web_client_key() {
+        assert_eq!(innertube_client_key(None), INNER_TUBE_WEB_CLIENT_KEY);
+    }
+
+    /// SEC-07: an explicit override always wins (fleet/rotation path). The
+    /// override parameter — not a mutated process environment — is what
+    /// keeps this test race-free under the parallel test harness.
+    #[test]
+    fn explicit_override_wins() {
+        assert_eq!(
+            innertube_client_key(Some("rotated-fleet-key")),
+            "rotated-fleet-key"
+        );
+    }
+
+    /// SEC-07: the legacy WEB_REMIX search URL is assembled from the
+    /// resolved key, byte-identical in shape to the pre-SEC-07 literal
+    /// (`…/search?alt=json&key=…`).
+    #[test]
+    fn search_url_carries_the_resolved_key() {
+        assert_eq!(
+            innertube_search_url("test-key"),
+            "https://music.youtube.com/youtubei/v1/search?alt=json&key=test-key"
+        );
+    }
+
+    /// SEC-07 gate: no InnerTube key material ships in this module beyond
+    /// the single documented public fallback. The purged android-client
+    /// key must not appear anywhere in the resolver source. The probe is
+    /// assembled from fragments so that this test itself does not contain
+    /// the contiguous string it forbids (`include_str!` reads this file).
+    #[test]
+    fn purged_android_client_key_is_gone() {
+        let source = include_str!("resolver.rs");
+        let purged_suffix = ["M32vM1tl", "8R0kC8"].concat();
+        assert!(
+            !source.contains(&purged_suffix),
+            "purged android-client key still present in resolver.rs"
+        );
+        assert!(source.contains(INNER_TUBE_WEB_CLIENT_KEY));
     }
 }
