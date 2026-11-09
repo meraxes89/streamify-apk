@@ -84,7 +84,7 @@ impl VaultCryptoEngine {
         let mut dest_file = File::create(dest_path)
             .map_err(|e| format!("Failed to create destination vault file: {}", e))?;
 
-        let cipher = ChaCha20Poly1305::new(Key::from(Self::derive_v2_key(master_key)));
+        let cipher = ChaCha20Poly1305::new(&Key::from(Self::derive_v2_key(master_key)));
 
         dest_file
             .write_all(VAULT_V2_MAGIC)
@@ -111,7 +111,7 @@ impl VaultCryptoEngine {
             // truncation, reordering and reassembly attacks all fail auth.
             let sealed = cipher
                 .encrypt(
-                    nonce,
+                    &nonce,
                     Payload {
                         msg: &buffer[..bytes_read],
                         aad: &chunk_idx.to_le_bytes(),
@@ -176,7 +176,7 @@ impl VaultCryptoEngine {
 
     /// v2 reader: length-prefixed AEAD chunk records until EOF.
     fn decrypt_v2(mut src_file: File, dest_path: &str, master_key: &[u8]) -> Result<(), String> {
-        let cipher = ChaCha20Poly1305::new(Key::from(Self::derive_v2_key(master_key)));
+        let cipher = ChaCha20Poly1305::new(&Key::from(Self::derive_v2_key(master_key)));
         let mut dest_file = File::create(dest_path)
             .map_err(|e| format!("Failed to create destination decrypted file: {}", e))?;
 
@@ -210,7 +210,7 @@ impl VaultCryptoEngine {
 
             let plain = cipher
                 .decrypt(
-                    Nonce::from(nonce_buf),
+                    &Nonce::from(nonce_buf),
                     Payload {
                         msg: &sealed,
                         aad: &chunk_idx.to_le_bytes(),
@@ -403,7 +403,7 @@ mod tests {
     /// file to the v2 format.
     #[test]
     fn legacy_v1_migration_read_old_write_new() {
-        let plain = b"legacy vault payload — FLAC frame bytes would be here".repeat(300);
+        let plain = b"legacy vault payload - FLAC frame bytes would be here".repeat(300);
         let master_key = MASTER_KEY;
 
         // ── reproduce the v1 writer byte-for-byte (pre-SEC-06 code) ──

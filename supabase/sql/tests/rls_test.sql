@@ -34,7 +34,11 @@ INSERT INTO public.profiles (id, email, display_name, is_admin) VALUES
     ('33333333-3333-4333-8333-333333333333', 'admin@example.com', 'Sireen fan', TRUE),
     -- the pre-SEC-10 hardcoded maintainer email, flag OFF → MUST NOT be admin.
     ('44444444-4444-4444-8444-444444444444', 'sireenyadav@gmail.com', 'Sireen', FALSE),
-    ('55555555-5555-4555-8555-555555555555', 'carol@example.com', 'Carol', FALSE);
+    ('55555555-5555-4555-8555-555555555555', 'carol@example.com', 'Carol', FALSE)
+ON CONFLICT (id) DO UPDATE
+SET email = EXCLUDED.email,
+    display_name = EXCLUDED.display_name,
+    is_admin = EXCLUDED.is_admin;
 
 INSERT INTO public.tracks (id, title, artist, created_by) VALUES
     ('seed-track-1', 'Seeded Track', 'Seeded Artist', NULL);
