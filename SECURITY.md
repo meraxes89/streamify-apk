@@ -77,4 +77,21 @@ runbook and the audit trail instead:
 | InnerTube web-client key | `.gitleaks.toml` allowlisted public constant (SEC-07) | documented, non-billable |
 | Supabase URL / anon key / OAuth client ID | `app/build.gradle.kts` BuildConfig defaults | public-by-design (RLS is the fence, SEC-10) |
 | service_role key | git history only (SEC-01) | **rotation pending — see runbook above** |
-| Signing / release secrets | GitHub environments | environment protection added under GOV-05 |
+| `GEMINI_API_KEY` | repo-level secret (the only one) — consumed solely by `gemini.yml`, never by a release lane | out of release scope by construction (GOV-05) |
+| Signing secrets (`RELEASE_KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) | **`release` GitHub environment** (GOV-05): reviewer-gated, deployable only from `v*` tags — no PR lane, branch or scheduled job can read them | **lead action pending: enter the 4 values in the environment** — they were never present at repo level, and the Secrets API is write-only (values cannot be migrated by an agent) |
+
+#### Release environment runbook (GOV-05)
+
+The Android release lane (`release.yml` tag push → `_ci-android.yml` `release_mode: true`) uses
+exactly four credentials — the SEC-04 keystore decode (`RELEASE_KEYSTORE_B64`) and the three
+`assembleRelease` signing parameters (`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`). All four
+now live behind the protected `release` environment: a reviewer must approve each deployment, and
+the environment only accepts `v*` tags. To finish the migration (one-time, repo admin):
+
+1. GitHub → repo **Settings → Environments → release → Add secret** — create the four secrets with
+   the exact names above and the real keystore values.
+2. Confirm no signing secret exists at **Settings → Secrets and variables → Actions** (repo level
+   must stay empty of signing material — that is the whole point: `secrets: inherit` from
+   `release.yml` can then never leak a signing secret to a non-release lane).
+3. Prove it: push a `v*` tag — the assemble job pauses for reviewer approval, then signs; a
+   deliberate push of the same workflow from any branch shows `RELEASE_KEYSTORE_B64` unresolved.

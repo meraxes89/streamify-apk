@@ -5,8 +5,31 @@ on:
   schedule:
     - cron: "30 6 * * *" # daily; registry rot is detected before users feel it
 
+# GOV-05 (2026-11-09): the self-heal rotation no longer force-commits to
+# `main`. The `main-branch-protection` ruleset (GOV-01, active since
+# 2026-10-27) rejects every direct push — the nightly canary failed four
+# nights in a row (2026-10-31 .. 2026-11-03) at exactly that step. The
+# rotation now lands as a REVIEWED PULL REQUEST from the evergreen
+# `bot/fleet-rotation` branch: force-push moves the branch (any open
+# rotation PR auto-updates), and `gh pr create` opens one when none
+# exists. CODEOWNERS routes the review; the ruleset keeps `main`
+# merge-gated behind the blocking CI check.
+#
+# The commit keeps its `[skip ci]` marker: PRs opened with GITHUB_TOKEN
+# do not trigger `pull_request` workflows anyway (GitHub's token-event
+# recursion guard), and a fleet rotation is a data-only change to
+# fleet-config.json — the review gate is the human, not a rebuild.
 permissions:
+  # contents: write — create/move the bot branch.
+  # pull-requests: write — open and comment on the rotation PR.
   contents: write
+  pull-requests: write
+
+# Serialize schedule/dispatch races so two probes can never interleave
+# their branch pushes (the second run waits; its probe supersedes).
+concurrency:
+  group: resolver-canary
+  cancel-in-progress: false
 
 jobs:
   probe:
@@ -76,19 +99,58 @@ jobs:
             echo "⚠️ Licensed probe degraded (non-bot-wall reasons) — watch for user reports." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: 🔄 Self-heal — write winning fleet into fleet-config.json
+      - name: 🔄 Self-heal — compute winning fleet into fleet-config.json
         run: |
           python3 tools/write_fleet_config.py /tmp/probe.txt fleet-config.json
           cat fleet-config.json
 
-      - name: Commit rotated fleet config (drives live apps without a release)
+      # ── GOV-05: rotation lands as a REVIEWED PR, not a direct push ──────
+      # Evergreen branch `bot/fleet-rotation`: a force-push moves it (any
+      # open rotation PR auto-updates in place); a fresh PR is opened only
+      # when none exists. Unchanged config → no branch movement, no PR.
+      - name: "Open rotation PR (evergreen bot/fleet-rotation branch)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [[ -n "$(git status --porcelain fleet-config.json)" ]]; then
-            git add fleet-config.json
-            git commit -m "ci(fleet): rotate client fleet from canary probe [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME:-main}
+
+          if [[ -z "$(git status --porcelain fleet-config.json)" ]]; then
+            echo "fleet-config.json unchanged — fleet healthy, nothing to rotate."
+            exit 0
+          fi
+
+          DATE=$(date -u +%F)
+          {
+            echo "### 🔄 Resolver fleet rotation (${DATE})"
+            echo
+            echo "Nightly canary probe (bare-client × content matrix) found a healthier client ladder. The winning fleet is written into \`fleet-config.json\` and shipped to live apps once this PR merges — no release needed."
+            echo
+            echo "#### Probe matrix"
+            echo '```'
+            cat /tmp/probe.txt
+            echo '```'
+            echo
+            echo "- licensed verdict: \`${licensed:-unknown}\` (bot-wall aware, non-gating)"
+            echo "- data-only change: \`fleet-config.json\` — carries \`[skip ci]\` by design (GOV-05 note in resolver-canary.yml)."
+            echo "- review: routed by CODEOWNERS; \`main\` stays behind the blocking CI gate."
+          } > /tmp/rotation_pr_body.md
+
+          git checkout -B bot/fleet-rotation
+          git add fleet-config.json
+          git commit -m "ci(fleet): rotate client fleet from canary probe [skip ci]"
+          git push --force origin HEAD:refs/heads/bot/fleet-rotation
+
+          PR_NUM=$(gh pr list --head bot/fleet-rotation --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -n "${PR_NUM}" ]]; then
+            echo "Open rotation PR #${PR_NUM} found — branch force-push already updated it; annotating with tonight's probe."
+            gh pr comment "${PR_NUM}" --body-file /tmp/rotation_pr_body.md
           else
-            echo "fleet-config.json unchanged — fleet healthy"
+            gh pr create \
+              --head bot/fleet-rotation \
+              --base "${BASE_BRANCH}" \
+              --title "ci(fleet): rotate resolver client fleet (${DATE})" \
+              --body-file /tmp/rotation_pr_body.md
           fi

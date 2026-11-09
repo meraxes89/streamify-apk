@@ -92,6 +92,14 @@ jobs:
     name: ${{ inputs.release_mode && 'Assemble release APK (signed)' || 'Assemble debug APK (universal 2-ABI)' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # GOV-05: release signing secrets (RELEASE_KEYSTORE_B64, KEYSTORE_PASSWORD,
+    # KEY_ALIAS, KEY_PASSWORD) live ONLY in the protected `release` GitHub
+    # environment — tag-scoped to `v*` and reviewer-gated, so no PR lane, no
+    # scheduled job and no arbitrary branch can ever read a signing secret.
+    # On the PR path (release_mode: false) the expression resolves to an
+    # empty string = NO environment: the debug lane runs exactly as before,
+    # and can never see the environment's secrets.
+    environment: ${{ inputs.release_mode && 'release' || '' }}
     steps:
       - uses: actions/checkout@v7
 

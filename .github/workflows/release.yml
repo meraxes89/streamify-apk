@@ -18,6 +18,16 @@
 #
 # publish-release downloads every artifact, emits SHA256SUMS, and attaches
 # all binaries to the GitHub Release.
+#
+# GOV-05 (2026-11-09): the signing lane (_ci-android assemble-apk) and this
+# workflow's publish gate both run inside the protected `release` GitHub
+# environment (reviewer-gated, deployable only from `v*` tags). The four
+# signing secrets (RELEASE_KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS,
+# KEY_PASSWORD) were NEVER present at repo level (the repo carried exactly
+# one secret, GEMINI_API_KEY) — they are defined in the `release`
+# environment and visible to no other workflow, event or branch. A
+# reviewer approval is required per deployment: the release ships when a
+# human says so, not when a tag is pushed.
 # ============================================================================
 name: Release
 
@@ -69,6 +79,10 @@ jobs:
     needs: [engine, android, desktop, apple]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # GOV-05: the actual publish (Release creation + binary attach) sits in
+    # the protected `release` environment — a reviewer must approve the
+    # deployment before anything becomes public.
+    environment: release
     steps:
       - name: Download Android release APK
         uses: actions/download-artifact@v8
