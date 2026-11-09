@@ -113,8 +113,21 @@ jobs:
           set +e
           cargo check --manifest-path rust/Cargo.toml --lib --target aarch64-apple-ios --quiet
           device_status=$?
+
+          # TRUTH-01 env fix (first CI pass): the SIM check tripped
+          # rquickjs-sys's bindgen — clang parses the rust triple
+          # 'aarch64-apple-ios-sim' as an invalid VERSION ("version 'sim'
+          # in target triple ... is invalid") and without an -isysroot it
+          # cannot even find stdio.h. Point bindgen's clang at the iOS
+          # Simulator SDK with the clang-spelled triple; a trailing
+          # --target overrides the rustc-spelled one. The device check
+          # above stays untouched (it compiles as-is).
+          SIM_SDKROOT="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          export SDKROOT="$SIM_SDKROOT"
+          export BINDGEN_EXTRA_CLANG_ARGS="--target=arm64-apple-ios-simulator -isysroot $SIM_SDKROOT"
           cargo check --manifest-path rust/Cargo.toml --lib --target aarch64-apple-ios-sim --quiet
           sim_status=$?
+          unset SDKROOT BINDGEN_EXTRA_CLANG_ARGS
           set -e
           if [ "$device_status" -eq 0 ] && [ "$sim_status" -eq 0 ]; then
             echo "ENGINE_APPLE_BUILDABLE=1" >> "$GITHUB_ENV"

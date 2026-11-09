@@ -372,7 +372,15 @@ mod tests {
     /// produced deterministic, replayable ciphertext).
     #[test]
     fn v2_known_plaintext_distinct_ciphertexts() {
-        let plain = vec![0x42u8; 4096];
+        // Two identical maximum-size chunks in ONE vault: the writer
+        // streams CHUNK_SIZE per record, so a 2xCHUNK_SIZE plaintext
+        // yields exactly two records — identical plaintext, distinct
+        // chunk_idx AAD, fresh independent nonces. (The first CI pass of
+        // this test used a 4096-byte plaintext: with CHUNK_SIZE = 64 KiB
+        // that is ONE record, and the hard-coded two-record slicing
+        // panicked — range end 8274 for a 4146-byte vault.)
+        let chunk = VaultCryptoEngine::CHUNK_SIZE;
+        let plain = vec![0x42u8; 2 * chunk];
         let src = write_temp("kp-src", &plain);
         let vault_a = write_temp("kp-a", b"");
         let vault_b = write_temp("kp-b", b"");
@@ -383,15 +391,17 @@ mod tests {
         let (a, b) = (read_all(&vault_a), read_all(&vault_b));
         assert_ne!(a, b, "two encryptions of the same file must differ");
 
-        // Within one vault, the two identical chunks (offset by the record
-        // framing) must also differ: chunk AAD equal, nonce different.
+        // v2 record layout: ct_len:u32 || nonce:12 || ct_and_tag.
+        // The two identical chunks (offset by the record framing) must
+        // differ: same plaintext, different nonce and different AAD.
         let hdr = VAULT_V2_MAGIC.len();
-        let rec0 = &a[hdr..hdr + 4 + 12 + 4096 + 16];
-        let rec1 = &a[hdr + 4 + 12 + 4096 + 16..hdr + 2 * (4 + 12 + 4096 + 16)];
+        let rec = 4 + 12 + chunk + 16;
+        let rec0 = &a[hdr..hdr + rec];
+        let rec1 = &a[hdr + rec..hdr + 2 * rec];
         assert_ne!(&rec0[4..16], &rec1[4..16], "per-chunk nonces must differ");
         assert_ne!(
-            &rec0[16..16 + 4096 + 16],
-            &rec1[16..16 + 4096 + 16],
+            &rec0[16..16 + chunk + 16],
+            &rec1[16..16 + chunk + 16],
             "identical plaintext chunks must seal to distinct ciphertext"
         );
     }
