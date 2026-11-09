@@ -60,7 +60,7 @@ final class UniFFIContractTests: XCTestCase {
     /// crosses INTO Rust (enqueue) and back OUT (get_queue) field-for-field.
     func testTrackInstantiatesAndRoundTripsThroughTheQueue() throws {
         let engine = try makeEngine()
-        defer { engine.clearQueue() }
+        defer { try? engine.clearQueue() } // defer body cannot propagate FFI errors
 
         let track = Track(
             id: "swiftlane_01_abcdefghij",
@@ -89,7 +89,7 @@ final class UniFFIContractTests: XCTestCase {
         XCTAssertEqual(item.track.isExplicit, track.isExplicit)
         XCTAssertEqual(item.track.resolvedStreamUrl, track.resolvedStreamUrl)
 
-        engine.clearQueue()
+        try engine.clearQueue()
         XCTAssertTrue(try engine.getQueue().isEmpty) // idempotent clear
     }
 
@@ -146,7 +146,7 @@ final class UniFFIContractTests: XCTestCase {
     /// SW-ENG1-04: the push-event bridge — a control-plane mutation on the
     /// engine surfaces as an AsyncStream element through the gateway's
     /// EngineEventListener bridge (Rust worker thread → Swift stream).
-    func testPushEventBridgeDeliversSnapshotsIntoTheAsyncStream() throws {
+    func testPushEventBridgeDeliversSnapshotsIntoTheAsyncStream() async throws {
         let gateway = try UniFFIEngineGateway()
         defer { gateway.shutdown() }
 
