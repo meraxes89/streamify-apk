@@ -2,8 +2,8 @@ import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The REAL engine lane: direct Swift UniFFI bindings from Alpha's
-// StreamifyCore.xcframework (`uniffi_streamify` module). Compiled strictly
-// behind `#if canImport(uniffi_streamify)` — until the xcframework is
+// StreamifyCore.xcframework (`streamifyFFI` module). Compiled strictly
+// behind `#if canImport(streamifyFFI)` — until the xcframework is
 // linked this whole type is absent, the shell falls back to the preview
 // gateway, and the scaffold compiles standalone. The mapping below follows
 // the frozen UDL contract (rust/crates/streamify-contract/src/streamify.udl);
@@ -11,7 +11,7 @@ import Foundation
 // iosApp/Frameworks/, this lane activates with zero edits anywhere else
 // (same philosophy as the desktop CI's Windows probe-gate).
 //
-// ZERO Kotlin/Native double-bridge (MP-DEC-02): SwiftUI → uniffi_streamify
+// ZERO Kotlin/Native double-bridge (MP-DEC-02): SwiftUI → streamifyFFI
 // Swift proxies → the staticlib's uniffi_* C ABI. Nothing in between.
 //
 // SW-ENG1-04 (this revision):
@@ -27,8 +27,8 @@ import Foundation
 //     op in the house direct-call style.
 // ─────────────────────────────────────────────────────────────────────────────
 
-#if canImport(uniffi_streamify)
-import uniffi_streamify
+#if canImport(streamifyFFI)
+import streamifyFFI
 
 final class UniFFIEngineGateway: EngineGateway {
 

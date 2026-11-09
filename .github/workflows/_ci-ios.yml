@@ -16,7 +16,7 @@
 #     built (or restored from the content-addressed cache) and staged at
 #     iosApp/Frameworks/ BEFORE `xcodebuild test`, so Package.swift's
 #     conditional binary target activates the REAL engine lane and the
-#     28 `#if canImport(uniffi_streamify)` UniFFI contract tests in
+#     28 `#if canImport(streamifyFFI)` UniFFI contract tests in
 #     EngineTests/UniFFIContractTests.swift actually execute. This is
 #     the first time Gate 2 of SWIFT_MIGRATION_PLAN.MD has ever run.
 # ============================================================================
@@ -195,7 +195,7 @@ jobs:
           ls -la iosApp/Frameworks/ iosApp/Sources/StreamifyIOS/Generated/ || true
 
       # ── 3. iOS Simulator Test Pass (REAL lane, headless xcodebuild) ───────
-      # With the framework staged, the 28 #if canImport(uniffi_streamify)
+      # With the framework staged, the 28 #if canImport(streamifyFFI)
       # tests in EngineTests/UniFFIContractTests.swift execute for the
       # first time (SWIFT_MIGRATION_PLAN Gate 2). No -quiet:
       # assertion-level failure messages are the primary debugging surface.

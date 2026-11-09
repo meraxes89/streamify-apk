@@ -23,7 +23,7 @@
 #      link-time dependency), and the XCFramework guarantees they ARE
 #      present in the final app link.
 #    * the UniFFI Swift FFI module: `uniffi-bindgen --language swift`
-#      emits the C header + module map that expose the `uniffi_streamify`
+#      emits the C header + module map that expose the `streamifyFFI`
 #      C module FROM the xcframework itself (SW-DEC-01 / MP-DEC-02: Swift
 #      consumes the generated module directly out of StreamifyCore — no
 #      Kotlin/Native, no Obj-C shim in between).
@@ -59,14 +59,14 @@
 #    version lockstep with the Cargo.toml entry — same discipline as the
 #    Gradle `generateUniffiKotlinBindings` task) emits:
 #      * streamify.swift          — the Swift bindings source;
-#      * uniffi_streamifyFFI.h    — the extern-C surface;
-#      * uniffi_streamify.modulemap.
+#      * streamifyFFI.h    — the extern-C surface;
+#      * streamify.swift + streamifyFFI.h (module map: module streamifyFFI).
 #    The FFI header + a generated module.modulemap are installed into
-#    every slice's headers/, so `import uniffi_streamify` resolves the
+#    every slice's headers/, so `import streamifyFFI` resolves the
 #    moment an SPM binaryTarget links this xcframework. The .swift
 #    source is copied to <output>/swift/ AND (by default) dropped into
 #    iosApp/Sources/StreamifyIOS/Generated/ wrapped in a
-#    `#if canImport(uniffi_streamify)` probe-gate, which lights the real
+#    `#if canImport(streamifyFFI)` probe-gate, which lights the real
 #    engine lane up the moment the framework is linked — the same
 #    philosophy as the desktop CI's Windows probe-gate.
 #
@@ -125,6 +125,16 @@ if [[ "${STAGE_ONLY}" -eq 1 ]]; then
     cp -R "${SRC_FW}" "${DST_FW}"
     echo "── staged xcframework → iosApp/Frameworks/StreamifyCore.xcframework"
     SWIFT_SRC="$(ls "${OUTPUT_DIR}"/swift/*.swift 2>/dev/null | head -1 || true)"
+    # The wrapper gate must name the SAME FFI module the modulemap declares
+    # (the bindings' own top lines import it). Derive from the staged
+    # xcframework's module.modulemap instead of hard-coding the module name.
+    FFI_GATE="streamifyFFI"
+    MODULEMAP="$(find "${DST_FW}" -name module.modulemap 2>/dev/null | head -1 || true)"
+    if [[ -n "${MODULEMAP}" ]]; then
+        FFI_GATE="$(sed -nE 's/^module ([A-Za-z0-9_]+) \{/\1/p' "${MODULEMAP}" | head -1 || true)"
+    fi
+    [[ -z "${FFI_GATE}" ]] && FFI_GATE="streamifyFFI"
+    echo "── stage-only FFI module gate: ${FFI_GATE}"
     if [[ -n "${SWIFT_SRC}" ]]; then
         GENERATED_DIR="${REPO_ROOT}/iosApp/Sources/StreamifyIOS/Generated"
         mkdir -p "${GENERATED_DIR}"
@@ -133,8 +143,8 @@ if [[ "${STAGE_ONLY}" -eq 1 ]]; then
             echo "// Regenerate: ./scripts/build_ios_xcframework.sh"
             echo "// Probe-gated: compiles to nothing until StreamifyCore.xcframework is"
             echo "// linked (Package.swift conditional binary target), mirroring the"
-            echo "// #if canImport(uniffi_streamify) discipline in Engine/."
-            echo "#if canImport(uniffi_streamify)"
+            echo "// #if canImport(${FFI_GATE}) discipline in Engine/."
+            echo "#if canImport(${FFI_GATE})"
             cat "${SWIFT_SRC}"
             echo ""
             echo "#endif"
@@ -330,15 +340,18 @@ if [[ "${SKIP_BINDINGS}" -ne 1 ]]; then
         ls -la "${BINDINGS_DIR}" >&2
         exit 70
     fi
-    # Probe the FFI module name from the bindings source (uniffi 0.28
-    # default: `import uniffi_streamify`). The probe makes the assembly
-    # robust against generator-default drift instead of hard-coding it.
-    FFI_MODULE="$(sed -nE 's/^import (uniffi_[A-Za-z0-9_]+)$/\1/p' "${SWIFT_BINDINGS_FILE}" | head -1 || true)"
+    # Probe the FFI module name from the bindings source. uniffi 0.28 names
+    # the C module <crate>FFI: the bindings carry `#if canImport(streamifyFFI)
+    # / import streamifyFFI` (INDENTED, not prefixed uniffi_* — the first CI
+    # pass fell back to the default, the modulemap declared the wrong module
+    # name and RustBuffer et al. never resolved).
+    FFI_MODULE="$(sed -nE 's/^[[:space:]]*import ([A-Za-z0-9_]+FFI)$/\1/p' "${SWIFT_BINDINGS_FILE}" | head -1 || true)"
+    [[ -z "${FFI_MODULE}" ]] && FFI_MODULE="$(sed -nE 's/^import (uniffi_[A-Za-z0-9_]+)$/\1/p' "${SWIFT_BINDINGS_FILE}" | head -1 || true)"
     [[ -z "${FFI_MODULE}" ]] && FFI_MODULE="uniffi_streamify"
     echo "── Swift FFI module: ${FFI_MODULE} (from ${SWIFT_BINDINGS_FILE##*/})"
-    if [[ "${FFI_MODULE}" != "uniffi_streamify" ]]; then
+    if [[ "${FFI_MODULE}" != "streamifyFFI" ]]; then
         echo "   NOTE: generator emitted module \`${FFI_MODULE}\` — the Swift package's" >&2
-        echo "   probe-gates expect \`uniffi_streamify\`; align [bindings.swift] config." >&2
+        echo "   probe-gates expect \`streamifyFFI\`; align [bindings.swift] config." >&2
     fi
 else
     echo "── [3/6] Swift bindings SKIPPED (--skip-bindings)"
@@ -395,7 +408,7 @@ mkdir -p "${OUTPUT_DIR}"
 echo "── [5/6] xcodebuild -create-xcframework"
 
 #  Per-slice header dirs. The two C ABI headers are the glue surface; the
-#  UniFFI FFI header + module.modulemap expose the `uniffi_streamify`
+#  UniFFI FFI header + module.modulemap expose the `streamifyFFI`
 #  C module FROM the xcframework (SW-DEC-01: Swift consumes the generated
 #  module directly out of StreamifyCore — nothing else in between).
 make_headers() {  # $1 = destination dir
@@ -501,7 +514,7 @@ if [[ "${SKIP_BINDINGS}" -ne 1 ]]; then
             echo "// Regenerate: ./scripts/build_ios_xcframework.sh"
             echo "// Probe-gated: compiles to nothing until StreamifyCore.xcframework is"
             echo "// linked (Package.swift conditional binary target), mirroring the"
-            echo "// #if canImport(uniffi_streamify) discipline in Engine/."
+            echo "// #if canImport(${FFI_MODULE}) discipline in Engine/."
             echo "#if canImport(${FFI_MODULE})"
             cat "${SWIFT_BINDINGS_FILE}"
             echo ""

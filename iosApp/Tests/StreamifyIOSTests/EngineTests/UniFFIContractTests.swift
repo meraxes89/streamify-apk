@@ -5,7 +5,7 @@ import XCTest
 // SW-ENG1-03 / SW-ENG1-04: the UniFFI contract tests.
 //
 // TWO LANES, ONE FILE:
-//   * The REAL-LANE suite (gated on `#if canImport(uniffi_streamify)`)
+//   * The REAL-LANE suite (gated on `#if canImport(streamifyFFI)`)
 //     runs only when StreamifyCore.xcframework is linked (the conditional
 //     binary target in Package.swift). It proves Swift correctly
 //     instantiates and deserializes Track, SearchResult and EqualizerBand
@@ -18,7 +18,7 @@ import XCTest
 //     in every configuration, including the standalone CI lane.
 // ─────────────────────────────────────────────────────────────────────────────
 
-#if canImport(uniffi_streamify)
+#if canImport(streamifyFFI)
 
 final class UniFFIContractTests: XCTestCase {
 
@@ -170,7 +170,7 @@ final class UniFFIContractTests: XCTestCase {
     }
 }
 
-#endif  // canImport(uniffi_streamify)
+#endif  // canImport(streamifyFFI)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALWAYS-ON: the lane-neutral typed surface (runs in every configuration).

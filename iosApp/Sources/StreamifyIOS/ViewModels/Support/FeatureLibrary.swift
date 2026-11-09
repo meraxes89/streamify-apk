@@ -11,7 +11,7 @@ import Foundation
 // `PreviewEngineGateway` for the playback lane, this ONE protocol is the
 // probe-gated seam: the preview library keeps the shell fully navigable
 // today, and the real lane (`UniFFIFeatureLibrary` behind
-// `#if canImport(uniffi_streamify)`) lights up without a single edit in any
+// `#if canImport(streamifyFFI)`) lights up without a single edit in any
 // view model.
 //
 // Every requirement has a default (empty/idle) implementation below, so test
