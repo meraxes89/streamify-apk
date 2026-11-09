@@ -46,6 +46,23 @@ val googleWebClientId: String = localProperties.getProperty("GOOGLE_WEB_CLIENT_I
     ?: System.getenv("GOOGLE_WEB_CLIENT_ID")
     ?: "868888425624-9dfr5crtahiqph68tiba1acapvicnsug.apps.googleusercontent.com"
 
+// SEC-08: ZhipuAI (GLM) provider configuration. The hardcoded fallback key
+// pool and endpoint literal were removed from ZhipuAiEngine.kt — five
+// billable API keys shipped inside every APK's DEX. Both values are now
+// injected the same way as SUPABASE_ANON_KEY: local.properties or build
+// environment, with an EMPTY default. An unconfigured build compiles and
+// runs with AI-assist degraded off (ZhipuAiEngine.isConfigured == false);
+// dogfood builds can additionally configure the runtime pool via the
+// STREAMIFY_ZHIPU_KEYS process environment proxied by the native bridge
+// (jni_bridge.cc, SEC-03). The five exposed keys are burned and must be
+// revoked at the provider regardless.
+val zhipuApiUrl: String = localProperties.getProperty("ZHIPU_API_URL")
+    ?: System.getenv("ZHIPU_API_URL")
+    ?: ""
+val zhipuApiKeys: String = localProperties.getProperty("ZHIPU_API_KEYS")
+    ?: System.getenv("STREAMIFY_ZHIPU_KEYS")
+    ?: ""
+
 // 1. Resolve flags at configuration time via Provider API (Configuration-Cache Safe!)
 val ciPrebuiltNativeDir: String? = providers.gradleProperty("ciPrebuiltNativeDir").orNull
 
@@ -100,6 +117,10 @@ android {
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
+        // SEC-08: provider endpoint + optional build-time key pool — empty
+        // defaults mean "AI assist off" (see the zhipuApi* declarations).
+        buildConfigField("String", "ZHIPU_API_URL", "\"$zhipuApiUrl\"")
+        buildConfigField("String", "ZHIPU_API_KEYS", "\"$zhipuApiKeys\"")
         buildConfigField("String", "ADMIN_EMAIL", "\"sireenyadav@gmail.com\"")
 
         // MP-HAL07 (Phase 4a): dogfood toggle for the Rust/native f32

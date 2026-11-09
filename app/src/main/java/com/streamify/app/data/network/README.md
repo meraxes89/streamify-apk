@@ -35,7 +35,7 @@ how candidates are found in the first place. Deep-dive docs:
 **AI providers**
 | File | What it is |
 |---|---|
-| `ZhipuAiEngine.kt` | GLM-4-Flash with pooled-key round-robin. |
+| `ZhipuAiEngine.kt` | GLM-4-Flash chat completions; key pool + endpoint are env/build injected (SEC-08), no embedded credentials — unconfigured builds degrade to AI-off. |
 | `SmartAcousticEngine.kt` | AI mastering EQ curves. |
 | `PersonaEngine.kt` | Circadian listening-persona analysis. |
 

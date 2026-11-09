@@ -27,6 +27,7 @@ This ledger records the official consensus decisions, status of execution items,
 - [ ] **SEC-03**: Strip plaintext `ZHIPU_KEYS[]` array from `native/jni/jni_bridge.cc:771–777` and proxy through backend.
 - [ ] **SEC-04**: Disable silent debug-keystore fallback in release builds (`build.gradle.kts:69–84`) and pin updater certificate signature.
 - [ ] **SEC-05**: Add `gitleaks` step to GitHub Actions PR and push validation workflows.
+- [x] **SEC-08** *(lead plan Horizon 0 / DROID)*: Remove the hardcoded ZhipuAI `FALLBACK_KEYS` pool from `ZhipuAiEngine.kt` — five billable keys shipped in every APK. Key pool + endpoint are now build/runtime injected (`ZHIPU_API_URL`, `ZHIPU_API_KEYS` / `STREAMIFY_ZHIPU_KEYS`); unconfigured builds degrade to AI-off. **Lead action still required: revoke the five burned keys at the provider console.**
 
 ### 🧹 Phase 0: Dead-Code Amputation & Reverse Parity Enforcement
 - [ ] **AMP-01**: Delete `native/jni/jni_bridge_native_dsp_engine.cc` (~450 LOC).
