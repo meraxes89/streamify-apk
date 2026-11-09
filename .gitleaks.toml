@@ -17,9 +17,19 @@
 #     gcp-api-key rule only flagged the NEW Swift port because gitleaks
 #     scans the PR diff, not history.
 #
-# Scope: the allowlist matches the exact key string only. It is referenced
-# once, as a documented constant (InnerTubeFleet.innertubeWebClientKey).
-# Every other default rule stays fully active.
+# Scope (reconciled by SEC-07 — lead plan R1.6): this is the ONLY
+# InnerTube key string in the tree, referenced as documented constants in
+# exactly two places —
+#   * the Kotlin fleet scrapers (CanvasScraperApi / ArtistClipsApi /
+#     ReleaseWatcherApi URL literals), and
+#   * the Rust resolver's fallback constant
+#     (`rust/crates/streamify-resolver/src/resolver.rs`,
+#     `INNER_TUBE_WEB_CLIENT_KEY`), overridable at runtime via the
+#     `STREAMIFY_INNERTUBE_KEY` environment variable.
+# The previously hardcoded *android-client* key at resolver.rs:282 — a
+# different string this allowlist never matched, one PR away from breaking
+# preflight — was purged by SEC-07. Every other default rule stays fully
+# active.
 # ─────────────────────────────────────────────────────────────────────────────
 
 [extend]

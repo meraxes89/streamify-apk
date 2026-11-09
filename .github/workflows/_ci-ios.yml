@@ -1,9 +1,12 @@
 # ============================================================================
 # _ci-ios.yml — Tier 2 reusable spoke: Apple Unified Lane (resp8/resp9).
 # Combines iOS Swift tests, XCFramework probe, macOS engine cdylib build,
-# and macOS desktop UI & JNA smoke suite into ONE SINGLE macos-14 runner job.
+# and macOS desktop UI & JNA smoke suite into ONE SINGLE macos-15 runner job.
 #
-# Eliminates macOS runner queue starvation and prevents 15-minute queue timeouts.
+# Runner label history: macos-14 until 2026-11-09, then migrated to macos-15
+# after GitHub retired the macOS 14 image on 2026-11-02 (github.blog
+# changelog 2026-10-01) — post-retirement the dead label instant-cancels
+# every Apple-lane job with no runner assigned, folding red into ci-gate.
 # ============================================================================
 name: CI Apple Unified (iOS & macOS)
 
@@ -25,7 +28,7 @@ permissions:
 jobs:
   apple:
     name: "Apple Unified (iOS Tests, XCFramework, macOS Desktop)"
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     env:
       STREAMIFY_IOS_PROFILE: ${{ inputs.release_mode && 'release' || 'debug' }}

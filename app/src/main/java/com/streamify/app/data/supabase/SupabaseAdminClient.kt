@@ -84,9 +84,11 @@ internal object SupabaseAdminClient {
                     val o = arr.getJSONObject(i)
                     val uId = o.optString("id", "")
                     val uEmail = o.optString("email", "")
+                    // SEC-09: identity is row id / email equality with the signed-in
+                    // user only — the old `contains("sireenyadav")` clause merged
+                    // local telemetry into the maintainer's row from ANY device.
                     val isCurrent = (uId.isNotBlank() && uId == currentLocalUser?.id) ||
                             (uEmail.isNotBlank() && uEmail.equals(currentLocalUser?.email, ignoreCase = true)) ||
-                            uEmail.contains("sireenyadav", ignoreCase = true) ||
                             (currentLocalUser == null && i == 0)
 
                     var rawListeningSeconds = o.optLong("listening_seconds", 0L)
