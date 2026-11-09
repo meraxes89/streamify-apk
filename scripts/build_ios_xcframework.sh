@@ -247,7 +247,7 @@ for target in "${BUILD_TARGETS[@]}"; do
             ( cd "${RUST_DIR}" && \
               IPHONEOS_DEPLOYMENT_TARGET=17.0 \
               SDKROOT="${IPHONESIM_SDK_PATH}" \
-              BINDGEN_EXTRA_CLANG_ARGS="--target=${target/aarch64/arm64}-simulator -isysroot ${IPHONESIM_SDK_PATH}" \
+              BINDGEN_EXTRA_CLANG_ARGS="--target=${target/-sim/-simulator} -isysroot ${IPHONESIM_SDK_PATH}" \
               cargo build --target "${target}" --profile "${PROFILE}" --lib )
             ;;
         *-apple-ios)
