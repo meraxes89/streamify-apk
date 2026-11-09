@@ -150,7 +150,7 @@ final class EqualizerViewModel {
     }
 
     /// The RBJ peaking-EQ transfer function evaluated at `hz`.
-    static func peakingTransfer(band: EqualizerBand, at hz: Double) -> Complex? {
+    static func peakingTransfer(band: EqualizerBandUI, at hz: Double) -> Complex? {
         let fs = EqualizerViewModel.previewSampleRateHz
         guard (0..<fs / 2).contains(hz), band.q > 0 else { return nil }
 
@@ -177,7 +177,7 @@ final class EqualizerViewModel {
 
     // MARK: - Projections
 
-    var bands: [EqualizerBand] { profile.bands }
+    var bands: [EqualizerBandUI] { profile.bands }
     var isEnabled: Bool { profile.isEnabled }
     var preampDb: Double { profile.preampDb }
     var isLimiterEnabled: Bool { profile.limiterEnabled }

@@ -36,7 +36,7 @@ enum SearchResultKind: String, Equatable, Sendable, CaseIterable, Identifiable {
 }
 
 /// One resolved search row (local library or online resolver hit).
-struct SearchResult: Equatable, Sendable, Identifiable {
+struct SearchRow: Equatable, Sendable, Identifiable {
     let id: String
     let title: String
     let uploader: String
@@ -346,7 +346,7 @@ struct IngestionTask: Equatable, Sendable, Identifiable {
 
 // MARK: - Equalizer (10-band, mirror of the Rust streamify-dsp EQ plane)
 
-struct EqualizerBand: Equatable, Sendable, Identifiable {
+struct EqualizerBandUI: Equatable, Sendable, Identifiable {
     let index: Int
     let centerHz: Double
     var gainDb: Double
@@ -364,7 +364,7 @@ struct EqualizerBand: Equatable, Sendable, Identifiable {
 struct EqualizerProfile: Equatable, Sendable {
     var isEnabled: Bool
     var preampDb: Double
-    var bands: [EqualizerBand]
+    var bands: [EqualizerBandUI]
     var limiterEnabled: Bool
     /// True-peak limiter ceiling (dBFS); mirrors TRUE_PEAK_CEILING_DBFS.
     var limiterCeilingDb: Double
@@ -377,9 +377,9 @@ struct EqualizerProfile: Equatable, Sendable {
     static let qRange: ClosedRange<Double> = 0.4...4.0
     static let truePeakCeilingDb = -1.0
 
-    static func flatBands(q: Double = 1.0) -> [EqualizerBand] {
+    static func flatBands(q: Double = 1.0) -> [EqualizerBandUI] {
         bandFrequencies.enumerated().map {
-            EqualizerBand(index: $0.offset, centerHz: $0.element, gainDb: 0, q: q)
+            EqualizerBandUI(index: $0.offset, centerHz: $0.element, gainDb: 0, q: q)
         }
     }
 

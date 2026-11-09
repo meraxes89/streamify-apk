@@ -514,7 +514,7 @@ public struct JamPeer: Identifiable, Hashable, Sendable {
 
 // MARK: - Equalizer / DSP (audiophile surfaces)
 //
-// NOTE: EqualizerBand lives in ViewModels/Support/PresentationModels.swift
+// NOTE: EqualizerBandUI lives in ViewModels/Support/PresentationModels.swift
 // (Engineer 4's lane, merged from main) — the single canonical band type.
 
 // MARK: - Equalizer / DSP (audiophile surfaces)

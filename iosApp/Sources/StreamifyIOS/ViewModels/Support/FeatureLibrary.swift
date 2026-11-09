@@ -23,7 +23,7 @@ protocol FeatureLibrary: AnyObject {
 
     // MARK: Search (StreamResolver::search_tracks lane)
 
-    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchResult]
+    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchRow]
     func searchSuggestions(query: String) async -> [String]
 
     // MARK: Home feed
@@ -93,7 +93,7 @@ protocol FeatureLibrary: AnyObject {
 
 extension FeatureLibrary {
 
-    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchResult] { [] }
+    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchRow] { [] }
     func searchSuggestions(query: String) async -> [String] { [] }
     func homeFeed(hourOfDay: Int) async -> HomeFeed { HomeFeed() }
     func moveQueueItem(from: Int, to: Int) async {}
@@ -156,7 +156,7 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
 
     // ── Scriptable storage (tests read/seed these directly) ────────────────
 
-    var searchResults: [SearchResult] = []
+    var searchResults: [SearchRow] = []
     var suggestions: [String] = []
     var homeFeedContent: HomeFeed = HomeFeed()
     var blendResult: BlendResult = BlendResult()
@@ -190,7 +190,7 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
 
     // ── FeatureLibrary conformance ─────────────────────────────────────────
 
-    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchResult] {
+    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchRow] {
         searchResults.filter { $0.title.localizedCaseInsensitiveContains(query) || query.isEmpty }
     }
 
