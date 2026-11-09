@@ -23,6 +23,12 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
+# SEC-06: the vault envelope is real AEAD now — per-chunk ChaCha20-Poly1305
+# with fresh random nonces, BLAKE3-derived key, chunk-index AAD. The v1
+# XOR+HMAC construction survives only as the read-only migration path.
+chacha20poly1305 = { workspace = true }
+blake3 = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

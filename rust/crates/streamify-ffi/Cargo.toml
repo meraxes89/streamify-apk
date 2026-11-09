@@ -47,6 +47,13 @@ sha1 = { workspace = true }
 hex = { workspace = true }
 libc = { workspace = true }
 tokio = { workspace = true }
+# SEC-06: the audio-cache chunk cipher is real AEAD now — per-chunk
+# ChaCha20-Poly1305 with fresh random nonces, BLAKE3-derived key and
+# chunk-id AAD (rust_seal_cache_chunk / rust_open_cache_chunk); the
+# legacy position-XOR export survives as the read-only migration path.
+chacha20poly1305 = { workspace = true }
+blake3 = { workspace = true }
+rand = { workspace = true }
 
 # ── Android: the direct-JNI lane (MP-C12/MP-C13) ────────────────────────────
 # The `jni` crate is ONLY for the Android target: every other platform
