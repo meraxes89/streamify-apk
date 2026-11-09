@@ -46,3 +46,35 @@ Streamify is a free platform maintained by volunteers. We currently offer **attr
 ## Hardening in progress (public tracker)
 
 Known structural risks we are actively working through are tracked in the public audit issue (JNI ABI parity checks, dual Jam-stack differential testing, blocking CI gates, protected `main`). See [README](README.md) → docs/ for engine manuals.
+
+## Secret rotation runbook (SEC-01 / SEC-10a)
+
+A `service_role` Supabase JWT is part of git history (flagged by SEC-01,
+**presumed compromised**). Rotation happens in the Supabase dashboard —
+no repository change can perform or verify it — so the repo carries the
+runbook and the audit trail instead:
+
+1. **Rotate:** Supabase dashboard → Settings → API → *Reset* the
+   `service_role` key. Update every consumer of the old key (CI secrets,
+   edge tooling, local `.env` files) — the repo itself does not
+   reference it.
+2. **Prove it:** call `GET {SUPABASE_URL}/auth/v1/user` with the OLD key
+   in the `apikey` header. Expected result after rotation: **401**.
+   Record the check (date, result, who ran it) in the table below.
+3. **Never re-introduce:** gitleaks runs blocking on every PR/push to
+   `main` (preflight); the allowlist covers exactly one public
+   InnerTube web-client identifier (see `.gitleaks.toml`, SEC-07).
+
+| Date | Check | Result | By |
+|---|---|---|---|
+| *(pending — requires dashboard access)* | old service_role key rejected | — | lead maintainer |
+
+### Credential inventory (post-H0)
+
+| Credential | Where it lives today | Status |
+|---|---|---|
+| ZhipuAI keys (5) | **burned** — removed from Kotlin (SEC-08); must be revoked at the provider console | repo: clean · revocation: **lead action pending** |
+| InnerTube web-client key | `.gitleaks.toml` allowlisted public constant (SEC-07) | documented, non-billable |
+| Supabase URL / anon key / OAuth client ID | `app/build.gradle.kts` BuildConfig defaults | public-by-design (RLS is the fence, SEC-10) |
+| service_role key | git history only (SEC-01) | **rotation pending — see runbook above** |
+| Signing / release secrets | GitHub environments | environment protection added under GOV-05 |
