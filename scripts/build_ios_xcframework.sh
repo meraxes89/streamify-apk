@@ -230,13 +230,27 @@ BUILD_TARGETS=("${REQUIRED_TARGETS[@]}")
 for target in "${BUILD_TARGETS[@]}"; do
     echo "── [1/6] cargo build --target ${target} (${PROFILE})"
     case "${target}" in
-        *-apple-ios|*-apple-ios-sim)
+        *-apple-ios-sim)
             # Rust's iOS triples default to a 10.0 deployment target,
             # but the SDK's cc-crate objects (quickjs / ring / sqlite)
             # reference ___chkstk_darwin — available from iOS 12 — so
             # the cdylib LINK fails with undefined symbols. Build the
             # engine at the package's own floor (.iOS(.v17), the same
             # minimum the SPM target and the Xcode destinations use).
+            # TRUTH-01 env fix (same as the CI buildability check):
+            # rquickjs-sys's bindgen needs the simulator SDK and a
+            # clang-spelled triple — rustc's aarch64-apple-ios-sim parses
+            # in clang as an invalid VERSION ('sim') and without -isysroot
+            # bindgen's clang cannot even find stdio.h. cc (quickjs.c)
+            # resolves the SDK through SDKROOT; the trailing --target in
+            # BINDGEN_EXTRA_CLANG_ARGS overrides the rustc spelling.
+            ( cd "${RUST_DIR}" && \
+              IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+              SDKROOT="${IPHONESIM_SDK_PATH}" \
+              BINDGEN_EXTRA_CLANG_ARGS="--target=${target/aarch64/arm64}-simulator -isysroot ${IPHONESIM_SDK_PATH}" \
+              cargo build --target "${target}" --profile "${PROFILE}" --lib )
+            ;;
+        *-apple-ios)
             ( cd "${RUST_DIR}" && \
               IPHONEOS_DEPLOYMENT_TARGET=17.0 \
               cargo build --target "${target}" --profile "${PROFILE}" --lib )
