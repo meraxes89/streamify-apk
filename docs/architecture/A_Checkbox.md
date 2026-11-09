@@ -27,6 +27,7 @@ This ledger records the official consensus decisions, status of execution items,
 - [ ] **SEC-03**: Strip plaintext `ZHIPU_KEYS[]` array from `native/jni/jni_bridge.cc:771–777` and proxy through backend.
 - [ ] **SEC-04**: Disable silent debug-keystore fallback in release builds (`build.gradle.kts:69–84`) and pin updater certificate signature.
 - [ ] **SEC-05**: Add `gitleaks` step to GitHub Actions PR and push validation workflows.
+- [x] **SEC-09** *(lead plan Horizon 0 / DROID)*: Kill the display-name admin bypass — `isAdmin` is now the server-verified `profiles.is_admin` claim only (fetched fail-closed at sign-in); every email/display-name "sireen" heuristic removed from `SupabaseClient.kt`, `AdminDashboardScreen.kt`, `UserProfileScreen.kt`; the client no longer writes `is_admin` in profile upserts. **Pairs with SEC-10 (server-side hardening of the flag).**
 
 ### 🧹 Phase 0: Dead-Code Amputation & Reverse Parity Enforcement
 - [ ] **AMP-01**: Delete `native/jni/jni_bridge_native_dsp_engine.cc` (~450 LOC).

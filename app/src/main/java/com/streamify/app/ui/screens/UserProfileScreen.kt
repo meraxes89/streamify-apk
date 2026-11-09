@@ -534,11 +534,10 @@ fun UserProfileScreen(
             }
         }
 
-        // Special Admin Command Center Card (Always visible for Sireen / Admin)
-        val isAdminUser = user?.isAdmin == true ||
-                user?.email?.contains("sireenyadav", ignoreCase = true) == true ||
-                user?.email.equals(com.streamify.app.BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                user?.displayName?.contains("sireen", ignoreCase = true) == true
+        // Special Admin Command Center Card (server-verified admins only —
+        // SEC-09 killed the email/display-name heuristic that granted this
+        // card to anyone who named themselves "Sireen ...").
+        val isAdminUser = user?.isAdmin == true
 
         if (isAdminUser) {
             Spacer(modifier = Modifier.height(8.dp))
