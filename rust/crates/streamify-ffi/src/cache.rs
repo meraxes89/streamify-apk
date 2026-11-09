@@ -53,28 +53,28 @@ pub unsafe extern "C" fn rust_seal_cache_chunk(
 ) -> i64 {
     let result = catch_unwind(|| {
         if input_ptr.is_null() || output_ptr.is_null() || key_ptr.is_null() || key_len == 0 {
-            return -1;
+            return Ok(-1);
         }
         if input_len == 0 {
-            return -2; // nothing to seal; a zero-length chunk has no v2 envelope
+            return Ok(-2); // nothing to seal; a zero-length chunk has no v2 envelope
         }
         if input_len > i32::MAX as usize {
-            return -2;
+            return Ok(-2);
         }
         let sealed_len = input_len + CACHE_V2_OVERHEAD;
         if output_cap < sealed_len {
-            return -2;
+            return Ok(-2);
         }
 
         let input = std::slice::from_raw_parts(input_ptr, input_len);
         let output = std::slice::from_raw_parts_mut(output_ptr, sealed_len);
         let key = std::slice::from_raw_parts(key_ptr, key_len);
 
-        let cipher = ChaCha20Poly1305::new(Key::from(derive_cache_key(key)));
+        let cipher = ChaCha20Poly1305::new(&Key::from(derive_cache_key(key)));
         let nonce_bytes: [u8; 12] = rand::random();
         let sealed = cipher
             .encrypt(
-                Nonce::from(nonce_bytes),
+                &Nonce::from(nonce_bytes),
                 Payload {
                     msg: input,
                     aad: &chunk_id.to_le_bytes(),
@@ -112,25 +112,25 @@ pub unsafe extern "C" fn rust_open_cache_chunk(
 ) -> i64 {
     let result = catch_unwind(|| {
         if sealed_ptr.is_null() || output_ptr.is_null() || key_ptr.is_null() || key_len == 0 {
-            return -1;
+            return Ok(-1);
         }
         if sealed_len < CACHE_V2_OVERHEAD + 1 || sealed_len > (i32::MAX as usize) + CACHE_V2_OVERHEAD
         {
-            return -2;
+            return Ok(-2);
         }
         let plain_len = sealed_len - CACHE_V2_OVERHEAD;
         if output_cap < plain_len {
-            return -2;
+            return Ok(-2);
         }
 
         let sealed = std::slice::from_raw_parts(sealed_ptr, sealed_len);
         let output = std::slice::from_raw_parts_mut(output_ptr, plain_len);
         let key = std::slice::from_raw_parts(key_ptr, key_len);
 
-        let cipher = ChaCha20Poly1305::new(Key::from(derive_cache_key(key)));
+        let cipher = ChaCha20Poly1305::new(&Key::from(derive_cache_key(key)));
         let plain = cipher
             .decrypt(
-                Nonce::from(<[u8; 12]>::try_from(&sealed[..12]).map_err(|_| ())?),
+                &Nonce::from(<[u8; 12]>::try_from(&sealed[..12]).map_err(|_| ())?),
                 Payload {
                     msg: &sealed[12..],
                     aad: &chunk_id.to_le_bytes(),

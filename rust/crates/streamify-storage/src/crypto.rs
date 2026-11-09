@@ -328,7 +328,6 @@ mod tests {
     use super::*;
     use hmac::{KeyInit, Mac};
     use sha2::Digest;
-    use std::io::Write as _;
 
     fn write_temp(name: &str, bytes: &[u8]) -> String {
         let path = std::env::temp_dir().join(format!(

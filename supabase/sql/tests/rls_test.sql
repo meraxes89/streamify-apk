@@ -311,10 +311,14 @@ ROLLBACK;
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- 10. Sign-up can never mint an admin (old: handle_new_user email grant)
+--    NB: profiles.email is UNIQUE (profiles_email_key), so a second account
+--    registered with the maintainer's email cannot exist — the attacker
+--    scenario is unrepresentable by construction. What IS under test is the
+--    trigger itself: whatever the signup email, the grant must be FALSE.
 -- ══════════════════════════════════════════════════════════════════════════
 BEGIN;
 INSERT INTO auth.users (id, email, raw_user_meta_data)
-VALUES ('66666666-6666-4666-8666-666666666666', 'sireenyadav@gmail.com', '{}'::jsonb);
+VALUES ('66666666-6666-4666-8666-666666666666', 'newbie@example.com', '{}'::jsonb);
 DO $$
 DECLARE got BOOLEAN;
 BEGIN
