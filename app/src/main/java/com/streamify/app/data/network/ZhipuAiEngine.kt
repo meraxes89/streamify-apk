@@ -1,5 +1,6 @@
 package com.streamify.app.data.network
 
+import com.streamify.app.BuildConfig
 import com.streamify.app.data.NativeBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,39 +14,61 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * High-Throughput Zhipu AI (GLM-4-Flash) Engine
- * Implements a lock-free atomic round-robin across 5 pooled API keys fetched from C++ NDK,
- * providing practically unlimited, zero-cost AI throughput (<250ms latency).
+ * Zhipu AI (GLM-4-Flash) engine.
+ *
+ * SEC-08: the hardcoded `FALLBACK_KEYS` pool and the provider endpoint
+ * literal were removed from source — five billable API keys used to ship
+ * inside every APK's DEX, recoverable by anyone who unzipped it. Key
+ * material now comes exclusively from configuration, mirroring the native
+ * bridge's SEC-03 contract:
+ *
+ *  1. Runtime pool: the `STREAMIFY_ZHIPU_KEYS` process environment,
+ *     proxied by [NativeBridge.getZhipuKey] (the bridge wraps the index
+ *     modulo its own pool size, so the raw round-robin counter is fine).
+ *  2. Build-time pool: the comma-separated `ZHIPU_API_KEYS` BuildConfig
+ *     field, injected from `local.properties` or the same
+ *     `STREAMIFY_ZHIPU_KEYS` environment variable at build time. Empty
+ *     unless deliberately injected.
+ *
+ * The endpoint URL is likewise build-time injected (`ZHIPU_API_URL`,
+ * default empty). With nothing configured, [isConfigured] is false and
+ * [complete] returns null — callers already treat null as "AI assist
+ * unavailable" and use their deterministic fallback path, so an
+ * unconfigured build simply ships with AI features off (Part 5 of the
+ * lead plan: optional AI that costs money ships off by default).
  */
 object ZhipuAiEngine {
-    private const val API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     private val JSON_MEDIA_TYPE = "application/json; charset=UTF-8".toMediaType()
     private val atomicKeyIndex = AtomicInteger(0)
 
-    private val FALLBACK_KEYS = listOf(
-        "57bd4b727f404046b17204dc95a657e8.IMJI6yrCLcZDBl1y",
-        "0758ad943a784d728f17cd5d98b5330d.sn0EnMWZ1kLCleir",
-        "29a71f29e0bf45cbb0e61ae1fcdb0127.BbgwmouOPz7JQWyp",
-        "2f444b74e35c4d7ebae62471309b8b9e.5OzYzb9uP9v0uNzz",
-        "85aa0d0ac2f845579dfc58ae355d855d.yQrUOUVlGG0Xe2q2"
-    )
+    /** Build-time key pool (comma-separated), empty unless injected (SEC-08). */
+    private val buildTimeKeys: List<String> = BuildConfig.ZHIPU_API_KEYS
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .writeTimeout(4, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
+    /** True when an endpoint and at least one usable key are configured. */
+    val isConfigured: Boolean
+        get() = BuildConfig.ZHIPU_API_URL.isNotBlank() &&
+                (buildTimeKeys.isNotEmpty() || nativeKeyAt(0) != null)
 
-    private fun getKey(index: Int): String {
-        return try {
-            NativeBridge.getZhipuKey(index)
-        } catch (e: Throwable) {
-            FALLBACK_KEYS[abs(index) % FALLBACK_KEYS.size]
-        }
+    /**
+     * Runtime key from the native bridge's `STREAMIFY_ZHIPU_KEYS` pool, or
+     * null when the bridge is unavailable (JVM unit tests, unconfigured
+     * process environment). Never falls back to embedded credentials.
+     */
+    private fun nativeKeyAt(index: Int): String? = try {
+        NativeBridge.getZhipuKey(index).takeIf { it.isNotBlank() }
+    } catch (e: Throwable) {
+        null
     }
 
-    private fun abs(n: Int): Int = if (n < 0) -n else n
+    private fun nextKey(): String? {
+        val index = atomicKeyIndex.getAndIncrement()
+        nativeKeyAt(index)?.let { return it }
+        if (buildTimeKeys.isEmpty()) return null
+        return buildTimeKeys[Math.floorMod(index, buildTimeKeys.size)]
+    }
 
     suspend fun complete(
         systemPrompt: String,
@@ -53,11 +76,14 @@ object ZhipuAiEngine {
         temperature: Double = 0.3,
         maxTokens: Int = 512
     ): String? = withContext(Dispatchers.IO) {
-        val totalKeys = FALLBACK_KEYS.size
-        // Try current key and up to 1 retry on next key if rate limited or network failure
+        val endpoint = BuildConfig.ZHIPU_API_URL
+        if (endpoint.isBlank()) return@withContext null
+
+        // Try the current key and up to one retry on the next key for
+        // rate limits / transient network failures. With no pool
+        // configured, degrade immediately: null == AI assist off.
         for (attempt in 0 until 2) {
-            val keyIdx = abs(atomicKeyIndex.getAndIncrement()) % totalKeys
-            val key = getKey(keyIdx)
+            val key = nextKey() ?: return@withContext null
 
             try {
                 val jsonBody = JSONObject().apply {
@@ -71,7 +97,7 @@ object ZhipuAiEngine {
                 }.toString()
 
                 val request = Request.Builder()
-                    .url(API_URL)
+                    .url(endpoint)
                     .addHeader("Authorization", "Bearer $key")
                     .addHeader("Content-Type", "application/json")
                     .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
@@ -98,4 +124,11 @@ object ZhipuAiEngine {
         }
         null
     }
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .writeTimeout(4, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
 }

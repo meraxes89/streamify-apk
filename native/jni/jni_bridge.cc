@@ -773,8 +773,9 @@ Java_com_streamify_app_data_NativeBridge_getZhipuKey(
     // .so -- it shipped every key rotation candidate to anyone with `strings`
     // (and to every APK mirror). Keys are now supplied through process
     // environment configuration and proxied verbatim; when nothing is
-    // configured we return the empty string and the Kotlin layer applies
-    // its own fallback / backend-proxy path.
+    // configured we return the empty string and the Kotlin layer degrades to
+    // its build-time-injected pool (SEC-08) or reports AI-assist unavailable
+    // -- it no longer carries any embedded fallback credentials.
     //
     //   STREAMIFY_ZHIPU_KEYS   comma-separated key pool, any size >= 1;
     //                         indices wrap modulo the pool size (negative
