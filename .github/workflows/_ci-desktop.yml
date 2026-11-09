@@ -6,8 +6,8 @@
 #   * ci.yml      (PR / merge_group / push-main hub)
 #   * release.yml (tag-driven release, release_mode: true)
 #
-# Matrix: ubuntu-latest (linux), windows-latest (windows), macos-14 (macOS
-# Apple Silicon) — the macOS coverage desktop-ci.yml never had.
+# Matrix: ubuntu-latest (linux), windows-latest (windows) — the macOS leg
+# lives in the Apple Unified lane (_ci-ios.yml) instead of this matrix.
 #
 # Every leg runs:
 #   1. Headless CMP UI smoke tests (:desktop:test --tests shell.* +
