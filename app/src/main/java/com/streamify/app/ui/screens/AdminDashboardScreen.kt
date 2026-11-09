@@ -664,20 +664,19 @@ fun AdminDashboardScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
-                                    val isSuperOwner = profile.email.contains("sireenyadav", ignoreCase = true) ||
-                                            profile.email.equals(com.streamify.app.BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                                            profile.displayName.contains("sireen", ignoreCase = true)
-
+                                    // SEC-09: the OWNER heuristic (email/display-name
+                                    // contains "sireen") is gone — the badge reflects the
+                                    // server-verified profiles.is_admin flag only.
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(profile.displayName, style = StreamifyType.TitleSmall, color = StreamifyColors.TextMain)
-                                        if (profile.isAdmin || isSuperOwner) {
+                                        if (profile.isAdmin) {
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Surface(
                                                 color = StreamifyColors.Primary.copy(alpha = 0.2f),
                                                 shape = RoundedCornerShape(4.dp)
                                             ) {
                                                 Text(
-                                                    if (isSuperOwner) "OWNER" else "ADMIN",
+                                                    "ADMIN",
                                                     style = StreamifyType.Caption,
                                                     color = StreamifyColors.Primary,
                                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -696,12 +695,12 @@ fun AdminDashboardScreen(
                                     }
                                 }
 
-                                val isSelfOrOwner = profile.email.contains("sireenyadav", ignoreCase = true) ||
-                                        profile.email.equals(com.streamify.app.BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                                        profile.displayName.contains("sireen", ignoreCase = true) ||
-                                        profile.id == user?.id
+                                // SEC-09: role toggling is protected by the server-side
+                                // flag; the only client-side carve-out is "never toggle
+                                // your own role". The name-based owner tier is gone.
+                                val isSelf = profile.id == user?.id
 
-                                if (!isSelfOrOwner) {
+                                if (!isSelf) {
                                     IconButton(onClick = {
                                         scope.launch {
                                             val newRole = !profile.isAdmin
@@ -1030,10 +1029,6 @@ private fun UserTelemetrySheet(
         dragHandle = { BottomSheetDefaults.DragHandle() },
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
-        val isSuperOwner = user.email.contains("sireenyadav", ignoreCase = true) ||
-                user.email.equals(com.streamify.app.BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                user.displayName.contains("sireen", ignoreCase = true)
-
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1076,13 +1071,15 @@ private fun UserTelemetrySheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Surface(
-                    color = if (isSuperOwner) StreamifyColors.Primary.copy(alpha = 0.25f) else if (user.isAdmin) Color(0xFF7358FF).copy(alpha = 0.25f) else StreamifyColors.BgCard,
+                    // SEC-09: server-verified flag only — no OWNER tier is
+                    // derivable client-side.
+                    color = if (user.isAdmin) Color(0xFF7358FF).copy(alpha = 0.25f) else StreamifyColors.BgCard,
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = if (isSuperOwner) "OWNER 👑" else if (user.isAdmin) "ADMIN 🛡️" else "USER",
+                        text = if (user.isAdmin) "ADMIN 🛡️" else "USER",
                         style = StreamifyType.Caption.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                        color = if (isSuperOwner) StreamifyColors.Primary else if (user.isAdmin) Color(0xFF00E5FF) else StreamifyColors.TextSub,
+                        color = if (user.isAdmin) Color(0xFF00E5FF) else StreamifyColors.TextSub,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
@@ -1211,7 +1208,10 @@ private fun UserTelemetrySheet(
             Spacer(modifier = Modifier.height(20.dp))
 
             // 4. Admin Action Buttons
-            if (!isSuperOwner) {
+            // SEC-09: the OWNER-tier heuristic is gone; the only protection is
+            // "never toggle your own role" (same carve-out as the list view).
+            val isSelf = SupabaseClient.currentUser.value?.id == user.id
+            if (!isSelf) {
                 Button(
                     onClick = { onToggleAdmin(!user.isAdmin) },
                     colors = ButtonDefaults.buttonColors(

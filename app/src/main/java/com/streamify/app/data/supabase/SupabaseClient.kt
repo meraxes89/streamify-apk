@@ -53,11 +53,14 @@ object SupabaseClient {
 
     val liveProfileUpdates = MutableSharedFlow<JSONObject>(extraBufferCapacity = 64)
 
+    // SEC-09: admin is a server-side claim ONLY. The old getter granted the
+    // Admin Dashboard to any account whose *email or display name* contained
+    // "sireen" — any user naming themselves "Sireen fan" got admin surfaces.
+    // The sole source of truth is profiles.is_admin, fetched from the server
+    // at sign-in (fetchServerIsAdmin, fail-closed) and never derived from
+    // client-controlled fields.
     val isAdmin: Boolean
-        get() = _currentUser.value?.isAdmin == true ||
-                _currentUser.value?.email?.contains("sireenyadav", ignoreCase = true) == true ||
-                _currentUser.value?.email.equals(BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                _currentUser.value?.displayName?.contains("sireen", ignoreCase = true) == true
+        get() = _currentUser.value?.isAdmin == true
 
     fun init(context: Context) {
         if (prefs == null) {
@@ -73,10 +76,9 @@ object SupabaseClient {
 
             if (!savedToken.isNullOrBlank() && !savedEmail.isNullOrBlank()) {
                 _accessToken.value = savedToken
-                val isAdminUser = savedIsAdmin ||
-                        savedEmail.contains("sireenyadav", ignoreCase = true) ||
-                        savedEmail.equals(BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                        (savedName?.contains("sireen", ignoreCase = true) == true)
+                // SEC-09: the persisted flag is the server-verified value saved
+                // at sign-in — no email/display-name heuristic re-derivation.
+                val isAdminUser = savedIsAdmin
                 val userProf = UserProfile(
                     id = savedUserId ?: "",
                     email = savedEmail,
@@ -253,9 +255,11 @@ object SupabaseClient {
                 val name = meta?.optString("full_name", meta.optString("name", email.substringBefore("@"))) ?: email.substringBefore("@")
                 val avatar = meta?.optString("avatar_url", meta.optString("picture", "")) ?: ""
 
-                val isAdminUser = email.contains("sireenyadav", ignoreCase = true) ||
-                        email.equals(BuildConfig.ADMIN_EMAIL, ignoreCase = true) ||
-                        name.contains("sireen", ignoreCase = true)
+                // Bind the session token first so the admin lookup below is
+                // authenticated, then resolve the admin claim from the server
+                // (SEC-09): profiles.is_admin only, fail-closed on any error.
+                _accessToken.value = token
+                val isAdminUser = fetchServerIsAdmin(userId)
 
                 val profile = UserProfile(
                     id = userId,
@@ -265,7 +269,6 @@ object SupabaseClient {
                     isAdmin = isAdminUser
                 )
 
-                _accessToken.value = token
                 _currentUser.value = profile
 
                 prefs?.edit()?.apply {
@@ -301,11 +304,37 @@ object SupabaseClient {
                 put("avatar_url", user.avatarUrl)
                 put("bio", user.bio)
                 put("favorite_genre", user.favoriteGenre)
-                put("is_admin", user.isAdmin)
+                // SEC-09/SEC-10: is_admin is deliberately NOT written by the
+                // client — the column is server-managed (admin RPCs only).
             }
             executeRpc("profiles", "POST", body.toString(), prefer = "resolution=merge-duplicates")
         } catch (e: Exception) {
             SLog.st("SupabaseClient", "SupabaseClient.ensureProfile failed", e)
+        }
+    }
+
+    /**
+     * SEC-09: resolve the admin claim from the server-side profile row
+     * (profiles.is_admin). The client cannot influence this value through
+     * sign-in metadata. FAIL-CLOSED: any HTTP/parse error, missing row or
+     * missing field resolves to false — an unavailable backend never
+     * broadens admin access.
+     */
+    internal suspend fun fetchServerIsAdmin(userId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "${BuildConfig.SUPABASE_URL}/rest/v1/profiles?id=eq.$userId&select=is_admin"
+            val headers = mapOf(
+                "apikey" to BuildConfig.SUPABASE_ANON_KEY,
+                "Authorization" to "Bearer ${getAuthToken()}"
+            )
+            val (code, body) = executeHttpRequest(url, "GET", headers)
+            if (code != 200 || body.isNullOrBlank()) return@withContext false
+            val rows = JSONArray(body)
+            if (rows.length() == 0) return@withContext false
+            rows.getJSONObject(0).optBoolean("is_admin", false)
+        } catch (e: Exception) {
+            SLog.st("SupabaseClient", "SupabaseClient.fetchServerIsAdmin failed (fail-closed)", e)
+            false
         }
     }
 
