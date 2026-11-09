@@ -1,12 +1,24 @@
 # ============================================================================
 # _ci-ios.yml — Tier 2 reusable spoke: Apple Unified Lane (resp8/resp9).
-# Combines iOS Swift tests, XCFramework probe, macOS engine cdylib build,
+# Combines iOS Swift tests, XCFramework build, macOS engine cdylib build,
 # and macOS desktop UI & JNA smoke suite into ONE SINGLE macos-15 runner job.
 #
 # Runner label history: macos-14 until 2026-11-09, then migrated to macos-15
 # after GitHub retired the macOS 14 image on 2026-11-02 (github.blog
 # changelog 2026-10-01) — post-retirement the dead label instant-cancels
 # every Apple-lane job with no runner assigned, folding red into ci-gate.
+#
+# TRUTH-01(a) + IOS-02 (2026-11-09): "green means green" on the Apple lane.
+#   * The Apple-target `cargo check` is a BLOCKING failure on every event
+#     except pull requests from forks (the advisory notice survives only
+#     there — a fork contributor cannot heal our Rust tree).
+#   * The lane now LINKS the xcframework it builds: the framework is
+#     built (or restored from the content-addressed cache) and staged at
+#     iosApp/Frameworks/ BEFORE `xcodebuild test`, so Package.swift's
+#     conditional binary target activates the REAL engine lane and the
+#     28 `#if canImport(uniffi_streamify)` UniFFI contract tests in
+#     EngineTests/UniFFIContractTests.swift actually execute. This is
+#     the first time Gate 2 of SWIFT_MIGRATION_PLAN.MD has ever run.
 # ============================================================================
 name: CI Apple Unified (iOS & macOS)
 
@@ -29,74 +41,13 @@ jobs:
   apple:
     name: "Apple Unified (iOS Tests, XCFramework, macOS Desktop)"
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       STREAMIFY_IOS_PROFILE: ${{ inputs.release_mode && 'release' || 'debug' }}
     steps:
       - uses: actions/checkout@v7
 
-      # ── 1. iOS Simulator Test Pass (Headless xcodebuild) ─────────────────
-      - name: Cache DerivedData & SwiftPM (resp7 risk register)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Developer/Xcode/DerivedData
-            ~/.swiftpm
-          key: ${{ runner.os }}-xcode-${{ hashFiles('iosApp/Package.swift') }}
-          restore-keys: |
-            ${{ runner.os }}-xcode-
-
-      - name: Discover an available iOS Simulator
-        run: |
-          SIM_NAME="$(xcrun simctl list devices -j | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          names = [d["name"] for v in devices.values() for d in v if d.get("isAvailable")]
-          iphones = [n for n in names if "iPhone" in n]
-          print(iphones[0] if iphones else (names[0] if names else ""))
-          ')"
-          if [ -z "$SIM_NAME" ]; then
-            echo "FATAL: no available iOS Simulator on this runner" >&2
-            exit 1
-          fi
-          echo "Using simulator: $SIM_NAME"
-          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
-
-      # The Swift package compiles TODAY against the preview gateway (the
-      # real engine lane is #if canImport(uniffi_streamify)-gated), so the
-      # suite runs without linking the xcframework.
-      # No -quiet: assertion-level failure messages (expected vs actual) are
-      # the primary debugging surface for this lane — a failing XCTAssert
-      # carries its operands, which -quiet suppresses entirely.
-      - name: Run StreamifyIOSTests (headless xcodebuild)
-        run: |
-          cd iosApp
-          set -o pipefail
-          xcodebuild test \
-            -scheme StreamifyIOS \
-            -destination "platform=iOS Simulator,name=${SIM_NAME}" \
-            2>&1 | tee xcodebuild-test.log
-
-      - name: Upload xcodebuild log (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ios-xcodebuild-log
-          path: iosApp/xcodebuild-test.log
-          if-no-files-found: ignore
-
-      # ── 1b. SPM Compile Gate (macOS host) — SW-ENG1-01 acceptance ──────────
-      # The universal package's macOS leg: `swift build --package-path
-      # iosApp` must complete with zero errors on a Mac host (the manifest
-      # probes iosApp/Frameworks/ — absent here — so this compiles the
-      # preview-gateway lane, the standalone shape the acceptance
-      # checklist pins). --build-tests also compiles the universal test
-      # target: the UIKit divergence is #if canImport(UIKit)-gated with a
-      # same-API macOS no-op lane, so the suite builds for both platforms.
-      - name: SPM compile gate (macOS host, SW-ENG1-01)
-        run: swift build --package-path iosApp --build-tests
-
-      # ── 2. Rust Core / XCFramework Probe & macOS Native Build (resp8 Pillar A) ──
+      # ── 0. Rust toolchain FIRST: the engine feeds every downstream pass ────
       - name: Set up Rust toolchain (Apple targets)
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -119,70 +70,7 @@ jobs:
       - name: Setup sccache (mandatory compiler caching, resp6 §3)
         uses: mozilla-actions/sccache-action@v0.0.11
 
-      # ── BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane (resp8 Pillar A)
-      - name: Build macOS desktop cdylib (release, stripped)
-        env:
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
-          CARGO_INCREMENTAL: "0"
-        run: |
-          cargo build --manifest-path rust/Cargo.toml --release --lib --target aarch64-apple-darwin
-          mkdir -p dist/desktop/macos
-          cp rust/target/aarch64-apple-darwin/release/libstreamify_core_rs.dylib dist/desktop/macos/libstreamify_core_rs.dylib
-          strip -x dist/desktop/macos/libstreamify_core_rs.dylib
-
-      - name: Upload macOS engine cdylib
-        uses: actions/upload-artifact@v7
-        with:
-          name: engine-macos
-          path: dist/desktop/macos/libstreamify_core_rs.dylib
-          if-no-files-found: error
-          compression-level: 1
-
-      # ── 3. macOS Desktop Test Suite (CMP UI shell + shared desktopTest + JNA smoke) ──
-      - name: Set up JDK 17
-        uses: actions/setup-java@v6
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Gradle (with dependency cache)
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      - name: "Desktop test suite (macOS CMP UI shell + shared desktopTest + JNA smoke)"
-        env:
-          PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
-        run: |
-          chmod +x gradlew
-          ./gradlew :desktop:test :shared:desktopTest \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --parallel --build-cache --configuration-cache --stacktrace
-
-      # ── 4. macOS Packaging (jpackage DMG, gated) ──────────────────────────
-      - name: "Package desktop distribution (macOS DMG)"
-        if: ${{ inputs.package_installers }}
-        env:
-          PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
-        run: |
-          chmod +x gradlew
-          ./gradlew :desktop:packageDistributionForCurrentOS \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --parallel --build-cache --configuration-cache --stacktrace
-          ./gradlew :desktop:verifyDesktopSizeBudget \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --parallel --build-cache --configuration-cache
-
-      - name: Upload macOS desktop installer
-        if: ${{ inputs.package_installers }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-installer-macos
-          path: desktop/build/compose/binaries/**/*.dmg
-          if-no-files-found: error
-
-      # ── 5. Rust Core / XCFramework Content-Addressed Binary Cache ────────
+      # ── 1. XCFramework: content-addressed cache, then build-or-restore ────
       # The fingerprint covers rust/ + native/ AND the assembly script
       # itself: a scripts/build_ios_xcframework.sh change (slice matrix,
       # sanity pass, glue flags) must invalidate the cached artifact —
@@ -212,8 +100,10 @@ jobs:
             dist/ios/swift
           key: apple-xcframework-${{ runner.os }}-${{ env.ENGINE_HASH }}
 
-      # Probe Apple targets only if cache missed
-      - name: Probe Apple-target engine buildability (MP-DEC-08)
+      # TRUTH-01(a): a failing Apple-target compile is a REAL failure —
+      # "BLOCKED UPSTREAM (reported, not failed)" is gone. The advisory
+      # behavior survives ONLY for pull requests from forks.
+      - name: Check Apple-target engine buildability (blocking, TRUTH-01)
         if: steps.xcframework_cache.outputs.cache-hit != 'true'
         env:
           RUSTC_WRAPPER: sccache
@@ -231,7 +121,12 @@ jobs:
             echo "engine compiles for aarch64-apple-ios + sim — xcframework build will run"
           else
             echo "ENGINE_APPLE_BUILDABLE=0" >> "$GITHUB_ENV"
-            echo "engine does NOT compile for Apple targets yet (device=$device_status, sim=$sim_status) — xcframework build reports blocked-upstream"
+            if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              echo "::warning::FORK PR: Apple-target engine check failing (device=$device_status, sim=$sim_status) — reported, not failed (TRUTH-01 fork exemption)"
+            else
+              echo "::error::The Rust core does NOT compile for Apple targets (device=$device_status, sim=$sim_status). This is a blocking failure (TRUTH-01): green means green on main."
+              exit 1
+            fi
           fi
 
       - name: Build StreamifyCore.xcframework + UniFFI Swift bindings
@@ -243,18 +138,19 @@ jobs:
           STREAMIFY_IOS_SKIP_X86_SIM: ${{ inputs.release_mode && '0' || '1' }}
         run: bash scripts/build_ios_xcframework.sh
 
-      - name: Engine blocked upstream (reported, not failed)
+      # Fork PRs only (ENGINE_APPLE_BUILDABLE == '0' is unreachable on
+      # non-fork events since TRUTH-01 made the check fail the job).
+      - name: Engine blocked upstream (fork advisory, TRUTH-01 exemption)
         if: steps.xcframework_cache.outputs.cache-hit != 'true' && env.ENGINE_APPLE_BUILDABLE == '0'
         run: |
           echo "=============================================================================="
-          echo " STREAMIFYCORE.XCFRAMEWORK: BLOCKED UPSTREAM (reported, not failed)"
+          echo " STREAMIFYCORE.XCFRAMEWORK: BLOCKED UPSTREAM (fork PR, reported, not failed)"
           echo "=============================================================================="
           echo " The sovereign Rust core does not compile for the Apple targets yet:"
           echo "   probe: cargo check --manifest-path rust/Cargo.toml --lib --"
           echo "          target aarch64-apple-ios && ... --target aarch64-apple-ios-sim"
-          echo " rust/src/platform/** is outside the CI subtree and must be healed"
-          echo " upstream; this job auto-activates the real build the moment that"
-          echo " lands — the probe is the gate (MP-DEC-08)."
+          echo " Fork contributors cannot heal the Rust tree; maintainers see this"
+          echo " as a BLOCKING failure on branch runs (TRUTH-01)."
           echo "=============================================================================="
 
       - name: Zip the xcframework
@@ -271,6 +167,143 @@ jobs:
         with:
           name: ios-xcframework
           path: dist/ios/StreamifyCore.xcframework.zip
+          if-no-files-found: error
+
+      # ── 2. IOS-02: STAGE the framework so the real lane links ─────────────
+      # iosApp/Frameworks/StreamifyCore.xcframework + the probe-gated
+      # Generated/uniffi_streamify.swift make Package.swift's conditional
+      # binary target active: xcodebuild test below compiles and RUNS the
+      # real-engine test lane instead of the preview gateway.
+      - name: Stage xcframework into the SPM package (IOS-02)
+        if: steps.xcframework_cache.outputs.cache-hit == 'true' || env.ENGINE_APPLE_BUILDABLE == '1'
+        run: |
+          bash scripts/build_ios_xcframework.sh --stage-only
+          echo "REAL_LANE_STAGED=1" >> "$GITHUB_ENV"
+          ls -la iosApp/Frameworks/ iosApp/Sources/StreamifyIOS/Generated/ || true
+
+      # ── 3. iOS Simulator Test Pass (REAL lane, headless xcodebuild) ───────
+      # With the framework staged, the 28 #if canImport(uniffi_streamify)
+      # tests in EngineTests/UniFFIContractTests.swift execute for the
+      # first time (SWIFT_MIGRATION_PLAN Gate 2). No -quiet:
+      # assertion-level failure messages are the primary debugging surface.
+      - name: Cache DerivedData & SwiftPM (resp7 risk register)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/.swiftpm
+          key: ${{ runner.os }}-xcode-${{ hashFiles('iosApp/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-
+
+      - name: Discover an available iOS Simulator
+        run: |
+          SIM_NAME="$(xcrun simctl list devices -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          names = [d["name"] for v in devices.values() for d in v if d.get("isAvailable")]
+          iphones = [n for n in names if "iPhone" in n]
+          print(iphones[0] if iphones else (names[0] if names else ""))
+          ')"
+          if [ -z "$SIM_NAME" ]; then
+            echo "FATAL: no available iOS Simulator on this runner" >&2
+            exit 1
+          fi
+          echo "Using simulator: $SIM_NAME"
+          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+
+      - name: Run StreamifyIOSTests (real engine lane, IOS-02)
+        run: |
+          cd iosApp
+          set -o pipefail
+          xcodebuild test \
+            -scheme StreamifyIOS \
+            -destination "platform=iOS Simulator,name=${SIM_NAME}" \
+            2>&1 | tee xcodebuild-test.log
+          # Gate-2 proof: the UniFFI contract suite must have EXECUTED,
+          # not compiled out (a silently unlinked real lane is the exact
+          # regression TRUTH-01 exists to kill). Fork-advisory runs
+          # (no framework staged) keep the preview lane and skip this.
+          if [ "${REAL_LANE_STAGED:-0}" = "1" ] && ! grep -q "UniFFIContractTests" xcodebuild-test.log; then
+            echo "::error::UniFFIContractTests never ran — the real engine lane did not link (IOS-02 regression)" >&2
+            exit 1
+          fi
+
+      - name: Upload xcodebuild log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-xcodebuild-log
+          path: iosApp/xcodebuild-test.log
+          if-no-files-found: ignore
+
+      # ── 3b. SPM Compile Gate (macOS host) — SW-ENG1-01 acceptance ─────────
+      # Compiles the universal package (now WITH the linked real lane) +
+      # the universal test target on the macOS host.
+      - name: SPM compile gate (macOS host, SW-ENG1-01)
+        run: swift build --package-path iosApp --build-tests
+
+      # ── 4. BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane ───
+      - name: Build macOS desktop cdylib (release, stripped)
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release --lib --target aarch64-apple-darwin
+          mkdir -p dist/desktop/macos
+          cp rust/target/aarch64-apple-darwin/release/libstreamify_core_rs.dylib dist/desktop/macos/libstreamify_core_rs.dylib
+          strip -x dist/desktop/macos/libstreamify_core_rs.dylib
+
+      - name: Upload macOS engine cdylib
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-macos
+          path: dist/desktop/macos/libstreamify_core_rs.dylib
+          if-no-files-found: error
+          compression-level: 1
+
+      # ── 5. macOS Desktop Test Suite (CMP UI shell + shared desktopTest + JNA smoke) ──
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: "Desktop test suite (macOS CMP UI shell + shared desktopTest + JNA smoke)"
+        env:
+          PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:test :shared:desktopTest \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache --stacktrace
+
+      # ── 6. macOS Packaging (jpackage DMG, gated) ──────────────────────────
+      - name: "Package desktop distribution (macOS DMG)"
+        if: ${{ inputs.package_installers }}
+        env:
+          PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:packageDistributionForCurrentOS \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache --stacktrace
+          ./gradlew :desktop:verifyDesktopSizeBudget \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache
+
+      - name: Upload macOS desktop installer
+        if: ${{ inputs.package_installers }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-installer-macos
+          path: desktop/build/compose/binaries/**/*.dmg
           if-no-files-found: error
 
       - name: Upload Swift bindings (debug aid)

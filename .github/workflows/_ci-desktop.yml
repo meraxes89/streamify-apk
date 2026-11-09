@@ -20,12 +20,14 @@
 #   * linux    consumes the engine-linux-x86_64 cdylib artifact from
 #              _ci-engine.yml via -Pstreamify.prebuiltEngineLib (no cargo
 #              invocation for the engine library).
-#   * windows  builds the host cdylib through Gradle, behind the
-#   * macos    ENGINE_BUILDABLE probe (MP-DEC-08): while the rust tree fails
-#              `cargo check --lib` on a host, the leg reports green with a
-#              loud blocker notice instead of red noise — and auto-activates
-#              the full suite the moment the engine compiles there. The
-#              probe IS the gate.
+#   * windows  consumes the engine-windows-x86_64 cdylib artifact the same
+#              way. TRUTH-01d: the MP-DEC-08 ENGINE_BUILDABLE probe scaffolding
+#              is deleted — the Windows engine compiles (task_orchestrator's
+#              Linux-only libc was cfg-gated in Phase 4b) and a missing
+#              artifact download already fails the leg, so the "blocked
+#              upstream (reported, not failed)" branch was unreachable dead
+#              code. The macOS leg lives in the Apple Unified lane.
+#   * macos    (Apple Unified lane, _ci-ios.yml).
 #
 # package_installers (PRs: only when packaging files changed; main /
 # merge_group / releases: true) adds jpackage + the strict
@@ -114,12 +116,14 @@ jobs:
           elif [ "${{ runner.os }}" = "Windows" ]; then
             echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
           fi
-          echo "ENGINE_BUILDABLE=1" >> "$GITHUB_ENV"
 
       # ── 1. Desktop Test Suite (Single combined pass, resp7 Pillar 4) ──────
       # Single combined invocation reuses Gradle daemon state, workers, and bytecode cache.
       - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"
-        if: ${{ runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1' }}
+        if: ${{ always() && (runner.os == 'Linux' || runner.os == 'Windows') }}
+        # TRUTH-01d: unconditional on both legs — the prebuilt engine
+        # artifact download above is the hard dependency (a missing
+        # artifact fails the step), so there is nothing left to probe.
         shell: bash
         run: |
           chmod +x gradlew
@@ -127,34 +131,9 @@ jobs:
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
-      # Mock engine fallback for unbuildable non-Linux hosts:
-      - name: "Headless desktop UI smoke tests (mock engine fallback)"
-        if: ${{ runner.os != 'Linux' && env.ENGINE_BUILDABLE == '0' }}
-        shell: bash
-        run: |
-          chmod +x gradlew
-          ./gradlew :desktop:test \
-            --tests "com.streamify.desktop.shell.*" \
-            --parallel --build-cache --configuration-cache --stacktrace
-          ./gradlew :shared:desktopTest \
-            --parallel --build-cache --configuration-cache --stacktrace
-
-      - name: Engine blocked upstream (reported, not failed)
-        if: ${{ runner.os != 'Linux' && env.ENGINE_BUILDABLE == '0' }}
-        shell: bash
-        run: |
-          echo "=============================================================================="
-          echo " DESKTOP JNA SMOKE ON $(uname -s): BLOCKED UPSTREAM (reported, not failed)"
-          echo "=============================================================================="
-          echo " The sovereign Rust core does not compile for this host yet:"
-          echo "   probe: cargo check --manifest-path rust/Cargo.toml --lib"
-          echo " This leg auto-activates the full JNA smoke suite the moment that"
-          echo " lands — the probe is the gate (MP-DEC-08)."
-          echo "=============================================================================="
-
       # ── 2. Installer packaging + strict size budget (gated) ────────────────
       - name: Install WiX Toolset 3.14 (jpackage MSI prerequisite)
-        if: ${{ inputs.package_installers && runner.os == 'Windows' && env.ENGINE_BUILDABLE == '1' }}
+        if: ${{ inputs.package_installers && runner.os == 'Windows' }}
         shell: pwsh
         run: |
           $wixRoot = "${env:ProgramFiles(x86)}\WiX Toolset v3.14"
@@ -166,7 +145,7 @@ jobs:
           "WIX=$wixRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: "Package desktop distribution (jpackage: deb / msi / dmg)"
-        if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
+        if: ${{ inputs.package_installers }}
         shell: bash
         run: |
           chmod +x gradlew
@@ -177,7 +156,7 @@ jobs:
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: MP-HAL10 size budget report (strictly < 250 MiB)
-        if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
+        if: ${{ inputs.package_installers }}
         shell: bash
         run: |
           ./gradlew :desktop:verifyDesktopSizeBudget \
@@ -185,7 +164,7 @@ jobs:
             --parallel --build-cache --configuration-cache
 
       - name: Upload desktop installers
-        if: ${{ inputs.package_installers && (runner.os == 'Linux' || env.ENGINE_BUILDABLE == '1') }}
+        if: ${{ inputs.package_installers }}
         uses: actions/upload-artifact@v7
         with:
           name: desktop-installer-${{ matrix.os-name }}

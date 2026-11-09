@@ -84,9 +84,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Download iOS xcframework (optional)
+      - name: "Download iOS xcframework (TRUTH-01b: required)"
         uses: actions/download-artifact@v8
-        continue-on-error: true
         with:
           name: ios-xcframework
           path: dist
@@ -105,17 +104,13 @@ jobs:
           ls -la release/
 
           # Hard verification of the expected production installer classes:
+          # a release ships EVERY promised artifact or it does not ship
+          # (TRUTH-01b — the xcframework is no longer optional).
           ls release/Streamify-v*.apk            >/dev/null || { echo "FATAL: missing Streamify-v*.apk" >&2; exit 1; }
           ls release/streamify_*_amd64.deb      >/dev/null || { echo "FATAL: missing streamify_*_amd64.deb" >&2; exit 1; }
           ls release/Streamify-*.msi            >/dev/null || { echo "FATAL: missing Streamify-*.msi" >&2; exit 1; }
           ls release/Streamify-*.dmg            >/dev/null || { echo "FATAL: missing Streamify-*.dmg" >&2; exit 1; }
-
-          # Optional iOS framework (reported if present, non-fatal if probe gated)
-          if ls release/StreamifyCore.xcframework.zip >/dev/null 2>&1; then
-            echo "Found StreamifyCore.xcframework.zip"
-          else
-            echo "StreamifyCore.xcframework.zip not present (Apple target gated upstream by MP-DEC-08)"
-          fi
+          ls release/StreamifyCore.xcframework.zip >/dev/null || { echo "FATAL: missing StreamifyCore.xcframework.zip (TRUTH-01b: every promised artifact exists or the release fails)" >&2; exit 1; }
 
       - name: Generate SHA256SUMS
         run: |
