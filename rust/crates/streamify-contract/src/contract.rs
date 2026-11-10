@@ -92,6 +92,23 @@ struct QueuedTrack {
     enqueued_by: String,
 }
 
+/// The staged playback queue plus its transport cursor (SW-ENG1-03 +
+/// A2, issue #148): both live behind ONE lock, so a cursor move and
+/// the row page it indexes are always observed as a single consistent
+/// generation — a `Next` racing a `get_queue` page read can never
+/// report a cursor pointing into a page it did not come from.
+#[derive(Debug, Default)]
+struct QueueLane {
+    /// The staged rows, in enqueue order. Rows only ever append
+    /// (`enqueue_track`) or drop as a whole set (`clear_queue`), so a
+    /// live cursor index stays valid across enqueues by construction.
+    rows: Vec<QueuedTrack>,
+    /// The transport cursor: index of the row `Seek`/`Next`/
+    /// `Previous` operate on. `None` until the first transport command
+    /// selects the queue head, and after every `clear_queue`.
+    cursor: Option<usize>,
+}
+
 // Re-export the contract's data types from their canonical home in
 // streamify-core (Discussion #120): the UniFFI scaffolding resolves
 // every UDL-declared type by bare name through these re-exports, and
@@ -171,6 +188,35 @@ where
     }
 }
 
+/// A6 (issue #148): the panic-policy contract probe. Drives ONE
+/// deliberate panic through [`ffi_shield`] and reports how it was
+/// marshaled — the executable half of the per-profile panic contract
+/// documented in `docs/architecture/engines/13_playback_dataplane.md`
+/// §8 and pinned by `rust/Cargo.toml`'s `[profile.release]`:
+///
+/// * **unwind configurations** (dev / test / any downstream binary
+///   that overrides the panic strategy): the shield CATCHES the panic
+///   and this returns `Err(EngineError::Internal)` carrying the
+///   `panic under panic_shield_self_test: …` message and a captured
+///   backtrace — the marshaling path every UniFFI trampoline
+///   specifies.
+/// * **`panic = "abort"` configurations** (the shipped release
+///   artifacts): the panic terminates the process at the panic site —
+///   this function never returns, and the fault routes through the
+///   platform crash reporter instead.
+///
+/// Consumed by `src/bin/panic_probe.rs` (the cfg-split executable
+/// probe) and `tests/test_panic_policy.rs` (the contract tests).
+/// Rust-side surface only for now: UDL exposure is not required for a
+/// self-test the bindings never call, and adding it would churn the
+/// frozen bindings for nothing (the A4 transport surface owns the next
+/// UDL delta).
+pub fn panic_shield_self_test() -> Result<(), EngineError> {
+    ffi_shield("panic_shield_self_test", || {
+        panic!("A6 panic-path contract probe: deliberate, expected, marshaled");
+    })
+}
+
 // ============================================================================
 //  MP-C02: push event listener contract
 // ============================================================================
@@ -240,13 +286,22 @@ struct EngineShared {
     /// ACCEPTED command's identity and acceptance instant.
     last_media_command: Mutex<Option<(u8, u64, Instant)>>,
     // ── SW-ENG1-03: the typed catalog lane's interior state ──────────
-    /// The staged playback queue (typed lane). Read-snapshotted under
-    /// one lock; NOT part of the pushed EngineSnapshot (that shape is
-    /// frozen — see the UDL note on the typed catalog lane).
-    queue: Mutex<Vec<QueuedTrack>>,
+    /// The staged playback queue + transport cursor (typed lane).
+    /// Read-snapshotted under one lock; NOT part of the pushed
+    /// EngineSnapshot (that shape is frozen — see the UDL note on the
+    /// typed catalog lane).
+    queue: Mutex<QueueLane>,
     /// The ten-band equalizer curve. Starts at the flat preset; band
     /// writes replace one row under the same lock.
     eq_bands: Mutex<Vec<EqualizerBand>>,
+    /// A2 (issue #148): the transport's position target within the
+    /// current queue row [ms]. Set by `Seek` (clamped to the current
+    /// row's duration when it carries one), reset to 0 by every track
+    /// change (`Next`/`Previous`) and by `clear_queue`. A plain atomic
+    /// keeps the read side lock-free; transport mutations write it
+    /// while holding the queue lock, so a seek racing a track change
+    /// can never leak a stale target across rows.
+    position_ms: AtomicU64,
 }
 
 impl fmt::Debug for EngineShared {
@@ -305,8 +360,9 @@ impl EngineShared {
             listeners: Mutex::new(Vec::new()),
             dispatch_tx: OnceLock::new(),
             last_media_command: Mutex::new(None),
-            queue: Mutex::new(Vec::new()),
+            queue: Mutex::new(QueueLane::default()),
             eq_bands: Mutex::new(EqualizerBand::default_set()),
+            position_ms: AtomicU64::new(0),
         }
     }
 
@@ -574,13 +630,21 @@ impl StreamifyEngine {
     /// media-key ghosts. A DIFFERENT command always applies and resets
     /// the slot.
     ///
-    /// Phase-3 semantics of the accepted commands (the sovereign state
-    /// machine slice; full pipeline/queue wiring lands with the playback
-    /// queue phase): `Play`/`Pause`/`TogglePlayPause`/`Stop` drive the
-    /// lifecycle state, `SetVolume` applies the same clamp semantics as
-    /// [`Self::set_volume`], and `Seek`/`Next`/`Previous` are
-    /// acknowledged (rev bump) with their queue effects deferred to the
-    /// queue engine integration.
+    /// Accepted-command semantics (the sovereign state machine slice;
+    /// the rendering data plane lands with the producer phase — see
+    /// `docs/architecture/engines/13_playback_dataplane.md`):
+    /// `Play`/`Pause`/`TogglePlayPause`/`Stop` drive the lifecycle
+    /// state, `SetVolume` applies the same clamp semantics as
+    /// [`Self::set_volume`], and `Seek`/`Next`/`Previous` drive the
+    /// queue-scoped transport (A2, issue #148): `Seek` re-anchors the
+    /// position target within the current row (clamped to the row's
+    /// duration when it carries one; a no-op while no row is
+    /// selected), `Next`/`Previous` move the cursor with wrap-around
+    /// (mirroring the legacy `get_next_track` circular loopback) and
+    /// reset the position target. An empty queue makes the transport
+    /// commands acknowledged no-ops. The lifecycle state is never
+    /// touched by the transport: a `Next` while `Paused` stays paused
+    /// with a new current row.
     ///
     /// Returns `true` when the command was applied, `false` when the
     /// debounce swallowed it.
@@ -657,9 +721,65 @@ impl StreamifyEngine {
                     .volume_bits
                     .store(clamped.to_bits(), Ordering::Release);
             }
-            // Queue-scoped intents: acknowledged (rev bump in the
-            // caller), effects deferred to the queue engine phase.
-            MediaCommand::Seek { .. } | MediaCommand::Next | MediaCommand::Previous => {}
+            // A2 (issue #148): queue-scoped transport. `Seek` clamps
+            // to the current row's duration when it carries one;
+            // `Next`/`Previous` move the cursor (wrap-around,
+            // mirroring the legacy `get_next_track` circular
+            // loopback) and re-anchor the position at the start of the
+            // newly selected row. With no row selected there is
+            // nothing to seek within, and an empty queue leaves the
+            // cursor untouched — both remain ACKNOWLEDGED no-ops (the
+            // caller bumps the revision either way). The lifecycle
+            // state is deliberately untouched: transport commands
+            // never pause or resume playback.
+            MediaCommand::Seek { position_ms } => {
+                let queue = self
+                    .shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let Some(row) = queue.cursor.and_then(|i| queue.rows.get(i)) else {
+                    return;
+                };
+                // A row with `duration_ms == 0` carries an unknown
+                // duration (streams resolve late); it clamps nothing.
+                let target = if row.track.duration_ms > 0 {
+                    position_ms.min(row.track.duration_ms)
+                } else {
+                    position_ms
+                };
+                self.shared.position_ms.store(target, Ordering::Release);
+            }
+            MediaCommand::Next => {
+                let mut queue = self
+                    .shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if !queue.rows.is_empty() {
+                    let next = match queue.cursor {
+                        None => 0,
+                        Some(i) => (i + 1) % queue.rows.len(),
+                    };
+                    queue.cursor = Some(next);
+                    self.shared.position_ms.store(0, Ordering::Release);
+                }
+            }
+            MediaCommand::Previous => {
+                let mut queue = self
+                    .shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if !queue.rows.is_empty() {
+                    let previous = match queue.cursor {
+                        None => 0,
+                        Some(i) => (i + queue.rows.len() - 1) % queue.rows.len(),
+                    };
+                    queue.cursor = Some(previous);
+                    self.shared.position_ms.store(0, Ordering::Release);
+                }
+            }
         }
     }
 
@@ -1003,7 +1123,7 @@ impl StreamifyEngine {
                 .queue
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if queue.len() >= MAX_QUEUE_ROWS {
+            if queue.rows.len() >= MAX_QUEUE_ROWS {
                 return Err(EngineError::Internal {
                     error_message: format!(
                         "invalid state: playback queue at the {MAX_QUEUE_ROWS}-row cap"
@@ -1016,8 +1136,8 @@ impl StreamifyEngine {
             } else {
                 enqueued_by
             };
-            let index = queue.len() as u32;
-            queue.push(QueuedTrack { track, enqueued_by: by });
+            let index = queue.rows.len() as u32;
+            queue.rows.push(QueuedTrack { track, enqueued_by: by });
             Ok(index)
         })
     }
@@ -1036,6 +1156,7 @@ impl StreamifyEngine {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             Ok(queue
+                .rows
                 .iter()
                 .enumerate()
                 .map(|(index, row)| QueueItem {
@@ -1047,15 +1168,82 @@ impl StreamifyEngine {
         })
     }
 
-    /// Drop every staged queue row (idempotent; an empty queue is a
-    /// success path, not an error).
-    pub fn clear_queue(&self) -> Result<(), EngineError> {
-        ffi_shield("StreamifyEngine::clear_queue", move || {
-            self.shared
+    /// A2 (issue #148): the queue row the transport cursor currently
+    /// selects, with its stable index — `None` while no row is selected
+    /// (fresh engine, or after [`Self::clear_queue`]).
+    ///
+    /// One lock acquisition covers the cursor read AND the row read, so
+    /// the returned row always belongs to the same queue generation as
+    /// the cursor that selected it. Read-after-action surface like the
+    /// rest of the typed lane (NOT part of the pushed
+    /// `EngineSnapshot`, whose shape is frozen): a UI re-reads exactly
+    /// when a transport command could have moved the cursor. UDL
+    /// exposure lands with the A4 transport surface
+    /// (`docs/architecture/engines/13_playback_dataplane.md` §7); until
+    /// then this is the Rust-side contract the integration tests pin.
+    pub fn get_current_queue_item(&self) -> Result<Option<QueueItem>, EngineError> {
+        ffi_shield("StreamifyEngine::get_current_queue_item", move || {
+            let queue = self
+                .shared
                 .queue
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .clear();
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let Some(index) = queue.cursor else {
+                return Ok(None);
+            };
+            let Some(row) = queue.rows.get(index) else {
+                // Unreachable by construction (rows only append;
+                // clear_queue resets the cursor) — fail safe to "no
+                // current row" rather than ever reporting a dangling
+                // index.
+                return Ok(None);
+            };
+            Ok(Some(QueueItem {
+                index: index as u32,
+                track: row.track.clone(),
+                enqueued_by: row.enqueued_by.clone(),
+            }))
+        })
+    }
+
+    /// A2 (issue #148): the transport's position target within the
+    /// current queue row [ms] — the value the last accepted `Seek`
+    /// stored (clamped to the row's duration when known), `0` after
+    /// every track change (`Next`/`Previous`) and after
+    /// [`Self::clear_queue`].
+    ///
+    /// This is the CONTROL-PLANE target. The rendered-position truth
+    /// is the hardware presentation clock: once the producer pipeline
+    /// (A3) drives a sink, the audible position derives from the
+    /// `DacPresentationClock` samples [`Self::record_dac_clock`]
+    /// ingests (frames ÷ rate), republished in every pushed snapshot —
+    /// the engine never interpolates position from a wall clock
+    /// (MP-DEC-03). The producer reconciles this target against the
+    /// DAC clock whenever it re-anchors after a seek. UDL exposure
+    /// lands with the A4 transport surface.
+    pub fn get_playback_position_ms(&self) -> Result<u64, EngineError> {
+        ffi_shield("StreamifyEngine::get_playback_position_ms", move || {
+            Ok(self.shared.position_ms.load(Ordering::Acquire))
+        })
+    }
+
+    /// Drop every staged queue row (idempotent; an empty queue is a
+    /// success path, not an error) and reset the transport with the
+    /// same lock acquisition: the cursor that indexed the dropped rows
+    /// and the position within the (now absent) current row both go to
+    /// their fresh-engine values, so a later `Next` selects the head
+    /// of whatever queue is staged next instead of inheriting a
+    /// dangling index (A2, issue #148).
+    pub fn clear_queue(&self) -> Result<(), EngineError> {
+        ffi_shield("StreamifyEngine::clear_queue", move || {
+            let mut queue = self
+                .shared
+                .queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            queue.rows.clear();
+            queue.cursor = None;
+            self.shared.position_ms.store(0, Ordering::Release);
             Ok(())
         })
     }
