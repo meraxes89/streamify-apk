@@ -60,6 +60,7 @@ jobs:
       run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_ios: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ios == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
           contains(github.event.pull_request.labels.*.name, 'package') ||
@@ -91,6 +92,8 @@ jobs:
             ios:
               - 'iosApp/**'
               - 'scripts/build_ios_xcframework.sh'
+            supabase:
+              - 'supabase/**'
             packaging:
               - '**/*.gradle.kts'
               - 'gradle/**'
@@ -232,6 +235,45 @@ jobs:
     with:
       package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
 
+  # SEC-10 gate: the Supabase RLS hardening suite runs the schema +
+  # regression assertions against a real Postgres+pgvector service
+  # container. Every assertion FAILS if a pre-SEC-10 permissive policy
+  # (WITH CHECK (TRUE) / OR TRUE / email-granted admin) is restored.
+  supabase-rls:
+    name: "Supabase RLS hardening suite (SEC-10)"
+    needs: preflight
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.run_supabase == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: streamify_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Apply schema + run the RLS regression suite
+        env:
+          PGPASSWORD: postgres
+        run: |
+          PG="psql -h 127.0.0.1 -p 5432 -U postgres -d streamify_test -v ON_ERROR_STOP=1"
+          $PG -f supabase/sql/tests/00_test_shim.sql
+          $PG -f supabase/schema.sql
+          $PG -f supabase/sql/tests/01_grants.sql
+          $PG -f supabase/sql/tests/rls_test.sql
+
   # =========================================================================
   # TIER 3: The Single Blocking Merge Gate
   # =========================================================================
@@ -243,7 +285,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, apple]
+    needs: [preflight, clippy, engine_dsp, android, desktop, apple, supabase-rls]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)

@@ -89,7 +89,7 @@ protocol CoreAudioDriver: AnyObject {
 /// The symbols are resolved ONCE at `start` (control thread); a missing
 /// symbol is a clean `.nativeFacadeUnavailable`, never a link error — the
 /// package keeps compiling without the native object (the scaffold period)
-/// exactly like `#if canImport(uniffi_streamify)` gates the engine lane.
+/// exactly like `#if canImport(streamifyFFI)` gates the engine lane.
 final class NativeCoreAudioDriver: CoreAudioDriver {
 
     private var adapterHandle: Int64 = 0

@@ -1,0 +1,21 @@
+# ============================================================================
+# CODEOWNERS — review routing (GOV-05, repository governance)
+#
+# Every pull request that touches the paths below automatically requests a
+# review from the owning maintainer(s), so nothing lands in a lane nobody
+# watches. This is the review half of the governance pair; the enforcement
+# half is the `main-branch-protection` ruleset (GOV-01: PRs only, linear
+# history, blocking CI gate).
+#
+# Why `require_code_owner_review` stays OFF in the ruleset: this is a
+# single-maintainer repository — the PR author cannot approve their own PR,
+# so a *required* code-owner review would deadlock every change until a
+# second maintainer exists. CODEOWNERS still routes the review request;
+# the merge gate stays the green CI gate (GOV-01).
+#
+# When additional maintainers join, split the global rule into per-lane
+# owners (engine / app / infra) and flip `require_code_owner_review` on.
+# ============================================================================
+
+# Default owner for everything in the repository.
+* @meraxes89

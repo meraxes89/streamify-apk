@@ -146,7 +146,7 @@ struct EqualizerView: View {
                 AxisGridLine()
                 AxisValueLabel {
                     if let hz = value.as(Double.self) {
-                        Text(EqualizerBand(
+                        Text(EqualizerBandUI(
                             index: 0,
                             centerHz: hz,
                             gainDb: 0,
@@ -185,13 +185,13 @@ struct EqualizerView: View {
         .opacity(eqModel.isEnabled ? 1 : 0.45)
     }
 
-    private var selectedBandDetail: EqualizerBand? {
+    private var selectedBandDetail: EqualizerBandUI? {
         guard let index = selectedBand else { return nil }
         return eqModel.bands.first { $0.index == index }
     }
 
     /// The Q-factor tuner for the selected band.
-    private func bandDetail(_ band: EqualizerBand) -> some View {
+    private func bandDetail(_ band: EqualizerBandUI) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(band.frequencyLabel) — Q factor")
@@ -256,7 +256,7 @@ struct EqualizerView: View {
 // VoiceOver gets a proper adjustable element with the same detents.
 
 private struct VerticalBandSlider: View {
-    let band: EqualizerBand
+    let band: EqualizerBandUI
     let isSelected: Bool
     let onChanged: (Double) -> Void
     let onSelect: () -> Void

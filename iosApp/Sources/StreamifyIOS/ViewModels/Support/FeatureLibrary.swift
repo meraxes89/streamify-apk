@@ -11,7 +11,7 @@ import Foundation
 // `PreviewEngineGateway` for the playback lane, this ONE protocol is the
 // probe-gated seam: the preview library keeps the shell fully navigable
 // today, and the real lane (`UniFFIFeatureLibrary` behind
-// `#if canImport(uniffi_streamify)`) lights up without a single edit in any
+// `#if canImport(streamifyFFI)`) lights up without a single edit in any
 // view model.
 //
 // Every requirement has a default (empty/idle) implementation below, so test
@@ -23,7 +23,7 @@ protocol FeatureLibrary: AnyObject {
 
     // MARK: Search (StreamResolver::search_tracks lane)
 
-    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchResult]
+    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchRow]
     func searchSuggestions(query: String) async -> [String]
 
     // MARK: Home feed
@@ -93,7 +93,7 @@ protocol FeatureLibrary: AnyObject {
 
 extension FeatureLibrary {
 
-    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchResult] { [] }
+    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchRow] { [] }
     func searchSuggestions(query: String) async -> [String] { [] }
     func homeFeed(hourOfDay: Int) async -> HomeFeed { HomeFeed() }
     func moveQueueItem(from: Int, to: Int) async {}
@@ -156,7 +156,7 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
 
     // ── Scriptable storage (tests read/seed these directly) ────────────────
 
-    var searchResults: [SearchResult] = []
+    var searchResults: [SearchRow] = []
     var suggestions: [String] = []
     var homeFeedContent: HomeFeed = HomeFeed()
     var blendResult: BlendResult = BlendResult()
@@ -190,7 +190,7 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
 
     // ── FeatureLibrary conformance ─────────────────────────────────────────
 
-    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchResult] {
+    func searchTracks(query: String, filter: SearchResultKind?) async -> [SearchRow] {
         searchResults.filter { $0.title.localizedCaseInsensitiveContains(query) || query.isEmpty }
     }
 

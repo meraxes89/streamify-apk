@@ -18,6 +18,16 @@
 #
 # publish-release downloads every artifact, emits SHA256SUMS, and attaches
 # all binaries to the GitHub Release.
+#
+# GOV-05 (2026-11-09): the signing lane (_ci-android assemble-apk) and this
+# workflow's publish gate both run inside the protected `release` GitHub
+# environment (reviewer-gated, deployable only from `v*` tags). The four
+# signing secrets (RELEASE_KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS,
+# KEY_PASSWORD) were NEVER present at repo level (the repo carried exactly
+# one secret, GEMINI_API_KEY) — they are defined in the `release`
+# environment and visible to no other workflow, event or branch. A
+# reviewer approval is required per deployment: the release ships when a
+# human says so, not when a tag is pushed.
 # ============================================================================
 name: Release
 
@@ -69,6 +79,10 @@ jobs:
     needs: [engine, android, desktop, apple]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # GOV-05: the actual publish (Release creation + binary attach) sits in
+    # the protected `release` environment — a reviewer must approve the
+    # deployment before anything becomes public.
+    environment: release
     steps:
       - name: Download Android release APK
         uses: actions/download-artifact@v8
@@ -84,9 +98,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Download iOS xcframework (optional)
+      - name: "Download iOS xcframework (TRUTH-01b: required)"
         uses: actions/download-artifact@v8
-        continue-on-error: true
         with:
           name: ios-xcframework
           path: dist
@@ -105,17 +118,13 @@ jobs:
           ls -la release/
 
           # Hard verification of the expected production installer classes:
+          # a release ships EVERY promised artifact or it does not ship
+          # (TRUTH-01b — the xcframework is no longer optional).
           ls release/Streamify-v*.apk            >/dev/null || { echo "FATAL: missing Streamify-v*.apk" >&2; exit 1; }
           ls release/streamify_*_amd64.deb      >/dev/null || { echo "FATAL: missing streamify_*_amd64.deb" >&2; exit 1; }
           ls release/Streamify-*.msi            >/dev/null || { echo "FATAL: missing Streamify-*.msi" >&2; exit 1; }
           ls release/Streamify-*.dmg            >/dev/null || { echo "FATAL: missing Streamify-*.dmg" >&2; exit 1; }
-
-          # Optional iOS framework (reported if present, non-fatal if probe gated)
-          if ls release/StreamifyCore.xcframework.zip >/dev/null 2>&1; then
-            echo "Found StreamifyCore.xcframework.zip"
-          else
-            echo "StreamifyCore.xcframework.zip not present (Apple target gated upstream by MP-DEC-08)"
-          fi
+          ls release/StreamifyCore.xcframework.zip >/dev/null || { echo "FATAL: missing StreamifyCore.xcframework.zip (TRUTH-01b: every promised artifact exists or the release fails)" >&2; exit 1; }
 
       - name: Generate SHA256SUMS
         run: |

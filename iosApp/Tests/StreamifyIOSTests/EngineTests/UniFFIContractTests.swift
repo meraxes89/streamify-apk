@@ -5,7 +5,7 @@ import XCTest
 // SW-ENG1-03 / SW-ENG1-04: the UniFFI contract tests.
 //
 // TWO LANES, ONE FILE:
-//   * The REAL-LANE suite (gated on `#if canImport(uniffi_streamify)`)
+//   * The REAL-LANE suite (gated on `#if canImport(streamifyFFI)`)
 //     runs only when StreamifyCore.xcframework is linked (the conditional
 //     binary target in Package.swift). It proves Swift correctly
 //     instantiates and deserializes Track, SearchResult and EqualizerBand
@@ -18,7 +18,7 @@ import XCTest
 //     in every configuration, including the standalone CI lane.
 // ─────────────────────────────────────────────────────────────────────────────
 
-#if canImport(uniffi_streamify)
+#if canImport(streamifyFFI)
 
 final class UniFFIContractTests: XCTestCase {
 
@@ -60,7 +60,7 @@ final class UniFFIContractTests: XCTestCase {
     /// crosses INTO Rust (enqueue) and back OUT (get_queue) field-for-field.
     func testTrackInstantiatesAndRoundTripsThroughTheQueue() throws {
         let engine = try makeEngine()
-        defer { engine.clearQueue() }
+        defer { try? engine.clearQueue() } // defer body cannot propagate FFI errors
 
         let track = Track(
             id: "swiftlane_01_abcdefghij",
@@ -89,7 +89,7 @@ final class UniFFIContractTests: XCTestCase {
         XCTAssertEqual(item.track.isExplicit, track.isExplicit)
         XCTAssertEqual(item.track.resolvedStreamUrl, track.resolvedStreamUrl)
 
-        engine.clearQueue()
+        try engine.clearQueue()
         XCTAssertTrue(try engine.getQueue().isEmpty) // idempotent clear
     }
 
@@ -146,7 +146,7 @@ final class UniFFIContractTests: XCTestCase {
     /// SW-ENG1-04: the push-event bridge — a control-plane mutation on the
     /// engine surfaces as an AsyncStream element through the gateway's
     /// EngineEventListener bridge (Rust worker thread → Swift stream).
-    func testPushEventBridgeDeliversSnapshotsIntoTheAsyncStream() throws {
+    func testPushEventBridgeDeliversSnapshotsIntoTheAsyncStream() async throws {
         let gateway = try UniFFIEngineGateway()
         defer { gateway.shutdown() }
 
@@ -170,7 +170,7 @@ final class UniFFIContractTests: XCTestCase {
     }
 }
 
-#endif  // canImport(uniffi_streamify)
+#endif  // canImport(streamifyFFI)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALWAYS-ON: the lane-neutral typed surface (runs in every configuration).

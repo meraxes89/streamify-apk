@@ -2,8 +2,8 @@ import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The REAL engine lane: direct Swift UniFFI bindings from Alpha's
-// StreamifyCore.xcframework (`uniffi_streamify` module). Compiled strictly
-// behind `#if canImport(uniffi_streamify)` — until the xcframework is
+// StreamifyCore.xcframework (`streamifyFFI` module). Compiled strictly
+// behind `#if canImport(streamifyFFI)` — until the xcframework is
 // linked this whole type is absent, the shell falls back to the preview
 // gateway, and the scaffold compiles standalone. The mapping below follows
 // the frozen UDL contract (rust/crates/streamify-contract/src/streamify.udl);
@@ -11,7 +11,7 @@ import Foundation
 // iosApp/Frameworks/, this lane activates with zero edits anywhere else
 // (same philosophy as the desktop CI's Windows probe-gate).
 //
-// ZERO Kotlin/Native double-bridge (MP-DEC-02): SwiftUI → uniffi_streamify
+// ZERO Kotlin/Native double-bridge (MP-DEC-02): SwiftUI → streamifyFFI
 // Swift proxies → the staticlib's uniffi_* C ABI. Nothing in between.
 //
 // SW-ENG1-04 (this revision):
@@ -27,8 +27,8 @@ import Foundation
 //     op in the house direct-call style.
 // ─────────────────────────────────────────────────────────────────────────────
 
-#if canImport(uniffi_streamify)
-import uniffi_streamify
+#if canImport(streamifyFFI)
+import streamifyFFI
 
 final class UniFFIEngineGateway: EngineGateway {
 
@@ -176,12 +176,13 @@ final class UniFFIEngineGateway: EngineGateway {
         }
     }
 
-    /// Static scope on purpose: the generated namespace function
-    /// `searchTracks(query:limit:)` and the gateway's instance method
-    /// share a base name — inside a static function only the generated
-    /// top-level function is in scope, so resolution is unambiguous.
+    /// Module-qualified on purpose: the generated global function
+    /// `searchTracks(query:limit:)` and the gateway protocol's instance
+    /// method share a base name — the unqualified call resolved to the
+    /// instance method (and failed in this static context). Qualify with
+    /// the module to reach the generated top-level function.
     private static func performSearchTracks(query: String, limit: Int) throws -> SearchResult {
-        try searchTracks(query: query, limit: UInt32(max(1, limit)))
+        try StreamifyIOS.searchTracks(query: query, limit: UInt32(max(1, limit)))
     }
 
     private static func map(_ snapshot: EngineSnapshot) -> PlaybackSnapshot {

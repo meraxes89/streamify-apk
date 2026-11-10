@@ -11,7 +11,7 @@ import SwiftUI
 
 public struct YtVerticalEqSlider: View {
     /// Decoupled primitives (no band-model coupling): the frequency CAPTION
-    /// and the band's current gain — any producer (Eng 4's EqualizerBand or
+    /// and the band's current gain — any producer (Eng 4's EqualizerBandUI or
     /// preview fixtures) can drive the same component.
     public var frequencyLabel: String
     public var gainDb: Double

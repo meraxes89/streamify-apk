@@ -23,7 +23,7 @@
 //
 // THE REAL ENGINE LANE (SW-DEC-01 / MP-DEC-02 — no double bridge)
 //   * The direct Swift UniFFI bindings are consumed STRICTLY behind
-//     `#if canImport(uniffi_streamify)` (Engine/UniFFIEngineGateway.swift
+//     `#if canImport(streamifyFFI)` (Engine/UniFFIEngineGateway.swift
 //     and the probe-gated Generated/ bindings).
 //   * This manifest links StreamifyCore.xcframework as a conditional
 //     BINARY TARGET the moment it exists at iosApp/Frameworks/ — the
@@ -53,7 +53,7 @@ var targets: [Target] = [
     .testTarget(
         name: "StreamifyIOSTests",
         // The binary target is a direct dependency of the TEST target too,
-        // so `#if canImport(uniffi_streamify)` resolves inside the tests
+        // so `#if canImport(streamifyFFI)` resolves inside the tests
         // (SwiftPM only puts direct dependencies on a target's module
         // search path) and the real-lane UniFFI contract tests compile.
         dependencies: realLaneLinked

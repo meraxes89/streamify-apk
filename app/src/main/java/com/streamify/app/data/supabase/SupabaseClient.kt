@@ -314,24 +314,26 @@ object SupabaseClient {
     }
 
     /**
-     * SEC-09: resolve the admin claim from the server-side profile row
-     * (profiles.is_admin). The client cannot influence this value through
-     * sign-in metadata. FAIL-CLOSED: any HTTP/parse error, missing row or
-     * missing field resolves to false — an unavailable backend never
-     * broadens admin access.
+     * SEC-09/SEC-10: resolve the admin claim from the server via the
+     * get_my_admin_status() SECURITY DEFINER RPC — the ONLY surface the
+     * client can ask, answered from profiles.is_admin server-side (the
+     * client cannot influence the value through sign-in metadata, table
+     * reads, or update payloads — the profiles is_admin guard trigger
+     * enforces the write side). FAIL-CLOSED: any HTTP/parse error
+     * resolves to false — an unavailable backend never broadens admin
+     * access.
      */
     internal suspend fun fetchServerIsAdmin(userId: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val url = "${BuildConfig.SUPABASE_URL}/rest/v1/profiles?id=eq.$userId&select=is_admin"
+            val url = "${BuildConfig.SUPABASE_URL}/rest/v1/rpc/get_my_admin_status"
             val headers = mapOf(
                 "apikey" to BuildConfig.SUPABASE_ANON_KEY,
                 "Authorization" to "Bearer ${getAuthToken()}"
             )
-            val (code, body) = executeHttpRequest(url, "GET", headers)
+            val (code, body) = executeHttpRequest(url, "POST", headers, "{}")
             if (code != 200 || body.isNullOrBlank()) return@withContext false
-            val rows = JSONArray(body)
-            if (rows.length() == 0) return@withContext false
-            rows.getJSONObject(0).optBoolean("is_admin", false)
+            // PostgREST returns a bare JSON boolean for scalar RPCs.
+            body.trim().equals("true", ignoreCase = true)
         } catch (e: Exception) {
             SLog.st("SupabaseClient", "SupabaseClient.fetchServerIsAdmin failed (fail-closed)", e)
             false

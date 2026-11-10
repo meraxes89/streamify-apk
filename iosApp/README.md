@@ -74,7 +74,7 @@ iosApp/
 │   │   ├── EngineContract.swift           lane-neutral Engine* mirrors of the SW-ENG1-03
 │   │   │                                  UniFFI records (Track/SearchResult/QueueItem/
 │   │   │                                  EqualizerBand/JamRoomState)
-│   │   ├── UniFFIEngineGateway.swift      #if canImport(uniffi_streamify) — the REAL lane
+│   │   ├── UniFFIEngineGateway.swift      #if canImport(streamifyFFI) — the REAL lane
 │   │   │                                  (single-stream push bridge + typed lane mapping)
 │   │   ├── EngineGatewayLoader.swift      one-place lane selection
 │   │   ├── PreviewEngineGateway.swift     always-available deterministic stand-in with
@@ -154,14 +154,14 @@ arbitrary queue).
 ## Engine lane (Alpha dependency)
 
 The real lane (`UniFFIEngineGateway`) compiles **strictly** behind
-`#if canImport(uniffi_streamify)`. Until Alpha's XCFramework packaging
+`#if canImport(streamifyFFI)`. Until Alpha's XCFramework packaging
 automation (Phase 5, Alpha's row in the responsibility matrix) links
 `StreamifyCore.xcframework` into the host app, the scaffold builds and runs
 with `PreviewEngineGateway` — and the moment the framework lands, the real
 lane activates with **zero edits** anywhere in this package (same
 probe-gate philosophy as the desktop CI's Windows engine check).
 
-Binding mode (MP-DEC-02): SwiftUI → `uniffi_streamify` Swift proxies → the
+Binding mode (MP-DEC-02): SwiftUI → `streamifyFFI` Swift proxies → the
 staticlib's `uniffi_*` C ABI. No `cinterop`, no Kotlin runtime, no Obj-C
 wrapper.
 
@@ -220,6 +220,6 @@ xcodebuild test -scheme StreamifyIOS \\
 network, no engine required. The REAL engine lane links conditionally: run
 `./scripts/build_ios_xcframework.sh --output iosApp/Frameworks` on a Mac
 and the manifest's probe picks `Frameworks/StreamifyCore.xcframework` up
-as an SPM binary target — `import uniffi_streamify` resolves straight
+as an SPM binary target — `import streamifyFFI` resolves straight
 out of the framework (no Kotlin/Native, no Obj-C shim; MP-DEC-02) and
 the UniFFI-gated code paths light up with zero source edits.

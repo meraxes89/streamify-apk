@@ -96,8 +96,8 @@ final class UiCurrencyTests: XCTestCase {
 
     func testEqualizerBandFrequencyLabel() {
         // The canonical band type is Engineer 4's (PresentationModels).
-        XCTAssertEqual(EqualizerBand(index: 0, centerHz: 60, gainDb: 0, q: 1).frequencyLabel, "60")
-        XCTAssertEqual(EqualizerBand(index: 4, centerHz: 16_000, gainDb: 0, q: 1).frequencyLabel, "16k")
+        XCTAssertEqual(EqualizerBandUI(index: 0, centerHz: 60, gainDb: 0, q: 1).frequencyLabel, "60")
+        XCTAssertEqual(EqualizerBandUI(index: 4, centerHz: 16_000, gainDb: 0, q: 1).frequencyLabel, "16k")
     }
 
     func testDspPreferencesDefaultsMatchTheAudiophileContract() {

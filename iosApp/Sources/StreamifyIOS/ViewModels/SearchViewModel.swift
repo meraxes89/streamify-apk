@@ -21,7 +21,7 @@ final class SearchViewModel {
     enum State: Equatable {
         case idle
         case loading
-        case success([SearchResult])
+        case success([SearchRow])
         case error(String)
     }
 
@@ -101,7 +101,7 @@ final class SearchViewModel {
         }
     }
 
-    private func finish(query: String, results: [SearchResult]) {
+    private func finish(query: String, results: [SearchRow]) {
         state = results.isEmpty
             ? .success([]) // honest empty, never a fabricated error
             : .success(results)
@@ -142,7 +142,7 @@ final class SearchViewModel {
 
     /// Marks a row as stream-resolving (tap feedback); the shell drives the
     /// actual play through the engine command plane.
-    func beginResolving(_ result: SearchResult) {
+    func beginResolving(_ result: SearchRow) {
         resolvingResultId = result.id
     }
 
@@ -151,13 +151,13 @@ final class SearchViewModel {
     }
 
     /// The engine-track projection of a tapped row.
-    func track(for result: SearchResult) -> PresentationTrack {
+    func track(for result: SearchRow) -> PresentationTrack {
         result.asPresentationTrack
     }
 
     // MARK: - Projections
 
-    var currentResults: [SearchResult] {
+    var currentResults: [SearchRow] {
         if case .success(let results) = state { return results }
         return []
     }

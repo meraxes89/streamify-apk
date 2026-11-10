@@ -281,7 +281,7 @@ public enum PreviewCatalog {
     ]
 
     /// EQ band fixtures (frequency label + gain) — the slider takes
-    /// primitives; the canonical EqualizerBand is Eng 4's
+    /// primitives; the canonical EqualizerBandUI is Eng 4's
     /// (ViewModels/Support/PresentationModels.swift).
     public static let eqBandsDb: [(label: String, gainDb: Double)] = [
         ("60 Hz", 3), ("250 Hz", 1), ("1 kHz", -0.5), ("4 kHz", 2), ("16 kHz", 4),

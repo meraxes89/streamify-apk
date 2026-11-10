@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS public.tracks (
     play_count INT DEFAULT 0,
     like_count INT DEFAULT 0,
     embedding vector(512), -- 512-dim KissFFT / CLAP audio feature vector
+    -- SEC-10(b): ingestion attribution — the per-user ingest rate limit
+    -- (track_ingest_allowed()) is enforced against this column.
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -190,21 +193,24 @@ $$;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- SEC-10(c): is_admin is granted ONLY by the project owner (SQL
+    -- console or set_user_admin_role). Sign-up can never mint an admin:
+    -- the pre-SEC-10 trigger granted admin to a hardcoded EMAIL, which
+    -- tied the privilege to an identity string anyone can register.
     INSERT INTO public.profiles (id, email, display_name, avatar_url, is_admin)
     VALUES (
         NEW.id,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
         COALESCE(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'picture', ''),
-        (NEW.email = 'sireenyadav@gmail.com')
+        FALSE
     )
     ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email,
-        is_admin = (EXCLUDED.email = 'sireenyadav@gmail.com'),
         last_active_at = NOW();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -228,20 +234,96 @@ ALTER TABLE public.admin_broadcasts ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
-    RETURN (auth.jwt()->>'email' = 'sireenyadav@gmail.com') OR
-           EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE);
+    -- SEC-10(c): the flag, and ONLY the flag. The hardcoded maintainer
+    -- email is gone — it granted admin to whoever registered that
+    -- address. Queried server-side (SECURITY DEFINER) by every admin
+    -- RPC and by the escalation guard trigger below.
+    RETURN EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- SEC-10(c): privilege-escalation guard. The profiles UPDATE policy
+-- ("own profile") would otherwise let any authenticated user set their
+-- own is_admin=true in the update payload — RLS WITH CHECK cannot
+-- reference OLD values, so this trigger is the enforcement point.
+CREATE OR REPLACE FUNCTION public.guard_is_admin_flag()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
+        IF NOT (public.is_admin() OR current_user IN ('postgres', 'supabase_admin', 'service_role')) THEN
+            RAISE EXCEPTION 'is_admin is server-managed (SEC-10): use set_user_admin_role';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS profiles_is_admin_guard ON public.profiles;
+CREATE TRIGGER profiles_is_admin_guard
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW EXECUTE FUNCTION public.guard_is_admin_flag();
+
+-- SEC-09/SEC-10(d): the one RPC the client asks for its admin claim.
+-- Fail-closed: not signed in / no profile row => false. The client can
+-- neither influence the answer nor read anyone else's flag.
+CREATE OR REPLACE FUNCTION public.get_my_admin_status()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    RETURN EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE);
+END;
+$$;
+
+-- SEC-10(b): per-user catalog-ingest rate limit. The shared track
+-- catalog is crowd-sourced from playback resolution; this caps how many
+-- tracks one account may insert per hour, starving content-poisoning
+-- floods while leaving honest resolution traffic (a listener hits far
+-- fewer than 60 NEW tracks per hour) untouched. VOLATILE so multi-row
+-- statements evaluate per inserted row, not once per statement.
+CREATE OR REPLACE FUNCTION public.track_ingest_allowed()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN FALSE;
+    END IF;
+    RETURN (
+        SELECT COUNT(*) FROM public.tracks
+        WHERE created_by = auth.uid()
+          AND created_at > NOW() - INTERVAL '1 hour'
+    ) < 60;
+END;
+$$;
 
 -- Profiles: Public read, user edit own, admin full
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Admin has full profile access" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (TRUE);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Admin has full profile access" ON public.profiles FOR ALL USING (public.is_admin());
 
--- Tracks: Anyone read, authenticated insert/update lyrics
+-- Tracks: Anyone read; SEC-10(b): authenticated + rate-limited ingest.
+-- The pre-SEC-10 policies were `WITH CHECK (TRUE)` — any anonymous
+-- request could poison the shared catalog.
+DROP POLICY IF EXISTS "Anyone can view tracks" ON public.tracks;
+DROP POLICY IF EXISTS "Users can upsert tracks" ON public.tracks;
+DROP POLICY IF EXISTS "Users can update track lyrics" ON public.tracks;
+DROP POLICY IF EXISTS "Authenticated users can ingest tracks (rate-limited)" ON public.tracks;
+DROP POLICY IF EXISTS "Authenticated users can update track lyrics (rate-limited)" ON public.tracks;
+DROP POLICY IF EXISTS "Admin has full track access" ON public.tracks;
 CREATE POLICY "Anyone can view tracks" ON public.tracks FOR SELECT USING (TRUE);
-CREATE POLICY "Users can upsert tracks" ON public.tracks FOR INSERT WITH CHECK (TRUE);
-CREATE POLICY "Users can update track lyrics" ON public.tracks FOR UPDATE USING (TRUE);
+CREATE POLICY "Authenticated users can ingest tracks (rate-limited)" ON public.tracks
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND public.track_ingest_allowed());
+CREATE POLICY "Authenticated users can update track lyrics (rate-limited)" ON public.tracks
+    FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (public.track_ingest_allowed());
 CREATE POLICY "Admin has full track access" ON public.tracks FOR ALL USING (public.is_admin());
 
 -- Likes: Users read/modify own likes
@@ -260,19 +342,38 @@ CREATE POLICY "Modify playlist tracks" ON public.playlist_tracks FOR ALL USING (
 );
 
 -- Jam Sessions
+DROP POLICY IF EXISTS "Anyone can view active listening sessions" ON public.listening_sessions;
+DROP POLICY IF EXISTS "Hosts can manage their sessions" ON public.listening_sessions;
+DROP POLICY IF EXISTS "Participants can update sessions" ON public.listening_sessions;
+DROP POLICY IF EXISTS "Anyone can insert sessions" ON public.listening_sessions;
+DROP POLICY IF EXISTS "Authenticated users can insert sessions" ON public.listening_sessions;
 CREATE POLICY "Anyone can view active listening sessions" ON public.listening_sessions FOR SELECT USING (TRUE);
 CREATE POLICY "Hosts can manage their sessions" ON public.listening_sessions FOR ALL USING (auth.uid() = host_user_id);
-CREATE POLICY "Participants can update sessions" ON public.listening_sessions FOR UPDATE USING (auth.uid() = ANY(participant_ids) OR TRUE);
-CREATE POLICY "Anyone can insert sessions" ON public.listening_sessions FOR INSERT WITH CHECK (TRUE);
+-- SEC-10(b): the `OR TRUE` is gone — only listed participants may
+-- update a session; strangers get the RLS default deny.
+CREATE POLICY "Participants can update sessions" ON public.listening_sessions FOR UPDATE USING (auth.uid() = ANY(participant_ids));
+-- SEC-10(b): session creation is authenticated and self-hosted only
+-- (was: `WITH CHECK (TRUE)` — anyone could seed rows).
+CREATE POLICY "Authenticated users can insert sessions" ON public.listening_sessions
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND auth.uid() = host_user_id);
 
 -- Track Comments
+DROP POLICY IF EXISTS "Anyone can read comments" ON public.track_comments;
+DROP POLICY IF EXISTS "Authenticated users can post comments" ON public.track_comments;
+DROP POLICY IF EXISTS "Users can delete own comments" ON public.track_comments;
 CREATE POLICY "Anyone can read comments" ON public.track_comments FOR SELECT USING (TRUE);
-CREATE POLICY "Authenticated users can post comments" ON public.track_comments FOR INSERT WITH CHECK (TRUE);
+-- SEC-10(b): the policy name finally tells the truth — posting requires
+-- an authenticated session (was: `WITH CHECK (TRUE)`).
+CREATE POLICY "Authenticated users can post comments" ON public.track_comments
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "Users can delete own comments" ON public.track_comments FOR DELETE USING (auth.uid() = user_id);
 
 -- User Listening History
+DROP POLICY IF EXISTS "Users can view own history" ON public.user_listening_history;
+DROP POLICY IF EXISTS "Users can record history" ON public.user_listening_history;
 CREATE POLICY "Users can view own history" ON public.user_listening_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can record history" ON public.user_listening_history FOR INSERT WITH CHECK (auth.uid() = user_id OR TRUE);
+-- SEC-10(b): the `OR TRUE` is gone — history rows are own-scoped only.
+CREATE POLICY "Users can record history" ON public.user_listening_history FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Friend Connections
 CREATE POLICY "Anyone can view friends" ON public.friend_connections FOR SELECT USING (TRUE);
@@ -291,6 +392,7 @@ CREATE OR REPLACE FUNCTION public.get_admin_dashboard_stats()
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     result JSONB;
@@ -340,6 +442,7 @@ CREATE OR REPLACE FUNCTION public.set_user_admin_role(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -361,6 +464,7 @@ CREATE OR REPLACE FUNCTION public.terminate_jam_session(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -381,6 +485,7 @@ CREATE OR REPLACE FUNCTION public.delete_comment_admin(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -402,6 +507,7 @@ CREATE OR REPLACE FUNCTION public.toggle_admin_broadcast(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -431,6 +537,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -472,6 +579,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -544,6 +652,7 @@ CREATE OR REPLACE FUNCTION public.upsert_user_listening_pattern(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     INSERT INTO public.user_listening_patterns (
@@ -628,6 +737,7 @@ CREATE OR REPLACE FUNCTION public.record_track_hook_telemetry(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     INSERT INTO public.track_hook_telemetry (
@@ -654,6 +764,7 @@ CREATE OR REPLACE FUNCTION public.record_track_cooccurrence(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF p_track_a = p_track_b THEN
@@ -701,6 +812,7 @@ CREATE OR REPLACE FUNCTION public.record_2nd_order_markov(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     INSERT INTO public.track_markov_2nd (
@@ -782,6 +894,7 @@ CREATE OR REPLACE FUNCTION public.claim_edge_task(p_device_id TEXT)
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_task RECORD;
@@ -847,6 +960,7 @@ CREATE OR REPLACE FUNCTION public.submit_edge_result(
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_existing RECORD;
@@ -924,6 +1038,7 @@ CREATE OR REPLACE FUNCTION public.update_edge_node_heartbeat(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     INSERT INTO public.edge_node_activity (user_id, device_id, display_name, status, current_track_id, current_track_title, last_active_at)
@@ -943,6 +1058,7 @@ CREATE OR REPLACE FUNCTION public.get_admin_edge_compute_stats()
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_total_tasks INT;

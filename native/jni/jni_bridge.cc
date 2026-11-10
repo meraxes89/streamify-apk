@@ -1420,6 +1420,88 @@ Java_com_streamify_app_data_NativeBridge_rustDecryptVaultFile(
     return code;
 }
 
+// ── SEC-06: v2 AEAD audio-cache chunk cipher (seal/open) ───────────────────
+// Envelope per chunk: [12B nonce][ciphertext][16B tag]; chunkId is bound as
+// AEAD associated data. Legacy caches remain readable via the position-XOR
+// export (nativeCryptCacheChunk) — read-old/write-new, CRYPTO_SPEC.md.
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_streamify_app_data_NativeBridge_rustSealCacheChunk(
+    JNIEnv* env,
+    jobject /* this */,
+    jbyteArray inputBuf,
+    jint inputLen,
+    jbyteArray outputBuf,
+    jint outputCap,
+    jbyteArray keyBuf,
+    jint keyLen,
+    jlong chunkId
+) {
+    if (!inputBuf || !outputBuf || !keyBuf) return -1;
+    typedef int64_t (*RustFn)(const uint8_t*, size_t, uint8_t*, size_t, const uint8_t*, size_t, uint64_t);
+    auto fn = get_rust_symbol<RustFn>("rust_seal_cache_chunk");
+    if (!fn) return -1;
+
+    jsize inActual = env->GetArrayLength(inputBuf);
+    jsize outActual = env->GetArrayLength(outputBuf);
+    jsize keyActual = env->GetArrayLength(keyBuf);
+    if (inputLen <= 0 || keyLen <= 0 || inActual < inputLen || outActual < outputCap || keyActual < keyLen) {
+        return -2;
+    }
+
+    jbyte* in = env->GetByteArrayElements(inputBuf, nullptr);
+    jbyte* out = env->GetByteArrayElements(outputBuf, nullptr);
+    jbyte* key = env->GetByteArrayElements(keyBuf, nullptr);
+
+    int64_t code = fn(reinterpret_cast<const uint8_t*>(in), static_cast<size_t>(inputLen),
+                      reinterpret_cast<uint8_t*>(out), static_cast<size_t>(outputCap),
+                      reinterpret_cast<const uint8_t*>(key), static_cast<size_t>(keyLen),
+                      static_cast<uint64_t>(chunkId));
+
+    env->ReleaseByteArrayElements(inputBuf, in, JNI_ABORT);
+    env->ReleaseByteArrayElements(outputBuf, out, 0); // sealed envelope written back
+    env->ReleaseByteArrayElements(keyBuf, key, JNI_ABORT);
+    return code;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_streamify_app_data_NativeBridge_rustOpenCacheChunk(
+    JNIEnv* env,
+    jobject /* this */,
+    jbyteArray sealedBuf,
+    jint sealedLen,
+    jbyteArray outputBuf,
+    jint outputCap,
+    jbyteArray keyBuf,
+    jint keyLen,
+    jlong chunkId
+) {
+    if (!sealedBuf || !outputBuf || !keyBuf) return -1;
+    typedef int64_t (*RustFn)(const uint8_t*, size_t, uint8_t*, size_t, const uint8_t*, size_t, uint64_t);
+    auto fn = get_rust_symbol<RustFn>("rust_open_cache_chunk");
+    if (!fn) return -1;
+
+    jsize sealedActual = env->GetArrayLength(sealedBuf);
+    jsize outActual = env->GetArrayLength(outputBuf);
+    jsize keyActual = env->GetArrayLength(keyBuf);
+    if (sealedLen <= 0 || keyLen <= 0 || sealedActual < sealedLen || outActual < outputCap || keyActual < keyLen) {
+        return -2;
+    }
+
+    jbyte* sealed = env->GetByteArrayElements(sealedBuf, nullptr);
+    jbyte* out = env->GetByteArrayElements(outputBuf, nullptr);
+    jbyte* key = env->GetByteArrayElements(keyBuf, nullptr);
+
+    int64_t code = fn(reinterpret_cast<const uint8_t*>(sealed), static_cast<size_t>(sealedLen),
+                      reinterpret_cast<uint8_t*>(out), static_cast<size_t>(outputCap),
+                      reinterpret_cast<const uint8_t*>(key), static_cast<size_t>(keyLen),
+                      static_cast<uint64_t>(chunkId));
+
+    env->ReleaseByteArrayElements(sealedBuf, sealed, JNI_ABORT);
+    env->ReleaseByteArrayElements(outputBuf, out, 0); // plaintext written back
+    env->ReleaseByteArrayElements(keyBuf, key, JNI_ABORT);
+    return code;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_streamify_app_data_NativeBridge_rustParseBackupCsv(
     JNIEnv* env,

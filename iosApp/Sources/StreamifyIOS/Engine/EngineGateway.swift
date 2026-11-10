@@ -11,7 +11,7 @@ import Foundation
 // Two conformers exist:
 //  * `UniFFIEngineGateway` — the REAL lane over the direct Swift UniFFI
 //    bindings from Alpha's StreamifyCore.xcframework, compiled strictly
-//    behind `#if canImport(uniffi_streamify)` so this scaffold builds TODAY
+//    behind `#if canImport(streamifyFFI)` so this scaffold builds TODAY
 //    and lights up automatically the moment the xcframework is linked.
 //  * `PreviewEngineGateway` — the always-available stand-in (previews,
 //    tests, and the pre-xcframework scaffold period).

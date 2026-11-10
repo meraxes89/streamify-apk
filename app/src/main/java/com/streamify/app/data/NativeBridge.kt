@@ -1233,6 +1233,25 @@ object NativeBridge {
     ): Int
     external fun rustEncryptVaultFile(srcPath: String, destPath: String, masterKey: ByteArray): Int
     external fun rustDecryptVaultFile(srcPath: String, destPath: String, masterKey: ByteArray): Int
+    // SEC-06 v2 audio-cache chunk cipher (AEAD): seal writes the envelope
+    // [12B nonce][ciphertext][16B tag] into outputBuf (which must be
+    // inputLen + 28 bytes) and returns the sealed length; open verifies
+    // the tag with chunkId as associated data and returns the plaintext
+    // length. Negative returns are sentinels (-1 args, -2 capacity,
+    // -3 auth failure, -99 panic). Legacy caches stay readable via
+    // [nativeCryptCacheChunk] (read-old/write-new — see CRYPTO_SPEC.md).
+    external fun rustSealCacheChunk(
+        inputBuf: ByteArray, inputLen: Int,
+        outputBuf: ByteArray, outputCap: Int,
+        keyBuf: ByteArray, keyLen: Int,
+        chunkId: Long
+    ): Long
+    external fun rustOpenCacheChunk(
+        sealedBuf: ByteArray, sealedLen: Int,
+        outputBuf: ByteArray, outputCap: Int,
+        keyBuf: ByteArray, keyLen: Int,
+        chunkId: Long
+    ): Long
     external fun rustParseBackupCsv(csvContent: String): String?
     external fun rustAlignAndCompileLyrics(rawLyrics: String, durationMs: Int, energyFloats: FloatArray?): String?
     external fun rustGenerateNeuroQueue(
