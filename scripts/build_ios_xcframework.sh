@@ -363,8 +363,24 @@ fi
 #  slices merged with `lipo -create` — no two-arch archives ever enter
 #  libtool, so member-name collisions between the per-target Rust
 #  archives cannot silently drop an architecture.
+#
+#  LIB-PREFIX NAMING (the 2026-11-09 SPM-gate lesson, round 11): the FINAL
+#  library basenames fed to `xcodebuild -create-xcframework` MUST start
+#  with `lib`. Xcode's own SPM integration links a library-style
+#  xcframework fine whatever the member is called, but the SwiftPM CLI
+#  (`swift build`) plans binary-target archives by basename ONLY:
+#      .framework        -> -framework <name>
+#      lib<name>.a       -> -l<name>
+#      anything else     -> "error: unexpected binary framework" and NO
+#                           linker flag at all (Sources/Build/BuildPlan/
+#      BuildPlan+Product.swift, plan(buildProduct:)). A member named
+#  `StreamifyCore_macos.a` was copied into .build/ but never passed to
+#  the linker, so `swift build --build-tests` died with every
+#  `uniffi_streamify_contract_*` symbol undefined for arm64 while the
+#  xcodebuild iOS lane linked the very same framework green. The lib
+#  prefix is the ONE spelling both build systems consume.
 echo "── [4/6] libtool per-arch + lipo fat merges"
-xcrun libtool -static -o "${WORK_DIR}/slice_ios_arm64.a" \
+xcrun libtool -static -o "${WORK_DIR}/libstreamifycore_ios.a" \
     "$(RUST_LIB "${DEVICE_TARGET}")" \
     "${WORK_DIR}/rc_ios_arm64.o" \
     "${WORK_DIR}/ias_ios_arm64.o"
@@ -381,12 +397,12 @@ if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
     lipo -create \
         "${WORK_DIR}/slice_sim_arm64.a" \
         "${WORK_DIR}/slice_sim_x86_64.a" \
-        -output "${WORK_DIR}/StreamifyCore_simulator.a"
+        -output "${WORK_DIR}/libstreamifycore_simulator.a"
 else
     # Degraded matrix: arm64-only simulator slice (see the target-matrix
     # note above) — the slice keeps the same member name so the
     # xcframework layout and sanity pass are unchanged.
-    cp "${WORK_DIR}/slice_sim_arm64.a" "${WORK_DIR}/StreamifyCore_simulator.a"
+    cp "${WORK_DIR}/slice_sim_arm64.a" "${WORK_DIR}/libstreamifycore_simulator.a"
 fi
 
 xcrun libtool -static -o "${WORK_DIR}/slice_macos_arm64.a" \
@@ -400,7 +416,7 @@ xcrun libtool -static -o "${WORK_DIR}/slice_macos_x86_64.a" \
 lipo -create \
     "${WORK_DIR}/slice_macos_arm64.a" \
     "${WORK_DIR}/slice_macos_x86_64.a" \
-    -output "${WORK_DIR}/StreamifyCore_macos.a"
+    -output "${WORK_DIR}/libstreamifycore_macos.a"
 
 # --- 5. headers + xcframework -------------------------------------------------
 rm -rf "${OUTPUT_DIR}"
@@ -438,9 +454,9 @@ make_headers "${WORK_DIR}/headers_sim"
 make_headers "${WORK_DIR}/headers_macos"
 
 xcodebuild -create-xcframework \
-    -library "${WORK_DIR}/slice_ios_arm64.a"              -headers "${WORK_DIR}/headers_ios" \
-    -library "${WORK_DIR}/StreamifyCore_simulator.a"      -headers "${WORK_DIR}/headers_sim" \
-    -library "${WORK_DIR}/StreamifyCore_macos.a"          -headers "${WORK_DIR}/headers_macos" \
+    -library "${WORK_DIR}/libstreamifycore_ios.a"         -headers "${WORK_DIR}/headers_ios" \
+    -library "${WORK_DIR}/libstreamifycore_simulator.a" -headers "${WORK_DIR}/headers_sim" \
+    -library "${WORK_DIR}/libstreamifycore_macos.a"      -headers "${WORK_DIR}/headers_macos" \
     -output "${OUTPUT_DIR}/StreamifyCore.xcframework" \
     >/dev/null
 
@@ -450,7 +466,7 @@ xcodebuild -create-xcframework \
 #  not the app). Per-arch probing catches a silently dropped fat member.
 #
 #  THIN vs FAT (the 2026-10-30 Apple-lane lesson): cctools nm(1) defines
-#  -arch ONLY 'when the file is a universal file'. slice_ios_arm64.a (and
+#  -arch ONLY 'when the file is a universal file'. libstreamifycore_ios.a (and
 #  the degraded arm64-only simulator slice) are THIN archives — nm -arch
 #  on them fails with empty stdout, and the old `2>/dev/null` swallowed
 #  the diagnostic, so the sanity pass reported EVERY symbol as missing on
@@ -461,9 +477,9 @@ xcodebuild -create-xcframework \
 #  grep -q early-exit / SIGPIPE interplay under `set -o pipefail`, and
 #  nm's own error text stays visible in the FATAL dump.
 for lib in \
-    "${WORK_DIR}/slice_ios_arm64.a" \
-    "${WORK_DIR}/StreamifyCore_simulator.a" \
-    "${WORK_DIR}/StreamifyCore_macos.a"
+    "${WORK_DIR}/libstreamifycore_ios.a" \
+    "${WORK_DIR}/libstreamifycore_simulator.a" \
+    "${WORK_DIR}/libstreamifycore_macos.a"
 do
     is_thin=0
     if lipo -info "${lib}" 2>/dev/null | grep -q "^Non-fat file:"; then
