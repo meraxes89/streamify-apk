@@ -61,6 +61,10 @@ pub use resolver_api::{
 };
 pub use streamify_resolver::json::{ParsedCandidate, ResolvedStreamFormat};
 
+// A6 (issue #148): the panic-policy contract probe — a self-test, not a
+// UDL surface (see its doc comment for why the bindings never see it).
+pub use contract::panic_shield_self_test;
+
 // ─── Phase 2 (UFFI-01): UniFFI scaffolding ────────────────────────────────
 // Generated at build time from the workspace-root src/streamify.udl by
 // this crate's build.rs. The emitted FFI trampolines and FfiConverter
