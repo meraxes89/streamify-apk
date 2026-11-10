@@ -103,7 +103,7 @@ constexpr auto kSinkFullSleep = std::chrono::milliseconds(4);
 struct MountState {
     std::thread pump;
     int64_t handle = 0;             // registry handle; 0 = not mounted
-    std::shared_ptr<AudioSink> sink;  // keeps the registry entry alive
+    std::shared_ptr<streamify::sink::AudioSink> sink;  // keeps the registry entry alive
     std::atomic<bool> stop{false};
     /// A shell-requested flush (seek/skip intent), applied by the pump on
     /// its next pass — see the flush contract note below.
@@ -121,14 +121,14 @@ void join_and_destroy_locked(MountState* state) {
         state->pump.join();
     }
     if (state->handle != 0) {
-        sink::SinkRegistry::instance().destroy(state->handle);
+        streamify::sink::SinkRegistry::instance().destroy(state->handle);
     }
     state->sink.reset();
     state->handle = 0;
     state->stop.store(false, std::memory_order_relaxed);
 }
 
-void pump_loop(std::shared_ptr<AudioSink> sink, std::atomic<bool>* stop,
+void pump_loop(std::shared_ptr<streamify::sink::AudioSink> sink, std::atomic<bool>* stop,
                std::atomic<bool>* flush_requested) {
     // Allocated ONCE, before the loop: the steady-state path performs zero
     // allocation (the same discipline the producer and the render core
@@ -166,7 +166,7 @@ void pump_loop(std::shared_ptr<AudioSink> sink, std::atomic<bool>* stop,
         // 3. Measure the bridge sink's free space (any-thread read; the
         //    DAC only ever drains, so the measured free floor is a
         //    conservative lower bound until we write).
-        sink::SinkStats stats;
+        streamify::sink::SinkStats stats;
         sink->GetStats(&stats);
         const size_t free_frames =
             stats.capacity_frames > stats.current_fullness_frames
@@ -234,18 +234,18 @@ extern "C" int64_t streamify_apple_mount_start(void) {
         return -1;
     }
 
-    sink::AudioSink::Config config{};
+    streamify::sink::AudioSink::Config config{};
     config.sample_rate = streamify::mount::kCanonicalRate;
     config.channels = streamify::mount::kCanonicalChannels;
     config.capacity_frames = streamify::mount::kBridgeCapacityFrames;
     config.downmix_to_mono = false;
-    const int64_t handle = sink::SinkRegistry::instance().create(config);
+    const int64_t handle = streamify::sink::SinkRegistry::instance().create(config);
     if (handle == 0) {
         return 0;
     }
-    std::shared_ptr<AudioSink> sink = sink::SinkRegistry::instance().resolve(handle);
+    std::shared_ptr<streamify::sink::AudioSink> sink = streamify::sink::SinkRegistry::instance().resolve(handle);
     if (sink == nullptr) {
-        sink::SinkRegistry::instance().destroy(handle);
+        streamify::sink::SinkRegistry::instance().destroy(handle);
         return 0;
     }
 
