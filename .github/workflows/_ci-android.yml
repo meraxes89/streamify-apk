@@ -163,6 +163,13 @@ jobs:
 
       - name: Assemble debug APK (prebuilt natives, no Rust rebuild)
         if: ${{ !inputs.release_mode }}
+        env:
+          # Backend wiring: the anon (publishable) key for the live Supabase
+          # project, so CI-built APKs talk to the real backend instead of
+          # degrading to anonymous mode. Never in the tree (gitleaks JWT
+          # rule); repo secret only. Fork PRs see an empty value and keep
+          # the historical anon-degraded behavior.
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
           ./gradlew assembleDebug \
@@ -177,6 +184,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
           ./gradlew assembleRelease \

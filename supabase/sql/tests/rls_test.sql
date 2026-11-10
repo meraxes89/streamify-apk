@@ -259,15 +259,19 @@ SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-4111-8111-111111111111","r
 UPDATE public.profiles SET display_name = 'Alice 2.0'
 WHERE id = '11111111-1111-4111-8111-111111111111';
 -- but is_admin in the payload is dead (guard trigger)
+-- NB: the regression RAISE must live OUTSIDE the inner handler. In the
+-- original form it sat inside the BEGIN...EXCEPTION WHEN raise_exception
+-- block, so it was caught by its own handler and the check could never
+-- fail — which is exactly how the neutered DEFINER guard shipped green.
 DO $$
 BEGIN
     BEGIN
         UPDATE public.profiles SET is_admin = TRUE
         WHERE id = '11111111-1111-4111-8111-111111111111';
-        RAISE EXCEPTION 'SEC-10 REGRESSION: authenticated user self-promoted via profiles UPDATE payload';
     EXCEPTION WHEN raise_exception OR insufficient_privilege THEN
-        NULL;
+        RETURN; -- guard fired — expected under SEC-10
     END;
+    RAISE EXCEPTION 'SEC-10 REGRESSION: authenticated user self-promoted via profiles UPDATE payload';
 END $$;
 ROLLBACK;
 
@@ -282,20 +286,20 @@ DO $$
 BEGIN
     BEGIN
         PERFORM public.set_user_admin_role('22222222-2222-4222-8222-222222222222', TRUE);
-        RAISE EXCEPTION 'SEC-10 REGRESSION: non-admin called set_user_admin_role';
     EXCEPTION WHEN raise_exception THEN
-        NULL;
+        RETURN; -- denied — expected under SEC-10
     END;
+    RAISE EXCEPTION 'SEC-10 REGRESSION: non-admin called set_user_admin_role';
 END $$;
 SET LOCAL request.jwt.claims = '{"sub":"44444444-4444-4444-8444-444444444444","email":"sireenyadav@gmail.com","role":"authenticated"}';
 DO $$
 BEGIN
     BEGIN
         PERFORM public.get_admin_dashboard_stats();
-        RAISE EXCEPTION 'SEC-10 REGRESSION: hardcoded-email account (flag off) reached admin RPCs';
     EXCEPTION WHEN raise_exception THEN
-        NULL;
+        RETURN; -- denied — expected under SEC-10
     END;
+    RAISE EXCEPTION 'SEC-10 REGRESSION: hardcoded-email account (flag off) reached admin RPCs';
 END $$;
 -- the flagged admin promotes bob through the RPC (guard trigger allows: is_admin())
 SET LOCAL request.jwt.claims = '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}';
