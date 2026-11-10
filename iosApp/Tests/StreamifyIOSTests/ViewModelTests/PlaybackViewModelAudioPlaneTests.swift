@@ -35,6 +35,9 @@ final class PlaybackViewModelAudioPlaneTests: XCTestCase {
         let simulated = CoreAudioRenderCore(driver: SimulatedCoreAudioDriver())
         let model = makeModel(gateway: gateway, renderCore: simulated)
         model.start()
+        // Let the collector SUBSCRIBE first (the push is a pre-subscription
+        // no-op — the same sequencing the CarPay provider test learned).
+        try? await Task.sleep(nanoseconds: 150_000_000)
 
         // A buffering push arms the plane (attach first — the mount refuses
         // to bridge an unattached plane by contract, which is exactly the
@@ -42,7 +45,7 @@ final class PlaybackViewModelAudioPlaneTests: XCTestCase {
         gateway.push(PlaybackSnapshot(
             rev: 1, status: .buffering, volume: 0.8
         ))
-        try? await Task.sleep(nanoseconds: 200_000_000)  // the arm task is fire-and-forget
+        try? await Task.sleep(nanoseconds: 400_000_000)  // the arm task is fire-and-forget
 
         XCTAssertEqual(gateway.attachCalls, [8192], "attach_sink precedes the mount")
         XCTAssertNotEqual(model.lastAudioPlaneStatus, "idle")
@@ -70,6 +73,8 @@ final class PlaybackViewModelAudioPlaneTests: XCTestCase {
         let model = makeModel(gateway: gateway)
         model.start()
 
+        // Let the collector subscribe before the first push.
+        try? await Task.sleep(nanoseconds: 150_000_000)
         let track = PresentationTrack(id: "t1", title: "Nightcall", artist: "Kavinsky", durationMs: 252_000, artworkUrl: nil)
         model.present(track: track)
         XCTAssertEqual(model.currentTrack?.id, "t1")
