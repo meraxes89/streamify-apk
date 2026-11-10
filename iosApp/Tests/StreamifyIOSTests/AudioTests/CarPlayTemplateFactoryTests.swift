@@ -163,6 +163,10 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
         let library = PreviewFeatureLibrary()
         let queueModel = QueueViewModel(library: library)
         queueModel.start()
+        // Let the collector SUBSCRIBE first (the preview library's push is
+        // a no-op before the queueEvents continuation exists — the stream is
+        // created on first access inside the collector task).
+        try? await Task.sleep(nanoseconds: 100_000_000)
         // Stage two rows: the current row (index 0) + one up next.
         library.push(queueEvent: .snapshot(QueueSnapshot(
             rev: 1,
@@ -174,7 +178,7 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
             isPlaying: true,
             autoMixEnabled: true
         )))
-        // The VM ingests on the main actor; give the collector one hop.
+        // The VM ingests on the main actor; give the push one hop.
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         let provider = QueueCarPlayContentProvider(queueModel: queueModel)
