@@ -132,6 +132,16 @@ final class PreviewEngineGateway: EngineGateway {
         continuation?.yield(snapshot)
     }
 
+    /// Test/preview helper: rebuild-and-push — `PlaybackSnapshot.status` is
+    /// an immutable field, so status-affecting scripts go through here.
+    private func push(mutating change: (inout PlaybackSnapshot) -> Void) {
+        let continuation = lock.withLock {
+            change(&state)
+            return self.continuation
+        }
+        continuation?.yield(state)
+    }
+
     // ── SW-ENG1-04: the typed data lane (deterministic fixtures) ──────────
 
     /// Scripted Jam room (created on demand via `createJamSession`).
@@ -255,23 +265,23 @@ final class PreviewEngineGateway: EngineGateway {
         }
         guard let index = await enqueue(track: staged, enqueuedBy: "local") else { return nil }
         await attachSink(capacityFrames: EnginePlaybackPlane.capacityFrames)
-        lock.withLock {
-            state.status = .playing
-            state.currentTrack = PresentationTrack(staged)
-            continuation?.yield(state)
-        }
+        push(mutating: { snapshot in
+            snapshot.status = .playing
+            snapshot.currentTrack = PresentationTrack(staged)
+        })
         return index
     }
 
     func playStagedTrack(id: String) async -> Bool {
         guard !failAll else { return false }
-        return lock.withLock {
-            guard let row = stagedQueue.first(where: { $0.track.id == id }) else { return false }
-            state.status = .playing
-            state.currentTrack = PresentationTrack(row.track)
-            continuation?.yield(state)
-            return true
+        guard let row = lock.withLock({ stagedQueue.first(where: { $0.track.id == id }) }) else {
+            return false
         }
+        push(mutating: { snapshot in
+            snapshot.status = .playing
+            snapshot.currentTrack = PresentationTrack(row.track)
+        })
+        return true
     }
 
     func attachSink(capacityFrames: Int) async {

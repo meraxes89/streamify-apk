@@ -74,7 +74,7 @@ final class UniFFIEngineGateway: EngineGateway {
     /// registers a fresh continuation; the newest snapshot is buffered for
     /// late subscribers (the bufferingNewest(1) discipline, preserved).
     private let subscribersLock = NSLock()
-    private var subscribers: [ObjectIdentifier: AsyncStream<PlaybackSnapshot>.Continuation] = [:]
+    private var subscribers: [UUID: AsyncStream<PlaybackSnapshot>.Continuation] = [:]
     private var newestSnapshot: PlaybackSnapshot?
 
     /// Constructs and arms the engine (Idle → Buffering), registers the
@@ -110,7 +110,7 @@ final class UniFFIEngineGateway: EngineGateway {
         }
     }
 
-    private func removeSubscriber(_ id: ObjectIdentifier) {
+    private func removeSubscriber(_ id: UUID) {
         subscribersLock.withLock {
             subscribers[id] = nil
         }
@@ -158,7 +158,9 @@ final class UniFFIEngineGateway: EngineGateway {
 
     var snapshots: AsyncStream<PlaybackSnapshot> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            let id = ObjectIdentifier(continuation)
+            // AsyncStream.Continuation is a VALUE type — key the registry
+            // by a fresh UUID instead of an ObjectIdentifier.
+            let id = UUID()
             subscribersLock.withLock {
                 subscribers[id] = continuation
                 // Late-subscriber hydration: the newest push replays once.

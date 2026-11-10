@@ -429,7 +429,7 @@ public struct RootShellView: View {
         case .lyrics(let title, let artist):
             RouteScreen { dismiss in
                 LyricsView(
-                    lyrics: [],
+                    lyrics: .empty,
                     trackTitle: title,
                     trackArtist: artist,
                     positionMs: Double(model.state.positionForDisplayMs ?? 0),
