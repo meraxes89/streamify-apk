@@ -262,13 +262,13 @@ jobs:
           set -o pipefail
           cd iosApp
           xcodebuild build \
-            -project Streamify.xcodeproj \
+            -project App/Streamify.xcodeproj \
             -scheme Streamify \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee xcodebuild-app-build.log | tail -40
           # The widget extension must be embedded in the produced app.
-          APP_PATH="$(xcodebuild -project Streamify.xcodeproj -scheme Streamify -destination 'generic/platform=iOS Simulator' -showBuildSettings 2>/dev/null | sed -n 's/^ *TARGET_BUILD_DIR = //p' | head -1)"
+          APP_PATH="$(xcodebuild -project App/Streamify.xcodeproj -scheme Streamify -destination 'generic/platform=iOS Simulator' -showBuildSettings 2>/dev/null | sed -n 's/^ *TARGET_BUILD_DIR = //p' | head -1)"
           echo "TARGET_BUILD_DIR: ${APP_PATH}"
           test -d "${APP_PATH}/Streamify.app/PlugIns/StreamifyWidgets.appex" \
             || { echo "::error::widget extension not embedded in Streamify.app"; exit 1; }

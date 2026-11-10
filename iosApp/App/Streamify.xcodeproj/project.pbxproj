@@ -395,10 +395,12 @@
 /* Begin XCLocalSwiftPackageReference section */
 		1A10000000000000000000B0 /* XCLocalSwiftPackageReference */ = {
 			isa = XCLocalSwiftPackageReference;
-			/* The SPM package lives in the SAME directory as this project
-			   (iosApp/): the empty relative path resolves to the project
-			   directory itself, exactly where Package.swift sits. */
-			relativePath = "";
+			/* The SPM package (iosApp/Package.swift) is this project's
+			   PARENT directory (iosApp/App/ is the project home) — a plain
+			   parent-relative reference keeps the package directory free of
+			   any .xcodeproj (package scheme resolution for the CI's
+			   xcodebuild test lane stays unshadowed). */
+			relativePath = "..";
 		};
 /* End XCLocalSwiftPackageReference section */
 

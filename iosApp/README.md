@@ -175,20 +175,22 @@ a fresh `git clone` builds an installable app with zero manual project
 creation:
 
 ```bash
-xcodebuild -project iosApp/Streamify.xcodeproj -scheme Streamify \
+xcodebuild -project iosApp/App/Streamify.xcodeproj -scheme Streamify \
     -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-Layout:
+Layout (the project lives in `iosApp/App/` — the package's directory stays
+free of any `.xcodeproj` so the CI's package-scheme test lane
+(`cd iosApp; xcodebuild test -scheme StreamifyIOS`) resolves unshadowed):
 
 | Path | Contents |
 | --- | --- |
-| `iosApp/Streamify.xcodeproj` | the two-target project (classic objectVersion 56; no generated husks) |
-| `iosApp/Host/Sources/StreamifyApp.swift` | the 3-line `@main` composing `StreamifyMainScene` |
-| `iosApp/Host/Info.plist` | the CarPlay audio scene manifest, `NSSupportsLiveActivities`, `UIBackgroundModes: audio`, the `streamify://` URL scheme |
-| `iosApp/Host/Streamify.entitlements` | the App Group (`group.com.streamify.shared`) |
-| `iosApp/Widgets/Sources/StreamifyWidgetsBundle.swift` | the widget extension's `@main` — the package's widget bundle + the Live Activity widget (iOS) |
-| `iosApp/Widgets/Info.plist` + entitlements | the WidgetKit extension manifest + the SAME App Group |
+| `iosApp/App/Streamify.xcodeproj` | the two-target project (classic objectVersion 56; no generated husks; package ref `..`) |
+| `iosApp/App/Host/Sources/StreamifyApp.swift` | the 3-line `@main` composing `StreamifyMainScene` |
+| `iosApp/App/Host/Info.plist` | the CarPlay audio scene manifest, `NSSupportsLiveActivities`, `UIBackgroundModes: audio`, the `streamify://` URL scheme |
+| `iosApp/App/Host/Streamify.entitlements` | the App Group (`group.com.streamify.shared`) |
+| `iosApp/App/Widgets/Sources/StreamifyWidgetsBundle.swift` | the widget extension's `@main` — the package's widget bundle + the Live Activity widget (iOS) |
+| `iosApp/App/Widgets/Info.plist` + entitlements | the WidgetKit extension manifest + the SAME App Group |
 
 The app links the local SPM package (`StreamifyIOS` product); when the
 engineer lane stages `StreamifyCore.xcframework` into `iosApp/Frameworks/`
