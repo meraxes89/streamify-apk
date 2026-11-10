@@ -119,6 +119,15 @@ jobs:
         if: steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request'
         run: python3 scripts/jni_panic_boundary_check.py
 
+      # TRUTH-02: docs-vs-reality lint — workflow badges, release-tag
+      # links, relative doc links, retired-workflow claims and checked-ledger
+      # file claims are grepped against the tree. Runs on EVERY event (a
+      # docs-only PR is exactly how drift lands) and costs ~5 s.
+      # Tag claims need the tags a fetch-depth 0 clone carries (the
+      # gitleaks step above already requires that fetch depth).
+      - name: Docs-vs-reality lint (TRUTH-02)
+        run: python3 scripts/docs_ledger_check.py
+
   # =========================================================================
   # TIER 2: Modular Domain Shards (Reusable Workflows, parallel dispatch)
   # =========================================================================

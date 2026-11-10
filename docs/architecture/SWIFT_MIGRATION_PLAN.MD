@@ -1,8 +1,8 @@
 # Streamify Apple (iOS & macOS) Multiplatform Execution Ledger & Swift Mapping Plan
 
 **Tracking Document:** `docs/architecture/SWIFT_MIGRATION_PLAN.MD`  
-**Governing Master Plan:** [`docs/architecture/MULTIPLATFORM_PLAN_27_10.MD`](file:///data/data/com.termux/files/home/streamify-apk/docs/architecture/MULTIPLATFORM_PLAN_27_10.MD)  
-**Execution Checkbox Companion:** [`docs/architecture/MULTIPLATFORM_CHECKBOX.MD`](file:///data/data/com.termux/files/home/streamify-apk/docs/architecture/MULTIPLATFORM_CHECKBOX.MD)  
+**Governing Master Plan:** [`docs/architecture/MULTIPLATFORM_PLAN_27_10.MD`](MULTIPLATFORM_PLAN_27_10.MD)  
+**Execution Checkbox Companion:** [`docs/architecture/MULTIPLATFORM_CHECKBOX.MD`](MULTIPLATFORM_CHECKBOX.MD)  
 **Date:** October 30, 2026  
 **Target Environments:** iOS 17+, iPadOS 17+, macOS 14+ (Sonoma/Sequoia), watchOS 10+, CarPlay  
 **Packaging Target:** Swift Package Manager (`iosApp/Package.swift`) targeting `StreamifyApple` library + host app wrapper  
@@ -162,18 +162,18 @@ Every Kotlin package and file in the Android codebase (311 production files) map
 
 ### 🎨 Engineer 2: Design System, Multiplatform Shell & 30 Screens
 * **Lead:** Engineer 2 (SwiftUI & HIG Specialist)
-* **Status:** In Progress
+* **Status:** **COMPLETED & MERGED** (feat/apple-eng2 PR #138; TRUTH-02 reconciliation 2026-11 — every file claim below re-verified against the tree)
 
-- [ ] **SW-ENG2-01**: Implement `AppTheme.swift` with dynamic semantic colors, glassmorphic styles, and SF Symbols.
-- [ ] **SW-ENG2-02**: Build `RootShellView.swift`: `NavigationStack` with tab bar on iOS; `NavigationSplitView` with sidebar rail on macOS.
-- [ ] **SW-ENG2-03**: Build **HomeView** with infinite scrolling feed, mood chips, and daily mix carousels.
-- [ ] **SW-ENG2-04**: Build **SearchView** with native `.searchable`, search filter pills (Songs, Artists, Albums), and recent search chips.
-- [ ] **SW-ENG2-05**: Build **FullPlayerView** modal sheet with album art `MeshGradient`, progress scrubber, repeat/shuffle buttons, and lyrics toggle.
-- [ ] **SW-ENG2-06**: Build **QueueView** with native list drag-and-drop (`.onMove`) and swipe-to-delete.
-- [ ] **SW-ENG2-07**: Build **LibraryView**, **ArtistDetailView**, and **AlbumDetailView** with parallax hero images.
-- [ ] **SW-ENG2-08**: Build **SettingsView**, **UpdatesFeedView**, and **DiagnosticsView** (live SLog stream).
-- [ ] **SW-ENG2-09**: Port all 36 YouTube Music specific components (`ui.components.yt.*`) to modular SwiftUI views.
-- [ ] **SW-ENG2-10**: Ensure 120Hz ProMotion render performance across all scrollable lists.
+- [x] **SW-ENG2-01**: Implement `AppTheme.swift` with dynamic semantic colors, glassmorphic styles, and SF Symbols.
+- [x] **SW-ENG2-02**: Build `RootShellView.swift`: `NavigationStack` with tab bar on iOS; `NavigationSplitView` with sidebar rail on macOS. *(TRUTH-02 caveat: the shell itself still seeds `PreviewCatalog` fixture state and empty search closures — real-lane wiring is IOS-04.)*
+- [x] **SW-ENG2-03**: Build **HomeView** with infinite scrolling feed, mood chips, and daily mix carousels.
+- [x] **SW-ENG2-04**: Build **SearchView** with native `.searchable`, search filter pills (Songs, Artists, Albums), and recent search chips.
+- [x] **SW-ENG2-05**: Build **FullPlayerView** modal sheet with album art `MeshGradient`, progress scrubber, repeat/shuffle buttons, and lyrics toggle.
+- [x] **SW-ENG2-06**: Build **QueueView** with native list drag-and-drop (`.onMove`) and swipe-to-delete.
+- [x] **SW-ENG2-07**: Build **LibraryView**, **ArtistDetailView**, and **AlbumDetailView** with parallax hero images.
+- [x] **SW-ENG2-08**: Build **SettingsView**, **UpdatesFeedView** (`Views/Updates/UpdatesHubView.swift`), and **DiagnosticsView** (live SLog stream).
+- [x] **SW-ENG2-09**: Port all 36 YouTube Music specific components (`ui.components.yt.*`) to modular SwiftUI views. *(TRUTH-02 note: `Views/Components/YTStyle/` + `Views/Components/Common/` carry the ported library.)*
+- [ ] **SW-ENG2-10**: Ensure 120Hz ProMotion render performance across all scrollable lists. *(TRUTH-02 note: honestly unchecked — no Instruments/ProMotion measurement has ever run; Gate 4 remains unexecuted. Nothing in CI measures frame pacing yet.)*
 
 ---
 
@@ -194,22 +194,22 @@ Every Kotlin package and file in the Android codebase (311 production files) map
 
 ### 🧠 Engineer 4: ViewModels, Jam BLE/PTP & Social Features
 * **Lead:** Engineer 4 (State & Connectivity Specialist)
-* **Status:** In Progress
+* **Status:** **COMPLETED & MERGED** (feat/apple-eng4 PR #137; TRUTH-02 reconciliation 2026-11 — code verified, adoption honestly partial)
 
-- [ ] **SW-ENG4-01**: Implement 14 `@Observable @MainActor` ViewModels (`PlaybackViewModel`, `SearchViewModel`, `HomeViewModel`, `QueueViewModel`, `JamViewModel`, `LyricsViewModel`, `EqualizerViewModel`, `BlendViewModel`, `CommunityViewModel`, `SettingsViewModel`, `StatsWrappedViewModel`, `UpdatesHubViewModel`, `UserProfileViewModel`, `IngestionViewModel`).
-- [ ] **SW-ENG4-02**: Wire `DacPresentationClock` push ticks into `PlaybackViewModel` to drive smooth progress bar interpolation without polling.
-- [ ] **SW-ENG4-03**: Build **TimedLyricsView** with millisecond karaoke highlighting and smooth auto-scroll.
-- [ ] **SW-ENG4-04**: Implement **CoreBluetoothJamBeacon.swift** (`CBCentralManager`/`CBPeripheralManager`) for zero-touch Jam session discovery.
-- [ ] **SW-ENG4-05**: Implement **BonjourDeviceDiscovery.swift** via Apple `Network.framework` for LAN Connect device discovery.
-- [ ] **SW-ENG4-06**: Build **JamSessionView** with live participant list, latency gauges, and queue voting.
-- [ ] **SW-ENG4-07**: Build **BlendView** with `Swift Charts` circular overlap indicator and shared playlist generator.
-- [ ] **SW-ENG4-08**: Build **StatsWrappedView** with interactive listening time bar charts and top artist highlights.
+- [x] **SW-ENG4-01**: Implement 14 `@Observable @MainActor` ViewModels (`PlaybackViewModel`, `SearchViewModel`, `HomeViewModel`, `QueueViewModel`, `JamViewModel`, `LyricsViewModel`, `EqualizerViewModel`, `BlendViewModel`, `CommunityViewModel`, `SettingsViewModel`, `StatsWrappedViewModel`, `UpdatesHubViewModel`, `UserProfileViewModel`, `IngestionViewModel`). *(TRUTH-02 caveat: all 14 exist under `ViewModels/`, but only ~5 are consumed by a shipped screen today (Playback, Jam, Lyrics, Blend, Community, Equalizer); the rest are orphaned — `RootShellView` seeds fixture state directly instead of dispatching through them. Adopting or deleting each orphan is the Horizon-1 IOS-04 item; a ViewModel consumed by nothing will be deleted, not carried.)*
+- [x] **SW-ENG4-02**: Wire `DacPresentationClock` push ticks into `PlaybackViewModel` to drive smooth progress bar interpolation without polling. *(via `PlaybackProgressClock`.)*
+- [x] **SW-ENG4-03**: Build **TimedLyricsView** with millisecond karaoke highlighting and smooth auto-scroll.
+- [x] **SW-ENG4-04**: Implement **CoreBluetoothJamBeacon.swift** (`CBCentralManager`/`CBPeripheralManager`) for zero-touch Jam session discovery. *(lives at `Jam/Bluetooth/CoreBluetoothJamBeacon.swift`.)*
+- [x] **SW-ENG4-05**: Implement **BonjourDeviceDiscovery.swift** via Apple `Network.framework` for LAN Connect device discovery. *(lives at `Jam/Connect/BonjourDeviceDiscovery.swift`.)*
+- [x] **SW-ENG4-06**: Build **JamSessionView** with live participant list, latency gauges, and queue voting.
+- [x] **SW-ENG4-07**: Build **BlendView** with `Swift Charts` circular overlap indicator and shared playlist generator.
+- [x] **SW-ENG4-08**: Build **StatsWrappedView** with interactive listening time bar charts and top artist highlights. *(lives at `Views/Stats/StatsWrappedView.swift`.)*
 
 ---
 
 ## 🏁 Part IV: Verification Gates & CI Milestones
 
-1. **Gate 1 (SPM Compilation):** `swift build` on `iosApp` succeeds with zero warnings across iOS and macOS targets.
-2. **Gate 2 (UniFFI Linking):** UniFFI tests pass under XCTest, verifying `StreamifyCore.xcframework` loads and resolves streams via RustyPipe.
-3. **Gate 3 (CoreAudio Parity):** `test_coreaudio_render_core` confirms `<5ms` latency estimation error and zero buffer underruns under 48kHz stereo playback.
-4. **Gate 4 (UI Fluidity):** Xcode Instruments Time Profiler confirms zero main-thread hitching and sustained 120 FPS on ProMotion devices.
+1. **Gate 1 (SPM Compilation):** `swift build` on `iosApp` succeeds with zero warnings across iOS and macOS targets. *(Status: green in CI since PR #146 — the Apple Unified lane runs `swift build --package-path iosApp --build-tests` on the macOS host.)*
+2. **Gate 2 (UniFFI Linking):** UniFFI tests pass under XCTest, verifying `StreamifyCore.xcframework` loads and resolves streams via RustyPipe. *(Status: **first executed 2026-11-09, PR #146 (IOS-02)** — the Apple Unified lane now builds the xcframework, stages it at `iosApp/Frameworks/` BEFORE `xcodebuild test`, and the 28 `#if canImport(streamifyFFI)` UniFFI contract tests in `EngineTests/UniFFIContractTests.swift` run for real. A grep gate fails the job if the suite silently did not execute.)*
+3. **Gate 3 (CoreAudio Parity):** `test_coreaudio_render_core` confirms `<5ms` latency estimation error and zero buffer underruns under 48kHz stereo playback. *(Status: green — runs inside the simulator suite every CI pass.)*
+4. **Gate 4 (UI Fluidity):** Xcode Instruments Time Profiler confirms zero main-thread hitching and sustained 120 FPS on ProMotion devices. *(Status: **never executed** — no Instruments/profiling lane exists; the honest state is reflected in SW-ENG2-10 above.)*

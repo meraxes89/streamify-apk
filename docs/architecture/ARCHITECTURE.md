@@ -3,8 +3,8 @@
 > **Start here.** This document is the map of the whole system: what
 > lives where, what depends on what, and which rules keep it
 > maintainable. For "where do I put my change", jump to
-> [ADD_A_FEATURE.md](ADD_A_FEATURE.md). For file-by-file detail, see
-> [CODEBASE_GUIDE.md](CODEBASE_GUIDE.md).
+> [ADD_A_FEATURE.md](../playbooks/ADD_A_FEATURE.md). For file-by-file detail, see
+> [CODEBASE_GUIDE.md](../playbooks/CODEBASE_GUIDE.md).
 
 ---
 
@@ -131,24 +131,29 @@ data/NativeBridge.kt ──JNI──▶  rust/src/jni_bridge.rs    (I/O, auth, P
 - Adding native functionality = add `external fun` in `NativeBridge` +
   matching `Java_com_streamify_app_data_NativeBridge_<name>` symbol.
 
-## 6. CI — the Extreme Test Matrix
+## 6. CI — the Hub-and-Spoke Unified Pipeline
 
-`.github/workflows/extreme-test-matrix.yml` runs on every PR to main:
+`.github/workflows/ci.yml` is the hub of the 3-tier DAG (its retired
+monolithic predecessor lives on only in `git log`):
 
-| Job | Gate? | What it does |
-|---|---|---|
-| `build-and-compile` | ✅ required | C++20 + Rust + `assembleDebug` |
-| `test-matrix` (5 shards) | ✅ required | native-dsp / simd-physics / telemetry-storage (ASan+UBSan), jvm-unit-suite, rust-core-engine |
-| `native-deep-fuzz` | ✅ required | libFuzzer crash hunt |
-| `codeql-analysis` | ✅ required | security + quality |
-| `gatekeeper-api-probe` | advisory | live search→CDN verification |
-| `emulator-matrix` | nightly advisory | macrobenchmarks |
-| `aggregate-and-publish-logs` | ✅ final verdict | scans shard logs, commits to `testing-log` branch |
+| Tier | Job(s) | Gate? | What it does |
+|---|---|---|---|
+| 1 | `preflight` ("Tier 1: Fast-Fail & Path Filter") | ✅ | gitleaks (blocking), JNI panic-boundary convention gate, docs-vs-reality lint (`scripts/docs_ledger_check.py`, TRUTH-02), dorny/paths-filter impact analysis |
+| 2 | `Core Engine & C++ DSP` (from `_ci-engine.yml`) | ✅ | Rust core nextest matrix (split 2 shards), C++ ASan/UBSan (native-dsp / simd-physics / telemetry-storage), build-once native fan-out: Android NDK artifacts (arm64-v8a, x86_64), Linux + Windows desktop cdylibs |
+| 2 | `Rust clippy (workspace, -D warnings)` | ✅ | whole-workspace lint, zero-warning policy |
+| 2 | `Android Matrix` (from `_ci-android.yml`) | ✅ | JVM unit suite + assembleDebug APK (consumes the NDK artifacts) |
+| 2 | `Desktop Matrix (Linux, Windows)` (from `_ci-desktop.yml`) | ✅ | CMP UI smoke + JNA engine smoke suite, jpackage installers + <250 MiB size budget (packaging-gated) |
+| 2 | `Apple Unified` (from `_ci-ios.yml`) | ✅ | builds `StreamifyCore.xcframework`, **links it** (IOS-02), runs the real-lane iOS simulator tests + UniFFI contract tests, macOS SPM compile gate, macOS desktop cdylib + JNA smoke |
+| 2 | `Supabase RLS hardening suite (SEC-10)` | ✅ | 11 RLS assertions against a real Postgres+pgvector container |
+| 3 | `ci-gate` ("CI Gate (Blocking)") | ✅ | the ONE required status check in branch protection; folds every Tier-2 verdict |
+| — | `CodeQL` (`codeql.yml`) | advisory | scheduled + PR security scan (never blocking — cannot deadlock the merge queue) |
+| — | `Nightly Deep Matrix` (`nightly-deep-matrix.yml`) | nightly ✅ | deep Rust nextest profile (32-peer mesh chaos), C++ LibFuzzer hunt, KVM Android emulator connected suite (TEST-01), log aggregation to the `testing-log` branch |
+| — | `Resolver Client Canary` (`resolver-canary.yml`) | — | daily live-client probe; rotations land as reviewed PRs from `bot/fleet-rotation` (GOV-05), never direct pushes to `main` |
 
-**Releases**: `build-and-compile` publishes GitHub releases **only**
-for `main` / `streamify-yt-spt` branch runs — PR runs never publish.
-`release.yml` fires only on `v*` tags. Details:
-[CI-TESTING-GUIDE.md](CI-TESTING-GUIDE.md).
+**Releases**: `release.yml` fires only on `v*` tags and publishes from the
+protected `release` environment (GOV-05). The historical `build-N` release
+river ended at build-691. Details:
+[CI_TESTING_GUIDE.md](../playbooks/CI_TESTING_GUIDE.md).
 
 ## 7. Design decisions worth knowing
 

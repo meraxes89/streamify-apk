@@ -11,8 +11,9 @@
 #
 # Every leg runs:
 #   1. Headless CMP UI smoke tests (:desktop:test --tests shell.* +
-#      :shared:desktopTest) — engine-free (FakeEnginePort), deterministic on
-#      all three OSes.
+#      :shared:desktopTest) — engine-free (FakeEnginePort), deterministic
+#      on both OSes of this matrix (the macOS leg lives in the Apple
+#      Unified lane).
 #   2. Desktop JNA engine smoke suite (the full :desktop:test +
 #      :shared:desktopTest pass) — the engine-tied lane.
 #
@@ -32,7 +33,8 @@
 # package_installers (PRs: only when packaging files changed; main /
 # merge_group / releases: true) adds jpackage + the strict
 # :desktop:verifyDesktopSizeBudget gate (< 250 MiB) per leg:
-#   .deb on linux, .msi on windows (WiX 3.14), .dmg on macos.
+#   .deb on linux, .msi on windows (WiX 3.14). The macOS .dmg is packaged
+#   by the Apple Unified lane (_ci-ios.yml), not this matrix.
 # ============================================================================
 name: CI Desktop (CMP Matrix)
 

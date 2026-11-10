@@ -1,6 +1,6 @@
 # Streamify — High-Fidelity Multiplatform Music Engine
 
-[![Extreme Test Matrix & Chaos Suite](https://github.com/meraxes89/streamify-apk/actions/workflows/extreme-test-matrix.yml/badge.svg)](https://github.com/meraxes89/streamify-apk/actions/workflows/extreme-test-matrix.yml)
+[![Unified CI Pipeline](https://github.com/meraxes89/streamify-apk/actions/workflows/ci.yml/badge.svg)](https://github.com/meraxes89/streamify-apk/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-brightgreen.svg)](https://android.com)
 [![Multiplatform Target](https://img.shields.io/badge/Multiplatform-Android%20%7C%20iOS%20%7C%20Desktop-blue.svg)](docs/architecture/MULTIPLATFORM_PLAN_27_10.MD)
@@ -93,7 +93,7 @@ All in-depth systems documentation, engineering specifications, and architectura
 | **[System Architecture Map](docs/architecture/ARCHITECTURE.md)** | **Master architecture overview**: Data flow, dependency rules, end-to-end song playback lifecycle, and FFI boundaries. |
 | **[Codebase Encyclopedia](docs/playbooks/CODEBASE_GUIDE.md)** | **Folder-by-folder guide**: File-by-file encyclopedia of the Android and native modules. |
 | **[Feature Playbook](docs/playbooks/ADD_A_FEATURE.md)** | **Step-by-step developer recipes**: Standard playbooks for adding screens, modifying DSP, and expanding network resolvers. |
-| **[CI & Chaos Testing Guide](docs/playbooks/CI_TESTING_GUIDE.md)** | **Automated quality verification**: 18-shard CI matrix, C++20 LibFuzzer, Native ABI verification, and gatekeeper CDN tests. |
+| **[CI & Chaos Testing Guide](docs/playbooks/CI_TESTING_GUIDE.md)** | **Automated quality verification**: hub-and-spoke CI DAG with one blocking `ci-gate`, build-once native fan-out, C++20 LibFuzzer nightly lane, native ABI verification, and a nightly KVM Android emulator suite. |
 | **[Distributed Jam Specification](docs/architecture/JAM_ENGINE_SPEC.md)** | **Byzantine consensus & PTP audio sync**: Mathematical and architectural design of multi-device synchronized listening. |
 | **[Project Philosophy](PHILOSOPHY.md)** | **Mission statement**: Our manifesto on open software, uncompromised audio quality, and zero-paywall music. |
 
@@ -149,12 +149,13 @@ cd ..
 
 ## 📦 Verified Releases & Artifacts
 
-All releases are verified through our 18-shard CI pipeline and published under [GitHub Releases](https://github.com/meraxes89/streamify-apk/releases):
+All releases are verified through the hub-and-spoke CI DAG (a single blocking `CI Gate (Blocking)` check folds the Tier-2 spokes — engine/DSP, Android, desktop, Apple unified, and the Supabase RLS suite — into one verdict) and are published under [GitHub Releases](https://github.com/meraxes89/streamify-apk/releases):
 
+* **[Build 691](https://github.com/meraxes89/streamify-apk/releases/tag/build-691)** — latest verified release at the multiplatform consolidation point (7-crate Rust workspace, RustyPipe JNI resolver, DMG desktop installers, 78 MB APK).
 * **[Build 650](https://github.com/meraxes89/streamify-apk/releases/tag/build-650)** — Phase 3 Beta Client Bridge (Reactive `EngineEventListener`, debounced `MediaCommandDispatcher`, 77.86 MB).
 * **[Build 648](https://github.com/meraxes89/streamify-apk/releases/tag/build-648)** — Phase 3 Alpha Core Contracts (SPSC hardening, Rubato 48kHz SRC, Cargo matrix, 77.84 MB).
 * **[Build 642](https://github.com/meraxes89/streamify-apk/releases/tag/build-642)** — Lean Baseline (Stripped onnxruntime bloat: 217 MB → 82.96 MB).
-* **[Pre-Multiplatform Base Archive](legacy/streamify-base-head-95773a8.zip)** — Immutable preservation head at commit `95773a8` (SHA256: `8193cecab358279dbfb87438dd356e2e0565f597f799cf6e983b91964f9144f8`).
+* **Pre-Multiplatform Base Archive** — the immutable preservation head lives at commit [`95773a8`](https://github.com/meraxes89/streamify-apk/commit/95773a8) (SHA256 of the archived head: `8193cecab358279dbfb87438dd356e2e0565f597f799cf6e983b91964f9144f8`).
 
 ---
 
