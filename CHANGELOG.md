@@ -3,6 +3,57 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — WS-A Drivetrain opens: playback data-plane RFC, transport commands, panic-policy reconciliation (#148)
+
+### Added — the sovereign playback transport (AHEAD.md WS-A A2)
+- `MediaCommand::Seek` / `Next` / `Previous` now drive a queue-scoped
+  transport in `apply_media_command` instead of being acknowledged
+  no-ops: the staged typed queue gains a transport cursor
+  (`QueueLane`: rows + cursor behind one lock, so a cursor move and the
+  row page it indexes are always one consistent generation), `Seek`
+  re-anchors the position target (clamped to the current row's duration
+  when known; unknown durations clamp nothing), `Next`/`Previous` move
+  the cursor with wrap-around — mirroring the legacy `get_next_track`
+  circular loopback — and reset the position; `clear_queue` resets the
+  whole transport. Transport commands never touch the lifecycle state
+  (a `Next` while paused stays paused) and every applied command bumps
+  the snapshot revision per the MP-C03 acknowledgment contract.
+- Rust-side typed getters `get_current_queue_item()` /
+  `get_playback_position_ms()` pin the transport for the integration
+  tests; UDL exposure lands with the A4 surface so the frozen bindings
+  stay drift-free in this PR.
+- Four contract tests in
+  `rust/crates/streamify-contract/tests/test_uniffi_contract.rs`:
+  walk/wrap/reset, seek round-trip + duration clamp + debounce,
+  no-current-row no-ops, revision bumps + `clear_queue` reset.
+
+### Added — panic-policy contract (AHEAD.md WS-A A6)
+- Decision record (RFC §8): **keep `panic = "abort"` for shipped
+  release artifacts** (the MP-C06/MP-C07 consensus), with the
+  per-profile `ffi_shield` semantics table, the reversal triggers and
+  the documented non-host-target fallback.
+- `src/bin/panic_probe.rs`: the cfg-split executable probe — the
+  unwind leg proves the shield marshals a deliberate panic into
+  `EngineError::Internal` (exit 0, `SHIELD_MARSHALED_PANIC`); the abort
+  leg terminates at the panic site (SIGABRT — verified locally, exit
+  134).
+- `tests/test_panic_policy.rs`: the marshaling contract for unwind
+  configurations (runs the probe) plus the release-profile abort pin —
+  the shipped crash semantics cannot silently drift.
+
+### Documentation
+- **New engine manual** `docs/architecture/engines/13_playback_dataplane.md`
+  (AHEAD.md WS-A A1): the playback data-plane RFC — four-plane
+  architecture (control / transport / producer / sink edge + HAL), the
+  producer spec including the decode dependency decision, the Rust-side
+  `AudioSink` trait mirroring the frozen
+  `native/include/streamify_audio_sinks.h` ABI, the A4 UDL delta plan
+  and the A5 "engine says 440" self-test harness spec.
+- **AHEAD.md** (the lead maintainer's engineering directive) checked
+  into the repository; WS-A A1/A2/A6 marked done with evidence, and the
+  §1/§9 claims this PR invalidates updated in the same commit (the
+  truth program's own rule).
+
 ## [Unreleased] — Horizon 0: security, CI-truth & governance closeout (PRs #145–#146)
 
 ### Security
