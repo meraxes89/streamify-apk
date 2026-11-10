@@ -129,7 +129,7 @@ final class DownloadsViewModelTests: XCTestCase {
     func testQualityLabelsMirrorTheTransferStates() {
         XCTAssertEqual(DownloadsViewModel.qualityLabel(for: .paused), "Paused (resume data kept)")
         XCTAssertEqual(DownloadsViewModel.qualityLabel(for: .completed), "AAC · saved")
-        XCTAssertEqual(DownloadsViewModel.qualityLabel(for: .downloading), "Resolving stream…")
+        XCTAssertEqual(DownloadsViewModel.qualityLabel(for: .downloading(progress: 0.42)), "Resolving stream…")
     }
 
     func testSizeMbPrefersTheVaultFileThenTheEstimate() throws {
