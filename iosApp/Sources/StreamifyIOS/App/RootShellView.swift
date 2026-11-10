@@ -102,7 +102,7 @@ public struct RootShellView: View {
             updatesModel.loadIfNeeded()
             communityModel.loadIfNeeded()
             statsModel.loadIfNeeded()
-            profileModel.loadIfNeeded()
+            profileModel.load(userId: nil)
             // WS-B B7: cold-launch resume-data recovery.
             downloadsModel.recoverPersistedTransfers()
             installSharedCarPlaySurfaces()
@@ -528,7 +528,7 @@ public struct RootShellView: View {
         case .updatesHub:
             // WS-B B2: the live release-radar lane (library.releaseRadar()).
             UpdatesHubView(
-                updates: updateEntries(from: updatesModel),
+                updates: Self.updateEntries(from: updatesModel),
                 onPreSave: { releaseId in
                     if let candidate = updatesModel.feed.first(where: { $0.releaseId == releaseId }) {
                         updatesModel.togglePreSave(candidate)
@@ -539,9 +539,9 @@ public struct RootShellView: View {
         case .wrapped:
             // WS-B B2: the live stats lane (library.wrappedStats()).
             StatsWrappedView(
-                wrappedStats: wrappedStats(from: statsModel),
-                genreStats: genreStats(from: statsModel),
-                topTracks: statsModel.topTracks.map(shelfTrack),
+                wrappedStats: Self.wrappedStats(from: statsModel),
+                genreStats: Self.genreStats(from: statsModel),
+                topTracks: statsModel.topTracks.map(Self.shelfTrack),
                 onShare: {},
                 onPlayTrack: { play(track: $0) }
             )
@@ -551,7 +551,7 @@ public struct RootShellView: View {
             // summary contract carries no plays/top-track yet — the lossy
             // bridge renders those as unknown until ENG-1 grows the record.
             UserProfileView(
-                profile: userProfileEntry(from: profileModel),
+                profile: Self.userProfileEntry(from: profileModel),
                 onOpenWrapped: {},
                 onPlayTopTrack: {}
             )
@@ -562,7 +562,7 @@ public struct RootShellView: View {
         case .community:
             // WS-B B2: the live community feed lane (library.communityFeed()).
             CommunityHubView(
-                playlists: communityRows(from: communityModel),
+                playlists: Self.communityRows(from: communityModel),
                 onOpen: { playlist in
                     path.wrappedValue.append(
                         AppRoute.album(title: playlist.name, artist: playlist.creatorName)

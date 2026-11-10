@@ -200,9 +200,9 @@ final class UniFFIEngineGateway: EngineGateway {
         // cooperative pool (searchTracks' discipline). Module-qualified:
         // the generated namespace function vs this instance method share
         // a base name (performSearchTracks' lesson).
-        guard let formats = try? await Task.detached(priority: .userInitiated) {
+        let formats: [ResolvedStreamFormat] = (try? await Task.detached(priority: .userInitiated) {
             try StreamifyIOS.resolveStreamFormats(videoId: videoId)
-        }.value else { return [] }
+        }.value) ?? []
         return formats.map(Self.map)
     }
 
