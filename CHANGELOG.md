@@ -3,6 +3,108 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — Horizon 0: security, CI-truth & governance closeout (PRs #145–#146)
+
+### Security
+- **SEC-06** — the offline vault and the audio-cache chunk cipher use real
+  AEAD now: ChaCha20-Poly1305 with fresh random nonces, BLAKE3-derived
+  keys and chunk-id AAD, replacing the repeating-key XOR "encryption".
+  Legacy XOR chunks stay readable via a read-only migration path
+  (read-old/write-new). Tamper and known-plaintext tests included;
+  `docs/playbooks/CRYPTO_SPEC.md` documents the envelope.
+- **SEC-07** — the hardcoded InnerTube key was purged from
+  `streamify-resolver` into the env-overridable fleet-config path;
+  the gitleaks allowlist was reconciled with what actually ships.
+- **SEC-08** — the five pooled ZhipuAI API keys were removed from
+  Kotlin; keys arrive via env/BuildConfig injection and an
+  unconfigured build ships with AI features off (matching the C++
+  bridge's env-var pattern).
+- **SEC-09** — the display-name admin bypass (`displayName.contains(
+  "sireen")`) was killed at all sites; `is_admin` is a server-side
+  flag-only claim, fail-closed, with a regression test.
+- **SEC-10** — Supabase RLS hardened: rate-limited track ingest, every
+  `OR TRUE` policy dropped, `is_admin()` flag-only behind a trigger
+  guard. `supabase/sql/tests/rls_test.sql` runs 11 assertions against a
+  real Postgres+pgvector container in a new blocking CI job.
+
+### Changed — CI truthfulness (TRUTH-01) & real-lane linking (IOS-02)
+- The Apple-target engine check is now **blocking** on every non-fork
+  event: a failing `aarch64-apple-ios` / `-sim` compile fails the job
+  instead of printing "BLOCKED UPSTREAM (reported, not failed)".
+- The Apple Unified lane builds `StreamifyCore.xcframework`, stages it
+  into `iosApp/Frameworks/` and **links it before the test pass** — the
+  28 real-lane UniFFI contract tests executed for the first time
+  (SWIFT_MIGRATION_PLAN Gate 2). This took eleven rounds of CI fixes,
+  each a latent Swift bug that had never compiled against a real SDK
+  (bindgen SDK targets, the FFI module name `streamifyFFI`, type-name
+  collisions, throwing FFI signatures, async test annotations, and the
+  lib-prefix rule for xcframework static members that `swift build`
+  requires to emit a linker flag).
+- Release no longer tolerates a missing xcframework: the
+  `continue-on-error` download was removed — every promised release
+  artifact exists or the release fails.
+- The three never-bootable macOS emulator legs in the nightly matrix
+  (HV_UNSUPPORTED) were replaced by one KVM Android emulator lane
+  (TEST-01 infrastructure). The Windows desktop probe-gate was deleted
+  (the engine compiles and is consumed like Linux — closes RFX-02).
+- The Apple lane followed GitHub's macos-14 runner retirement
+  (2026-11-02) and migrated to macos-15.
+
+### Governance (GOV-05)
+- The resolver canary no longer force-pushes to `main` — rotations open
+  reviewed pull requests from the evergreen `bot/fleet-rotation`
+  branch (branch protection had been silently rejecting four
+  consecutive canary pushes since 2026-10-31).
+- `CODEOWNERS` review routing installed; the release signing secrets
+  moved behind a protected `release` environment.
+
+## [Unreleased] — Multiplatform program: contracts → workspace → desktop → Apple (PRs #110–#138)
+
+### Added
+- **Phase 3 contracts & engine hardening (PRs #110–#111)** — frozen
+  multiplatform UniFFI contract surface (`DacPresentationClock`,
+  reactive `EngineEventListener` with monotonic snapshot dispatch,
+  debounced `MediaCommand` plane), SPSC ring hardening, Rubato 48 kHz
+  sinc SRC with the golden-vector suite.
+- **Rust core modularized into a 7-crate workspace (PR #126)** —
+  `streamify-core / -audio / -jam / -resolver / -storage / -contract /
+  -ffi`, replacing the monolith; pure-Rust RustyPipe stream extraction
+  integrated end-to-end (JNI resolver lane, SQLite deobf cache,
+  3-tier resolution with ISRC + fuzzy fallback).
+- **Phase 4a/4b audio HALs (PRs #114–#121)** — Windows WASAPI
+  IAudioClient3→shared→exclusive ladder, Linux PipeWire RT callback
+  with dlopen'd ALSA fallback (frozen embedded ABI), Android AAudio
+  float pull adapter, host-testable render cores with dedicated suites,
+  desktop CI matrix + the <250 MiB installer size-budget gate.
+- **Phase 5 OS capability adapters (PR #122)** — SMTC (Windows), MPRIS
+  (Linux), Apple RemoteCommandCenter, and the cross-platform secure
+  store delegation (DPAPI / Secret Service / Keychain / KeyStore).
+- **Compose Multiplatform desktop shell (PR #123)** — responsive
+  sidebar shell, checked-in UniFFI Kotlin proxies, JNA engine smoke
+  suite, jpackage .deb/.msi/.dmg installers (DMG CI-verified, PR #130).
+- **Apple Swift migration — Engineers 1–4 (PRs #133–#138)** — 180
+  Swift files / 37 kLOC: the universal SPM package (iOS 17+ / macOS 14+),
+  UniFFI typed-contract gateway + storage, SwiftUI design system and
+  30-screen multiplatform shell, CoreAudio render core + audio-session
+  and remote-command adapters, BLE/LAN jam discovery, state models and
+  lyrics. 235 unit tests.
+- **Unified Hub-and-Spoke CI DAG (PRs #125, #127, #129)** — 3-tier
+  reusable workflows, single blocking `ci-gate`, path-filtered
+  preflight, blocking gitleaks, build-once native fan-out; CI
+  turnaround collapsed under 5 minutes.
+
+### Changed
+- Android track search and stream resolution route through the pure-Rust
+  RustyPipe JNI lane; NewPipe and WebView surfaces purged (PRs #131–
+  #132).
+- `USE_RUST_AUDIO` dogfood toggle landed (default off — the cutover
+  MP-CUT01/02 remains the open Horizon-1 work).
+
+### Deprecated
+- The monolithic `extreme-test-matrix.yml` workflow was retired in favor
+  of the hub-and-spoke DAG; nightly deep lanes (fuzzing, mesh chaos) and
+  the resolver canary live on as their own workflows.
+
 ## [Unreleased] — audit #44 P0-1: JNI ingress bridge + ABI parity gates
 
 ### Fixed

@@ -7,10 +7,10 @@ Reading time: 5 minutes. First PR checklist at the bottom.
 ## Before you start
 
 1. Read [PHILOSOPHY.md](PHILOSOPHY.md) — every technical decision should trace back to it.
-2. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the system map and dependency rules.
-3. Read [docs/CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) — folder-by-folder encyclopedia of the app module.
-4. Skim [docs/ADD_A_FEATURE.md](docs/ADD_A_FEATURE.md) — playbooks for common changes.
-5. Engine-specific manuals live in `docs/01_…md` through `docs/12_…md`. Touch an engine, read its manual.
+2. Read [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) — the system map and dependency rules.
+3. Read [docs/playbooks/CODEBASE_GUIDE.md](docs/playbooks/CODEBASE_GUIDE.md) — folder-by-folder encyclopedia of the app module.
+4. Skim [docs/playbooks/ADD_A_FEATURE.md](docs/playbooks/ADD_A_FEATURE.md) — playbooks for common changes.
+5. Engine-specific manuals live in `docs/architecture/engines/01_…md` through `docs/architecture/engines/12_…md`. Touch an engine, read its manual.
 6. Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Blunt about code, kind about people.
 
 **Security issues are not issues.** Report vulnerabilities privately per [SECURITY.md](SECURITY.md).
@@ -23,11 +23,11 @@ native/                               C++20 SIMD DSP + JNI trampolines (ARM NEON
 rust/                                 Rust core engines (CRDT, mesh, tagging, clocks)
 supabase/                             Optional backend: schemas, RPCs, RLS
 docs/                                 Engine manuals + onboarding guides (source of truth)
-.github/workflows/                    CI: build-ref, extreme-test-matrix, resolver-canary, release
+.github/workflows/                    CI: ci.yml (hub, Tier 1–3 gate), _ci-engine/_ci-android/_ci-desktop/_ci-ios (Tier-2 spokes), nightly-deep-matrix, resolver-canary, release, build-ref, codeql (advisory)
 legacy/                               Archived pre-rewrite code — do not extend; reference only
 ```
 
-Three languages, one product. The **boundaries matter more than the interiors**: JNI exports must match `external fun` declarations 1:1; Jam wire bytes must be bit-identical between the Kotlin (`jam/JamOpWire.kt`) and Rust (`rust/src/jam_crdt.rs`) stacks. If you change an interface, change both sides and their tests in the same PR.
+Three languages, one product. The **boundaries matter more than the interiors**: JNI exports must match `external fun` declarations 1:1; Jam wire bytes must be bit-identical between the Kotlin (`app/src/main/java/com/streamify/app/jam/JamOpWire.kt`) and Rust (`rust/crates/streamify-jam/src/jam_crdt.rs`) stacks. If you change an interface, change both sides and their tests in the same PR.
 
 ## Development environment
 
