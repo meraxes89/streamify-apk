@@ -156,8 +156,8 @@ struct LockScreenPlaybackWidget: Widget {
 #endif
 
 /// The bundle (see the header for the host entry-point pattern).
-struct StreamifyWidgetBundle: WidgetBundle {
-    var body: some Widget {
+public struct StreamifyWidgetBundle: WidgetBundle {
+    public var body: some Widget {
         NowPlayingWidget()
         #if os(iOS)
         LockScreenPlaybackWidget()

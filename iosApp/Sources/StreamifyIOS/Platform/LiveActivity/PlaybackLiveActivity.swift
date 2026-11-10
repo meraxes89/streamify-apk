@@ -432,8 +432,8 @@ struct PlaybackLiveActivityLockScreenView: View {
 /// extension's `WidgetBundle` next to the home-screen widgets:
 /// `StreamifyWidgetsEntryPoint { PlaybackLiveActivityWidget() ... }`.
 @available(iOS 16.1, *)
-struct PlaybackLiveActivityWidget: Widget {
-    var body: some WidgetConfiguration {
+public struct PlaybackLiveActivityWidget: Widget {
+    public var body: some WidgetConfiguration {
         ActivityConfiguration(for: StreamifyPlaybackAttributes.self) { context in
             PlaybackLiveActivityLockScreenView(state: context.state)
         } dynamicIsland: { context in
