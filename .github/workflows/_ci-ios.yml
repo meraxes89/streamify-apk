@@ -266,10 +266,15 @@ jobs:
       - name: Host app build gate (WS-B B5)
         run: |
           set -o pipefail
+          # ARCHS=arm64: the PR lane stages the arm64-only simulator
+          # framework (STREAMIFY_IOS_SKIP_X86_SIM=1 outside release mode),
+          # so the gate builds the simulator slice the lane actually
+          # carries; the release lane exercises the universal matrix.
           xcodebuild build \
             -project iosApp/Host/StreamifyHost.xcodeproj \
             -scheme StreamifyHost \
             -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee iosApp/Host/host-build.log | tail -5
 
