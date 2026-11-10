@@ -26,7 +26,8 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use streamify_contract::{
-    AudioErrorKind, AudioStreamConfig, BufferStats, EngineError, PlaybackState, StreamifyEngine,
+    AudioErrorKind, AudioStreamConfig, BufferStats, EngineError, MediaCommand, PlaybackState,
+    StreamifyEngine, MEDIA_COMMAND_DEBOUNCE_MS,
 };
 
 /// Shape assertion helper (multiplatform Phase 3: EngineError carries
@@ -991,4 +992,230 @@ fn self_test_fixture_populates_every_field() {
 #[test]
 fn typed_search_lane_rejects_blank_queries_through_the_channel() {
     assert_internal(search_tracks("   ".to_string(), 10));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  A2 (issue #148, AHEAD.md WS-A): the queue-scoped transport —
+//  Seek / Next / Previous through `on_media_command`, verified as
+//  round-trips on the same public surface the UniFFI trampolines
+//  dispatch to. The rendering data plane (producer → sink) lands with
+//  A3/A4; these tests pin the control-plane transport contract those
+//  phases will consume.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The mandated debounce swallows IDENTICAL commands inside the window
+/// (the Bluetooth double-delivery class), so a test driving a run of
+/// the same variant must step past the window first — exactly like a
+/// human double-press does (>= ~150 ms apart).
+fn past_debounce_window() {
+    thread::sleep(std::time::Duration::from_millis(MEDIA_COMMAND_DEBOUNCE_MS + 30));
+}
+
+/// Current queue row's index (None while no row is selected).
+fn current_index(engine: &StreamifyEngine) -> Option<u32> {
+    engine
+        .get_current_queue_item()
+        .unwrap()
+        .map(|row| row.index)
+}
+
+/// Next/Previous walk the staged queue, wrap around at both edges
+/// (mirroring the legacy `get_next_track` circular loopback), select
+/// the head from an unselected state, and re-anchor the position at
+/// the start of every newly selected row.
+#[test]
+fn transport_next_previous_walk_wrap_and_reset_position() {
+    let engine = StreamifyEngine::new();
+    for n in 0..3 {
+        engine
+            .enqueue_track(typed_track(n), "local".to_string())
+            .unwrap();
+    }
+    // Fresh engine: nothing selected, position at the row start.
+    assert_eq!(current_index(&engine), None);
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 0);
+
+    // The first transport command selects the queue head.
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(current_index(&engine), Some(0));
+
+    // Walk forward: 0 -> 1 -> 2, position re-anchored each change.
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(current_index(&engine), Some(1));
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(current_index(&engine), Some(2));
+
+    // Past the tail: circular loopback to the head (legacy
+    // get_next_track semantics, preserved).
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(current_index(&engine), Some(0));
+
+    // Previous wraps symmetrically at the head: 0 -> 2 -> 1.
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Previous).unwrap());
+    assert_eq!(current_index(&engine), Some(2));
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Previous).unwrap());
+    assert_eq!(current_index(&engine), Some(1));
+
+    // A seek re-anchors the position; the NEXT track change resets it.
+    assert!(engine
+        .on_media_command(MediaCommand::Seek { position_ms: 45_000 })
+        .unwrap());
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 45_000);
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(current_index(&engine), Some(2));
+    assert_eq!(
+        engine.get_playback_position_ms().unwrap(),
+        0,
+        "a track change re-anchors the position at the row start"
+    );
+
+    // The current row reads back with its full identity: stable index,
+    // the staged track, the attribution.
+    let row = engine.get_current_queue_item().unwrap().expect("row 2 selected");
+    assert_eq!(row.index, 2);
+    assert_eq!(row.track, typed_track(2));
+    assert_eq!(row.enqueued_by, "local");
+}
+
+/// Seek round-trips verbatim while the row's duration is known, clamps
+/// to that duration when the target overshoots, skips clamping when the
+/// row carries no duration (0 = unknown), and participates in the
+/// debounce exactly like every other command.
+#[test]
+fn transport_seek_round_trips_and_clamps_to_row_duration() {
+    let engine = StreamifyEngine::new();
+    // typed_track(0).duration_ms == 180_000.
+    engine
+        .enqueue_track(typed_track(0), "local".to_string())
+        .unwrap();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+
+    // In-range target round-trips verbatim.
+    assert!(engine
+        .on_media_command(MediaCommand::Seek { position_ms: 90_000 })
+        .unwrap());
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 90_000);
+
+    // Beyond the row's duration clamps to the duration (the producer
+    // phase will treat end-of-row as the track-finished path).
+    assert!(engine
+        .on_media_command(MediaCommand::Seek { position_ms: 500_000 })
+        .unwrap());
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 180_000);
+
+    // The identical seek inside the debounce window is swallowed — the
+    // position (and the revision, see the rev test) stay untouched.
+    assert!(!engine
+         .on_media_command(MediaCommand::Seek { position_ms: 500_000 })
+        .unwrap());
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 180_000);
+
+    // A different payload is a different command: scrubs freely.
+    assert!(engine
+         .on_media_command(MediaCommand::Seek { position_ms: 1_200 })
+        .unwrap());
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 1_200);
+
+    // Unknown duration (0): the target is stored verbatim — streams
+    // resolve their duration late, so a row without one clamps nothing.
+    let mut unbounded = typed_track(9);
+    unbounded.duration_ms = 0;
+    engine.enqueue_track(unbounded, "local".to_string()).unwrap();
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert!(engine
+         .on_media_command(MediaCommand::Seek {
+            position_ms: 4_000_000_000
+        })
+        .unwrap());
+    assert_eq!(
+        engine.get_playback_position_ms().unwrap(),
+        4_000_000_000,
+        "a row without a known duration must not clamp the seek target"
+    );
+}
+
+/// With no row selected there is nothing to seek within and nothing to
+/// walk: the transport commands are ACKNOWLEDGED no-ops (applied =
+/// true, state untouched), matching the documented semantics for an
+/// empty or unselected queue.
+#[test]
+fn transport_commands_without_a_current_row_are_acknowledged_noops() {
+    let engine = StreamifyEngine::new();
+
+    // Empty queue: all three acknowledged, nothing selected, position 0.
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert!(engine.on_media_command(MediaCommand::Previous).unwrap());
+    assert!(engine
+         .on_media_command(MediaCommand::Seek { position_ms: 10_000 })
+        .unwrap());
+    assert_eq!(current_index(&engine), None);
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 0);
+
+    // Rows staged but never selected: Seek still has no row to anchor
+    // against — the transport stays untouched until a Next/Previous
+    // selects the head.
+    engine
+         .enqueue_track(typed_track(0), "local".to_string())
+        .unwrap();
+    assert!(engine
+         .on_media_command(MediaCommand::Seek { position_ms: 5_000 })
+        .unwrap());
+    assert_eq!(current_index(&engine), None);
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 0);
+
+    // Transport commands never touch the lifecycle: a paused engine
+    // stays paused across a track change.
+    engine.set_playback_state(PlaybackState::Paused);
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(engine.get_playback_state().unwrap(), PlaybackState::Paused);
+    assert_eq!(current_index(&engine), Some(0));
+}
+
+/// Every APPLIED transport command bumps the snapshot revision (the
+/// MP-C03 acknowledgment contract); a debounced duplicate leaves it
+/// untouched; and `clear_queue` resets the whole transport.
+#[test]
+fn transport_commands_bump_the_revision_and_clear_queue_resets() {
+    let engine = StreamifyEngine::new();
+    for n in 0..2 {
+        engine
+             .enqueue_track(typed_track(n), "local".to_string())
+            .unwrap();
+    }
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    assert!(engine
+         .on_media_command(MediaCommand::Seek { position_ms: 30_000 })
+        .unwrap());
+    let rev_after_seek = engine.get_engine_snapshot().unwrap().rev;
+
+    // Applied Next: strictly monotonic revision.
+    past_debounce_window();
+    assert!(engine.on_media_command(MediaCommand::Next).unwrap());
+    let rev_after_next = engine.get_engine_snapshot().unwrap().rev;
+    assert!(
+        rev_after_next > rev_after_seek,
+        "an applied transport command must bump the revision"
+    );
+
+    // The debounced duplicate publishes NOTHING: no wake, no bump.
+    assert!(!engine.on_media_command(MediaCommand::Next).unwrap());
+    assert_eq!(
+        engine.get_engine_snapshot().unwrap().rev,
+        rev_after_next,
+        "a swallowed duplicate must leave the revision untouched"
+    );
+
+    // clear_queue drops the rows AND resets cursor + position in the
+    // same lock: the transport reads as a fresh engine afterwards.
+    engine.clear_queue().unwrap();
+    assert_eq!(current_index(&engine), None);
+    assert_eq!(engine.get_playback_position_ms().unwrap(), 0);
+    assert!(engine.get_queue().unwrap().is_empty());
 }
