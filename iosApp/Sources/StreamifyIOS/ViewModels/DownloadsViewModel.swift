@@ -58,7 +58,9 @@ final class DownloadsViewModel {
     }
 
     private var records: [URL: Record] = [:]
-    private var watchTasks: [URL: Task<Void, Never>] = [:]
+    /// nonisolated(unsafe): the deinit (nonisolated by nature) cancels the
+    /// watchers — the same pattern SearchViewModel's debounce tasks use.
+    nonisolated(unsafe) private var watchTasks: [URL: Task<Void, Never>] = [:]
 
     private let service: BackgroundDownloadService
 
