@@ -297,8 +297,8 @@ public struct FullPlayerView: View {
 #Preview("Regular — ambient obsidian") {
     FullPlayerView(
         state: PlaybackUiState(PreviewCatalog.playingSnapshot),
-        lyrics: PreviewCatalog.lyrics,
         palette: AmbientPalette(dominantHex: 0x1E3264, accentHex: 0xFF0033, darkMutedHex: 0x0A0A0A),
+        lyrics: PreviewCatalog.lyrics,
         queueState: .constant(PreviewCatalog.queueState),
         queueAutoMix: .constant(true),
         onDismiss: {}
