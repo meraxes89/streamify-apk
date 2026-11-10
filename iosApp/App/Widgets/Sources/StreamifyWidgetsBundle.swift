@@ -1,6 +1,10 @@
 import SwiftUI
 import WidgetKit
 
+// The package's widget surface: the bundle + the Live Activity widget both
+// live in the StreamifyIOS module (the library cannot carry @main).
+import StreamifyIOS
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WS-B B5/B6 (ENG-2): the widget extension's entry point.
 //

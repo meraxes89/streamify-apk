@@ -1,5 +1,8 @@
 import SwiftUI
 
+// The shell lives in the StreamifyIOS package — the husk only composes it.
+import StreamifyIOS
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WS-B B5 (ENG-2): the host app husk — three lines and an entry point.
 //
