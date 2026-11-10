@@ -24,7 +24,9 @@
 //!   callback and the Rust self-test consume the identical code path.
 //! * `stats_wire` serializes the same 96-byte little-endian image the JNI
 //!   bridge (C1) and the desktop JNA shim (C5) consume — one wire layout
-//!   across every platform lane.
+//!   across every platform lane. It is `unsafe` on the Rust side for the
+//!   same reason `read_f32` is (it writes through the caller's pointer);
+//!   the C symbol and ABI are identical either way.
 //!
 //! # Lifetime
 //!
@@ -124,8 +126,13 @@ pub extern "C" fn streamify_ring_channels() -> u32 {
 /// little-endian wire image (magic `0x51AB0001` — the JNI/C1 and JNA/C5
 /// layout). Returns 1 on success, 0 when detached / the buffer is too
 /// small.
+///
+/// # Safety
+///
+/// `out` must be valid for writes of at least `SINK_STATS_WIRE_BYTES`
+/// bytes for the duration of the call (the slice view never escapes).
 #[no_mangle]
-pub extern "C" fn streamify_ring_stats_wire(out: *mut u8, out_len: usize) -> i32 {
+pub unsafe extern "C" fn streamify_ring_stats_wire(out: *mut u8, out_len: usize) -> i32 {
     let Some(ring) = current() else { return 0 };
     if out.is_null() || out_len < SINK_STATS_WIRE_BYTES {
         return 0;

@@ -120,6 +120,8 @@ public:
         sink_.reset();    // last owner release — after Unbind, always safe
     }
 
+    CoreAudioPullAdapter() = default;
+
     ~CoreAudioPullAdapter() { Stop(); }
 
     CoreAudioPullAdapter(const CoreAudioPullAdapter&) = delete;
