@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     listening_seconds BIGINT DEFAULT 0,
     favorite_genre TEXT DEFAULT 'All',
     is_private BOOLEAN DEFAULT FALSE,
+    -- Updated by upsert_user_telemetry() (2026_01_stats_overhaul.sql) and
+    -- SELECTed by SupabaseStatsClient. Retro-added 2026-11-10: the stats
+    -- migration referenced it before any schema file created it.
+    top_track TEXT,
     last_active_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -250,13 +254,21 @@ CREATE OR REPLACE FUNCTION public.guard_is_admin_flag()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
+        -- NB: INVOKER, deliberately. As a DEFINER function current_user is
+        -- the OWNER (postgres) for every caller, so the allowlist below
+        -- matched unconditionally and the guard never fired — any
+        -- authenticated user could flip their own is_admin through the
+        -- REST profile update. As INVOKER, current_user is the actual
+        -- effective role: 'authenticated' API traffic is fenced, while
+        -- set_user_admin_role (SECURITY DEFINER RPC) and DBA/service_role
+        -- sessions still pass the allowlist.
         IF NOT (public.is_admin() OR current_user IN ('postgres', 'supabase_admin', 'service_role')) THEN
             RAISE EXCEPTION 'is_admin is server-managed (SEC-10): use set_user_admin_role';
         END IF;
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS profiles_is_admin_guard ON public.profiles;
 CREATE TRIGGER profiles_is_admin_guard
@@ -327,16 +339,23 @@ CREATE POLICY "Authenticated users can update track lyrics (rate-limited)" ON pu
 CREATE POLICY "Admin has full track access" ON public.tracks FOR ALL USING (public.is_admin());
 
 -- Likes: Users read/modify own likes
+DROP POLICY IF EXISTS "Users manage own likes" ON public.user_likes;
 CREATE POLICY "Users manage own likes" ON public.user_likes FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Anyone can view likes" ON public.user_likes;
 CREATE POLICY "Anyone can view likes" ON public.user_likes FOR SELECT USING (TRUE);
 
 -- Playlists: Public/collaborative access
+DROP POLICY IF EXISTS "View public playlists" ON public.playlists;
 CREATE POLICY "View public playlists" ON public.playlists FOR SELECT USING (is_public = TRUE OR auth.uid() = user_id OR auth.uid() = ANY(collaborator_ids));
+DROP POLICY IF EXISTS "Manage own playlists" ON public.playlists;
 CREATE POLICY "Manage own playlists" ON public.playlists FOR ALL USING (auth.uid() = user_id OR auth.uid() = ANY(collaborator_ids));
+DROP POLICY IF EXISTS "Admin full playlist control" ON public.playlists;
 CREATE POLICY "Admin full playlist control" ON public.playlists FOR ALL USING (public.is_admin());
 
 -- Playlist Tracks
+DROP POLICY IF EXISTS "View playlist tracks" ON public.playlist_tracks;
 CREATE POLICY "View playlist tracks" ON public.playlist_tracks FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Modify playlist tracks" ON public.playlist_tracks;
 CREATE POLICY "Modify playlist tracks" ON public.playlist_tracks FOR ALL USING (
     EXISTS (SELECT 1 FROM public.playlists WHERE id = playlist_id AND (user_id = auth.uid() OR auth.uid() = ANY(collaborator_ids)))
 );
@@ -376,11 +395,15 @@ CREATE POLICY "Users can view own history" ON public.user_listening_history FOR 
 CREATE POLICY "Users can record history" ON public.user_listening_history FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Friend Connections
+DROP POLICY IF EXISTS "Anyone can view friends" ON public.friend_connections;
 CREATE POLICY "Anyone can view friends" ON public.friend_connections FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Users manage friends" ON public.friend_connections;
 CREATE POLICY "Users manage friends" ON public.friend_connections FOR ALL USING (auth.uid() = user_id);
 
 -- Broadcasts
+DROP POLICY IF EXISTS "Anyone can read broadcasts" ON public.admin_broadcasts;
 CREATE POLICY "Anyone can read broadcasts" ON public.admin_broadcasts FOR SELECT USING (is_active = TRUE);
+DROP POLICY IF EXISTS "Admin manages broadcasts" ON public.admin_broadcasts;
 CREATE POLICY "Admin manages broadcasts" ON public.admin_broadcasts FOR ALL USING (public.is_admin());
 
 -- ============================================================================
@@ -635,10 +658,14 @@ CREATE TABLE IF NOT EXISTS public.user_musical_chronotype (
 ALTER TABLE public.user_listening_patterns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_musical_chronotype ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users manage own patterns" ON public.user_listening_patterns;
 CREATE POLICY "Users manage own patterns" ON public.user_listening_patterns FOR ALL USING (auth.uid() = user_id OR TRUE);
+DROP POLICY IF EXISTS "Public patterns viewable" ON public.user_listening_patterns;
 CREATE POLICY "Public patterns viewable" ON public.user_listening_patterns FOR SELECT USING (TRUE);
 
+DROP POLICY IF EXISTS "Users manage own chronotype" ON public.user_musical_chronotype;
 CREATE POLICY "Users manage own chronotype" ON public.user_musical_chronotype FOR ALL USING (auth.uid() = user_id OR TRUE);
+DROP POLICY IF EXISTS "Public chronotype viewable" ON public.user_musical_chronotype;
 CREATE POLICY "Public chronotype viewable" ON public.user_musical_chronotype FOR SELECT USING (TRUE);
 
 -- RPC: Upsert User Listening Pattern Slot
@@ -718,13 +745,19 @@ ALTER TABLE public.user_device_context ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.track_hook_telemetry ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.track_cooccurrence_graph ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users manage own device context" ON public.user_device_context;
 CREATE POLICY "Users manage own device context" ON public.user_device_context FOR ALL USING (auth.uid() = user_id OR TRUE);
+DROP POLICY IF EXISTS "Public device context viewable" ON public.user_device_context;
 CREATE POLICY "Public device context viewable" ON public.user_device_context FOR SELECT USING (TRUE);
 
+DROP POLICY IF EXISTS "Users manage own hook telemetry" ON public.track_hook_telemetry;
 CREATE POLICY "Users manage own hook telemetry" ON public.track_hook_telemetry FOR ALL USING (auth.uid() = user_id OR TRUE);
+DROP POLICY IF EXISTS "Public hook telemetry viewable" ON public.track_hook_telemetry;
 CREATE POLICY "Public hook telemetry viewable" ON public.track_hook_telemetry FOR SELECT USING (TRUE);
 
+DROP POLICY IF EXISTS "Cooccurrence graph viewable" ON public.track_cooccurrence_graph;
 CREATE POLICY "Cooccurrence graph viewable" ON public.track_cooccurrence_graph FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Cooccurrence graph insertable" ON public.track_cooccurrence_graph;
 CREATE POLICY "Cooccurrence graph insertable" ON public.track_cooccurrence_graph FOR ALL USING (TRUE);
 
 -- RPC: Record Scrubber Hook Telemetry
@@ -800,7 +833,9 @@ CREATE TABLE IF NOT EXISTS public.track_markov_2nd (
 CREATE INDEX IF NOT EXISTS idx_markov_2nd_pair ON public.track_markov_2nd(track_a_id, track_b_id, transition_count DESC);
 
 ALTER TABLE public.track_markov_2nd ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Markov 2nd graph viewable" ON public.track_markov_2nd;
 CREATE POLICY "Markov 2nd graph viewable" ON public.track_markov_2nd FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Markov 2nd graph insertable" ON public.track_markov_2nd;
 CREATE POLICY "Markov 2nd graph insertable" ON public.track_markov_2nd FOR ALL USING (TRUE);
 
 -- RPC: Record 2nd-Order Markov Transition
@@ -882,11 +917,17 @@ ALTER TABLE public.edge_compute_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.edge_compute_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.edge_node_activity ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Edge tasks viewable" ON public.edge_compute_tasks;
 CREATE POLICY "Edge tasks viewable" ON public.edge_compute_tasks FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Edge tasks modifiable" ON public.edge_compute_tasks;
 CREATE POLICY "Edge tasks modifiable" ON public.edge_compute_tasks FOR ALL USING (TRUE);
+DROP POLICY IF EXISTS "Edge results viewable" ON public.edge_compute_results;
 CREATE POLICY "Edge results viewable" ON public.edge_compute_results FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Edge results insertable" ON public.edge_compute_results;
 CREATE POLICY "Edge results insertable" ON public.edge_compute_results FOR INSERT WITH CHECK (TRUE);
+DROP POLICY IF EXISTS "Edge node activity viewable" ON public.edge_node_activity;
 CREATE POLICY "Edge node activity viewable" ON public.edge_node_activity FOR SELECT USING (TRUE);
+DROP POLICY IF EXISTS "Edge node activity modifiable" ON public.edge_node_activity;
 CREATE POLICY "Edge node activity modifiable" ON public.edge_node_activity FOR ALL USING (TRUE);
 
 -- RPC: Atomic Task Claim with FOR UPDATE SKIP LOCKED

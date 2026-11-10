@@ -33,13 +33,21 @@ CREATE OR REPLACE FUNCTION public.guard_is_admin_flag()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
+        -- NB: INVOKER, deliberately. As a DEFINER function current_user is
+        -- the OWNER (postgres) for every caller, so the allowlist below
+        -- matched unconditionally and the guard never fired — any
+        -- authenticated user could flip their own is_admin through the
+        -- REST profile update. As INVOKER, current_user is the actual
+        -- effective role: 'authenticated' API traffic is fenced, while
+        -- set_user_admin_role (SECURITY DEFINER RPC) and DBA/service_role
+        -- sessions still pass the allowlist.
         IF NOT (public.is_admin() OR current_user IN ('postgres', 'supabase_admin', 'service_role')) THEN
             RAISE EXCEPTION 'is_admin is server-managed (SEC-10): use set_user_admin_role';
         END IF;
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS profiles_is_admin_guard ON public.profiles;
 CREATE TRIGGER profiles_is_admin_guard

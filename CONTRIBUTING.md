@@ -39,7 +39,9 @@ git clone https://github.com/meraxes89/streamify-apk.git && cd streamify-apk
 # Secrets are never hardcoded. Create local.properties:
 #   SUPABASE_URL=https://<project>.supabase.co
 #   SUPABASE_ANON_KEY=<anon key>
-# (values come from your own Supabase project; see docs/07_DATABASE_STORAGE_ENGINE.md)
+# (values come from your own Supabase project; see
+#  docs/architecture/engines/07_database_storage.md and
+#  docs/playbooks/BACKEND_DB_SYNC.md for the live-DB sync runbook)
 
 ./gradlew assembleDebug          # builds APK with native + rust toolchain hooks
 cargo test -p streamify-core     # Rust unit + integration suites

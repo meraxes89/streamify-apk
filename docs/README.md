@@ -47,6 +47,7 @@ Practical how-to guides for daily development and test workflows:
 | Playbook | Purpose / Scope |
 |---|---|
 | [`playbooks/ADD_A_FEATURE.md`](playbooks/ADD_A_FEATURE.md) | Step-by-step cookbook for adding new features without breaking ABI or JNI boundaries. |
+| [`playbooks/BACKEND_DB_SYNC.md`](playbooks/BACKEND_DB_SYNC.md) | Live Supabase ↔ repo reconciliation runbook, app backend wiring, and the 2026-11-10 sync record (incl. the `top_track` and guard-trigger fixes). |
 | [`playbooks/CODEBASE_GUIDE.md`](playbooks/CODEBASE_GUIDE.md) | File-by-file and folder-by-folder codebase tour with LOC counts. |
 | [`playbooks/CI_TESTING_GUIDE.md`](playbooks/CI_TESTING_GUIDE.md) | How the Extreme Test Matrix works, shard topologies, and log inspection. |
 | [`playbooks/TODO.md`](playbooks/TODO.md) | Authoring tracker for ongoing documentation and spec updates. |
