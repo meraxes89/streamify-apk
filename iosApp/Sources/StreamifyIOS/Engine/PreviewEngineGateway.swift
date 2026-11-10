@@ -132,14 +132,24 @@ final class PreviewEngineGateway: EngineGateway {
         continuation?.yield(snapshot)
     }
 
-    /// Test/preview helper: rebuild-and-push — `PlaybackSnapshot.status` is
-    /// an immutable field, so status-affecting scripts go through here.
-    private func push(mutating change: (inout PlaybackSnapshot) -> Void) {
-        let continuation = lock.withLock {
-            change(&state)
-            return self.continuation
+    /// Test/preview helper: push the playing successor for `track` —
+    /// `PlaybackSnapshot.status` is an immutable field, so the transition
+    /// is a fresh value (rev bumped so rev-guarded consumers ingest it).
+    private func pushPlaying(_ track: PresentationTrack) {
+        let (successor, continuation) = lock.withLock {
+            let successor = PlaybackSnapshot(
+                rev: state.rev + 1,
+                status: .playing,
+                volume: state.volume,
+                buffer: state.buffer,
+                clock: state.clock,
+                currentTrack: track,
+                jamSessionName: state.jamSessionName
+            )
+            state = successor
+            return (successor, self.continuation)
         }
-        continuation?.yield(state)
+        continuation?.yield(successor)
     }
 
     // ── SW-ENG1-04: the typed data lane (deterministic fixtures) ──────────
@@ -265,10 +275,7 @@ final class PreviewEngineGateway: EngineGateway {
         }
         guard let index = await enqueue(track: staged, enqueuedBy: "local") else { return nil }
         await attachSink(capacityFrames: EnginePlaybackPlane.capacityFrames)
-        push(mutating: { snapshot in
-            snapshot.status = .playing
-            snapshot.currentTrack = PresentationTrack(staged)
-        })
+        pushPlaying(PresentationTrack(staged))
         return index
     }
 
@@ -277,10 +284,7 @@ final class PreviewEngineGateway: EngineGateway {
         guard let row = lock.withLock({ stagedQueue.first(where: { $0.track.id == id }) }) else {
             return false
         }
-        push(mutating: { snapshot in
-            snapshot.status = .playing
-            snapshot.currentTrack = PresentationTrack(row.track)
-        })
+        pushPlaying(PresentationTrack(row.track))
         return true
     }
 
