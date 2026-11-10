@@ -36,6 +36,7 @@ Start here for system maps, core invariants, and subsystem deep-dives:
 10. [`10_telemetry_profiler.md`](architecture/engines/10_telemetry_profiler.md) — Real-time performance monitors, frame pacing counters, and battery diagnostics.
 11. [`11_playback_ui.md`](architecture/engines/11_playback_ui.md) — 120Hz liquid sheet morphing, predictive back, and haptic feedback.
 12. [`12_server_security.md`](architecture/engines/12_server_security.md) — Security boundaries, token rotation, and supply chain attestation.
+13. [`13_playback_dataplane.md`](architecture/engines/13_playback_dataplane.md) — The sovereign drivetrain: producer → `AudioSink` write edge → platform HAL; transport semantics (A2), panic-policy decision record (A6), and the A3–A5 build spec.
 
 ---
 
