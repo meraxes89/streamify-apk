@@ -9,40 +9,38 @@ import java.nio.ByteOrder
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * NativeAudioSink — Kotlin binding class of the FROZEN audio-sink JNI edge
- * (Phase 4a / MP-HAL05, Beta subtree) — DEBUG-ONLY DOGFOOD SOURCE SET.
+ * (Phase 4a / MP-HAL05, Beta subtree) — MAIN-TREE since WS-C/C1 landed the
+ * bridge (`native/src/jni_bridge_audio_sinks.cpp`, pinned on the host
+ * sanitizer lanes by `jni_sink_bridge_test_suite`).
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * WHY THIS FILE LIVES OUTSIDE `app/src/main/java`
- * ─────────────────────────────────────────────
+ * WHY THIS FILE IS BACK IN `app/src/main/java`
+ * ─────────────────────────────────────────
  * The repo's JNI parity gate (audit #44 P0-1,
  * `scripts/jni_parity_check.py --source`) fails any build whose main tree
  * declares an `external fun` with no matching export in the native or
  * rust source trees — a deferred `UnsatisfiedLinkError` is a P0 defect by
- * repo law. The C++ half of this contract (Alpha's
- * `native/src/jni/jni_bridge_audio_sinks.cpp`, frozen in
- * `native/include/streamify_audio_sinks.h`) has NOT landed yet, so the
- * declarations cannot ship in the main tree today.
+ * repo law. While the C++ half of this contract was unwritten, the
+ * declarations lived in the DEBUG-ONLY dogfood source set
+ * (`app/src/rustAudioDogfood/java`) so the gate stayed green.
  *
- * This debug-only source set (`app/src/rustAudioDogfood/java`, wired into
- * the DEBUG variant in `app/build.gradle.kts`) is the honest resolution:
+ * WS-C (C1) landed the bridge — the 7 frozen symbols are compiled into
+ * `libstreamify_native_core.so` — so the declarations move back into the
+ * main tree exactly as the frozen contract always specified: "when
+ * Alpha's bridge lands, move the file into the main tree (the parity
+ * gate then sees matching exports and stays green) — zero changes above
+ * the seam".
  *
- *  • RELEASE builds never compile this file — MP-HAL07's "defaulting to
- *    false in release" is enforced STRUCTURALLY: the dogfood surface is
- *    absent from release bytecode, not merely toggled off.
- *  • DEBUG builds compile it; [RustAudioDogfoodBootstrap] is installed via
- *    the AppGraph reflection hook (step 0c — the same soft-probe house
- *    pattern `StreamifyEngineBridge` uses for the UniFFI proxies) into the
- *    main-tree seam [RustAudioSinkJni.binding].
- *  • Every runtime call is PROBE-GUARDED ([edgesResolved] touches each
- *    external under runCatching): until Alpha's symbols land, the probes
- *    report false, [com.streamify.app.media.audio.AudioRoutePolicy]
- *    degrades to the legacy Media3 chain, and no `UnsatisfiedLinkError`
- *    can detonate at a call site. The moment the symbols exist, the
- *    dogfood f32 pull path lights up with zero app changes.
- *
- * WHEN ALPHA'S BRIDGE LANDS: move this file into the main tree (the
- * parity gate then sees matching exports and stays green) — no other
- * change is needed; the seam already routes everything.
+ * MP-HAL07 discipline is PRESERVED: the class compiles everywhere, but
+ * the bootstrap that installs it into the [RustAudioSinkJni] seam only
+ * runs on debug builds or under the USE_RUST_AUDIO dogfood flag (see
+ * AppGraph step 0d) — release builds still ship the legacy Media3 route
+ * with the binding absent, and every runtime call remains PROBE-GUARDED
+ * ([edgesResolved] touches each external under runCatching): on a device
+ * whose library set is torn, the probes report false,
+ * [com.streamify.app.media.audio.AudioRoutePolicy] degrades to the
+ * legacy Media3 chain, and no `UnsatisfiedLinkError` can detonate at a
+ * call site.
  *
  * THE FROZEN SYMBOL CONTRACT (package name is ABI):
  *
@@ -212,13 +210,13 @@ object NativeAudioSink : RustAudioSinkJni.Binding {
 }
 
 /**
- * Reflection bootstrap for the dogfood binding — the class AppGraph's
- * step-0c hook looks up by name (house soft-probe pattern: the main tree
- * must not reference debug-source-set classes at compile time; a release
- * build simply never finds it).
- *
- *     Class.forName("com.streamify.core.native_.RustAudioDogfoodBootstrap")
- *         .getMethod("install").invoke(null)
+ * Bootstrap for the sink binding — installed by AppGraph's step-0d hook
+ * on debug builds / under the USE_RUST_AUDIO dogfood flag (MP-HAL07:
+ * release builds never install it; the seam stays null and the route
+ * policy ships the legacy Media3 chain). Since C1 moved this class into
+ * the main tree the hook is a DIRECT call — the historical reflection
+ * lookup (kept in the git log) existed only to reach the debug-only
+ * dogfood source set.
  */
 object RustAudioDogfoodBootstrap {
 

@@ -32,8 +32,15 @@ missing or reverse dangling); exit 2 on config errors (e.g. no .so found).
 Symbol convention: com.streamify.app.data.NativeBridge.fooBar ->
   Java_com_streamify_app_data_NativeBridge_fooBar
 Overloads append __<mangled-args>, so a match is either an exact symbol
-name or a __-suffixed overload of it. Escaped name segments (_1 _2 _3) are
-unescaped before comparison.
+name or a __-suffixed overload of it. Escaped name segments (_1 _2 _3)
+are unescaped before comparison, and — since WS-C/C1 introduced the first
+underscore-carrying class (com.streamify.core.native_.NativeAudioSink) —
+the Kotlin side is now JNI-ESCAPED when building the expected prefix
+(underscore -> _1 per the JNI spec), so the frozen symbol
+Java_com_streamify_core_native_1_NativeAudioSink_nativeCreateSink
+matches its declaring class. Before that fix the gate could not see the
+match in EITHER direction — a latent bug that never fired while every
+external fun lived in an underscore-free package.
 
 KNOWN_DANGLING_EXPORTS: EMPTY since Phase 4's clean-parity pass. The 64
 dangler entries grandfathered when this gate landed in Phase 1 — Rust
@@ -72,15 +79,30 @@ SYM_RE = re.compile(r"(Java_[A-Za-z0-9_]+)")
 KNOWN_DANGLING_EXPORTS: set[str] = set()
 
 
+def _jni_escape_segment(segment: str) -> str:
+    """Apply JNI name escaping to a single Kotlin name segment.
+
+    Per the JNI spec, every `_` in a Java package/class/method name
+    becomes `_1` in the native symbol (`.` separators become `_`, `$`
+    becomes `_2`, signatures' `;`/`[` become `_3` via the same family).
+    com.streamify.core.native_.NativeAudioSink therefore mangles to
+    Java_com_streamify_core_native_1_NativeAudioSink.
+    """
+    return segment.replace("_", "_1")
+
+
 def kotlin_surface() -> dict[str, set[str]]:
     """Auto-discover every Kotlin class in the application tree that declares
     `external fun`s. Returns {expected JNI prefix -> fun names}.
 
     The prefix for com.streamify.app.data.NativeBridge is
-    Java_com_streamify_app_data_NativeBridge_. Limitation: only top-level
-    classes are mapped (a `external fun` on a nested class mangles the `$`
-    in its binary name); none exist today, and DEC-01 (UniFFI) replaces this
-    whole surface with scaffolding checksums.
+    Java_com_streamify_app_data_NativeBridge_. Each FQN segment is
+    JNI-escaped (underscore -> _1) BEFORE the dots join into underscores —
+    the exact mangling the JVM performs when resolving `external fun`
+    symbols. Limitation: only top-level classes are mapped (a
+    `external fun` on a nested class mangles the `$` in its binary name);
+    none exist today, and DEC-01 (UniFFI) replaces this whole surface
+    with scaffolding checksums.
     """
     surface: dict[str, set[str]] = {}
     for kt in APP_MAIN.rglob("*.kt"):
@@ -93,7 +115,8 @@ def kotlin_surface() -> dict[str, set[str]]:
             continue
         pkg = re.search(r"^package\s+([\w.]+)", src, re.MULTILINE)
         fqn = f"{pkg.group(1)}.{kt.stem}" if pkg else kt.stem
-        surface.setdefault("Java_" + fqn.replace(".", "_") + "_", set()).update(funs)
+        escaped = ".".join(_jni_escape_segment(seg) for seg in fqn.split("."))
+        surface.setdefault("Java_" + escaped.replace(".", "_") + "_", set()).update(funs)
     return surface
 
 

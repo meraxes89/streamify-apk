@@ -1,3 +1,14 @@
+// ============================================================================
+//  C6 / AHEAD WS-C — JNI_SHIELD retrofit. Every Java_* export in this TU is
+//  wrapped in the house try/catch pair from jni/JniShield.h (the C++ twin of
+//  the Rust bridges' catch_unwind discipline): a C++ exception escaping a JNI
+//  extern "C" edge is std::terminate at the ABI boundary, so JNI_SHIELD maps
+//  any escape onto the export's own sentinel (jint -10 / jlong 0 / jboolean
+//  JNI_FALSE / jfloat 0.0f / jobject-family nullptr / void swallowed).
+//  Enforced mechanically by scripts/jni_panic_boundary_check.py. Lifecycle
+//  hooks (JNI_OnLoad / JNI_OnUnload) are deliberately unshielded — they are
+//  not Java_* exports and run under the VM's own supervision.
+// ============================================================================
 #include <jni.h>
 #include <algorithm>
 #include <cstdlib>
@@ -17,6 +28,7 @@
 #include "../dsp/LufsNormalizer.h"
 #include "../dsp/SoftKneeLimiter.h"
 #include "../dsp/LyricAligner.h"
+#include "JniShield.h"
 
 // Cached Global JNI References for zero lookup overhead
 static jclass g_trackClass = nullptr;
@@ -135,34 +147,43 @@ jobjectArray convertRecList(JNIEnv* env, const std::vector<Recommendation>& recs
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_streamify_app_data_NativeBridge_stringFromJNI(JNIEnv* env, jobject /* this */) {
+    JNI_SHIELD(nullptr);
     return env->NewStringUTF("Streamify C++ Core Initialized");
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_initDatabase(JNIEnv* env, jobject /* this */, jstring dbPath) {
+    JNI_SHIELD(JNI_FALSE);
     const char* path = env->GetStringUTFChars(dbPath, 0);
     bool success = StreamifyDB::getInstance().init(path);
     env->ReleaseStringUTFChars(dbPath, path);
     return success;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getAllTracks(JNIEnv* env, jobject /* this */) {
+    JNI_SHIELD(nullptr);
     std::vector<StreamifyTrack> tracks = StreamifyDB::getInstance().getAllTracks();
     return convertTrackList(env, tracks);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_searchTracks(JNIEnv* env, jobject /* this */, jstring query) {
+    JNI_SHIELD(nullptr);
     const char* q = env->GetStringUTFChars(query, 0);
     std::vector<StreamifyTrack> tracks = StreamifyDB::getInstance().searchTracks(q);
     env->ReleaseStringUTFChars(query, q);
     return convertTrackList(env, tracks);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_streamify_app_data_NativeBridge_insertTrack(JNIEnv* env, jobject /* this */,
     jstring filepath, jstring title, jstring artist, jstring album, jint durationSec, jfloat bpm) {
+    JNI_SHIELD(0);
     const char* cFilepath = env->GetStringUTFChars(filepath, 0);
     const char* cTitle = env->GetStringUTFChars(title, 0);
     const char* cArtist = env->GetStringUTFChars(artist, 0);
@@ -175,33 +196,41 @@ Java_com_streamify_app_data_NativeBridge_insertTrack(JNIEnv* env, jobject /* thi
     env->ReleaseStringUTFChars(artist, cArtist);
     env->ReleaseStringUTFChars(album, cAlbum);
     return id;
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_toggleLike(JNIEnv* env, jobject /* this */, jint userId, jint trackId) {
+    JNI_SHIELD(JNI_FALSE);
     bool isLiked = false;
     StreamifyDB::getInstance().toggleUserLikedTrack(userId, trackId, isLiked);
     return isLiked;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getLikedTracks(JNIEnv* env, jobject /* this */, jint userId) {
+    JNI_SHIELD(nullptr);
     std::vector<StreamifyTrack> tracks = StreamifyDB::getInstance().getUserLikedTracks(userId);
     return convertTrackList(env, tracks);
+    JNI_SHIELD_END(nullptr);
 }
 
 #include "../engine/VectorStore.h"
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_initVectorStore(JNIEnv* env, jobject /* this */, jstring binPath) {
+    JNI_SHIELD(JNI_FALSE);
     const char* path = env->GetStringUTFChars(binPath, 0);
     bool success = VectorStore::getInstance().init(path);
     env->ReleaseStringUTFChars(binPath, path);
     return success;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_streamify_app_data_NativeBridge_searchSimilarTracks(JNIEnv* env, jobject /* this */, jint trackId, jint topK) {
+    JNI_SHIELD(nullptr);
     std::optional<StreamifyTrack> track = StreamifyDB::getInstance().getTrackById(trackId);
     if (!track.has_value() || track->vector_offset < 0) {
         return env->NewIntArray(0);
@@ -222,6 +251,7 @@ Java_com_streamify_app_data_NativeBridge_searchSimilarTracks(JNIEnv* env, jobjec
         env->ReleaseIntArrayElements(resultArray, elements, 0);
     }
     return resultArray;
+    JNI_SHIELD_END(nullptr);
 }
 
 #include "../engine/RecommendEngine.h"
@@ -229,6 +259,7 @@ Java_com_streamify_app_data_NativeBridge_searchSimilarTracks(JNIEnv* env, jobjec
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jintArray recentHistory, jint userId, jint limit) {
+    JNI_SHIELD(nullptr);
     jsize len = env->GetArrayLength(recentHistory);
     jint* historyElements = env->GetIntArrayElements(recentHistory, 0);
     std::vector<int> history(historyElements, historyElements + len);
@@ -236,30 +267,38 @@ Java_com_streamify_app_data_NativeBridge_getRecommendations(JNIEnv* env, jobject
 
     std::vector<Recommendation> recs = RecommendEngine::getInstance().getNextTracks(trackId, history, limit);
     return convertRecList(env, recs);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_logPlayEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+    JNI_SHIELD();
     EventTracker::getInstance().logPlay(fromTrackId, toTrackId, userId);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_logSkipEvent(JNIEnv* env, jobject /* this */, jint fromTrackId, jint toTrackId, jint userId) {
+    JNI_SHIELD();
     EventTracker::getInstance().logSkip(fromTrackId, toTrackId, userId);
+    JNI_SHIELD_END();
 }
 
 #include "../ingest/AudioPipeline.h"
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_initAudioPipeline(JNIEnv* env, jobject /* this */, jstring modelPath) {
+    JNI_SHIELD(JNI_FALSE);
     const char* path = env->GetStringUTFChars(modelPath, 0);
     bool success = AudioPipeline::getInstance().init(path);
     env->ReleaseStringUTFChars(modelPath, path);
     return success;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_streamify_app_data_NativeBridge_processAudioFile(JNIEnv* env, jobject /* this */, jint trackId, jstring filePath) {
+    JNI_SHIELD(-10);
     const char* path = env->GetStringUTFChars(filePath, 0);
     std::string trackPathStr(path);
     TaskOrchestrator::getInstance().notifyAiTaskStarted(trackPathStr);
@@ -283,10 +322,12 @@ Java_com_streamify_app_data_NativeBridge_processAudioFile(JNIEnv* env, jobject /
         StreamifyDB::getInstance().updateTrackVectorOffset(trackId, offset);
     }
     return offset;
+    JNI_SHIELD_END(-10);
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_extractBPM(JNIEnv* env, jobject /* this */, jint trackId, jstring filePath) {
+    JNI_SHIELD(0.0f);
     const char* path = env->GetStringUTFChars(filePath, 0);
     float bpm = AudioPipeline::getInstance().extractBPM(path);
     if (trackId > 0) {
@@ -294,18 +335,22 @@ Java_com_streamify_app_data_NativeBridge_extractBPM(JNIEnv* env, jobject /* this
     }
     env->ReleaseStringUTFChars(filePath, path);
     return bpm;
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_updateTrackCoverArt(JNIEnv* env, jobject /* this */, jint trackId, jstring coverArtPath) {
+    JNI_SHIELD(JNI_FALSE);
     const char* path = env->GetStringUTFChars(coverArtPath, 0);
     bool res = StreamifyDB::getInstance().updateTrackCoverArt(trackId, path);
     env->ReleaseStringUTFChars(coverArtPath, path);
     return res;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_updateTrackMetadata(JNIEnv* env, jobject /* this */, jint trackId, jstring title, jstring artist, jstring album) {
+    JNI_SHIELD(JNI_FALSE);
     const char* cTitle = env->GetStringUTFChars(title, 0);
     const char* cArtist = env->GetStringUTFChars(artist, 0);
     const char* cAlbum = env->GetStringUTFChars(album, 0);
@@ -317,20 +362,26 @@ Java_com_streamify_app_data_NativeBridge_updateTrackMetadata(JNIEnv* env, jobjec
     env->ReleaseStringUTFChars(album, cAlbum);
     
     return res;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_setHighPriorityActive(JNIEnv* /* env */, jobject /* this */, jboolean active) {
+    JNI_SHIELD();
     TaskOrchestrator::getInstance().setHighPriorityActive(active);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_setTotalAiTasks(JNIEnv* /* env */, jobject /* this */, jint total) {
+    JNI_SHIELD();
     TaskOrchestrator::getInstance().setTotalAiTasks(total);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jobject JNICALL
 Java_com_streamify_app_data_NativeBridge_getOrchestratorStatus(JNIEnv* env, jobject /* this */) {
+    JNI_SHIELD(nullptr);
     OrchestratorMetrics m = TaskOrchestrator::getInstance().getMetrics();
     
     jclass statusClass = env->FindClass("com/streamify/app/data/models/OrchestratorStatusNative");
@@ -350,17 +401,21 @@ Java_com_streamify_app_data_NativeBridge_getOrchestratorStatus(JNIEnv* env, jobj
     env->DeleteLocalRef(stateStr);
     env->DeleteLocalRef(actionStr);
     return obj;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_setBatterySaverActive(JNIEnv* /* env */, jobject /* this */, jboolean active) {
+    JNI_SHIELD();
     TaskOrchestrator::getInstance().setBatterySaverActive(active);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_streamify_app_data_NativeBridge_upsertStreamedTrack(JNIEnv* env, jobject /* this */,
     jstring filepath, jstring title, jstring artist, jstring album, jint durationSec,
     jstring coverArtPath, jstring lyricsPath, jfloat bpm, jstring key) {
+    JNI_SHIELD(-10);
     
     const char* cFilepath = env->GetStringUTFChars(filepath, 0);
     const char* cTitle = env->GetStringUTFChars(title, 0);
@@ -383,34 +438,45 @@ Java_com_streamify_app_data_NativeBridge_upsertStreamedTrack(JNIEnv* env, jobjec
     env->ReleaseStringUTFChars(key, cKey);
 
     return id;
+    JNI_SHIELD_END(-10);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_recordTrackPlay(JNIEnv* /* env */, jobject /* this */, jint trackId) {
+    JNI_SHIELD(JNI_FALSE);
     return StreamifyDB::getInstance().recordTrackPlay(trackId);
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getTopPlayedTracks(JNIEnv* env, jobject /* this */, jint limit) {
+    JNI_SHIELD(nullptr);
     std::vector<StreamifyTrack> tracks = StreamifyDB::getInstance().getTopPlayedTracks(limit);
     return convertTrackList(env, tracks);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_updateSessionVector(JNIEnv* /* env */, jobject /* this */, jint trackId, jfloat alpha) {
+    JNI_SHIELD();
     RecommendEngine::getInstance().updateSessionVector(trackId, alpha);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getSessionRecommendations(JNIEnv* env, jobject /* this */, jint limit) {
+    JNI_SHIELD(nullptr);
     std::vector<Recommendation> recs = RecommendEngine::getInstance().getSessionRecommendations(limit);
     return convertRecList(env, recs);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getLongTermRecommendations(JNIEnv* env, jobject /* this */, jint userId, jint limit) {
+    JNI_SHIELD(nullptr);
     std::vector<Recommendation> recs = RecommendEngine::getInstance().getLongTermRecommendations(userId, limit);
     return convertRecList(env, recs);
+    JNI_SHIELD_END(nullptr);
 }
 
 #include "../dsp/SoftKneeLimiter.h"
@@ -419,6 +485,7 @@ static streamify::dsp::SoftKneeLimiter g_limiter(0.90f, 0.15f);
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_processLimiterShorts(JNIEnv* env, jobject /* this */, jshortArray buffer, jint length, jfloat threshold, jfloat kneeWidth) {
+    JNI_SHIELD();
     if (!buffer || length <= 0) return;
     // Never trust the declared length over the real JVM array bounds.
     const jint actual = env->GetArrayLength(buffer);
@@ -430,10 +497,12 @@ Java_com_streamify_app_data_NativeBridge_processLimiterShorts(JNIEnv* env, jobje
         g_limiter.processShorts(pcm, safeLen);
         env->ReleaseShortArrayElements(buffer, pcm, 0);
     }
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_processLimiterFloats(JNIEnv* env, jobject /* this */, jfloatArray buffer, jint length, jfloat threshold, jfloat kneeWidth) {
+    JNI_SHIELD();
     if (!buffer || length <= 0) return;
     const jint actual = env->GetArrayLength(buffer);
     const jint safeLen = std::min<jint>(length, actual);
@@ -444,10 +513,12 @@ Java_com_streamify_app_data_NativeBridge_processLimiterFloats(JNIEnv* env, jobje
         g_limiter.processFloats(pcm, safeLen);
         env->ReleaseFloatArrayElements(buffer, pcm, 0);
     }
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_streamify_app_data_NativeBridge_findFuzzyTrackMatch(JNIEnv* env, jobject /* this */, jstring title, jstring artist) {
+    JNI_SHIELD(-10);
     if (!title || !artist) return -1;
     const char* cTitle = env->GetStringUTFChars(title, nullptr);
     const char* cArtist = env->GetStringUTFChars(artist, nullptr);
@@ -462,78 +533,104 @@ Java_com_streamify_app_data_NativeBridge_findFuzzyTrackMatch(JNIEnv* env, jobjec
     env->ReleaseStringUTFChars(title, cTitle);
     env->ReleaseStringUTFChars(artist, cArtist);
     return id;
+    JNI_SHIELD_END(-10);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getTracksBatch(JNIEnv* env, jobject /* this */, jint offset, jint limit) {
+    JNI_SHIELD(nullptr);
     std::vector<StreamifyTrack> tracks = StreamifyDB::getInstance().getTracksBatch(offset, limit);
     return convertTrackList(env, tracks);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_logEngagementEvent(JNIEnv* /* env */, jobject /* this */, jint trackId, jint durationSec, jfloat completionRatio, jint hourOfDay) {
+    JNI_SHIELD(JNI_FALSE);
     return StreamifyDB::getInstance().logEngagement(trackId, durationSec, completionRatio, hourOfDay);
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getCircadianRecommendations(JNIEnv* env, jobject /* this */, jint hourOfDay, jint limit) {
+    JNI_SHIELD(nullptr);
     std::vector<Recommendation> recs = RecommendEngine::getInstance().getCircadianRecommendations(hourOfDay, limit);
     return convertRecList(env, recs);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_streamify_app_data_NativeBridge_getCircadianSlot(JNIEnv* env, jobject /* this */, jint hourOfDay) {
+    JNI_SHIELD(nullptr);
     std::string slot = StreamifyDB::getInstance().getCircadianSlot(hourOfDay);
     return env->NewStringUTF(slot.c_str());
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_logHookTelemetry(JNIEnv* /* env */, jobject /* this */, jint trackId, jlong favoriteSeekMs, jint lyricsDwellSec, jint volumeFlare) {
+    JNI_SHIELD(JNI_FALSE);
     return StreamifyDB::getInstance().logHookTelemetry(trackId, favoriteSeekMs, lyricsDwellSec, volumeFlare);
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_recordTrackCooccurrence(JNIEnv* /* env */, jobject /* this */, jint trackAId, jint trackBId) {
+    JNI_SHIELD(JNI_FALSE);
     return StreamifyDB::getInstance().recordTrackCooccurrence(trackAId, trackBId);
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_streamify_app_data_NativeBridge_getFavoriteSeekMs(JNIEnv* /* env */, jobject /* this */, jint trackId) {
+    JNI_SHIELD(0);
     return StreamifyDB::getInstance().getFavoriteSeekMs(trackId);
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getCooccurrenceRecommendations(JNIEnv* env, jobject /* this */, jint trackId, jint limit) {
+    JNI_SHIELD(nullptr);
     std::vector<int> candidates = StreamifyDB::getInstance().getCooccurrenceCandidates(trackId, limit);
     jintArray result = env->NewIntArray(candidates.size());
     if (result && !candidates.empty()) {
         env->SetIntArrayRegion(result, 0, candidates.size(), candidates.data());
     }
     return result;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_pushTelemetryEvent(JNIEnv* /* env */, jobject /* this */, jint type, jlong trackId, jfloat value) {
+    JNI_SHIELD();
     TelemetryEngine::getInstance().pushEvent(static_cast<TelemetryEventType>(type), trackId, value);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_getMarkovProbability(JNIEnv* /* env */, jobject /* this */, jint fromTrackId, jint toTrackId) {
+    JNI_SHIELD(0.0f);
     return StreamifyDB::getInstance().getMarkovProbability(fromTrackId, toTrackId);
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_getSatiationPenalty(JNIEnv* /* env */, jobject /* this */, jint trackId) {
+    JNI_SHIELD(0.0f);
     return ChronosProfiler::getInstance().calculateSatiationPenalty(trackId, std::time(nullptr) * 1000LL);
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_get2ndOrderMarkovProbability(JNIEnv* /* env */, jobject /* this */, jint trackA, jint trackB, jint trackC, jfloat alpha) {
+    JNI_SHIELD(0.0f);
     return StreamifyDB::getInstance().get2ndOrderMarkovProbability(trackA, trackB, trackC, alpha);
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_processLufsNormalizerFloats(JNIEnv* env, jobject /* this */, jfloatArray buffer, jint length, jfloat targetLufs) {
+    JNI_SHIELD();
     if (!buffer || length <= 0) return;
     const jint safeLen = std::min<jint>(length, env->GetArrayLength(buffer));
     if (safeLen <= 0) return;
@@ -542,10 +639,12 @@ Java_com_streamify_app_data_NativeBridge_processLufsNormalizerFloats(JNIEnv* env
         LufsNormalizer::getInstance().processFloats(pcm, safeLen, targetLufs);
         env->ReleaseFloatArrayElements(buffer, pcm, 0);
     }
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_processLufsNormalizerShorts(JNIEnv* env, jobject /* this */, jshortArray buffer, jint length, jfloat targetLufs) {
+    JNI_SHIELD();
     if (!buffer || length <= 0) return;
     const jint safeLen = std::min<jint>(length, env->GetArrayLength(buffer));
     if (safeLen <= 0) return;
@@ -554,15 +653,19 @@ Java_com_streamify_app_data_NativeBridge_processLufsNormalizerShorts(JNIEnv* env
         LufsNormalizer::getInstance().processShorts(pcm, safeLen, targetLufs);
         env->ReleaseShortArrayElements(buffer, pcm, 0);
     }
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_getDynamicTargetLufs(JNIEnv* /* env */, jobject /* this */) {
+    JNI_SHIELD(0.0f);
     return TelemetryEngine::getInstance().getDynamicTargetLufs();
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_streamify_app_data_NativeBridge_generateProofOfCompute(JNIEnv* env, jobject /* this */, jfloatArray buffer, jint length, jstring nonce) {
+    JNI_SHIELD(nullptr);
     if (!buffer || length <= 0) return env->NewStringUTF("");
     const jint safeLen = std::min<jint>(length, env->GetArrayLength(buffer));
     if (safeLen <= 0) return env->NewStringUTF("");
@@ -576,6 +679,7 @@ Java_com_streamify_app_data_NativeBridge_generateProofOfCompute(JNIEnv* env, job
     std::string proof = TelemetryEngine::getInstance().generateProofOfCompute(pcm, safeLen, nonceCpp);
     env->ReleaseFloatArrayElements(buffer, pcm, 0);
     return env->NewStringUTF(proof.c_str());
+    JNI_SHIELD_END(nullptr);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -584,7 +688,9 @@ Java_com_streamify_app_data_NativeBridge_generateProofOfCompute(JNIEnv* env, job
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_getTargetBpmForTimeSlot(JNIEnv* /* env */, jobject /* this */, jint slotOrdinal) {
+    JNI_SHIELD(0.0f);
     return RecommendEngine::getInstance().getTargetBpmForTimeSlot(slotOrdinal);
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -597,6 +703,7 @@ Java_com_streamify_app_data_NativeBridge_getVectorRecommendations(
     jfloat bpmTarget,
     jint limit
 ) {
+    JNI_SHIELD(nullptr);
     auto& db = StreamifyDB::getInstance();
     auto& recEngine = RecommendEngine::getInstance();
     auto& vecStore = VectorStore::getInstance();
@@ -644,10 +751,12 @@ Java_com_streamify_app_data_NativeBridge_getVectorRecommendations(
     // 4. NEON SIMD Ranking + Ellis-Gaussian BPM + Satiation
     auto scoredRecs = recEngine.rankHybridCandidates(ctxVec, candidates, bpmTarget, 0.20f, limit);
     return convertRecList(env, scoredRecs);
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_updateTrackEmbedding(JNIEnv* env, jobject /* this */, jint trackId, jfloatArray embedding) {
+    JNI_SHIELD(JNI_FALSE);
     if (!embedding) return JNI_FALSE;
     jsize len = env->GetArrayLength(embedding);
     if (len < 512) return JNI_FALSE;
@@ -658,16 +767,19 @@ Java_com_streamify_app_data_NativeBridge_updateTrackEmbedding(JNIEnv* env, jobje
     bool ok = StreamifyDB::getInstance().updateTrackEmbedding(trackId, ptr);
     env->ReleaseFloatArrayElements(embedding, ptr, 0);
     return ok ? JNI_TRUE : JNI_FALSE;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jfloatArray JNICALL
 Java_com_streamify_app_data_NativeBridge_getTrackEmbedding(JNIEnv* env, jobject /* this */, jint trackId) {
+    JNI_SHIELD(nullptr);
     std::vector<float> vec = StreamifyDB::getInstance().getTrackEmbedding(trackId);
     if (vec.size() < 512) return nullptr;
 
     jfloatArray result = env->NewFloatArray(512);
     env->SetFloatArrayRegion(result, 0, 512, vec.data());
     return result;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -680,6 +792,7 @@ Java_com_streamify_app_data_NativeBridge_cacheSimilarTracks(
     jobjectArray mbids,
     jfloatArray weights
 ) {
+    JNI_SHIELD(JNI_FALSE);
     if (!titles || !artists || !weights) return JNI_FALSE;
     jsize count = env->GetArrayLength(titles);
     if (count <= 0) return JNI_FALSE;
@@ -716,6 +829,7 @@ Java_com_streamify_app_data_NativeBridge_cacheSimilarTracks(
 
     bool ok = StreamifyDB::getInstance().cacheSimilarTracks(trackId, titleVec, artistVec, mbidVec, weightVec);
     return ok ? JNI_TRUE : JNI_FALSE;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 // Project Pulse: Sub-15ms Precision Time Protocol (IEEE 1588)
@@ -728,7 +842,9 @@ Java_com_streamify_app_data_NativeBridge_processPtpTimestamps(
     jlong t2,
     jlong t3
 ) {
+    JNI_SHIELD(0);
     return static_cast<jlong>(streamify::PtpEngine::getInstance().processTimestamps(t0, t1, t2, t3));
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -736,7 +852,9 @@ Java_com_streamify_app_data_NativeBridge_getSynchronizedClockMs(
     JNIEnv* /* env */,
     jobject /* this */
 ) {
+    JNI_SHIELD(0);
     return static_cast<jlong>(streamify::PtpEngine::getInstance().getSynchronizedClockMs());
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -744,7 +862,9 @@ Java_com_streamify_app_data_NativeBridge_getPtpClockOffsetNanos(
     JNIEnv* /* env */,
     jobject /* this */
 ) {
+    JNI_SHIELD(0);
     return static_cast<jlong>(streamify::PtpEngine::getInstance().getClockOffsetNanos());
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -752,7 +872,9 @@ Java_com_streamify_app_data_NativeBridge_getPtpRttNanos(
     JNIEnv* /* env */,
     jobject /* this */
 ) {
+    JNI_SHIELD(0);
     return static_cast<jlong>(streamify::PtpEngine::getInstance().getLastRttNanos());
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -760,7 +882,9 @@ Java_com_streamify_app_data_NativeBridge_resetPtpState(
     JNIEnv* /* env */,
     jobject /* this */
 ) {
+    JNI_SHIELD();
     streamify::PtpEngine::getInstance().reset();
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -769,6 +893,7 @@ Java_com_streamify_app_data_NativeBridge_getZhipuKey(
     jobject /* this */,
     jint index
 ) {
+    JNI_SHIELD(nullptr);
     // SEC-03: the plaintext ZHIPU_KEYS[] pool was removed from the compiled
     // .so -- it shipped every key rotation candidate to anyone with `strings`
     // (and to every APK mirror). Keys are now supplied through process
@@ -804,12 +929,15 @@ Java_com_streamify_app_data_NativeBridge_getZhipuKey(
         key.push_back(*entry++);
     }
     return env->NewStringUTF(key.c_str());
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_nukeLocalDatabase(JNIEnv* env, jobject /* this */) {
+    JNI_SHIELD(JNI_FALSE);
     bool success = StreamifyDB::getInstance().nukeDatabase();
     return success ? JNI_TRUE : JNI_FALSE;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -822,6 +950,7 @@ Java_com_streamify_app_data_NativeBridge_stepAirDropPhysics(
     jfloat initialDist,
     jfloat dt
 ) {
+    JNI_SHIELD();
     if (!inOutBuffer) return;
     jsize len = env->GetArrayLength(inOutBuffer);
     if (len < 13) return;
@@ -870,6 +999,7 @@ Java_com_streamify_app_data_NativeBridge_stepAirDropPhysics(
     }
 
     env->ReleasePrimitiveArrayCritical(inOutBuffer, buf, 0);
+    JNI_SHIELD_END();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -891,6 +1021,7 @@ Java_com_streamify_app_data_NativeBridge_analyzePcmAcousticDNA(
     jint channelCount,
     jfloatArray outResults
 ) {
+    JNI_SHIELD(nullptr);
     if (!directByteBuffer || byteCount <= 0 || !outResults) {
         return env->NewStringUTF("8B");
     }
@@ -943,6 +1074,7 @@ Java_com_streamify_app_data_NativeBridge_analyzePcmAcousticDNA(
 
     env->ReleaseFloatArrayElements(outResults, results, 0);
     return env->NewStringUTF(camelotKey.c_str());
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -956,6 +1088,7 @@ Java_com_streamify_app_data_NativeBridge_calculateLyricDrift(
     jint sampleRate,
     jint channelCount
 ) {
+    JNI_SHIELD(-10);
     if (!directPcmBuffer || pcmByteCount <= 0 || !textOnsetsMs || onsetCount <= 0) {
         return 0;
     }
@@ -1001,6 +1134,7 @@ Java_com_streamify_app_data_NativeBridge_calculateLyricDrift(
     );
 
     return drift;
+    JNI_SHIELD_END(-10);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1055,6 +1189,7 @@ Java_com_streamify_app_data_NativeBridge_rustFuzzyRankCandidates(
     jstring query,
     jstring candidatesJson
 ) {
+    JNI_SHIELD(nullptr);
     if (!query || !candidatesJson) return nullptr;
     typedef char* (*RustFn)(const char*, const char*);
     auto fn = get_rust_symbol<RustFn>("rust_fuzzy_rank_candidates");
@@ -1073,6 +1208,7 @@ Java_com_streamify_app_data_NativeBridge_rustFuzzyRankCandidates(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
@@ -1082,6 +1218,7 @@ Java_com_streamify_app_data_NativeBridge_rustCalculateSimilarity(
     jstring s1,
     jstring s2
 ) {
+    JNI_SHIELD(0.0f);
     if (!s1 || !s2) return 0.0f;
     typedef float (*RustFn)(const char*, const char*);
     auto fn = get_rust_symbol<RustFn>("rust_calculate_string_similarity");
@@ -1095,6 +1232,7 @@ Java_com_streamify_app_data_NativeBridge_rustCalculateSimilarity(
     env->ReleaseStringUTFChars(s1, c1);
     env->ReleaseStringUTFChars(s2, c2);
     return sim;
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1103,6 +1241,7 @@ Java_com_streamify_app_data_NativeBridge_rustParseYouTubePlaylist(
     jobject /* this */,
     jbyteArray jsonBytes
 ) {
+    JNI_SHIELD(nullptr);
     if (!jsonBytes) return nullptr;
     jsize len = env->GetArrayLength(jsonBytes);
     if (len <= 0) return nullptr;
@@ -1120,6 +1259,7 @@ Java_com_streamify_app_data_NativeBridge_rustParseYouTubePlaylist(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1130,6 +1270,7 @@ Java_com_streamify_app_data_NativeBridge_rustComputeFftSpectrum(
     jint barCount,
     jfloatArray outBars
 ) {
+    JNI_SHIELD(-10);
     if (!pcmFloats || !outBars || barCount <= 0) return -1;
     jsize pcmLen = env->GetArrayLength(pcmFloats);
     jsize outLen = env->GetArrayLength(outBars);
@@ -1147,6 +1288,7 @@ Java_com_streamify_app_data_NativeBridge_rustComputeFftSpectrum(
     env->ReleaseFloatArrayElements(pcmFloats, pcm, JNI_ABORT);
     env->ReleaseFloatArrayElements(outBars, bars, 0);
     return code;
+    JNI_SHIELD_END(-10);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1157,6 +1299,7 @@ Java_com_streamify_app_data_NativeBridge_rustProcessEqualizerFrame(
     jint channels,
     jfloatArray gains
 ) {
+    JNI_SHIELD(-10);
     if (!pcmFloats || channels <= 0) return -1;
     jsize pcmLen = env->GetArrayLength(pcmFloats);
     if (pcmLen <= 0) return -1;
@@ -1175,6 +1318,7 @@ Java_com_streamify_app_data_NativeBridge_rustProcessEqualizerFrame(
         env->ReleaseFloatArrayElements(gains, g, JNI_ABORT);
     }
     return code;
+    JNI_SHIELD_END(-10);
 }
 
 // 1. Thread-safe persistent DSP instances for float mastering (EQ -> LUFS -> Limiter)
@@ -1188,6 +1332,7 @@ static std::mutex g_floatDspMutex;
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeInitAudioDSP(JNIEnv* /* env */, jobject /* this */) {
+    JNI_SHIELD();
     std::lock_guard<std::mutex> lock(g_floatDspMutex);
     if (!g_floatLimiter) {
         g_floatLimiter = new SoftKneeLimiter(-1.0f, 2.0f, 20.0f);
@@ -1195,12 +1340,15 @@ Java_com_streamify_app_data_NativeBridge_nativeInitAudioDSP(JNIEnv* /* env */, j
     if (!g_floatLufs) {
         g_floatLufs = new LufsNormalizer();
     }
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeResetAudioDSP(JNIEnv* /* env */, jobject /* this */) {
+    JNI_SHIELD();
     std::lock_guard<std::mutex> lock(g_floatDspMutex);
     if (g_floatLufs) g_floatLufs->reset();
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1212,6 +1360,7 @@ Java_com_streamify_app_data_NativeBridge_nativeProcessFloatAudio(
     jint channels,
     jfloatArray eq_gains
 ) {
+    JNI_SHIELD();
     if (!byte_buffer || num_frames <= 0 || channels <= 0) return;
 
     float* pcm_data = reinterpret_cast<float*>(env->GetDirectBufferAddress(byte_buffer));
@@ -1246,6 +1395,7 @@ Java_com_streamify_app_data_NativeBridge_nativeProcessFloatAudio(
 
     // C. Soft-Knee Limiter (Safety ceiling at -1dB)
     g_floatLimiter->processFloats(pcm_data, total_samples);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
@@ -1254,6 +1404,7 @@ Java_com_streamify_app_data_NativeBridge_rustCompileToSlyr(
     jobject /* this */,
     jstring lrcContent
 ) {
+    JNI_SHIELD(nullptr);
     if (!lrcContent) return nullptr;
     typedef uint8_t* (*RustFn)(const uint8_t*, size_t, size_t*);
     typedef void (*RustFreeFn)(uint8_t*, size_t);
@@ -1275,6 +1426,7 @@ Java_com_streamify_app_data_NativeBridge_rustCompileToSlyr(
 
     if (free_fn) free_fn(slyr_bytes, out_len);
     return result;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1284,6 +1436,7 @@ Java_com_streamify_app_data_NativeBridge_rustDownloadStreamDirect(
     jstring streamUrl,
     jstring destPath
 ) {
+    JNI_SHIELD(nullptr);
     if (!streamUrl || !destPath) return nullptr;
     typedef char* (*RustFn)(const char*, const char*);
     auto fn = get_rust_symbol<RustFn>("rust_download_stream_direct");
@@ -1302,6 +1455,7 @@ Java_com_streamify_app_data_NativeBridge_rustDownloadStreamDirect(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1315,6 +1469,7 @@ Java_com_streamify_app_data_NativeBridge_rustScoreAndRankRadioCandidates(
     jstring seedSig,
     jstring queueJson
 ) {
+    JNI_SHIELD(nullptr);
     if (!candidatesJson) return nullptr;
     typedef char* (*RustFn)(const char*, float, const char*, int32_t, const char*, const char*);
     auto fn = get_rust_symbol<RustFn>("rust_score_and_rank_radio_candidates");
@@ -1337,6 +1492,7 @@ Java_com_streamify_app_data_NativeBridge_rustScoreAndRankRadioCandidates(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1348,6 +1504,7 @@ Java_com_streamify_app_data_NativeBridge_rustProcessCrossfadePcm(
     jfloatArray mixedBuf,
     jfloat progress
 ) {
+    JNI_SHIELD(-10);
     if (!outgoingBuf || !incomingBuf || !mixedBuf) return -1;
     jsize len = env->GetArrayLength(mixedBuf);
     if (len <= 0) return -1;
@@ -1366,6 +1523,7 @@ Java_com_streamify_app_data_NativeBridge_rustProcessCrossfadePcm(
     env->ReleaseFloatArrayElements(incomingBuf, in, JNI_ABORT);
     env->ReleaseFloatArrayElements(mixedBuf, mixed, 0);
     return code;
+    JNI_SHIELD_END(-10);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1376,6 +1534,7 @@ Java_com_streamify_app_data_NativeBridge_rustEncryptVaultFile(
     jstring destPath,
     jbyteArray masterKey
 ) {
+    JNI_SHIELD(-10);
     if (!srcPath || !destPath || !masterKey) return -1;
     typedef int32_t (*RustFn)(const char*, const char*, const uint8_t*, size_t);
     auto fn = get_rust_symbol<RustFn>("rust_encrypt_vault_file");
@@ -1392,6 +1551,7 @@ Java_com_streamify_app_data_NativeBridge_rustEncryptVaultFile(
     env->ReleaseStringUTFChars(destPath, dest);
     env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
     return code;
+    JNI_SHIELD_END(-10);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1402,6 +1562,7 @@ Java_com_streamify_app_data_NativeBridge_rustDecryptVaultFile(
     jstring destPath,
     jbyteArray masterKey
 ) {
+    JNI_SHIELD(-10);
     if (!srcPath || !destPath || !masterKey) return -1;
     typedef int32_t (*RustFn)(const char*, const char*, const uint8_t*, size_t);
     auto fn = get_rust_symbol<RustFn>("rust_decrypt_vault_file");
@@ -1418,6 +1579,7 @@ Java_com_streamify_app_data_NativeBridge_rustDecryptVaultFile(
     env->ReleaseStringUTFChars(destPath, dest);
     env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
     return code;
+    JNI_SHIELD_END(-10);
 }
 
 // ── SEC-06: v2 AEAD audio-cache chunk cipher (seal/open) ───────────────────
@@ -1436,6 +1598,7 @@ Java_com_streamify_app_data_NativeBridge_rustSealCacheChunk(
     jint keyLen,
     jlong chunkId
 ) {
+    JNI_SHIELD(0);
     if (!inputBuf || !outputBuf || !keyBuf) return -1;
     typedef int64_t (*RustFn)(const uint8_t*, size_t, uint8_t*, size_t, const uint8_t*, size_t, uint64_t);
     auto fn = get_rust_symbol<RustFn>("rust_seal_cache_chunk");
@@ -1461,6 +1624,7 @@ Java_com_streamify_app_data_NativeBridge_rustSealCacheChunk(
     env->ReleaseByteArrayElements(outputBuf, out, 0); // sealed envelope written back
     env->ReleaseByteArrayElements(keyBuf, key, JNI_ABORT);
     return code;
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -1475,6 +1639,7 @@ Java_com_streamify_app_data_NativeBridge_rustOpenCacheChunk(
     jint keyLen,
     jlong chunkId
 ) {
+    JNI_SHIELD(0);
     if (!sealedBuf || !outputBuf || !keyBuf) return -1;
     typedef int64_t (*RustFn)(const uint8_t*, size_t, uint8_t*, size_t, const uint8_t*, size_t, uint64_t);
     auto fn = get_rust_symbol<RustFn>("rust_open_cache_chunk");
@@ -1500,6 +1665,7 @@ Java_com_streamify_app_data_NativeBridge_rustOpenCacheChunk(
     env->ReleaseByteArrayElements(outputBuf, out, 0); // plaintext written back
     env->ReleaseByteArrayElements(keyBuf, key, JNI_ABORT);
     return code;
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1508,6 +1674,7 @@ Java_com_streamify_app_data_NativeBridge_rustParseBackupCsv(
     jobject /* this */,
     jstring csvContent
 ) {
+    JNI_SHIELD(nullptr);
     if (!csvContent) return nullptr;
     typedef char* (*RustFn)(const char*);
     auto fn = get_rust_symbol<RustFn>("rust_parse_backup_csv");
@@ -1522,6 +1689,7 @@ Java_com_streamify_app_data_NativeBridge_rustParseBackupCsv(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 
@@ -1533,6 +1701,7 @@ Java_com_streamify_app_data_NativeBridge_rustAlignAndCompileLyrics(
     jint durationMs,
     jfloatArray energyFloats
 ) {
+    JNI_SHIELD(nullptr);
     if (!rawLyrics) return nullptr;
     typedef char* (*RustFn)(const char*, uint32_t, const float*, size_t);
     auto fn = get_rust_symbol<RustFn>("rust_align_and_compile_lyrics");
@@ -1554,6 +1723,7 @@ Java_com_streamify_app_data_NativeBridge_rustAlignAndCompileLyrics(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1567,6 +1737,7 @@ Java_com_streamify_app_data_NativeBridge_rustGenerateNeuroQueue(
     jint hourOfDay,
     jint targetCount
 ) {
+    JNI_SHIELD(nullptr);
     if (!seedJson || !candidatesJson) return nullptr;
     typedef char* (*RustFn)(const char*, const char*, uint8_t, uint64_t, uint32_t, size_t);
     auto fn = get_rust_symbol<RustFn>("rust_generate_neuro_queue");
@@ -1592,6 +1763,7 @@ Java_com_streamify_app_data_NativeBridge_rustGenerateNeuroQueue(
     auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
     if (free_fn) free_fn(res);
     return outStr;
+    JNI_SHIELD_END(nullptr);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1608,12 +1780,15 @@ extern "C" {
 
 JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_nativePinToLittleCores(JNIEnv* /*env*/, jobject /*thiz*/) {
+    JNI_SHIELD(JNI_FALSE);
     return TaskOrchestrator::pinCurrentThreadToLittleCores() ? JNI_TRUE : JNI_FALSE;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 JNIEXPORT jfloat JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeProcessPcmTap(
     JNIEnv* env, jobject /*thiz*/, jobject direct_byte_buffer, jint sample_count) {
+    JNI_SHIELD(0.0f);
     if (!direct_byte_buffer || sample_count <= 0) return 1.0f;
     // sample_count is treated as an interleaved float count downstream; clamp
     // it to the buffer's real capacity before any in-place write.
@@ -1633,11 +1808,13 @@ Java_com_streamify_app_data_NativeBridge_nativeProcessPcmTap(
     float lufs = g_lufs_normalizer.computeIntegratedLufs(
         channels, 1, sample_count, g_lufs_normalizer.sampleRate());
     return g_lufs_normalizer.calculateNormalizationGain(lufs, -14.0f);
+    JNI_SHIELD_END(0.0f);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeConfigureAudioDSP(
         JNIEnv* /* env */, jobject /* this */, jint sampleRate, jint channels) {
+    JNI_SHIELD(JNI_FALSE);
     // Audit #22 item 9: the legacy float-DSP singletons were pinned at
     // 48 kHz / hard-coded channel math; 44.1 kHz content (the most common
     // Android output rate) measured and limited through the wrong
@@ -1659,11 +1836,13 @@ Java_com_streamify_app_data_NativeBridge_nativeConfigureAudioDSP(
     g_soft_knee_limiter.setSampleRate(sampleRate);
     g_soft_knee_limiter.reset();
     return JNI_TRUE;
+    JNI_SHIELD_END(JNI_FALSE);
 }
 
 JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeInsertVector(
     JNIEnv* env, jobject /*thiz*/, jlong track_id, jfloatArray embedding_array) {
+    JNI_SHIELD();
     if (!embedding_array) return;
     // VectorStore::insert reads exactly VECTOR_DIM floats; reject short arrays.
     if (env->GetArrayLength(embedding_array) < static_cast<jint>(VECTOR_DIM)) return;
@@ -1672,11 +1851,13 @@ Java_com_streamify_app_data_NativeBridge_nativeInsertVector(
         VectorStore::getInstance().insert(static_cast<uint64_t>(track_id), elements);
         env->ReleaseFloatArrayElements(embedding_array, elements, JNI_ABORT);
     }
+    JNI_SHIELD_END();
 }
 
 JNIEXPORT jlongArray JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeQueryTopK(
     JNIEnv* env, jobject /*thiz*/, jfloatArray target_embedding_array, jint k) {
+    JNI_SHIELD(nullptr);
     if (!target_embedding_array || k <= 0) return nullptr;
     // Cosine kernel reads VECTOR_DIM floats from the query vector.
     if (env->GetArrayLength(target_embedding_array) < static_cast<jint>(VECTOR_DIM)) return nullptr;
@@ -1696,6 +1877,7 @@ Java_com_streamify_app_data_NativeBridge_nativeQueryTopK(
         env->SetLongArrayRegion(output, 0, static_cast<jsize>(results.size()), track_ids.data());
     }
     return output;
+    JNI_SHIELD_END(nullptr);
 }
 
 static LyricAligner g_lyric_aligner(30);
@@ -1705,6 +1887,7 @@ Java_com_streamify_app_data_NativeBridge_nativeCalculateDriftOffset(
     JNIEnv* env, jobject /*thiz*/,
     jfloatArray vocal_energy_array, jint vocal_len,
     jfloatArray lyric_onsets_array, jint lyric_len) {
+    JNI_SHIELD(-10);
 
     if (!vocal_energy_array || !lyric_onsets_array) return 0;
 
@@ -1733,6 +1916,7 @@ Java_com_streamify_app_data_NativeBridge_nativeCalculateDriftOffset(
     env->ReleaseFloatArrayElements(lyric_onsets_array, lyric_ptr, JNI_ABORT);
 
     return static_cast<jint>(drift_ms);
+    JNI_SHIELD_END(-10);
 }
 
 JNIEXPORT jstring JNICALL
@@ -1742,6 +1926,7 @@ Java_com_streamify_app_data_NativeBridge_nativeGenerateCadId(
     jstring title,
     jstring artist,
     jint durationSec) noexcept {
+    JNI_SHIELD(nullptr);
     try {
         const char* titleChars = title ? env->GetStringUTFChars(title, nullptr) : nullptr;
         const char* artistChars = artist ? env->GetStringUTFChars(artist, nullptr) : nullptr;
@@ -1791,6 +1976,7 @@ Java_com_streamify_app_data_NativeBridge_nativeGenerateCadId(
     } catch (...) {
         return env->NewStringUTF("0000000000000000");
     }
+    JNI_SHIELD_END(nullptr);
 }
 
 } // extern "C"

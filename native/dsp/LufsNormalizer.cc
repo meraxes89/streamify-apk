@@ -56,9 +56,12 @@ LufsNormalizer::LufsNormalizer() {
 void LufsNormalizer::designKFilters(int fs, BiquadCoeffs* stage1,
                                     BiquadCoeffs* stage2) {
     if (fs == 48000) {
-        // ITU-R BS.1770-4 Annex 1, exact spec literals.
+        // ITU-R BS.1770-4 Annex 1, exact spec literals. b2 is the spec's
+        // 1.19839281085285 (C8: had drifted to a 1.19839251015039 typo,
+        // 3 f32 ulps low — now pinned bit-exactly by the literal check in
+        // tests/test_lufs_rust_parity.cc).
         *stage1 = BiquadCoeffs{1.53512485958697f, -2.69169618940638f,
-                                1.19839251015039f, -1.69065929318241f,
+                                1.19839281085285f, -1.69065929318241f,
                                 0.73248077421585f};
         *stage2 = BiquadCoeffs{1.0f, -2.0f, 1.0f, -1.99004745483398f,
                                 0.99007225036621f};

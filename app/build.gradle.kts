@@ -196,19 +196,16 @@ android {
         java.srcDir(uniffiGeneratedSourcesDir)
     }
 
-    // MP-HAL05/07 (Phase 4a): the frozen audio-sink JNI declarations
-    // (com.streamify.core.native_.NativeAudioSink) compile into DEBUG
-    // builds ONLY. The JNI parity gate (audit #44) forbids unimplemented
-    // external funs in the main tree — Alpha's jni_bridge_audio_sinks.cpp
-    // has not landed — so the dogfood source set carries them out of the
-    // scanner's path while keeping every runtime call probe-guarded and
-    // every consumer on the RustAudioSinkJni seam. Release builds never
-    // compile the declarations at all: the dogfood surface is
-    // STRUCTURALLY absent from release bytecode (stronger than a flag).
-    // When Alpha's bridge lands, move the file into the main tree.
-    sourceSets.getByName("debug") {
-        java.srcDir("src/rustAudioDogfood/java")
-    }
+    // WS-C (C1): the frozen audio-sink JNI declarations
+    // (com.streamify.core.native_.NativeAudioSink) are MAIN-TREE again.
+    // While the C++ half of the contract was unwritten they were
+    // quarantined in a debug-only source set (app/src/rustAudioDogfood)
+    // so the JNI parity gate (audit #44) stayed green; C1 landed
+    // native/src/jni_bridge_audio_sinks.cpp (7 symbols in
+    // libstreamify_native_core.so), so the declarations compile in every
+    // variant and the gate enforces the match both ways. MP-HAL07's
+    // release gating lives at the INSTALL point (AppGraph step 0d:
+    // debug builds / USE_RUST_AUDIO only), not at compile time.
 
     // Lint safety net: the historical codebase carries known warnings
     // (printStackTrace-era logging, legacy AsyncTask palette path, explicit

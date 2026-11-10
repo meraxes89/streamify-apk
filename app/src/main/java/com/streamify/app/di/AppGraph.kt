@@ -74,20 +74,21 @@ object AppGraph {
             com.streamify.app.util.SLog.e("StreamifyApp", "Failed to initialize RustAudioSettings", e)
         }
 
-        // 0d. Phase 4a (MP-HAL05): install the dogfood sink JNI binding.
-        //     The binding class (frozen-symbol external funs) lives in the
-        //     DEBUG-only source set — out of the JNI parity gate's path
-        //     while Alpha's jni_bridge_audio_sinks.cpp is pending — so the
-        //     main tree reaches it via the house reflection soft-probe
-        //     (same pattern as StreamifyEngineBridge's generated-proxy
-        //     probe). Release builds never find the class: the bootstrap
-        //     no-ops and RustAudioSinkJni.binding stays null (edges
-        //     unresolved -> legacy Media3 route, MP-HAL07).
+        // 0d. Phase 4a (MP-HAL05) → WS-C (C1): install the sink JNI binding.
+        //     The binding class (frozen-symbol external funs,
+        //     com.streamify.core.native_.NativeAudioSink) is MAIN-TREE since
+        //     C1 landed native/src/jni_bridge_audio_sinks.cpp — the 7 symbols
+        //     ship in libstreamify_native_core.so and the JNI parity gate
+        //     sees matching exports — so the install is a DIRECT call. The
+        //     historical reflection soft-probe existed only while the
+        //     declarations were quarantined in the debug-only dogfood source
+        //     set. MP-HAL07 gate intact: debug builds or the USE_RUST_AUDIO
+        //     dogfood flag only; release never installs the binding, so
+        //     RustAudioSinkJni.binding stays null (edges unresolved ->
+        //     legacy Media3 route).
         if (BuildConfig.DEBUG || BuildConfig.USE_RUST_AUDIO) {
             try {
-                Class.forName("com.streamify.core.native_.RustAudioDogfoodBootstrap")
-                    .getMethod("install")
-                    .invoke(null)
+                com.streamify.core.native_.RustAudioDogfoodBootstrap.install()
                 com.streamify.app.util.SLog.i(
                     "StreamifyApp",
                     "rust audio dogfood JNI binding installed (useRustAudio=" +
@@ -96,7 +97,7 @@ object AppGraph {
             } catch (e: Throwable) {
                 com.streamify.app.util.SLog.i(
                     "StreamifyApp",
-                    "rust audio dogfood JNI binding absent (release main tree) — seam stays null"
+                    "rust audio dogfood JNI binding install failed — seam stays null"
                 )
             }
         }

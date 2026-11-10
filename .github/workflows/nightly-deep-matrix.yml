@@ -7,7 +7,15 @@
 #   engine-nightly  _ci-engine.yml with nextest_profile: nightly — the deep
 #                   Rust matrix including the 32-peer mesh chaos suite
 #                   (serialized in the serial-heavy-mesh test group).
-#   native-deep-fuzz  C++20 LibFuzzer crash hunt (900s on schedule).
+#   native-deep-fuzz  C++20 LibFuzzer crash hunt on schedule — WS-C (C7)
+#                   runs ALL THREE harnesses with SEPARATE cached corpora:
+#                   dsp_fuzzer_harness (the DSP/palette composed entry),
+#                   audio_sink_fuzz_harness (network packet parsing — the
+#                   most hostile-input-exposed surface in the tree) and
+#                   frame_palette_fuzz_harness (untrusted bitmaps through
+#                   the SIMD palette extractor + frame pacer). Before C7
+#                   only the dsp harness ran and the other two were built
+#                   by nothing.
 #   android-connected   TEST-01: one API-34 x86_64 emulator on a KVM-enabled
 #                       ubuntu runner — the instrumented functional suite
 #                       (PlaybackService lifecycle, Compose UI critical
@@ -47,9 +55,9 @@ jobs:
       nextest_profile: nightly
 
   native-deep-fuzz:
-    name: "Native C++20 LibFuzzer (cached corpus)"
+    name: "Native C++20 LibFuzzer x3 (cached corpora, C7)"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -68,32 +76,67 @@ jobs:
             ${{ runner.os }}-ccache-native-
           max-size: 500M
 
-      - name: Restore fuzzer seed corpus
+      # WS-C (C7): one cached corpus PER HARNESS — the audio-sink and
+      # frame-palette surfaces accumulate their own coverage instead of
+      # cross-pollinating a single corpus grown for the DSP entry.
+      - name: Restore dsp fuzzer seed corpus
         uses: actions/cache@v6
         with:
           path: native/fuzz/corpus
-          key: libfuzzer-corpus-${{ github.ref_name }}-${{ github.sha }}
+          key: libfuzzer-corpus-dsp-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            libfuzzer-corpus-
+            libfuzzer-corpus-dsp-
 
-      # Timed-out fuzz runs still exit 0; only crashes fail the job.
-      - name: Compile & run LibFuzzer
+      - name: Restore audio-sink fuzzer seed corpus
+        uses: actions/cache@v6
+        with:
+          path: native/fuzz/corpus-audio-sink
+          key: libfuzzer-corpus-audio-sink-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            libfuzzer-corpus-audio-sink-
+
+      - name: Restore frame-palette fuzzer seed corpus
+        uses: actions/cache@v6
+        with:
+          path: native/fuzz/corpus-frame-palette
+          key: libfuzzer-corpus-frame-palette-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            libfuzzer-corpus-frame-palette-
+
+      # Timed-out fuzz runs still exit 0; only crashes fail the job. Every
+      # harness runs its full budget even after another one found a crash
+      # (more signal per night); a crash in ANY harness fails the job.
+      - name: Compile & run the three LibFuzzer harnesses
         id: fuzz_test
         run: |
-          mkdir -p native/build native/fuzz/corpus native/fuzz/artifacts
+          mkdir -p native/build native/fuzz/corpus native/fuzz/corpus-audio-sink \
+                   native/fuzz/corpus-frame-palette native/fuzz/artifacts
           cd native/build
           cmake -DCMAKE_CXX_COMPILER=clang++ \
+                -DCMAKE_C_COMPILER=clang \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -O2 -g" \
                 -DSTREAMIFY_BUILD_FUZZERS=ON \
                 -G Ninja ..
-          ninja dsp_fuzzer_harness
-          FUZZ_TIME=900
-          ./dsp_fuzzer_harness ../fuzz/corpus -max_len=4096 -max_total_time=$FUZZ_TIME -artifact_prefix=../fuzz/artifacts/ > ../fuzz-run.log 2>&1 || true
-          if ls ../fuzz/artifacts/crash-* 1> /dev/null 2>&1; then
-            echo "FUZZER_FOUND_CRASH=true" >> "$GITHUB_ENV"
-          fi
+          ninja dsp_fuzzer_harness audio_sink_fuzz_harness frame_palette_fuzz_harness
+          # Budget: 3 x 480s = 24 min inside the 60-min job timeout
+          # (compile ~8-10 min on the cached lane), vs the pre-C7 single
+          # 900s budget for one harness.
+          FUZZ_TIME=480
+          run_one() {
+            local bin="$1" corpus="$2" log="$3"
+            echo "native-deep-fuzz: $bin - ${FUZZ_TIME}s against $corpus"
+            ./$bin "$corpus" -max_len=4096 -max_total_time=$FUZZ_TIME \
+                -artifact_prefix=../fuzz/artifacts/ > "../$log" 2>&1 || true
+            if ls ../fuzz/artifacts/crash-* 1> /dev/null 2>&1; then
+              echo "FUZZER_FOUND_CRASH=true" >> "$GITHUB_ENV"
+              echo "CRASHING_HARNESS=$bin" >> "$GITHUB_ENV"
+            fi
+          }
+          run_one dsp_fuzzer_harness         ../fuzz/corpus                fuzz-run-dsp.log
+          run_one audio_sink_fuzz_harness    ../fuzz/corpus-audio-sink     fuzz-run-audio-sink.log
+          run_one frame_palette_fuzz_harness ../fuzz/corpus-frame-palette  fuzz-run-frame-palette.log
 
       - name: Upload crash artifacts on fault
         if: env.FUZZER_FOUND_CRASH == 'true'
@@ -102,18 +145,18 @@ jobs:
           name: libfuzzer-crash-dumps
           path: native/fuzz/artifacts/
 
-      - name: Upload fuzzer log
+      - name: Upload fuzzer logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: log-native-libfuzzer
-          path: native/fuzz-run.log
+          path: native/fuzz-run-*.log
           if-no-files-found: ignore
 
       - name: Fail on crash
         if: env.FUZZER_FOUND_CRASH == 'true'
         run: |
-          echo "FATAL: LibFuzzer found a crash — see libfuzzer-crash-dumps artifact" >&2
+          echo "FATAL: LibFuzzer found a crash in ${{ env.CRASHING_HARNESS }} - see libfuzzer-crash-dumps artifact" >&2
           exit 1
 
 # TRUTH-01c / TEST-01: the connected Android lane. One API-34 x86_64

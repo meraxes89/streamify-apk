@@ -1,6 +1,7 @@
 package com.streamify.desktop.engine
 
 import com.sun.jna.NativeLibrary
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -43,12 +44,18 @@ import java.util.concurrent.TimeUnit
  *     state push with a monotonic revision (MP-C02 / MP-DEC-04);
  *  6. basic lifecycle mutations (volume, debounced media commands per
  *     MP-C03 / MP-DEC-07) push strictly-increasing revisions.
+ *  7. WS-C (C5): the desktop HAL module round-trips the frozen sink
+ *     contract over JNA — create → write → canonical f32 pull → the
+ *     96-byte stats wire (magic 0x51AB0001) → cooperative flush →
+ *     destroy — the same ABI the C1 JNI bridge binds on Android.
  *
  * Hermetic degradation: the generated bindings exist only after
  * `generateDesktopUniffiBindings` has run (cargo on PATH — every CI desktop
  * job provides it). On toolchain-less hosts the suite SKIPS via a JUnit
  * assumption rather than failing, mirroring the app module's hermetic JVM
- * shard contract.
+ * shard contract. The C5 round-trip independently soft-probes the HAL
+ * module (built by the CI lane / a local cmake invocation) and skips the
+ * same way when it is absent.
  */
 class DesktopJnaEngineSmokeTest {
 
@@ -168,5 +175,103 @@ class DesktopJnaEngineSmokeTest {
 
         /** Generous bound for the dedicated dispatch thread's first pass. */
         private const val PUSH_TIMEOUT_SECONDS = 10L
+    }
+
+    /**
+     * WS-C (C5): the desktop HAL module round-trips the frozen sink
+     * contract over JNA — the acceptance criterion AHEAD C5 names
+     * ("DesktopJnaEngineSmokeTest extended with a sink round-trip").
+     *
+     * The module (`streamify_desktop_hal`, built from native/ by the CI
+     * desktop lane or `cmake --build native/build-hal --target
+     * streamify_desktop_hal` locally) carries the plain-C registry ABI
+     * plus the platform pull-adapter facades. This test exercises the
+     * registry half — the exact semantics `jni_sink_bridge_test_suite`
+     * pins for the JNI edge on the host sanitizer lanes, now proven
+     * through the REAL shared object from a real JVM:
+     *
+     *   create (handle > 0) → write (backpressure-aware) → canonical
+     *   f32 pull (bit-identical samples — zero quantization) → the 96-
+     *   byte stats wire (magic / geometry / counters / sequence) →
+     *   cooperative flush (silence quantum, no underrun counted) →
+     *   destroy (stale-handle degradation, idempotent).
+     *
+     * Soft-skips when the module is absent (hermetic hosts) — the same
+     * degradation contract as the engine lane above.
+     */
+    @Test
+    fun desktopHalSinkRoundTrip() {
+        val hal = DesktopHalBridge.probe()
+        assumeTrue(
+            "desktop HAL module '${DesktopHalBridge.HAL_LIBRARY}' not " +
+                "resolvable (build it with cmake, or set " +
+                "STREAMIFY_DESKTOP_HAL_DIR) — skipping the C5 round-trip",
+            hal != null,
+        )
+        val api = hal!!
+
+        // ── 1. create: valid geometry mints a positive registry handle ───
+        val handle = api.streamify_desktop_sink_create(48_000, 2, 4096)
+        assertTrue("sink create must return a positive handle (got $handle)", handle > 0)
+        assertEquals("registry live count after create", 1L, api.streamify_desktop_sink_live_count())
+        assertTrue(
+            "invalid geometry must be rejected with a NEGATIVE sentinel",
+            api.streamify_desktop_sink_create(0, 0, 0) < 0,
+        )
+
+        // ── 2. write → canonical f32 pull: bit-identical round-trip ──────
+        val frames = 256
+        val input = FloatArray(frames * 2) { i -> i.toFloat() / (frames * 2) - 0.5f }
+        val written = api.streamify_desktop_sink_write_f32(handle, input, input.size)
+        assertEquals("whole-frame write fully consumed", input.size, written)
+
+        val output = FloatArray(frames * 2) { -999f }
+        val read = api.streamify_desktop_sink_read_f32(handle, output, frames)
+        assertEquals("f32 pull returns every frame", frames, read)
+        assertArrayEquals("f32 storage is bit-identical through the ring", input, output)
+
+        // Starvation: 0 frames, never blocks.
+        assertEquals("empty ring starves", 0, api.streamify_desktop_sink_read_f32(handle, output, frames))
+
+        // ── 3. the 96-byte stats wire ─────────────────────────────────────
+        val wire = ByteArray(DesktopHalBridge.STATS_WIRE_BYTES)
+        assertEquals("stats serialization succeeds", 1, api.streamify_desktop_sink_stats(handle, wire))
+        val stats = DesktopHalBridge.decodeStats(wire)
+        assertNotNull("the wire must decode (magic + layout)", stats)
+        stats!!
+        assertEquals("capacity frames", 4096, stats.capacityFrames)
+        assertEquals("rate in", 48_000, stats.sampleRateIn)
+        assertEquals("rate out", 48_000, stats.sampleRateOut)
+        assertEquals("channels", 2, stats.channelsOut)
+        assertEquals("frames written cumulative", frames.toLong(), stats.framesWritten)
+        assertEquals("frames read cumulative", frames.toLong(), stats.framesRead)
+        assertTrue("sequence is the change detector (> 0)", stats.sequence > 0)
+
+        // ── 4. cooperative flush: silence quantum, no underrun counted ────
+        api.streamify_desktop_sink_write_f32(handle, input, input.size)
+        api.streamify_desktop_sink_flush(handle)
+        assertEquals(
+            "flushed read serves the silence quantum (0 frames)",
+            0,
+            api.streamify_desktop_sink_read_f32(handle, output, frames),
+        )
+        assertEquals(
+            "stats after flush: still decodable",
+            1,
+            api.streamify_desktop_sink_stats(handle, wire),
+        )
+        val postFlush = DesktopHalBridge.decodeStats(wire)
+        assertNotNull("post-flush stats decode", postFlush)
+        assertEquals("the flush pass is NOT an underrun", 0L, postFlush!!.underrunEvents)
+        assertEquals("cumulative frames_written survives the flush", (frames * 2).toLong(), postFlush.framesWritten)
+
+        // ── 5. destroy: stale handles degrade, idempotent ──────────────
+        api.streamify_desktop_sink_destroy(handle)
+        assertEquals("registry live count after destroy", 0L, api.streamify_desktop_sink_live_count())
+        assertEquals("write on destroyed handle degrades to 0", 0, api.streamify_desktop_sink_write_f32(handle, input, input.size))
+        assertEquals("read on destroyed handle degrades to 0", 0, api.streamify_desktop_sink_read_f32(handle, output, frames))
+        assertEquals("stats on destroyed handle degrade to 0", 0, api.streamify_desktop_sink_stats(handle, wire))
+        api.streamify_desktop_sink_flush(handle) // no-op
+        api.streamify_desktop_sink_destroy(handle) // idempotent
     }
 }

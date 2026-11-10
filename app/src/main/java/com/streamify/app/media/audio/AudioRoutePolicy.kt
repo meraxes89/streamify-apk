@@ -32,10 +32,10 @@ import kotlinx.coroutines.flow.asStateFlow
  *   3. NATIVE EDGE PROBE — [NativeAudioSink.probeEdges]: even with the
  *      flag on, the route engages ONLY when the frozen JNI edges
  *      (create/write/f32-read/flush/destroy) actually resolved in this
- *      process. A device without Alpha's `jni_bridge_audio_sinks`
- *      symbols, a hermetic JVM shard, a stripped split-APK — all degrade
- *      GRACEFULLY to the legacy DefaultAudioSink path with one logged
- *      reason (never a crash, never silence).
+ *      process. A device with a torn native library set (the C1 sink
+ *      bridge exports not loadable), a hermetic JVM shard, a stripped
+ *      split-APK — all degrade GRACEFULLY to the legacy DefaultAudioSink
+ *      path with one logged reason (never a crash, never silence).
  *
  * SWITCHING SEMANTICS (clean + memory-safe by construction):
  *  • The route is resolved when the playback stack builds its audio
@@ -124,8 +124,8 @@ object AudioRoutePolicy {
                 reason = "flag on but native sink edges unresolved " +
                     "(create=${edges.createSink} write=${edges.writeFloat} " +
                     "f32=${edges.readFramesF32} flush=${edges.flush} " +
-                    "destroy=${edges.destroy}) — awaiting Alpha's " +
-                    "jni_bridge_audio_sinks.cpp; degrading to Media3",
+                    "destroy=${edges.destroy}) — binding absent or the " +
+                    "native library set is torn; degrading to Media3",
             )
             else -> RouteDecision(
                 route = Route.RUST_AUDIO_PULL,

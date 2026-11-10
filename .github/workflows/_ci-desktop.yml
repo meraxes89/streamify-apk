@@ -119,6 +119,26 @@ jobs:
             echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
           fi
 
+      # ── WS-C (C5): build the desktop HAL module (sink registry C ABI +
+      #    the platform pull-adapter facades) so the JNA smoke lane can
+      #    round-trip the frozen sink contract through the REAL .so/.dll.
+      #    Ninja on Linux, the VS generator on Windows (no vcvars needed
+      #    from bash); ~1 min on the cached lanes.
+      - name: Build the desktop HAL library (WS-C C5)
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cmake -B native/build-hal -S native -G "Visual Studio 17 2022" -A x64
+            cmake --build native/build-hal --config Release --target streamify_desktop_hal
+            HAL_DIR="$(cygpath -u "$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)" | xargs dirname)"
+          else
+            cmake -B native/build-hal -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
+            cmake --build native/build-hal --target streamify_desktop_hal
+            HAL_DIR="$(dirname "$(find native/build-hal -name 'libstreamify_desktop_hal.so' -print -quit)")"
+          fi
+          echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
+          echo "desktop HAL module at: $HAL_DIR"
+
       # ── 1. Desktop Test Suite (Single combined pass, resp7 Pillar 4) ──────
       # Single combined invocation reuses Gradle daemon state, workers, and bytecode cache.
       - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"

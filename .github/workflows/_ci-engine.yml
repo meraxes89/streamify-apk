@@ -13,9 +13,29 @@
 #                        suites (jam + audio), every integration suite.
 #   cpp-sanitizers       the C++20 ASan/UBSan matrix (DSP, SIMD physics,
 #                        telemetry/storage) under eatmydata + tmpfs scratch.
+#                        WS-C (C3): the 7 previously CI-dead native suites
+#                        are switched ON — virtual_hal_test_suite,
+#                        desktop_hal_render_core_test_suite,
+#                        dsp_phase_lock_test_suite,
+#                        capability_abi_parity_test_suite,
+#                        test_audio_sink_ringbuffer,
+#                        coreaudio_render_core_test_suite,
+#                        linux_hal_driver_test_suite (ALSA null PCM — no
+#                        hardware needed) — ~4,000 LOC of written-but-never-
+#                        executed verification now gates every core PR. WS-C
+#                        adds the two new lanes: jni_sink_bridge_test_suite
+#                        (C1: the frozen JNI sink contract through a stub
+#                        JNIEnv) and lufs_parity_test_suite (C8: the C++
+#                        BS.1770-4 path vs the canonical Rust vectors).
 #   android-native       BUILD-ONCE / FAN-OUT factory: cargo-ndk + CMake/NDK
 #                        for arm64-v8a + x86_64, uploaded once (resp6 §3) so
 #                        the Gradle shards never rebuild Rust from scratch.
+#                        WS-C (C1): the .so now carries the 7-symbol JNI sink
+#                        bridge (jni_bridge_audio_sinks.cpp).
+#   windows-native       WS-C (C4): the MSVC rot guard — the native tree
+#                        (WASAPI adapter + the C5 desktop HAL library)
+#                        compiled with Visual Studio on every core PR; the
+#                        if(WIN32) targets finally fire somewhere.
 #   linux-desktop-native the x86_64-unknown-linux-gnu cdylib consumed by the
 #                        Linux leg of _ci-desktop.yml through the
 #                        -Pstreamify.prebuiltEngineLib Gradle seam.
@@ -111,7 +131,9 @@ jobs:
           path: rust/target/nextest/**/*.xml
           if-no-files-found: ignore
 
-  # ── C++ DSP: ASan/UBSan matrix (clang-17, ccache, eatmydata on tmpfs) ───────
+  # ── C++ DSP: ASan/UBSan matrix (clang-17, ccache, eatmydata on tmpfs) ─────
+  # WS-C (C3): +7 revived suites and +2 new WS-C lanes — the full host
+  # verification surface acts as a live gate on every core-touching PR.
   cpp-sanitizers:
     name: "C++ ASan/UBSan: ${{ matrix.shard }}"
     if: inputs.run_tests
@@ -130,6 +152,35 @@ jobs:
           - shard: native-telemetry-storage
             description: "Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL"
             target: storage_telemetry_test_suite
+          # ---- WS-C (C3): the previously CI-dead native suites -------------
+          - shard: native-dsp-phase-lock
+            description: "PTP clock kernel, fractional sinc resampler & HW latency profiler"
+            target: dsp_phase_lock_test_suite
+          - shard: native-virtual-hal
+            description: "Adversarial VirtualHAL double vs the hardened SPSC AudioSink"
+            target: virtual_hal_test_suite
+          - shard: native-coreaudio-render-core
+            description: "CoreAudio RT render core (pull path + seqlock clock publication)"
+            target: coreaudio_render_core_test_suite
+          - shard: native-audio-sink-ringbuffer
+            description: "SPSC f32 sink ring + WearOS packetizer (dedicated lane)"
+            target: test_audio_sink_ringbuffer
+          - shard: native-desktop-hal-render-cores
+            description: "WASAPI/PipeWire/ALSA render cores driven by the VirtualHAL double"
+            target: desktop_hal_render_core_test_suite
+          - shard: native-capability-abi-parity
+            description: "Apple C-ABI capability codes (frozen SF_* enum pins)"
+            target: capability_abi_parity_test_suite
+          - shard: native-linux-hal-driver
+            description: "PipeWire dlopen driver + ALSA null-PCM fallback (no hardware needed)"
+            target: linux_hal_driver_test_suite
+          # ---- WS-C new lanes ------------------------------------------------
+          - shard: native-jni-sink-bridge
+            description: "C1: the 7 frozen JNI sink symbols through a host stub JNIEnv"
+            target: jni_sink_bridge_test_suite
+          - shard: native-lufs-parity
+            description: "C8: C++ BS.1770-4 vs the canonical Rust golden vectors"
+            target: lufs_parity_test_suite
     env:
       ASAN_OPTIONS: "fast_unwind_on_malloc=1:detect_leaks=1:halt_on_error=1"
       UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
@@ -170,6 +221,42 @@ jobs:
           cp -a ${{ matrix.target }} /dev/shm/native_test_tmp/
           cd /dev/shm/native_test_tmp
           eatmydata ./${{ matrix.target }}
+
+  # ── WS-C (C4): the Windows native C++ rot guard (MSVC) ────────────────────
+  # The WASAPI adapter's if(WIN32) target never fired anywhere before this
+  # lane existed (no Windows native CMake configure ever ran), so SDK/MSVC
+  # rot could land silently between releases. Every core-touching PR now
+  # compiles the native tree with Visual Studio 2022: the desktop HAL
+  # shared library (the C5 wiring slice — sink registry C ABI + the WASAPI
+  # pull adapter) must link against avrt/ole32 and the C++20 over-aligned
+  # AudioSink storage must survive MSVC's allocator. The Android packaging
+  # .so stays NDK-only (the CMake ANDROID guard); Apple/linux targets are
+  # skipped by their own platform guards on this runner.
+  windows-native:
+    name: "Windows native C++ (MSVC rot guard, C4)"
+    if: inputs.run_tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure the native tree (VS 2022, x64)
+        run: cmake -B native/build -S native -G "Visual Studio 17 2022" -A x64
+
+      - name: Compile the WASAPI adapter + desktop HAL library (Release)
+        run: |
+          cmake --build native/build --config Release `
+            --target streamify_desktop_hal streamify_wasapi_adapter
+
+      - name: Upload the built HAL module (rot-guard evidence)
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-native-hal-x86_64
+          path: |
+            native/build/Release/streamify_desktop_hal.dll
+            native/build/Release/streamify_wasapi_adapter.lib
+          if-no-files-found: error
+          compression-level: 1
 
   # ── BUILD-ONCE / FAN-OUT: Android NDK artifacts for the Gradle shards ──────
   android-native:

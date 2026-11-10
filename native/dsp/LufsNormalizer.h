@@ -6,6 +6,16 @@
 //  LufsNormalizer — ITU-R BS.1770-4 / EBU R128 loudness engine (Phase 1)
 // ============================================================================
 //
+//  CANONICAL DESIGNATION (WS-C task C8): rust/crates/streamify-audio/src/
+//  lufs.rs is this repo's CANONICAL BS.1770-4 implementation (f64, spec-
+//  literal K-weighting). This C++ engine is pinned to golden vectors
+//  generated from it (native/tests/lufs_golden_vectors.h, produced by
+//  scripts/generate_lufs_golden_vectors.py); the parity lane is the CMake
+//  target lufs_parity_test_suite (tests/test_lufs_rust_parity.cc). Any
+//  intentional change on either side must regenerate the fixture and keep
+//  both lanes (C++ parity + the Rust CI drift gate
+//  tests/test_lufs_golden_vectors.rs) green.
+//
 //  MEASUREMENT (BS.1770-4, exact)
 //  -------------------------------
 //  * K-weighting: two-stage biquad per channel. At 48 kHz the *spec literals*

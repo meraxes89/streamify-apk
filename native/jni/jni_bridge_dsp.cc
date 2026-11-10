@@ -113,6 +113,17 @@
 #include "../dsp/AcousticPhaseResampler.h"
 #include "SharedInstances.h"
 
+// ============================================================================
+//  C6 / AHEAD WS-C — JNI_SHIELD retrofit. Every Java_* export in this TU is
+//  wrapped in the house try/catch pair from jni/JniShield.h (the C++ twin of
+//  the Rust bridges' catch_unwind discipline): a C++ exception escaping a JNI
+//  extern "C" edge is std::terminate at the ABI boundary, so JNI_SHIELD maps
+//  any escape onto the export's own sentinel (jint -10 / jlong 0 / void
+//  swallowed — the only return shapes this frozen-ABI TU uses). Enforced
+//  mechanically by scripts/jni_panic_boundary_check.py.
+// ============================================================================
+#include "JniShield.h"
+
 using streamify::PtpEngine;
 using streamify::dsp::AcousticPhaseResampler;
 using streamify::engine::HardwareLatencyProfiler;
@@ -139,20 +150,26 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_streamify_app_data_NativeBridge_nativePtpProcessTimestamps(
     JNIEnv* /* env */, jclass /* clazz */,
     jlong t0, jlong t1, jlong t2, jlong t3) {
+    JNI_SHIELD(0);
     return static_cast<jlong>(
         PtpEngine::getInstance().processTimestamps(t0, t1, t2, t3));
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeGetSynchronizedClockNanos(
     JNIEnv* /* env */, jclass /* clazz */) {
+    JNI_SHIELD(0);
     return static_cast<jlong>(PtpEngine::getInstance().getSynchronizedClockNanos());
+    JNI_SHIELD_END(0);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_nativePtpReset(
     JNIEnv* /* env */, jclass /* clazz */) {
+    JNI_SHIELD();
     PtpEngine::getInstance().reset();
+    JNI_SHIELD_END();
 }
 
 // ============================================================================
@@ -161,7 +178,9 @@ Java_com_streamify_app_data_NativeBridge_nativePtpReset(
 extern "C" JNIEXPORT void JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeResamplerSetTargetDriftNanos(
     JNIEnv* /* env */, jclass /* clazz */, jlong driftNanos) {
+    JNI_SHIELD();
     resamplerInstance().setTargetDriftNanosPerSecond(driftNanos);
+    JNI_SHIELD_END();
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -172,6 +191,7 @@ Java_com_streamify_app_data_NativeBridge_nativeResamplerProcessBuffer(
     jint frameCount,
     jint channelCount,
     jint sampleRate) {
+    JNI_SHIELD(-10);
     if (frameCount <= 0 || channelCount <= 0 || channelCount > 8 ||
         sampleRate < 8000 || sampleRate > 192000) {
         return -1;
@@ -213,6 +233,7 @@ Java_com_streamify_app_data_NativeBridge_nativeResamplerProcessBuffer(
         static_cast<int>(outCapacityBytes / (4LL * channelCount));
 
     return engine.process(in, frameCount, out, outFrameCapacity);
+    JNI_SHIELD_END(-10);
 }
 
 // ============================================================================
@@ -221,8 +242,10 @@ Java_com_streamify_app_data_NativeBridge_nativeResamplerProcessBuffer(
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_streamify_app_data_NativeBridge_nativeGetHardwarePlayoutDelayNanos(
     JNIEnv* /* env */, jclass /* clazz */) {
+    JNI_SHIELD(0);
     const auto est = profilerInstance().estimatePlayoutDelay(streamify::nowRawNanos());
     return static_cast<jlong>(est.delayNanos);
+    JNI_SHIELD_END(0);
 }
 
 // ============================================================================

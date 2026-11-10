@@ -463,6 +463,18 @@ tasks.test {
     systemProperty("jna.library.path", rustTargetReleaseDir.absolutePath)
     systemProperty("java.library.path", rustTargetReleaseDir.absolutePath)
 
+    // WS-C (C5): the desktop HAL module joins the JNA search path when the
+    // lane built it. STREAMIFY_DESKTOP_HAL_DIR is exported by the CI step
+    // that compiles native/ (cmake --target streamify_desktop_hal); local
+    // runs can also set the streamify.desktop.hal.dir system property —
+    // DesktopHalBridge resolves both, and an absent module soft-skips the
+    // C5 round-trip (the same hermetic degradation as the engine lane).
+    providers.environmentVariable("STREAMIFY_DESKTOP_HAL_DIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { halDir ->
+        systemProperty("streamify.desktop.hal.dir", halDir)
+    }
+
     // Headless by construction: the suite exercises the engine FFI and the
     // shell's pure logic, never a Compose window. Bounded heap keeps the
     // 2-core CI runners comfortable.

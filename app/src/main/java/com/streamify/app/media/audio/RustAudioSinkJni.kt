@@ -21,31 +21,23 @@ import java.nio.ByteOrder
  *   Java_com_streamify_core_native_1_NativeAudioSink_nativeDestroy
  *   Java_com_streamify_core_native_1_NativeAudioSink_nativeReadFramesF32  ← additive
  *
- * THE SEAM, NOT THE DECLARATIONS. The actual `external fun` declarations
- * CANNOT live in `app/src/main/java`: the repo's JNI parity gate
- * (audit #44 P0-1, `scripts/jni_parity_check.py`) — correctly — fails any
- * build whose main tree declares a native method with no matching export
- * in the native or rust source trees (a deferred `UnsatisfiedLinkError`).
- * Alpha's `jni_bridge_audio_sinks.cpp` has not landed, so the declarations
- * would be exactly that violation.
+ * THE SEAM, NOT THE DECLARATIONS. The `external fun` declarations live
+ * on `com.streamify.core.native_.NativeAudioSink` (main-tree since WS-C
+ * C1 landed `native/src/jni_bridge_audio_sinks.cpp`; before that they
+ * were quarantined in the debug-only dogfood source set so the repo's
+ * JNI parity gate — audit #44 P0-1, `scripts/jni_parity_check.py` —
+ * stayed green against the then-missing exports).
  *
- * The declarations therefore live in the DEBUG-ONLY dogfood source set
- * `app/src/rustAudioDogfood/java` (see `NativeAudioSink.kt` there):
- *
- *  • RELEASE builds never compile them — MP-HAL07's "default false in
- *    release" is enforced structurally (the code is ABSENT, not merely
- *    toggled off).
- *  • DEBUG builds compile them and a reflection bootstrap (AppGraph step
- *    0c, house `StreamifyEngineBridge` soft-probe pattern) installs the
- *    binding into [binding] here.
+ *  • The parity gate now enforces the match BOTH WAYS: every declared
+ *    external fun has a shipped export, every export maps to an active
+ *    declaration.
+ *  • AppGraph's step-0d bootstrap installs the binding into [binding]
+ *    on debug builds / under the USE_RUST_AUDIO dogfood flag — release
+ *    builds never install it (MP-HAL07: the seam reads as absent).
  *  • Every consumer goes through THIS seam: an absent binding (release,
  *    JVM tests, bootstrap miss) reads as "edges unresolved" — the ring
  *    reports closed, the route policy falls back to the legacy Media3
  *    chain. Never a raw `UnsatisfiedLinkError` at a call site.
- *
- * When Alpha's bridge lands, the declarations move back into the main
- * tree (the parity gate then sees matching exports and stays green) —
- * zero changes above this seam.
  */
 object RustAudioSinkJni {
 
