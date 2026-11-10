@@ -24,9 +24,9 @@
 /// removing or re-typing any contract item is breaking. The value is
 /// pinned by a unit test (`contract_version_is_pinned`) so an accidental
 /// bump fails review.
-pub const CONTRACT_VERSION: u32 = 1;
+pub const CONTRACT_VERSION: u32 = 2;
 
-/// First frozen multiplatform contract generation (see [`CONTRACT_VERSION`]).
+/// Second contract generation: v1 + the additive playback data-plane surface (see [`CONTRACT_VERSION`]).
 pub fn contract_version() -> u32 {
     CONTRACT_VERSION
 }

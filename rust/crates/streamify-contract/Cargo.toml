@@ -25,6 +25,10 @@ crate-type = ["rlib"]
 [dependencies]
 streamify-core = { workspace = true }
 streamify-jam = { workspace = true }
+# WS-A A3/A4 (issue #151): the playback data plane (producer thread,
+# decoder, SPSC sink write edge). The contract crate wires it into the
+# engine; the RT boundary itself lives in streamify-playback.
+streamify-playback = { workspace = true }
 streamify-storage = { workspace = true }
 streamify-resolver = { workspace = true }
 # Phase 2 (UFFI-01): typed, type-safe Kotlin<->Rust bindings for the
@@ -54,6 +58,9 @@ uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 futures-util = { workspace = true }
+# A5 harness (issue #151): the VirtualHAL adversarial double drives the
+# self-test gate's DAC model.
+streamify-audio = { workspace = true }
 
 [features]
 default = []

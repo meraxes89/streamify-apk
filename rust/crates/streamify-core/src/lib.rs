@@ -44,8 +44,8 @@ pub use jam_session::{
 };
 pub use media::{media_command_key, MediaCommand, MEDIA_COMMAND_DEBOUNCE_MS};
 pub use snapshot::{
-    AudioStreamConfig, BufferStats, DacPresentationClock, EngineSnapshot, PlaybackState,
-    TrackMetadata, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE,
+    AudioStreamConfig, BufferProgress, BufferStats, DacPresentationClock, EngineSnapshot,
+    PlaybackState, TrackMetadata, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE,
 };
 pub use version::{contract_version, CONTRACT_VERSION};
 pub use wire_le::{fixed, le_i64, le_u16, le_u32, le_u64};

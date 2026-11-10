@@ -156,6 +156,62 @@ impl StreamDownloader {
         Ok(sha256_hex)
     }
 
+    /// Fetch ONE segmented byte range of a stream URL (WS-A A3, issue
+    /// #151): `GET` with a `Range: bytes=start..end` header on the
+    /// shared download client (the same 8 s connect / 15 s idle-read
+    /// hang-guard discipline as `download_stream_to_file` — no total
+    /// cap, because range windows are small by construction).
+    ///
+    /// Contract (the producer's fetch stage consumes this):
+    /// * returns the range's bytes — up to `len`, possibly fewer
+    ///   (truncated ranges are network reality, never an error);
+    /// * an EMPTY return means the source is exhausted past `start`
+    ///   (a 416 or a 206 with an empty body — the producer finishes
+    ///   its decode session);
+    /// * transport failures return `Err` (the producer retries, then
+    ///   surfaces `EngineError::Network`).
+    ///
+    /// Runs on the caller's thread over the shared async runtime
+    /// (`block_on` from a plain producer thread — never from inside a
+    /// tokio worker, mirroring `download_stream_to_file`).
+    pub fn fetch_stream_range(
+        stream_url: &str,
+        start: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, String> {
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let rt = get_runtime();
+        let client = download_client().clone();
+        let url = stream_url.to_string();
+        let end = start + len - 1; // inclusive, per the Range header grammar
+        rt.block_on(async {
+            let resp = client
+                .get(&url)
+                .header(reqwest::header::RANGE, format!("bytes={start}-{end}"))
+                .send()
+                .await
+                .map_err(|e| format!("Failed to initiate range fetch: {e}"))?;
+            let status = resp.status();
+            // 416 (range past end) and 200-with-short-body both mean
+            // "exhausted past start" for our purposes; a 200 full-body
+            // response (server ignored the Range) still carries usable
+            // bytes — take what arrived, the producer stays correct.
+            if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                return Ok(Vec::new());
+            }
+            if !status.is_success() {
+                return Err(format!("Range fetch failed with HTTP {status}"));
+            }
+            let bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| format!("Range body interrupted: {e}"))?;
+            Ok(bytes.to_vec())
+        })
+    }
+
     /// SHA-256 of a settled file.
     fn sha256_file(path: &Path) -> Option<String> {
         let mut file = File::open(path).ok()?;

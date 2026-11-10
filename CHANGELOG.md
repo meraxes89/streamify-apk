@@ -3,6 +3,35 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — WS-A Drivetrain Wave 2: the audio data plane (A3/A4/A5, issue #151)
+
+### Added
+- **`streamify-playback` crate (A3)** — the producer-side audio data plane: the dedicated producer thread
+  (segmented range fetch → decode → `CanonicalSrc` 48 kHz resample → BS.1770-4 LUFS chain → SPSC sink write edge),
+  the Rust-side mirror of the frozen C++ sink ABI (`AudioSink` trait, cacheline-aligned `SpscAudioRing` with the
+  cooperative `RequestFlush` generation handshake, the 96-byte `SinkStats` wire image), the codec-agnostic
+  `TrackDecoder` trait + symphonia 0.6 backend with an incremental-feed checkpoint protocol, and the `RangeFetcher`
+  abstraction (production HTTP lane: `StreamDownloader::fetch_stream_range`; hermetic lane: `LossyFixtureFetcher`
+  with scripted loss/jitter). Zero allocation on the write edge (counting-allocator proof); skips handled
+  cooperatively at stage boundaries; 100-rapid-skip stress green.
+- **UniFFI surface (A4)** — `attach_sink`/`detach_sink`/`play_track`/`buffer_progress` + the `BufferProgress`
+  dictionary; `CONTRACT_VERSION` bumped additively to 2; Kotlin bindings regenerated drift-free.
+- **Live-audio self-test harness (A5)** — `test_live_audio_selftest.rs`: the "engine says 440" gate (FFT-verified
+  dominant bin, zero underruns on both sink and VirtualHAL accounting, DAC-clock position truth), the 44.1 kHz
+  resample leg, and the 100-skip-under-load stress. Reusable as the desktop smoke test (C5's AC).
+- Golden-vector fixtures: `fixtures/audio/playback_selftest_440hz_{48k,44k1}.wav` +
+  `scripts/generate_playback_fixtures.py` (deterministic 440 Hz stereo f32 LE).
+
+### Changed
+- `apply_media_command` lifecycle arms now drive the producer (Play→resume, Pause→park, Stop→stop-and-flush) and
+  the transport arms emit play intents post-lock; `clear_queue` drops the producer session. Transport commands
+  still never touch the lifecycle (A2 semantics preserved).
+
+### Dependencies
+- `symphonia 0.6` (aac/isomp4/ogg/pcm/wav features, MPL-2.0, pure Rust, decode-only). **Audit finding**: symphonia
+  ships no Opus decoder in any release (upstream #8) — the RFC §5.2 fallback applies; the `TrackDecoder` trait
+  keeps the Opus decision reversible. Full rationale in the issue #151 PR description.
+
 ## [Unreleased] — WS-A Drivetrain opens: playback data-plane RFC, transport commands, panic-policy reconciliation (#148)
 
 ### Added — the sovereign playback transport (AHEAD.md WS-A A2)

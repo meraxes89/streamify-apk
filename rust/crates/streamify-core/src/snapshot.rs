@@ -138,6 +138,45 @@ impl Default for BufferStats {
     }
 }
 
+/// The playback data plane's progress read (WS-A A4, issue #151): the
+/// producer-side telemetry the typed `buffer_progress()` surface
+/// returns, mirroring the fields the event dispatcher's pushed
+/// `EngineSnapshot.buffer_stats` carries plus the transport/producer
+/// quantities that only exist once a sink is attached.
+///
+/// Deliberately a one-shot typed read (like `get_queue`), NOT part of
+/// the frozen pushed snapshot shape: the dispatcher's coalesced pushes
+/// already carry the buffering health (`buffered_duration_ms`,
+/// `underrun_count`, `fill_ratio`) as `BufferStats`; this record adds
+/// the producer session correlation, the transport's position target
+/// (A2) and the DAC-clock-derived rendered position for consumers that
+/// need the full picture in one call.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BufferProgress {
+    /// Ring occupancy in milliseconds of canonical audio.
+    pub buffered_ms: u64,
+    /// Ring fill ratio in `[0.0, 1.0]`.
+    pub fill_ratio: f32,
+    /// Consumer-side underrun events (cumulative, this sink).
+    pub underrun_events: u32,
+    /// Producer-side overrun events (cumulative, this sink).
+    pub overrun_events: u32,
+    /// The transport's position target [ms] (A2: the last accepted
+    /// `Seek` within the current row).
+    pub target_position_ms: u64,
+    /// The rendered position [ms], derived strictly from the DAC
+    /// presentation clock since the current session's anchor (MP-DEC-
+    /// 03: never wall-clock interpolated); 0 until a clock exists.
+    pub rendered_position_ms: u64,
+    /// The producer session's track id (null while no session ran).
+    pub track_id: Option<String>,
+    /// True when a sink is attached and the producer thread is live.
+    pub producer_live: bool,
+    /// True when the current session decoded and committed its final
+    /// frame (the ring still drains afterwards).
+    pub eos: bool,
+}
+
 /// Hardware DAC presentation clock sample (MP-C01 / MP-DEC-03).
 ///
 /// Replaces the retired `RenderClock` concept: these are DAC-side
