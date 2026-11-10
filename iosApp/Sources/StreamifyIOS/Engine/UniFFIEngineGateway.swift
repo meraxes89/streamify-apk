@@ -34,49 +34,143 @@ final class UniFFIEngineGateway: EngineGateway {
 
     private let engine: StreamifyEngine
 
-    // ── SW-ENG1-04: the single push-event bridge ──────────────────────────
+    // ── WS-B B3: the resolver cache + staged-session plane ────────────────
 
-    /// One stream for the gateway's lifetime. `snapshots` hands out this
-    /// instance so every consumer taps the SAME logical channel (an
-    /// AsyncStream is single-consumer; ViewModels subscribe exactly once,
-    /// and the buffering policy keeps the newest snapshot for a subscriber
-    /// that arrives between pushes).
-    private let snapshotsStream: AsyncStream<PlaybackSnapshot>
-    private let snapshotsContinuation: AsyncStream<PlaybackSnapshot>.Continuation
+    /// In-memory resolve memo (video id → formats): a tap on an
+    /// already-resolved row must never pay the network twice. Bounded —
+    /// a long listening session cannot grow it without limit.
+    private let resolveMemoLock = NSLock()
+    private var resolveMemo: [String: [EngineResolvedStreamFormat]] = [:]
+    private static let resolveMemoCapacity = 64
+
+    /// The last row the play path staged (the engine's pushed snapshots
+    /// carry no track identity — the UDL `EngineSnapshot` is transport
+    /// truth only — so the gateway enriches mapped snapshots with the
+    /// session's track for the now-playing surfaces). Lock-guarded: the
+    /// push bridge reads it on the engine's dispatch thread.
+    private let stagedLock = NSLock()
+    private var stagedTrack: EngineTrack?
+
+    /// Whether the playback plane is currently attached (attach has
+    /// replace semantics in the engine — the gateway attaches once per
+    /// plane lifetime and re-attaches only after a detach).
+    private var sinkAttached = false
+
+    /// The ring capacity the play path mounts with — see
+    /// `EnginePlaybackPlane.capacityFrames` (the lane-neutral tuning).
+    static let playbackCapacityFrames = EnginePlaybackPlane.capacityFrames
+
+    /// Retains the engine's push listener bridge (see `init`).
     private var listenerBridge: ListenerBridge?
 
-    /// Constructs and arms the engine (Idle → Buffering), then registers
-    /// the push listener. Throws on initialization rejection — the factory
-    /// (`EngineGatewayLoader`) degrades that to the preview lane instead
-    /// of crashing.
+    // ── SW-ENG1-04: the push-event bridge (multi-subscriber fan-out) ─────
+
+    /// The engine keeps ONE `EngineEventListener` registration (no listener
+    /// leak); the Swift side fans that single push lane out to every
+    /// subscriber — PlaybackViewModel's transport ingest AND the feature
+    /// library's queue-plane resync each subscribe exactly once, and an
+    /// `AsyncStream` is single-consumer, so one shared stored instance
+    /// would make them COMPETE for elements. Each `snapshots` access
+    /// registers a fresh continuation; the newest snapshot is buffered for
+    /// late subscribers (the bufferingNewest(1) discipline, preserved).
+    private let subscribersLock = NSLock()
+    private var subscribers: [ObjectIdentifier: AsyncStream<PlaybackSnapshot>.Continuation] = [:]
+    private var newestSnapshot: PlaybackSnapshot?
+
+    /// Constructs and arms the engine (Idle → Buffering), registers the
+    /// push listener, and points the resolver's persistent cache at the
+    /// app-support database (`set_resolver_cache_db`, UDL). Throws on
+    /// initialization rejection — the factory (`EngineGatewayLoader`)
+    /// degrades that to the preview lane instead of crashing.
     init() throws {
         engine = StreamifyEngine()
         try engine.initialize()
 
-        var continuation: AsyncStream<PlaybackSnapshot>.Continuation!
-        snapshotsStream = AsyncStream(bufferingPolicy: .bufferingNewest(1)) {
-            continuation = $0
-        }
-        snapshotsContinuation = continuation
-
         // The bridge is retained by the gateway (and, once registered, by
         // the engine's listener list); events arrive on the engine's
         // dedicated dispatch thread and only ever yield — cheap, total,
-        // never blocking the dispatcher.
-        let bridge = ListenerBridge { snapshot in
-            continuation.yield(Self.map(snapshot))
+        // never blocking the dispatcher. The staged-track enrichment is
+        // read under the staged lock (see `stagedTrack`).
+        let bridge = ListenerBridge { [weak self] snapshot in
+            self?.fanOut(snapshot)
         }
         listenerBridge = bridge
         _ = try engine.addEventListener(listener: bridge)
+
+        Self.wireResolverCache()
+    }
+
+    /// One push, delivered to every live subscriber (dispatch thread;
+    /// lock-guarded registry, yield-only bodies).
+    private func fanOut(_ snapshot: EngineSnapshot) {
+        let mapped = Self.map(snapshot, stagedTrack: currentStagedTrack())
+        subscribersLock.withLock {
+            newestSnapshot = mapped
+            subscribers.values.forEach { $0.yield(mapped) }
+        }
+    }
+
+    private func removeSubscriber(_ id: ObjectIdentifier) {
+        subscribersLock.withLock {
+            subscribers[id] = nil
+        }
+    }
+
+    /// The staged-session track (dispatch-thread-safe read).
+    private func currentStagedTrack() -> EngineTrack? {
+        stagedLock.withLock { stagedTrack }
+    }
+
+    /// Points the Rust resolver's persistent cache at the app-support
+    /// SQLite database, creating the directory if needed. A failure here
+    /// is survivable by design — resolution falls back to the network
+    /// every time (the cache is an optimization, never a dependency).
+    /// (Namespace-level UDL function — module-qualified like the other
+    /// globals.)
+    private static func wireResolverCache() {
+        guard let dbURL = resolverCacheURL() else { return }
+        try? StreamifyIOS.setResolverCacheDb(dbPath: dbURL.path)
+    }
+
+    /// `<AppSupport>/Streamify/resolver-cache.sqlite3` (created on demand).
+    nonisolated private static func resolverCacheURL() -> URL? {
+        let fm = FileManager.default
+        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let dir = base.appendingPathComponent("Streamify", isDirectory: true)
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+        return dir.appendingPathComponent("resolver-cache.sqlite3")
     }
 
     deinit {
-        // The stream must outlive the gateway's consumers deterministically:
-        // finishing on deinit guarantees a parked `for await` wakes.
-        snapshotsContinuation.finish()
+        // Every parked `for await` must wake deterministically when the
+        // gateway goes away.
+        subscribersLock.withLock {
+            subscribers.values.forEach { $0.finish() }
+            subscribers.removeAll()
+        }
     }
 
-    var snapshots: AsyncStream<PlaybackSnapshot> { snapshotsStream }
+    var snapshots: AsyncStream<PlaybackSnapshot> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let id = ObjectIdentifier(continuation)
+            subscribersLock.withLock {
+                subscribers[id] = continuation
+                // Late-subscriber hydration: the newest push replays once.
+                if let newest = newestSnapshot {
+                    continuation.yield(newest)
+                }
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.removeSubscriber(id)
+            }
+        }
+    }
 
     func send(_ command: PlayerCommand) async -> PlayerCommandResult {
         do {
@@ -111,7 +205,14 @@ final class UniFFIEngineGateway: EngineGateway {
     }
 
     func shutdown() {
-        snapshotsContinuation.finish()
+        let bridges: [AsyncStream<PlaybackSnapshot>.Continuation] =
+            subscribersLock.withLock {
+                let all = Array(subscribers.values)
+                subscribers.removeAll()
+                newestSnapshot = nil
+                return all
+            }
+        bridges.forEach { $0.finish() }
         listenerBridge = nil
     }
 
@@ -161,6 +262,110 @@ final class UniFFIEngineGateway: EngineGateway {
         return Self.map(room)
     }
 
+    // ── WS-B B3: resolve → stage → attach → intent (the full play path) ───
+
+    func resolveStreamFormats(videoId: String) async throws -> [EngineResolvedStreamFormat] {
+        // The memo first: a tapped row that already resolved must not pay
+        // the network twice (the resolver's own persistent cache covers
+        // cold starts; this covers the session).
+        if let cached = resolveMemoLock.withLock({ resolveMemo[videoId] }) {
+            return cached
+        }
+        // The resolver BLOCKS the calling thread on the engine's shared
+        // runtime — hop off the cooperative pool (same discipline as
+        // searchTracks).
+        let formats = try await Task.detached(priority: .userInitiated) {
+            try Self.performResolveStreamFormats(videoId: videoId)
+        }.value
+        let mapped = formats.map(Self.map)
+        resolveMemoLock.withLock {
+            if resolveMemo.count >= Self.resolveMemoCapacity {
+                resolveMemo.removeAll(keepingCapacity: true)
+            }
+            resolveMemo[videoId] = mapped
+        }
+        return mapped
+    }
+
+    func play(track: EngineTrack) async -> Int? {
+        // 1. Resolve unless the row already carries a playable URL
+        //    (re-plays of a staged row and offline file URLs skip the
+        //    network entirely).
+        var staged = track
+        if staged.resolvedStreamUrl == nil {
+            guard
+                let formats = try? await resolveStreamFormats(videoId: track.id),
+                let best = EngineResolvedStreamFormat.bestAudio(of: formats)
+            else { return nil }
+            staged.resolvedStreamUrl = best.url
+        }
+
+        // 2. Stage the row WITH the resolved URL (play_track requires it).
+        guard let index = await enqueue(track: staged, enqueuedBy: "local") else { return nil }
+
+        // 3. Mount the plane (attach has replace semantics in the engine;
+        //    the gateway's once-per-lifetime guard keeps the producer
+        //    thread stable across skips).
+        await attachSink(capacityFrames: Self.playbackCapacityFrames)
+
+        // 4. The play intent. The producer coalesces over any in-flight
+        //    session (the skip path); the next push repaints.
+        do {
+            try engine.playTrack(trackId: staged.id)
+            stagedLock.withLock { stagedTrack = staged }
+            return index
+        } catch {
+            return nil
+        }
+    }
+
+    func playStagedTrack(id: String) async -> Bool {
+        // The engine's own row lookup: unknown ids / URL-less rows fail as
+        // Internal at the boundary — degrade to false, never surface.
+        do {
+            try engine.playTrack(trackId: id)
+            if let staged = await queue().first(where: { $0.track.id == id })?.track {
+                stagedLock.withLock { stagedTrack = staged }
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func attachSink(capacityFrames: Int) async {
+        guard !sinkAttached else { return }
+        do {
+            try engine.attachSink(capacityFrames: UInt32(max(64, min(1 << 22, capacityFrames))))
+            sinkAttached = true
+        } catch {
+            // A refused mount degrades to transport-only playback — the
+            // control plane stays honest (nothing renders until a plane
+            // exists), exactly like the pre-A3 posture.
+        }
+    }
+
+    func detachSink() async {
+        try? engine.detachSink()
+        sinkAttached = false
+    }
+
+    func bufferProgress() async -> EngineBufferProgress? {
+        guard let progress = try? engine.bufferProgress() else { return nil }
+        return Self.map(progress)
+    }
+
+    func recordDacClock(_ sample: DacClockSample) async {
+        let clock = DacPresentationClock(
+            dacFramePosition: UInt64(max(0, sample.framePosition)),
+            sampleRate: UInt32(max(8_000, min(192_000, sample.sampleRateHz))),
+            monotonicNs: UInt64(max(0, sample.monotonicNs))
+        )
+        // An invalid sample is rejected at the Rust boundary
+        // (AudioErrorKind::InvalidClock) — swallowed here, never surfaced.
+        try? engine.recordDacClock(clock: clock)
+    }
+
     // ── UDL → shared presentation mapping (total by construction) ──────────
 
     private final class ListenerBridge: EngineEventListener {
@@ -185,12 +390,17 @@ final class UniFFIEngineGateway: EngineGateway {
         try StreamifyIOS.searchTracks(query: query, limit: UInt32(max(1, limit)))
     }
 
-    private static func map(_ snapshot: EngineSnapshot) -> PlaybackSnapshot {
+    /// Same module-qualification discipline for the v2 resolver surface.
+    private static func performResolveStreamFormats(videoId: String) throws -> [ResolvedStreamFormat] {
+        try StreamifyIOS.resolveStreamFormats(videoId: videoId)
+    }
+
+    private static func map(_ snapshot: EngineSnapshot, stagedTrack: EngineTrack? = nil) -> PlaybackSnapshot {
         let clock = snapshot.clock.map { clock in
             DacClockSample(
-                framePosition: Int(clock.dacFramePosition),
-                sampleRateHz: Int(clock.sampleRate),
-                monotonicNs: Int(clock.monotonicNs)
+                framePosition: Int(clamping: clock.dacFramePosition),
+                sampleRateHz: Int(clamping: clock.sampleRate),
+                monotonicNs: Int(clamping: clock.monotonicNs)
             )
         }
         return PlaybackSnapshot(
@@ -198,11 +408,12 @@ final class UniFFIEngineGateway: EngineGateway {
             status: map(snapshot.state),
             volume: Double(snapshot.volume),
             buffer: BufferHealth(
-                bufferedDurationMs: Int(snapshot.bufferStats.bufferedDurationMs),
-                underrunCount: Int(snapshot.bufferStats.underrunCount),
+                bufferedDurationMs: Int(clamping: snapshot.bufferStats.bufferedDurationMs),
+                underrunCount: Int(clamping: snapshot.bufferStats.underrunCount),
                 fillRatio: Double(snapshot.bufferStats.fillRatio)
             ),
             clock: clock,
+            currentTrack: stagedTrack.map(PresentationTrack.init),
             jamSessionName: nil
         )
     }
@@ -286,6 +497,30 @@ final class UniFFIEngineGateway: EngineGateway {
             isHost: room.isHost,
             syncOffsetMs: room.syncOffsetMs,
             participants: room.participants
+        )
+    }
+
+    private static func map(_ format: ResolvedStreamFormat) -> EngineResolvedStreamFormat {
+        EngineResolvedStreamFormat(
+            url: format.url,
+            mimeType: format.mimeType,
+            bitrate: Int(clamping: format.bitrate),
+            durationSec: Int(clamping: format.durationSec),
+            isAudioOnly: format.isAudioOnly
+        )
+    }
+
+    private static func map(_ progress: BufferProgress) -> EngineBufferProgress {
+        EngineBufferProgress(
+            bufferedMs: Int(clamping: progress.bufferedMs),
+            fillRatio: Double(progress.fillRatio),
+            underrunEvents: Int(clamping: progress.underrunEvents),
+            overrunEvents: Int(clamping: progress.overrunEvents),
+            targetPositionMs: Int(clamping: progress.targetPositionMs),
+            renderedPositionMs: Int(clamping: progress.renderedPositionMs),
+            trackId: progress.trackId,
+            producerLive: progress.producerLive,
+            eos: progress.eos
         )
     }
 

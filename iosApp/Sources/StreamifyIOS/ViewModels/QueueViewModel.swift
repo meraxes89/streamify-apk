@@ -137,6 +137,21 @@ final class QueueViewModel {
         Task { await library.removeQueueItems(at: all) }
     }
 
+    /// Swipe-to-delete on an "Up next" row (section-local coordinate —
+    /// QueueView's onDelete contract).
+    func removeUpNext(at sectionIndex: Int) {
+        let fullIndex = sectionIndex + max(currentIndex + 1, 0)
+        guard tracks.indices.contains(fullIndex) else { return }
+        remove(atOffsets: IndexSet(integer: fullIndex))
+    }
+
+    /// Sets the auto-mix toggle to a TARGET value (the Toggle binding
+    /// contract — `toggleAutoMix` flips).
+    func setAutoMix(_ enabled: Bool) {
+        guard enabled != autoMixEnabled else { return }
+        toggleAutoMix()
+    }
+
     /// Toggles infinite auto-mix (radio continuation when the queue runs dry).
     func toggleAutoMix() {
         let next = !autoMixEnabled

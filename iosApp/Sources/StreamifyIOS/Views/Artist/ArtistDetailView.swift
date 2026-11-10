@@ -7,17 +7,31 @@ import SwiftUI
 // the overscroll), a sticky condensed bar whose gradient + artist name fade in
 // once the scroll offset crosses the threshold (preference → @State), one-tap
 // Follow, Play + Shuffle, "Popular" rows, an Albums rail and the Clips rail.
+//
+// WS-B B2 — fixture purge: the `tracks` parameter is GONE; the page sources
+// everything from LIVE SEARCH by artist name through an internal
+// SearchViewModel (the only engine surface): song rows → "Popular", album
+// rows → the Albums rail. The clips rail had no engine surface and was
+// removed; #Previews script rows through the preview-only `scriptedResults`
+// lane. No PreviewCatalog in the production path.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 public struct ArtistDetailView: View {
 
     public var artistName: String
-    public var tracks: [VirtualShelfTrack]
     public var isFollowing: Bool
     public var onFollow: ((Bool) -> Void)?
     public var onPlayTrack: (VirtualShelfTrack) -> Void
     public var onOpenAlbum: (String) -> Void
     public var onBack: (() -> Void)?
+
+    /// #Preview / test lane only: scripted resolver rows rendered through the
+    /// exact live-search path production uses; empty in production (WS-B B2).
+    private let scriptedResults: [SearchRow]
+
+    /// WS-B B2: the live "search by name" loader behind the whole page.
+    @State private var search = SearchViewModel()
 
     /// 0 → 1 as the hero collapses past the threshold (quantized).
     @State private var condenseProgress: Double = 0
@@ -26,7 +40,29 @@ public struct ArtistDetailView: View {
 
     public init(
         artistName: String,
-        tracks: [VirtualShelfTrack] = PreviewCatalog.tracks,
+        isFollowing: Bool = false,
+        onFollow: ((Bool) -> Void)? = { _ in },
+        onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
+        onOpenAlbum: @escaping (String) -> Void = { _ in },
+        onBack: (() -> Void)? = {}
+    ) {
+        self.init(
+            artistName: artistName,
+            scriptedResults: [],
+            isFollowing: isFollowing,
+            onFollow: onFollow,
+            onPlayTrack: onPlayTrack,
+            onOpenAlbum: onOpenAlbum,
+            onBack: onBack
+        )
+    }
+
+    /// #Preview / test lane (WS-B B2): scripted resolver rows flow through
+    /// the same rendering path as live search; production callers use the
+    /// public init and always hit the real lane.
+    init(
+        artistName: String,
+        scriptedResults: [SearchRow] = [],
         isFollowing: Bool = false,
         onFollow: ((Bool) -> Void)? = { _ in },
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
@@ -34,7 +70,7 @@ public struct ArtistDetailView: View {
         onBack: (() -> Void)? = {}
     ) {
         self.artistName = artistName
-        self.tracks = tracks
+        self.scriptedResults = scriptedResults
         self.isFollowing = isFollowing
         self.onFollow = onFollow
         self.onPlayTrack = onPlayTrack
@@ -42,22 +78,36 @@ public struct ArtistDetailView: View {
         self.onBack = onBack
     }
 
-    private var artistTracks: [VirtualShelfTrack] {
-        tracks.filter { $0.artist.localizedCaseInsensitiveContains(artistName) }
+    // MARK: - Row sources (WS-B B2)
+
+    /// The resolver rows behind the page: scripted rows when present
+    /// (previews/tests), otherwise the live search results.
+    private var resultRows: [SearchRow] {
+        scriptedResults.isEmpty ? search.currentResults : scriptedResults
     }
 
-    private var artistClips: [ArtistClipModel] {
-        PreviewCatalog.artistClips.filter { $0.artistName == artistName }
+    /// The artist's top songs ("Popular"): the live search rows typed .song,
+    /// mapped onto the view currency.
+    private var topSongs: [VirtualShelfTrack] {
+        resultRows
+            .filter { $0.kind == .song }
+            .map { VirtualShelfTrack(presentationTrack: $0.asPresentationTrack) }
     }
 
-    /// Online album releases by this artist, then the artist's own tracks as
-    /// fixture stand-ins (deduped by title).
+    /// The artist's albums: the live search rows typed .album.
     private var albumCards: [VirtualShelfTrack] {
-        let online = PreviewCatalog.onlineResults
-            .filter { $0.uploader == artistName && $0.type == .album }
-            .map { VirtualShelfTrack(id: $0.id, title: $0.title, artist: $0.uploader, durationSec: $0.durationSec, platformOrigin: "ytm") }
-        let known = Set(online.map(\.title))
-        return online + artistTracks.filter { !known.contains($0.title) }
+        resultRows
+            .filter { $0.kind == .album }
+            .map { VirtualShelfTrack(presentationTrack: $0.asPresentationTrack) }
+    }
+
+    /// True until the first live result lands (`.idle` only ever precedes
+    /// the initial submit) — keeps the empty state from flashing mid-flight.
+    private var isAwaitingResults: Bool {
+        if !scriptedResults.isEmpty { return false }
+        if search.isLoading { return true }
+        if case .idle = search.state { return true }
+        return false
     }
 
     // MARK: Body
@@ -69,24 +119,40 @@ public struct ArtistDetailView: View {
                     heroArt
                 }
                 headerSection
-                YtSectionHeader(title: "Popular", subtitle: "\(artistTracks.count) tracks")
-                ForEach(artistTracks) { track in
-                    TrackListItem(track: track, onPlay: { onPlayTrack(track) })
+                YtSectionHeader(title: "Popular", subtitle: "\(topSongs.count) tracks")
+                if topSongs.isEmpty {
+                    if isAwaitingResults {
+                        trackSkeleton
+                    } else {
+                        EmptyStateView(
+                            symbol: StreamifyIcon.musicNoteList,
+                            title: "No tracks found",
+                            message: "Nothing matched \"\(artistName)\" on the resolver lane yet."
+                        )
                         .padding(.horizontal, StreamifyDimens.spaceLG)
+                        .padding(.top, StreamifyDimens.spaceXL)
+                    }
+                } else {
+                    ForEach(topSongs) { track in
+                        TrackListItem(track: track, onPlay: { onPlayTrack(track) })
+                            .padding(.horizontal, StreamifyDimens.spaceLG)
+                    }
                 }
                 if !albumCards.isEmpty {
                     YtSectionHeader(title: "Albums", subtitle: artistName)
                     albumsRail
-                }
-                if !artistClips.isEmpty {
-                    VerticalClipsRail(clips: artistClips)
-                        .padding(.top, StreamifyDimens.spaceXL)
                 }
             }
             .padding(.bottom, StreamifyDimens.spaceGiant)
         }
         .coordinateSpace(name: "artistScroll")
         .background(StreamifyColors.bgBase)
+        .task {
+            // WS-B B2: live search by artist name is the artist page's only
+            // engine surface; scripted rows (previews/tests) skip it.
+            guard scriptedResults.isEmpty else { return }
+            search.submit(query: artistName)
+        }
         .onPreferenceChange(HeroStretchKey.self) { minY in
             let progress = min(1, max(0, Double(-minY / Self.condenseThreshold)))
             if abs(progress - condenseProgress) > 0.01 { condenseProgress = progress }
@@ -192,11 +258,37 @@ public struct ArtistDetailView: View {
     }
 
     private func playPopular() {
-        if let first = artistTracks.first { onPlayTrack(first) }
+        if let first = topSongs.first { onPlayTrack(first) }
     }
 
     private func shufflePopular() {
-        if let pick = artistTracks.randomElement() { onPlayTrack(pick) }
+        if let pick = topSongs.randomElement() { onPlayTrack(pick) }
+    }
+
+    /// The loading state — redacted placeholder rows while the resolver lane
+    /// answers (mirrors SearchView's skeleton).
+    private var trackSkeleton: some View {
+        LazyVStack(spacing: StreamifyDimens.spaceMD) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack(spacing: StreamifyDimens.spaceMD) {
+                    RoundedRectangle(cornerRadius: StreamifyRadius.md)
+                        .fill(StreamifyColors.bgChipInactive)
+                        .frame(width: StreamifyDimens.trackRowArt, height: StreamifyDimens.trackRowArt)
+                    VStack(alignment: .leading, spacing: StreamifyDimens.spaceSM) {
+                        RoundedRectangle(cornerRadius: StreamifyRadius.sm)
+                            .fill(StreamifyColors.bgChipInactive)
+                            .frame(height: 12)
+                        RoundedRectangle(cornerRadius: StreamifyRadius.sm)
+                            .fill(StreamifyColors.bgChipInactive)
+                            .frame(width: 140, height: 10)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, StreamifyDimens.spaceLG)
+            }
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Searching")
     }
 
     /// Deterministic fixture-scale listener count (djb2 — same artist, same
@@ -252,7 +344,22 @@ private struct HeroStretchKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-#Preview("Artist detail") {
+#Preview("Artist detail — scripted live lane") {
+    NavigationStack {
+        ArtistDetailView(
+            artistName: "Aurora Nine",
+            scriptedResults: [
+                SearchRow(id: "s1", title: "Bit-Perfect Rain", uploader: "Aurora Nine", durationMs: 198_000, kind: .song),
+                SearchRow(id: "s2", title: "Silk Circuitry", uploader: "Aurora Nine", durationMs: 209_000, kind: .song),
+                SearchRow(id: "s3", title: "Vellum Static", uploader: "Low Orbit Choir", durationMs: 312_000, kind: .song),
+                SearchRow(id: "a1", title: "Meridian", uploader: "Aurora Nine", kind: .album),
+            ]
+        )
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Artist detail — honest live lane") {
     NavigationStack {
         ArtistDetailView(artistName: "Aurora Nine")
     }

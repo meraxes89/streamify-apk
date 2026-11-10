@@ -74,4 +74,47 @@ protocol EngineGateway: AnyObject {
     /// Presentation state of the active Jam room, or nil when no session
     /// is live.
     func jamRoomState() async -> EngineJamRoomState?
+
+    // ── WS-B B3/B4: the drivetrain v2 surface (UDL CONTRACT_VERSION 2) ──
+    // The playback data plane merged in PR #151: stream-format resolution,
+    // the full play path (resolve → stage → attach → intent), the sink
+    // lifecycle and the DAC-clock feedback lane. Same failure discipline
+    // as the typed data lane above: control-plane calls degrade to
+    // nil/no-op across the seam — never exceptions into UI code — except
+    // `resolveStreamFormats`, the network operation, which throws.
+
+    /// Resolves the playable CDN formats for one video id (the resolver's
+    /// cache-backed network lane; audio-only rows first). Throws on
+    /// transport/resolver failure.
+    func resolveStreamFormats(videoId: String) async throws -> [EngineResolvedStreamFormat]
+
+    /// The full play path: resolve (or reuse the row's resolved URL) →
+    /// stage the track in the queue with that URL → attach the sink plane
+    /// (idempotent) → emit the play intent. Returns the staged queue
+    /// index, or nil when the lane refused the row.
+    func play(track: EngineTrack) async -> Int?
+
+    /// Plays a row that is ALREADY staged in the engine's queue (queue-row
+    /// taps — no re-resolve, no duplicate row). False when the row is
+    /// unknown or carries no resolved URL.
+    func playStagedTrack(id: String) async -> Bool
+
+    /// Mounts the engine's SPSC ring + producer (canonical interleaved
+    /// stereo f32 @ 48 kHz; the capacity is power-of-two-rounded by the
+    /// engine). Replace semantics per the contract — the gateway attaches
+    /// once per plane lifetime and re-attaches only after a detach.
+    func attachSink(capacityFrames: Int) async
+
+    /// Tears the playback plane down (prompt producer shutdown; the
+    /// transport and queue surfaces keep working — control-plane-only).
+    func detachSink() async
+
+    /// Live progress of the attached plane; producer fields are zero and
+    /// `producerLive` is false while no plane exists.
+    func bufferProgress() async -> EngineBufferProgress?
+
+    /// Feeds one hardware DAC clock sample back to the engine (MP-DEC-03:
+    /// the hardware render core is the SOLE clock master — this is the
+    /// DacClockPublisher drain's destination).
+    func recordDacClock(_ sample: DacClockSample) async
 }

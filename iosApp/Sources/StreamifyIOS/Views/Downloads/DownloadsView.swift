@@ -1,13 +1,20 @@
 import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SW-ENG2-08 — DownloadsView: the transfer manager surface.
+// WS-B B7 (Engineer 2) — DownloadsView: the transfer manager surface, WIRED.
 //
 // SwiftUI port of ui/screens/DownloadScreen.kt (its storage accounting card +
-// transfer list, SW-ENG2-09 fixtures): storage summary with a thin capacity
+// transfer list, originally SW-ENG2-08): storage summary with a thin capacity
 // bar and legend chips, All / Downloading / Done / Failed filter chips, one
 // row per DownloadTransfer — live progress, queued / paused / completed /
-// failed states, pause-resume and remove actions.
+// failed states, pause-resume, remove, retry and OFFLINE PLAY actions.
+//
+// The SW-ENG2-08 fixture feed is RETIRED: the screen now OWNS
+// DownloadViewModel (the BackgroundDownloadService wiring — live progress
+// aggregation, resume-data verification, real storage accounting, the
+// on-disk track manifest) and renders model truth only. PreviewCatalog
+// fixtures appear exclusively inside the #Preview lane (the internal
+// fixture initializer); no production path touches them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Transfer filter chips (All shows every state).
@@ -38,47 +45,104 @@ private enum DownloadFilter: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
 public struct DownloadsView: View {
-    public var transfers: [DownloadTransfer]
-    public var onRetry: (String) -> Void
-    public var onPauseResume: (String) -> Void
-    public var onRemove: (String) -> Void
 
+    /// Offline play (WS-B B7): invoked with the manifest track AND the
+    /// direct `file://` source URL of a completed transfer when its play
+    /// affordance is tapped. The URL is NOT re-resolved — the engine's
+    /// fetcher reads `file://` ranges straight off disk (airplane-mode
+    /// safe). RootShellView wires this; nil (the default) hides the
+    /// affordance entirely.
+    public var onPlayOffline: ((PresentationTrack, String) -> Void)? = nil
+
+    /// #Preview fixtures ONLY — nil in every production path (the view
+    /// model drives; see `init(previewTransfers:)`).
+    private let previewTransfers: [DownloadTransfer]?
+    private let previewUsedGb: Double
+    private let previewTotalGb: Double
+
+    @State private var model = DownloadViewModel()
     @State private var activeFilter: DownloadFilter = .all
-    /// Storage accounting fixtures (the live report is a host concern).
-    private let usedGb = 18.2
-    private let totalGb = 64.0
-    private let legendQualities = ["FLAC 24/96", "AAC 256"]
 
-    public init(
-        transfers: [DownloadTransfer] = PreviewCatalog.downloads,
-        onRetry: @escaping (String) -> Void = { _ in },
-        onPauseResume: @escaping (String) -> Void = { _ in },
-        onRemove: @escaping (String) -> Void = { _ in }
+    public init(onPlayOffline: ((PresentationTrack, String) -> Void)? = nil) {
+        self.onPlayOffline = onPlayOffline
+        self.previewTransfers = nil
+        self.previewUsedGb = 0
+        self.previewTotalGb = 0
+    }
+
+    /// The #Preview lane: fixed fixtures, no view-model bring-up, no
+    /// service, no start-up side effects. Internal by design — production
+    /// call sites use `init(onPlayOffline:)`, so the bare `DownloadsView()`
+    /// stays the model-driven path.
+    init(
+        previewTransfers: [DownloadTransfer],
+        usedGb: Double = 0,
+        totalGb: Double = 0
     ) {
-        self.transfers = transfers
-        self.onRetry = onRetry
-        self.onPauseResume = onPauseResume
-        self.onRemove = onRemove
+        self.onPlayOffline = nil
+        self.previewTransfers = previewTransfers
+        self.previewUsedGb = usedGb
+        self.previewTotalGb = totalGb
+    }
+
+    // MARK: - Model-driven data (fixtures never leak into these)
+
+    private var transfers: [DownloadTransfer] {
+        previewTransfers ?? model.transfers
+    }
+
+    private var usedGb: Double {
+        previewTransfers == nil ? model.usedGb : previewUsedGb
+    }
+
+    private var totalGb: Double {
+        previewTransfers == nil ? model.totalGb : previewTotalGb
     }
 
     private var visibleTransfers: [DownloadTransfer] {
         transfers.filter(activeFilter.matches)
     }
 
+    /// Legend chips: the quality labels actually present in the list (the
+    /// Android DownloadQualityCard fixture chips are gone).
+    private var legendQualities: [String] {
+        var seen: Set<String> = []
+        return transfers.compactMap { seen.insert($0.quality).inserted ? $0.quality : nil }
+    }
+
     public var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: StreamifyDimens.spaceLG) {
                 Text("Downloads").font(StreamifyType.headlineLarge).foregroundStyle(StreamifyColors.textMain)
+                recoveryBanner
                 storageCard
                 filterChips
-                if visibleTransfers.isEmpty {
-                    EmptyStateView(symbol: StreamifyIcon.download, title: "No downloads here",
-                                   message: "Switch the filter or start a transfer to fill this queue.")
-                        .frame(maxHeight: 220)
+                if transfers.isEmpty {
+                    EmptyStateView(
+                        symbol: StreamifyIcon.download,
+                        title: "No downloads yet",
+                        message: "Download a track to take it with you — transfers resume automatically across restarts."
+                    )
+                    .frame(maxHeight: 220)
+                } else if visibleTransfers.isEmpty {
+                    EmptyStateView(
+                        symbol: StreamifyIcon.download,
+                        title: "No downloads here",
+                        message: "Switch the filter or start a transfer to fill this queue."
+                    )
+                    .frame(maxHeight: 220)
                 } else {
                     ForEach(visibleTransfers) { transfer in
-                        TransferRow(transfer: transfer, onRetry: onRetry, onPauseResume: onPauseResume, onRemove: onRemove)
+                        TransferRow(
+                            transfer: transfer,
+                            onRetry: { model.retry(transfer.id) },
+                            onPauseResume: { model.pauseResume(transfer.id) },
+                            onRemove: { model.remove(transfer.id) },
+                            onPlayOffline: onPlayOffline,
+                            offlineTrack: onPlayOffline == nil ? nil : model.offlineTrack(for: transfer)
+                        )
                     }
                 }
             }
@@ -86,30 +150,66 @@ public struct DownloadsView: View {
             .padding(.bottom, StreamifyDimens.spaceGiant)
         }
         .background(StreamifyColors.bgBase)
+        .task {
+            // The #Preview fixture lane never touches the service.
+            if previewTransfers == nil { model.start() }
+        }
+        .refreshable {
+            if previewTransfers == nil { await model.refresh() }
+        }
+    }
+
+    // MARK: - Resume verification (B7's acceptance surface)
+
+    /// "N downloads recovered" — rendered only when the cold-start
+    /// verification actually re-armed persisted resume snapshots.
+    @ViewBuilder
+    private var recoveryBanner: some View {
+        if case .verified(let count) = model.resumeVerification, count > 0 {
+            HStack(spacing: StreamifyDimens.spaceSM) {
+                Image(systemName: StreamifyIcon.checkmarkCircle)
+                    .foregroundStyle(StreamifyColors.successGreen)
+                Text("\(count) download\((count == 1 ? "" : "s")) recovered — picking up from saved progress")
+                    .font(StreamifyType.caption)
+                    .foregroundStyle(StreamifyColors.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(StreamifyDimens.spaceMD)
+            .cardSurface(hoverable: false)
+        }
     }
 
     // MARK: - Storage summary (Android DownloadQualityCard)
 
     private var storageCard: some View {
         VStack(alignment: .leading, spacing: StreamifyDimens.spaceMD) {
-            Text("\(String(format: "%.1f", usedGb)) GB of \(Int(totalGb)) GB used")
-                .font(StreamifyType.bodyMedium).monospacedDigit().foregroundStyle(StreamifyColors.textMain)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(StreamifyColors.divider)
-                    Capsule().fill(StreamifyColors.primary)
-                        .frame(width: geo.size.width * usedGb / totalGb)
+            if totalGb > 0 {
+                Text("\(String(format: "%.1f", usedGb)) GB of \(Int(totalGb.rounded())) GB used")
+                    .font(StreamifyType.bodyMedium).monospacedDigit().foregroundStyle(StreamifyColors.textMain)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(StreamifyColors.divider)
+                        Capsule().fill(StreamifyColors.primary)
+                            .frame(width: geo.size.width * min(1, max(0, usedGb / totalGb)))
+                    }
                 }
+                .frame(height: 3)
+            } else {
+                // Volume capacity unavailable: the honest used figure
+                // alone — no fabricated denominator.
+                Text(usedGb > 0 ? "\(String(format: "%.1f", usedGb)) GB used" : "No downloads stored")
+                    .font(StreamifyType.bodyMedium).monospacedDigit().foregroundStyle(StreamifyColors.textMain)
             }
-            .frame(height: 3)
-            HStack(spacing: StreamifyDimens.spaceSM) {
-                ForEach(legendQualities, id: \.self) { quality in
-                    Text(quality).font(StreamifyType.chipText).foregroundStyle(StreamifyColors.textSecondary)
-                        .padding(.horizontal, StreamifyDimens.spaceSM)
-                        .padding(.vertical, StreamifyDimens.spaceXS)
-                        .chipSurface(active: false)
+            if !legendQualities.isEmpty {
+                HStack(spacing: StreamifyDimens.spaceSM) {
+                    ForEach(legendQualities, id: \.self) { quality in
+                        Text(quality).font(StreamifyType.chipText).foregroundStyle(StreamifyColors.textSecondary)
+                            .padding(.horizontal, StreamifyDimens.spaceSM)
+                            .padding(.vertical, StreamifyDimens.spaceXS)
+                            .chipSurface(active: false)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -139,12 +239,17 @@ public struct DownloadsView: View {
 }
 
 /// One transfer row: seeded-gradient art, title/artist + quality chip, the
-/// state projection, and pause/resume + remove actions.
+/// state projection, and offline-play / pause-resume / remove actions.
 private struct TransferRow: View {
     let transfer: DownloadTransfer
-    let onRetry: (String) -> Void
-    let onPauseResume: (String) -> Void
-    let onRemove: (String) -> Void
+    let onRetry: () -> Void
+    let onPauseResume: () -> Void
+    let onRemove: () -> Void
+    var onPlayOffline: ((PresentationTrack, String) -> Void)? = nil
+    /// The model's offline track for this row — non-nil only for a
+    /// completed transfer whose vault file exists (the play affordance's
+    /// gate, alongside `onPlayOffline` itself).
+    var offlineTrack: PresentationTrack? = nil
 
     private var artGradient: LinearGradient {
         StreamifyGradients.linear(StreamifyGradients.preset(forSeed: transfer.title))
@@ -158,6 +263,14 @@ private struct TransferRow: View {
     }
 
     private var isPaused: Bool { if case .paused = transfer.state { return true }; return false }
+
+    /// The live row's fraction in [0, 1]; nil while the server has not
+    /// advertised a total length (or the row is not downloading) — the
+    /// indeterminate case, never a fabricated number.
+    private var progress: Double? {
+        if case .downloading(let fraction) = transfer.state { return fraction }
+        return nil
+    }
 
     private func actionButton(
         icon: String, tint: Color, background: Color, action: @escaping () -> Void
@@ -201,15 +314,25 @@ private struct TransferRow: View {
             }
             Spacer(minLength: StreamifyDimens.spaceSM)
             HStack(spacing: StreamifyDimens.spaceSM) {
+                if let onPlayOffline, let offlineTrack, let playableUrl = transfer.playableUrl {
+                    actionButton(
+                        icon: StreamifyIcon.play,
+                        tint: StreamifyColors.textOnActiveChip,
+                        background: StreamifyColors.primary
+                    ) {
+                        onPlayOffline(offlineTrack, playableUrl)
+                    }
+                    .accessibilityLabel("Play offline")
+                }
                 if showsPauseResume {
                     actionButton(icon: isPaused ? StreamifyIcon.play : StreamifyIcon.pause,
                                  tint: StreamifyColors.textMain, background: StreamifyColors.bgChipInactive) {
-                        onPauseResume(transfer.id)
+                        onPauseResume()
                     }
                 }
                 actionButton(icon: StreamifyIcon.trash, tint: StreamifyColors.errorRed,
                              background: StreamifyColors.errorBg) {
-                    onRemove(transfer.id)
+                    onRemove()
                 }
             }
         }
@@ -222,16 +345,21 @@ private struct TransferRow: View {
         switch transfer.state {
         case .downloading(let progress):
             VStack(alignment: .leading, spacing: 4) {
+                // Nil progress = the server has not advertised a length
+                // yet: the indeterminate bar, never a fabricated fraction
+                // (B7's honest-empty discipline).
                 ProgressView(value: progress).tint(StreamifyColors.primary)
-                Text("\(Int((progress * 100).rounded())) % · \(String(format: "%.1f", transfer.sizeMb * progress)) MB/s")
-                    .font(StreamifyType.caption).monospacedDigit().foregroundStyle(StreamifyColors.textSecondary)
+                Text(progressCaption)
+                    .font(StreamifyType.caption).monospacedDigit()
+                    .foregroundStyle(StreamifyColors.textSecondary)
             }
         case .queued:
             stateCaption(icon: StreamifyIcon.clock, text: "Queued")
         case .completed:
             HStack(spacing: 4) {
                 Image(systemName: StreamifyIcon.checkmarkCircle).foregroundStyle(StreamifyColors.successGreen)
-                Text("\(String(format: "%.1f", transfer.sizeMb)) MB").monospacedDigit()
+                Text(transfer.sizeMb > 0 ? "\(String(format: "%.1f", transfer.sizeMb)) MB" : "Ready offline")
+                    .monospacedDigit()
             }
             .font(StreamifyType.caption).foregroundStyle(StreamifyColors.textSecondary)
         case .paused:
@@ -243,7 +371,7 @@ private struct TransferRow: View {
                     Text(message).foregroundStyle(StreamifyColors.errorRed).lineLimit(1)
                 }
                 .font(StreamifyType.caption)
-                Button(action: { Haptics.play(.scrubTick); onRetry(transfer.id) }) {
+                Button(action: { Haptics.play(.scrubTick); onRetry() }) {
                     Text("Retry").font(StreamifyType.chipText).foregroundStyle(StreamifyColors.textOnActiveChip)
                         .padding(.horizontal, StreamifyDimens.spaceMD).frame(height: 24)
                         .background(Capsule().fill(StreamifyColors.primary))
@@ -252,8 +380,29 @@ private struct TransferRow: View {
             }
         }
     }
+
+    /// The live-progress caption: percent + transferred-of-total MB when
+    /// the length is known, an honest plain "Downloading" otherwise.
+    private var progressCaption: String {
+        guard let progress else {
+            return transfer.sizeMb > 0
+                ? "Downloading · \(String(format: "%.1f", transfer.sizeMb)) MB"
+                : "Downloading"
+        }
+        let percent = Int((progress * 100).rounded())
+        guard transfer.sizeMb > 0 else { return "\(percent) %" }
+        return "\(percent) % · \(String(format: "%.1f", transfer.sizeMb * progress)) of \(String(format: "%.1f", transfer.sizeMb)) MB"
+    }
 }
 
 #Preview("Downloads") {
-    DownloadsView()
+    DownloadsView(
+        previewTransfers: PreviewCatalog.downloads,
+        usedGb: 18.2,
+        totalGb: 64.0
+    )
+}
+
+#Preview("Empty") {
+    DownloadsView(previewTransfers: [])
 }

@@ -55,6 +55,9 @@ enum CoreAudioDriverStartStatus: Equatable, Sendable {
     case invalidSinkHandle
     /// The output unit failed to open/initialize (device busy, no route).
     case deviceOpenFailed
+    /// The engine's playback ring is not exported yet (WS-B B4: the Rust
+    /// `attach_sink` must run before the render core can pull).
+    case ringNotExported
 }
 
 /// The native-adapter seam. `NativeCoreAudioDriver` binds the real facade;
@@ -64,6 +67,10 @@ enum CoreAudioDriverStartStatus: Equatable, Sendable {
 protocol CoreAudioDriver: AnyObject {
     /// Arms the pull adapter for the sink registered under `sinkHandle`.
     func start(sinkHandle: Int64) -> CoreAudioDriverStartStatus
+    /// Arms the pull adapter against the ENGINE's exported Rust SPSC ring
+    /// (WS-B B4): the producer side of `playback_ring()` — the bracket the
+    /// CoreAudio render callback pulls PCM from, without a UniFFI surface.
+    func startRustRing() -> CoreAudioDriverStartStatus
     /// Ordered teardown (pointer retract BEFORE hardware stop — see the
     /// native header's lifetime contract). Idempotent.
     func stop()
@@ -94,11 +101,13 @@ final class NativeCoreAudioDriver: CoreAudioDriver {
 
     private var adapterHandle: Int64 = 0
     private var startFn: StartFn?
+    private var startRingFn: StartRingFn?
     private var stopFn: StopFn?
     private var latestClockFn: LatestClockFn?
     private var telemetryFn: TelemetryFn?
 
     private typealias StartFn = @convention(c) (Int64) -> Int64
+    private typealias StartRingFn = @convention(c) () -> Int64
     private typealias StopFn = @convention(c) (Int64) -> Void
     private typealias LatestClockFn = @convention(c) (
         Int64, UnsafeMutablePointer<UInt64>?, UnsafeMutablePointer<UInt32>?,
@@ -118,6 +127,19 @@ final class NativeCoreAudioDriver: CoreAudioDriver {
         guard let startFn else { return .nativeFacadeUnavailable }
         let handle = startFn(sinkHandle)
         guard handle != 0 else { return .deviceOpenFailed }
+        adapterHandle = handle
+        return .started
+    }
+
+    func startRustRing() -> CoreAudioDriverStartStatus {
+        stop()
+        guard resolveFacade() else { return .nativeFacadeUnavailable }
+        // The rust-ring entry is a separate, newer facade symbol: its
+        // absence means the linked xcframework predates WS-B B4 (or the
+        // registry path is the only one compiled) — a clean degradation.
+        guard let startRingFn else { return .nativeFacadeUnavailable }
+        let handle = startRingFn()
+        guard handle != 0 else { return .ringNotExported }
         adapterHandle = handle
         return .started
     }
@@ -158,8 +180,9 @@ final class NativeCoreAudioDriver: CoreAudioDriver {
 
     deinit { stop() }
 
-    /// Resolves the four facade symbols from the process' global scope
-    /// (RTLD_DEFAULT) once per start attempt.
+    /// Resolves the facade symbols from the process' global scope
+    /// (RTLD_DEFAULT) once per start attempt. The four base symbols are
+    /// REQUIRED; the rust-ring entry (WS-B B4) is optional.
     private func resolveFacade() -> Bool {
         guard startFn == nil || latestClockFn == nil || stopFn == nil
             || telemetryFn == nil else { return true }
@@ -176,6 +199,9 @@ final class NativeCoreAudioDriver: CoreAudioDriver {
         stopFn = unsafeBitCast(stopSym, to: StopFn.self)
         latestClockFn = unsafeBitCast(clockSym, to: LatestClockFn.self)
         telemetryFn = unsafeBitCast(telemetrySym, to: TelemetryFn.self)
+        if let ringSym = dlsym(rtldDefault, "streamify_coreaudio_start_rust_ring") {
+            startRingFn = unsafeBitCast(ringSym, to: StartRingFn.self)
+        }
         return true
     }
 }
@@ -221,6 +247,11 @@ final class SimulatedCoreAudioDriver: CoreAudioDriver {
     var isRunning: Bool { running }
 
     func start(sinkHandle: Int64) -> CoreAudioDriverStartStatus {
+        running = true
+        return .started
+    }
+
+    func startRustRing() -> CoreAudioDriverStartStatus {
         running = true
         return .started
     }
@@ -286,6 +317,16 @@ final class CoreAudioRenderCore {
             return .invalidSinkHandle
         }
         let status = driver.start(sinkHandle: sinkHandle)
+        lastStartStatus = status
+        return status
+    }
+
+    /// Arms the pull adapter against the ENGINE's exported Rust SPSC ring
+    /// (WS-B B4 — the `playback_ring()` consumer edge). Fails cleanly when
+    /// the bracket is not linked / the ring is not yet exported.
+    @discardableResult
+    func startRustRing() -> CoreAudioDriverStartStatus {
+        let status = driver.startRustRing()
         lastStartStatus = status
         return status
     }

@@ -128,6 +128,13 @@ jobs:
       - name: Docs-vs-reality lint (TRUTH-02)
         run: python3 scripts/docs_ledger_check.py
 
+      # WS-B B2: preview-fixture drift lint — PreviewCatalog is the
+      # preview/test lane's currency and may never appear in a production
+      # code path (the B2 acceptance criterion, enforced mechanically).
+      # ~2 s; runs on every event alongside the docs lint.
+      - name: Preview-catalog production-path guard (WS-B B2)
+        run: python3 scripts/preview_catalog_guard.py
+
   # =========================================================================
   # TIER 2: Modular Domain Shards (Reusable Workflows, parallel dispatch)
   # =========================================================================

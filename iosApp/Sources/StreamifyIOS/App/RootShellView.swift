@@ -24,9 +24,11 @@ import SwiftUI
 //
 // STATE DISCIPLINE: the engine pushes session snapshots (MP-DEC-04); the
 // shell owns NO engine truth — it lowers model state onto screens and routes
-// intent back through the command plane. The play QUEUE is host-owned queue
-// truth lowered onto [QueueListState] (the queue lane is the engine
-// contract's next surface).
+// intent back through the command plane. The play QUEUE is the ENGINE's
+// queue (WS-B B2): QueueViewModel consumes the feature library's
+// push-synthesized queue snapshots, and the view-level `QueueListState`
+// below is a derived projection — mutations dispatch back through the
+// view model, never local shell state.
 // ─────────────────────────────────────────────────────────────────────────────
 
 @MainActor
@@ -49,9 +51,11 @@ public struct RootShellView: View {
     @State private var settingsPath = NavigationPath()
     @State private var detailPath = NavigationPath()
 
-    // Host-owned queue truth (lowered onto QueueView / FullPlayerView).
-    @State private var queueState = PreviewCatalog.queueState
-    @State private var queueAutoMix = true
+    // WS-B B2: queue truth — the ENGINE's queue, pushed through the feature
+    // library's synthesized queue-event lane (no PreviewCatalog seeding, no
+    // host-owned copy). The QueueListState handed to QueueView /
+    // FullPlayerView is a derived projection below.
+    @State private var queueModel = QueueViewModel()
 
     // Presentation surfaces.
     @State private var fullPlayerPresented = false
@@ -79,11 +83,17 @@ public struct RootShellView: View {
             #endif
         }
         .tint(StreamifyColors.primary)
+        .task {
+            // WS-B B2: the queue plane consumes the engine's synthesized
+            // queue pushes for the shell's lifetime.
+            queueModel.start()
+            connectCarPlayRouter()
+        }
         .fullPlayerSheet(isPresented: $fullPlayerPresented) {
             FullPlayerView(
                 state: model.state,
-                queueState: $queueState,
-                queueAutoMix: $queueAutoMix,
+                queueState: queueListBinding,
+                queueAutoMix: queueAutoMixBinding,
                 onDismiss: { fullPlayerPresented = false },
                 onPrevious: { model.previous() },
                 onToggle: { model.togglePlayPause() },
@@ -91,16 +101,52 @@ public struct RootShellView: View {
                 onSeekUs: { us in model.seek(to: Int(us / 1_000)) },
                 onVolumeChange: { model.setVolume($0) },
                 onReorderQueue: { offsets, destination in
-                    queueState = queueState.movingUpNext(from: offsets, to: destination)
+                    queueModel.move(fromOffsets: offsets, toOffset: destination)
                 },
                 onDeleteQueue: { sectionIndex in
-                    queueState = queueState.removingUpNext(at: sectionIndex)
+                    queueModel.removeUpNext(at: sectionIndex)
                 }
             )
         }
         .sheet(isPresented: $queuePresented) {
             queueSheet
         }
+    }
+
+    // MARK: - WS-B B2: the derived queue projection (engine truth → views)
+
+    /// QueueView/FullPlayerView speak the view-level `QueueListState`
+    /// currency; the truth behind it is the engine's queue via
+    /// QueueViewModel. Mutations NEVER land in the binding's setter — they
+    /// dispatch through the view model (the callbacks below).
+    private var queueListBinding: Binding<QueueListState> {
+        Binding(
+            get: {
+                QueueListState(
+                    tracks: queueModel.tracks,
+                    currentIndex: queueModel.currentIndex,
+                    isPlaying: queueModel.isPlaying
+                )
+            },
+            set: { _ in }
+        )
+    }
+
+    private var queueAutoMixBinding: Binding<Bool> {
+        Binding(
+            get: { queueModel.autoMixEnabled },
+            set: { queueModel.setAutoMix($0) }
+        )
+    }
+
+    /// WS-B B6: routes the CarPlay scene (if the OS connected one) onto the
+    /// same command plane as the in-app transport — the scene delegate's
+    /// `router` is assigned the moment the shell comes up (and re-pointed
+    /// here on every fresh shell instance).
+    private func connectCarPlayRouter() {
+        #if canImport(CarPlay) && canImport(UIKit)
+        CarPlaySceneDelegate.active?.router = model
+        #endif
     }
 
     // MARK: - Root idiom selection
@@ -287,7 +333,8 @@ public struct RootShellView: View {
         case .nowPlaying: nowPlayingScreen
         case .equalizer: EqualizerView()
         case .dsp: DspSettingsView()
-        case .downloads: DownloadsView()
+        case .downloads:
+            downloadsScreen
         case .updates: UpdatesHubView()
         case .community: CommunityHubView()
         case .wrapped: StatsWrappedView()
@@ -330,8 +377,8 @@ public struct RootShellView: View {
     private var miniPlayerDock: some View {
         MiniPlayerBar(
             state: model.state,
-            nextTrackTitle: queueState.upNext.first?.track.title,
-            previousTrackTitle: queueState.played.last?.track.title,
+            nextTrackTitle: queueModel.upNext.first?.track.title,
+            previousTrackTitle: queueModel.played.last?.track.title,
             onPrevious: { model.previous() },
             onToggle: { model.togglePlayPause() },
             onNext: { model.next() },
@@ -342,21 +389,16 @@ public struct RootShellView: View {
     private var queueSheet: some View {
         NavigationStack {
             QueueView(
-                state: $queueState,
-                autoMix: $queueAutoMix,
+                state: queueListBinding,
+                autoMix: queueAutoMixBinding,
                 onTrackClick: { index in
-                    queueState = QueueListState(
-                        tracks: queueState.tracks,
-                        currentIndex: index,
-                        isPlaying: true
-                    )
-                    model.togglePlayPause()
+                    playQueueRow(at: index)
                 },
                 onReorder: { offsets, destination in
-                    queueState = queueState.movingUpNext(from: offsets, to: destination)
+                    queueModel.move(fromOffsets: offsets, toOffset: destination)
                 },
                 onDelete: { sectionIndex in
-                    queueState = queueState.removingUpNext(at: sectionIndex)
+                    queueModel.removeUpNext(at: sectionIndex)
                 }
             )
             .toolbar {
@@ -387,7 +429,7 @@ public struct RootShellView: View {
         case .lyrics(let title, let artist):
             RouteScreen { dismiss in
                 LyricsView(
-                    lyrics: PreviewCatalog.lyrics,
+                    lyrics: [],
                     trackTitle: title,
                     trackArtist: artist,
                     positionMs: Double(model.state.positionForDisplayMs ?? 0),
@@ -396,11 +438,9 @@ public struct RootShellView: View {
             }
 
         case .artist(let name):
-            let catalog = PreviewCatalog.tracks.filter { $0.artist == name }
             RouteScreen { dismiss in
                 ArtistDetailView(
                     artistName: name,
-                    tracks: catalog.isEmpty ? PreviewCatalog.tracks : catalog,
                     onPlayTrack: { play(track: $0) },
                     onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: name)) },
                     onBack: { dismiss() }
@@ -441,7 +481,7 @@ public struct RootShellView: View {
             DspSettingsView()
 
         case .downloads:
-            DownloadsView()
+            downloadsScreen
 
         case .updatesHub:
             UpdatesHubView()
@@ -484,13 +524,16 @@ public struct RootShellView: View {
     /// The pushed-queue variant (dismisses via the environment pop).
     private var queueRoute: some View {
         QueueView(
-            state: $queueState,
-            autoMix: $queueAutoMix,
+            state: queueListBinding,
+            autoMix: queueAutoMixBinding,
+            onTrackClick: { index in
+                playQueueRow(at: index)
+            },
             onReorder: { offsets, destination in
-                queueState = queueState.movingUpNext(from: offsets, to: destination)
+                queueModel.move(fromOffsets: offsets, toOffset: destination)
             },
             onDelete: { sectionIndex in
-                queueState = queueState.removingUpNext(at: sectionIndex)
+                queueModel.removeUpNext(at: sectionIndex)
             }
         )
     }
@@ -520,14 +563,14 @@ public struct RootShellView: View {
         )
     }
 
-    /// Search (SW-ENG2-04): native .searchable + debounced instant queries;
-    /// results are the deterministic catalog until the search engine lane
-    /// lands (Engineer 1's UniFFI contract surface).
+    /// Search (SW-ENG2-04 / WS-B B2): the 300 ms-debounced SearchViewModel
+    /// inside SearchView drives live `searchTracks` over the FFI lane; the
+    /// shell only routes result taps (play / push destinations).
     private func searchScreen(path: Binding<NavigationPath>) -> some View {
         SearchView(
-            onSearch: { _ in },
-            onSubmit: { _ in },
-            onPlayTrack: { play(track: $0) },
+            onPlayTrack: { row in
+                play(track: row.asPresentationTrack)
+            },
             onOpenResult: { result in
                 switch result.type {
                 case .artist:
@@ -537,7 +580,7 @@ public struct RootShellView: View {
                         AppRoute.album(title: result.title, artist: result.uploader)
                     )
                 case .song, .video:
-                    play(track: PreviewCatalog.tracks[0])
+                    play(track: result.asPresentationTrack)
                 }
             }
         )
@@ -590,20 +633,36 @@ public struct RootShellView: View {
         )
     }
 
+    /// Downloads (WS-B B7): offline rows play through the SAME engine
+    /// path — the `file://` URL short-circuits resolve (airplane-mode
+    /// safe), the CoreAudio plane is already mounted by the transport.
+    private var downloadsScreen: some View {
+        DownloadsView { track, playableUrl in
+            model.play(track: track, resolvedStreamUrl: playableUrl)
+        }
+    }
+
     // MARK: - Intent lowering
 
-    /// Plays a tapped track: the shell owns queue TRUTH, so the tap lands on
-    /// the host queue (cursor to the tapped row) and the engine's command
-    /// plane receives the play intent — the pushed snapshot repaints.
+    /// Plays the engine-queue row at `index` (a queue-list tap): the row is
+    /// already staged — the engine selects it and emits the intent itself
+    /// (no re-resolve, no duplicate row).
+    private func playQueueRow(at index: Int) {
+        guard queueModel.tracks.indices.contains(index) else { return }
+        model.playStaged(trackId: queueModel.tracks[index].id)
+    }
+
+    /// WS-B B3: a tapped track routes straight into the engine's play path
+    /// (resolve → stage → attach → play intent, with the CoreAudio plane
+    /// mounted by the transport holder) — the pushed snapshot repaints.
+    private func play(track: PresentationTrack) {
+        model.play(track: track)
+    }
+
+    /// The fixture-currency overload (VirtualShelfTrack converts onto the
+    /// shared presentation model — the engine's currency).
     private func play(track: VirtualShelfTrack) {
-        let tracks = PreviewCatalog.presentationTracks
-        let index = tracks.firstIndex(where: { $0.id == track.presentationTrack.id }) ?? 0
-        queueState = QueueListState(
-            tracks: tracks,
-            currentIndex: index,
-            isPlaying: true
-        )
-        model.togglePlayPause()
+        play(track: track.presentationTrack)
     }
 }
 

@@ -191,18 +191,30 @@ enum CarPlayTemplateFactory {
 /// before the scene connects.
 @available(iOS 14.0, *)
 @MainActor
-final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
+public final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
+
+    /// The live scene instance (the OS instantiates the delegate from
+    /// the host app's scene manifest; the shell reaches it through here
+    /// to assign the command router — WS-B B6's fix for the unassigned
+    /// `router`).
+    @MainActor public static weak var active: CarPlaySceneDelegate?
+
 
     /// The shared command plane (weak: the scene outlives nothing).
-    weak var router: RemoteCommandRouting?
+    public weak var router: RemoteCommandRouting?
 
     /// Browse content (library truth).
-    var contentProvider: CarPlayContentProviding = EmptyCarPlayContentProvider()
+    public var contentProvider: CarPlayContentProviding = EmptyCarPlayContentProvider()
 
     private weak var interfaceController: CPInterfaceController?
 
     private var homeTemplate: CPListTemplate?
     private var playlistsTemplate: CPListTemplate?
+
+    public override init() {
+        super.init()
+        Self.active = self
+    }
 
     // MARK: CPTemplateApplicationSceneDelegate (audio app variant)
     //
