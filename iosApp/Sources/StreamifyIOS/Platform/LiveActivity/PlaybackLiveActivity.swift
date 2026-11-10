@@ -433,6 +433,8 @@ struct PlaybackLiveActivityLockScreenView: View {
 /// `StreamifyWidgetsEntryPoint { PlaybackLiveActivityWidget() ... }`.
 @available(iOS 16.1, *)
 public struct PlaybackLiveActivityWidget: Widget {
+    public init() {}
+
     public var body: some WidgetConfiguration {
         ActivityConfiguration(for: StreamifyPlaybackAttributes.self) { context in
             PlaybackLiveActivityLockScreenView(state: context.state)
