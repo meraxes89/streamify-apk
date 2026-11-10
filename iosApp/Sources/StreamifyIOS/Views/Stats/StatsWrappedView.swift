@@ -20,9 +20,9 @@ public struct StatsWrappedView: View {
     public var onPlayTrack: (VirtualShelfTrack) -> Void
 
     public init(
-        wrappedStats: [WrappedStat] = PreviewCatalog.wrappedStats,
-        genreStats: [GenreStat] = PreviewCatalog.genreStats,
-        topTracks: [VirtualShelfTrack] = Array(PreviewCatalog.tracks[0..<5]),
+        wrappedStats: [WrappedStat] = [],
+        genreStats: [GenreStat] = [],
+        topTracks: [VirtualShelfTrack] = [],  // WS-B B2: live shell lowers the VM's rows in
         onShare: @escaping () -> Void = {},
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in }
     ) {
@@ -196,6 +196,10 @@ private struct TopTrackRow: View {
 
 #Preview("Wrapped") {
     NavigationStack {
-        StatsWrappedView()
+        StatsWrappedView(
+            wrappedStats: PreviewCatalog.wrappedStats,
+            genreStats: PreviewCatalog.genreStats,
+            topTracks: Array(PreviewCatalog.tracks[0..<5])
+        )
     }
 }

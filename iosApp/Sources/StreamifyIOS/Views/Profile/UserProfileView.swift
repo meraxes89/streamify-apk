@@ -20,7 +20,10 @@ public struct UserProfileView: View {
     public var onPlayTopTrack: () -> Void
 
     public init(
-        profile: UserProfileEntry = PreviewCatalog.userProfile,
+        profile: UserProfileEntry = UserProfileEntry(
+            id: "local", displayName: "Listener", bio: "",
+            totalPlays: 0, listeningMinutes: 0, favoriteGenre: "All", topTrack: "—"
+        ),  // WS-B B2: neutral default (fixtures in #Preview)
         onOpenWrapped: @escaping () -> Void = {},
         onPlayTopTrack: @escaping () -> Void = {}
     ) {
@@ -223,5 +226,5 @@ public struct UserProfileView: View {
 }
 
 #Preview("User profile") {
-    UserProfileView()
+    UserProfileView(profile: PreviewCatalog.userProfile)
 }

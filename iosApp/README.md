@@ -165,36 +165,40 @@ Binding mode (MP-DEC-02): SwiftUI → `streamifyFFI` Swift proxies → the
 staticlib's `uniffi_*` C ABI. No `cinterop`, no Kotlin runtime, no Obj-C
 wrapper.
 
-## Host app target (5 minutes, one-time)
+## Host app target (WS-B B5: CHECKED IN — no manual husk creation)
 
 SPM cannot emit an App Store bundle, and an `@main` inside the library
 would collide with the host's own `@main` at link time — so the package
-exposes `StreamifyMainScene` (a `Scene`) and the Xcode app target is a
-husk:
+exposes `StreamifyMainScene` (a `Scene`) and the app target is a husk.
+**The husk is now a checked-in target** (`iosApp/Streamify.xcodeproj`):
+a fresh `git clone` builds an installable app with zero manual project
+creation:
 
-1. Xcode → File → New → Target → **iOS App**, name it `Streamify`
-   (bundle id / signing as usual), SwiftUI interface, no tests.
-2. Delete the template `ContentView.swift` and replace the template
-   `*App.swift` body with:
+```bash
+xcodebuild -project iosApp/Streamify.xcodeproj -scheme Streamify \
+    -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
 
-   ```swift
-   import SwiftUI
-   import StreamifyIOS
+Layout:
 
-   @main
-   struct StreamifyApp: App {
-       var body: some Scene {
-           StreamifyMainScene()
-       }
-   }
-   ```
+| Path | Contents |
+| --- | --- |
+| `iosApp/Streamify.xcodeproj` | the two-target project (classic objectVersion 56; no generated husks) |
+| `iosApp/Host/Sources/StreamifyApp.swift` | the 3-line `@main` composing `StreamifyMainScene` |
+| `iosApp/Host/Info.plist` | the CarPlay audio scene manifest, `NSSupportsLiveActivities`, `UIBackgroundModes: audio`, the `streamify://` URL scheme |
+| `iosApp/Host/Streamify.entitlements` | the App Group (`group.com.streamify.shared`) |
+| `iosApp/Widgets/Sources/StreamifyWidgetsBundle.swift` | the widget extension's `@main` — the package's widget bundle + the Live Activity widget (iOS) |
+| `iosApp/Widgets/Info.plist` + entitlements | the WidgetKit extension manifest + the SAME App Group |
 
-3. File → Add Package Dependencies… → point at this repository's
-   `iosApp` folder (or add the local package), add `StreamifyIOS` to the
-   app target.
-4. *(When Alpha's framework lands)* drag `StreamifyCore.xcframework` into
-   the app target's Frameworks with *Embed & Sign* — the UniFFI lane
-   lights up automatically.
+The app links the local SPM package (`StreamifyIOS` product); when the
+engineer lane stages `StreamifyCore.xcframework` into `iosApp/Frameworks/`
+(`./scripts/build_ios_xcframework.sh --output iosApp/Frameworks`), the
+package's conditional binary target activates the REAL UniFFI lane inside
+the app automatically — same probe-gate as everywhere else.
+
+The macOS menu-bar extra rides inside `StreamifyMainScene` (`#if
+os(macOS)` `MenuBarExtra`) — the day a macOS host target lands, it lights
+up with zero edits (the iOS host simply never compiles that branch).
 
 ## Building / testing
 

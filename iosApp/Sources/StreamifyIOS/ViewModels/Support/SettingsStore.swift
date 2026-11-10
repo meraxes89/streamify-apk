@@ -83,6 +83,15 @@ final class SettingsStore {
         defaults.set(history, forKey: Self.searchHistoryKey)
     }
 
+    /// Removes one query from the persisted history (WS-B B2: the
+    /// per-chip removal the omnibar renders).
+    func removeSearchQuery(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let history = searchHistory().filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
+        defaults.set(history, forKey: Self.searchHistoryKey)
+    }
+
     func clearSearchHistory() {
         defaults.removeObject(forKey: Self.searchHistoryKey)
     }

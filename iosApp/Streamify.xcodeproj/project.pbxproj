@@ -1,0 +1,419 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	objectVersion = 56;
+	classes = {
+	};
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1A10000000000000000000D1 /* StreamifyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A10000000000000000000A5 /* StreamifyApp.swift */; };
+		1A10000000000000000000D2 /* StreamifyWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A10000000000000000000A7 /* StreamifyWidgetsBundle.swift */; };
+		1A10000000000000000000D3 /* StreamifyIOS in Frameworks */ = {isa = PBXBuildFile; productRef = 1A10000000000000000000B1 /* StreamifyIOS */; };
+		1A10000000000000000000D4 /* StreamifyIOS in Frameworks */ = {isa = PBXBuildFile; productRef = 1A10000000000000000000B2 /* StreamifyIOS */; };
+		1A10000000000000000000D5 /* StreamifyWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1A10000000000000000000A9 /* StreamifyWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1A10000000000000000000E1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A10000000000000000000A1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1A10000000000000000000C2;
+			remoteInfo = StreamifyWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1A10000000000000000000F4 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				1A10000000000000000000D5 /* StreamifyWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		1A10000000000000000000A5 /* StreamifyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamifyApp.swift; sourceTree = "<group>"; };
+		1A10000000000000000000A7 /* StreamifyWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamifyWidgetsBundle.swift; sourceTree = "<group>"; };
+		1A10000000000000000000A8 /* Streamify.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Streamify.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A10000000000000000000A9 /* StreamifyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.appex; includeInIndex = 0; path = StreamifyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A10000000000000000000F2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A10000000000000000000D3 /* StreamifyIOS in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1A10000000000000000000F6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A10000000000000000000D4 /* StreamifyIOS in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1A10000000000000000000A2 = {
+			isa = PBXGroup;
+			children = (
+				1A10000000000000000000A4 /* Host */,
+				1A10000000000000000000A6 /* Widgets */,
+				1A10000000000000000000A3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1A10000000000000000000A3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A10000000000000000000A8 /* Streamify.app */,
+				1A10000000000000000000A9 /* StreamifyWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1A10000000000000000000A4 /* Host */ = {
+			isa = PBXGroup;
+			children = (
+				1A10000000000000000000A5 /* StreamifyApp.swift */,
+			);
+			path = Host/Sources;
+			sourceTree = "<group>";
+		};
+		1A10000000000000000000A6 /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				1A10000000000000000000A7 /* StreamifyWidgetsBundle.swift */,
+			);
+			path = Widgets/Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1A10000000000000000000C1 /* Streamify */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A1000000000000000000102 /* Build configuration list for PBXNativeTarget "Streamify" */;
+			buildPhases = (
+				1A10000000000000000000F1 /* Sources */,
+				1A10000000000000000000F2 /* Frameworks */,
+				1A10000000000000000000F3 /* Resources */,
+				1A10000000000000000000F4 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1A10000000000000000000E2 /* PBXTargetDependency */,
+			);
+			name = Streamify;
+			packageProductDependencies = (
+				1A10000000000000000000B1 /* StreamifyIOS */,
+			);
+			productName = Streamify;
+			productReference = 1A10000000000000000000A8 /* Streamify.app */;
+			productType = "com.apple.product-type.application";
+		};
+		1A10000000000000000000C2 /* StreamifyWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A1000000000000000000103 /* Build configuration list for PBXNativeTarget "StreamifyWidgets" */;
+			buildPhases = (
+				1A10000000000000000000F5 /* Sources */,
+				1A10000000000000000000F6 /* Frameworks */,
+				1A10000000000000000000F7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StreamifyWidgets;
+			packageProductDependencies = (
+				1A10000000000000000000B2 /* StreamifyIOS */,
+			);
+			productName = StreamifyWidgets;
+			productReference = 1A10000000000000000000A9 /* StreamifyWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1A10000000000000000000A1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					1A10000000000000000000C1 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					1A10000000000000000000C2 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 1A1000000000000000000101 /* Build configuration list for PBXProject "Streamify" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1A10000000000000000000A2;
+			packageReferences = (
+				1A10000000000000000000B0 /* XCLocalSwiftPackageReference */,
+			);
+			productRefGroup = 1A10000000000000000000A3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1A10000000000000000000C1 /* Streamify */,
+				1A10000000000000000000C2 /* StreamifyWidgets */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1A10000000000000000000F3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1A10000000000000000000F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A10000000000000000000F1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A10000000000000000000D1 /* StreamifyApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1A10000000000000000000F5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A10000000000000000000D2 /* StreamifyWidgetsBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1A10000000000000000000E2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1A10000000000000000000C2 /* StreamifyWidgets */;
+			targetProxy = 1A10000000000000000000E1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1A1000000000000000000111 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		1A1000000000000000000112 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1A1000000000000000000121 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Host/Streamify.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Host/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.streamify.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1A1000000000000000000122 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Host/Streamify.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Host/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.streamify.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1A1000000000000000000131 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Widgets/StreamifyWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.streamify.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1A1000000000000000000132 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Widgets/StreamifyWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.streamify.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A1000000000000000000101 /* Build configuration list for PBXProject "Streamify" */ = {
+			isa = XCConfigurationList;
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+			buildConfigurations = (
+				1A1000000000000000000111 /* Debug */,
+				1A1000000000000000000112 /* Release */,
+			);
+		};
+		1A1000000000000000000102 /* Build configuration list for PBXNativeTarget "Streamify" */ = {
+			isa = XCConfigurationList;
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+			buildConfigurations = (
+				1A1000000000000000000121 /* Debug */,
+				1A1000000000000000000122 /* Release */,
+			);
+		};
+		1A1000000000000000000103 /* Build configuration list for PBXNativeTarget "StreamifyWidgets" */ = {
+			isa = XCConfigurationList;
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+			buildConfigurations = (
+				1A1000000000000000000131 /* Debug */,
+				1A1000000000000000000132 /* Release */,
+			);
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1A10000000000000000000B0 /* XCLocalSwiftPackageReference */ = {
+			isa = XCLocalSwiftPackageReference;
+			/* The SPM package lives in the SAME directory as this project
+			   (iosApp/): the empty relative path resolves to the project
+			   directory itself, exactly where Package.swift sits. */
+			relativePath = "";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1A10000000000000000000B1 /* StreamifyIOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A10000000000000000000B0 /* XCLocalSwiftPackageReference */;
+			productName = StreamifyIOS;
+		};
+		1A10000000000000000000B2 /* StreamifyIOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A10000000000000000000B0 /* XCLocalSwiftPackageReference */;
+			productName = StreamifyIOS;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1A10000000000000000000A1 /* Project object */;
+}

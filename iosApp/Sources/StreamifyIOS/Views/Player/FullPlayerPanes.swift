@@ -95,7 +95,7 @@ public struct LandscapeRelatedPane: View {
     public var onOpenTrack: ((VirtualShelfTrack) -> Void)? = nil
 
     public init(
-        tracks: [VirtualShelfTrack] = Array(PreviewCatalog.tracks[4..<10]),
+        tracks: [VirtualShelfTrack] = [],  // WS-B B2: neutral default (fixtures in #Preview)
         onStartRadio: (() -> Void)? = nil,
         onOpenTrack: ((VirtualShelfTrack) -> Void)? = nil
     ) {

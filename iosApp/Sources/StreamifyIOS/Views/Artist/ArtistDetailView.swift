@@ -26,7 +26,7 @@ public struct ArtistDetailView: View {
 
     public init(
         artistName: String,
-        tracks: [VirtualShelfTrack] = PreviewCatalog.tracks,
+        tracks: [VirtualShelfTrack] = [],  // WS-B B2: live shell lowers the search lane in
         isFollowing: Bool = false,
         onFollow: ((Bool) -> Void)? = { _ in },
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
@@ -47,17 +47,15 @@ public struct ArtistDetailView: View {
     }
 
     private var artistClips: [ArtistClipModel] {
-        PreviewCatalog.artistClips.filter { $0.artistName == artistName }
+        []  // WS-B B2: no clips lane on the FFI contract yet — the honest empty
     }
 
     /// Online album releases by this artist, then the artist's own tracks as
     /// fixture stand-ins (deduped by title).
     private var albumCards: [VirtualShelfTrack] {
-        let online = PreviewCatalog.onlineResults
-            .filter { $0.uploader == artistName && $0.type == .album }
-            .map { VirtualShelfTrack(id: $0.id, title: $0.title, artist: $0.uploader, durationSec: $0.durationSec, platformOrigin: "ytm") }
-        let known = Set(online.map(\.title))
-        return online + artistTracks.filter { !known.contains($0.title) }
+        // WS-B B2: the passed rows are the only catalog (no fixture
+        // fallback); an empty page is the honest state on a fresh shell.
+        artistTracks
     }
 
     // MARK: Body
@@ -254,7 +252,7 @@ private struct HeroStretchKey: PreferenceKey {
 
 #Preview("Artist detail") {
     NavigationStack {
-        ArtistDetailView(artistName: "Aurora Nine")
+        ArtistDetailView(artistName: "Aurora Nine", tracks: PreviewCatalog.tracks)
     }
     .preferredColorScheme(.dark)
 }

@@ -119,7 +119,7 @@ private struct HealthRow: View {
 public struct AdminDashboardView: View {
     public var metrics: [MetricTile]
 
-    public init(metrics: [MetricTile] = PreviewCatalog.adminMetrics) {
+    public init(metrics: [MetricTile] = []) {  // WS-B B2: neutral default
         self.metrics = metrics
     }
 
@@ -201,5 +201,5 @@ public struct AdminDashboardView: View {
 }
 
 #Preview("Admin dashboard") {
-    AdminDashboardView()
+    AdminDashboardView(metrics: PreviewCatalog.adminMetrics)
 }

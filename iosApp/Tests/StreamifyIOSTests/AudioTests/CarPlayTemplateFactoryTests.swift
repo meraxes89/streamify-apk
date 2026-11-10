@@ -156,6 +156,37 @@ final class CarPlayTemplateFactoryTests: XCTestCase {
         func playlists() -> [CarPlayBrowseItem] { playlistRows }
     }
 
+    // WS-B B6: the live queue content provider over a REAL QueueViewModel —
+    // the car mirrors the phone's queue screen (now playing + up next).
+    @MainActor
+    func testQueueCarPlayContentProviderMirrorsTheLiveQueue() async {
+        let library = PreviewFeatureLibrary()
+        let queueModel = QueueViewModel(library: library)
+        queueModel.start()
+        // Stage two rows: the current row (index 0) + one up next.
+        library.push(queueEvent: .snapshot(QueueSnapshot(
+            rev: 1,
+            tracks: [
+                PresentationTrack(id: "q1", title: "Nightcall", artist: "Kavinsky", durationMs: 252_000, artworkUrl: nil),
+                PresentationTrack(id: "q2", title: "Innerbloom", artist: "RÜFÜS DU SOL", durationMs: 582_000, artworkUrl: nil),
+            ],
+            currentIndex: 0,
+            isPlaying: true,
+            autoMixEnabled: true
+        )))
+        // The VM ingests on the main actor; give the collector one hop.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        let provider = QueueCarPlayContentProvider(queueModel: queueModel)
+        let shortcuts = provider.homeShortcuts()
+        XCTAssertEqual(shortcuts.first?.text, "Nightcall")
+        XCTAssertEqual(shortcuts.first?.detailText, "Kavinsky — now playing")
+        XCTAssertEqual(shortcuts.count, 2, "current + one up-next row")
+        XCTAssertTrue(provider.playlists().isEmpty, "the honest empty until a playlist surface crosses the FFI contract")
+
+        queueModel.stop()
+    }
+
     @MainActor
     func testSceneDelegateHoldsRouterAndProviderSeams() {
         let delegate = CarPlaySceneDelegate()

@@ -17,14 +17,15 @@ public struct CommunityHubView: View {
     /// Ephemeral mood filter (nil = all playlists).
     @State private var selectedMoodId: String?
 
-    private let moods = PreviewCatalog.moods
+    // WS-B B2: production UI furniture (was a direct PreviewCatalog read).
+    private let moods = MoodGenre.standard
     private let columns = [
         GridItem(.flexible(), spacing: StreamifyDimens.spaceLG),
         GridItem(.flexible(), spacing: StreamifyDimens.spaceLG)
     ]
 
     public init(
-        playlists: [CommunityPlaylistModel] = PreviewCatalog.communityPlaylists,
+        playlists: [CommunityPlaylistModel] = [],  // WS-B B2: live shell lowers the VM's rows in
         onOpen: @escaping (CommunityPlaylistModel) -> Void = { _ in }
     ) {
         self.playlists = playlists
@@ -169,7 +170,7 @@ private struct CommunityPlaylistCard: View {
 
 #Preview("Community hub") {
     NavigationStack {
-        CommunityHubView()
+        CommunityHubView(playlists: PreviewCatalog.communityPlaylists)
     }
     .preferredColorScheme(.dark)
 }

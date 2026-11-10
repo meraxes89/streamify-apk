@@ -161,6 +161,51 @@ final class UniFFIEngineGateway: EngineGateway {
         return Self.map(room)
     }
 
+    // ── WS-B (B3/B4): the playback data plane + the resolve lane (UDL v2) ─
+
+    func attachSink(capacityFrames: Int) async {
+        // In-memory control-plane op (house direct-call style): failures
+        // across the seam degrade to a silent no-op — the shell's next
+        // `bufferProgress()` read reflects the unchanged state.
+        _ = try? engine.attachSink(capacityFrames: UInt32(max(1, capacityFrames)))
+    }
+
+    func detachSink() async {
+        try? engine.detachSink()
+    }
+
+    func playTrack(trackId: String) async -> Bool {
+        (try? engine.playTrack(trackId: trackId)) != nil
+    }
+
+    func bufferProgress() async -> EngineBufferProgress? {
+        guard let progress = try? engine.bufferProgress() else { return nil }
+        return Self.map(progress)
+    }
+
+    func recordDacClock(_ clock: DacClockSample) {
+        // The DacClockPublisher's onSample mirror (10 Hz, main actor):
+        // the sample is validated engine-side and republished inside
+        // every pushed snapshot from here on.
+        _ = try? engine.recordDacClock(clock: DacPresentationClock(
+            dacFramePosition: UInt64(max(0, clock.framePosition)),
+            sampleRate: UInt32(clamping: clock.sampleRateHz),
+            monotonicNs: UInt64(max(0, clock.monotonicNs))
+        ))
+    }
+
+    func resolveStreamFormats(videoId: String) async -> [EngineStreamFormat] {
+        // The resolver BLOCKS the calling thread on the engine's shared
+        // runtime until network resolution completes — hop off the
+        // cooperative pool (searchTracks' discipline). Module-qualified:
+        // the generated namespace function vs this instance method share
+        // a base name (performSearchTracks' lesson).
+        guard let formats = try? await Task.detached(priority: .userInitiated) {
+            try StreamifyIOS.resolveStreamFormats(videoId: videoId)
+        }.value else { return [] }
+        return formats.map(Self.map)
+    }
+
     // ── UDL → shared presentation mapping (total by construction) ──────────
 
     private final class ListenerBridge: EngineEventListener {
@@ -290,6 +335,32 @@ final class UniFFIEngineGateway: EngineGateway {
     }
 
     // ── lane-neutral mirror → generated (for the write paths) ─────────────
+
+    // ── generated v2 records -> lane-neutral mirrors ────────────────────────
+
+    private static func map(_ progress: BufferProgress) -> EngineBufferProgress {
+        EngineBufferProgress(
+            bufferedMs: Int(clamping: progress.bufferedMs),
+            fillRatio: Double(progress.fillRatio),
+            underrunEvents: Int(clamping: progress.underrunEvents),
+            overrunEvents: Int(clamping: progress.overrunEvents),
+            targetPositionMs: Int(clamping: progress.targetPositionMs),
+            renderedPositionMs: Int(clamping: progress.renderedPositionMs),
+            trackId: progress.trackId,
+            producerLive: progress.producerLive,
+            eos: progress.eos
+        )
+    }
+
+    private static func map(_ format: ResolvedStreamFormat) -> EngineStreamFormat {
+        EngineStreamFormat(
+            url: format.url,
+            mimeType: format.mimeType,
+            bitrate: Int(format.bitrate),
+            durationSec: Int(format.durationSec),
+            isAudioOnly: format.isAudioOnly
+        )
+    }
 
     private static func unmap(_ track: EngineTrack) -> Track {
         Track(

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- WS-B B5: the App Group the widget plane's cross-process store +
+	     intent mailbox speaks (WidgetPlaybackStore). Both the app and the
+	     widget extension declare the SAME group. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.streamify.shared</string>
+	</array>
+</dict>
+</plist>

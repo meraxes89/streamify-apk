@@ -71,7 +71,7 @@ public struct LyricsView: View {
 
 #Preview {
     LyricsView(
-        lyrics: PreviewCatalog.lyrics,
+        lyrics: LyricsData.empty,  // WS-B B2: honest empty (fixtures in #Preview)
         trackTitle: "Obsidian Sunrise",
         trackArtist: "Sireen",
         positionMs: 9_800,

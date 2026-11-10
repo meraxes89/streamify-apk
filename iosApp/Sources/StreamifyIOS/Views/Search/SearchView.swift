@@ -15,9 +15,11 @@ import SwiftUI
 public struct SearchView: View {
 
     // Data in, callbacks out — the search graph's lowered currency.
-    public var recentSearches: [RecentSearchEntry] = PreviewCatalog.recentSearches
-    public var localResults: [VirtualShelfTrack] = PreviewCatalog.tracks
-    public var onlineResults: [OnlineSearchResult] = PreviewCatalog.onlineResults
+    // WS-B B2: empty production defaults — the live shell lowers
+    // SearchViewModel state in; fixtures live in #Preview only.
+    public var recentSearches: [RecentSearchEntry] = []
+    public var localResults: [VirtualShelfTrack] = []
+    public var onlineResults: [OnlineSearchResult] = []
     public var isSearching: Bool = false
     public var onSearch: (String) -> Void = { _ in }
     public var onSubmit: (String) -> Void = { _ in }
@@ -252,6 +254,10 @@ public struct SearchView: View {
 
 #Preview("Search") {
     NavigationStack {
-        SearchView()
+        SearchView(
+            recentSearches: PreviewCatalog.recentSearches,
+            localResults: PreviewCatalog.tracks,
+            onlineResults: PreviewCatalog.onlineResults
+        )
     }
 }

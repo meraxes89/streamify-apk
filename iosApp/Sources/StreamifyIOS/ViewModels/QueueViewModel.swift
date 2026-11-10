@@ -90,6 +90,18 @@ final class QueueViewModel {
             .map { QueueEntry(index: $0.offset, track: $0.element) }
     }
 
+    // MARK: - Play (WS-B B3: the engine play transaction)
+
+    /// Lowers one play onto the feature seam — resolve (cache-first) ->
+    /// stage on the engine queue -> `play_track`. The real lane drives the
+    /// engine; the preview double scripts a queue snapshot. The transport
+    /// repaints through the pushed queue/snapshot planes (never a getter
+    /// poll); the shell pairs this with `PlaybackViewModel.present(track:)`
+    /// for the optimistic lockscreen/CarPlay metadata.
+    func play(track: PresentationTrack) async {
+        _ = await library.play(track: track)
+    }
+
     // MARK: - Mutations (dispatch; the next push repaints)
 
     /// Drag-and-drop reorder (`.onMove`): moves the item at queue index

@@ -30,7 +30,7 @@ public struct AlbumDetailView: View {
         artist: String,
         kind: String = "ALBUM",
         year: String? = nil,
-        tracks: [VirtualShelfTrack] = PreviewCatalog.tracks,
+        tracks: [VirtualShelfTrack] = [],  // WS-B B2: live shell lowers the search lane in
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
         onOpenArtist: @escaping (String) -> Void = { _ in },
         onLike: ((Bool) -> Void)? = { _ in },
@@ -50,13 +50,10 @@ public struct AlbumDetailView: View {
     /// Other releases by this artist: online results first (deduped against
     /// the album's own titles), falling back to catalog tracks by the artist.
     private var moreFromArtist: [VirtualShelfTrack] {
-        let online = PreviewCatalog.onlineResults
-            .filter { $0.uploader == artist && $0.type != .album }
-            .filter { result in !tracks.contains { $0.title == result.title } }
-            .map { VirtualShelfTrack(id: $0.id, title: $0.title, artist: $0.uploader, durationSec: $0.durationSec, platformOrigin: "ytm") }
-        if !online.isEmpty { return online }
+        // WS-B B2: the passed rows are the only catalog (no fixture
+        // fallback); an empty page is the honest state on a fresh shell.
         let albumIds = Set(tracks.map(\.id))
-        return PreviewCatalog.tracks.filter { $0.artist == artist && !albumIds.contains($0.id) }
+        return tracks.filter { $0.artist == artist && !albumIds.contains($0.id) }
     }
 
     public var body: some View {
@@ -253,7 +250,7 @@ private struct StretchyHeader<Content: View>: View {
 
 #Preview("Album detail") {
     NavigationStack {
-        AlbumDetailView(title: "Meridian", artist: "Aurora Nine")
+        AlbumDetailView(title: "Meridian", artist: "Aurora Nine", tracks: PreviewCatalog.tracks)
     }
     .preferredColorScheme(.dark)
 }

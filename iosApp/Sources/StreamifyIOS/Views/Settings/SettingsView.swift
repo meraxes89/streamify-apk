@@ -71,7 +71,9 @@ public struct SettingsView: View {
     public var onOpenDiagnostics: () -> Void
 
     public init(
-        profile: ProfileAccount = PreviewCatalog.profiles[0],
+        profile: ProfileAccount = ProfileAccount(
+            id: "local", displayName: "Listener", email: "", mode: .streamify
+        ),  // WS-B B2: neutral default — fixtures live in #Preview only
         selectedMode: AppMode = .streamify,
         onModeChange: @escaping (AppMode) -> Void = { _ in },
         onOpenAccounts: @escaping () -> Void = {},
@@ -221,5 +223,5 @@ public struct SettingsView: View {
 }
 
 #Preview("Settings") {
-    SettingsView()
+    SettingsView(profile: PreviewCatalog.profiles[0])
 }

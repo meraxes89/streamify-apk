@@ -41,6 +41,7 @@
 //! dependency list is the compile-time boundary for that promise: no async
 //! runtime, no database, no HTTP client — the network edge is a trait.
 
+pub mod consumer_lease;
 pub mod decode;
 pub mod fetch;
 pub mod frame_buf;

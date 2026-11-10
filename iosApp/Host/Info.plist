@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Streamify</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!-- WS-B B5: the CarPlay audio scene (the template tree connects on the
+	     CPTemplateApplicationSceneSessionRoleApplication role; the delegate
+	     class lives in the linked StreamifyIOS package and binds the shell's
+	     shared router + live queue content provider on connect). -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>StreamifyIOS.CarPaySceneDelegate</string>
+					<key>UISceneConfigurationName</key>
+					<string>Streamify CarPlay</string>
+					<key>UISceneDelegateClassName</key>
+					<string>StreamifyIOS.CarPaySceneDelegate</string>
+				</dict>
+			</array>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Streamify</string>
+					<key>UISceneDelegateClassName</key>
+					<string>UIWindowSceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+
+	<!-- WS-B B6: Live Activities (the Dynamic Island / lockscreen surface). -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+
+	<!-- WS-B B4: real-time audio — the CoreAudio data plane must survive
+	     backgrounding (the engine's producer thread + the native render
+	     core keep pulling while the app is in the background). -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
+	<!-- WS-B B5: the deep-link scheme (the widgets' iOS 16 fallback and the
+	     streamify://player/toggle intent surface). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.streamify.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>streamify</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

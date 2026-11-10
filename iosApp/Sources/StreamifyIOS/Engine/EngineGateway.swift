@@ -74,4 +74,61 @@ protocol EngineGateway: AnyObject {
     /// Presentation state of the active Jam room, or nil when no session
     /// is live.
     func jamRoomState() async -> EngineJamRoomState?
+
+    // ── WS-B (B3/B4, issue #151's additive UDL v2): the playback data
+    // plane + the resolve lane. The real gateway maps the generated
+    // surface; the preview gateway keeps the protocol defaults below
+    // (no-ops / empty), exactly like the typed data lane above.
+    //
+    // The transport's `play_track` (A4) is deliberately NOT just another
+    // MediaCommand: it stages, resolves and starts in one engine-side
+    // transaction, so the shell's play flow (B3) lowers onto it after
+    // `enqueue` — see `UniFFIFeatureLibrary.play(track:)`.
+
+    /// Builds the canonical-geometry SPSC ring + spawns the producer
+    /// thread (replace semantics when a plane is already live).
+    func attachSink(capacityFrames: Int) async
+
+    /// Tears the playback data plane down (idempotent).
+    func detachSink() async
+
+    /// Plays one staged track NOW: selects its queue row, resets the
+    /// position target, drives the lifecycle to Playing and emits the
+    /// play intent into the producer (the skip path). The row must be
+    /// staged and carry a resolved stream URL. Returns false when the
+    /// lane refused the intent — never throws.
+    @discardableResult
+    func playTrack(trackId: String) async -> Bool
+
+    /// The data plane's progress read; nil when the lane cannot answer
+    /// (no plane attached on the preview lane).
+    func bufferProgress() async -> EngineBufferProgress?
+
+    /// Mirrors one hardware DAC presentation clock sample into the engine
+    /// (the UDL `record_dac_clock` seam — republished inside every pushed
+    /// snapshot). Called from a non-audio thread per contract.
+    func recordDacClock(_ clock: DacClockSample)
+
+    /// Resolves the playable stream-format set for one video id through
+    /// the resolver (persistent cache -> RustyPipe -> legacy Innertube).
+    /// Audio-only rows form the head of the returned list. Empty when the
+    /// lane cannot resolve (never throws — the caller degrades honestly).
+    func resolveStreamFormats(videoId: String) async -> [EngineStreamFormat]
+}
+
+// MARK: - Data-plane defaults (conformers override only what they script)
+
+extension EngineGateway {
+
+    func attachSink(capacityFrames: Int) async {}
+
+    func detachSink() async {}
+
+    func playTrack(trackId: String) async -> Bool { false }
+
+    func bufferProgress() async -> EngineBufferProgress? { nil }
+
+    func recordDacClock(_ clock: DacClockSample) {}
+
+    func resolveStreamFormats(videoId: String) async -> [EngineStreamFormat] { [] }
 }

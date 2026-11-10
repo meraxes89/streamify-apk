@@ -42,11 +42,13 @@ public struct HomeView: View {
 
     public init(
         bannerMessage: String? = nil,
-        initialShelves: [VirtualShelf] = PreviewCatalog.shelves,
-        daylist: DaylistHeroModel? = PreviewCatalog.daylistHero,
-        moods: [MoodGenre] = PreviewCatalog.moods,
-        dailyMixes: [VirtualShelf] = PreviewCatalog.dailyMixes,
-        friends: [FriendActivityEntry] = PreviewCatalog.friends,
+        // WS-B B2: empty/neutral production defaults — the live shell
+        // lowers HomeViewModel state in; fixtures live in #Preview only.
+        initialShelves: [VirtualShelf] = [],
+        daylist: DaylistHeroModel? = nil,
+        moods: [MoodGenre] = MoodGenre.standard,
+        dailyMixes: [VirtualShelf] = [],
+        friends: [FriendActivityEntry] = [],
         onOpenTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
         onOpenAlbum: @escaping (String) -> Void = { _ in },
         onOpenArtist: @escaping (String) -> Void = { _ in },
@@ -201,7 +203,11 @@ public struct HomeView: View {
 #Preview("Home feed") {
     NavigationStack {
         HomeView(
-            bannerMessage: "Jam rooms now support mesh beacons — 1.2M listeners joined this week."
+            bannerMessage: "Jam rooms now support mesh beacons — 1.2M listeners joined this week.",
+            initialShelves: PreviewCatalog.shelves,
+            daylist: PreviewCatalog.daylistHero,
+            dailyMixes: PreviewCatalog.dailyMixes,
+            friends: PreviewCatalog.friends
         )
     }
     .preferredColorScheme(.dark)

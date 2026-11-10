@@ -20,7 +20,7 @@ public struct ProfileSelectionView: View {
     public var onAddAccount: () -> Void
 
     public init(
-        profiles: [ProfileAccount] = PreviewCatalog.profiles,
+        profiles: [ProfileAccount] = [],  // WS-B B2: neutral default (fixtures in #Preview)
         selectedId: String? = "p1",
         onSelect: @escaping (ProfileAccount) -> Void = { _ in },
         onAddAccount: @escaping () -> Void = {}
@@ -167,5 +167,5 @@ private struct ProfileCard: View {
 }
 
 #Preview("Profile selection") {
-    ProfileSelectionView()
+    ProfileSelectionView(profiles: PreviewCatalog.profiles)
 }

@@ -26,7 +26,10 @@ private enum LibrarySegment: String, CaseIterable, Sendable {
 }
 
 public struct LibraryView: View {
-    public var likedTracks: [VirtualShelfTrack] = PreviewCatalog.tracks
+    public var likedTracks: [VirtualShelfTrack] = []
+    /// WS-B B7: the saved-downloads accounting rows (live transfers from
+    /// the shell; empty default — fixtures live in #Preview only).
+    public var transfers: [DownloadTransfer] = []
     public var playlists: [LibraryPlaylistSummary] = [.init(name: "Obsidian Night Drive", count: 64), .init(name: "Focus Ladder", count: 48), .init(name: "Sunday Hardware", count: 81)]
     public var onPlayTrack: (VirtualShelfTrack) -> Void = { _ in }
     public var onOpenPlaylist: (String) -> Void = { _ in }
@@ -190,7 +193,7 @@ public struct LibraryView: View {
     }
 
     private var downloadTransfers: [DownloadTransfer] {
-        PreviewCatalog.downloads.filter {
+        transfers.filter {
             switch $0.state {
             case .completed, .paused, .failed: return true
             case .queued, .downloading: return false
@@ -255,5 +258,7 @@ public struct LibraryView: View {
 }
 
 #Preview("Library") {
-    NavigationStack { LibraryView() }
+    NavigationStack {
+        LibraryView(likedTracks: PreviewCatalog.tracks, transfers: PreviewCatalog.downloads)
+    }
 }

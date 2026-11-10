@@ -27,7 +27,10 @@ public struct StreamifyMainScene: Scene {
     // struct calls this init from its own @MainActor body.
     @MainActor public init() {
         _model = State(
-            initialValue: PlaybackViewModel(gateway: EngineGatewayLoader.load())
+            // WS-B B1: the ONE shared engine gateway (AppServices) — the
+            // transport holder and the feature library speak to the same
+            // engine instance (queue truth is process-wide).
+            initialValue: PlaybackViewModel(gateway: AppServices.engine)
         )
     }
 
@@ -39,5 +42,16 @@ public struct StreamifyMainScene: Scene {
                 .task { model.start() }
                 .onDisappear { model.stop() }
         }
+
+        // WS-B B6: the dormant menu-bar extra, activated — any macOS host
+        // consuming this scene gets the NSStatusItem mini-player for free
+        // (the iOS host target lands without it; the surface is live the
+        // day a macOS host ships, exactly like the widget bundle).
+        #if os(macOS)
+        MenuBarExtra("Streamify", systemImage: "music.note") {
+            StreamifyMenuBarMiniPlayer()
+        }
+        .menuBarExtraStyle(.window)
+        #endif
     }
 }

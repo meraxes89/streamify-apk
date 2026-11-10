@@ -24,9 +24,13 @@ import SwiftUI
 //
 // STATE DISCIPLINE: the engine pushes session snapshots (MP-DEC-04); the
 // shell owns NO engine truth — it lowers model state onto screens and routes
-// intent back through the command plane. The play QUEUE is host-owned queue
-// truth lowered onto [QueueListState] (the queue lane is the engine
-// contract's next surface).
+// intent back through the command plane.
+//
+// WS-B B2 (ENG-2): the 9 orphaned ViewModels are now LIVE — the shell owns
+// them and lowers their observable state onto the screens' props; the play
+// QUEUE is the ENGINE's staged queue, mirrored by QueueViewModel over the
+// library's push lane (read-after-action snapshots — never a poll). Zero
+// PreviewCatalog references survive in production paths (the B2 lint gate).
 // ─────────────────────────────────────────────────────────────────────────────
 
 @MainActor
@@ -49,9 +53,20 @@ public struct RootShellView: View {
     @State private var settingsPath = NavigationPath()
     @State private var detailPath = NavigationPath()
 
-    // Host-owned queue truth (lowered onto QueueView / FullPlayerView).
-    @State private var queueState = PreviewCatalog.queueState
-    @State private var queueAutoMix = true
+    // ── WS-B B2: the 9 orphaned ViewModels, now owned by the shell ───────
+    // (Engineer 4's VMs speak to AppServices' selected lane; previews/tests
+    // keep injecting explicitly).
+    @State private var homeModel = HomeViewModel()
+    @State private var searchModel = SearchViewModel()
+    @State private var queueModel = QueueViewModel()
+    @State private var communityModel = CommunityViewModel()
+    @State private var statsModel = StatsWrappedViewModel()
+    @State private var updatesModel = UpdatesHubViewModel()
+    @State private var profileModel = UserProfileViewModel()
+    @State private var ingestionModel = IngestionViewModel()
+    @State private var settingsModel = SettingsViewModel()
+    // WS-B B7: the downloads transfer manager (BackgroundDownloadService).
+    @State private var downloadsModel = DownloadsViewModel()
 
     // Presentation surfaces.
     @State private var fullPlayerPresented = false
@@ -79,11 +94,34 @@ public struct RootShellView: View {
             #endif
         }
         .tint(StreamifyColors.primary)
+        .task {
+            // WS-B B2: the push collectors + one-shot loads.
+            queueModel.start()
+            homeModel.loadIfNeeded()
+            ingestionModel.start()
+            updatesModel.loadIfNeeded()
+            communityModel.loadIfNeeded()
+            statsModel.loadIfNeeded()
+            profileModel.loadIfNeeded()
+            // WS-B B7: cold-launch resume-data recovery.
+            downloadsModel.recoverPersistedTransfers()
+            installSharedCarPlaySurfaces()
+        }
         .fullPlayerSheet(isPresented: $fullPlayerPresented) {
             FullPlayerView(
                 state: model.state,
-                queueState: $queueState,
-                queueAutoMix: $queueAutoMix,
+                queueState: Binding(
+                    get: { engineQueueListState },
+                    set: { _ in /* mutations route through the model below */ }
+                ),
+                queueAutoMix: Binding(
+                    get: { queueModel.autoMixEnabled },
+                    set: { enabled in
+                        if enabled != queueModel.autoMixEnabled {
+                            queueModel.toggleAutoMix()
+                        }
+                    }
+                ),
                 onDismiss: { fullPlayerPresented = false },
                 onPrevious: { model.previous() },
                 onToggle: { model.togglePlayPause() },
@@ -91,10 +129,11 @@ public struct RootShellView: View {
                 onSeekUs: { us in model.seek(to: Int(us / 1_000)) },
                 onVolumeChange: { model.setVolume($0) },
                 onReorderQueue: { offsets, destination in
-                    queueState = queueState.movingUpNext(from: offsets, to: destination)
+                    queueModel.move(fromOffsets: offsets, toOffset: destination)
                 },
                 onDeleteQueue: { sectionIndex in
-                    queueState = queueState.removingUpNext(at: sectionIndex)
+                    let fullIndex = sectionIndex + max(queueModel.currentIndex + 1, 0)
+                    queueModel.remove(atOffsets: IndexSet([fullIndex]))
                 }
             )
         }
@@ -287,10 +326,10 @@ public struct RootShellView: View {
         case .nowPlaying: nowPlayingScreen
         case .equalizer: EqualizerView()
         case .dsp: DspSettingsView()
-        case .downloads: DownloadsView()
-        case .updates: UpdatesHubView()
-        case .community: CommunityHubView()
-        case .wrapped: StatsWrappedView()
+        case .downloads: routeDestination(.downloads, path: $detailPath)
+        case .updates: routeDestination(.updatesHub, path: $detailPath)
+        case .community: routeDestination(.community, path: $detailPath)
+        case .wrapped: routeDestination(.wrapped, path: $detailPath)
         case .blend:
             BlendView(
             friendName: "Mira",
@@ -330,8 +369,8 @@ public struct RootShellView: View {
     private var miniPlayerDock: some View {
         MiniPlayerBar(
             state: model.state,
-            nextTrackTitle: queueState.upNext.first?.track.title,
-            previousTrackTitle: queueState.played.last?.track.title,
+            nextTrackTitle: queueModel.upNext.first?.track.title,
+            previousTrackTitle: queueModel.played.last?.track.title,
             onPrevious: { model.previous() },
             onToggle: { model.togglePlayPause() },
             onNext: { model.next() },
@@ -342,21 +381,27 @@ public struct RootShellView: View {
     private var queueSheet: some View {
         NavigationStack {
             QueueView(
-                state: $queueState,
-                autoMix: $queueAutoMix,
+                state: Binding(
+                    get: { engineQueueListState },
+                    set: { _ in /* mutations route through the model below */ }
+                ),
+                autoMix: Binding(
+                    get: { queueModel.autoMixEnabled },
+                    set: { enabled in
+                        if enabled != queueModel.autoMixEnabled {
+                            queueModel.toggleAutoMix()
+                        }
+                    }
+                ),
                 onTrackClick: { index in
-                    queueState = QueueListState(
-                        tracks: queueState.tracks,
-                        currentIndex: index,
-                        isPlaying: true
-                    )
-                    model.togglePlayPause()
+                    play(atQueueIndex: index)
                 },
                 onReorder: { offsets, destination in
-                    queueState = queueState.movingUpNext(from: offsets, to: destination)
+                    queueModel.move(fromOffsets: offsets, toOffset: destination)
                 },
                 onDelete: { sectionIndex in
-                    queueState = queueState.removingUpNext(at: sectionIndex)
+                    let fullIndex = sectionIndex + max(queueModel.currentIndex + 1, 0)
+                    queueModel.remove(atOffsets: IndexSet([fullIndex]))
                 }
             )
             .toolbar {
@@ -387,7 +432,11 @@ public struct RootShellView: View {
         case .lyrics(let title, let artist):
             RouteScreen { dismiss in
                 LyricsView(
-                    lyrics: PreviewCatalog.lyrics,
+                    // The live lane fetches through the library when a
+                    // lyrics surface crosses the FFI contract; until then
+                    // the honest empty sheet renders (no fixture lyrics in
+                    // production — the B2 lint gate).
+                    lyrics: LyricsData.empty,
                     trackTitle: title,
                     trackArtist: artist,
                     positionMs: Double(model.state.positionForDisplayMs ?? 0),
@@ -396,11 +445,25 @@ public struct RootShellView: View {
             }
 
         case .artist(let name):
-            let catalog = PreviewCatalog.tracks.filter { $0.artist == name }
+            // The live catalog is the search lane's current page filtered
+            // by artist (no fixture fallback — an empty page is the honest
+            // state on a fresh shell).
+            let catalog = searchModel.currentResults
+                .filter { $0.uploader == name }
+                .map { row in
+                    VirtualShelfTrack(
+                        id: row.id,
+                        title: row.title,
+                        artist: row.uploader,
+                        artworkUrl: row.artworkUrl,
+                        durationSec: (row.durationMs ?? 0) / 1000,
+                        platformOrigin: "ytm"
+                    )
+                }
             RouteScreen { dismiss in
                 ArtistDetailView(
                     artistName: name,
-                    tracks: catalog.isEmpty ? PreviewCatalog.tracks : catalog,
+                    tracks: catalog,
                     onPlayTrack: { play(track: $0) },
                     onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: name)) },
                     onBack: { dismiss() }
@@ -441,22 +504,71 @@ public struct RootShellView: View {
             DspSettingsView()
 
         case .downloads:
-            DownloadsView()
+            // WS-B B7: the live transfer manager over BackgroundDownloadService.
+            DownloadsView(
+                transfers: downloadsModel.transfers,
+                onRetry: { id in
+                    if let url = URL(string: id) { downloadsModel.resume(url: url) }
+                },
+                onPauseResume: { id in
+                    guard let url = URL(string: id),
+                          let transfer = downloadsModel.transfers.first(where: { $0.id == id })
+                    else { return }
+                    if case .downloading = transfer.state {
+                        downloadsModel.pause(url: url)
+                    } else {
+                        downloadsModel.resume(url: url)
+                    }
+                },
+                onRemove: { id in
+                    if let url = URL(string: id) { downloadsModel.remove(url: url) }
+                }
+            )
 
         case .updatesHub:
-            UpdatesHubView()
+            // WS-B B2: the live release-radar lane (library.releaseRadar()).
+            UpdatesHubView(
+                updates: updateEntries(from: updatesModel),
+                onPreSave: { releaseId in
+                    if let candidate = updatesModel.feed.first(where: { $0.releaseId == releaseId }) {
+                        updatesModel.togglePreSave(candidate)
+                    }
+                }
+            )
 
         case .wrapped:
-            StatsWrappedView()
+            // WS-B B2: the live stats lane (library.wrappedStats()).
+            StatsWrappedView(
+                wrappedStats: wrappedStats(from: statsModel),
+                genreStats: genreStats(from: statsModel),
+                topTracks: statsModel.topTracks.map(shelfTrack),
+                onShare: {},
+                onPlayTrack: { play(track: $0) }
+            )
 
         case .userProfile:
-            UserProfileView()
+            // WS-B B2: the live profile lane (library.userProfile()). The
+            // summary contract carries no plays/top-track yet — the lossy
+            // bridge renders those as unknown until ENG-1 grows the record.
+            UserProfileView(
+                profile: userProfileEntry(from: profileModel),
+                onOpenWrapped: {},
+                onPlayTopTrack: {}
+            )
 
         case .profileSelection:
             ProfileSelectionView()
 
         case .community:
-            CommunityHubView()
+            // WS-B B2: the live community feed lane (library.communityFeed()).
+            CommunityHubView(
+                playlists: communityRows(from: communityModel),
+                onOpen: { playlist in
+                    path.wrappedValue.append(
+                        AppRoute.album(title: playlist.name, artist: playlist.creatorName)
+                    )
+                }
+            )
 
         case .blend:
             BlendView(
@@ -477,20 +589,38 @@ public struct RootShellView: View {
             DogfoodPanelView()
 
         case .onboarding:
-            OnboardingView()
+            // WS-B B2: the ingestion lane's entry point — connect-platform
+            // taps enqueue external playlist imports (Spotify / YTM); the
+            // library degrades honestly until the FFI contract grows it.
+            OnboardingView(
+                onConnect: { platform in
+                    Task { await ingestionModel.importPlaylist(named: platform, source: platform) }
+                }
+            )
         }
     }
 
     /// The pushed-queue variant (dismisses via the environment pop).
     private var queueRoute: some View {
         QueueView(
-            state: $queueState,
-            autoMix: $queueAutoMix,
+            state: Binding(
+                get: { engineQueueListState },
+                set: { _ in /* mutations route through the model below */ }
+            ),
+            autoMix: Binding(
+                get: { queueModel.autoMixEnabled },
+                set: { enabled in
+                    if enabled != queueModel.autoMixEnabled {
+                        queueModel.toggleAutoMix()
+                    }
+                }
+            ),
             onReorder: { offsets, destination in
-                queueState = queueState.movingUpNext(from: offsets, to: destination)
+                queueModel.move(fromOffsets: offsets, toOffset: destination)
             },
             onDelete: { sectionIndex in
-                queueState = queueState.removingUpNext(at: sectionIndex)
+                let fullIndex = sectionIndex + max(queueModel.currentIndex + 1, 0)
+                queueModel.remove(atOffsets: IndexSet([fullIndex]))
             }
         )
     }
@@ -501,6 +631,12 @@ public struct RootShellView: View {
     /// so pushes land in the right stack.
     private func homeScreen(path: Binding<NavigationPath>) -> some View {
         HomeView(
+            bannerMessage: nil,
+            initialShelves: Self.shelves(from: homeModel),
+            daylist: nil,  // the daylist engine lane lands with the FFI contract
+            moods: MoodGenre.standard,
+            dailyMixes: Self.dailyMixShelves(from: homeModel),
+            friends: Self.friendActivity(from: communityModel),
             onOpenTrack: { play(track: $0) },
             onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: "")) },
             onOpenArtist: { path.wrappedValue.append(AppRoute.artist(name: $0)) },
@@ -516,17 +652,29 @@ public struct RootShellView: View {
             },
             onOpenProfile: { _ in
                 path.wrappedValue.append(AppRoute.userProfile)
-            }
+            },
+            onLoadMore: {}
         )
     }
 
-    /// Search (SW-ENG2-04): native .searchable + debounced instant queries;
-    /// results are the deterministic catalog until the search engine lane
-    /// lands (Engineer 1's UniFFI contract surface).
+    /// Search (SW-ENG2-04 + WS-B B2): native .searchable + debounced instant
+    /// queries; results are the LIVE resolver lane — the view's 300 ms input
+    /// settle feeds SearchViewModel.submit, whose own 300 ms debounce lowers
+    /// the query onto searchTracks over the live FFI (the B3 mapping).
     private func searchScreen(path: Binding<NavigationPath>) -> some View {
         SearchView(
-            onSearch: { _ in },
-            onSubmit: { _ in },
+            recentSearches: searchModel.searchHistory.map {
+                RecentSearchEntry(query: $0, timestampMs: 0)
+            },
+            localResults: [],
+            onlineResults: searchModel.currentResults.map(Self.onlineResult),
+            isSearching: searchModel.isLoading,
+            onSearch: { query in
+                searchModel.submit(query: query)
+            },
+            onSubmit: { query in
+                searchModel.submit(query: query)
+            },
             onPlayTrack: { play(track: $0) },
             onOpenResult: { result in
                 switch result.type {
@@ -537,8 +685,25 @@ public struct RootShellView: View {
                         AppRoute.album(title: result.title, artist: result.uploader)
                     )
                 case .song, .video:
-                    play(track: PreviewCatalog.tracks[0])
+                    if let row = searchModel.currentResults.first(
+                        where: { $0.title == result.title && $0.uploader == result.uploader }
+                    ) {
+                        play(track: VirtualShelfTrack(
+                            id: row.id,
+                            title: row.title,
+                            artist: row.uploader,
+                            artworkUrl: row.artworkUrl,
+                            durationSec: (row.durationMs ?? 0) / 1000,
+                            platformOrigin: "ytm"
+                        ))
+                    }
                 }
+            },
+            onRemoveRecent: { query in
+                searchModel.removeSearch(query: query)
+            },
+            onClearRecents: {
+                searchModel.clearHistory()
             }
         )
     }
@@ -546,6 +711,8 @@ public struct RootShellView: View {
     /// Library (SW-ENG2-07): segmented picker + grid/list switcher.
     private func libraryScreen(path: Binding<NavigationPath>) -> some View {
         LibraryView(
+            likedTracks: [],
+            transfers: downloadsModel.transfers,
             onPlayTrack: { play(track: $0) },
             onOpenPlaylist: { path.wrappedValue.append(AppRoute.album(title: $0, artist: "Community")) },
             onOpenAlbum: { path.wrappedValue.append(AppRoute.album(title: $0, artist: "")) },
@@ -563,7 +730,8 @@ public struct RootShellView: View {
         JamSessionView()
     }
 
-    /// Settings hub (SW-ENG2-08).
+    /// Settings hub (SW-ENG2-08). The mode chip is UI furniture (no engine
+    /// surface); every navigation route stays explicit.
     private func settingsScreen(path: Binding<NavigationPath>) -> some View {
         SettingsView(
             onModeChange: { _ in },
@@ -590,20 +758,205 @@ public struct RootShellView: View {
         )
     }
 
-    // MARK: - Intent lowering
+    // MARK: - Intent lowering (WS-B B3: the engine play transaction)
 
-    /// Plays a tapped track: the shell owns queue TRUTH, so the tap lands on
-    /// the host queue (cursor to the tapped row) and the engine's command
-    /// plane receives the play intent — the pushed snapshot repaints.
+    /// Plays a tapped track through the LIVE lane: the transport VM presents
+    /// the track optimistically (lockscreen/NowPlaying/CarPlay metadata —
+    /// the engine's UDL snapshot carries no track row), then the queue VM
+    /// lowers the play onto the library (resolve -> stage -> play_track on
+    /// the real lane; the preview double's scripted flow otherwise). The
+    /// engine's next push repaints the transport.
     private func play(track: VirtualShelfTrack) {
-        let tracks = PreviewCatalog.presentationTracks
-        let index = tracks.firstIndex(where: { $0.id == track.presentationTrack.id }) ?? 0
-        queueState = QueueListState(
-            tracks: tracks,
-            currentIndex: index,
-            isPlaying: true
+        model.present(track: track.presentationTrack)
+        Task { await queueModel.play(track: track.presentationTrack) }
+    }
+
+    /// Queue-row tap: same transaction, addressed by engine queue index.
+    private func play(atQueueIndex index: Int) {
+        guard queueModel.tracks.indices.contains(index) else { return }
+        let track = queueModel.tracks[index]
+        model.present(track: track)
+        Task { await queueModel.play(track: track) }
+    }
+
+    /// The engine queue lowered onto the QueueView/FullPlayerView currency.
+    private var engineQueueListState: QueueListState {
+        QueueListState(
+            tracks: queueModel.tracks,
+            currentIndex: queueModel.currentIndex,
+            isPlaying: queueModel.isPlaying
         )
-        model.togglePlayPause()
+    }
+
+    // MARK: - Shared platform surfaces (WS-B B6)
+
+    /// Installs the CarPlay router + live queue content provider on the
+    /// scene delegate's shared slots (the delegate is system-instantiated
+    /// from the host's scene manifest — see CarPaySceneDelegate's wiring
+    /// note).
+    private func installSharedCarPlaySurfaces() {
+        #if canImport(CarPlay) && canImport(UIKit)
+        CarPlaySceneDelegate.sharedRouter = model
+        CarPlaySceneDelegate.sharedContentProvider = QueueCarPlayContentProvider(
+            queueModel: queueModel
+        )
+        #endif
+    }
+
+    // MARK: - Live-lane lowering helpers (presentation currency)
+
+    /// The engine-track currency onto the home shelf vocabulary.
+    private static func shelfTrack(_ track: PresentationTrack) -> VirtualShelfTrack {
+        VirtualShelfTrack(
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            artworkUrl: track.artworkUrl,
+            durationSec: (track.durationMs ?? 0) / 1000,
+            platformOrigin: "ytm"
+        )
+    }
+
+    private static func shelves(from model: HomeViewModel) -> [VirtualShelf] {
+        var shelves: [VirtualShelf] = []
+        if !model.sessionRecommendations.isEmpty {
+            shelves.append(VirtualShelf(
+                id: "quick-picks", title: "Quick picks",
+                subtitle: "Restart something you loved", kind: .quickPicks,
+                tracks: model.sessionRecommendations.map(shelfTrack)
+            ))
+        }
+        if !model.circadianRecommendations.isEmpty {
+            let slot = model.circadianSlot
+            shelves.append(VirtualShelf(
+                id: "circadian", title: slot.title,
+                subtitle: nil, kind: .listenAgain,
+                tracks: model.circadianRecommendations.map(shelfTrack)
+            ))
+        }
+        if !model.trending.isEmpty {
+            shelves.append(VirtualShelf(
+                id: "trending", title: "Trending",
+                subtitle: nil, kind: .trending,
+                tracks: model.trending.map(shelfTrack)
+            ))
+        }
+        if !model.topPlayed.isEmpty {
+            shelves.append(VirtualShelf(
+                id: "top-played", title: "Top played",
+                subtitle: nil, kind: .supermix,
+                tracks: model.topPlayed.map(shelfTrack)
+            ))
+        }
+        return shelves
+    }
+
+    private static func dailyMixShelves(from model: HomeViewModel) -> [VirtualShelf] {
+        model.dailyMixes.map { mix in
+            VirtualShelf(
+                id: "mix-\(mix.number)",
+                title: "Mix \(mix.number)",
+                subtitle: mix.seedArtist,
+                kind: .dailyMix,
+                tracks: mix.tracks.map(shelfTrack)
+            )
+        }
+    }
+
+    private static func friendActivity(from model: CommunityViewModel) -> [FriendActivityEntry] {
+        model.friendsActivity.map { friend in
+            FriendActivityEntry(
+                userId: friend.userId,
+                displayName: friend.displayName,
+                avatarUrl: friend.avatarUrl,
+                trackTitle: friend.trackTitle,
+                trackArtist: friend.trackArtist,
+                coverUrl: friend.coverUrl,
+                lastActiveLabel: friend.lastActiveAt,
+                sessionCode: friend.sessionCode
+            )
+        } ?? []
+    }
+
+    /// ReleaseCandidate (the radar lane) -> UpdateEntry (the view's row).
+    private static func updateEntries(from model: UpdatesHubViewModel) -> [UpdateEntry] {
+        model.feed.map { candidate in
+            UpdateEntry(
+                id: candidate.releaseId,
+                artist: candidate.artistName,
+                title: candidate.title,
+                version: candidate.releaseType,
+                notes: [],
+                releaseDate: candidate.expectedAt,
+                isPreSaved: model.savedReleaseIds.contains(candidate.releaseId)
+            )
+        }
+    }
+
+    /// WrappedStats (the stats lane) -> the Wrapped card rows.
+    private static func wrappedStats(from model: StatsWrappedViewModel) -> [WrappedStat] {
+        [
+            WrappedStat(id: "minutes", label: "Minutes listened", value: model.totalMinutes.formatted(), symbol: "clock"),
+            WrappedStat(id: "tracks", label: "Tracks played", value: model.totalTracks.formatted(), symbol: "music.note"),
+            WrappedStat(id: "liked", label: "Liked songs", value: model.likedSongs.formatted(), symbol: "heart"),
+            WrappedStat(id: "bpm", label: "Average BPM", value: model.averageBpm.formatted(), symbol: "waveform"),
+        ]
+    }
+
+    /// StatsGenre (fraction shares) -> GenreStat rows (percentage points —
+    /// the view's bar currency; a projection, not a fabricated count).
+    private static func genreStats(from model: StatsWrappedViewModel) -> [GenreStat] {
+        model.topGenres.map { genre in
+            GenreStat(
+                genre: genre.name,
+                count: Int((genre.fraction * 100).rounded()),
+                gradient: StreamifyGradients.pop
+            )
+        }
+    }
+
+    /// CommunityPlaylist (the feed lane) -> CommunityPlaylistModel rows.
+    private static func communityRows(from model: CommunityViewModel) -> [CommunityPlaylistModel] {
+        model.playlists.map { playlist in
+            CommunityPlaylistModel(
+                id: playlist.id,
+                creatorName: playlist.creatorName,
+                name: playlist.name,
+                description: playlist.description,
+                coverUrl: playlist.coverUrl,
+                isCollaborative: false,  // not on the presentation contract yet
+                likesCount: playlist.likesCount,
+                trackCount: playlist.trackCount
+            )
+        }
+    }
+
+    /// UserProfileSummary (the profile lane) -> UserProfileEntry. Lossy by
+    /// design: plays / top-track are not on the summary contract yet.
+    private static func userProfileEntry(from model: UserProfileViewModel) -> UserProfileEntry {
+        let summary = model.profile
+        return UserProfileEntry(
+            id: summary.userId,
+            displayName: summary.displayName,
+            bio: summary.bio,
+            totalPlays: 0,  // not on the summary contract — unknown, rendered as such
+            listeningMinutes: summary.listeningMinutes,
+            favoriteGenre: summary.favoriteGenre,
+            topTrack: "—",   // not on the summary contract — unknown, rendered as such
+            isPrivate: summary.isPrivate
+        )
+    }
+
+    private static func onlineResult(from row: SearchRow) -> OnlineSearchResult {
+        OnlineSearchResult(
+            title: row.title,
+            uploader: row.uploader,
+            url: "https://music.youtube.com/watch?v=\(row.id)",
+            durationSec: (row.durationMs ?? 0) / 1000,
+            thumbnailUrl: row.artworkUrl,
+            type: .song,
+            isVerified: row.isVerified
+        )
     }
 }
 

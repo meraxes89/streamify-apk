@@ -183,15 +183,79 @@ enum CarPlayTemplateFactory {
     }
 }
 
+// MARK: - The live queue content provider (WS-B B6)
+
+/// Browse content from the REAL library lane (WS-B B6: "CarPay renders
+/// browse/playback from real library"): the shortcuts are the live queue's
+/// rows — now playing first, then up next — so the car mirrors exactly
+/// what the phone's queue screen shows. The Playlists tab stays the honest
+/// empty placeholder until a playlist surface crosses the FFI contract
+/// (the placeholder row is built by the template factory for exactly
+/// this state).
+///
+/// The provider reads the shell's QueueViewModel synchronously (its
+/// rev-guarded projections are always consistent); a gone view model (the
+/// shell is app-lifetime, so this is belt-and-braces) degrades to the
+/// honest empty provider.
+@MainActor
+final class QueueCarPlayContentProvider: CarPlayContentProviding {
+    private weak var queueModel: QueueViewModel?
+
+    init(queueModel: QueueViewModel? = nil) {
+        self.queueModel = queueModel
+    }
+
+    func homeShortcuts() -> [CarPlayBrowseItem] {
+        guard let queueModel, !queueModel.tracks.isEmpty else { return [] }
+        var rows: [CarPlayBrowseItem] = []
+        if let current = queueModel.current {
+            rows.append(CarPlayBrowseItem(
+                text: current.title,
+                detailText: "\(current.artist) — now playing",
+                artwork: nil,
+                command: nil  // informational row; transport rides Now Playing
+            ))
+        }
+        for entry in queueModel.upNext.prefix(5) {
+            rows.append(CarPlayBrowseItem(
+                text: entry.track.title,
+                detailText: "\(entry.track.artist) — up next",
+                artwork: nil,
+                command: nil
+            ))
+        }
+        return rows
+    }
+
+    func playlists() -> [CarPlayBrowseItem] {
+        []  // no playlist surface on the FFI contract yet — the honest empty
+    }
+}
+
 // MARK: - The scene delegate
 
-/// The CarPlay scene delegate: connects the template tree on scene connect,
+/// The CarPay scene delegate: connects the template tree on scene connect,
 /// routes template taps onto the shared command plane, tears everything
-/// down on disconnect. The shell assigns `router` (the PlaybackViewModel)
-/// before the scene connects.
+/// down on disconnect.
+///
+/// WIRING (WS-B B6, the "router unassigned" fix): the scene delegate is
+/// instantiated BY THE SYSTEM from the host's scene manifest — the shell
+/// cannot hand it a constructor dependency. So the app-lifetime shell
+/// installs its shared surfaces here (`sharedRouter` /
+/// `sharedContentProvider`), and `connect` binds them into the instance
+/// before the template tree builds. Weak by design: the scene can never
+/// keep a torn-down shell alive.
 @available(iOS 14.0, *)
 @MainActor
 final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
+
+    /// The shell's shared command plane (the transport VM), installed at
+    /// app start; bound into the delegate on scene connect.
+    @MainActor static weak var sharedRouter: RemoteCommandRouting?
+
+    /// The shell's shared browse content (the live queue provider),
+    /// installed at app start; bound into the delegate on scene connect.
+    @MainActor static var sharedContentProvider: CarPlayContentProviding?
 
     /// The shared command plane (weak: the scene outlives nothing).
     weak var router: RemoteCommandRouting?
@@ -233,6 +297,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
 
     private func connect(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
+
+        // WS-B B6: bind the shell's shared surfaces (installed at app
+        // start) before the template tree builds — `reloadBrowseContent`
+        // re-reads the provider, so the car mirrors the live queue.
+        if router == nil {
+            router = CarPlaySceneDelegate.sharedRouter
+        }
+        if CarPlaySceneDelegate.sharedContentProvider != nil, contentProvider is EmptyCarPlayContentProvider {
+            contentProvider = CarPlaySceneDelegate.sharedContentProvider ?? contentProvider
+        }
 
         let home = CarPlayTemplateFactory.homeTemplate(
             shortcuts: contentProvider.homeShortcuts(),

@@ -96,7 +96,7 @@ public struct DiagnosticsView: View {
     @State private var levelFilter: LogFilter = .all
 
     public init(
-        lines: [LogLine] = PreviewCatalog.slogTail,
+        lines: [LogLine] = [],  // WS-B B2: neutral default
         onClear: @escaping () -> Void = {}
     ) {
         self.lines = lines
@@ -240,5 +240,5 @@ public struct DiagnosticsView: View {
 }
 
 #Preview("Diagnostics") {
-    DiagnosticsView()
+    DiagnosticsView(lines: PreviewCatalog.slogTail)
 }

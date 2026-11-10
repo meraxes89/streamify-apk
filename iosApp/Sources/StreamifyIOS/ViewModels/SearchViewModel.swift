@@ -131,6 +131,13 @@ final class SearchViewModel {
         searchHistory = []
     }
 
+    /// Removes one recent-search chip (the omnibar's per-row swipe/x —
+    /// WS-B B2: no dead no-op callbacks in the shell).
+    func removeSearch(query: String) {
+        settings.removeSearchQuery(query)
+        searchHistory = settings.searchHistory()
+    }
+
     func clear() {
         searchTask?.cancel()
         suggestTask?.cancel()

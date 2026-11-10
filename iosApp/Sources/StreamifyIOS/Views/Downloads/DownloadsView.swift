@@ -51,7 +51,7 @@ public struct DownloadsView: View {
     private let legendQualities = ["FLAC 24/96", "AAC 256"]
 
     public init(
-        transfers: [DownloadTransfer] = PreviewCatalog.downloads,
+        transfers: [DownloadTransfer] = [],  // WS-B B2: live shell lowers the VM's rows in
         onRetry: @escaping (String) -> Void = { _ in },
         onPauseResume: @escaping (String) -> Void = { _ in },
         onRemove: @escaping (String) -> Void = { _ in }
@@ -255,5 +255,5 @@ private struct TransferRow: View {
 }
 
 #Preview("Downloads") {
-    DownloadsView()
+    DownloadsView(transfers: PreviewCatalog.downloads)
 }

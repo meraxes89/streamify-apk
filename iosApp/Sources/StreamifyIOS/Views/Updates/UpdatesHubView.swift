@@ -18,7 +18,7 @@ public struct UpdatesHubView: View {
     @State private var preSavedIds: Set<String>
 
     public init(
-        updates: [UpdateEntry] = PreviewCatalog.updates,
+        updates: [UpdateEntry] = [],  // WS-B B2: live shell lowers the VM's rows in
         onPreSave: @escaping (String) -> Void = { _ in }
     ) {
         self.updates = updates
@@ -207,5 +207,5 @@ private struct UpdateCard: View {
 }
 
 #Preview("Updates hub") {
-    UpdatesHubView()
+    UpdatesHubView(updates: PreviewCatalog.updates)
 }

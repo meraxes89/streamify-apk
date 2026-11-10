@@ -150,3 +150,74 @@ extension PresentationTrack {
         )
     }
 }
+
+// MARK: - The playback data plane (WS-B, A4 — mirrors of the UDL v2 records)
+
+/// One playable stream format resolved for a video id (mirror of the UDL
+/// `ResolvedStreamFormat`, issue #151's additive v2 surface). Ordering
+/// contract: audio-only rows precede muxed rows, m4a before webm/opus,
+/// then bitrate descending — `isAudioOnly` is a list-prefix property, so
+/// consumers take element 0 without a scan.
+struct EngineStreamFormat: Equatable, Sendable {
+    /// Direct CDN URL (deciphered, de-throttled; PO-token-backed when a
+    /// botguard binary is configured).
+    let url: String
+    /// Full MIME type incl. codec parameters ("audio/mp4; codecs=mp4a.40.2").
+    let mimeType: String
+    /// Sustained bitrate, bits/second.
+    let bitrate: Int
+    /// Stream length in seconds.
+    let durationSec: Int
+    /// Audio-only row (the prioritized class; always a list prefix).
+    let isAudioOnly: Bool
+}
+
+/// The playback data plane's progress read (mirror of the UDL
+/// `BufferProgress`, issue #151): producer-side telemetry plus the
+/// transport/producer quantities that only exist once a sink is attached.
+struct EngineBufferProgress: Equatable, Sendable {
+    /// Ring occupancy in milliseconds of canonical audio.
+    var bufferedMs: Int
+    /// Ring fill ratio [0.0, 1.0].
+    var fillRatio: Double
+    /// Consumer-side underrun events (cumulative, this sink).
+    var underrunEvents: Int
+    /// Producer-side overrun events (cumulative, this sink).
+    var overrunEvents: Int
+    /// The transport's position target (A2: the last accepted Seek within
+    /// the current row).
+    var targetPositionMs: Int
+    /// The rendered position, derived strictly from the DAC presentation
+    /// clock since the session's anchor (never wall-clock interpolated);
+    /// 0 until a clock sample exists.
+    var renderedPositionMs: Int
+    /// The producer session's track id; nil while no session ran.
+    var trackId: String?
+    /// True when a sink is attached and the producer thread is live.
+    var producerLive: Bool
+    /// True when the current session decoded and committed its final frame
+    /// (the ring still drains afterwards).
+    var eos: Bool
+
+    init(
+        bufferedMs: Int = 0,
+        fillRatio: Double = 0,
+        underrunEvents: Int = 0,
+        overrunEvents: Int = 0,
+        targetPositionMs: Int = 0,
+        renderedPositionMs: Int = 0,
+        trackId: String? = nil,
+        producerLive: Bool = false,
+        eos: Bool = false
+    ) {
+        self.bufferedMs = bufferedMs
+        self.fillRatio = fillRatio
+        self.underrunEvents = underrunEvents
+        self.overrunEvents = overrunEvents
+        self.targetPositionMs = targetPositionMs
+        self.renderedPositionMs = renderedPositionMs
+        self.trackId = trackId
+        self.producerLive = producerLive
+        self.eos = eos
+    }
+}

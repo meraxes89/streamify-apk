@@ -227,6 +227,25 @@ final class BackgroundDownloadService: NSObject, @unchecked Sendable {
         return Array(taskByURL.keys)
     }
 
+    // WS-B B7: the shell's resume-data verification + vault surface ————
+
+    /// The persisted resume snapshots currently on disk (paused or
+    /// cold-launch-interrupted transfers, verifiable by the UI).
+    func persistedResumeSnapshots() -> [URL] {
+        persistedResumeURLs()
+    }
+
+    /// The completed files currently sitting in the destination vault
+    /// (the offline catalogue; the `.resume` bookkeeping directory is
+    /// excluded by construction).
+    func vaultContents() -> [URL] {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: destinationDirectory,
+            includingPropertiesForKeys: [.fileSizeKey]
+        )) ?? []
+        return contents.filter { !$0.hasDirectoryPath }
+    }
+
     /// Cancels one download, persisting the OS resume snapshot so a later
     /// `resumePersisted()` (or the next cold launch) continues from the
     /// transferred byte ranges. Idempotent for a non-live URL.

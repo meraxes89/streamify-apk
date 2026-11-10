@@ -47,6 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # ── WS-B B2 gate: PreviewCatalog production lint (fast fail, no toolchain)
+      - name: "WS-B B2 gate: zero PreviewCatalog in production paths"
+        run: python3 scripts/apple_preview_catalog_lint.py
+
       # ── 0. Rust toolchain FIRST: the engine feeds every downstream pass ────
       - name: Set up Rust toolchain (Apple targets)
         uses: dtolnay/rust-toolchain@stable
@@ -248,6 +252,34 @@ jobs:
         with:
           name: ios-xcodebuild-log
           path: iosApp/xcodebuild-test.log
+          if-no-files-found: ignore
+
+      # ── 3c. WS-B B5 gate: the CHECKED-IN host app target builds from a
+      # fresh clone (a real .app + the widget extension, linking the staged
+      # real engine lane through the package). No codesign on the sim lane.
+      - name: "WS-B B5 gate: host app target builds via xcodebuild"
+        run: |
+          set -o pipefail
+          cd iosApp
+          xcodebuild build \
+            -project Streamify.xcodeproj \
+            -scheme Streamify \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee xcodebuild-app-build.log | tail -40
+          # The widget extension must be embedded in the produced app.
+          APP_PATH="$(xcodebuild -project Streamify.xcodeproj -scheme Streamify -destination 'generic/platform=iOS Simulator' -showBuildSettings 2>/dev/null | sed -n 's/^ *TARGET_BUILD_DIR = //p' | head -1)"
+          echo "TARGET_BUILD_DIR: ${APP_PATH}"
+          test -d "${APP_PATH}/Streamify.app/PlugIns/StreamifyWidgets.appex" \
+            || { echo "::error::widget extension not embedded in Streamify.app"; exit 1; }
+          echo "OK: installable app with embedded widget extension at ${APP_PATH}/Streamify.app"
+
+      - name: Upload app build log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-app-build-log
+          path: iosApp/xcodebuild-app-build.log
           if-no-files-found: ignore
 
       # ── 3b. SPM Compile Gate (macOS host) — SW-ENG1-01 acceptance ─────────

@@ -48,7 +48,7 @@ public struct FullPlayerView: View {
     public init(
         state: PlaybackUiState,
         palette: AmbientPalette? = nil,
-        lyrics: LyricsData = PreviewCatalog.lyrics,
+        lyrics: LyricsData = .empty,  // WS-B B2: honest empty (fixtures in #Preview)
         queueState: Binding<QueueListState>,
         queueAutoMix: Binding<Bool>,
         onDismiss: @escaping () -> Void,
@@ -76,7 +76,7 @@ public struct FullPlayerView: View {
     }
 
     private var ambient: AmbientPalette {
-        palette ?? PreviewCatalog.palette(forTitle: state.currentTrack?.title ?? "streamify")
+        palette ?? .obsidian  // WS-B B2: deterministic neutral until artwork extraction lands
     }
 
     public var body: some View {
@@ -288,6 +288,7 @@ public struct FullPlayerView: View {
         state: PlaybackUiState(PreviewCatalog.playingSnapshot),
         queueState: .constant(PreviewCatalog.queueState),
         queueAutoMix: .constant(true),
+        lyrics: PreviewCatalog.lyrics,
         onDismiss: {}
     )
     .preferredColorScheme(.dark)
@@ -299,6 +300,7 @@ public struct FullPlayerView: View {
         palette: AmbientPalette(dominantHex: 0x1E3264, accentHex: 0xFF0033, darkMutedHex: 0x0A0A0A),
         queueState: .constant(PreviewCatalog.queueState),
         queueAutoMix: .constant(true),
+        lyrics: PreviewCatalog.lyrics,
         onDismiss: {}
     )
     .environment(\.horizontalSizeClass, .regular)

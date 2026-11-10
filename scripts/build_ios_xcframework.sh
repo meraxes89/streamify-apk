@@ -292,6 +292,31 @@ compile_glue() {  # $1 = sdk name, $2 = clang -target triple, $3 = sdk path, $4 
         -c "$4" \
         -o "$5"
 }
+
+# WS-B B4 (ENG-2): the two C++ TUs of the Apple audio bracket —
+#   * coreaudio_pull_adapter.cpp — the AURenderCallback lifecycle + the
+#     `streamify_coreaudio_*` C facade (dlsym-resolved from Swift's
+#     NativeCoreAudioDriver); links the audited host-testable render core
+#     (include/coreaudio_render_core.h, header-only) into the app.
+#   * apple_ring_mount.cpp — the Rust-ring → C++-sink pump exposing the
+#     `streamify_apple_mount_*` C facade (dlsym-resolved from Swift's
+#     AppleRingMount) + the `streamify_ring_*` edge (exported by the Rust
+#     staticlib in the SAME slice).
+# -fmodules: clang records the SDK framework imports (AudioUnit,
+# CoreAudio, CoreFoundation, mach) as LC_LINKER_OPTION entries in the
+# objects — the exact mechanism the .mm glue objects above already use —
+# so the final app/test link resolves them without any project setting.
+compile_native_cxx() {  # $1 = sdk name, $2 = clang -target triple, $3 = sdk path, $4 = src .cpp, $5 = out .o
+    xcrun -sdk "$1" clang++ \
+        -target "$2" \
+        -isysroot "$3" \
+        -std=c++20 -fmodules -O1 \
+        -Wall -Werror \
+        -I"${NATIVE_DIR}/include" \
+        -I"${NATIVE_DIR}" \
+        -c "$4" \
+        -o "$5"
+}
 echo "── [2/6] compiling apple glue per arch (remote command + audio session)"
 # iOS device (arm64). NOTE the clang triples are the CANONICAL Darwin
 # spellings and carry the deployment floor: rustc's aarch64-apple-ios-sim
@@ -301,19 +326,29 @@ echo "── [2/6] compiling apple glue per arch (remote command + audio session
 # the simulator archive for mixing platforms.
 compile_glue "iphoneos" "arm64-apple-ios17.0"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_ios_arm64.o"
 compile_glue "iphoneos" "arm64-apple-ios17.0"        "${IPHONEOS_SDK_PATH}"  "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_ios_arm64.o"
+compile_native_cxx "iphoneos" "arm64-apple-ios17.0" "${IPHONEOS_SDK_PATH}" "${NATIVE_DIR}/audio/coreaudio_pull_adapter.cpp" "${WORK_DIR}/cap_ios_arm64.o"
+compile_native_cxx "iphoneos" "arm64-apple-ios17.0" "${IPHONEOS_SDK_PATH}" "${NATIVE_DIR}/audio/apple_ring_mount.cpp"       "${WORK_DIR}/arm_ios_arm64.o"
 # iOS simulator (arm64 always; x86_64 only when its sim std exists —
 # the SIMULATOR environment, canonical -simulator spelling)
 compile_glue "iphonesimulator" "arm64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_arm64.o"
 compile_glue "iphonesimulator" "arm64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_arm64.o"
+compile_native_cxx "iphonesimulator" "arm64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/coreaudio_pull_adapter.cpp" "${WORK_DIR}/cap_sim_arm64.o"
+compile_native_cxx "iphonesimulator" "arm64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/apple_ring_mount.cpp"       "${WORK_DIR}/arm_sim_arm64.o"
 if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
     compile_glue "iphonesimulator" "x86_64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_sim_x86_64.o"
     compile_glue "iphonesimulator" "x86_64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_sim_x86_64.o"
+    compile_native_cxx "iphonesimulator" "x86_64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/coreaudio_pull_adapter.cpp" "${WORK_DIR}/cap_sim_x86_64.o"
+    compile_native_cxx "iphonesimulator" "x86_64-apple-ios17.0-simulator" "${IPHONESIM_SDK_PATH}" "${NATIVE_DIR}/audio/apple_ring_mount.cpp"       "${WORK_DIR}/arm_sim_x86_64.o"
 fi
 # macOS desktop (arm64 + x86_64; the audio-session TU degrades to its stub)
 compile_glue "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_arm64.o"
 compile_glue "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_arm64.o"
 compile_glue "macosx" "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/os/apple_remote_command.mm"   "${WORK_DIR}/rc_macos_x86_64.o"
 compile_glue "macosx" "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}"    "${NATIVE_DIR}/audio/ios_audio_session.mm"    "${WORK_DIR}/ias_macos_x86_64.o"
+compile_native_cxx "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}" "${NATIVE_DIR}/audio/coreaudio_pull_adapter.cpp" "${WORK_DIR}/cap_macos_arm64.o"
+compile_native_cxx "macosx" "arm64-apple-macosx14.0"  "${MACOSX_SDK_PATH}" "${NATIVE_DIR}/audio/apple_ring_mount.cpp"       "${WORK_DIR}/arm_macos_arm64.o"
+compile_native_cxx "macosx" "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}" "${NATIVE_DIR}/audio/coreaudio_pull_adapter.cpp" "${WORK_DIR}/cap_macos_x86_64.o"
+compile_native_cxx "macosx" "x86_64-apple-macosx14.0" "${MACOSX_SDK_PATH}" "${NATIVE_DIR}/audio/apple_ring_mount.cpp"       "${WORK_DIR}/arm_macos_x86_64.o"
 
 # --- 3. UniFFI Swift bindings (before assembly: the header ships in-slice) --
 #  Same invocation shape as the Gradle `generateUniffiKotlinBindings`
@@ -383,17 +418,23 @@ echo "── [4/6] libtool per-arch + lipo fat merges"
 xcrun libtool -static -o "${WORK_DIR}/libstreamifycore_ios.a" \
     "$(RUST_LIB "${DEVICE_TARGET}")" \
     "${WORK_DIR}/rc_ios_arm64.o" \
-    "${WORK_DIR}/ias_ios_arm64.o"
+    "${WORK_DIR}/ias_ios_arm64.o" \
+    "${WORK_DIR}/cap_ios_arm64.o" \
+    "${WORK_DIR}/arm_ios_arm64.o"
 
 xcrun libtool -static -o "${WORK_DIR}/slice_sim_arm64.a" \
     "$(RUST_LIB "${SIM_ARM_TARGET}")" \
     "${WORK_DIR}/rc_sim_arm64.o" \
-    "${WORK_DIR}/ias_sim_arm64.o"
+    "${WORK_DIR}/ias_sim_arm64.o" \
+    "${WORK_DIR}/cap_sim_arm64.o" \
+    "${WORK_DIR}/arm_sim_arm64.o"
 if [[ "${SIM_X86_AVAILABLE}" -eq 1 ]]; then
     xcrun libtool -static -o "${WORK_DIR}/slice_sim_x86_64.a" \
         "$(RUST_LIB "${SIM_X86_TARGET}")" \
         "${WORK_DIR}/rc_sim_x86_64.o" \
-        "${WORK_DIR}/ias_sim_x86_64.o"
+        "${WORK_DIR}/ias_sim_x86_64.o" \
+        "${WORK_DIR}/cap_sim_x86_64.o" \
+        "${WORK_DIR}/arm_sim_x86_64.o"
     lipo -create \
         "${WORK_DIR}/slice_sim_arm64.a" \
         "${WORK_DIR}/slice_sim_x86_64.a" \
@@ -408,11 +449,15 @@ fi
 xcrun libtool -static -o "${WORK_DIR}/slice_macos_arm64.a" \
     "$(RUST_LIB "${MAC_ARM_TARGET}")" \
     "${WORK_DIR}/rc_macos_arm64.o" \
-    "${WORK_DIR}/ias_macos_arm64.o"
+    "${WORK_DIR}/ias_macos_arm64.o" \
+    "${WORK_DIR}/cap_macos_arm64.o" \
+    "${WORK_DIR}/arm_macos_arm64.o"
 xcrun libtool -static -o "${WORK_DIR}/slice_macos_x86_64.a" \
     "$(RUST_LIB "${MAC_X86_TARGET}")" \
     "${WORK_DIR}/rc_macos_x86_64.o" \
-    "${WORK_DIR}/ias_macos_x86_64.o"
+    "${WORK_DIR}/ias_macos_x86_64.o" \
+    "${WORK_DIR}/cap_macos_x86_64.o" \
+    "${WORK_DIR}/arm_macos_x86_64.o"
 lipo -create \
     "${WORK_DIR}/slice_macos_arm64.a" \
     "${WORK_DIR}/slice_macos_x86_64.a" \

@@ -27,7 +27,7 @@ public struct DspSettingsView: View {
     public var onChange: (DspPreferences) -> Void
 
     public init(
-        dsp: DspPreferences = PreviewCatalog.dsp,
+        dsp: DspPreferences = DspPreferences(),  // WS-B B2: neutral default
         onChange: @escaping (DspPreferences) -> Void = { _ in }
     ) {
         self._prefs = State(initialValue: dsp)
@@ -240,5 +240,5 @@ private extension View {
 }
 
 #Preview("DSP settings") {
-    DspSettingsView()
+    DspSettingsView(dsp: PreviewCatalog.dsp)
 }

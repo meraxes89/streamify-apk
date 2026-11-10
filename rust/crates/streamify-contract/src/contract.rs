@@ -1394,6 +1394,13 @@ impl StreamifyEngine {
             let fetcher = crate::playback_engine::effective_fetcher(&self.shared.range_fetcher);
             let wiring =
                 crate::playback_engine::attach(&self.shared, fetcher, capacity_frames as usize)?;
+            // WS-B B4: publish the consumer lease so the platform mounting
+            // bracket (the Apple ring mount; the C1 JNI bridge and the C5
+            // desktop shims later) can pull through the frozen C edge
+            // (`streamify_ring_*`) against the SAME Arc the Rust-side
+            // `playback_ring()` accessor hands out. Published AFTER the
+            // plane is wired (replace semantics are already resolved above).
+            streamify_playback::consumer_lease::publish(wiring.ring.clone());
             *playback = Some(wiring);
             Ok(())
         })
@@ -1413,6 +1420,10 @@ impl StreamifyEngine {
             if let Some(old) = playback.take() {
                 old.producer.shutdown();
             }
+            // WS-B B4: withdraw the consumer lease AFTER the producer is
+            // joined (no reader can still be mid-pull; the Arc keeps the
+            // ring alive for any in-flight C reader regardless).
+            streamify_playback::consumer_lease::withdraw();
             Ok(())
         })
     }

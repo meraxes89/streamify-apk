@@ -161,6 +161,20 @@ public struct MoodGenre: Identifiable, Hashable, Sendable {
         self.name = name
         self.gradient = gradient
     }
+
+    /// The production mood rail (WS-B B2): pure UI furniture — a fixed
+    /// set of mood chips, owned HERE (not in PreviewCatalog); previews
+    /// alias the same set so the rail renders identically everywhere.
+    public static let standard: [MoodGenre] = [
+        .init(id: "pop", name: "Pop", gradient: StreamifyGradients.pop),
+        .init(id: "hiphop", name: "Hip-Hop", gradient: StreamifyGradients.hipHop),
+        .init(id: "rock", name: "Rock", gradient: StreamifyGradients.rock),
+        .init(id: "indie", name: "Indie", gradient: StreamifyGradients.indie),
+        .init(id: "workout", name: "Workout", gradient: StreamifyGradients.workout),
+        .init(id: "focus", name: "Focus", gradient: StreamifyGradients.focus),
+        .init(id: "chill", name: "Chill", gradient: StreamifyGradients.chill),
+        .init(id: "sleep", name: "Sleep", gradient: StreamifyGradients.sleep),
+    ]
 }
 
 // MARK: - Search
