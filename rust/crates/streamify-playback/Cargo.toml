@@ -1,0 +1,56 @@
+# streamify-playback — the producer-side audio data plane (WS-A A3, issue #151).
+#
+# Owns everything between "a play intent" and "canonical-geometry PCM
+# committed at the sink write edge":
+#   * the Rust-side `AudioSink` trait + `SpscAudioRing` — the mirror of the
+#     frozen C++ ABI in native/include/streamify_audio_sinks.h (7 symbols,
+#     96-byte stats wire, cooperative RequestFlush protocol);
+#   * the `TrackDecoder` trait + the symphonia backend (see docs/
+#     architecture/engines/13_playback_dataplane.md §5.2 for the dependency
+#     rationale: pure-Rust decode, AAC-first feature set, codec-agnostic
+#     trait keeps the Opus decision reversible);
+#   * the `StreamProducer` dedicated producer thread: segmented range fetch →
+#     decode → CanonicalSrc 48 kHz resample → LUFS chain → sink write edge.
+#
+# RT-SAFETY BOUNDARY (mirrors streamify-audio's discipline): the WRITE EDGE
+# (SpscAudioRing write/read/flush/stats) is zero-allocation and zero-lock.
+# The fetch/decode stages run on the producer thread — never the audio
+# callback — and may allocate (network buffers, decoder internals); the
+# staging FrameBuf layers are pre-allocated at session construction and
+# reused. This crate deliberately depends on NO async runtime, NO database
+# and NO HTTP client: the network edge is abstracted behind `RangeFetcher`
+# so the production HTTP lane (streamify-resolver's downloader discipline)
+# plugs in from streamify-contract while hermetic tests drive fixture
+# sources with scripted loss/jitter.
+[package]
+name = "streamify-playback"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Streamify playback data plane: producer thread, decoder, SPSC sink write edge"
+
+[lib]
+name = "streamify_playback"
+crate-type = ["rlib"]
+
+[dependencies]
+streamify-core = { workspace = true }
+streamify-audio = { workspace = true }
+# Decode backend (RFC §5.2 decision record — see the PR description for the
+# full rationale). Pure Rust, MPL-2.0, decode-only. Features are the
+# minimal YouTube-audio set: AAC in ADTS/M4A containers (the resolver's
+# PRIORITIZED audio lane per ResolvedStreamFormat's ordering contract),
+# PCM/WAV for fixtures and lossless rips, OGG + ISO-MP4 demuxers. NO Opus
+# decoder exists in symphonia 0.5/0.6 (upstream issue #8) — the
+# TrackDecoder trait keeps that gap reversible.
+symphonia = { version = "0.6", default-features = false, features = [
+    "aac",
+    "isomp4",
+    "ogg",
+    "pcm",
+    "wav",
+] }
+# Incremental SHA-256 over every fetched byte (the downloader.rs integrity
+# discipline, streaming).
+sha2 = { workspace = true }
+tracing = { workspace = true }

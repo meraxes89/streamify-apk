@@ -76,6 +76,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use streamify_jam::jam_crdt::{JamCrdtState, JamOp, JAM_OP_SIZE};
 
 use streamify_core::media_command_key;
+use streamify_playback::{PlayIntent, RangeFetcher};
 
 // SW-ENG1-03: hard bound on the engine's typed playback queue. The
 // queue is an in-engine staging surface (the CRDT is the sovereign
@@ -109,15 +110,26 @@ struct QueueLane {
     cursor: Option<usize>,
 }
 
+/// The producer directive a lifecycle command maps onto (A3, issue
+/// #151): the producer mirrors the engine's lifecycle (`Park` stops
+/// feeding while the session and ring contents survive; `Stop` drops
+/// the session and flushes the stale tail).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProducerDirective {
+    Park,
+    Resume,
+    Stop,
+}
+
 // Re-export the contract's data types from their canonical home in
 // streamify-core (Discussion #120): the UniFFI scaffolding resolves
 // every UDL-declared type by bare name through these re-exports, and
 // legacy `crate::contract::X` paths inside this workspace keep
 // resolving unchanged.
 pub use streamify_core::{
-    contract_version, AudioErrorKind, AudioStreamConfig, BufferStats, CryptoErrorKind,
-    DacPresentationClock, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE, EngineError,
-    EngineSnapshot, EqualizerBand, JamRoomState, JamSessionHandle, JamSyncResult,
+    contract_version, AudioErrorKind, AudioStreamConfig, BufferProgress, BufferStats,
+    CryptoErrorKind, DacPresentationClock, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE,
+    EngineError, EngineSnapshot, EqualizerBand, JamRoomState, JamSessionHandle, JamSyncResult,
     MAX_JAM_DELTA_BYTES, MAX_JAM_SESSION_NAME_BYTES, MediaCommand, MEDIA_COMMAND_DEBOUNCE_MS,
     NetworkErrorKind, PlaybackState, PlaylistSummary, QueueItem, SearchResult, StorageErrorKind,
     Track, TrackMetadata, CONTRACT_VERSION, EQUALIZER_BAND_COUNT,
@@ -249,17 +261,21 @@ pub trait EngineEventListener: Send + Sync {
 /// Interior engine state, shared behind `Arc` so later phases can hand
 /// cheap clones to DSP workers and telemetry samplers without exposing
 /// the engine handle itself.
-struct EngineShared {
+///
+/// `pub(crate)` for the `playback_engine` wiring module (A3/A4, issue
+/// #151): the progress bridge and intent emission read the telemetry
+/// atomics and the DAC clock directly.
+pub(crate) struct EngineShared {
     /// Lifecycle state; written only on transitions (control plane).
     state: RwLock<PlaybackState>,
     /// Volume in `[0.0, 1.0]`, stored as IEEE-754 bits for lock-free reads.
     volume_bits: AtomicU32,
     /// Media duration currently buffered [ms].
-    buffered_duration_ms: AtomicU64,
+    pub(crate) buffered_duration_ms: AtomicU64,
     /// Cumulative underrun events.
-    underrun_count: AtomicU32,
+    pub(crate) underrun_count: AtomicU32,
     /// Ring fill ratio `[0.0, 1.0]`, stored as IEEE-754 bits.
-    fill_ratio_bits: AtomicU32,
+    pub(crate) fill_ratio_bits: AtomicU32,
     /// Set once by `initialize()`; guards the one-way Idle -> Buffering
     /// transition.
     initialized: AtomicBool,
@@ -273,7 +289,7 @@ struct EngineShared {
     event_rev: AtomicU64,
     /// Latest hardware DAC presentation sample (MP-C01). None until the
     /// first `record_dac_clock`.
-    dac_clock: Mutex<Option<DacPresentationClock>>,
+    pub(crate) dac_clock: Mutex<Option<DacPresentationClock>>,
     /// Registered push listeners (MP-C02), cloned out per dispatch pass.
     listeners: Mutex<Vec<Arc<dyn EngineEventListener>>>,
     /// Wake channel to the dispatch thread (MP-C02). `None` until the
@@ -302,6 +318,18 @@ struct EngineShared {
     /// while holding the queue lock, so a seek racing a track change
     /// can never leak a stale target across rows.
     position_ms: AtomicU64,
+    // ── A3/A4 (issue #151): the playback data-plane wiring ───────────
+    /// The attached playback plane (ring + producer thread), `None`
+    /// until `attach_sink` and after `detach_sink`. Lock ordering: the
+    /// QUEUE lock is always taken BEFORE this lock (transport arms
+    /// mutate the queue under its lock and emit intents after release
+    /// — `play_track` takes both, in that order, and nothing takes
+    /// them in reverse).
+    playback: Mutex<Option<crate::playback_engine::PlaybackWiring>>,
+    /// The range-fetcher override slot (the hermetic test seam:
+    /// `set_range_fetcher` installs fixture sources; the production
+    /// HTTP lane is the default when the slot is empty).
+    range_fetcher: crate::playback_engine::FetcherSlot,
 }
 
 impl fmt::Debug for EngineShared {
@@ -329,6 +357,14 @@ impl fmt::Debug for EngineShared {
                 &self.listeners.lock().map(|l| l.len()).unwrap_or(0),
             )
             .field("dispatcher_running", &self.dispatch_tx.get().is_some())
+            .field(
+                "playback_attached",
+                &self
+                    .playback
+                    .lock()
+                    .map(|w| w.is_some())
+                    .unwrap_or(false),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -363,6 +399,8 @@ impl EngineShared {
             queue: Mutex::new(QueueLane::default()),
             eq_bands: Mutex::new(EqualizerBand::default_set()),
             position_ms: AtomicU64::new(0),
+            playback: Mutex::new(None),
+            range_fetcher: crate::playback_engine::FetcherSlot::default(),
         }
     }
 
@@ -371,7 +409,7 @@ impl EngineShared {
     /// the dispatcher. The wake is coalescing by construction: the
     /// channel holds at most one token, and a token already in flight
     /// guarantees the dispatcher will re-snapshot AFTER this bump.
-    fn notify(&self) {
+    pub(crate) fn notify(&self) {
         self.event_rev.fetch_add(1, Ordering::Release);
         if let Some(tx) = self.dispatch_tx.get() {
             let _ = tx.try_send(());
@@ -676,7 +714,17 @@ impl StreamifyEngine {
     }
 
     /// Apply an accepted media command to the sovereign state machine.
+    ///
+    /// A3/A4 (issue #151): the lifecycle arms also drive the producer
+    /// (`Play`→resume, `Pause`→park, `Stop`→stop-and-flush) and the
+    /// transport arms emit play intents for the newly selected row
+    /// AFTER the queue lock is released (lock ordering: queue before
+    /// playback, never nested) — the producer observes skips
+    /// cooperatively at its stage boundaries.
     fn apply_media_command(&self, command: MediaCommand) {
+        // Producer directives and intent emissions run post-queue-lock.
+        let mut producer_directive: Option<ProducerDirective> = None;
+        let mut intent: Option<(String, String, u64)> = None;
         match command {
             MediaCommand::Play => {
                 *self
@@ -684,6 +732,7 @@ impl StreamifyEngine {
                     .state
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Playing;
+                producer_directive = Some(ProducerDirective::Resume);
             }
             MediaCommand::Pause => {
                 *self
@@ -691,6 +740,7 @@ impl StreamifyEngine {
                     .state
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Paused;
+                producer_directive = Some(ProducerDirective::Park);
             }
             MediaCommand::TogglePlayPause => {
                 let mut state = self
@@ -702,6 +752,11 @@ impl StreamifyEngine {
                     PlaybackState::Playing => PlaybackState::Paused,
                     _ => PlaybackState::Playing,
                 };
+                producer_directive = Some(if *state == PlaybackState::Playing {
+                    ProducerDirective::Resume
+                } else {
+                    ProducerDirective::Park
+                });
             }
             MediaCommand::Stop => {
                 *self
@@ -709,6 +764,7 @@ impl StreamifyEngine {
                     .state
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Idle;
+                producer_directive = Some(ProducerDirective::Stop);
             }
             MediaCommand::SetVolume { volume } => {
                 // Same clamp semantics as set_volume (NaN -> full mute).
@@ -749,6 +805,9 @@ impl StreamifyEngine {
                     position_ms
                 };
                 self.shared.position_ms.store(target, Ordering::Release);
+                if let Some(url) = row.track.resolved_stream_url.clone() {
+                    intent = Some((row.track.id.clone(), url, target));
+                }
             }
             MediaCommand::Next => {
                 let mut queue = self
@@ -763,6 +822,11 @@ impl StreamifyEngine {
                     };
                     queue.cursor = Some(next);
                     self.shared.position_ms.store(0, Ordering::Release);
+                    if let Some(row) = queue.rows.get(next) {
+                        if let Some(url) = row.track.resolved_stream_url.clone() {
+                            intent = Some((row.track.id.clone(), url, 0));
+                        }
+                    }
                 }
             }
             MediaCommand::Previous => {
@@ -778,7 +842,47 @@ impl StreamifyEngine {
                     };
                     queue.cursor = Some(previous);
                     self.shared.position_ms.store(0, Ordering::Release);
+                    if let Some(row) = queue.rows.get(previous) {
+                        if let Some(url) = row.track.resolved_stream_url.clone() {
+                            intent = Some((row.track.id.clone(), url, 0));
+                        }
+                    }
                 }
+            }
+        }
+        // ── post-lock producer wiring (A3/A4, issue #151) ────────────────
+        if let Some(directive) = producer_directive {
+            let playback = self
+                .shared
+                .playback
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(wiring) = playback.as_ref() {
+                match directive {
+                    ProducerDirective::Park => wiring.producer.park(),
+                    ProducerDirective::Resume => wiring.producer.resume(),
+                    ProducerDirective::Stop => wiring.producer.stop(),
+                }
+            }
+        }
+        if let Some((track_id, url, position)) = intent {
+            // Transport commands never touch the lifecycle: an intent
+            // emitted while Paused stages the new row for the resume.
+            let mut playback = self
+                .shared
+                .playback
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(wiring) = playback.as_mut() {
+                crate::playback_engine::emit_intent(
+                    wiring,
+                    &self.shared,
+                    PlayIntent {
+                        track_id,
+                        source_url: url,
+                        start_position_ms: position,
+                    },
+                );
             }
         }
     }
@@ -1236,16 +1340,217 @@ impl StreamifyEngine {
     /// dangling index (A2, issue #148).
     pub fn clear_queue(&self) -> Result<(), EngineError> {
         ffi_shield("StreamifyEngine::clear_queue", move || {
-            let mut queue = self
+            {
+                let mut queue = self
+                    .shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                queue.rows.clear();
+                queue.cursor = None;
+                self.shared.position_ms.store(0, Ordering::Release);
+            }
+            // A3 (issue #151): with no rows staged there is nothing to
+            // play — drop the producer's session (the ring flush
+            // clears whatever tail the deleted rows were feeding).
+            let playback = self
                 .shared
-                .queue
+                .playback
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            queue.rows.clear();
-            queue.cursor = None;
-            self.shared.position_ms.store(0, Ordering::Release);
+            if let Some(wiring) = playback.as_ref() {
+                wiring.producer.stop();
+            }
             Ok(())
         })
+    }
+
+    // ── A3/A4 (issue #151): the playback data-plane surface ──────────
+
+    /// Attach the engine's playback data plane: build the canonical-
+    /// geometry SPSC ring (`capacity_frames`, power-of-two-rounded
+    /// within the native sink bounds) and spawn the dedicated producer
+    /// thread over it (fetch → decode → resample → LUFS → write edge).
+    ///
+    /// The platform HAL pulls from the ring (the Rust-side
+    /// [`Self::playback_ring`] accessor hands out the consumer
+    /// handle; the C1 JNI bridge and C5 JNA shim mount there).
+    /// Attaching while a plane is live replaces it cleanly (the old
+    /// producer is stopped and joined first) — the dogfood-friendly
+    /// lifecycle. Progress events ride the EXISTING event dispatcher:
+    /// the producer's stage commits update the engine's telemetry
+    /// atomics and wake the dispatcher (coalesced by construction).
+    pub fn attach_sink(&self, capacity_frames: u32) -> Result<(), EngineError> {
+        ffi_shield("StreamifyEngine::attach_sink", move || {
+            let mut playback = self
+                .shared
+                .playback
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            // Replace semantics: tear the old plane down first.
+            if let Some(old) = playback.take() {
+                old.producer.shutdown();
+            }
+            let fetcher = crate::playback_engine::effective_fetcher(&self.shared.range_fetcher);
+            let wiring =
+                crate::playback_engine::attach(&self.shared, fetcher, capacity_frames as usize)?;
+            *playback = Some(wiring);
+            Ok(())
+        })
+    }
+
+    /// Detach the playback data plane (idempotent): stop the producer,
+    /// join its thread deterministically, drop the ring. The transport
+    /// and queue surfaces keep working (control-plane-only, the
+    /// pre-A3 posture).
+    pub fn detach_sink(&self) -> Result<(), EngineError> {
+        ffi_shield("StreamifyEngine::detach_sink", move || {
+            let mut playback = self
+                .shared
+                .playback
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(old) = playback.take() {
+                old.producer.shutdown();
+            }
+            Ok(())
+        })
+    }
+
+    /// Play one staged track NOW (A4): select its queue row, reset the
+    /// transport's position target, drive the lifecycle to `Playing`
+    /// and emit the play intent into the producer (which coalesces
+    /// over any in-flight session — the skip path).
+    ///
+    /// The row must already be staged (`enqueue_track`) and carry a
+    /// resolved stream URL (`resolve_stream_formats` populates it);
+    /// either miss fails as `Internal` before any state moves. Without
+    /// an attached sink this is the transport half only (the control
+    /// plane stays honest — nothing is rendered until a plane exists).
+    pub fn play_track(&self, track_id: String) -> Result<(), EngineError> {
+        ffi_shield("StreamifyEngine::play_track", move || {
+            let (index, url) = {
+                let queue = self
+                    .shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let index = queue
+                    .rows
+                    .iter()
+                    .position(|row| row.track.id == track_id)
+                    .ok_or_else(|| EngineError::Internal {
+                        error_message: format!(
+                            "invalid state: track {track_id:?} is not staged in the queue"
+                        ),
+                        backtrace: None,
+                    })?;
+                let url = queue.rows[index]
+                    .track
+                    .resolved_stream_url
+                    .clone()
+                    .ok_or_else(|| EngineError::Internal {
+                        error_message: format!(
+                            "invalid state: track {track_id:?} carries no resolved stream URL"
+                        ),
+                        backtrace: None,
+                    })?;
+                (index, url)
+            };
+            // Queue lock released: select, reset the target, drive the
+            // lifecycle, emit (lock ordering: queue before playback).
+            {
+                let mut queue = self
+                    .shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                queue.cursor = Some(index);
+            }
+            self.shared.position_ms.store(0, Ordering::Release);
+            *self
+                .shared
+                .state
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = PlaybackState::Playing;
+            let mut playback = self
+                .shared
+                .playback
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(wiring) = playback.as_mut() {
+                crate::playback_engine::emit_intent(
+                    wiring,
+                    &self.shared,
+                    PlayIntent {
+                        track_id,
+                        source_url: url,
+                        start_position_ms: 0,
+                    },
+                );
+            }
+            Ok(())
+        })
+    }
+
+    /// The playback data plane's progress read (A4): buffering health,
+    /// underrun/overrun accounting, the transport's position target
+    /// (A2) and the DAC-clock-derived rendered position — one typed
+    /// record. Without an attached plane every producer-side field is
+    /// its zero value and `producer_live` is false (the transport
+    /// target still reads honestly).
+    pub fn buffer_progress(&self) -> Result<BufferProgress, EngineError> {
+        ffi_shield("StreamifyEngine::buffer_progress", move || {
+            let target = self.shared.position_ms.load(Ordering::Acquire);
+            let playback = self
+                .shared
+                .playback
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Ok(match playback.as_ref() {
+                Some(wiring) => {
+                    crate::playback_engine::buffer_progress(wiring, &self.shared, target)
+                }
+                None => BufferProgress {
+                    buffered_ms: 0,
+                    fill_ratio: 0.0,
+                    underrun_events: 0,
+                    overrun_events: 0,
+                    target_position_ms: target,
+                    rendered_position_ms: 0,
+                    track_id: None,
+                    producer_live: false,
+                    eos: false,
+                },
+            })
+        })
+    }
+
+    /// The consumer-side ring handle of the attached playback plane —
+    /// the Rust-side seam the A5 self-test harness (and, later, the C1
+    /// JNI bridge / C5 desktop JNA shim) pulls PCM from. `None` while
+    /// no plane is attached. NOT a UDL surface: the platform lanes
+    /// mount through their own brackets against the frozen ABI.
+    pub fn playback_ring(&self) -> Option<std::sync::Arc<streamify_playback::SpscAudioRing>> {
+        let playback = self
+            .shared
+            .playback
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        playback.as_ref().map(|wiring| wiring.ring.clone())
+    }
+
+    /// Install the range-fetcher override (the hermetic test seam):
+    /// fixture sources with scripted loss/jitter replace the production
+    /// HTTP lane for the NEXT `attach_sink` (the fetcher binds at
+    /// producer spawn). Rust-side hook — the production fetcher needs
+    /// no foreign surface.
+    pub fn set_range_fetcher(&self, fetcher: std::sync::Arc<dyn RangeFetcher>) {
+        *self
+            .shared
+            .range_fetcher
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(fetcher);
     }
 
     /// The current ten-band equalizer curve.
@@ -1682,9 +1987,11 @@ mod tests {
     #[test]
     fn contract_version_is_pinned() {
         // MP-C05: the value is ABI-visible. Changing it is a breaking
-        // contract change that must be a conscious decision.
+        // contract change that must be a conscious decision. v2 (WS-A
+        // A4, issue #151) is the additive playback data-plane bump —
+        // see version.rs for the record.
         assert_eq!(contract_version(), CONTRACT_VERSION);
-        assert_eq!(CONTRACT_VERSION, 1);
+        assert_eq!(CONTRACT_VERSION, 2);
     }
 
     #[test]

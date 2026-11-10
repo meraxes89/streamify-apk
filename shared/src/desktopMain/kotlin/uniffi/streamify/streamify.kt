@@ -850,6 +850,14 @@ internal open class UniffiVTableCallbackInterfaceSecureStoreDelegate(
 
 
 
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -897,10 +905,16 @@ internal interface UniffiLib : Library {
     ): Int
     fun uniffi_streamify_contract_fn_method_streamifyengine_apply_jam_delta(`ptr`: Pointer,`delta`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_attach_sink(`ptr`: Pointer,`capacityFrames`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_streamify_contract_fn_method_streamifyengine_buffer_progress(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_method_streamifyengine_clear_queue(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_create_jam_session(`ptr`: Pointer,`sessionName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_streamify_contract_fn_method_streamifyengine_detach_sink(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_enqueue_track(`ptr`: Pointer,`track`: RustBuffer.ByValue,`enqueuedBy`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
     fun uniffi_streamify_contract_fn_method_streamifyengine_get_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -921,6 +935,8 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_on_media_command(`ptr`: Pointer,`command`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
+    fun uniffi_streamify_contract_fn_method_streamifyengine_play_track(`ptr`: Pointer,`trackId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_record_buffer_stats(`ptr`: Pointer,`bufferedDurationMs`: Long,`underrunCount`: Int,`fillRatio`: Float,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_streamify_contract_fn_method_streamifyengine_record_dac_clock(`ptr`: Pointer,`clock`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1091,9 +1107,15 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_apply_jam_delta(
     ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_attach_sink(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_buffer_progress(
+    ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_clear_queue(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_create_jam_session(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_detach_sink(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_enqueue_track(
     ): Short
@@ -1114,6 +1136,8 @@ internal interface UniffiLib : Library {
     fun uniffi_streamify_contract_checksum_method_streamifyengine_initialize(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_on_media_command(
+    ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_play_track(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_record_buffer_stats(
     ): Short
@@ -1197,10 +1221,19 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_apply_jam_delta() != 18467.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_attach_sink() != 54021.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_buffer_progress() != 65447.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_clear_queue() != 45221.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_create_jam_session() != 63695.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_detach_sink() != 2791.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_enqueue_track() != 44196.toShort()) {
@@ -1231,6 +1264,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_on_media_command() != 1333.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_play_track() != 27863.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_record_buffer_stats() != 23234.toShort()) {
@@ -2141,6 +2177,28 @@ public interface StreamifyEngineInterface {
     fun `applyJamDelta`(`delta`: kotlin.ByteArray): JamSyncResult
     
     /**
+     * Attach the engine's playback data plane: build the canonical-
+     * geometry SPSC ring (`capacity_frames` frames, power-of-two
+     * rounded within the native sink bounds) and spawn the dedicated
+     * producer thread over it (fetch -> decode -> resample -> LUFS ->
+     * write edge). The platform HAL pulls from the ring through its
+     * own mounting bracket (the C1 JNI bridge / C5 JNA shim).
+     * Attaching while a plane is live replaces it cleanly. Progress
+     * events ride the EXISTING event dispatcher: stage commits update
+     * the engine telemetry and wake the coalesced push channel.
+     */
+    fun `attachSink`(`capacityFrames`: kotlin.UInt)
+    
+    /**
+     * The playback data plane's progress read: buffering health,
+     * underrun/overrun accounting, the transport's position target
+     * (A2) and the DAC-clock-derived rendered position — one typed
+     * record. Without an attached plane the producer-side fields read
+     * their zero values and `producer_live` is false.
+     */
+    fun `bufferProgress`(): BufferProgress
+    
+    /**
      * Drop every queued row (idempotent).
      */
     fun `clearQueue`()
@@ -2152,6 +2210,13 @@ public interface StreamifyEngineInterface {
      * mirror). A blank or oversized name is rejected as Internal.
      */
     fun `createJamSession`(`sessionName`: kotlin.String): JamSessionHandle
+    
+    /**
+     * Detach the playback data plane (idempotent): stop the producer,
+     * join its thread deterministically, drop the ring. The transport
+     * and queue surfaces keep working control-plane-only.
+     */
+    fun `detachSink`()
     
     /**
      * Append one track to the engine's playback queue. Returns the
@@ -2214,6 +2279,17 @@ public interface StreamifyEngineInterface {
      * swallowed. Returns true when applied, false when debounced.
      */
     fun `onMediaCommand`(`command`: MediaCommand): kotlin.Boolean
+    
+    /**
+     * Play one staged track NOW: select its queue row, reset the
+     * transport's position target, drive the lifecycle to Playing and
+     * emit the play intent into the producer (which coalesces over
+     * any in-flight session — the skip path). The row must be staged
+     * (`enqueue_track`) and carry a resolved stream URL
+     * (`resolve_stream_formats`); either miss fails as Internal.
+     * Without an attached sink this is the transport half only.
+     */
+    fun `playTrack`(`trackId`: kotlin.String)
     
     /**
      * Feed one live telemetry sample from the playback buffer and the
@@ -2389,6 +2465,49 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
 
     
     /**
+     * Attach the engine's playback data plane: build the canonical-
+     * geometry SPSC ring (`capacity_frames` frames, power-of-two
+     * rounded within the native sink bounds) and spawn the dedicated
+     * producer thread over it (fetch -> decode -> resample -> LUFS ->
+     * write edge). The platform HAL pulls from the ring through its
+     * own mounting bracket (the C1 JNI bridge / C5 JNA shim).
+     * Attaching while a plane is live replaces it cleanly. Progress
+     * events ride the EXISTING event dispatcher: stage commits update
+     * the engine telemetry and wake the coalesced push channel.
+     */
+    @Throws(EngineException::class)override fun `attachSink`(`capacityFrames`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_attach_sink(
+        it, FfiConverterUInt.lower(`capacityFrames`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The playback data plane's progress read: buffering health,
+     * underrun/overrun accounting, the transport's position target
+     * (A2) and the DAC-clock-derived rendered position — one typed
+     * record. Without an attached plane the producer-side fields read
+     * their zero values and `producer_live` is false.
+     */
+    @Throws(EngineException::class)override fun `bufferProgress`(): BufferProgress {
+            return FfiConverterTypeBufferProgress.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_buffer_progress(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Drop every queued row (idempotent).
      */
     @Throws(EngineException::class)override fun `clearQueue`()
@@ -2419,6 +2538,23 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
     }
     )
     }
+    
+
+    
+    /**
+     * Detach the playback data plane (idempotent): stop the producer,
+     * join its thread deterministically, drop the ring. The transport
+     * and queue surfaces keep working control-plane-only.
+     */
+    @Throws(EngineException::class)override fun `detachSink`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_detach_sink(
+        it, _status)
+}
+    }
+    
     
 
     
@@ -2594,6 +2730,27 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
 
     
     /**
+     * Play one staged track NOW: select its queue row, reset the
+     * transport's position target, drive the lifecycle to Playing and
+     * emit the play intent into the producer (which coalesces over
+     * any in-flight session — the skip path). The row must be staged
+     * (`enqueue_track`) and carry a resolved stream URL
+     * (`resolve_stream_formats`); either miss fails as Internal.
+     * Without an attached sink this is the transport half only.
+     */
+    @Throws(EngineException::class)override fun `playTrack`(`trackId`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_play_track(
+        it, FfiConverterString.lower(`trackId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Feed one live telemetry sample from the playback buffer and the
      * acoustic pipeline. Malformed samples (NaN/±inf fill ratio) are
      * rejected; out-of-range fill ratios clamp to [0.0, 1.0].
@@ -2736,6 +2893,106 @@ public object FfiConverterTypeAudioStreamConfig: FfiConverterRustBuffer<AudioStr
             FfiConverterUByte.write(value.`channels`, buf)
             FfiConverterUByte.write(value.`bitDepth`, buf)
             FfiConverterUInt.write(value.`bufferFrames`, buf)
+    }
+}
+
+
+
+/**
+ * The playback data plane's progress read (WS-A A4, issue #151): the
+ * producer-side telemetry plus the transport/producer quantities that
+ * only exist once a sink is attached. A one-shot typed read (like
+ * `get_queue`) — the coalesced push channel already carries the
+ * buffering health as `EngineSnapshot.buffer_stats`; this record adds
+ * the session correlation, the A2 position target and the
+ * DAC-clock-derived rendered position.
+ */
+data class BufferProgress (
+    /**
+     * Ring occupancy in milliseconds of canonical audio.
+     */
+    var `bufferedMs`: kotlin.ULong, 
+    /**
+     * Ring fill ratio [0.0, 1.0].
+     */
+    var `fillRatio`: kotlin.Float, 
+    /**
+     * Consumer-side underrun events (cumulative, this sink).
+     */
+    var `underrunEvents`: kotlin.UInt, 
+    /**
+     * Producer-side overrun events (cumulative, this sink).
+     */
+    var `overrunEvents`: kotlin.UInt, 
+    /**
+     * The transport's position target [ms] (A2: the last accepted
+     * Seek within the current row).
+     */
+    var `targetPositionMs`: kotlin.ULong, 
+    /**
+     * The rendered position [ms], derived strictly from the DAC
+     * presentation clock since the session's anchor (never
+     * wall-clock interpolated); 0 until a clock sample exists.
+     */
+    var `renderedPositionMs`: kotlin.ULong, 
+    /**
+     * The producer session's track id; null while no session ran.
+     */
+    var `trackId`: kotlin.String?, 
+    /**
+     * True when a sink is attached and the producer thread is live.
+     */
+    var `producerLive`: kotlin.Boolean, 
+    /**
+     * True when the current session decoded and committed its final
+     * frame (the ring still drains afterwards).
+     */
+    var `eos`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBufferProgress: FfiConverterRustBuffer<BufferProgress> {
+    override fun read(buf: ByteBuffer): BufferProgress {
+        return BufferProgress(
+            FfiConverterULong.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BufferProgress) = (
+            FfiConverterULong.allocationSize(value.`bufferedMs`) +
+            FfiConverterFloat.allocationSize(value.`fillRatio`) +
+            FfiConverterUInt.allocationSize(value.`underrunEvents`) +
+            FfiConverterUInt.allocationSize(value.`overrunEvents`) +
+            FfiConverterULong.allocationSize(value.`targetPositionMs`) +
+            FfiConverterULong.allocationSize(value.`renderedPositionMs`) +
+            FfiConverterOptionalString.allocationSize(value.`trackId`) +
+            FfiConverterBoolean.allocationSize(value.`producerLive`) +
+            FfiConverterBoolean.allocationSize(value.`eos`)
+    )
+
+    override fun write(value: BufferProgress, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`bufferedMs`, buf)
+            FfiConverterFloat.write(value.`fillRatio`, buf)
+            FfiConverterUInt.write(value.`underrunEvents`, buf)
+            FfiConverterUInt.write(value.`overrunEvents`, buf)
+            FfiConverterULong.write(value.`targetPositionMs`, buf)
+            FfiConverterULong.write(value.`renderedPositionMs`, buf)
+            FfiConverterOptionalString.write(value.`trackId`, buf)
+            FfiConverterBoolean.write(value.`producerLive`, buf)
+            FfiConverterBoolean.write(value.`eos`, buf)
     }
 }
 
@@ -4662,7 +4919,9 @@ public object FfiConverterSequenceTypeTrack: FfiConverterRustBuffer<List<Track>>
          * verification: a client shell compares the loaded library's value
          * against its compiled-in expectation and refuses to start on
          * mismatch. Bump ONLY on breaking contract changes after the
-         * Phase 3 freeze (additive fields with defaults do not bump).
+         * Phase 3 freeze (additive fields with defaults do not bump —
+         * v2 records the A4 playback data-plane surface additively, per
+         * the RFC §6.3 version discipline).
          */ fun `contractVersion`(): kotlin.UInt {
             return FfiConverterUInt.lift(
     uniffiRustCall() { _status ->

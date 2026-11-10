@@ -50,6 +50,7 @@ resolver = "2"
 members = [
     "crates/streamify-core",
     "crates/streamify-audio",
+    "crates/streamify-playback",
     "crates/streamify-storage",
     "crates/streamify-jam",
     "crates/streamify-resolver",
@@ -59,6 +60,8 @@ members = [
 default-members = [
     "crates/streamify-core",
     "crates/streamify-audio",
+    "crates/streamify-playback",
+    "crates/streamify-playback",
     "crates/streamify-storage",
     "crates/streamify-jam",
     "crates/streamify-resolver",
@@ -79,6 +82,7 @@ license = "MIT"
 [workspace.dependencies]
 streamify-core = { path = "crates/streamify-core" }
 streamify-audio = { path = "crates/streamify-audio" }
+streamify-playback = { path = "crates/streamify-playback" }
 streamify-storage = { path = "crates/streamify-storage" }
 streamify-jam = { path = "crates/streamify-jam" }
 streamify-resolver = { path = "crates/streamify-resolver" }
@@ -106,6 +110,17 @@ libc = "0.2"
 ed25519-dalek = "2.1"
 uniffi = { version = "0.28", features = ["cli", "build"] }
 rubato = "0.15"
+# WS-A A3 (issue #151): the decode backend. Pure Rust, MPL-2.0,
+# decode-only; features are the minimal YouTube-audio set (AAC in
+# ADTS/M4A, PCM/WAV, OGG demuxing). NO Opus decoder exists upstream —
+# see docs/architecture/engines/13_playback_dataplane.md §5.2.
+symphonia = { version = "0.6", default-features = false, features = [
+    "aac",
+    "isomp4",
+    "ogg",
+    "pcm",
+    "wav",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 metrics = "0.24"

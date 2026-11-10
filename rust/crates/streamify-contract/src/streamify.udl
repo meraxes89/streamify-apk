@@ -116,6 +116,38 @@ dictionary BufferStats {
     f32 fill_ratio;
 };
 
+/// The playback data plane's progress read (WS-A A4, issue #151): the
+/// producer-side telemetry plus the transport/producer quantities that
+/// only exist once a sink is attached. A one-shot typed read (like
+/// `get_queue`) — the coalesced push channel already carries the
+/// buffering health as `EngineSnapshot.buffer_stats`; this record adds
+/// the session correlation, the A2 position target and the
+/// DAC-clock-derived rendered position.
+dictionary BufferProgress {
+    /// Ring occupancy in milliseconds of canonical audio.
+    u64 buffered_ms;
+    /// Ring fill ratio [0.0, 1.0].
+    f32 fill_ratio;
+    /// Consumer-side underrun events (cumulative, this sink).
+    u32 underrun_events;
+    /// Producer-side overrun events (cumulative, this sink).
+    u32 overrun_events;
+    /// The transport's position target [ms] (A2: the last accepted
+    /// Seek within the current row).
+    u64 target_position_ms;
+    /// The rendered position [ms], derived strictly from the DAC
+    /// presentation clock since the session's anchor (never
+    /// wall-clock interpolated); 0 until a clock sample exists.
+    u64 rendered_position_ms;
+    /// The producer session's track id; null while no session ran.
+    string? track_id;
+    /// True when a sink is attached and the producer thread is live.
+    boolean producer_live;
+    /// True when the current session decoded and committed its final
+    /// frame (the ring still drains afterwards).
+    boolean eos;
+};
+
 /// Hardware DAC presentation clock sample (Phase 3 / MP-C01, MP-DEC-03).
 ///
 /// The hardware HAL callback is the SOLE clock master: playback position,
@@ -556,6 +588,44 @@ interface StreamifyEngine {
     [Throws=EngineError]
     void clear_queue();
 
+    // ── A3/A4 (issue #151): the playback data-plane surface ──────────
+
+    /// Attach the engine's playback data plane: build the canonical-
+    /// geometry SPSC ring (`capacity_frames` frames, power-of-two
+    /// rounded within the native sink bounds) and spawn the dedicated
+    /// producer thread over it (fetch -> decode -> resample -> LUFS ->
+    /// write edge). The platform HAL pulls from the ring through its
+    /// own mounting bracket (the C1 JNI bridge / C5 JNA shim).
+    /// Attaching while a plane is live replaces it cleanly. Progress
+    /// events ride the EXISTING event dispatcher: stage commits update
+    /// the engine telemetry and wake the coalesced push channel.
+    [Throws=EngineError]
+    void attach_sink(u32 capacity_frames);
+
+    /// Detach the playback data plane (idempotent): stop the producer,
+    /// join its thread deterministically, drop the ring. The transport
+    /// and queue surfaces keep working control-plane-only.
+    [Throws=EngineError]
+    void detach_sink();
+
+    /// Play one staged track NOW: select its queue row, reset the
+    /// transport's position target, drive the lifecycle to Playing and
+    /// emit the play intent into the producer (which coalesces over
+    /// any in-flight session — the skip path). The row must be staged
+    /// (`enqueue_track`) and carry a resolved stream URL
+    /// (`resolve_stream_formats`); either miss fails as Internal.
+    /// Without an attached sink this is the transport half only.
+    [Throws=EngineError]
+    void play_track(string track_id);
+
+    /// The playback data plane's progress read: buffering health,
+    /// underrun/overrun accounting, the transport's position target
+    /// (A2) and the DAC-clock-derived rendered position — one typed
+    /// record. Without an attached plane the producer-side fields read
+    /// their zero values and `producer_live` is false.
+    [Throws=EngineError]
+    BufferProgress buffer_progress();
+
     /// The current ten-band equalizer curve (band 0..9, octave-spaced;
     /// flat 0 dB preset by default).
     [Throws=EngineError]
@@ -588,7 +658,9 @@ namespace streamify {
     /// verification: a client shell compares the loaded library's value
     /// against its compiled-in expectation and refuses to start on
     /// mismatch. Bump ONLY on breaking contract changes after the
-    /// Phase 3 freeze (additive fields with defaults do not bump).
+    /// Phase 3 freeze (additive fields with defaults do not bump —
+    /// v2 records the A4 playback data-plane surface additively, per
+    /// the RFC §6.3 version discipline).
     u32 contract_version();
 
     /// Phase 5 (MP-CAP04): install the foreign secure-storage delegate

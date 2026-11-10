@@ -3,12 +3,12 @@
 > **The audio rendering pipeline that makes the Sovereign Core actually play: producer → `AudioSink` write edge → platform HAL.**
 > One engine, every speaker (AHEAD.md Pillar 1 — "MAKE IT PLAY"). This RFC is the A1 deliverable for workstream **WS-A (ENG-1 "Drivetrain")**:
 > it specifies the data-plane architecture, the Rust-side `AudioSink` trait aligned with the frozen C++ ABI, the transport semantics that
-> shipped with it (A2), the panic-policy decision record (A6), and the acceptance gates for the remaining tasks (A3 producer, A4 UniFFI
-> surface, A5 live-audio self-test harness).
+> shipped with it (A2), the panic-policy decision record (A6), and — as of issue #151 — the SHIPPED producer pipeline (A3), the UniFFI
+> surface (A4) and the live-audio self-test harness (A5).
 
 | Subsystem Spec | Details |
 |---|---|
-| **Status** | RFC **active** (A1). Transport slice **shipped** (A2, issue #148). Panic policy **reconciled** (A6, issue #148). Producer/sink/self-test (A3/A4/A5) **specified here, not yet implemented** — every claim below is marked `shipped` or `planned` against the tree. |
+| **Status** | RFC **active** (A1). Transport slice **shipped** (A2, issue #148). Panic policy **reconciled** (A6, issue #148). Producer + sink edge + UniFFI surface + self-test harness **shipped** (A3/A4/A5, issue #151). Every claim below is marked `shipped` or `planned` against the tree. |
 | **Owner** | ENG-1 "Drivetrain" (engine side); ENG-3 owns the JNI/HAL mounting brackets (C1/C5), ENG-2 owns Apple integration (B4) |
 | **Control plane (shipped)** | `rust/crates/streamify-contract/src/contract.rs` — `StreamifyEngine` state machine, `MediaCommand`, debounce, seqlock snapshots |
 | **Transport (shipped, A2)** | `apply_media_command` Seek/Next/Previous over the staged typed queue + position target |
@@ -26,12 +26,12 @@
 2. [The Gap This Closes](#2-the-gap-this-closes)
 3. [Architecture — Four Planes](#3-architecture--four-planes)
 4. [The Transport Layer (A2 — shipped)](#4-the-transport-layer-a2--shipped)
-5. [The Stream Producer (A3 — planned)](#5-the-stream-producer-a3--planned)
+5. [The Stream Producer (A3 — shipped)](#5-the-stream-producer-a3--shipped)
 6. [The `AudioSink` Write Edge (frozen ABI alignment)](#6-the-audiosink-write-edge-frozen-abi-alignment)
 7. [Platform HAL Bindings (ownership map)](#7-platform-hal-bindings-ownership-map)
 8. [Panic Policy Decision Record (A6 — shipped)](#8-panic-policy-decision-record-a6--shipped)
-9. [UniFFI Surface Plan (A4 — planned)](#9-uniffi-surface-plan-a4--planned)
-10. [Live-Audio Self-Test Harness (A5 — planned)](#10-live-audio-self-test-harness-a5--planned)
+9. [The UniFFI Surface (A4 — shipped)](#9-the-uniffi-surface-a4--shipped)
+10. [Live-Audio Self-Test Harness (A5 — shipped)](#10-live-audio-self-test-harness-a5--shipped)
 11. [Metrics & SLOs](#11-metrics--slos)
 12. [Task Status & Sequencing](#12-task-status--sequencing)
 13. [Evidence Index](#13-evidence-index)
@@ -120,7 +120,8 @@ graph TB
 The planes are deliberately decoupled at the points where ownership changes:
 
 - **Control → transport**: the debounced `MediaCommand` stream (shipped).
-- **Transport → producer**: the *play intent* — current queue row + position target (shipped as state; the producer consumes it in A3).
+- **Transport → producer**: the *play intent* — current queue row + position target (the transport emits intents into the producer
+  on every track change and seek since A3 shipped: rows carrying a resolved stream URL drive the data plane automatically).
 - **Producer → sink**: f32 PCM at the canonical geometry, written through the frozen write edge (§6).
 - **Sink → HAL → engine**: DAC presentation-clock samples flow back through `record_dac_clock` and are republished in every snapshot;
   this is the **rendered-position truth** the transport's target is reconciled against (§4.3).
@@ -185,10 +186,12 @@ Two pre-existing transport-adjacent lanes remain, deliberately untouched by A2:
 
 ---
 
-## 5. The Stream Producer (A3 — planned)
+## 5. The Stream Producer (A3 — shipped)
 
-**Not yet implemented — this section is the build spec.** The producer turns a play intent into canonical-geometry PCM at the sink
-write edge, on a dedicated producer thread that never touches the audio callback.
+**Shipped in issue #151** — the `streamify-playback` crate. The producer turns a play intent into canonical-geometry PCM at the sink
+write edge, on a dedicated producer thread that never touches the audio callback. File map: `rust/crates/streamify-playback/src/`
+(`fetch.rs` the range abstraction, `decode.rs` the `TrackDecoder` trait + symphonia backend, `producer.rs` the thread,
+`sink.rs` the SPSC write edge, `frame_buf.rs` the pre-allocated staging).
 
 ### 5.1 Stage pipeline
 
@@ -208,9 +211,13 @@ write edge, on a dedicated producer thread that never touches the audio callback
 
 ### 5.2 Decode — the dependency decision
 
-The workspace has **no decoder today**. The plan: a decode-only, pure-Rust crate (candidate: `symphonia` with the Opus + AAC feature
-flags; MIT-licensed, no unsafe audio-parsing track record red flags known at RFC time). Per CONTRIBUTING.md ("new dependencies
-without a documented rationale in the PR description" → not merged), the A3 PR must carry:
+The workspace had **no decoder before issue #151**. **Shipped decision: `symphonia 0.6`** with the `aac` + `isomp4` + `ogg` + `pcm` +
+`wav` feature flags — NOT the RFC-time candidate shape: the audit found **symphonia ships no Opus decoder in any released version**
+(0.5.x and 0.6.x carry `ogg` as a *container* only; upstream issue pdeljanov/Symphonia#8, "work not started"). The RFC's own fallback
+clause therefore applies: the codec-agnostic `TrackDecoder` trait (§5.3) is the boundary, AAC ships now (the resolver's documented
+format ordering already prioritizes m4a/AAC over webm/opus rows), and Opus remains reversible (no production-grade pure-Rust Opus
+decoder exists; a libopus binding would violate the pure-Rust profile). License: MPL-2.0 (supply-chain sanity check in the PR).
+Per CONTRIBUTING.md ("new dependencies without a documented rationale in the PR description" → not merged), the A3 PR carries:
 
 - the rationale (pure-Rust, decode-only, no ML/runtime baggage, maintained),
 - the attack-surface note (untrusted container parsing — the input is a resolved CDN stream, i.e. hostile-media-adjacent; the
@@ -220,27 +227,42 @@ without a documented rationale in the PR description" → not merged), the A3 PR
 If the dependency review rejects the candidate, the fallback is a hand-rolled, fuzz-first Opus decoder behind the same trait — slower
 to land, zero new supply-chain surface. The trait boundary (§5.3) is fixed either way so the decision is reversible.
 
-### 5.3 Producer trait sketch
+### 5.3 The decode trait (shipped shape)
 
 ```rust,ignore
-/// A3 (planned): one decode session. Implemented by the Symphonia
-/// backend, the fuzz double, and the fixture loader the self-test
-/// harness (A5) drives — the decision from §5.2 stays reversible.
-trait TrackDecoder {
-    /// Feed one byte range; emit canonical-geometry PCM frames.
+/// A3 (shipped): one decode session. Implemented by the Symphonia
+/// backend and the hermetic fixture path the self-test harness (A5)
+/// drives — the §5.2 decision stays reversible.
+trait TrackDecoder: Send {
+    /// Feed one byte range; append every input-geometry frame it
+    /// completes. A frontier hit (more input needed mid-packet) is a
+    /// checkpoint, not an error.
     fn push_range(&mut self, bytes: &[u8], out: &mut FrameBuf) -> Result<(), EngineError>;
+    /// Signal source exhaustion; pump the tail.
+    fn finish(&mut self, out: &mut FrameBuf) -> Result<(), EngineError>;
     fn is_eos(&self) -> bool;
+    /// None until the container probe completes (partial headers).
+    fn geometry(&self) -> Option<DecoderGeometry>;
 }
 ```
 
 The `FrameBuf` is a pre-allocated, reused staging buffer — allocation happens at session construction, never on the audio edge.
 
+**The incremental-feed checkpoint protocol** (the non-obvious half of the backend): symphonia is a pull parser, so a fed-range frontier
+hit surfaces as `IoError(UnexpectedEof)` mid-packet. The session then rewinds — `into_inner` → seek 0 → re-probe from the accumulated
+buffer → `FormatReader::seek` to the frames already emitted — and continues exactly where it left off once more input arrives.
+`chunked_feed_matches_whole_file_decode` (streamify-playback's decode suite) pins chunked feeds bit-identical to whole-file decodes
+at three chunk sizes across both fixtures.
+
 ### 5.4 Cancellation and skip-under-load
 
 Track skip is the hostile path (AHEAD A3 AC: 100 rapid skips, no leak, no underrun). Design:
 
-- The transport's cursor move (§4.2) is the skip signal; the producer observes it between stage commits and aborts in-flight fetches
-  (range requests are idempotent and simply abandoned), drops the decoder session, and re-stages at the new row's position target.
+- The transport's cursor move (§4.2) and `play_track` are the skip signals; the producer observes them between stage commits and
+  aborts in-flight fetches (range requests are idempotent and simply abandoned), drops the decoder session, and re-stages at the new
+  row's position target. **Shipped**: urgent commands (`Play`/`Stop`/`Shutdown`) interrupt at stage boundaries and inside write-edge
+  park retries; benign commands (`Park`/`Resume`) flip the feeding gate without interrupting the in-flight chunk (the unwritten
+  staging tail survives a pause — a pause never punches a hole in the audio).
 - Abandonment is **cooperative at stage boundaries** — never a blocking cancel from the audio thread. The ring's cooperative
   `RequestFlush` (AMP-10) is the sink-side half: safe while the audio callback is live; the consumer thread performs the cursor
   reset on its next read.
@@ -248,13 +270,15 @@ Track skip is the hostile path (AHEAD A3 AC: 100 rapid skips, no leak, no underr
   count against the DAC presentation clock (the rendered truth, §4.3) so the UI's position converges to the hardware, not to a
   counter.
 
-### 5.5 Acceptance gates (from AHEAD A3)
+### 5.5 Acceptance gates (from AHEAD A3) — all green
 
-- Golden-vector extension: decode → resample → LUFS path pinned against new fixtures (dual-language freeze discipline where the C++
-  side consumes the same vectors).
-- Skip-under-load stress: 100 rapid skips — zero leaks (sanitizer-clean), zero underruns attributable to the skip path.
-- Zero allocation on the audio edge: the write path carries an `AllocGuard`-style proof, mirroring the RT discipline already proven
-  in `streamify-audio`.
+- Golden-vector extension: the decode → resample → LUFS path is pinned against the checked-in fixtures
+  (`fixtures/audio/playback_selftest_440hz_{48k,44k1}.wav`, generated by `scripts/generate_playback_fixtures.py`): exact frame
+  counts, the 440 Hz dominant bin through an FFT, bit-identical chunked-vs-whole-file decoding.
+- Skip-under-load stress: 100 rapid skips — zero leaks (deterministic join-based teardown), zero skip-attributable underruns
+  (`live_audio_selftest_skip_under_load_100_intents` + `test_producer.rs::skip_under_load_100_rapid_intents_stay_clean`).
+- Zero allocation on the audio edge: the write/read/flush/stats paths carry a counting-allocator proof
+  (`test_ring.rs::write_edge_is_zero_allocation`), mirroring the RT discipline already proven in `streamify-audio`.
 
 ---
 
@@ -277,7 +301,7 @@ export — and the Rust side must mirror it, not replace it:
   (release-store request / consumer acquire-exchange / tail-forward reset) — the exact protocol the Rust-side mirror in
   `test_uniffi_contract.rs` already pins.
 
-### 6.2 The Rust-side trait (A3/A4 will implement against it)
+### 6.2 The Rust-side trait (shipped, issue #151 — `streamify-playback/src/sink.rs`)
 
 ```rust,ignore
 /// The Rust-side mirror of the frozen sink contract (§6.1). The C++
@@ -308,8 +332,8 @@ writer (SPSC by construction).
 - The Rust trait adds **no wire surface**: it maps onto the already-frozen C++ ABI. Any future divergence (e.g. a new stats field)
   goes through an additive layout-version bump mirroring the wire's `layout magic` + `layout bytes` discipline — never a silent
   reinterpretation.
-- `CONTRACT_VERSION` (MP-C05, currently 1) is untouched by A2/A6. The A4 UDL additions (`attach_sink`, `detach_sink`,
-  `play_track`, `buffer_progress` events) bump it **additively to v2** — a breaking bump would violate the freeze.
+- `CONTRACT_VERSION` (MP-C05) was untouched by A2/A6; the A4 UDL additions (`attach_sink`, `detach_sink`, `play_track`,
+  `buffer_progress`) bumped it **additively to v2** in issue #151, as specified — a breaking bump would violate the freeze.
 - ABI review sign-off for this RFC: ENG-1 (author), ENG-3 (C1 consumer of the edge — the header's own contract is unchanged, only
   mirrored). Recorded here as the A1 acceptance criterion.
 
@@ -366,23 +390,21 @@ the nightly matrix belongs with the C3/C7 nightly work (ENG-3's lane), not this 
 
 ---
 
-## 9. UniFFI Surface Plan (A4 — planned)
+## 9. The UniFFI Surface (A4 — shipped)
 
-**Not yet implemented — this section is the UDL delta spec.** Additions to `streamify.udl` when A3 lands:
+**Shipped in issue #151.** The UDL delta that landed (additive; `CONTRACT_VERSION` 1 → 2 recorded per the version discipline):
 
-```text,ignore
-// A4 (planned): the playback transport + sink surface. Additive only —
-// CONTRACT_VERSION bumps 1 → 2 (MP-C05: additive fields with defaults
-// do not break, but the version discipline wants the bump recorded).
-[Throws=EngineError]
-void attach_sink(...);        // platform sink handle → engine write edge
-[Throws=EngineError]
-void detach_sink();
-[Throws=EngineError]
-void play_track(string track_id);
-// buffer_progress() events ride the EXISTING event dispatcher thread
-// (MP-C02 discipline: coalesced, never the audio thread).
-```
+* `dictionary BufferProgress` — the one-shot progress read: `buffered_ms`, `fill_ratio`, `underrun_events`, `overrun_events`,
+  `target_position_ms` (A2's position target), `rendered_position_ms` (DAC-clock-derived, never wall-clock), `track_id?`,
+  `producer_live`, `eos`.
+* `void attach_sink(u32 capacity_frames)` — build the canonical SPSC ring + spawn the producer thread (replace semantics when live).
+* `void detach_sink()` — idempotent, deterministic join.
+* `void play_track(string track_id)` — select the staged row, reset the target, drive `Playing`, emit the intent (the skip path).
+* `BufferProgress buffer_progress()` — the typed read.
+
+`buffer_progress` events ride the EXISTING event dispatcher thread (MP-C02 discipline: the producer's stage commits update the
+engine telemetry atomics and wake the coalesced push — no new thread, never the audio thread). The Rust-side hooks beyond the UDL:
+`playback_ring()` (the consumer handle the C1/C5 brackets mount against) and `set_range_fetcher()` (the hermetic test seam).
 
 Bindings regeneration procedure (the CI drift check enforces it on every PR): `UNIFFI_REGENERATE=1` via Gradle, or the exact
 command from the clippy job — `cargo run --bin uniffi-bindgen -- generate rust/crates/streamify-contract/src/streamify.udl
@@ -394,21 +416,28 @@ this PR.
 
 ---
 
-## 10. Live-Audio Self-Test Harness (A5 — planned)
+## 10. Live-Audio Self-Test Harness (A5 — shipped)
 
-**Not yet implemented — the acceptance gate every platform integration runs before touching hardware.**
+**Shipped in issue #151** — `rust/crates/streamify-contract/tests/test_live_audio_selftest.rs`, green in CI on every PR touching
+`rust/**`. The harness proves the full chain hermetically: `play_track` → producer → sink → **measurable PCM**, with the
+`virtual_hal.rs` adversarial double (`AdversarialModes::TIMING_JITTER`, 15 % fire-time jitter, a 1 ms reported-timestamp grid)
+standing in for the DAC and a `LossyFixtureFetcher` scripting truncated ranges, transient failures and artificial delay into the
+network stage.
 
-The harness proves the full chain hermetically: `play_track` → producer → sink → **measurable PCM**, with the
-`virtual_hal.rs` adversarial double (`AdversarialModes`: loss/jitter/double-delivery) standing in for the DAC.
-
-- **"Engine says 440":** a fixture clip (generated 440 Hz sine at the canonical geometry, checked in under `fixtures/`) plays through
-  the VirtualHAL sink; the harness FFTs the consumed buffer and asserts the dominant bin is 440 Hz within tolerance, the underrun
-  counter is zero, and the DAC-clock-derived position advances at wall-plausible rate (the only sanctioned wall-clock use: asserting
-  plausibility, never interpolating position).
+- **"Engine says 440":** the 1.5 s 440 Hz fixture (canonical geometry) plays end to end; the harness FFTs the consumed left channel
+  (Hann-windowed 65 536-point radix-2, hermetic — no DSP dependency) and asserts the dominant bin is 440 Hz ± 2, the underrun
+  counters are ZERO on both the ring's and the VirtualHAL's accounting, every one of the 72 000 frames is consumed, the rendered
+  position tracks the consumed frames (same clock domain), the span is wall-plausible (the only sanctioned wall-clock use), and the
+  LUFS-normalized output amplitude is sane.
+- **The resample leg:** the same gate through the 44.1 kHz fixture — the dominant bin is still 440 Hz at the canonical rate after
+  the rubato leg, proving decode → resample → LUFS end to end.
+- **Skip-under-load:** 100 rapid `play_track` intents while the HAL consumes — no deadlock, deterministic teardown (the leak
+  proof), and the FINAL intent still passes the 440 Hz gate.
+- EOS-aware quantum handling: the final partial quantum (72 000 % 512 frames) is the stream's tail, not starvation — the HAL model
+  is asked for exactly what remains once the session is at EOS.
 - Reusable as the desktop smoke test (`DesktopJnaEngineSmokeTest` extension, C5's AC) and as the Android dogfood panel's telemetry
   source.
-- CI gate: `cargo test -p streamify-contract live_audio_selftest` green on every PR touching `rust/**` — the demo-or-it-didn't-happen
-  rule for Wave 2's "AUDIBLE" gate.
+- CI gate: `cargo test -p streamify-contract live_audio_selftest` — the demo-or-it-didn't-happen rule for Wave 2's "AUDIBLE" gate.
 
 ---
 
@@ -433,12 +462,12 @@ From AHEAD §5 (the drivetrain's slice):
 | **A1** | This RFC | ✅ shipped (issue #148) |
 | **A6** | Panic-policy decision record + contract tests + probe | ✅ shipped (issue #148) |
 | **A2** | Transport: Seek/Next/Previous over the typed queue, position target, rev-bump acknowledgment | ✅ shipped (issue #148) |
-| **A3** | Producer: fetch → decode → resample → LUFS → write edge | planned (spec §5; decode dependency decision §5.2 is the first PR) |
-| **A4** | UniFFI surface: `attach_sink`/`detach_sink`/`play_track`/`buffer_progress`, CONTRACT_VERSION v2 | planned (spec §9; after A3) |
-| **A5** | VirtualHAL live-audio self-test harness | planned (spec §10; after A3) |
+| **A3** | Producer: fetch → decode → resample → LUFS → write edge | ✅ shipped (issue #151 — `streamify-playback` crate; §5.2's symphonia-without-Opus decision record applies) |
+| **A4** | UniFFI surface: `attach_sink`/`detach_sink`/`play_track`/`buffer_progress`, CONTRACT_VERSION v2 | ✅ shipped (issue #151 — Kotlin bindings regenerated, drift check green) |
+| **A5** | VirtualHAL live-audio self-test harness | ✅ shipped (issue #151 — `test_live_audio_selftest.rs`, 3 gates green) |
 
-Critical path (AHEAD §4): **A1 → A3 → A4 → C1 → C2** (this PR closes A1 and unblocks A3). The A6 reconciliation removes the
-release-semantics unknown that would otherwise surface mid-Wave-2.
+Critical path (AHEAD §4): **A1 → A3 → A4 → C1 → C2**. A1/A2/A6 shipped in issue #148; A3/A4/A5 shipped in issue #151 — the engine
+side of the drivetrain is DONE and C1 (the JNI sink bridge over the frozen header, ENG-3) is the next link.
 
 ---
 
@@ -459,3 +488,9 @@ Every load-bearing claim above, with its source (tree at this PR's merge base + 
 | Panic policy per-profile semantics + probe + pin | `rust/Cargo.toml [profile.release]`; `rust/crates/streamify-contract/src/bin/panic_probe.rs`; `rust/crates/streamify-contract/tests/test_panic_policy.rs`; `panic_shield_self_test` in `contract.rs` |
 | Legacy lanes preserved (queue picker, seek guard) | `rust/crates/streamify-contract/src/queue_engine.rs` (`get_next_track`); `rust/crates/streamify-audio/src/seek_guard.rs` |
 | VirtualHAL adversarial double exists | `rust/crates/streamify-audio/src/virtual_hal.rs` (`AdversarialModes`, `DacClockInterpolator`) |
+| Producer + sink edge + decoder shipped | `rust/crates/streamify-playback/src/{producer,sink,decode,fetch,frame_buf}.rs` + suites `tests/{test_producer,test_ring,test_decode}.rs` |
+| No Opus decoder in symphonia (decision record) | crates.io feature sets for 0.5.4/0.6.1 (`ogg` = container only) + upstream issue pdeljanov/Symphonia#8 |
+| A5 gates green (440 Hz FFT, resample leg, 100-skip) | `rust/crates/streamify-contract/tests/test_live_audio_selftest.rs` |
+| CONTRACT_VERSION = 2 (additive A4 bump) | `rust/crates/streamify-core/src/version.rs`; pinned by `contract_version_is_pinned` |
+| Kotlin bindings regenerated, drift-free | `shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt` (the ci.yml clippy-lane drift check) |
+| Segmented HTTP range fetch (production lane) | `rust/crates/streamify-resolver/src/downloader.rs::fetch_stream_range` |

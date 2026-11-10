@@ -14,6 +14,7 @@
 
 pub mod contract;
 pub mod obs;
+pub mod playback_engine;
 pub mod playlist_import;
 pub mod platform;
 pub mod queue_engine;
@@ -26,13 +27,13 @@ pub mod resolver_api;
 // name through them, and the streamify-ffi umbrella re-exports the
 // union so `streamify_core_rs::X` paths keep resolving for consumers.
 pub use contract::{
-    contract_version, AudioErrorKind, AudioStreamConfig, BufferStats, CryptoErrorKind,
-    DacPresentationClock, EngineError, EngineEventListener, EngineSnapshot, EqualizerBand,
-    JamRoomState, JamSessionHandle, JamSyncResult, MediaCommand, NetworkErrorKind, PlaybackState,
-    PlaylistSummary, QueueItem, SearchResult, StorageErrorKind, StreamifyEngine, Track,
-    TrackMetadata, CONTRACT_VERSION, DAC_CLOCK_MAX_SAMPLE_RATE, DAC_CLOCK_MIN_SAMPLE_RATE,
-    EQUALIZER_BAND_COUNT, MAX_JAM_DELTA_BYTES, MAX_JAM_SESSION_NAME_BYTES,
-    MEDIA_COMMAND_DEBOUNCE_MS,
+    contract_version, AudioErrorKind, AudioStreamConfig, BufferProgress, BufferStats,
+    CryptoErrorKind, DacPresentationClock, EngineError, EngineEventListener, EngineSnapshot,
+    EqualizerBand, JamRoomState, JamSessionHandle, JamSyncResult, MediaCommand, NetworkErrorKind,
+    PlaybackState, PlaylistSummary, QueueItem, SearchResult, StorageErrorKind, StreamifyEngine,
+    Track, TrackMetadata, CONTRACT_VERSION, DAC_CLOCK_MAX_SAMPLE_RATE,
+    DAC_CLOCK_MIN_SAMPLE_RATE, EQUALIZER_BAND_COUNT, MAX_JAM_DELTA_BYTES,
+    MAX_JAM_SESSION_NAME_BYTES, MEDIA_COMMAND_DEBOUNCE_MS,
 };
 // Phase 5 (MP-CAP01..04): the platform capability surface for the
 // desktop/mobile shells — the UniFFI facade, the secure-store delegate
