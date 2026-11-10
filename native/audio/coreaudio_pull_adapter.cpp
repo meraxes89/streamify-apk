@@ -151,6 +151,12 @@ public:
 
     ~CoreAudioPullAdapter() { Stop(); }
 
+    // WS-B B4 (ENG-2): the implicit default constructor is suppressed by
+    // the user-declared (deleted) copy constructor below — the facade's
+    // `new CoreAudioPullAdapter()` needs it. All members carry in-class
+    // initializers, so `= default` is exactly the implicit ctor.
+    CoreAudioPullAdapter() = default;
+
     CoreAudioPullAdapter(const CoreAudioPullAdapter&) = delete;
     CoreAudioPullAdapter& operator=(const CoreAudioPullAdapter&) = delete;
 
