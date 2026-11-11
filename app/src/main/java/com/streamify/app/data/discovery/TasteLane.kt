@@ -106,7 +106,7 @@ object TasteLane {
     data class BlendSeedKt(
         val memberId: String,
         val artists: List<String>,
-        val genres: List<String>,
+        val genres: List<String> = emptyList(),
         val recentTracks: List<Pair<String, String>> = emptyList() // title to artist
     )
 
