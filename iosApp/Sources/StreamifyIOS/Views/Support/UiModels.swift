@@ -57,6 +57,23 @@ public struct VirtualShelfTrack: Identifiable, Hashable, Sendable {
         self.platformOrigin = platformOrigin
     }
 
+    /// WS-B B2 bridge: lowers a live resolver row (via its presentation
+    /// projection — `SearchRow.asPresentationTrack`) onto the shelf/list view
+    /// currency. Live search is the only engine surface the collection
+    /// screens have today, so the detail pages map their rows through here.
+    /// Millisecond durations truncate to whole seconds; origin defaults to
+    /// the online resolver lane.
+    public init(presentationTrack: PresentationTrack, platformOrigin: String = "ytm") {
+        self.init(
+            id: presentationTrack.id,
+            title: presentationTrack.title,
+            artist: presentationTrack.artist,
+            artworkUrl: presentationTrack.artworkUrl,
+            durationSec: (presentationTrack.durationMs ?? 0) / 1_000,
+            platformOrigin: platformOrigin
+        )
+    }
+
     public var presentationTrack: PresentationTrack {
         PresentationTrack(
             id: id,
@@ -87,6 +104,29 @@ public struct VirtualShelf: Identifiable, Hashable, Sendable {
         self.subtitle = subtitle
         self.kind = kind
         self.tracks = tracks
+    }
+}
+
+// MARK: - WS-B B2 bridging (engine currency → shelf currency)
+//
+// The view-model feed projections speak the shared engine currencies
+// (PresentationTrack, DailyMix); the shelf row components speak the UI
+// currencies above. The in-struct `init(presentationTrack:platformOrigin:)`
+// (with its defaulted origin) is the one-line bridge — no view re-maps
+// fields by hand.
+
+extension VirtualShelf {
+    /// Bridges one engine daily mix onto the daily-mix shelf currency: the
+    /// numbered identity and the seed-artist subtitle are exactly the two
+    /// text lines the daily-mix card renders.
+    init(dailyMix: DailyMix) {
+        self.init(
+            id: "daily-mix-\(dailyMix.number)",
+            title: "Daily Mix \(dailyMix.number)",
+            subtitle: dailyMix.seedArtist,
+            kind: .dailyMix,
+            tracks: dailyMix.tracks.map { VirtualShelfTrack(presentationTrack: $0) }
+        )
     }
 }
 
@@ -227,6 +267,35 @@ public struct RecentSearchEntry: Identifiable, Hashable, Sendable {
     public let timestampMs: Int
 
     public var id: String { query }
+}
+
+// MARK: - WS-B B2 bridging (search row → online-row currency)
+
+extension OnlineSearchResult {
+    /// Bridges one resolved search row (the search view model's currency)
+    /// onto the online-row currency the search components render. The row's
+    /// id stands in for the result URL; a missing duration lowers to 0 s
+    /// (the row then hides its timestamp); a kind without a UI counterpart
+    /// (impossible today — the enums mirror each other) falls back to song.
+    init(row: SearchRow) {
+        self.init(
+            title: row.title,
+            uploader: row.uploader,
+            url: row.id,
+            durationSec: (row.durationMs ?? 0) / 1_000,
+            thumbnailUrl: row.artworkUrl,
+            type: SearchResultType(rawValue: row.kind.rawValue) ?? .song,
+            isVerified: row.isVerified
+        )
+    }
+}
+
+extension SearchRow {
+    /// The row's kind under the UI-facing name: the search surface's
+    /// components and the shell's tap routing speak `type`
+    /// (OnlineSearchResult.type), the engine row speaks `kind` — this alias
+    /// keeps both vocabularies honest without duplicating the enum.
+    var type: SearchResultKind { kind }
 }
 
 // MARK: - Lyrics (karaoke engine)
@@ -572,7 +641,10 @@ public struct DspPreferences: Hashable, Sendable {
 
 public enum DownloadState: Hashable, Sendable {
     case queued
-    case downloading(progress: Double)
+    /// Live transfer. WS-B B7: the fraction in [0, 1] is OPTIONAL — nil
+    /// while the server has not advertised a total length (render an
+    /// indeterminate indicator, never a fabricated 0).
+    case downloading(progress: Double?)
     case completed
     case paused
     case failed(message: String)
@@ -585,6 +657,9 @@ public struct DownloadTransfer: Identifiable, Hashable, Sendable {
     public let state: DownloadState
     public let quality: String
     public let sizeMb: Double
+    /// WS-B B7: the vault file behind a COMPLETED transfer (nil for every
+    /// in-flight / failed / interrupted row — honest-empty discipline).
+    public let fileURL: URL?
 
     public init(
         id: String,
@@ -592,7 +667,8 @@ public struct DownloadTransfer: Identifiable, Hashable, Sendable {
         artist: String,
         state: DownloadState,
         quality: String,
-        sizeMb: Double
+        sizeMb: Double,
+        fileURL: URL? = nil
     ) {
         self.id = id
         self.title = title
@@ -600,6 +676,16 @@ public struct DownloadTransfer: Identifiable, Hashable, Sendable {
         self.state = state
         self.quality = quality
         self.sizeMb = sizeMb
+        self.fileURL = fileURL
+    }
+
+    /// WS-B B7: the playable URL of a completed transfer — literally
+    /// "file://" + the vault file's path. The play path consumes it
+    /// DIRECTLY (the engine's fetcher reads `file://` ranges off disk);
+    /// no stream re-resolution ever happens for an offline row. Nil for
+    /// non-completed transfers.
+    public var playableUrl: String? {
+        fileURL.map { "file://" + $0.path }
     }
 }
 
@@ -728,5 +814,50 @@ public struct ArtistClipModel: Identifiable, Hashable, Sendable {
         self.artistName = artistName
         self.thumbnailUrl = thumbnailUrl
         self.durationSec = durationSec
+    }
+}
+
+// MARK: - WS-B B2 bridging (community engine currency → card/row currency)
+//
+// The CommunityViewModel projections speak the feature-lane currencies
+// (CommunityPlaylist, FriendActivity — ViewModels/Support/
+// PresentationModels.swift); the community-hub components speak the UI
+// currencies above. Same one-line-bridge discipline as the search/shelf
+// bridges: honest field mapping only — fields the engine contract does not
+// expose degrade to neutral defaults, never fabricated values.
+
+extension CommunityPlaylistModel {
+    /// Bridges one engine community playlist onto the card currency. The
+    /// engine contract exposes no collaborative flag yet, so the collab
+    /// badge degrades to absent (false) until it does.
+    init(from playlist: CommunityPlaylist) {
+        self.init(
+            id: playlist.id,
+            creatorName: playlist.creatorName,
+            name: playlist.name,
+            description: playlist.description,
+            coverUrl: playlist.coverUrl,
+            isCollaborative: false,
+            likesCount: playlist.likesCount,
+            trackCount: playlist.trackCount
+        )
+    }
+}
+
+extension FriendActivityEntry {
+    /// Bridges one engine friend-activity row onto the component currency.
+    /// An engine row that reported no last-active stamp lowers to the calm
+    /// "Recently active" caption.
+    init(from friend: FriendActivity) {
+        self.init(
+            userId: friend.userId,
+            displayName: friend.displayName,
+            avatarUrl: friend.avatarUrl,
+            trackTitle: friend.trackTitle,
+            trackArtist: friend.trackArtist,
+            coverUrl: friend.coverUrl,
+            lastActiveLabel: friend.lastActiveAt.isEmpty ? "Recently active" : friend.lastActiveAt,
+            sessionCode: friend.sessionCode
+        )
     }
 }

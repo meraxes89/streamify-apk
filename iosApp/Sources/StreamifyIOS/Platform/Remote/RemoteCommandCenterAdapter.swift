@@ -33,7 +33,7 @@ import MediaPlayer
 
 /// The lockscreen / system transport intents, on the same plane as
 /// in-app intent.
-enum RemoteCommand: Equatable, Sendable {
+public enum RemoteCommand: Equatable, Sendable {
     case play
     case pause
     case togglePlayPause
@@ -43,15 +43,17 @@ enum RemoteCommand: Equatable, Sendable {
 }
 
 /// Feedback intents from the system surfaces (likeCommand / dislikeCommand).
-enum RemoteFeedback: Equatable, Sendable {
+public enum RemoteFeedback: Equatable, Sendable {
     case like
     case dislike
 }
 
 /// Anything the system transport controls can drive (the shell's
-/// PlaybackViewModel conforms; tests install a recording stub).
+/// PlaybackViewModel conforms; tests install a recording stub). WS-B B6:
+/// public so the manifest-instantiated CarPlay scene delegate can hold a
+/// public `router` reference across the module boundary.
 @MainActor
-protocol RemoteCommandRouting: AnyObject {
+public protocol RemoteCommandRouting: AnyObject {
     func remoteCommandReceived(_ command: RemoteCommand)
 }
 

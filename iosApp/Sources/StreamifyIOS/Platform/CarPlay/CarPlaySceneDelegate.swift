@@ -6,18 +6,21 @@ import CarPlay
 // MARK: - Browse content seam
 
 /// One browsable row (playlist, shortcut, track) rendered in the car.
-struct CarPlayBrowseItem {
-    let text: String
-    let detailText: String?
-    let artwork: UIImage?
+/// WS-B B6: public — the content seam crosses the module boundary with
+/// the (now public) scene delegate.
+public struct CarPlayBrowseItem {
+    public let text: String
+    public let detailText: String?
+    public let artwork: UIImage?
     /// The selection command (nil rows are informational only).
-    let command: RemoteCommand?
+    public let command: RemoteCommand?
 }
 
 /// The CarPlay browse-content seam (the shell feeds library truth; tests
-/// install deterministic providers).
+/// install deterministic providers). WS-B B6: public alongside the scene
+/// delegate's `contentProvider` surface.
 @MainActor
-protocol CarPlayContentProviding: AnyObject {
+public protocol CarPlayContentProviding: AnyObject {
     /// The Home tab's shortcut rows (above Now Playing / Playlists links).
     func homeShortcuts() -> [CarPlayBrowseItem]
     /// The Playlists tab's rows.
@@ -27,9 +30,10 @@ protocol CarPlayContentProviding: AnyObject {
 /// The honest empty default (pre-library lane): the car renders
 /// "nothing here yet" rows instead of fabricated playlists.
 @MainActor
-final class EmptyCarPlayContentProvider: CarPlayContentProviding {
-    func homeShortcuts() -> [CarPlayBrowseItem] { [] }
-    func playlists() -> [CarPlayBrowseItem] { [] }
+public final class EmptyCarPlayContentProvider: CarPlayContentProviding {
+    public init() {}
+    public func homeShortcuts() -> [CarPlayBrowseItem] { [] }
+    public func playlists() -> [CarPlayBrowseItem] { [] }
 }
 
 // MARK: - Template factory (pure construction, white-box tested)
@@ -191,18 +195,30 @@ enum CarPlayTemplateFactory {
 /// before the scene connects.
 @available(iOS 14.0, *)
 @MainActor
-final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
+public final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
+
+    /// The live scene instance (the OS instantiates the delegate from
+    /// the host app's scene manifest; the shell reaches it through here
+    /// to assign the command router — WS-B B6's fix for the unassigned
+    /// `router`).
+    @MainActor public static weak var active: CarPlaySceneDelegate?
+
 
     /// The shared command plane (weak: the scene outlives nothing).
-    weak var router: RemoteCommandRouting?
+    public weak var router: RemoteCommandRouting?
 
     /// Browse content (library truth).
-    var contentProvider: CarPlayContentProviding = EmptyCarPlayContentProvider()
+    public var contentProvider: CarPlayContentProviding = EmptyCarPlayContentProvider()
 
     private weak var interfaceController: CPInterfaceController?
 
     private var homeTemplate: CPListTemplate?
     private var playlistsTemplate: CPListTemplate?
+
+    public override init() {
+        super.init()
+        Self.active = self
+    }
 
     // MARK: CPTemplateApplicationSceneDelegate (audio app variant)
     //
@@ -211,7 +227,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
     // into an error under Swift 6). CarPlay delivers these callbacks on
     // the main thread; the bodies hop to the main actor explicitly.
 
-    nonisolated func templateApplicationScene(
+    public nonisolated func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
         didConnect interfaceController: CPInterfaceController,
         to window: CPWindow
@@ -221,7 +237,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
         }
     }
 
-    nonisolated func templateApplicationScene(
+    public nonisolated func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
         didDisconnect interfaceController: CPInterfaceController,
         from window: CPWindow

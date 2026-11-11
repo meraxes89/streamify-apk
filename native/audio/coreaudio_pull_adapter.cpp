@@ -54,6 +54,33 @@
 namespace streamify {
 namespace hal {
 
+// ── WS-B B4: the engine's exported Rust ring as a render source ───────────
+
+// The frozen C consumer edge exported from the Rust staticlib
+// (rust/crates/streamify-playback/src/ring_export.rs — the
+// `playback_ring()` consumer edge). The glue build
+// (scripts/build_ios_xcframework.sh) merges this adapter's objects and
+// the Rust staticlib under one libtool, so the symbol resolves at the
+// final link — no dlsym (that discipline stays on the Swift side).
+extern "C" {
+size_t streamify_ring_read_f32(float* dst, size_t max_frames);
+uint64_t streamify_ring_occupancy_frames(void);
+uint32_t streamify_ring_channels(void);
+int32_t streamify_ring_stats_wire(uint8_t* out, size_t out_len);
+}
+
+// One pull quantum = one C call into the Rust SPSC ring's
+// `read_frames_into` edge — the exact code path the A5 self-test's
+// HalDriver exercises. Wait-free by the ring's RT contract; the
+// canonical geometry (interleaved stereo) matches the client format
+// set below.
+class RustRingFrameSource final : public RenderFrameSource {
+public:
+    size_t ReadFramesF32(float* dst, size_t max_frames) noexcept override {
+        return streamify_ring_read_f32(dst, max_frames);
+    }
+};
+
 class CoreAudioPullAdapter {
 public:
     // Canonical client format: 48 kHz interleaved f32 stereo (master plan
@@ -68,7 +95,50 @@ public:
         if (running_) Stop();
         sink_ = sink::SinkRegistry::instance().resolve(sink_handle);
         if (sink_ == nullptr) return false;
+        return Arm(std::make_unique<SinkFrameSource>(sink_.get()));
+    }
 
+    // Start pulling from the ENGINE's exported Rust SPSC ring (WS-B B4):
+    // the `playback_ring()` consumer edge — the engine's producer thread
+    // writes, this adapter's render callback pulls, exactly like the A5
+    // self-test's HalDriver (minus the VirtualHAL double). Returns false
+    // on any setup failure.
+    bool StartRustRing() {
+        if (running_) Stop();
+        return Arm(std::make_unique<RustRingFrameSource>());
+    }
+
+    // Ordered teardown (see the file header): retract the pointer BEFORE
+    // the hardware stops so a late in-flight callback can only emit silence.
+    void Stop() {
+        if (!running_) return;
+        core_.Unbind();
+        AudioOutputUnitStop(unit_);
+        TeardownUnit_();
+        running_ = false;
+        source_.reset();  // after Unbind — always safe
+        sink_.reset();    // last owner release — after Unbind, always safe
+    }
+
+    CoreAudioPullAdapter() = default;
+
+    ~CoreAudioPullAdapter() { Stop(); }
+
+    CoreAudioPullAdapter(const CoreAudioPullAdapter&) = delete;
+    CoreAudioPullAdapter& operator=(const CoreAudioPullAdapter&) = delete;
+
+    // Latest DAC presentation clock sample (control thread; feed it to
+    // StreamifyEngine::record_dac_clock through the UniFFI contract).
+    bool LatestClock(CoreAudioClockSample* out) const {
+        return core_.LatestClock(out);
+    }
+
+    const CoreAudioRenderCore& core() const { return core_; }
+
+private:
+    // The shared arm path: timebase cache → output unit → canonical
+    // client format → render callback → Bind + start.
+    bool Arm(std::unique_ptr<RenderFrameSource> source) {
         // The mach timebase is queried ONCE (control thread): the render
         // path only ever runs the pure-arithmetic conversion.
         if (mach_timebase_info(&timebase_) != KERN_SUCCESS) {
@@ -87,12 +157,10 @@ public:
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
         if (comp == nullptr) {
-            sink_.reset();
             return false;
         }
         if (AudioComponentInstanceNew(comp, &unit_) != noErr) {
             unit_ = nullptr;
-            sink_.reset();
             return false;
         }
 
@@ -101,7 +169,7 @@ public:
         fmt.mSampleRate = static_cast<Float64>(kCanonicalRate);
         fmt.mFormatID = kAudioFormatLinearPCM;
         // IsFloat + IsPacked and NO IsNonInterleaved => one interleaved
-        // buffer — exactly the layout ReadFramesF32 produces.
+        // buffer — exactly the layout the ring's reads produce.
         fmt.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
         fmt.mChannelsPerFrame = kCanonicalChannels;
         fmt.mBitsPerChannel = 32;
@@ -126,11 +194,13 @@ public:
             return false;
         }
 
-        // ---- arm: bind the core, then start the hardware --------------------
-        core_.Bind(sink_.get(), kCanonicalRate);
+        // ---- arm: bind the source, then start the hardware -------------------
+        source_ = std::move(source);
+        core_.Bind(source_.get(), kCanonicalRate);
         if (AudioUnitInitialize(unit_) != noErr ||
             AudioOutputUnitStart(unit_) != noErr) {
             core_.Unbind();
+            source_.reset();
             TeardownUnit_();
             return false;
         }
@@ -138,31 +208,6 @@ public:
         return true;
     }
 
-    // Ordered teardown (see the file header): retract the pointer BEFORE
-    // the hardware stops so a late in-flight callback can only emit silence.
-    void Stop() {
-        if (!running_) return;
-        core_.Unbind();
-        AudioOutputUnitStop(unit_);
-        TeardownUnit_();
-        running_ = false;
-        sink_.reset();  // last owner release — after Unbind, always safe
-    }
-
-    ~CoreAudioPullAdapter() { Stop(); }
-
-    CoreAudioPullAdapter(const CoreAudioPullAdapter&) = delete;
-    CoreAudioPullAdapter& operator=(const CoreAudioPullAdapter&) = delete;
-
-    // Latest DAC presentation clock sample (control thread; feed it to
-    // StreamifyEngine::record_dac_clock through the UniFFI contract).
-    bool LatestClock(CoreAudioClockSample* out) const {
-        return core_.LatestClock(out);
-    }
-
-    const CoreAudioRenderCore& core() const { return core_; }
-
-private:
     static OSStatus RenderProc(void* inRefCon,
                                AudioUnitRenderActionFlags*,
                                const AudioTimeStamp* inTimeStamp, UInt32,
@@ -218,7 +263,8 @@ private:
     AudioUnit unit_ = nullptr;
     bool running_ = false;
     CoreAudioRenderCore core_;
-    std::shared_ptr<sink::AudioSink> sink_;  // lifetime anchor (see Stop)
+    std::unique_ptr<RenderFrameSource> source_;  // the pull edge (B4)
+    std::shared_ptr<sink::AudioSink> sink_;      // registry-path lifetime anchor
     mach_timebase_info_data_t timebase_{1, 1};
 };
 
@@ -239,6 +285,20 @@ int64_t streamify_coreaudio_start(int64_t sink_handle) {
     auto* adapter = new (std::nothrow) streamify::hal::CoreAudioPullAdapter();
     if (adapter == nullptr) return 0;
     if (!adapter->Start(sink_handle)) {
+        delete adapter;
+        return 0;
+    }
+    return reinterpret_cast<int64_t>(adapter);
+}
+
+// Start pulling from the ENGINE's exported Rust SPSC ring (WS-B B4 —
+// the `playback_ring()` consumer edge). Same handle contract as
+// streamify_coreaudio_start. Returns 0 when the output unit cannot open
+// (no audio route) — the Swift driver maps that onto its own diagnostics.
+int64_t streamify_coreaudio_start_rust_ring() {
+    auto* adapter = new (std::nothrow) streamify::hal::CoreAudioPullAdapter();
+    if (adapter == nullptr) return 0;
+    if (!adapter->StartRustRing()) {
         delete adapter;
         return 0;
     }

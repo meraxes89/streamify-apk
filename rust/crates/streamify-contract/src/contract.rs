@@ -1394,6 +1394,11 @@ impl StreamifyEngine {
             let fetcher = crate::playback_engine::effective_fetcher(&self.shared.range_fetcher);
             let wiring =
                 crate::playback_engine::attach(&self.shared, fetcher, capacity_frames as usize)?;
+            // WS-B B4: publish the consumer edge for the native HAL
+            // brackets (the frozen C ABI in
+            // streamify-playback::ring_export) — the Apple CoreAudio pull
+            // adapter reads through exactly this export.
+            streamify_playback::ring_export::install(wiring.ring.clone());
             *playback = Some(wiring);
             Ok(())
         })
@@ -1413,6 +1418,9 @@ impl StreamifyEngine {
             if let Some(old) = playback.take() {
                 old.producer.shutdown();
             }
+            // WS-B B4: retract the native-bracket export (subsequent
+            // native reads serve digital silence, never a stale ring).
+            streamify_playback::ring_export::clear();
             Ok(())
         })
     }

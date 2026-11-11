@@ -4,35 +4,51 @@ import SwiftUI
 // SW-ENG2-08 — UpdatesHubView: the "Your Updates" release feed.
 //
 // SwiftUI port of ui/screens/UpdatesHubScreen.kt: one card per followed
-// artist release — artist-seeded gradient strip, version chip, note
-// bullets, a live 1 s-countdown TimelineView for embargoed drops with the
+// artist release — artist-seeded gradient strip, release-type chip, track
+// count, a live 1 s-countdown TimelineView for embargoed drops with the
 // pre-save action, and an "Out now" chip for releases already live.
-// Pre-save state is local (seeded from the entry fixtures) and reported
-// through onPreSave.
+//
+// WS-B B2 (de-fixturing): the screen OWNS its UpdatesHubViewModel and rides
+// the live feature lane (`AppServices.library` → UniFFIFeatureLibrary when
+// the engine is linked). The feed renders the VM's ordered projection
+// (upcoming first, pre-saves pinned); pre-save toggles ROUTE THROUGH THE VM
+// (persisted in the real SettingsStore) and are merely reported through
+// onPreSave. The empty state is the HONEST engine state — no PreviewCatalog
+// seeding on the production path; previews inject a scripted
+// PreviewFeatureLibrary.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 public struct UpdatesHubView: View {
-    public var updates: [UpdateEntry]
+
+    /// WS-B B2: the screen's own state holder — constructed bare, it rides
+    /// the live feature lane automatically (one harvest per appearance,
+    /// pull-to-refresh; per-artist failures swallow silently).
+    @State private var model = UpdatesHubViewModel()
+
     public var onPreSave: (String) -> Void
 
-    @State private var preSavedIds: Set<String>
+    public init(onPreSave: @escaping (String) -> Void = { _ in }) {
+        self.onPreSave = onPreSave
+    }
 
-    public init(
-        updates: [UpdateEntry] = PreviewCatalog.updates,
+    /// Preview/test lane: inject a scripted view model (the bare init above
+    /// rides `AppServices.library`).
+    init(
+        model: UpdatesHubViewModel,
         onPreSave: @escaping (String) -> Void = { _ in }
     ) {
-        self.updates = updates
+        self._model = State(initialValue: model)
         self.onPreSave = onPreSave
-        self._preSavedIds = State(
-            initialValue: Set(updates.filter(\.isPreSaved).map(\.id))
-        )
     }
 
     public var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: StreamifyDimens.spaceLG) {
                 header
-                if updates.isEmpty {
+                if model.isLoading {
+                    loadingFeed
+                } else if model.feed.isEmpty {
                     EmptyStateView(
                         symbol: StreamifyIcon.related,
                         title: "No updates yet",
@@ -40,12 +56,10 @@ public struct UpdatesHubView: View {
                     )
                     .frame(maxHeight: 280)
                 } else {
-                    ForEach(updates) { entry in
-                        UpdateCard(
-                            entry: entry,
-                            isPreSaved: preSavedIds.contains(entry.id),
-                            onPreSave: { handlePreSave(entry.id) }
-                        )
+                    ForEach(model.feed) { release in
+                        UpdateCard(release: release, model: model) {
+                            handlePreSave(release)
+                        }
                     }
                 }
             }
@@ -53,6 +67,8 @@ public struct UpdatesHubView: View {
             .padding(.bottom, StreamifyDimens.spaceGiant)
         }
         .background(StreamifyColors.bgBase)
+        .task { model.loadIfNeeded() }
+        .refreshable { await model.refresh() }
     }
 
     private var header: some View {
@@ -66,23 +82,36 @@ public struct UpdatesHubView: View {
         }
     }
 
-    private func handlePreSave(_ id: String) {
-        if preSavedIds.contains(id) {
-            Haptics.play(.scrubTick)
-            preSavedIds.remove(id)
-        } else {
-            Haptics.play(.queueDrop)
-            preSavedIds.insert(id)
-            onPreSave(id)
+    /// Pre-save intent: the VM owns the persisted toggle (SettingsStore);
+    /// the host callback is a save notification only.
+    private func handlePreSave(_ release: ReleaseCandidate) {
+        let wasPreSaved = model.isPreSaved(release)
+        Haptics.play(wasPreSaved ? .scrubTick : .queueDrop)
+        model.togglePreSave(release)
+        if !wasPreSaved {
+            onPreSave(release.releaseId)
         }
+    }
+
+    /// The harvest-in-flight state — redacted release cards.
+    private var loadingFeed: some View {
+        VStack(spacing: StreamifyDimens.spaceLG) {
+            ForEach(0..<2, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: StreamifyRadius.md, style: .continuous)
+                    .fill(StreamifyColors.bgCard)
+                    .frame(height: 148)
+            }
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Loading updates")
     }
 }
 
-/// One release card: gradient strip, artist + version chip, note bullets and
-/// the countdown / pre-save row (or the "Out now" chip once released).
+/// One release card: gradient strip, artist + release-type chip, track count
+/// and the countdown / pre-save row (or the "Out now" chip once released).
 private struct UpdateCard: View {
-    let entry: UpdateEntry
-    let isPreSaved: Bool
+    let release: ReleaseCandidate
+    let model: UpdatesHubViewModel
     let onPreSave: () -> Void
 
     var body: some View {
@@ -92,35 +121,35 @@ private struct UpdateCard: View {
             )
             .fill(
                 StreamifyGradients.linear(
-                    StreamifyGradients.preset(forSeed: entry.artist)
+                    StreamifyGradients.preset(forSeed: release.artistName)
                 )
             )
             .frame(height: 5)
 
             VStack(alignment: .leading, spacing: StreamifyDimens.spaceSM) {
                 HStack(spacing: StreamifyDimens.spaceSM) {
-                    Text(entry.artist.uppercased())
+                    Text(release.artistName.uppercased())
                         .font(StreamifyType.caption)
                         .tracking(1.0)
                         .foregroundStyle(StreamifyColors.textSecondary)
                     Spacer(minLength: 0)
-                    Text(entry.version)
+                    Text(release.releaseType)
                         .font(StreamifyType.caption)
                         .foregroundStyle(StreamifyColors.textMain)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(StreamifyColors.bgChipInactive))
                 }
-                Text(entry.title)
+                Text(release.title)
                     .font(StreamifyType.headlineSmall)
                     .foregroundStyle(StreamifyColors.textMain)
 
-                ForEach(entry.notes, id: \.self) { note in
+                if release.trackCount > 0 {
                     HStack(spacing: StreamifyDimens.spaceSM) {
-                        Image(systemName: StreamifyIcon.checkmark)
+                        Image(systemName: StreamifyIcon.musicNoteList)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(StreamifyColors.successGreen)
-                        Text(note)
+                        Text("\(release.trackCount) tracks")
                             .font(StreamifyType.bodySmall)
                             .foregroundStyle(StreamifyColors.textSecondary)
                     }
@@ -137,11 +166,14 @@ private struct UpdateCard: View {
 
     @ViewBuilder
     private var releaseRow: some View {
-        if let releaseDate = entry.releaseDate {
+        if let expectedAt = release.expectedAt {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                if releaseDate > timeline.date {
+                if expectedAt > timeline.date {
                     HStack(spacing: StreamifyDimens.spaceMD) {
-                        Text(Self.countdownLabel(to: releaseDate, from: timeline.date))
+                        // Countdown chips recompute per display frame from
+                        // the stored ETA — the VM holds static data, never a
+                        // ticking clock.
+                        Text(model.countdownLabel(for: release, at: timeline.date))
                             .font(StreamifyType.bodySmall)
                             .monospacedDigit()
                             .foregroundStyle(StreamifyColors.textMain)
@@ -169,6 +201,10 @@ private struct UpdateCard: View {
         }
     }
 
+    private var isPreSaved: Bool {
+        model.isPreSaved(release)
+    }
+
     private var preSaveButton: some View {
         Button(action: onPreSave) {
             HStack(spacing: 6) {
@@ -194,18 +230,42 @@ private struct UpdateCard: View {
         }
         .buttonStyle(.pressableCard)
     }
-
-    /// "3d 04:22:11" — days over a zero-padded wall-clock remainder.
-    private static func countdownLabel(to target: Date, from now: Date) -> String {
-        let remaining = max(0, Int(target.timeIntervalSince(now).rounded(.up)))
-        let days = remaining / 86_400
-        let hours = (remaining % 86_400) / 3_600
-        let minutes = (remaining % 3_600) / 60
-        let seconds = remaining % 60
-        return String(format: "%dd %02d:%02d:%02d", days, hours, minutes, seconds)
-    }
 }
 
 #Preview("Updates hub") {
+    let scripted = PreviewFeatureLibrary()
+    scripted.radarContent = [
+        ReleaseWatch(
+            artistName: "Aurora Nine",
+            releases: [
+                ReleaseCandidate(
+                    releaseId: "u1",
+                    artistName: "Aurora Nine",
+                    title: "Meridian (Deluxe)",
+                    releaseType: "2025 reissue",
+                    expectedAt: Calendar.current.date(byAdding: .day, value: 3, to: .now),
+                    trackCount: 15
+                ),
+            ]
+        ),
+        ReleaseWatch(
+            artistName: "Vetra",
+            releases: [
+                ReleaseCandidate(
+                    releaseId: "u2",
+                    artistName: "Vetra",
+                    title: "Aphelion Drift — Single",
+                    releaseType: "Single",
+                    trackCount: 1
+                ),
+            ]
+        ),
+    ]
+    return UpdatesHubView(
+        model: UpdatesHubViewModel(library: scripted, settings: SettingsStore.ephemeral())
+    )
+}
+
+#Preview("Updates hub — empty") {
     UpdatesHubView()
 }

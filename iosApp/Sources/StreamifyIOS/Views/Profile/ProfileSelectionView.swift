@@ -9,7 +9,11 @@ import SwiftUI
 // brand-colored mode dot, and the activeControl selection ring + checkmark —
 // plus the dashed "Add account" card and the SireenBrandingBadge footer.
 // Pure props — the shell lowers its account store onto them.
-// Fixtures: PreviewCatalog.
+//
+// WS-B B2 (de-fixturing): the account list is HOST-LOWERED and defaults to
+// the HONEST empty set (the shell owns no account store on today's lane —
+// the preview fixtures seed it explicitly in #Preview only; the production
+// path never reads PreviewCatalog).
 // ─────────────────────────────────────────────────────────────────────────────
 
 public struct ProfileSelectionView: View {
@@ -20,8 +24,8 @@ public struct ProfileSelectionView: View {
     public var onAddAccount: () -> Void
 
     public init(
-        profiles: [ProfileAccount] = PreviewCatalog.profiles,
-        selectedId: String? = "p1",
+        profiles: [ProfileAccount] = [],
+        selectedId: String? = nil,
         onSelect: @escaping (ProfileAccount) -> Void = { _ in },
         onAddAccount: @escaping () -> Void = {}
     ) {
@@ -42,6 +46,17 @@ public struct ProfileSelectionView: View {
                     .foregroundStyle(StreamifyColors.textSecondary)
             }
             ScrollView {
+                if profiles.isEmpty {
+                    // Honest empty state: no account store is wired on
+                    // today's lane — the add-account card below is the way
+                    // forward.
+                    Text("No other profiles on this device yet — add an account to switch in one tap.")
+                        .font(StreamifyType.bodySmall)
+                        .foregroundStyle(StreamifyColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, StreamifyDimens.spaceXL)
+                        .padding(.bottom, StreamifyDimens.spaceMD)
+                }
                 LazyVGrid(
                     columns: [
                         GridItem(.flexible(), spacing: StreamifyDimens.spaceMD),
@@ -167,5 +182,9 @@ private struct ProfileCard: View {
 }
 
 #Preview("Profile selection") {
+    ProfileSelectionView(profiles: PreviewCatalog.profiles, selectedId: "p1")
+}
+
+#Preview("Profile selection — empty") {
     ProfileSelectionView()
 }

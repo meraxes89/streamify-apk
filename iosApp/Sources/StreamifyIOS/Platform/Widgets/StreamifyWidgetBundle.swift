@@ -155,9 +155,16 @@ struct LockScreenPlaybackWidget: Widget {
 }
 #endif
 
-/// The bundle (see the header for the host entry-point pattern).
-struct StreamifyWidgetBundle: WidgetBundle {
-    var body: some Widget {
+/// The bundle (see the header for the host entry-point pattern). WS-B B5:
+/// public + implicit memberwise-friendly init so the checked-in widget
+/// extension target (`iosApp/Host/StreamifyWidgets`) composes it directly —
+/// `StreamifyWidgetBundle().body` — while the individual widget views stay
+/// internal to the package (the opaque `some Widget` return type carries
+/// them across the module boundary).
+public struct StreamifyWidgetBundle: WidgetBundle {
+    public init() {}
+
+    public var body: some Widget {
         NowPlayingWidget()
         #if os(iOS)
         LockScreenPlaybackWidget()

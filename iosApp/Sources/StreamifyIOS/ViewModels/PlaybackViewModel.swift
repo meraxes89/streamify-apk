@@ -25,6 +25,14 @@ import Observation
 // intent mailbox plane (`WidgetPlaybackRefresher`, SW-ENG3-06) mirrors
 // every admitted push, and the like/dislike feedback intent surfaces as
 // `lastFeedback` (SW-ENG3-03 — shell-level concern, not engine transport).
+//
+// WS-B B3/B4/B6 (Engineer 2): the CoreAudio data plane mounts HERE — the
+// render core pulls PCM straight from the engine's exported Rust SPSC ring
+// (`playback_ring()`'s consumer edge — NO interim AVPlayer, the engine
+// dictates real-time alignment through the physical DAC frames), the 10 Hz
+// `DacClockPublisher` drain mirrors hardware presentation timestamps into
+// `record_dac_clock`, and the lock-screen Live Activity rides the same
+// admitted pushes (1 Hz fingerprint policy inside the controller).
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Observable
@@ -74,6 +82,32 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
     /// 1 Hz collect loop: exactly the cadence the mailbox was designed for).
     private let widgetRefresher: WidgetPlaybackRefresher?
 
+    // ── WS-B B4: the CoreAudio data plane (the Apple sink mount) ─────────
+
+    /// The pull-adapter facade: native when the bracket is linked,
+    /// simulated for previews/tests. Mounted lazily on the first play.
+    let renderCore: CoreAudioRenderCore
+
+    /// The 10 Hz hardware-clock drain (started with the render core; each
+    /// drained sample mirrors into `record_dac_clock` — hardware → engine,
+    /// never the reverse, MP-DEC-03).
+    private var dacClockPublisher: DacClockPublisher?
+
+    /// Diagnostics: the render core's latest cumulative RT counters.
+    private(set) var lastCoreAudioTelemetry: CoreAudioTelemetry?
+
+    /// Diagnostics: the attached playback plane's latest progress read
+    /// (`buffer_progress` — ring occupancy, underruns, rendered position).
+    private(set) var lastBufferProgress: EngineBufferProgress?
+
+    // ── WS-B B6: the lock-screen Live Activity ───────────────────────────
+
+    #if canImport(ActivityKit) && canImport(UIKit)
+    /// Driven from the same admitted pushes as the now-playing surface
+    /// (the controller's own 1 Hz fingerprint admission does the gating).
+    private var liveActivityController: PlaybackLiveActivityController?
+    #endif
+
     private var collectTask: Task<Void, Never>?
     private var dispatchChain: Task<Void, Never>?
 
@@ -94,11 +128,15 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         remoteCommandWindowNs: UInt64 = MediaCommandDebouncePolicy.defaultWindowNs,
         // SW-ENG3-06: the widget plane mirror (nil disables the cross-
         // process plane — single-process / test mode).
-        widgetRefresher: WidgetPlaybackRefresher? = nil
+        widgetRefresher: WidgetPlaybackRefresher? = nil,
+        // WS-B B4: the CoreAudio driver seam (tests inject the simulated
+        // VirtualHAL twin; the app gets the native pull adapter).
+        coreAudioDriver: CoreAudioDriver? = nil
     ) {
         self.gateway = gateway
         self.nowPlayingInfo = nowPlayingInfoPublisher ?? NowPlayingInfoPublisher()
         self.widgetRefresher = widgetRefresher ?? WidgetPlaybackRefresher()
+        self.renderCore = CoreAudioRenderCore(driver: coreAudioDriver ?? NativeCoreAudioDriver())
         // Two-phase initialization: every remaining stored property is a
         // var-optional (implicitly nil-initialized) or already assigned, so
         // `self` is FULLY initialized by the time the adapters below capture
@@ -109,6 +147,9 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
             router: self,
             windowNs: remoteCommandWindowNs
         )
+        #if canImport(ActivityKit) && canImport(UIKit)
+        liveActivityController = PlaybackLiveActivityController()
+        #endif
     }
 
     // MARK: - Snapshot ingestion (rev-guarded push consumer)
@@ -147,6 +188,22 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         dispatchChain = nil
         remoteCommands.deactivate()
         nowPlayingInfo.clear()
+        #if canImport(ActivityKit) && canImport(UIKit)
+        let activityToEnd = liveActivityController
+        if let activityToEnd {
+            Task { await activityToEnd.end() }
+        }
+        #endif
+        // WS-B B4: ordered teardown — stop the clock drain and retract the
+        // render core BEFORE the plane detaches (a late in-flight render
+        // degrades to digital silence, never a use-after-free), then tear
+        // the playback plane down prompt (the A5 skip-under-load posture).
+        dacClockPublisher?.stop()
+        dacClockPublisher = nil
+        renderCore.stop()
+        lastCoreAudioTelemetry = nil
+        let gateway = self.gateway
+        Task { await gateway.detachSink() }
         audioSession.deactivate()
         gateway.shutdown()
         progress.reset()
@@ -156,6 +213,7 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         currentTrack = nil
         jamSessionName = nil
         lastDacSample = nil
+        lastBufferProgress = nil
         lastRev = 0
     }
 
@@ -190,6 +248,7 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
         )
 
         nowPlayingInfo.publish(state: state)
+        updateLiveActivity()
         // SW-ENG3-06: mirror the admitted push into the widget plane
         // (fingerprint-gated store refresh + intent-mailbox drain — the
         // same push cadence the mailbox was designed for).
@@ -242,6 +301,168 @@ final class PlaybackViewModel: AudioSessionResponding, RemoteCommandRouting {
     func togglePlayPause() { dispatch(.togglePlayPause) }
     func next() { dispatch(.next) }
     func previous() { dispatch(.previous) }
+
+    // MARK: - WS-B B3: the full play path (Home tap → audible track)
+
+    /// Plays one track end-to-end: mounts the CoreAudio plane (the render
+    /// core pulls straight from the engine's exported Rust ring — no
+    /// AVPlayer), waits bounded for the first hardware DAC clock sample
+    /// (the A5 ordering: position truth anchors at the first presented
+    /// frame, BEFORE the play intent), then lowers
+    /// resolve → stage → attach → play intent onto the gateway. The next
+    /// engine push repaints metadata, transport and progress.
+    ///
+    /// `resolvedStreamUrl` short-circuits the resolve step for callers that
+    /// already hold a playable source (WS-B B7's offline lane passes a
+    /// `file://` URL the engine's fetcher reads straight off disk).
+    func play(track: PresentationTrack, resolvedStreamUrl: String? = nil) {
+        // Optimistic now-playing metadata (the enriched push confirms;
+        // reverted below when the lane refuses the row and nothing plays).
+        currentTrack = track
+        let engineTrack = EngineTrack(
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            album: "",
+            durationMs: track.durationMs ?? 0,
+            thumbnailUrl: track.artworkUrl,
+            resolvedStreamUrl: resolvedStreamUrl
+        )
+        Task { [weak self] in
+            guard let self else { return }
+            _ = self.mountCoreAudioPlane()
+            await self.awaitDacClockAnchor()
+            let staged = await self.gateway.play(track: engineTrack)
+            if staged == nil, self.status != .playing {
+                // The lane refused the row (resolve failure surfaces as a
+                // silent nil — B3's degrade discipline) and nothing else is
+                // playing: retract the optimistic metadata.
+                self.currentTrack = nil
+            }
+            self.refreshPlaneDiagnostics()
+        }
+    }
+
+    /// Plays a row already staged in the engine's queue (a queue-list tap:
+    /// no re-resolve, no duplicate row — the engine selects the row and
+    /// emits the intent itself).
+    func playStaged(trackId: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = self.mountCoreAudioPlane()
+            await self.awaitDacClockAnchor()
+            _ = await self.gateway.playStagedTrack(id: trackId)
+            self.refreshPlaneDiagnostics()
+        }
+    }
+
+    /// Mounts the Apple sink onto the engine's playback plane (WS-B B4).
+    /// Idempotent; a refused mount (no native facade, no audio route, ring
+    /// not yet exported) degrades to transport-only playback — never a
+    /// crash, never a block. The 10 Hz `DacClockPublisher` drain starts
+    /// with the core and mirrors every hardware presentation timestamp
+    /// into `record_dac_clock` (hardware → engine, never the reverse).
+    @discardableResult
+    private func mountCoreAudioPlane() -> Bool {
+        guard !renderCore.isRunning else { return true }
+        let status = renderCore.startRustRing()
+        guard status == .started else { return false }
+        let gateway = self.gateway
+        let publisher = DacClockPublisher(
+            driver: renderCore.driver,
+            onSample: { sample in
+                Task { await gateway.recordDacClock(sample) }
+            }
+        )
+        publisher.start()
+        dacClockPublisher = publisher
+        return true
+    }
+
+    /// Bounded wait for the first hardware DAC clock sample: the engine
+    /// anchors rendered position at intent-emit time ONLY when a clock
+    /// sample already exists, so the HAL must be alive before the first
+    /// track (the A5 self-test's exact ordering, minus the synthetic
+    /// prime — on hardware the anchor must be REAL). Skipped entirely
+    /// when the render core is not running (preview lane / refused mount).
+    private func awaitDacClockAnchor() async {
+        guard renderCore.isRunning else { return }
+        let deadlineNs = DispatchTime.now().uptimeNanoseconds + 750_000_000
+        while DispatchTime.now().uptimeNanoseconds < deadlineNs {
+            if let sample = renderCore.latestClock() {
+                await gateway.recordDacClock(sample)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        // Timeout: the intent still goes out (audible playback proceeds);
+        // rendered position simply reads 0 until the next intent. Degrade,
+        // never block.
+    }
+
+    /// Drains the plane's diagnostics onto the observable surface (called
+    /// after play intents — the push cadence repaints transport state).
+    private func refreshPlaneDiagnostics() {
+        lastCoreAudioTelemetry = renderCore.telemetry()
+        let gateway = self.gateway
+        Task {
+            lastBufferProgress = await gateway.bufferProgress()
+        }
+    }
+
+    // MARK: - WS-B B6: the lock-screen Live Activity
+
+    #if canImport(ActivityKit) && canImport(UIKit)
+    /// Drives the Live Activity from the same admitted pushes the in-app
+    /// now-playing surface consumes (the controller's 1 Hz fingerprint
+    /// admission does the rate limiting). Ends the activity when the
+    /// transport stops without a track.
+    private func updateLiveActivity() {
+        guard let controller = liveActivityController else { return }
+        guard let track = currentTrack else {
+            if controller.isActive, status == .idle || status == .error {
+                let ender = controller
+                Task { await ender.end() }
+            }
+            return
+        }
+        let isPlaying = status == .playing
+        let positionSeconds = Double(
+            progress.positionMs(atUptimeNs: Self.hostUptimeNs) ?? 0
+        ) / 1000.0
+        let durationSeconds = Double(track.durationMs ?? 0) / 1000.0
+        let updater = controller
+        let artworkUrl = track.artworkUrl
+        let trackId = track.id
+        let title = track.title
+        let artist = track.artist
+        Task { @MainActor in
+            if updater.isActive {
+                await updater.update(
+                    trackId: trackId,
+                    title: title,
+                    artist: artist,
+                    isPlaying: isPlaying,
+                    positionSeconds: positionSeconds,
+                    durationSeconds: durationSeconds,
+                    artworkUrl: artworkUrl
+                )
+            } else if isPlaying {
+                await updater.start(
+                    trackId: trackId,
+                    title: title,
+                    artist: artist,
+                    isPlaying: isPlaying,
+                    positionSeconds: positionSeconds,
+                    durationSeconds: durationSeconds,
+                    artworkUrl: artworkUrl
+                )
+            }
+        }
+    }
+    #else
+    private func updateLiveActivity() {}
+    #endif
 
     func seek(to positionMs: Int) {
         // Optimistic seek admission (Android parity): the scrub bar jumps

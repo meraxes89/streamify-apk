@@ -45,6 +45,7 @@ pub mod decode;
 pub mod fetch;
 pub mod frame_buf;
 pub mod producer;
+pub mod ring_export;
 pub mod sink;
 
 pub use decode::{DecoderGeometry, SymphoniaDecoder, TrackDecoder};

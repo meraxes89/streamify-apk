@@ -9,6 +9,12 @@ import SwiftUI
 // balance, and the true-peak limiter ceiling — all lowered onto the
 // DspPreferences value type. Local state drives one prefs value seeded from
 // the `dsp` prop; every mutation reports the whole value through onChange.
+//
+// WS-B B2 (de-fixturing): the screen rides the REAL settings plane — the
+// limiter ENABLE flag routes through the owned SettingsViewModel (persisted
+// in the real SettingsStore and applied through the feature seam); the
+// remaining DSP preferences stay a local value (honest `.default` seeding,
+// no PreviewCatalog on the production path) reported through onChange.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// The limiter ceiling ladder (dBFS) exposed as picker chips.
@@ -22,14 +28,32 @@ private enum TruePeakCeiling: Double, CaseIterable, Identifiable {
     var label: String { "−\(String(format: "%.1f", -rawValue))" }
 }
 
+@MainActor
 public struct DspSettingsView: View {
+    /// WS-B B2: the real settings plane — the limiter enable flag persists
+    /// here and applies through the feature seam. Synchronous store, no
+    /// load lifecycle (same isolation discipline as the other VM-owning
+    /// screens; constructed bare it reads the live SettingsStore).
+    @State private var model = SettingsViewModel()
     @State private var prefs: DspPreferences
     public var onChange: (DspPreferences) -> Void
 
     public init(
-        dsp: DspPreferences = PreviewCatalog.dsp,
+        dsp: DspPreferences = .default,
         onChange: @escaping (DspPreferences) -> Void = { _ in }
     ) {
+        self._prefs = State(initialValue: dsp)
+        self.onChange = onChange
+    }
+
+    /// Preview/test lane: inject a scripted view model (the bare init above
+    /// reads the live store).
+    init(
+        model: SettingsViewModel,
+        dsp: DspPreferences = .default,
+        onChange: @escaping (DspPreferences) -> Void = { _ in }
+    ) {
+        self._model = State(initialValue: model)
         self._prefs = State(initialValue: dsp)
         self.onChange = onChange
     }
@@ -188,6 +212,22 @@ public struct DspSettingsView: View {
                 Text(ceilingLabel).font(StreamifyType.bodyMedium).monospaced()
                     .foregroundStyle(StreamifyColors.primary)
             }
+            // WS-B B2: the enable flag routes through SettingsViewModel —
+            // persisted in the real store and applied through the feature
+            // seam (the ceiling stays the local value above).
+            Toggle(isOn: Binding(
+                get: { model.truePeakLimiterEnabled },
+                set: { model.setTruePeakLimiterEnabled($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Limiter enabled").font(StreamifyType.bodyMedium)
+                        .foregroundStyle(StreamifyColors.textMain)
+                    Text("Catches inter-sample peaks the sample peak meter misses")
+                        .font(StreamifyType.caption)
+                        .foregroundStyle(StreamifyColors.textSecondary)
+                }
+            }
+            .tint(StreamifyColors.primary)
             HStack(spacing: StreamifyDimens.spaceSM) {
                 ForEach(TruePeakCeiling.allCases) { ceiling in
                     Button {
@@ -240,5 +280,8 @@ private extension View {
 }
 
 #Preview("DSP settings") {
-    DspSettingsView()
+    DspSettingsView(
+        model: SettingsViewModel(settings: SettingsStore.ephemeral()),
+        dsp: PreviewCatalog.dsp
+    )
 }

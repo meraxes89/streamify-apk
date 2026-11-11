@@ -63,10 +63,12 @@ Verified against the tree at `09a4e20b` (TRUTH-02), every claim in AHEAD.md §1.
 - `apply_media_command` was a state machine only: `Seek | Next | Previous` were literal no-ops (`contract.rs`, the pre-#148 arm read
   *"effects deferred to the queue engine phase"*). **The transport slice of this gap is now closed** (§4).
 - The WASAPI/PipeWire/ALSA/CoreAudio C facades (`native/audio/wasapi_pull_adapter.cpp`, `pipewire_driver.cpp`,
-  `coreaudio_pull_adapter.cpp`) have **zero production callers** — they compile nowhere that links them into a product. Closes with
-  C5/B4 against the §6 edge.
+  `coreaudio_pull_adapter.cpp`) **had zero production callers** — they compiled nowhere that links them into a product. The CoreAudio
+  facade's caller **landed with WS-B B4** (`PlaybackViewModel` → `CoreAudioRenderCore.startRustRing` →
+  `streamify_coreaudio_start_rust_ring`, pulling through the ring's frozen C ABI); WASAPI/PipeWire/ALSA close with
+  C5's engine-side relay against the §6 edge.
 - The JNI sink bridge `native/src/jni_bridge_audio_sinks.cpp` **landed in WS-C/C1** (the seven frozen symbols over the existing header, wire layout, registry and serializer;
-  the app-side seam `RustAudioSinkJni.kt` is waiting on it, declarations quarantined in the debug-only dogfood source set). Closes
+  the app-side seam `RustAudioSinkJni.kt` binds it — declarations moved into the main tree, zero changes above the seam). Closes
   with C1 (ENG-3).
 - No decoder exists anywhere in the workspace (`Cargo.lock` carries no Opus/AAC decoder): the producer's decode stage is a **new
   dependency decision**, specified in §5.2 with the mandated rationale.
@@ -346,7 +348,7 @@ writer (SPSC by construction).
 | Android | `jni_bridge_audio_sinks.cpp` over the frozen 7 symbols; AAudio consumption; dogfood via `RustAudioDogfoodPanel` | ENG-3 (C1/C2) | ✅ C1 shipped: bridge landed, `jni_parity_check.py --source` green, `jni_sink_bridge_test_suite` pins the round-trip on the host sanitizer lanes; C2 dogfood armed (`docs/playbooks/ANDROID_RUST_AUDIO_CUTOVER.md`) |
 | Windows | `wasapi_pull_adapter.cpp` facade (`streamify_wasapi_start`) called from the engine lane | ENG-3 (C5) | ✅ C4 rot lane shipped (windows-native MSVC job; the facade compiles every core PR); C5 platform slice shipped (`streamify_desktop_hal` module + JNA binding + sink round-trip); the engine-side relay is ENG-1's follow-up |
 | Linux | `pipewire_driver.cpp` / ALSA null-PCM CI lane | ENG-3 (C5) | ✅ C3 switched `linux_hal_driver_test_suite` on (ALSA null double); C5 platform slice shipped (the facade ships inside `streamify_desktop_hal`, round-tripped from the JVM); the engine-side relay is ENG-1's follow-up |
-| Apple | `coreaudio_pull_adapter.cpp` + `CoreAudioRenderCore` + `IOSAudioSessionAdapter` | ENG-2 (B4) | render core is test-only today |
+| Apple | `coreaudio_pull_adapter.cpp` + `CoreAudioRenderCore` + `IOSAudioSessionAdapter` | ENG-2 (B4) | **landed (WS-B)**: `PlaybackViewModel` mounts the render core; the pull edge is the abstract `RenderFrameSource`; `streamify_coreaudio_start_rust_ring` pulls from the Rust ring's frozen C ABI (`ring_export.rs`); audible-on-device proof pending |
 
 The Rust side of every bracket is the same §6.2 trait — that is the entire point of the drivetrain: platform teams mount brackets,
 not pipelines.
@@ -494,3 +496,32 @@ Every load-bearing claim above, with its source (tree at this PR's merge base + 
 | CONTRACT_VERSION = 2 (additive A4 bump) | `rust/crates/streamify-core/src/version.rs`; pinned by `contract_version_is_pinned` |
 | Kotlin bindings regenerated, drift-free | `shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt` (the ci.yml clippy-lane drift check) |
 | Segmented HTTP range fetch (production lane) | `rust/crates/streamify-resolver/src/downloader.rs::fetch_stream_range` |
+
+## 12. The ring consumer edge's C bracket (WS-B B4 addendum)
+
+`playback_ring()` (§5) hands the attached `SpscAudioRing` to Rust callers — the A5 harness pulls from it
+directly. The Apple CoreAudio render callback is C++, and audio must never cross the UniFFI object machinery,
+so the consumer edge ships as a four-symbol frozen C ABI in
+`rust/crates/streamify-playback/src/ring_export.rs`:
+
+```c
+size_t   streamify_ring_read_f32(float* dst, size_t max_frames);  // the exact read_frames_into edge
+uint64_t streamify_ring_occupancy_frames(void);
+uint32_t streamify_ring_channels(void);
+int32_t  streamify_ring_stats_wire(uint8_t* out, size_t out_len);  // the 96-byte JNI/C1 wire image
+```
+
+The engine installs/clears the export on `attach_sink`/`detach_sink` (lock-free reads; a swap-out releases the
+previous `Arc` so in-flight reads stay safe). One process-current plane — the app runs a single engine and the
+engine supports one attached plane; a future multi-plane contract would carry handles through the UDL. The C++
+side consumes it through `RustRingFrameSource` (a `RenderFrameSource`), so the CoreAudio callback and the A5
+self-test exercise the identical Rust read path.
+
+| Claim | Evidence |
+|---|---|
+| Ring C ABI frozen (4 symbols, read = `read_frames_into`) | `rust/crates/streamify-playback/src/ring_export.rs` |
+| Engine installs/clears the export on attach/detach | `rust/crates/streamify-contract/src/contract.rs` (`attach_sink`/`detach_sink`) |
+| C++ pull edge is the abstract `RenderFrameSource` (one virtual call, RT audit intact) | `native/include/coreaudio_render_core.h`; suite `native/tests/test_coreaudio_render_core.cpp` (41/41 under the abstraction, zero-alloc audit included) |
+| The rust-ring mount entry exists + probed in every xcframework slice | `native/audio/coreaudio_pull_adapter.cpp` (`streamify_coreaudio_start_rust_ring`); `scripts/build_ios_xcframework.sh` nm-probe list |
+| Skip-under-load with the export swapping on every attach/detach | `rust/crates/streamify-contract/tests/test_live_audio_selftest.rs` (`live_audio_selftest_skip_under_load_100_intents`) |
+| Swift mounts the plane + mirrors the hardware clock | `iosApp/Sources/StreamifyIOS/ViewModels/PlaybackViewModel.swift` (`mountCoreAudioPlane`, `awaitDacClockAnchor`, the `DacClockPublisher` drain → `recordDacClock`) |

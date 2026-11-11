@@ -20,6 +20,12 @@ import SwiftUI
 //
 // DAC PACING: the waveform scrub bar is fed by the hardware clock — the
 // seek command truncates to ms only at the PlayerCommand boundary.
+//
+// WS-B B2 — fixture purge: no PreviewCatalog in the production path — the
+// lyrics param defaults to `LyricsData.empty` (the shell lowers the real
+// lyrics surface when it lands) and the ambient-palette fallback is the
+// design system's obsidian default instead of a catalog lookup. #Previews
+// keep fixtures explicitly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 public struct FullPlayerView: View {
@@ -48,7 +54,7 @@ public struct FullPlayerView: View {
     public init(
         state: PlaybackUiState,
         palette: AmbientPalette? = nil,
-        lyrics: LyricsData = PreviewCatalog.lyrics,
+        lyrics: LyricsData = .empty,
         queueState: Binding<QueueListState>,
         queueAutoMix: Binding<Bool>,
         onDismiss: @escaping () -> Void,
@@ -76,7 +82,9 @@ public struct FullPlayerView: View {
     }
 
     private var ambient: AmbientPalette {
-        palette ?? PreviewCatalog.palette(forTitle: state.currentTrack?.title ?? "streamify")
+        // WS-B B2: no catalog fallback — the design system's obsidian default
+        // washes the mesh until the shell derives a real artwork palette.
+        palette ?? AmbientPalette.obsidian
     }
 
     public var body: some View {
@@ -286,6 +294,7 @@ public struct FullPlayerView: View {
 #Preview("Compact — playing") {
     FullPlayerView(
         state: PlaybackUiState(PreviewCatalog.playingSnapshot),
+        lyrics: PreviewCatalog.lyrics,
         queueState: .constant(PreviewCatalog.queueState),
         queueAutoMix: .constant(true),
         onDismiss: {}
@@ -297,6 +306,7 @@ public struct FullPlayerView: View {
     FullPlayerView(
         state: PlaybackUiState(PreviewCatalog.playingSnapshot),
         palette: AmbientPalette(dominantHex: 0x1E3264, accentHex: 0xFF0033, darkMutedHex: 0x0A0A0A),
+        lyrics: PreviewCatalog.lyrics,
         queueState: .constant(PreviewCatalog.queueState),
         queueAutoMix: .constant(true),
         onDismiss: {}

@@ -159,8 +159,12 @@ jobs:
           - shard: native-virtual-hal
             description: "Adversarial VirtualHAL double vs the hardened SPSC AudioSink"
             target: virtual_hal_test_suite
+          # WS-C C3 revival, doubled as the WS-B B4 AC: the Apple CoreAudio
+          # render core's host-lane audit (sections A-I: RT zero-alloc
+          # proofs, seqlock clock publication, <5 ms latency error,
+          # 1200-quantum zero-underrun steady state).
           - shard: native-coreaudio-render-core
-            description: "CoreAudio RT render core (pull path + seqlock clock publication)"
+            description: "CoreAudio RT render core (SPSC pull, seqlock DAC clock, zero-alloc)"
             target: coreaudio_render_core_test_suite
           - shard: native-audio-sink-ringbuffer
             description: "SPSC f32 sink ring + WearOS packetizer (dedicated lane)"

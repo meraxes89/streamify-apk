@@ -43,6 +43,8 @@
 using streamify::hal::CoreAudioClockSample;
 using streamify::hal::CoreAudioRenderCore;
 using streamify::hal::MachTimeToNs;
+using streamify::hal::RenderFrameSource;
+using streamify::hal::SinkFrameSource;
 using streamify::sink::AudioSink;
 
 namespace {
@@ -100,7 +102,8 @@ void test_bound_render() {
     std::printf("  [B] bound render pulls from the ring\n");
     AudioSink sink(canonical_config());
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     // Ramp 4 quanta into the ring.
     std::vector<float> feed(4096 * 2);
@@ -138,7 +141,8 @@ void test_underrun_tail() {
     std::printf("  [C] underrun zero-fill tail\n");
     AudioSink sink(canonical_config());
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     // Only 100 frames buffered; ask for 512.
     std::vector<float> feed(100 * 2, 0.25f);
@@ -174,7 +178,8 @@ void test_clock_publication() {
     std::printf("  [D] DAC clock sample publication\n");
     AudioSink sink(canonical_config());
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     CoreAudioClockSample sample;
     check(!core.LatestClock(&sample), "no sample before first render");
@@ -203,7 +208,8 @@ void test_zero_allocation_render() {
     std::printf("  [E] zero-allocation render audit\n");
     AudioSink sink(canonical_config());
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     std::vector<float> feed(2048 * 2, 0.5f);
     sink.WriteFloat(feed.data(), feed.size());
@@ -245,7 +251,8 @@ void test_concurrent_publish_drain() {
     std::printf("  [G] concurrent render vs. drain\n");
     AudioSink sink(canonical_config(16384));
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     // Producer: keep the ring fed (direct WriteFloat from this thread).
     std::vector<float> feed(1024 * 2, 0.25f);
@@ -323,7 +330,8 @@ void test_latency_estimation_error() {
     std::printf("  [H] <5ms latency estimation error (60s, 27.4ppm drift)\n");
     AudioSink sink(canonical_config());
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     const double rate = 48000.0;
     const double drift_ppm = 27.4;   // DAC oscillator error (realistic crystal)
@@ -408,7 +416,8 @@ void test_steady_state_zero_underruns() {
     std::printf("  [I] steady-state stream: 0 underruns over 1200 quanta\n");
     AudioSink sink(canonical_config());  // 8192-frame ring
     CoreAudioRenderCore core;
-    core.Bind(&sink, 48000);
+    SinkFrameSource bind_source(&sink);
+    core.Bind(&bind_source, 48000);
 
     const size_t quantum = 512;
     const int total_quanta = 1200;

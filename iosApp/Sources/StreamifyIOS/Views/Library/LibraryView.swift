@@ -6,6 +6,11 @@ import SwiftUI
 // the M3 filter rail becomes YtLibraryFilterChips over an internal segment
 // index; the grid/list icon pair rides the trailing toolbar; every tab renders
 // through the shared YT-style components (Lazy stacks/grids — 120 Hz discipline).
+//
+// WS-B B2 — fixture purge: liked tracks, playlists, albums and downloads are
+// injectable props defaulting to honest empty (no PreviewCatalog seeding in
+// the production path — the library has no engine surface yet); every segment
+// degrades to its empty state. #Previews inject fixtures explicitly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// One lowered playlist summary (the PlaylistRepository projection).
@@ -26,8 +31,13 @@ private enum LibrarySegment: String, CaseIterable, Sendable {
 }
 
 public struct LibraryView: View {
-    public var likedTracks: [VirtualShelfTrack] = PreviewCatalog.tracks
-    public var playlists: [LibraryPlaylistSummary] = [.init(name: "Obsidian Night Drive", count: 64), .init(name: "Focus Ladder", count: 48), .init(name: "Sunday Hardware", count: 81)]
+    // WS-B B2: injectable, honestly empty by default — the shell (or a
+    // future library surface) lowers real data onto these; previews inject
+    // PreviewCatalog fixtures explicitly.
+    public var likedTracks: [VirtualShelfTrack] = []
+    public var playlists: [LibraryPlaylistSummary] = []
+    public var albums: [VirtualShelfTrack] = []
+    public var downloads: [DownloadTransfer] = []
     public var onPlayTrack: (VirtualShelfTrack) -> Void = { _ in }
     public var onOpenPlaylist: (String) -> Void = { _ in }
     public var onOpenAlbum: (String) -> Void = { _ in }
@@ -108,7 +118,9 @@ public struct LibraryView: View {
         }
     }
 
-    // Playlists always render as the 2-column grid; the liked-music auto playlist spans it above.
+    // Playlists always render as the 2-column grid; the liked-music auto
+    // playlist spans it above.
+    @ViewBuilder
     private var playlistsSection: some View {
         LazyVGrid(columns: twoColumns, spacing: StreamifyDimens.spaceLG) {
             YtLikedMusicCard(trackCount: likedTracks.count, onTap: { onOpenPlaylist("Liked Music") })
@@ -125,51 +137,70 @@ public struct LibraryView: View {
             }
         }
         .padding(.horizontal, StreamifyDimens.spaceLG).padding(.top, StreamifyDimens.spaceSM)
-    }
-
-    private var likedSection: some View {
-        gridOrList(columns: rowColumns) {
-            ForEach(likedTracks) { track in
-                TrackListItem(track: track) { onPlayTrack(track) }
-                    .padding(.horizontal, isGrid ? StreamifyDimens.spaceSM : StreamifyDimens.spaceLG)
-            }
+        if playlists.isEmpty {
+            libraryEmptyState(
+                symbol: StreamifyIcon.plus,
+                title: "No playlists yet",
+                message: "Playlists you create or import will collect here."
+            )
         }
     }
 
-    // Albums are fixture-derived: VirtualShelfTrack carries no album column,
-    // so the catalog's album vocabulary stands in for LibraryScreen's distinct-album shelf.
-    private var albumsSection: some View {
-        gridOrList(columns: twoColumns) {
-            ForEach(derivedAlbums) { album in
-                if isGrid {
-                    YtMediumCard(track: album) { onOpenAlbum(album.title) }
-                } else {
-                    mediaRow(title: album.title, subtitle: album.artist, seed: album.title, symbol: StreamifyIcon.musicNoteList) { onOpenAlbum(album.title) }
+    @ViewBuilder
+    private var likedSection: some View {
+        if likedTracks.isEmpty {
+            libraryEmptyState(
+                symbol: StreamifyIcon.heartFill,
+                title: "No liked songs yet",
+                message: "Songs you like will collect here."
+            )
+        } else {
+            gridOrList(columns: rowColumns) {
+                ForEach(likedTracks) { track in
+                    TrackListItem(track: track) { onPlayTrack(track) }
+                        .padding(.horizontal, isGrid ? StreamifyDimens.spaceSM : StreamifyDimens.spaceLG)
                 }
             }
         }
     }
 
-    private var derivedAlbums: [VirtualShelfTrack] {
-        let presentArtists = Set(likedTracks.map(\.artist))
-        let catalog: [(name: String, artist: String)] = [
-            ("Meridian", "Aurora Nine"),
-            ("Obsidian Sunrise", "Sireen"),
-            ("Neon Hallway", "Vetra"),
-            ("48k Meridian", "DAC Kingsley"),
-        ]
-        return catalog
-        .filter { presentArtists.contains($0.artist) }
-        .map { VirtualShelfTrack(id: "album-\($0.name)", title: $0.name, artist: $0.artist, durationSec: 0) }
+    @ViewBuilder
+    private var albumsSection: some View {
+        if albums.isEmpty {
+            libraryEmptyState(
+                symbol: StreamifyIcon.musicNoteList,
+                title: "No albums yet",
+                message: "Albums you save will collect here."
+            )
+        } else {
+            gridOrList(columns: twoColumns) {
+                ForEach(albums) { album in
+                    if isGrid {
+                        YtMediumCard(track: album) { onOpenAlbum(album.title) }
+                    } else {
+                        mediaRow(title: album.title, subtitle: album.artist, seed: album.title, symbol: StreamifyIcon.musicNoteList) { onOpenAlbum(album.title) }
+                    }
+                }
+            }
+        }
     }
 
+    @ViewBuilder
     private var artistsSection: some View {
-        gridOrList(columns: [GridItem(.adaptive(minimum: 104), spacing: StreamifyDimens.spaceMD)]) {
-            ForEach(distinctArtists, id: \.self) { artist in
-                if isGrid {
-                    ArtistCircleCard(name: artist, onOpen: { onOpenArtist(artist) })
-                } else {
-                    mediaRow(title: artist, subtitle: "Artist", seed: artist, symbol: StreamifyIcon.avatar) { onOpenArtist(artist) }
+        if distinctArtists.isEmpty {
+            libraryEmptyState(
+                symbol: StreamifyIcon.avatar,
+                title: "No artists yet",
+                message: "Artists from your saved music will collect here."
+            )
+        } else {
+            gridOrList(columns: [GridItem(.adaptive(minimum: 104), spacing: StreamifyDimens.spaceMD)]) {
+                ForEach(distinctArtists, id: \.self) { artist in
+                    if isGrid {
+                        ArtistCircleCard(name: artist, onOpen: { onOpenArtist(artist) })
+                    } else {
+                        mediaRow(title: artist, subtitle: "Artist", seed: artist, symbol: StreamifyIcon.avatar) { onOpenArtist(artist) }
+                    }
                 }
             }
         }
@@ -180,22 +211,43 @@ public struct LibraryView: View {
         return likedTracks.compactMap { seen.insert($0.artist).inserted ? $0.artist : nil }
     }
 
+    @ViewBuilder
     private var downloadsSection: some View {
-        gridOrList(columns: rowColumns) {
-            ForEach(downloadTransfers) { transfer in
-                downloadRow(transfer)
-                    .padding(.horizontal, isGrid ? StreamifyDimens.spaceSM : StreamifyDimens.spaceLG)
+        if settledDownloads.isEmpty {
+            libraryEmptyState(
+                symbol: StreamifyIcon.downloadFill,
+                title: "No downloads yet",
+                message: "Music you download for offline listening will collect here."
+            )
+        } else {
+            gridOrList(columns: rowColumns) {
+                ForEach(settledDownloads) { transfer in
+                    downloadRow(transfer)
+                        .padding(.horizontal, isGrid ? StreamifyDimens.spaceSM : StreamifyDimens.spaceLG)
+                }
             }
         }
     }
 
-    private var downloadTransfers: [DownloadTransfer] {
-        PreviewCatalog.downloads.filter {
+    /// The settled (non-in-flight) transfers of the injectable download list
+    /// — in-flight rows live on the Downloads screen (WS-B B2: honest empty
+    /// on the real lane until the download surface lands).
+    private var settledDownloads: [DownloadTransfer] {
+        downloads.filter {
             switch $0.state {
             case .completed, .paused, .failed: return true
             case .queued, .downloading: return false
             }
         }
+    }
+
+    /// The per-segment honest-empty state (WS-B B2): every shelf degrades to
+    /// this until its engine surface lands.
+    private func libraryEmptyState(symbol: String, title: String, message: String) -> some View {
+        EmptyStateView(symbol: symbol, title: title, message: message)
+            .padding(.horizontal, StreamifyDimens.spaceLG)
+            .padding(.top, StreamifyDimens.spaceLG)
+            .padding(.bottom, StreamifyDimens.spaceXL)
     }
 
     /// A settled transfer row: download art + meta + state chip; tap plays its library mirror.
@@ -254,6 +306,24 @@ public struct LibraryView: View {
     }
 }
 
-#Preview("Library") {
+#Preview("Library — fixture lane") {
+    NavigationStack {
+        LibraryView(
+            likedTracks: PreviewCatalog.tracks,
+            playlists: [
+                .init(name: "Obsidian Night Drive", count: 64),
+                .init(name: "Focus Ladder", count: 48),
+                .init(name: "Sunday Hardware", count: 81),
+            ],
+            albums: [
+                .init(id: "album-meridian", title: "Meridian", artist: "Aurora Nine", durationSec: 0),
+                .init(id: "album-obsidian-sunrise", title: "Obsidian Sunrise", artist: "Sireen", durationSec: 0),
+            ],
+            downloads: PreviewCatalog.downloads
+        )
+    }
+}
+
+#Preview("Library — honest empty (real lane today)") {
     NavigationStack { LibraryView() }
 }
