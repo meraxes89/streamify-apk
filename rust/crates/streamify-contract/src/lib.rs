@@ -19,6 +19,7 @@ pub mod playlist_import;
 pub mod platform;
 pub mod queue_engine;
 pub mod resolver_api;
+pub mod taste_engine;
 
 
 // ── Root re-exports: the contract surface ──────────────────────────────────
@@ -61,6 +62,23 @@ pub use resolver_api::{
     set_resolver_cache_db,
 };
 pub use streamify_resolver::json::{ParsedCandidate, ResolvedStreamFormat};
+
+// ── WS-D "Taste Engine" (AHEAD.md Wave 3): the offline, explainable ──
+// recommendation lane. The engines live in streamify-resolver (their
+// canonical domain home); the embedding contract types live in
+// streamify-core; the TasteEngine object + the namespace factory live
+// in `taste_engine`. The scaffolding binds every UDL-declared taste
+// type by bare name through these re-exports.
+pub use taste_engine::{classic_circadian_profile, ContinuumScoreRow, TasteEngine};
+pub use streamify_core::acoustic_embedding::AcousticEmbedding;
+pub use streamify_resolver::continuum_engine::{ContinuumCandidate, ContinuumScore, SplitMix64};
+pub use streamify_resolver::neuro_queue::{
+    BrainState, CircadianProfile, DaypartSlot, DaypartVector, NeuroCandidate,
+    NeuroQueueRow, NeuroScoreBreakdown,
+};
+pub use streamify_resolver::radio_scorer::{
+    BlendCandidate, BlendMemberSeed, BlendRecentTrack, BlendScoredCandidate, BlendScoreResult,
+};
 
 // A6 (issue #148): the panic-policy contract probe — a self-test, not a
 // UDL surface (see its doc comment for why the bindings never see it).

@@ -637,6 +637,20 @@ fun JamSessionScreen(
                         }
                     }
 
+                    // ── WS-D D5: THE GROUP BLEND SHELF ─────────────────────────
+                    // The union of the members' taste vectors (derived from
+                    // each member's queue contributions) re-ranks the live
+                    // queue entirely on-device through the TasteEngine blend
+                    // lane — with "N others like this" badges and D4 reason
+                    // strings per row.
+                    JamBlendShelf(
+                        queue = jamQueue,
+                        members = roomMembers.ifEmpty {
+                            listOf(JamEngine.Member(session.hostNonce, "Host", null, true, 0L))
+                        },
+                        addedByFor = { trackId -> com.streamify.app.jam.JamEngine.addedBy(trackId) }
+                    )
+
                     Spacer(modifier = Modifier.height(20.dp))
 
                     // ── 32-MEMBER VIRTUALIZED ROSTER STRIP (Gap #11) ──────────
@@ -1419,6 +1433,171 @@ private fun JamQueueReorderList(
  * the Jam screen. Ring colour = live RTT health; crown = host; note badge
  * = co-host (controller class); tap opens governance.
  */
+/**
+ * WS-D D5 — the Group Blend shelf: the members' combined taste re-ranks
+ * the live jam queue on-device. Each member's seed derives from the
+ * artists they contributed to the queue (CRDT-native attribution — the
+ * queue IS the taste evidence); the TasteEngine's GroupBlendScorer
+ * unions them and ranks the pool with overlap / freshness /
+ * co-occurrence components. Rows carry the "N others like this" badge
+ * and the D4 reason string; the shelf appears once two or more members
+ * have contributed.
+ */
+@Composable
+private fun JamBlendShelf(
+    queue: List<com.streamify.app.data.models.Track>,
+    members: List<JamEngine.Member>,
+    addedByFor: (Int) -> String?
+) {
+    if (members.size < 2 || queue.isEmpty()) return
+
+    // Seed derivation: member name -> artists they contributed. The
+    // attribution string is "Added by NAME" (JamEngine.addedBy).
+    val seeds = remember(queue, members) {
+        val byMember = HashMap<String, MutableList<String>>()
+        for (track in queue) {
+            val attribution = addedByFor(track.id) ?: continue
+            val name = attribution.removePrefix("Added by ").trim().lowercase()
+            if (name.isNotEmpty()) {
+                byMember.getOrPut(name) { mutableListOf() }.add(track.artist.lowercase().trim())
+            }
+        }
+        members.mapNotNull { member ->
+            val artists = byMember[member.name.lowercase()]?.distinct()
+            if (artists.isNullOrEmpty()) null
+            else com.streamify.app.data.discovery.TasteLane.BlendSeedKt(
+                memberId = member.name,
+                artists = artists,
+                genres = emptyList(),
+                recentTracks = emptyList()
+            )
+        }
+    }
+    if (seeds.size < 2) return
+
+    // Candidate pool: the live queue, deduped by title+artist.
+    val candidates = remember(queue) {
+        val seen = HashSet<String>()
+        queue.mapNotNull { track ->
+            val sig = "${track.title.lowercase()}::${track.artist.lowercase()}"
+            if (!seen.add(sig)) null
+            else com.streamify.app.data.discovery.TasteLane.BlendTrackKt(
+                id = track.id.toLong(),
+                title = track.title,
+                artist = track.artist,
+                album = track.album,
+                durationSec = track.durationSec,
+                bpm = track.bpm,
+                key = track.key,
+                genres = emptyList(),
+                addedAtMs = 0L,
+                coOccurrenceCount = 0
+            )
+        }
+    }
+
+    var blendRows by remember(seeds, candidates) {
+        mutableStateOf(emptyList<com.streamify.app.data.discovery.TasteLane.BlendRowKt>())
+    }
+    LaunchedEffect(seeds, candidates) {
+        blendRows = com.streamify.app.data.discovery.TasteLane.scoreGroupBlend(
+            candidates = candidates,
+            seeds = seeds,
+            nowMs = System.currentTimeMillis()
+        ).take(5)
+    }
+    if (blendRows.isEmpty()) return
+
+    Surface(
+        color = BgSurfaceElevated,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "GROUP BLEND",
+                    style = LocalAppTypography.current.sectionHeader,
+                    color = Primary
+                )
+                Text(
+                    text = "on-device · ${seeds.size} tastes merged",
+                    style = LocalAppTypography.current.songArtist.copy(fontSize = 11.sp),
+                    color = TextTertiary
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "The room's combined taste, ranked locally — no server.",
+                style = LocalAppTypography.current.songArtist.copy(fontSize = 12.sp),
+                color = TextSecondary
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            blendRows.forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = row.title,
+                            style = LocalAppTypography.current.songTitle.copy(fontSize = 14.sp),
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = row.artist,
+                            style = LocalAppTypography.current.songArtist.copy(fontSize = 12.sp),
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (row.reason.isNotBlank()) {
+                            Text(
+                                text = row.reason,
+                                style = LocalAppTypography.current.songArtist.copy(fontSize = 11.sp),
+                                color = TextTertiary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // The "N others like this" badge (D5's roster UI AC).
+                    val badge = when {
+                        row.mutualBlend -> "MUTUAL"
+                        row.othersCount > 0 -> "${row.othersCount} OTHERS"
+                        else -> null
+                    }
+                    if (badge != null) {
+                        Surface(
+                            color = Primary.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = badge,
+                                style = LocalAppTypography.current.songArtist.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun RosterStripAvatar(
     member: JamEngine.Member,

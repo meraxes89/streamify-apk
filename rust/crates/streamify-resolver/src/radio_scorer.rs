@@ -267,6 +267,11 @@ pub struct BlendCandidate {
     /// co-occurrence graph (BEHIND.md gap #25's `track_cooccurrence_graph`).
     #[serde(default)]
     pub co_occurrence_count: u32,
+    /// D7 (WS-D): tracks any member flagged "Exclude from taste
+    /// profile" are filtered at score time — the blend never surfaces
+    /// them and they never feed a member's seed pool.
+    #[serde(default)]
+    pub excluded_from_taste: bool,
 }
 
 /// Blend formula weights (directive B). Defaults: 0.45 / 0.15 / 0.25 / 0.15.
@@ -319,6 +324,10 @@ pub struct BlendScoredCandidate {
     pub mutual_blend: bool,
     /// Which members matched — the "who else likes this" roster.
     pub member_matches: Vec<String>,
+    /// D4 (WS-D): the human-readable "why", composed from this row's
+    /// attributions — deterministic, network-free, snapshot-tested.
+    #[serde(default)]
+    pub reason: String,
 }
 
 /// Ranked blend result + telemetry.
@@ -326,14 +335,55 @@ pub struct BlendScoredCandidate {
 #[serde(rename_all = "camelCase")]
 pub struct BlendScoreResult {
     pub ranked: Vec<BlendScoredCandidate>,
-    pub candidates_in: usize,
-    pub members: usize,
+    pub candidates_in: u32,
+    pub members: u32,
     pub took_ms: f32,
 }
 
 /// Normalizes a tag (artist/genre) into the affinity-set domain.
 fn norm_tag(s: &str) -> String {
     s.trim().to_lowercase()
+}
+
+/// D4 (WS-D): compose a blend row's reason from its attributions —
+/// the "3 others like this" badge vocabulary plus mutual-blend,
+/// co-occurrence and freshness notes. Deterministic (integer counts,
+/// thresholded floats), network-free, snapshot-tested.
+///
+/// The `others` count is `matches - 1`: the local member is the
+/// implicit first match (the roster UI subtracts the viewer the same
+/// way from `member_matches`).
+fn compose_blend_reason(
+    matches: u32,
+    members: usize,
+    mutual_blend: bool,
+    co_rank: f32,
+    freshness: f32,
+) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(4);
+    if matches >= 2 {
+        let others = matches - 1;
+        if others == 1 {
+            parts.push("1 other likes this".to_string());
+        } else {
+            parts.push(format!("{others} others like this"));
+        }
+    } else if matches == 1 {
+        parts.push("1 member match".to_string());
+    }
+    if mutual_blend {
+        parts.push(format!("a mutual blend across the group ({matches} of {members})"));
+    }
+    if co_rank >= 0.6 {
+        parts.push("a group co-occurrence favorite".to_string());
+    }
+    if freshness >= 0.75 {
+        parts.push("fresh to the pool".to_string());
+    }
+    if parts.is_empty() {
+        return "Rounds out the group mix".to_string();
+    }
+    crate::neuro_queue::join_sentence(&parts)
 }
 
 /// Group taste overlap & blend scoring pipeline.
@@ -422,6 +472,10 @@ impl GroupBlendScorer {
             if seen_signatures.contains(&RadioAntiDriftEngine::signature(&c.title, &c.artist)) {
                 continue;
             }
+            // D7 (WS-D): taste-excluded tracks never reach the scorer.
+            if c.excluded_from_taste {
+                continue;
+            }
 
             // OverlapAffinity: fraction of members holding mutual affinity.
             let mut matches = 0u32;
@@ -470,6 +524,13 @@ impl GroupBlendScorer {
                     .clamp(0.0, 1.0);
 
             let mutual_blend = matches >= 2 && (matches as usize) >= members.div_ceil(2);
+            let reason = compose_blend_reason(
+                matches,
+                members,
+                mutual_blend,
+                co_rank,
+                freshness,
+            );
 
             scored.push(BlendScoredCandidate {
                 id: c.id,
@@ -487,6 +548,7 @@ impl GroupBlendScorer {
                 overlap_members: matches,
                 mutual_blend,
                 member_matches,
+                reason,
             });
         }
 
@@ -515,8 +577,8 @@ impl GroupBlendScorer {
 
         BlendScoreResult {
             ranked,
-            candidates_in: candidates.len(),
-            members: seeds.len(),
+            candidates_in: candidates.len() as u32,
+            members: seeds.len() as u32,
             took_ms: started.elapsed().as_secs_f32() * 1000.0,
         }
     }
@@ -581,6 +643,7 @@ mod blend_tests {
             genres: vec![],
             added_at_ms: 1_700_000_000_000 - added_days_ago * 86_400_000,
             co_occurrence_count: co,
+            excluded_from_taste: false,
         }
     }
 
@@ -737,6 +800,61 @@ mod blend_tests {
             "blend pipeline must rank 500 candidates in < 5ms best-of-3 (took {best_ms:.2}ms)"
         );
     }
+    /// D7 (WS-D): taste-excluded candidates never surface in blend
+    /// output, even when their affinity would dominate.
+    #[test]
+    fn blend_never_surfaces_excluded_from_taste_candidates() {
+        let seeds = vec![seed("m1", &["the weeknd"], &[]), seed("m2", &["the weeknd"], &[])];
+        let mut excluded = cand(1, "Excluded Hit", "the weeknd", 0, 9);
+        excluded.excluded_from_taste = true;
+        let normal = cand(2, "Normal Hit", "the weeknd", 1, 0);
+
+        let result = GroupBlendScorer::score(&[excluded.clone()], &seeds, NOW);
+        assert!(result.ranked.is_empty(), "excluded only → empty blend");
+
+        let result = GroupBlendScorer::score(&[excluded, normal], &seeds, NOW);
+        assert!(
+            result.ranked.iter().all(|r| r.id != 1),
+            "the excluded track must not surface in blend output"
+        );
+        assert!(result.ranked.iter().any(|r| r.id == 2));
+    }
+
+    /// D4 (WS-D, snapshot): the blend reason vocabulary — the "3
+    /// others like this" badge string, mutual blend and freshness
+    /// notes, pinned composition-for-composition.
+    #[test]
+    fn blend_reason_strings_are_pinned() {
+        let seeds = vec![
+            seed("m1", &["the weeknd"], &[]),
+            seed("m2", &["the weeknd"], &[]),
+            seed("m3", &["the weeknd"], &[]),
+            seed("m4", &["taylor swift"], &[]),
+        ];
+        // 4 members, 3 match "the weeknd" → the viewer + 3 others.
+        let mut hit = cand(1, "Blinding Lights", "the weeknd", 0, 5);
+        hit.co_occurrence_count = 5; // high co-occurrence
+        let result = GroupBlendScorer::score(&[hit], &seeds, NOW);
+        assert_eq!(result.ranked[0].overlap_members, 3);
+        assert_eq!(
+            result.ranked[0].reason,
+            "2 others like this, a mutual blend across the group (3 of 4), a group co-occurrence favorite and fresh to the pool",
+            "snapshot pin"
+        );
+
+        // A two-member group with a single match: the roster vocabulary.
+        let seeds2 = vec![seed("m1", &["dua lipa"], &[]), seed("m2", &["taylor swift"], &[])];
+        let lone = cand(2, "Levitating", "dua lipa", 10, 0);
+        let result = GroupBlendScorer::score(&[lone], &seeds2, NOW);
+        assert_eq!(result.ranked[0].reason, "1 member match");
+
+        // Zero-affinity filler hits the fallback.
+        let seeds3 = vec![seed("m1", &["nobody"], &[])];
+        let filler = cand(3, "Filler Track", "unknown artist", 10, 0);
+        let result = GroupBlendScorer::score(&[filler], &seeds3, NOW);
+        assert_eq!(result.ranked[0].reason, "Rounds out the group mix");
+    }
+
 }
 
 #[test]
@@ -776,4 +894,5 @@ fn score_json_at_pins_the_freshness_clock() {
         strip_took(&direct),
         "seam delegates to the engine unchanged"
     );
+
 }

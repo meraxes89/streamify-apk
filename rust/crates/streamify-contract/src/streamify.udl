@@ -478,6 +478,169 @@ interface OsMediaIntegration {
     string active_surface();
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// WS-D "Taste Engine" (AHEAD.md Wave 3): the private, fully offline,
+// explainable recommendation lane. YouTube stays the online "Main
+// Brain"; this surface is the local intelligence for offline radio,
+// circadian daylists, session momentum and peer-to-peer blend jams.
+// ═══════════════════════════════════════════════════════════════════
+
+/// The brain state driving the neuro-acoustic queue (D3).
+enum BrainState {
+    "Flow",
+    "Distress",
+    "Hypnosis",
+    "Impatience",
+    "Obsession"
+};
+
+/// One candidate track — the radio / daylist currency (D3). `source`
+/// is 0 = Liked, 1 = Spotify, 2 = YouTube; `excluded_from_taste`
+/// (D7) filters the track at score time.
+dictionary NeuroCandidate {
+    string id;
+    string title;
+    string artist;
+    string album;
+    u8 source;
+    f32 bpm;
+    string key;
+    f32 energy;
+    f32 valence;
+    f32 acoustic_sim;
+    f32 user_affinity;
+    u64 last_played_sec;
+    boolean excluded_from_taste;
+};
+
+/// One circadian daypart's taste vector (D6): what the listener
+/// historically gravitates toward in this slot. Built from LOCAL
+/// history — no telemetry upload.
+dictionary DaypartVector {
+    f32 bpm_target;
+    f32 energy_target;
+    f32 brightness_target;
+    f32 freshness_bias;
+};
+
+/// The 4-slot circadian profile (D6) — the same bucket edges as the
+/// shell's daylist scheduler (Morning 06-10, Afternoon 11-16,
+/// Evening 17-21, Late Night 22-05).
+dictionary CircadianProfile {
+    DaypartVector morning;
+    DaypartVector afternoon;
+    DaypartVector evening;
+    DaypartVector late_night;
+};
+
+/// The feature attributions behind one scored row (D4) — reason
+/// strings are composed FROM these and the UI badge lane can render
+/// them directly.
+dictionary NeuroScoreBreakdown {
+    f32 base;
+    f32 satiation_penalty;
+    f32 harmonic_bonus;
+    f32 circadian_bonus;
+    f32 tempo_drift_penalty;
+    f32 bpm_distance;
+    i32 camelot_distance;
+    f32 freshness;
+};
+
+/// One recommended row: candidate, score, attributions and the
+/// human-readable "why" (D4).
+dictionary NeuroQueueRow {
+    NeuroCandidate candidate;
+    f32 score;
+    NeuroScoreBreakdown breakdown;
+    string reason;
+};
+
+/// The versioned 128-dim acoustic embedding (D1/D2) — full lane
+/// vector plus the headline scalars unpacked for direct UI reads.
+dictionary AcousticEmbedding {
+    u32 version;
+    sequence<f32> dims;
+    f32 bpm;
+    u32 camelot_number;
+    u32 camelot_letter;
+    f32 integrated_lufs;
+    f32 danceability;
+    f32 energy;
+    f32 valence;
+    f32 acousticness;
+};
+
+/// One blend member's recently played track (anti-drift guard).
+dictionary BlendRecentTrack {
+    string title;
+    string artist;
+};
+
+/// A blend member's taste seed: artist/genre affinity sets plus the
+/// recent rotation the blend must not drift into (D5).
+dictionary BlendMemberSeed {
+    string member_id;
+    sequence<string> artists;
+    sequence<string> genres;
+    sequence<BlendRecentTrack> recent_tracks;
+};
+
+/// One candidate in the group blend pool (D5). `excluded_from_taste`
+/// (D7) filters at score time.
+dictionary BlendCandidate {
+    i64 id;
+    string title;
+    string artist;
+    string album;
+    i32 duration_sec;
+    f32 bpm;
+    string key;
+    sequence<string> genres;
+    i64 added_at_ms;
+    u32 co_occurrence_count;
+    boolean excluded_from_taste;
+};
+
+/// One ranked blend row (D5): component decomposition, the "who else
+/// likes this" roster, the mutual-blend flag and the composed reason
+/// (D4).
+dictionary BlendScoredCandidate {
+    i64 id;
+    string title;
+    string artist;
+    string album;
+    i32 duration_sec;
+    f32 bpm;
+    string key;
+    f32 score;
+    f32 overlap_affinity;
+    f32 freshness_decay;
+    f32 co_occurrence_rank;
+    f32 anti_drift_penalty;
+    u32 overlap_members;
+    boolean mutual_blend;
+    sequence<string> member_matches;
+    string reason;
+};
+
+/// Ranked blend result + telemetry (D5).
+dictionary BlendScoreResult {
+    sequence<BlendScoredCandidate> ranked;
+    u32 candidates_in;
+    u32 members;
+    f32 took_ms;
+};
+
+/// One continuum evaluation row (D3).
+dictionary ContinuumScoreRow {
+    f32 score;
+    f32 similarity;
+    f32 bpm_score;
+    f32 satiation_penalty;
+    boolean exploration_boost;
+};
+
 /// Root handle to the Streamify core engine.
 ///
 /// Thread-safe by construction: interior state is shared behind
@@ -489,6 +652,7 @@ interface OsMediaIntegration {
 /// surfaces as `EngineError.Internal { error_message, backtrace }` instead
 /// of
 /// unwinding across the FFI boundary.
+
 interface StreamifyEngine {
     constructor();
 
@@ -653,6 +817,60 @@ interface StreamifyEngine {
 /// audio real-time data-plane keeps the frozen JNI contract in
 /// jni_bridge_dsp.cc (zero-allocation, zero-lock, direct-ByteBuffer hot
 /// path; AMP-10).
+
+/// The WS-D "Taste Engine" (D3): the private, fully offline,
+/// explainable recommendation lane over the neuro-queue, the session
+/// continuum and the group blend — plus the D2 acoustic-embedding
+/// producer. Construct one per session; every method is panic-shielded
+/// and network-free.
+interface TasteEngine {
+    constructor();
+
+    /// D3/D4/D6/D7 — the radio queue with explainability: brain-state
+    /// tri-engine weighting, the 3.5 h satiation decay, Camelot
+    /// harmonic adjacency, the 4-slot circadian profile and the 5-slot
+    /// cinematic micro-arc. Taste-excluded candidates are filtered at
+    /// score time; every row carries its attributions and reason.
+    [Throws=EngineError]
+    sequence<NeuroQueueRow> generate_radio_queue(NeuroCandidate seed, sequence<NeuroCandidate> candidates, BrainState brain_state, u64 now_sec, u32 hour_of_day, u32 target_count, CircadianProfile profile);
+
+    /// D6 — the Daylist v2 lane: a seedless, circadian-driven local
+    /// ranking for the home shelf; regenerates entirely offline from
+    /// the caller's local history snapshot.
+    [Throws=EngineError]
+    sequence<NeuroQueueRow> generate_daylist(sequence<NeuroCandidate> candidates, u64 now_sec, u32 hour_of_day, u32 target_count, CircadianProfile profile);
+
+    /// D1/D2 — run the offline, ML-free embedding producer over
+    /// canonical 48 kHz interleaved stereo f32 PCM (little-endian
+    /// bytes). Longer clips analyze their first 30 s; deterministic
+    /// within ε.
+    [Throws=EngineError]
+    AcousticEmbedding compute_acoustic_embedding(bytes interleaved_stereo_f32_le);
+
+    /// D3 — evaluate candidate embedding vectors against the session
+    /// momentum (cosine similarity + BPM proximity + artist satiation
+    /// + seeded ε-greedy exploration). `artist_hashes[i]` is row i's
+    /// artist identity — explicit, never overloaded into a lane.
+    [Throws=EngineError]
+    sequence<ContinuumScoreRow> continuum_evaluate(sequence<sequence<f32>> candidate_vectors, sequence<u64> artist_hashes);
+
+    /// D3 — commit a played track to the continuum (momentum EMA,
+    /// artist satiation, dwell-driven exploration entropy, ring
+    /// buffer). `dwell_percentage` is 0..=1.
+    [Throws=EngineError]
+    void continuum_commit(sequence<f32> track_vector, u64 artist_hash, u64 track_hash, f32 dwell_percentage);
+
+    /// D3 — reset the continuum lane (fresh session momentum).
+    [Throws=EngineError]
+    void continuum_reset();
+
+    /// D5/D4/D7 — the group blend: the union of member taste seeds
+    /// re-ranks the candidate pool (overlap / freshness /
+    /// co-occurrence / anti-drift) with "N others like this" reasons
+    /// and mutual-blend flags. The live Jam lane's local scoring step.
+    [Throws=EngineError]
+    BlendScoreResult score_group_blend(sequence<BlendCandidate> candidates, sequence<BlendMemberSeed> seeds, i64 now_ms);
+};
 namespace streamify {
     /// FFI contract version (Phase 3 / MP-C05) for fail-fast startup ABI
     /// verification: a client shell compares the loaded library's value
@@ -710,6 +928,12 @@ namespace streamify {
     /// tests. `track_count` clamps to [0, 64].
     [Throws=EngineError]
     SearchResult self_test_search_result(u32 track_count);
+
+    /// WS-D D6: the classic 4-slot circadian profile (the historic
+    /// hardcoded hour-range behavior restated on the unified daypart
+    /// edges) — the default `CircadianProfile` for shells that have
+    /// not yet aggregated a listener's local-history profile.
+    CircadianProfile classic_circadian_profile();
 
     /// Discussion #120, Part C: bind the resolver's persistent memo
     /// database (resolved CDN format sets, search pages, the rustypipe

@@ -1,5 +1,6 @@
 package com.streamify.app.data.discovery
 
+import com.streamify.app.data.models.Track
 import com.streamify.app.data.network.SwrCache
 import com.streamify.app.data.network.YouTubeMusicRadioApi
 import com.streamify.app.util.SLog
@@ -184,12 +185,19 @@ object DaylistScheduler {
      * Builds the Daylist for the current clock. SWR-cached per
      * (bucket, slot): offline / lossy-network opens serve the cached shelf
      * instantly while a background revalidation refreshes it.
+     *
+     * WS-D D6: when the cache is cold AND the network is down, the shelf
+     * regenerates OFFLINE through the TasteEngine's circadian daylist
+     * lane — the caller's local play history (no upload, no telemetry)
+     * scored against the active daypart. [localHistory] is the caller's
+     * own top-played snapshot; empty history degrades to the empty shelf.
      */
     suspend fun currentDaylist(
         hour: Int,
         dayOfWeek: DayOfWeek,
         topArtists: List<String>,
-        maxTracks: Int = MAX_TRACKS
+        maxTracks: Int = MAX_TRACKS,
+        localHistory: List<Track> = emptyList()
     ): Daylist = withContext(Dispatchers.IO) {
         val bucket = DaylistTimeBuckets.bucketFor(hour)
         val slot = DaylistTimeBuckets.refreshSlotFor(hour)
@@ -202,16 +210,51 @@ object DaylistScheduler {
             }
         )
         if (canonical == null) {
-            // Cold cache + network failure: empty shelf, UI falls back to
-            // the circadian local recommendations lane.
+            // Cold cache + network failure: the D6 offline lane — the
+            // circadian engine re-ranks LOCAL history for the active
+            // daypart, entirely on-device.
             Daylist(
                 bucket = bucket,
                 title = DaylistTimeBuckets.heroTitle(bucket, slot, dayOfWeek),
                 subtitle = DaylistTimeBuckets.heroSubtitle(bucket, slot),
+                tracks = buildOfflineDaylistTracks(localHistory, hour, maxTracks),
                 generatedAtMs = clock()
             )
         } else {
             canonicalJsonToDaylist(canonical, bucket, slot, dayOfWeek)
+        }
+    }
+
+    /**
+     * WS-D D6: the offline circadian lane — local history through the
+     * TasteEngine's daylist scoring (daypart tempo/energy/brightness
+     * targets + freshness bias), each row carrying its D4 reason in the
+     * seedQuery field. Pure function of (history, clock); no network.
+     */
+    internal fun buildOfflineDaylistTracks(
+        localHistory: List<Track>,
+        hour: Int,
+        maxTracks: Int
+    ): List<DaylistTrack> {
+        if (localHistory.isEmpty()) return emptyList()
+        val nowSec = clock() / 1000L
+        // D7: excluded tracks never feed the daylist profile either.
+        val guard = TasteProfileGuard.index()
+        val candidates = localHistory.map { it.toTasteTrack(source = 1, guard = guard) }
+        val rows = TasteLane.generateDaylist(
+            candidates = candidates,
+            nowSec = nowSec,
+            hourOfDay = hour,
+            targetCount = maxTracks,
+            profile = TasteLane.CircadianProfileKt.classic()
+        )
+        return rows.map { row ->
+            DaylistTrack(
+                videoId = "",
+                title = row.track.title,
+                artist = row.track.artist,
+                seedQuery = row.reason
+            )
         }
     }
 

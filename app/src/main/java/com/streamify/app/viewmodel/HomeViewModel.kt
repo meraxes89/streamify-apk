@@ -97,8 +97,9 @@ class HomeViewModel(
                     val key = "${bucket.name}_$slot"
                     if (key != lastKey || _daylist.value.hero == null) {
                         lastKey = key
-                        val topArtists = runCatching { repository.getTopPlayedTracks(20) }
+                        val topPlayed = runCatching { repository.getTopPlayedTracks(20) }
                             .getOrDefault(emptyList())
+                        val topArtists = topPlayed
                             .map { it.artist }
                             .filter { it.isNotBlank() && it != "Unknown Artist" }
                             .map { it.trim().lowercase() }
@@ -108,7 +109,10 @@ class HomeViewModel(
                             com.streamify.app.data.discovery.DaylistScheduler.currentDaylist(
                                 hour = now.hour,
                                 dayOfWeek = now.dayOfWeek,
-                                topArtists = topArtists
+                                topArtists = topArtists,
+                                // WS-D D6: the offline circadian lane's
+                                // fuel — local history only, never uploaded.
+                                localHistory = topPlayed
                             )
                         }.getOrNull()
                         _daylist.value = DaylistUi(

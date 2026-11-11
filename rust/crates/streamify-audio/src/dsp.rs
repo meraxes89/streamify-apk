@@ -195,6 +195,39 @@ impl StudioEqualizer {
 pub struct SpectrumVisualizer;
 
 impl SpectrumVisualizer {
+    /// Hann window coefficients of length `n` (the same window
+    /// [`Self::compute_spectrum_bars`] applies inline). Precomputing
+    /// once and reusing across every analysis window is what keeps the
+    /// WS-D D2 embedding producer inside its budget.
+    pub(crate) fn hann_window(n: usize) -> Vec<f64> {
+        if n <= 1 {
+            return vec![1.0];
+        }
+        (0..n)
+            .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f64 / (n as f64 - 1.0)).cos()))
+            .collect()
+    }
+
+    /// Windowed POWER spectrum of one (mono) analysis window
+    /// (WS-D D2, the embedding producer's spectral stage): applies the
+    /// precomputed Hann window, runs the crate's radix-2 FFT and
+    /// returns the `fft_len/2` power bins (`re² + im²` — no sqrt: every
+    /// producer consumer works in power). Pure function, f64
+    /// arithmetic, deterministic for a fixed input.
+    pub(crate) fn power_spectrum(window: &[f32], hann: &[f64]) -> Vec<f64> {
+        let n = hann.len().max(2).next_power_of_two();
+        let mut real = vec![0.0f64; n];
+        let mut imag = vec![0.0f64; n];
+        let copy_len = window.len().min(n).min(hann.len());
+        for i in 0..copy_len {
+            real[i] = f64::from(window[i]) * hann[i];
+        }
+        Self::fft_inplace(&mut real, &mut imag);
+        (0..n / 2)
+            .map(|i| real[i] * real[i] + imag[i] * imag[i])
+            .collect()
+    }
+
     /// Computes 64 logarithmic frequency energy bars from raw interleaved PCM floats
     pub fn compute_spectrum_bars(samples: &[f32], bar_count: usize) -> Vec<f32> {
         let n = samples.len().next_power_of_two().clamp(64, 1024);

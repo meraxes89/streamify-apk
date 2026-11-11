@@ -131,6 +131,44 @@ jobs:
           path: rust/target/nextest/**/*.xml
           if-no-files-found: ignore
 
+  # ── WS-D D2: the offline embedding producer's execution benchmark ──────────
+  # The directive's budget: <= 200 ms per 30 s reference clip on a
+  # mid-range 2020 phone CPU. CI hosts are server cores ~3x faster on
+  # scalar f64 DSP than that device class, so the lane asserts a 65 ms
+  # median on the runner (65 x 3.1 ~= 200 ms on the phone, ~35%
+  # regression headroom over the observed ~48 ms median — the full
+  # derivation lives in rust/crates/streamify-audio/examples/embedding_bench.rs).
+  embedding-bench:
+    name: "WS-D D2: embedding producer benchmark (30s clip budget)"
+    if: inputs.run_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "engine-nextest"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Run the embedding benchmark (median-of-21, release)
+        run: |
+          cargo run --release --manifest-path rust/Cargo.toml \
+            -p streamify-audio --example embedding_bench
+
   # ── C++ DSP: ASan/UBSan matrix (clang-17, ccache, eatmydata on tmpfs) ─────
   # WS-C (C3): +7 revived suites and +2 new WS-C lanes — the full host
   # verification surface acts as a live gate on every core-touching PR.

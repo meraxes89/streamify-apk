@@ -14,6 +14,7 @@
 //! binds them through the `FfiConverter<UT>` tag pattern — the same
 //! definitions serve the FFI surface and every in-workspace consumer.
 
+pub mod acoustic_embedding;
 pub mod catalog;
 pub mod error;
 pub mod gesture_physics;
@@ -27,6 +28,11 @@ pub mod wire_le;
 
 // Root re-exports: the contract vocabulary (mirrors the old monolith
 // root surface for these items so downstream paths keep resolving).
+pub use acoustic_embedding::{
+    format_camelot_key, parse_camelot_key, AcousticEmbedding, AcousticEmbeddingVector,
+    CamelotLetter, ACOUSTIC_EMBEDDING_DIM, ACOUSTIC_EMBEDDING_VERSION,
+    ACOUSTIC_EMBEDDING_WIRE_BYTES, SPECTRAL_BAND_COUNT, WAVEFORM_BUCKET_COUNT,
+};
 pub use catalog::{
     EqualizerBand, JamRoomState, PlaylistSummary, QueueItem, SearchResult, Track,
     EQUALIZER_BAND_COUNT,

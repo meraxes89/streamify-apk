@@ -1726,46 +1726,6 @@ Java_com_streamify_app_data_NativeBridge_rustAlignAndCompileLyrics(
     JNI_SHIELD_END(nullptr);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_streamify_app_data_NativeBridge_rustGenerateNeuroQueue(
-    JNIEnv* env,
-    jobject /* this */,
-    jstring seedJson,
-    jstring candidatesJson,
-    jint brainState,
-    jlong nowSec,
-    jint hourOfDay,
-    jint targetCount
-) {
-    JNI_SHIELD(nullptr);
-    if (!seedJson || !candidatesJson) return nullptr;
-    typedef char* (*RustFn)(const char*, const char*, uint8_t, uint64_t, uint32_t, size_t);
-    auto fn = get_rust_symbol<RustFn>("rust_generate_neuro_queue");
-    if (!fn) return nullptr;
-
-    const char* seed = env->GetStringUTFChars(seedJson, nullptr);
-    const char* candidates = env->GetStringUTFChars(candidatesJson, nullptr);
-
-    char* res = fn(
-        seed,
-        candidates,
-        static_cast<uint8_t>(brainState),
-        static_cast<uint64_t>(nowSec),
-        static_cast<uint32_t>(hourOfDay),
-        static_cast<size_t>(targetCount)
-    );
-
-    env->ReleaseStringUTFChars(seedJson, seed);
-    env->ReleaseStringUTFChars(candidatesJson, candidates);
-
-    if (!res) return nullptr;
-    jstring outStr = env->NewStringUTF(res);
-    auto free_fn = get_rust_symbol<RustFreeStringFn>("rust_free_string");
-    if (free_fn) free_fn(res);
-    return outStr;
-    JNI_SHIELD_END(nullptr);
-}
-
 // ═══════════════════════════════════════════════════════════════
 // PHASE 3: C++20 DSP & 128-D VECTOR STORE JNI EXPORTS
 // ═══════════════════════════════════════════════════════════════
