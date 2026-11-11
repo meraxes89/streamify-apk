@@ -272,6 +272,12 @@ class DesktopJnaEngineSmokeTest {
         assertEquals("channels", 2, stats.channelsOut)
         assertEquals("frames written cumulative", frames.toLong(), stats.framesWritten)
         assertEquals("frames read cumulative", frames.toLong(), stats.framesRead)
+        // The starvation probe above legitimately counted exactly ONE
+        // underrun (an empty-ring read IS starvation — the frozen contract
+        // the C++ suite pins as "starvation + underrun accounting"); pin
+        // that baseline so the flush assertion below can prove the flush
+        // itself adds nothing on top of it.
+        assertEquals("the starvation probe counted exactly one underrun", 1L, stats.underrunEvents)
         assertTrue("sequence is the change detector (> 0)", stats.sequence > 0)
 
         // ── 4. cooperative flush: silence quantum, no underrun counted ────
@@ -289,7 +295,12 @@ class DesktopJnaEngineSmokeTest {
         )
         val postFlush = DesktopHalBridge.decodeStats(wire)
         assertNotNull("post-flush stats decode", postFlush)
-        assertEquals("the flush pass is NOT an underrun", 0L, postFlush!!.underrunEvents)
+        assertEquals(
+            "the flush pass is NOT an underrun (the counter stays at the " +
+                "starvation probe's 1 — a flush is a control decision, not starvation)",
+            1L,
+            postFlush!!.underrunEvents,
+        )
         assertEquals("cumulative frames_written survives the flush", (frames * 2).toLong(), postFlush.framesWritten)
 
         // ── 5. destroy: stale handles degrade, idempotent ──────────────
