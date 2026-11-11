@@ -131,6 +131,44 @@ jobs:
           path: rust/target/nextest/**/*.xml
           if-no-files-found: ignore
 
+  # ── WS-D D2: the offline embedding producer's execution benchmark ──────────
+  # The directive's budget: <= 200 ms per 30 s reference clip on a
+  # mid-range 2020 phone CPU. CI hosts are server cores ~3x faster on
+  # scalar f64 DSP than that device class, so the lane asserts a 65 ms
+  # median on the runner (65 x 3.1 ~= 200 ms on the phone, ~35%
+  # regression headroom over the observed ~48 ms median — the full
+  # derivation lives in rust/crates/streamify-audio/examples/embedding_bench.rs).
+  embedding-bench:
+    name: "WS-D D2: embedding producer benchmark (30s clip budget)"
+    if: inputs.run_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "engine-nextest"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Run the embedding benchmark (median-of-21, release)
+        run: |
+          cargo run --release --manifest-path rust/Cargo.toml \
+            -p streamify-audio --example embedding_bench
+
   # ── C++ DSP: ASan/UBSan matrix (clang-17, ccache, eatmydata on tmpfs) ─────
   # WS-C (C3): +7 revived suites and +2 new WS-C lanes — the full host
   # verification surface acts as a live gate on every core-touching PR.
@@ -194,10 +232,77 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Clang 17 & build tools
+      # The sanitizer lane's toolchain setup is infra-resilient (the same
+      # treatment the NDK lane's ccache got in this PR): a runner archive/DNS
+      # incident must neither burn 15+ minutes per shard inside apt's
+      # internal retry storm nor red the shard. cmake (4.4) and ninja (1.13)
+      # ship on the ubuntu-26.04 image — apt is only spent on the pinned
+      # clang-17 (with the image's preinstalled clang as fallback), and on
+      # best-effort speedups (ccache, eatmydata).
+      - name: Set up Clang & build tools (DNS-flake resilient)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-17 cmake ninja-build libstdc++-13-dev ccache eatmydata
+          DNS_OK=1
+          if ! timeout 15 getent hosts azure.archive.ubuntu.com >/dev/null 2>&1; then
+            DNS_OK=0
+            echo "::warning::runner DNS resolution is down — apt skipped; the image's preinstalled toolchain carries the shard"
+          fi
+
+          # Bounded retries: `timeout` caps apt's own retry storm, our loop
+          # adds two more shots with backoff. Worst case ~9 min, never 17+.
+          apt_install() {
+            if [ "$DNS_OK" -ne 1 ]; then return 1; fi
+            for attempt in 1 2 3; do
+              if sudo timeout 180 apt-get install -y -o Acquire::Retries=2 "$@"; then
+                return 0
+              fi
+              echo "apt install (attempt ${attempt}/3) failed — runner network flake? retrying after backoff"
+              sudo timeout 120 apt-get update -o Acquire::Retries=2 >/dev/null 2>&1 || true
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+
+          if [ "$DNS_OK" -eq 1 ]; then
+            sudo timeout 180 apt-get update -o Acquire::Retries=2 \
+              || echo "::warning::apt-get update failed — trying installs anyway (cached indexes)"
+          fi
+
+          # Preferred: the lane's pinned clang-17 (frozen sanitizer
+          # behavior). Fallback: the image's preinstalled clang
+          # (20/21/22 on ubuntu-26.04) — any of them compiles this tree
+          # under ASan/UBSan; a green shard on clang-22 beats a red one.
+          SANI_CC=""; SANI_CXX=""
+          if apt_install clang-17 libstdc++-13-dev \
+             && command -v clang-17 >/dev/null 2>&1; then
+            SANI_CC="$(command -v clang-17)"
+            SANI_CXX="$(command -v clang++-17)"
+          else
+            for v in 22 21 20 19 18; do
+              if command -v clang-$v >/dev/null 2>&1 && command -v clang++-$v >/dev/null 2>&1; then
+                SANI_CC="$(command -v clang-$v)"
+                SANI_CXX="$(command -v clang++-$v)"
+                echo "::warning::clang-17 unavailable (apt flake) — running the shard on the image's clang-$v"
+                break
+              fi
+            done
+          fi
+          if [ -z "$SANI_CC" ] || [ -z "$SANI_CXX" ]; then
+            echo "::error::No usable clang on the runner (apt failed AND no preinstalled clang) — cannot run the sanitizer lane."
+            exit 1
+          fi
+          echo "Sanitizer toolchain: $SANI_CXX ($($SANI_CXX --version | head -n1))"
+
+          # eatmydata is an fsync suppressor — a large speed multiplier
+          # for the sqlite/telemetry suites under ASan, but a speedup, not
+          # a dependency.
+          apt_install eatmydata \
+            || echo "::warning::eatmydata unavailable — suites run without it"
+
+          # ccache: also just a speedup; the build step attaches the
+          # compiler launcher only when ccache is on PATH.
+          apt_install ccache \
+            || echo "::warning::ccache unavailable — building without the compile cache"
+
           # Loud-CI contract: the PipeWire frozen-ABI cross-check lane in
           # linux_hal_driver_test_suite (real spa_pod_builder_add_object
           # rebuilt pod vs the embedded reference, real struct layouts vs
@@ -205,15 +310,19 @@ jobs:
           # headers — cross-check lane skipped". The dev packages land on
           # the shard that owns that suite; every other shard merely
           # configures the tree (the find_path result changes nothing for
-          # their targets).
+          # their targets). Only a total runner network outage downgrades
+          # this to the embedded-reference-only check (loudly warned).
           if [ "${{ matrix.shard }}" = "native-linux-hal-driver" ]; then
-            sudo apt-get install -y libpipewire-0.3-dev libspa-0.2-dev
+            apt_install libpipewire-0.3-dev libspa-0.2-dev \
+              || echo "::warning::PipeWire dev headers unavailable — frozen-ABI cross-check degrades to the embedded reference"
           fi
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 100
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100
+
+          echo "SANI_CC=$SANI_CC"   >> "$GITHUB_ENV"
+          echo "SANI_CXX=$SANI_CXX" >> "$GITHUB_ENV"
 
       - name: Setup CCache for native shards
         uses: hendrikmuhs/ccache-action@v1.2.24
+        continue-on-error: true
         with:
           key: ${{ runner.os }}-ccache-native-asan
           restore-keys: |
@@ -225,17 +334,32 @@ jobs:
           mkdir -p /dev/shm/native_test_tmp
           sudo mount -t tmpfs -o size=3G tmpfs /tmp || true
           mkdir -p native/build && cd native/build
-          cmake -DCMAKE_CXX_COMPILER=clang++ \
-                -DCMAKE_C_COMPILER=clang \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          # ccache is a speedup, not a dependency: attach the launcher only
+          # when ccache is on PATH (runner archive/DNS flakes must not
+          # poison the CMake compiler probe — same discipline as the NDK
+          # lane).
+          CCACHE_ARGS=""
+          if command -v ccache >/dev/null 2>&1; then
+            CCACHE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          else
+            echo "::warning::ccache unavailable — building without the compile cache"
+          fi
+          # shellcheck disable=SC2086
+          cmake -DCMAKE_CXX_COMPILER="$SANI_CXX" \
+                -DCMAKE_C_COMPILER="$SANI_CC" \
+                $CCACHE_ARGS \
                 -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -O2 -g" \
                 -DSTREAMIFY_BUILD_TESTS=ON \
                 -G Ninja ..
           ninja ${{ matrix.target }}
           cp -a ${{ matrix.target }} /dev/shm/native_test_tmp/
           cd /dev/shm/native_test_tmp
-          eatmydata ./${{ matrix.target }}
+          # eatmydata is a speed multiplier, not a dependency.
+          if command -v eatmydata >/dev/null 2>&1; then
+            eatmydata ./${{ matrix.target }}
+          else
+            ./${{ matrix.target }}
+          fi
 
   # ── WS-C (C4): the Windows native C++ rot guard (MSVC) ────────────────────
   # The WASAPI adapter's if(WIN32) target never fired anywhere before this
@@ -296,8 +420,6 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
@@ -356,8 +478,21 @@ jobs:
           fi
           echo "Using Android NDK at: $NDK_PATH"
 
+          # ccache is a speedup, not a dependency: when its apt install
+          # flaked (runner archive/DNS incidents), the old hard-wired
+          # CMAKE_*_COMPILER_LAUNCHER poisoned the compiler probe with
+          # exit 127. Attach the launcher only when ccache exists.
+          CCACHE_ARGS=""
+          if command -v ccache >/dev/null 2>&1; then
+            CCACHE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          else
+            echo "::warning::ccache unavailable — building without the compile cache"
+          fi
+
+          # shellcheck disable=SC2086
           cmake -B build-android-${{ matrix.abi }} -G Ninja \
             -S native \
+            $CCACHE_ARGS \
             -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-26 \

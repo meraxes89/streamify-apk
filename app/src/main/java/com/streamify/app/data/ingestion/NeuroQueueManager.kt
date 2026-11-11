@@ -3,11 +3,11 @@ import com.streamify.app.data.models.Track
 import com.streamify.app.data.network.YouTubeStreamResolver
 import com.streamify.app.data.youtube.PlaylistLinkScraper
 import kotlinx.coroutines.*
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.Calendar
 import com.streamify.app.util.SLog
-import com.streamify.app.data.NativeBridge
+import com.streamify.app.data.discovery.TasteLane
+import com.streamify.app.data.discovery.toTasteTrack
+import com.streamify.app.data.discovery.toTrack
 
 /**
  * Psychological Neuro-Acoustic Queue Manager
@@ -79,23 +79,13 @@ object NeuroQueueManager {
         val spotifyTracks = try { spotifyDeferred.await() } catch (_: Exception) { emptyList() }
         val youtubeTracks = try { youtubeDeferred.await() } catch (_: Exception) { emptyList() }
 
-        // 2. Build JSON candidate payloads
-        val seedJson = JSONObject().apply {
-            put("id", seedTrack.id.toString())
-            put("title", seedTrack.title)
-            put("artist", seedTrack.artist)
-            put("album", seedTrack.album)
-            put("source", 0)
-            put("bpm", if (seedTrack.bpm > 0f) seedTrack.bpm.toDouble() else 120.0)
-            put("key", if (seedTrack.key.isNotBlank()) seedTrack.key else "8A")
-            put("energy", 0.7)
-            put("valence", 0.7)
-            put("acoustic_sim", 1.0)
-            put("user_affinity", if (seedTrack.isLiked) 1.0 else 0.5)
-            put("last_played_sec", nowSec)
-        }.toString()
-
-        val candidatesArray = JSONArray()
+        // 2. Build taste-lane candidates (the unified engine lane —
+        // WS-D D3: the raw JSON/JNI twin was deleted with its C-ABI).
+        // D7: the exclusion guard is consulted at the boundary; the
+        // engine then filters at score time.
+        val guard = com.streamify.app.data.discovery.TasteProfileGuard.index()
+        val seed = seedTrack.toTasteTrack(source = 1, guard = guard, lastPlayedSec = nowSec)
+        val tasteCandidates = mutableListOf<TasteLane.TasteTrack>()
 
         // Source 0: Liked Tracks (Strict Acoustic & Artist Affinity Gated - Max 5 tracks)
         val filteredLiked = likedTracks.filter { t ->
@@ -118,105 +108,82 @@ object NeuroQueueManager {
             val bpmDiff = if (seedTrack.bpm > 0f && t.bpm > 0f) kotlin.math.abs(seedTrack.bpm - t.bpm) else 0f
             val computedSim = if (sameArtist) 0.95 else (0.75 - (bpmDiff / 50.0).coerceIn(0.0, 0.25))
 
-            candidatesArray.put(JSONObject().apply {
-                put("id", "liked_${t.id}")
-                put("title", t.title)
-                put("artist", t.artist)
-                put("album", t.album)
-                put("source", 0)
-                put("bpm", if (t.bpm > 0f) t.bpm.toDouble() else 120.0)
-                put("key", if (t.key.isNotBlank()) t.key else "8A")
-                put("energy", 0.65)
-                put("valence", 0.7)
-                put("acoustic_sim", computedSim)
-                put("user_affinity", if (sameArtist) 0.85 else 0.40)
-                put("last_played_sec", 0L)
-            })
+            tasteCandidates.add(
+                TasteLane.TasteTrack(
+                    id = "liked_${t.id}",
+                    title = t.title,
+                    artist = t.artist,
+                    album = t.album,
+                    source = 0,
+                    bpm = if (t.bpm > 0f) t.bpm else 120f,
+                    key = t.key.ifBlank { "8A" },
+                    energy = 0.65f,
+                    valence = 0.7f,
+                    acousticSim = computedSim.toFloat(),
+                    userAffinity = if (sameArtist) 0.85f else 0.40f,
+                    excludedFromTaste = guard.isTrackExcluded(t)
+                )
+            )
         }
 
         // Source 1: Spotify Candidates (Vibe & Genre continuity)
         spotifyTracks.take(30).forEachIndexed { idx, t ->
-            candidatesArray.put(JSONObject().apply {
-                put("id", "spotify_${idx}_${t.title.hashCode()}")
-                put("title", t.title)
-                put("artist", t.artist)
-                put("album", t.album)
-                put("source", 1)
-                put("bpm", if (t.bpm > 0f) t.bpm.toDouble() else (seedTrack.bpm.takeIf { it > 0f } ?: 120f).toDouble())
-                put("key", if (t.key.isNotBlank()) t.key else seedTrack.key.ifBlank { "8A" })
-                put("energy", 0.75)
-                put("valence", 0.70)
-                put("acoustic_sim", 0.95)
-                put("user_affinity", 0.60)
-                put("last_played_sec", 0L)
-            })
+            tasteCandidates.add(
+                TasteLane.TasteTrack(
+                    id = "spotify_${idx}_${t.title.hashCode()}",
+                    title = t.title,
+                    artist = t.artist,
+                    album = t.album,
+                    source = 1,
+                    bpm = if (t.bpm > 0f) t.bpm else (seedTrack.bpm.takeIf { it > 0f } ?: 120f),
+                    key = t.key.ifBlank { seedTrack.key.ifBlank { "8A" } },
+                    energy = 0.75f,
+                    valence = 0.70f,
+                    acousticSim = 0.95f,
+                    userAffinity = 0.60f
+                )
+            )
         }
 
         // Source 2: YouTube Candidates (Discovery & Seed Continuum)
         youtubeTracks.take(30).forEachIndexed { idx, t ->
-            candidatesArray.put(JSONObject().apply {
-                put("id", "yt_${idx}_${t.title.hashCode()}")
-                put("title", t.title)
-                put("artist", t.artist)
-                put("album", t.album)
-                put("source", 2)
-                put("bpm", if (t.bpm > 0f) t.bpm.toDouble() else (seedTrack.bpm.takeIf { it > 0f } ?: 120f).toDouble())
-                put("key", if (t.key.isNotBlank()) t.key else seedTrack.key.ifBlank { "8A" })
-                put("energy", 0.75)
-                put("valence", 0.70)
-                put("acoustic_sim", 0.88)
-                put("user_affinity", 0.50)
-                put("last_played_sec", 0L)
-            })
-        }
-
-
-        // 3. Delegate to Rust NeuroQueueEngine via JNI
-        val outJson = try {
-            NativeBridge.rustGenerateNeuroQueue(
-                seedJson = seedJson,
-                candidatesJson = candidatesArray.toString(),
-                brainState = currentBrainState,
-                nowSec = nowSec,
-                hourOfDay = hourOfDay,
-                targetCount = targetCount
+            tasteCandidates.add(
+                TasteLane.TasteTrack(
+                    id = "yt_${idx}_${t.title.hashCode()}",
+                    title = t.title,
+                    artist = t.artist,
+                    album = t.album,
+                    source = 2,
+                    bpm = if (t.bpm > 0f) t.bpm else (seedTrack.bpm.takeIf { it > 0f } ?: 120f),
+                    key = t.key.ifBlank { seedTrack.key.ifBlank { "8A" } },
+                    energy = 0.75f,
+                    valence = 0.70f,
+                    acousticSim = 0.88f,
+                    userAffinity = 0.50f
+                )
             )
-        } catch (_: UnsatisfiedLinkError) {
-            null
-        } catch (_: Exception) {
-            null
         }
 
-        if (!outJson.isNullOrBlank()) {
-            try {
-                val array = JSONArray(outJson)
-                val outList = mutableListOf<Track>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    val title = obj.optString("title", "")
-                    val artist = obj.optString("artist", "")
-                    val album = obj.optString("album", "")
-                    val bpm = obj.optDouble("bpm", 120.0).toFloat()
-                    val key = obj.optString("key", "8A")
-
-                    outList.add(
-                        Track(
-                            id = (title + artist).hashCode(),
-                            title = title,
-                            artist = artist,
-                            album = album.ifBlank { "Streamify Radio" },
-                            bpm = bpm,
-                            key = key,
-                            source = "neuro_queue"
-                        )
-                    )
-                }
-                if (outList.isNotEmpty()) {
-                    return@withContext outList
-                }
-            } catch (e: Exception) {
-                SLog.st("NeuroQueueManager", "NeuroQueueManager.generateAdaptiveQueue failed", e)
-            }
+        // 3. Delegate to the unified Rust TasteEngine lane (WS-D D3):
+        // every row returns with its D4 reason string attached.
+        val brainState = when (currentBrainState) {
+            STATE_DISTRESS -> TasteLane.BrainStateKt.DISTRESS
+            STATE_HYPNOSIS -> TasteLane.BrainStateKt.HYPNOSIS
+            STATE_IMPATIENCE -> TasteLane.BrainStateKt.IMPATIENCE
+            STATE_OBSESSION -> TasteLane.BrainStateKt.OBSESSION
+            else -> TasteLane.BrainStateKt.FLOW
+        }
+        val rows = TasteLane.generateRadioQueue(
+            seed = seed,
+            candidates = tasteCandidates,
+            state = brainState,
+            nowSec = nowSec,
+            hourOfDay = hourOfDay,
+            targetCount = targetCount,
+            profile = TasteLane.CircadianProfileKt.classic()
+        )
+        if (rows.isNotEmpty()) {
+            return@withContext rows.map { it.toTrack(sourceTag = "neuro_queue") }
         }
 
         // Fallback: Interleaved combination

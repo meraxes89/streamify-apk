@@ -49,6 +49,12 @@ blake3 = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 
+# WS-D D2: the acoustic-embedding producer (lufs + dsp +
+# waveform_indexer composition) the TasteEngine lane runs at ingest
+# time. Pure DSP — carries no async/DB/network deps through the RT
+# boundary the audio crate enforces.
+streamify-audio = { workspace = true }
+
 [build-dependencies]
 # Scaffolding generation at build time; "builtin-bindgen" embeds the
 # bindgen so no external uniffi-bindgen binary is needed on CI runners.
@@ -58,9 +64,6 @@ uniffi_build = { version = "0.28", features = ["builtin-bindgen"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 futures-util = { workspace = true }
-# A5 harness (issue #151): the VirtualHAL adversarial double drives the
-# self-test gate's DAC model.
-streamify-audio = { workspace = true }
 
 [features]
 default = []

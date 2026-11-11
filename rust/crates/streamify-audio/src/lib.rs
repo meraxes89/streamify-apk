@@ -24,6 +24,7 @@ pub mod audio_src;
 pub mod crossfade;
 pub mod desktop_hal_models;
 pub mod dsp;
+pub mod embedding_producer;
 pub mod lufs;
 pub mod normalizer;
 pub mod seek_guard;

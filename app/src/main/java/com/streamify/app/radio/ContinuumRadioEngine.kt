@@ -18,6 +18,8 @@ import java.util.HashSet
 import java.util.zip.GZIPInputStream
 import com.streamify.app.util.SLog
 import com.streamify.app.data.discovery.FuzzyTitleMatcher
+import com.streamify.app.data.discovery.TasteLane
+import com.streamify.app.data.ingestion.NeuroQueueManager
 
 val Track.videoId: String
     get() = YouTubeStreamResolver.extractVideoId(filepath, coverArtPath) ?: id.toString()
@@ -34,10 +36,16 @@ object ContinuumRadioEngine {
     private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     private val JSON_MEDIA_TYPE = "application/json; charset=UTF-8".toMediaType()
 
-    // O(1) De-duplication Sets & Dynamic Diversity Pools
+    // WS-D D3: the local scoring twin is DELETED. The artist-saturation
+    // pools, the root-hash rotation and the played-set re-ranking that
+    // used to live here (playedVideoIds / playedRootHashes /
+    // playedArtistCounts) moved into the unified Rust TasteEngine lane —
+    // `TasteLane.generateRadioQueue` applies the 3.5 h satiation decay,
+    // the 5-slot micro-arc and the brain-state weighting, and returns
+    // every row with its D4 reason string. What stays in Kotlin is
+    // candidate HYGIENE only: the played-video set (no re-plays) and
+    // the FuzzyTitleMatcher variation guard (same-song re-uploads).
     private val playedVideoIds = Collections.synchronizedSet(HashSet<String>())
-    private val playedRootHashes = Collections.synchronizedSet(HashSet<Long>())
-    private val playedArtistCounts = Collections.synchronizedMap(HashMap<String, Int>())
 
     private val _discoveredQueue = MutableStateFlow<List<Track>>(emptyList())
     val discoveredQueue: StateFlow<List<Track>> = _discoveredQueue.asStateFlow()
@@ -49,8 +57,6 @@ object ContinuumRadioEngine {
 
     fun clearRadio() {
         playedVideoIds.clear()
-        playedRootHashes.clear()
-        playedArtistCounts.clear()
         _discoveredQueue.value = emptyList()
         currentRadioContext = null
     }
@@ -104,11 +110,6 @@ object ContinuumRadioEngine {
             return@withContext emptyList()
         }
         playedVideoIds.add(vId)
-        val seedHash = FuzzyTitleMatcher.extractRootHash(seedTrack.title)
-        if (seedHash != 0L) playedRootHashes.add(seedHash)
-        if (seedTrack.artist.isNotBlank()) {
-            playedArtistCounts[seedTrack.artist.lowercase().trim()] = 1
-        }
         currentRadioContext = RadioContext(videoId = vId, playlistId = "RDAMVM$vId")
 
         // Fetch initial radio batch (usually 15-25 tracks)
@@ -130,22 +131,17 @@ object ContinuumRadioEngine {
             // Update continuation token for infinite pagination
             context.continuationToken = nextContinuation
 
+            // Candidate hygiene: no re-plays, no same-song variations.
+            // Scoring, artist diversity and ordering now flow through the
+            // unified TasteEngine lane (below) — the local twin is gone.
             val uniqueTracks = mutableListOf<Track>()
             for (track in candidates) {
                 val trackVId = track.videoId
-                val rootHash = FuzzyTitleMatcher.extractRootHash(track.title)
-                val artistKey = track.artist.lowercase().trim()
-                val artistCount = playedArtistCounts[artistKey] ?: 0
-
-                // 1. Root Hash collision or Jaccard fuzzy similarity check
-                val isVariation = (rootHash != 0L && playedRootHashes.contains(rootHash)) ||
-                        uniqueTracks.any { FuzzyTitleMatcher.isSameSongVariation(it.title, it.artist, track.title, track.artist) }
-
-                // 2. Artist Saturation Cap (max 2 songs per artist in the upcoming queue)
-                if (!playedVideoIds.contains(trackVId) && !isVariation && artistCount < 2) {
+                val isVariation = uniqueTracks.any {
+                    FuzzyTitleMatcher.isSameSongVariation(it.title, it.artist, track.title, track.artist)
+                }
+                if (!playedVideoIds.contains(trackVId) && !isVariation) {
                     playedVideoIds.add(trackVId)
-                    if (rootHash != 0L) playedRootHashes.add(rootHash)
-                    playedArtistCounts[artistKey] = artistCount + 1
                     uniqueTracks.add(track)
                 }
             }
@@ -156,17 +152,12 @@ object ContinuumRadioEngine {
                 val fallbackResults = YouTubeMusicSearchApi.search(queryTerm, maxResults = 15)
                 for (item in fallbackResults) {
                     val fVId = YouTubeStreamResolver.extractVideoId(item.url) ?: item.url
-                    val fRootHash = FuzzyTitleMatcher.extractRootHash(item.title)
-                    val fArtistKey = item.uploader.lowercase().trim()
-                    val fArtistCount = playedArtistCounts[fArtistKey] ?: 0
+                    val isVariation = uniqueTracks.any {
+                        FuzzyTitleMatcher.isSameSongVariation(it.title, it.artist, item.title, item.uploader)
+                    }
 
-                    val isVariation = (fRootHash != 0L && playedRootHashes.contains(fRootHash)) ||
-                            uniqueTracks.any { FuzzyTitleMatcher.isSameSongVariation(it.title, it.artist, item.title, item.uploader) }
-
-                    if (!playedVideoIds.contains(fVId) && !isVariation && fArtistCount < 2) {
+                    if (!playedVideoIds.contains(fVId) && !isVariation) {
                         playedVideoIds.add(fVId)
-                        if (fRootHash != 0L) playedRootHashes.add(fRootHash)
-                        playedArtistCounts[fArtistKey] = fArtistCount + 1
                         uniqueTracks.add(
                             Track(
                                 id = -(item.url.hashCode()),
@@ -186,9 +177,18 @@ object ContinuumRadioEngine {
                 }
             }
 
+            // The unified engine lane (WS-D D3): re-rank the hygiene-
+            // filtered pool through the Rust TasteEngine — brain-state
+            // weighting, satiation decay, Camelot harmony and the 5-slot
+            // micro-arc — attaching each row's D4 reason. When the lane
+            // is unavailable (offline cold start before first link), the
+            // Innertube order stands.
+            val ranked = reRankThroughEngineLane(seedTrack, uniqueTracks)
+            val finalTracks = ranked.ifEmpty { uniqueTracks }
+
             // Append to live discovered queue
-            _discoveredQueue.value = _discoveredQueue.value + uniqueTracks
-            uniqueTracks
+            _discoveredQueue.value = _discoveredQueue.value + finalTracks
+            finalTracks
         } catch (e: Exception) {
             SLog.st("ContinuumRadioEngine", "ContinuumRadioEngine.fetchNextRadioBatch failed", e)
             emptyList()
@@ -416,14 +416,78 @@ object ContinuumRadioEngine {
         return 210
     }
 
-    private fun normalizeSignature(title: String, artist: String): String {
-        val cleanTitle = title.lowercase()
-            .replace(Regex("\\(.*?\\)|\\[.*?\\]"), "")
-            .replace(Regex("[^a-z0-9]"), "")
-            .trim()
-        val cleanArtist = artist.lowercase()
-            .replace(Regex("[^a-z0-9]"), "")
-            .trim()
-        return "$cleanTitle::$cleanArtist"
+    /**
+     * WS-D D3: run the hygiene-filtered pool through the unified
+     * TasteEngine lane. The seed carries its BPM/key forward (Innertube
+     * rows arrive without acoustic metadata), candidates map onto the
+     * YouTube source lane, and the engine's 5-slot micro-arc shapes the
+     * order with D4 reasons attached. Empty return = lane unavailable.
+     */
+    private fun reRankThroughEngineLane(seedTrack: Track?, pool: List<Track>): List<Track> {
+        if (pool.isEmpty()) return emptyList()
+        val seed = seedTrack ?: return emptyList()
+        return try {
+            val nowSec = System.currentTimeMillis() / 1000L
+            @Suppress("MagicNumber")
+            val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            val seedCandidate = TasteLane.TasteTrack(
+                id = "seed_${seed.id}",
+                title = seed.title,
+                artist = seed.artist,
+                album = seed.album,
+                source = 2,
+                bpm = if (seed.bpm > 0f) seed.bpm else 120f,
+                key = seed.key.ifBlank { "8A" },
+                energy = 0.7f,
+                valence = 0.6f,
+                acousticSim = 1.0f,
+                userAffinity = if (seed.isLiked) 0.9f else 0.5f,
+                lastPlayedSec = nowSec
+            )
+            // D7: the exclusion guard binds the radio lane too.
+            val guard = com.streamify.app.data.discovery.TasteProfileGuard.index()
+            val candidates = pool.map { t ->
+                TasteLane.TasteTrack(
+                    id = "yt_${t.videoId}",
+                    title = t.title,
+                    artist = t.artist,
+                    album = t.album,
+                    source = 2,
+                    bpm = if (t.bpm > 0f) t.bpm else (seed.bpm.takeIf { it > 0f } ?: 120f),
+                    key = t.key.ifBlank { seed.key.ifBlank { "8A" } },
+                    energy = 0.75f,
+                    valence = 0.6f,
+                    acousticSim = 0.88f,
+                    userAffinity = 0.5f,
+                    excludedFromTaste = guard.isTrackExcluded(t)
+                )
+            }
+            val brainState = when (NeuroQueueManager.getActiveBrainState()) {
+                NeuroQueueManager.STATE_DISTRESS -> TasteLane.BrainStateKt.DISTRESS
+                NeuroQueueManager.STATE_HYPNOSIS -> TasteLane.BrainStateKt.HYPNOSIS
+                NeuroQueueManager.STATE_IMPATIENCE -> TasteLane.BrainStateKt.IMPATIENCE
+                NeuroQueueManager.STATE_OBSESSION -> TasteLane.BrainStateKt.OBSESSION
+                else -> TasteLane.BrainStateKt.FLOW
+            }
+            val rows = TasteLane.generateRadioQueue(
+                seed = seedCandidate,
+                candidates = candidates,
+                state = brainState,
+                nowSec = nowSec,
+                hourOfDay = hourOfDay,
+                targetCount = pool.size,
+                profile = TasteLane.CircadianProfileKt.classic()
+            )
+            // Rows map back by title+artist (Innertube ids are negative
+            // hashes; the lane's ids are prefixed video ids).
+            val bySignature = pool.associateBy { "${it.title.lowercase()}::${it.artist.lowercase()}" }
+            rows.mapNotNull { row ->
+                bySignature["${row.track.title.lowercase()}::${row.track.artist.lowercase()}"]
+                    ?.copy(reason = row.reason)
+            }.ifEmpty { emptyList() }
+        } catch (e: Exception) {
+            SLog.st("ContinuumRadioEngine", "engine-lane re-rank degraded", e)
+            emptyList()
+        }
     }
 }

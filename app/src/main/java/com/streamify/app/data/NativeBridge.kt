@@ -971,20 +971,9 @@ object NativeBridge {
     // ═══════════════════════════════════════════════════════════════
     // PHASE 10: CONTEXTUAL KINETIC TRAJECTORY ENGINE
     // ═══════════════════════════════════════════════════════════════
-    external fun nativeInitContinuumState(): Long
-    external fun nativeFreeContinuumState(statePtr: Long)
-    external fun nativeEvaluateContinuum(
-        statePtr: Long,
-        candidates: FloatArray,
-        outScores: FloatArray
-    ): Int
-    external fun nativeCommitTrackToContinuum(
-        statePtr: Long,
-        trackVector: FloatArray,
-        artistHash: Long,
-        trackHash: Long,
-        dwellPercentage: Float
-    ): Int
+    // WS-D D3: the continuum engine moved to the UniFFI TasteEngine
+    // lane (TasteLane.kt) — the raw JNI twin was deleted along with its
+    // Rust #[no_mangle] surface.
 
     // 1MB pre-allocated DirectByteBuffer for virtual shelf binary streaming (~500 tracks)
     private val shelfBuffer: java.nio.ByteBuffer = java.nio.ByteBuffer.allocateDirect(1024 * 1024)
@@ -1254,14 +1243,6 @@ object NativeBridge {
     ): Long
     external fun rustParseBackupCsv(csvContent: String): String?
     external fun rustAlignAndCompileLyrics(rawLyrics: String, durationMs: Int, energyFloats: FloatArray?): String?
-    external fun rustGenerateNeuroQueue(
-        seedJson: String,
-        candidatesJson: String,
-        brainState: Int,
-        nowSec: Long,
-        hourOfDay: Int,
-        targetCount: Int
-    ): String?
 
     // ═══════════════════════════════════════════════════════════════
     // PHASE 7: BYZANTINE CONSENSUS & IEEE 1588 PTP JNI EXPORTS

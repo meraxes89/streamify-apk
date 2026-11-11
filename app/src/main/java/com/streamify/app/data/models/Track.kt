@@ -43,7 +43,11 @@ data class Track(
     val genre: String = "",
     val playCount: Int = 0,
     val isrc: String? = null,
-    val ytmVideoId: String? = null
+    val ytmVideoId: String? = null,
+    /** WS-D D4: the taste engine's explainable "why" for recommended
+     * rows (null for user-queued / organic rows — the queue UI renders
+     * it as the row's reason chip). */
+    val reason: String? = null
 ) {
     val filePath: String get() = filepath
 }

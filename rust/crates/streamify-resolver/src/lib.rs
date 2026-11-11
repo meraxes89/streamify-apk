@@ -33,11 +33,15 @@ pub use aligner::{AlignedLine, AlignedSyllable, LyricAlignerEngine};
 pub use downloader::{DownloadProgress, StreamDownloader};
 pub use json::{InnertubeParser, ParsedCandidate, ResolvedStreamFormat};
 pub use lyrics::{CompiledLyricEntry, CompiledLyrics, LyricCompiler};
-pub use neuro_queue::{BrainState, NeuroCandidate, NeuroQueueEngine};
+pub use neuro_queue::{
+    BrainState, CircadianProfile, DaypartSlot, DaypartVector, NeuroCandidate, NeuroQueueEngine,
+    NeuroQueueRow, NeuroScoreBreakdown,
+};
 pub use playlist_parser::{ParsedPlaylistResult, ParsedPlaylistTrack, PlaylistParser};
+pub use continuum_engine::{ContinuumCandidate, ContinuumEngine, ContinuumScore, SplitMix64};
 pub use radio_scorer::{
-    BlendCandidate, BlendMemberSeed, BlendScoreResult, BlendScoredCandidate, BlendWeights,
-    GroupBlendScorer, RadioAntiDriftEngine, ScoredCandidate,
+    BlendCandidate, BlendMemberSeed, BlendRecentTrack, BlendScoreResult, BlendScoredCandidate,
+    BlendWeights, GroupBlendScorer, RadioAntiDriftEngine, ScoredCandidate,
 };
 pub use resolver::StreamResolver;
 pub use rustypipe_engine::{

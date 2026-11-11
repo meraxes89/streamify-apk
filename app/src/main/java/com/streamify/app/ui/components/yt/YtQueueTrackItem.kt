@@ -121,6 +121,17 @@ fun YtQueueTrackItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            // WS-D D4: the taste engine's explainable reason — queue rows
+            // recommended by the local engine carry a one-line "why".
+            if (!track.reason.isNullOrBlank()) {
+                Text(
+                    text = track.reason,
+                    style = LocalAppTypography.current.songArtist.copy(fontSize = 10.sp),
+                    color = TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         // 3-Dot Overflow Menu
