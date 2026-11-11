@@ -4,7 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 
-// Shared SIMD / alignment shims (Phase 1): streamify_fma_f32 + posix_memalign.
+// Shared SIMD / alignment shims (Phase 1): streamify_fma_f32 + the
+// MSVC-portable alignedAlloc/alignedFree pair.
 #include "../util/NeonCompat.h"
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
@@ -57,13 +58,9 @@ inline float hsumF32x4(float32x4_t v) {
 
 constexpr int kPhaseFractionBits = 32;   // sub-sample accumulator width
 
-inline void* allocateAligned(size_t alignment, size_t size) {
-    void* ptr = nullptr;
-    if (posix_memalign(&ptr, alignment, size) != 0) {
-        return nullptr;
-    }
-    return ptr;
-}
+// (the private posix_memalign copy is retired — allocations route through
+// the shared streamify::alignedAlloc/alignedFree shim in util/NeonCompat.h,
+// which carries the MSVC _aligned_malloc spelling the C4 rot guard needs)
 
 } // namespace
 
@@ -74,7 +71,8 @@ AcousticPhaseResampler::AcousticPhaseResampler()
     : AcousticPhaseResampler(Config()) {}
 
 AcousticPhaseResampler::AcousticPhaseResampler(const Config& cfg)
-    : cfg_(cfg), table_(nullptr, &::free), ring_(nullptr, &::free) {
+    : cfg_(cfg), table_(nullptr, &streamify::alignedFree),
+      ring_(nullptr, &streamify::alignedFree) {
     // Clamp knobs to sane ranges; see header for the design space.
     cfg_.tapsPerPhase   = std::clamp((cfg_.tapsPerPhase + 1) / 2 * 2, 8, 64);  // even
     // The phase grid MUST be a power of two: the hot path derives the phase
@@ -97,7 +95,7 @@ AcousticPhaseResampler::AcousticPhaseResampler(const Config& cfg)
     const size_t ringBytes =
         static_cast<size_t>(ringCapacity_) * cfg_.channels * sizeof(float);
     ring_.reset(static_cast<float*>(
-        allocateAligned(32, ((ringBytes + 31) / 32) * 32)));
+        streamify::alignedAlloc(32, ((ringBytes + 31) / 32) * 32)));
 
     resetStreamState();
 }
@@ -119,7 +117,7 @@ void AcousticPhaseResampler::buildFilterTable() {
     const size_t rows = static_cast<size_t>(P) + 1;
     const size_t floats = rows * static_cast<size_t>(T);
     const size_t bytes = ((floats * sizeof(float) + 31) / 32) * 32;
-    table_.reset(static_cast<float*>(allocateAligned(32, bytes)));
+    table_.reset(static_cast<float*>(streamify::alignedAlloc(32, bytes)));
 
     for (int phi = 0; phi <= P; ++phi) {
         const double frac = static_cast<double>(phi) / static_cast<double>(P);
@@ -161,7 +159,7 @@ bool AcousticPhaseResampler::configure(int channels, double sampleRateHz) {
     const size_t ringBytes =
         static_cast<size_t>(ringCapacity_) * cfg_.channels * sizeof(float);
     ring_.reset(static_cast<float*>(
-        allocateAligned(32, ((ringBytes + 31) / 32) * 32)));
+        streamify::alignedAlloc(32, ((ringBytes + 31) / 32) * 32)));
     resetStreamState();
     return true;
 }

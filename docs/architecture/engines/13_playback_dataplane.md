@@ -63,11 +63,12 @@ Verified against the tree at `09a4e20b` (TRUTH-02), every claim in AHEAD.md §1.
 - `apply_media_command` was a state machine only: `Seek | Next | Previous` were literal no-ops (`contract.rs`, the pre-#148 arm read
   *"effects deferred to the queue engine phase"*). **The transport slice of this gap is now closed** (§4).
 - The WASAPI/PipeWire/ALSA/CoreAudio C facades (`native/audio/wasapi_pull_adapter.cpp`, `pipewire_driver.cpp`,
-  `coreaudio_pull_adapter.cpp`) had **zero production callers** — they compiled nowhere that links them into a product. The CoreAudio
+  `coreaudio_pull_adapter.cpp`) **had zero production callers** — they compiled nowhere that links them into a product. The CoreAudio
   facade's caller **landed with WS-B B4** (`PlaybackViewModel` → `CoreAudioRenderCore.startRustRing` →
-  `streamify_coreaudio_start_rust_ring`, pulling through the ring's frozen C ABI); WASAPI/PipeWire/ALSA close with C5 against the §6 edge.
-- The JNI sink bridge `native/src/jni_bridge_audio_sinks.cpp` **does not exist** (the header, wire layout, registry and serializer do;
-  the app-side seam `RustAudioSinkJni.kt` is waiting on it, declarations quarantined in the debug-only dogfood source set). Closes
+  `streamify_coreaudio_start_rust_ring`, pulling through the ring's frozen C ABI); WASAPI/PipeWire/ALSA close with
+  C5's engine-side relay against the §6 edge.
+- The JNI sink bridge `native/src/jni_bridge_audio_sinks.cpp` **landed in WS-C/C1** (the seven frozen symbols over the existing header, wire layout, registry and serializer;
+  the app-side seam `RustAudioSinkJni.kt` binds it — declarations moved into the main tree, zero changes above the seam). Closes
   with C1 (ENG-3).
 - No decoder exists anywhere in the workspace (`Cargo.lock` carries no Opus/AAC decoder): the producer's decode stage is a **new
   dependency decision**, specified in §5.2 with the mandated rationale.
@@ -344,9 +345,9 @@ writer (SPSC by construction).
 
 | Platform | Mounting bracket | Owner | Status |
 |---|---|---|---|
-| Android | `jni_bridge_audio_sinks.cpp` over the frozen 7 symbols; AAudio consumption; dogfood via `RustAudioDogfoodPanel` | ENG-3 (C1/C2) | header + app seam shipped; bridge not written |
-| Windows | `wasapi_pull_adapter.cpp` facade (`streamify_wasapi_start`) called from the engine lane | ENG-3 (C5) | facade compiles nowhere (no WIN32 CMake lane — C4 adds it) |
-| Linux | `pipewire_driver.cpp` / ALSA null-PCM CI lane | ENG-3 (C5) | facade has no production caller |
+| Android | `jni_bridge_audio_sinks.cpp` over the frozen 7 symbols; AAudio consumption; dogfood via `RustAudioDogfoodPanel` | ENG-3 (C1/C2) | ✅ C1 shipped: bridge landed, `jni_parity_check.py --source` green, `jni_sink_bridge_test_suite` pins the round-trip on the host sanitizer lanes; C2 dogfood armed (`docs/playbooks/ANDROID_RUST_AUDIO_CUTOVER.md`) |
+| Windows | `wasapi_pull_adapter.cpp` facade (`streamify_wasapi_start`) called from the engine lane | ENG-3 (C5) | ✅ C4 rot lane shipped (windows-native MSVC job; the facade compiles every core PR); C5 platform slice shipped (`streamify_desktop_hal` module + JNA binding + sink round-trip); the engine-side relay is ENG-1's follow-up |
+| Linux | `pipewire_driver.cpp` / ALSA null-PCM CI lane | ENG-3 (C5) | ✅ C3 switched `linux_hal_driver_test_suite` on (ALSA null double); C5 platform slice shipped (the facade ships inside `streamify_desktop_hal`, round-tripped from the JVM); the engine-side relay is ENG-1's follow-up |
 | Apple | `coreaudio_pull_adapter.cpp` + `CoreAudioRenderCore` + `IOSAudioSessionAdapter` | ENG-2 (B4) | **landed (WS-B)**: `PlaybackViewModel` mounts the render core; the pull edge is the abstract `RenderFrameSource`; `streamify_coreaudio_start_rust_ring` pulls from the Rust ring's frozen C ABI (`ring_export.rs`); audible-on-device proof pending |
 
 The Rust side of every bracket is the same §6.2 trait — that is the entire point of the drivetrain: platform teams mount brackets,

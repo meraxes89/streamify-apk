@@ -250,16 +250,25 @@ final class UniFFIContractTests: XCTestCase {
         defer { gateway.shutdown() }
         let library = UniFFIFeatureLibrary(gateway: gateway)
 
+        // Subscribe BEFORE mutating the queue. The stream's builder
+        // registers its continuation synchronously on this access, and
+        // AsyncStream's default UNBOUNDED buffering holds any yields that
+        // land before the collector's iteration starts. The original
+        // ordering (enqueue first, collector later) raced the bridge:
+        // resyncQueue() yields only on a FINGERPRINT CHANGE, so when the
+        // enqueue-driven resyncs completed before the collector's
+        // continuation was registered, their snapshots were dropped AND
+        // their fingerprints recorded — the later setVolume push then
+        // resynced an IDENTICAL fingerprint (guarded into a no-op) and no
+        // event could ever arrive. With registration first, every
+        // fingerprint-changing resync below is delivered by construction.
+        let events = library.queueEvents
         let trackA = PreviewEngineGateway.fixtureCatalog[0]
         let trackB = PreviewEngineGateway.fixtureCatalog[1]
-        let indexA = await gateway.enqueue(track: trackA, enqueuedBy: "local")
-        let indexB = await gateway.enqueue(track: trackB, enqueuedBy: "local")
-        XCTAssertNotNil(indexA)
-        XCTAssertNotNil(indexB)
 
         let received = expectation(description: "queue snapshot synthesized onto queueEvents")
         let collector = Task {
-            for await event in library.queueEvents {
+            for await event in events {
                 if case .snapshot(let snapshot) = event {
                     if snapshot.tracks.map(\.id).contains(trackA.id) {
                         received.fulfill()
@@ -268,9 +277,15 @@ final class UniFFIContractTests: XCTestCase {
                 }
             }
         }
-        // A control-plane mutation triggers the engine's push cadence —
-        // the library's bridge re-reads the queue and pushes.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        // Control-plane mutations: the enqueues (and the volume push as a
+        // belt-and-braces trigger) each drive the engine's push cadence —
+        // the library's bridge re-reads the queue and pushes a diffed
+        // snapshot.
+        let indexA = await gateway.enqueue(track: trackA, enqueuedBy: "local")
+        let indexB = await gateway.enqueue(track: trackB, enqueuedBy: "local")
+        XCTAssertNotNil(indexA)
+        XCTAssertNotNil(indexB)
         _ = await gateway.send(.setVolume(0.4))
 
         await fulfillment(of: [received], timeout: 10)

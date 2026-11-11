@@ -10,6 +10,12 @@ if(CI_SMOKE_LANE)
     set(EXTREME_LTO_FLAGS "")
 endif()
 
+# WS-C (C4): the flag block is now compiler-conditional. The GNU/Clang
+# spelling (-O3/-ffast-math/-flto/-fvisibility) is invalid MSVC syntax
+# and would abort the Windows native lane at configure time; the MSVC
+# spelling maps the same intent (/O2, /fp:fast, /EHsc for the JNI_SHIELD
+# try/catch edges and the dlopen drivers' C++ exception paths).
+
 # --- Phase 3 (multiplatform): host sanitizer/CTest lane ---------------------
 # ENABLE_ASAN mirrors the Android CI shard's sanitizer discipline on a plain
 # host toolchain (gcc or clang, no NDK required): it turns on the standalone
@@ -31,8 +37,13 @@ if(ENABLE_ASAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer -O2 -g")
 endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ${EXTREME_LTO_FLAGS} -fvisibility=hidden -Wall -Wextra")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -ffast-math ${EXTREME_LTO_FLAGS} -fvisibility=hidden")
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /fp:fast /W3 /EHsc")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /O2 /fp:fast")
+else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ${EXTREME_LTO_FLAGS} -fvisibility=hidden -Wall -Wextra")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -ffast-math ${EXTREME_LTO_FLAGS} -fvisibility=hidden")
+endif()
 
 if(ENABLE_ASAN)
     # The global -O3/-ffast-math appended above would fight the sanitizer
@@ -67,9 +78,13 @@ include_directories(
 # The Android packaging library needs the NDK (jni.h, -landroid, -llog);
 # the host test lanes (ENABLE_ASAN, and the Phase 4a ENABLE_TESTS alias)
 # build ONLY the test suites, so the .so target is skipped entirely there
-# (it cannot link on a host). Plain NDK cross-compiles — which pass no
-# test flags — keep building the packaging library.
-if (NOT ENABLE_ASAN AND NOT ENABLE_TESTS)
+# (it cannot link on a host). WS-C (C4): the guard is now ANDROID — the
+# NDK toolchain sets it — so plain host configures (the Windows native
+# rot lane, desktop HAL builds, local macOS builds) also skip the
+# jni.h-dependent .so and build their platform targets instead. Plain
+# NDK cross-compiles — which pass no test flags — keep building the
+# packaging library.
+if (NOT ENABLE_ASAN AND NOT ENABLE_TESTS AND ANDROID)
 add_library(streamify_native_core SHARED
     # Phase-5: SIMD palette clustering + WCAG contrast engine.
     src/palette_extractor_simd.cpp
@@ -79,6 +94,9 @@ add_library(streamify_native_core SHARED
     src/streamify_frame_palette.cpp
     # Phase-4: lock-free SPSC audio sink + SIMD sample converter.
     src/audio_sink_ringbuffer.cpp
+    # WS-C (C1): the 7-symbol JNI sink bridge over the frozen contract
+    # (streamify_audio_sinks.h) — the Android mounting bracket.
+    src/jni_bridge_audio_sinks.cpp
     # Phase-4: companion WearOS frame packetizer & rate-limiting compressor.
     src/wear_audio_encoder.cpp
     engine/TaskOrchestrator.cc
@@ -249,6 +267,34 @@ if (STREAMIFY_BUILD_TESTS)
     target_include_directories(test_audio_sink_ringbuffer PRIVATE include src util .)
     target_link_libraries(test_audio_sink_ringbuffer PRIVATE m pthread)
 
+    # WS-C (C1): the JNI sink bridge round-trip lane — the 7 frozen
+    # symbols driven through a host stub JNIEnv (tests/jni_stub/jni.h
+    # resolves <jni.h> FIRST on this target's include path only), so the
+    # exact marshalling the JVM exercises on Android (array pinning,
+    # DirectByteBuffer addressing, the 96-byte stats wire) runs under the
+    # ASan/UBSan matrix. AHEAD C1 AC: "ringbuffer round-trip test through
+    # JNI".
+    add_executable(jni_sink_bridge_test_suite
+        tests/test_jni_bridge_audio_sinks.cpp
+        src/audio_sink_ringbuffer.cpp
+    )
+    # The stub jni.h MUST precede every other include directory.
+    target_include_directories(jni_sink_bridge_test_suite BEFORE PRIVATE tests/jni_stub)
+    target_include_directories(jni_sink_bridge_test_suite PRIVATE include src util .)
+    target_link_libraries(jni_sink_bridge_test_suite PRIVATE m pthread)
+
+    # WS-C (C8): the LUFS cross-implementation parity lane — the C++
+    # BS.1770-4 path pinned to golden vectors generated from the CANONICAL
+    # Rust implementation (streamify-audio/src/lufs.rs; the generator is
+    # rust/crates/streamify-audio/examples/lufs_golden_vectors.rs, the
+    # checked-in fixture is tests/lufs_golden_vectors.h).
+    add_executable(lufs_parity_test_suite
+        tests/test_lufs_rust_parity.cc
+        dsp/LufsNormalizer.cc
+    )
+    target_include_directories(lufs_parity_test_suite PRIVATE dsp util include .)
+    target_link_libraries(lufs_parity_test_suite PRIVATE m pthread)
+
     # Phase 4b (MP-HAL08 / MP-HAL09): the desktop HAL render cores —
     # WASAPI, PipeWire and the ALSA fallback — platform-independent
     # RT pull/clock paths audited on every host lane, driven callback-
@@ -322,7 +368,7 @@ if (STREAMIFY_BUILD_TESTS)
     # portable, while the arm64-v8a NDK lane carries the deterministic
     # -march=armv8-a+simd+crypto baseline set at the top of this file.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer desktop_hal_render_core_test_suite capability_abi_parity_test_suite)
+        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer jni_sink_bridge_test_suite lufs_parity_test_suite desktop_hal_render_core_test_suite capability_abi_parity_test_suite)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             list(APPEND PHASE4B_TEST_TARGETS linux_hal_driver_test_suite)
         endif()
@@ -351,6 +397,10 @@ if (STREAMIFY_BUILD_TESTS)
     add_test(NAME virtual_hal_test_suite COMMAND virtual_hal_test_suite)
     add_test(NAME coreaudio_render_core_test_suite COMMAND coreaudio_render_core_test_suite)
     add_test(NAME test_audio_sink_ringbuffer COMMAND test_audio_sink_ringbuffer)
+    # WS-C lanes: the C1 JNI bridge round-trip (stub JNIEnv) and the C8
+    # LUFS cross-implementation parity (Rust-canonical golden vectors).
+    add_test(NAME jni_sink_bridge_test_suite COMMAND jni_sink_bridge_test_suite)
+    add_test(NAME lufs_parity_test_suite COMMAND lufs_parity_test_suite)
     # Phase 4b lanes: the desktop HAL render cores (every host) and the
     # Linux dlopen driver (Linux hosts).
     add_test(NAME desktop_hal_render_core_test_suite COMMAND desktop_hal_render_core_test_suite)
@@ -358,6 +408,36 @@ if (STREAMIFY_BUILD_TESTS)
     add_test(NAME capability_abi_parity_test_suite COMMAND capability_abi_parity_test_suite)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME linux_hal_driver_test_suite COMMAND linux_hal_driver_test_suite)
+    endif()
+endif()
+
+# --- WS-C (C5): the desktop HAL shared library (Linux + Windows) --------------
+# The loadable module that finally gives the Phase 4b C facades a
+# production compilation home: the plain-C sink registry ABI
+# (include/desktop_hal.h — the same frozen contract the C1 JNI bridge
+# binds on Android) plus the platform pull adapters (WASAPI on Windows,
+# PipeWire + ALSA fallback on Linux). The desktop JVM shell binds it
+# through JNA (DesktopHalBridge) — the C5 wiring slice; the engine-side
+# relay onto the Rust playback_ring() is ENG-1's follow-up.
+if(NOT ANDROID)
+    add_library(streamify_desktop_hal SHARED
+        src/desktop_hal_c_api.cpp
+        src/audio_sink_ringbuffer.cpp
+    )
+    target_include_directories(streamify_desktop_hal PRIVATE include src util .)
+    # Auto-export the C ABI on MSVC (the GCC/Clang lanes export via the
+    # STREAMIFY_HAL_API visibility attribute in desktop_hal.h).
+    set_target_properties(streamify_desktop_hal PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    if(WIN32)
+        target_sources(streamify_desktop_hal PRIVATE audio/wasapi_pull_adapter.cpp)
+        # avrt: AvSetMmThreadCharacteristicsW; ole32: COM runtime.
+        target_link_libraries(streamify_desktop_hal PRIVATE avrt ole32)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_sources(streamify_desktop_hal PRIVATE audio/pipewire_driver.cpp)
+        # ZERO link dependencies beyond libc: PipeWire and ALSA are
+        # resolved at runtime through dlopen (the driver's own contract).
+        target_link_libraries(streamify_desktop_hal PRIVATE ${CMAKE_DL_LIBS} m pthread)
     endif()
 endif()
 

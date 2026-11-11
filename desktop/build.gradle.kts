@@ -463,8 +463,68 @@ tasks.test {
     systemProperty("jna.library.path", rustTargetReleaseDir.absolutePath)
     systemProperty("java.library.path", rustTargetReleaseDir.absolutePath)
 
+    // WS-C (C5): the desktop HAL module joins the JNA search path when the
+    // lane built it. STREAMIFY_DESKTOP_HAL_DIR is exported by the CI step
+    // that compiles native/ (cmake --target streamify_desktop_hal); local
+    // runs can also set the streamify.desktop.hal.dir system property —
+    // DesktopHalBridge resolves both, and an absent module soft-skips the
+    // C5 round-trip (the same hermetic degradation as the engine lane).
+    providers.environmentVariable("STREAMIFY_DESKTOP_HAL_DIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { halDir ->
+        systemProperty("streamify.desktop.hal.dir", halDir)
+    }
+
     // Headless by construction: the suite exercises the engine FFI and the
     // shell's pure logic, never a Compose window. Bounded heap keeps the
     // 2-core CI runners comfortable.
     maxHeapSize = "1g"
+
+    // Loud-CI contract (same as :shared): Test cache keys are scoped to
+    // the HOST OS so one OS's cached green can never mask another OS's
+    // execution. Today :desktop:test re-runs per OS only because the
+    // staged engine binary (platform-specific content) rides its runtime
+    // classpath — this pin keeps that property true by construction even
+    // if the classpath ever loses its platform-specific inputs.
+    inputs.property("streamify.hostOs", System.getProperty("os.name"))
+}
+
+// ── Loud-CI contract: the zero-skip gate (desktop lane) ──────────────────────
+//
+// On GitHub runners (CI=true), ANY skipped test fails the lane — the
+// desktopHalSinkRoundTrip hermetic skip is legal ONLY on local hosts that
+// built no HAL module; every CI desktop lane exports
+// STREAMIFY_DESKTOP_HAL_DIR after building it, so a skip on CI means the
+// wiring broke (and before this gate existed, that exact break faked the
+// lane's green). Finalizer semantics: the gate runs even when the Test
+// task was UP-TO-DATE/FROM-CACHE, and parses the JUnit XML so cached
+// outcomes are judged identically to fresh ones.
+val enforceNoSkippedDesktopTests by tasks.registering {
+    group = "verification"
+    description = "Loud-CI gate: fails the lane when any executed desktop test was skipped (CI lanes only)."
+    outputs.upToDateWhen { false }
+    // Locals only (configuration-cache discipline): never capture the script.
+    val resultsRoot = layout.buildDirectory.dir("test-results").get().asFile
+    val onCiLane = providers.environmentVariable("CI").getOrElse("") == "true"
+    onlyIf { onCiLane && resultsRoot.isDirectory }
+    doLast {
+        val skippedAttr = Regex("""skipped="(\d+)"""")
+        var skipped = 0
+        resultsRoot.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".xml") }
+            .forEach { xml ->
+                skippedAttr.findAll(xml.readText()).forEach { m ->
+                    skipped += m.groupValues[1].toIntOrNull() ?: 0
+                }
+            }
+        if (skipped > 0) {
+            throw GradleException(
+                "$skipped desktop test(s) were SKIPPED on a CI lane — the loud-CI contract forbids skips: " +
+                    "the lane exports STREAMIFY_DESKTOP_HAL_DIR (module built), so a skip means broken wiring"
+            )
+        }
+    }
+}
+tasks.withType<Test>().configureEach {
+    finalizedBy(enforceNoSkippedDesktopTests)
 }

@@ -288,4 +288,49 @@ tasks.withType<Test>().configureEach {
     // jna.library.path wiring is needed and a modest heap keeps the 2-core
     // CI runners comfortable.
     maxHeapSize = "768m"
+
+    // Loud-CI contract: Test outcomes are cached per HOST OS. Gradle's
+    // default Test cache key is OS-agnostic, so one OS's cached green was
+    // replayed as `FROM-CACHE` on the other desktop lanes — a macOS- or
+    // Windows-only failure in this suite could never surface (observed on
+    // this PR: :shared:desktopTest FROM-CACHE on all three OSes of the
+    // same run). Scoping the key to os.name keeps same-OS cache hits
+    // (the speedup the --build-cache lanes exist for) while forcing a
+    // real execution on every OS the suite ships on.
+    inputs.property("streamify.hostOs", System.getProperty("os.name"))
+}
+
+// ── Loud-CI contract: the zero-skip gate (shared lane) ───────────────────────
+//
+// On GitHub runners (CI=true), ANY skipped test fails the lane. Finalizer
+// semantics: the gate runs even when the Test task was UP-TO-DATE or
+// FROM-CACHE (parsing the JUnit XML both fresh and cache-restored
+// outcomes carry), so a skip can never ride a cached green either.
+val enforceNoSkippedSharedTests by tasks.registering {
+    group = "verification"
+    description = "Loud-CI gate: fails the lane when any executed shared test was skipped (CI lanes only)."
+    outputs.upToDateWhen { false }
+    // Locals only (configuration-cache discipline): never capture the script.
+    val resultsRoot = layout.buildDirectory.dir("test-results").get().asFile
+    val onCiLane = providers.environmentVariable("CI").getOrElse("") == "true"
+    onlyIf { onCiLane && resultsRoot.isDirectory }
+    doLast {
+        val skippedAttr = Regex("""skipped="(\d+)"""")
+        var skipped = 0
+        resultsRoot.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".xml") }
+            .forEach { xml ->
+                skippedAttr.findAll(xml.readText()).forEach { m ->
+                    skipped += m.groupValues[1].toIntOrNull() ?: 0
+                }
+            }
+        if (skipped > 0) {
+            throw GradleException(
+                "$skipped shared test(s) were SKIPPED on a CI lane — the loud-CI contract forbids skips"
+            )
+        }
+    }
+}
+tasks.withType<Test>().configureEach {
+    finalizedBy(enforceNoSkippedSharedTests)
 }
