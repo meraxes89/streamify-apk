@@ -42,8 +42,9 @@ import java.nio.ByteOrder
  *  2. `STREAMIFY_DESKTOP_HAL_DIR` environment (set by the CI lane that
  *     builds the module next to the workspace),
  *  3. JNA's default search (`jna.library.path` — the test JVM already
- *     points it at the cargo output dir; a locally built
- *     native/build*/... can be appended — and the classpath fallback).
+ *     points it at the cargo output dir; a module built locally under
+ *     one of the `native/build` directories can be appended the same
+ *     way — and the classpath fallback).
  */
 object DesktopHalBridge {
 
