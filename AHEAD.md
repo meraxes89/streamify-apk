@@ -31,7 +31,7 @@ Everything in this document flows from fixing that in the right order: **make it
 | Desktop (CMP) | `desktop/` + `shared/` | ~2,000 + ~2,400 | **Polished facade over a silent engine.** Shell, tray, shortcuts, packaging all real; PLAYING state produces no sound. |
 | Supabase backend | `supabase/` | ~2,200 SQL | **Half-hardened.** Jam lease/RPC, pgvector, admin RPCs, 11-assertion CI suite — but 7 telemetry/edge tables still ship `OR TRUE` / `USING (TRUE)` RLS. |
 | CI (hub-and-spoke DAG) | `.github/workflows/` | 11 files | **Genuinely excellent.** One blocking gate, build-once fan-out, gitleaks at t=0, truth lint, nightly fuzz + KVM emulator + resolver canary. |
-| Legacy (frozen) | `legacy/` | ~7.6 MB | Correctly quarantined; nothing references it. |
+| Legacy (archived) | `archive/legacy` branch | — | Removed from `main` (#157); preserved on the archive branch. Nothing referenced it. |
 
 ### 1.2 The five hard truths
 

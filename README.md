@@ -75,7 +75,6 @@ streamify-apk/
 │   ├── architecture/     # Master multiplatform plans, execution ledgers, Jam specs
 │   ├── playbooks/        # Developer playbooks, codebase guides, CI runbooks
 │   └── nano/             # RFC architectural review records
-├── legacy/               # Frozen baseline backups & preservation archives (Pre-Multiplatform 95773a8)
 └── scripts/              # CI test harness, ABI gates, release probes, and developer tools
 ```
 
