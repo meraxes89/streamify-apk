@@ -127,11 +127,13 @@ final class AcousticEmbeddingContractTests: XCTestCase {
         // either a named scalar, part of the band/waveform/reserved blocks
         // or the version tripwire. The block arithmetic below must cover
         // exactly 128 lanes.
+        // 5 named scalars + 10 bands + 12 mid scalars + 64 waveform
+        // buckets + the reserved block [91, 127) + the tripwire lane 127.
         let covered = 5   // bpm, camelotNumber, camelotLetter, lufs, crest
             + Layout.spectralBandCount
             + 12          // centroid..acousticness scalars
             + Layout.waveformBucketCount
-            + (Layout.layoutVersion - Layout.reservedFirst) // reserved + tripwire
+            + (Layout.layoutVersion - Layout.reservedFirst + 1) // reserved + tripwire
         XCTAssertEqual(covered, Layout.dim, "the documented schema covers all 128 lanes")
     }
 }

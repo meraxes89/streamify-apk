@@ -97,7 +97,7 @@ class AcousticEmbeddingContractTest {
     @Test
     fun `schema covers all 128 lanes`() {
         val covered = 5 + Layout.SPECTRAL_BAND_COUNT + 12 +
-            Layout.WAVEFORM_BUCKET_COUNT + (Layout.LAYOUT_VERSION - Layout.RESERVED_FIRST)
+            Layout.WAVEFORM_BUCKET_COUNT + (Layout.LAYOUT_VERSION - Layout.RESERVED_FIRST + 1)
         assertEquals(Layout.DIM, covered)
     }
 }
