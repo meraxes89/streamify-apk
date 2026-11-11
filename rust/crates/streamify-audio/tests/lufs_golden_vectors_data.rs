@@ -21,6 +21,13 @@
 //! integration-test crate — harmless; it exists to be `mod`-included
 //! by `test_lufs_golden_vectors.rs`.
 
+// Full-precision golden literals are the point of this fixture: the
+// %.17g spellings round-trip the EXACT canonical f64 values and are
+// diffed value-for-value against native/tests/lufs_golden_vectors.h.
+// The lints that police hand-written float literals (approx_constant,
+// excessive_precision) fight that intent on generated truth.
+#![allow(clippy::approx_constant, clippy::excessive_precision)]
+
 // ---- Generation parameters (single source for both lanes; mirrored in
 // native/tests/lufs_golden_vectors.h) ------------------------------------
 

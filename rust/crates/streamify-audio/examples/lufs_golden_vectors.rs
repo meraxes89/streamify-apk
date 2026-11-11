@@ -33,6 +33,11 @@
 //! documented in the emitted header; every signal is quantized to f32
 //! BEFORE measurement (exactly what both lanes receive in production).
 
+// Full-precision literals mirror the generated fixture (same %.17g
+// spelling as lufs_golden_vectors_data.rs / the C++ header) so the three
+// artifacts stay diffable — the float-literal lints fight that intent.
+#![allow(clippy::excessive_precision)]
+
 use std::io::{BufWriter, Write};
 
 use streamify_audio::lufs::LufsAnalyzer;
@@ -189,7 +194,12 @@ fn main() {
     // ---- emit the C++ header (format-matched to the checked-in fixture) --
     let stdout = std::io::stdout();
     let mut out = BufWriter::new(stdout.lock());
-    let w = |s: &str| writeln!(out, "{s}");
+    // `mut`: the closure captures `out` by mutable reference (writeln! takes
+    // &mut), so every call re-borrows it. The measured-row loop below must
+    // route through the SAME closure (format! first, then w(&row)) — a bare
+    // writeln!(out, ..) there would be a second live mutable borrow of `out`
+    // while `w` is still used afterwards (E0499).
+    let mut w = |s: &str| writeln!(out, "{s}");
 
     for line in [
         "// ============================================================================",
@@ -291,14 +301,16 @@ fn main() {
         // Quoted name padded OUTSIDE the quotes to 40 columns, frame count
         // right-aligned to 6 — the Python generator's exact spelling:
         //     {"name..."                              , ch, frames, value},
-        let _ = writeln!(
-            out,
+        // (formatted before the closure call so `out` is only ever borrowed
+        // through `w` — see the comment at the closure definition.)
+        let row = format!(
             "    {{{:<40}, {}, {:>6}, {}}},",
             format!("\"{}\"", m.name),
             m.channels,
             m.frames,
             g17(m.lufs)
         );
+        let _ = w(&row);
     }
     for line in [
         "};",

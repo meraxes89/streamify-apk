@@ -34,7 +34,7 @@ use streamify_audio::lufs::LufsAnalyzer;
 use lufs_golden_vectors_data::{
     AMP_M20_DBFS, AMP_M23_DBFS, AMP_M40_DBFS, AMP_NEAR_FS, FREQ_250_HZ, FREQ_440_HZ,
     FREQ_997_HZ, NOISE_MULTIPLIER, NOISE_SCALE, NOISE_SEED, SAMPLE_RATE_HZ,
-    SILENCE_LEAD_FRAMES, TAU, VECTORS,
+    SILENCE_LEAD_FRAMES, TWO_PI as TAU, VECTORS,
 };
 
 /// Rust-lane comparison bound (see the module docs for the derivation).

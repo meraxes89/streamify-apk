@@ -230,12 +230,18 @@ jobs:
   # The WASAPI adapter's if(WIN32) target never fired anywhere before this
   # lane existed (no Windows native CMake configure ever ran), so SDK/MSVC
   # rot could land silently between releases. Every core-touching PR now
-  # compiles the native tree with Visual Studio 2022: the desktop HAL
-  # shared library (the C5 wiring slice — sink registry C ABI + the WASAPI
-  # pull adapter) must link against avrt/ole32 and the C++20 over-aligned
-  # AudioSink storage must survive MSVC's allocator. The Android packaging
-  # .so stays NDK-only (the CMake ANDROID guard); Apple/linux targets are
-  # skipped by their own platform guards on this runner.
+  # compiles the native tree with the image's CURRENT Visual Studio: the
+  # configure step deliberately does NOT pin -G "Visual Studio 17 2022" —
+  # windows-latest migrated to the windows-2025-vs2026 image (VS 2026
+  # only), and a hardcoded VS 2022 generator aborts with "could not find
+  # any instance of Visual Studio". CMake's default generator resolves to
+  # the newest installed VS on the runner, which is exactly what a rot
+  # guard should compile against. The desktop HAL shared library (the C5
+  # wiring slice — sink registry C ABI + the WASAPI pull adapter) must
+  # link against avrt/ole32 and the C++20 over-aligned AudioSink storage
+  # must survive MSVC's allocator. The Android packaging .so stays
+  # NDK-only (the CMake ANDROID guard); Apple/linux targets are skipped
+  # by their own platform guards on this runner.
   windows-native:
     name: "Windows native C++ (MSVC rot guard, C4)"
     if: inputs.run_tests
@@ -244,8 +250,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure the native tree (VS 2022, x64)
-        run: cmake -B native/build -S native -G "Visual Studio 17 2022" -A x64
+      - name: Configure the native tree (host Visual Studio, x64)
+        run: cmake -B native/build -S native -A x64
 
       - name: Compile the WASAPI adapter + desktop HAL library (Release)
         run: |

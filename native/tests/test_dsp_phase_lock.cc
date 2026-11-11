@@ -698,7 +698,21 @@ static void testProfilerRegression() {
     // (mono - raw) offset: inject it here, and the bridge must cancel it
     // back out — this simultaneously exercises the bridge machinery.
     const double r = 48000.0 * (1.0 + 120.0e-6);
-    const int64_t t0Raw = 1'000'000'000'000LL;   // arbitrary RAW epoch
+    // Anchor the synthetic session to the HOST's RAW clock: the profiler's
+    // staleness gate compares anchor submit times (real CLOCK_MONOTONIC_RAW
+    // reads taken inside submitTrackTimestamp) against the caller-supplied
+    // nowRaw, so a detached epoch (the old fixed 1e12 = ~16.7 min of
+    // uptime) reads as hours-stale on any host booted more recently than
+    // that — a freshly-provisioned CI runner — and the regression never
+    // goes live. Pin the session to END at the host's now instead: the
+    // synthetic 20 s of audio is still consumed in microseconds of wall
+    // time, so the age-decay weights and the staleness window both see
+    // ~zero age, exactly what this compressed simulation wants.
+    int64_t totalFrames = 0;
+    for (int k = 0; k < 400; ++k)
+        totalFrames += static_cast<int64_t>(0.05 * r);
+    const int64_t t0Raw = streamify::nowRawNanos() -
+        static_cast<int64_t>(static_cast<double>(totalFrames) / r * 1e9);
     struct timespec tsM;
     ::clock_gettime(CLOCK_MONOTONIC, &tsM);
     const int64_t dHostMonoMinusRaw =
