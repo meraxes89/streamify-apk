@@ -1521,7 +1521,7 @@ private fun JamBlendShelf(
             ) {
                 Text(
                     text = "GROUP BLEND",
-                    style = LocalAppTypography.current.sectionHeader,
+                    style = LocalAppTypography.current.titleSmall,
                     color = Primary
                 )
                 Text(
