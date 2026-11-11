@@ -334,8 +334,6 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
@@ -394,8 +392,21 @@ jobs:
           fi
           echo "Using Android NDK at: $NDK_PATH"
 
+          # ccache is a speedup, not a dependency: when its apt install
+          # flaked (runner archive/DNS incidents), the old hard-wired
+          # CMAKE_*_COMPILER_LAUNCHER poisoned the compiler probe with
+          # exit 127. Attach the launcher only when ccache exists.
+          CCACHE_ARGS=""
+          if command -v ccache >/dev/null 2>&1; then
+            CCACHE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          else
+            echo "::warning::ccache unavailable — building without the compile cache"
+          fi
+
+          # shellcheck disable=SC2086
           cmake -B build-android-${{ matrix.abi }} -G Ninja \
             -S native \
+            $CCACHE_ARGS \
             -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-26 \
