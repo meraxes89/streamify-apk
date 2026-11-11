@@ -51,33 +51,25 @@ import java.util.concurrent.TimeUnit
  *     96-byte stats wire (magic 0x51AB0001) → cooperative flush →
  *     destroy — the same ABI the C1 JNI bridge binds on Android.
  *
- * Hermetic degradation: the generated bindings exist only after
- * `generateDesktopUniffiBindings` has run (cargo on PATH — every CI desktop
- * job provides it). On toolchain-less hosts the suite SKIPS via a JUnit
- * assumption rather than failing, mirroring the app module's hermetic JVM
- * shard contract. The C5 round-trip independently soft-probes the HAL
- * module (built by the CI lane / a local cmake invocation) and skips the
- * same way when it is absent.
+ * Hermetic degradation: this suite (src/testEngine) is only COMPILED
+ * when the engine lane is live — `-Pstreamify.skipRust=true` excludes
+ * the whole source set on toolchain-less hosts, so the class never
+ * exists there. Which means: if the class IS running, the generated
+ * `uniffi.streamify` proxies were on the compile classpath, and a
+ * missing binding at runtime is a classpath divergence that must FAIL
+ * LOUDLY (NoClassDefFoundError), never a quiet assumption-skip. The C5
+ * round-trip soft-skips ONLY on hermetic local hosts (no lane hint —
+ * every CI desktop lane exports STREAMIFY_DESKTOP_HAL_DIR after
+ * building the module, which makes a null probe a hard failure there).
  */
 class DesktopJnaEngineSmokeTest {
 
-    private fun jnaBindingsOnClasspath(): Boolean = try {
-        Class.forName(
-            "uniffi.streamify.StreamifyEngine",
-            false,
-            DesktopJnaEngineSmokeTest::class.java.classLoader,
-        )
-        true
-    } catch (_: ClassNotFoundException) {
-        false
-    }
-
     @Test
     fun engineLoadsViaJnaAndPushesInitialState() {
-        assumeTrue(
-            "UniFFI desktop bindings not generated (no cargo toolchain?) — skipping JNA smoke",
-            jnaBindingsOnClasspath(),
-        )
+        // No assumption-skip here (the loud-CI contract): the suite's
+        // compilation already proves the bindings were generated; if the
+        // runtime classpath somehow diverged, the first uniffi reference
+        // below must fail with NoClassDefFoundError, not silently skip.
 
         // ── 1. JNA mode: the platform dynamic library resolves through JNA ──
         val engineLibrary = NativeLibrary.getInstance(ENGINE_LIBRARY)

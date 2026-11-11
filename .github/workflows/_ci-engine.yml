@@ -198,6 +198,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-17 cmake ninja-build libstdc++-13-dev ccache eatmydata
+          # Loud-CI contract: the PipeWire frozen-ABI cross-check lane in
+          # linux_hal_driver_test_suite (real spa_pod_builder_add_object
+          # rebuilt pod vs the embedded reference, real struct layouts vs
+          # the frozen ABI) must RUN, not degrade to "no pipewire dev
+          # headers — cross-check lane skipped". The dev packages land on
+          # the shard that owns that suite; every other shard merely
+          # configures the tree (the find_path result changes nothing for
+          # their targets).
+          if [ "${{ matrix.shard }}" = "native-linux-hal-driver" ]; then
+            sudo apt-get install -y libpipewire-0.3-dev libspa-0.2-dev
+          fi
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 100
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100
 

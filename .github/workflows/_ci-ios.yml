@@ -310,6 +310,26 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      # ── WS-C (C5, macOS leg): build the desktop HAL module ────────────────
+      #    Loud-CI contract: the C5 round-trip in DesktopJnaEngineSmokeTest
+      #    must RUN on every desktop lane, never soft-skip. The Linux and
+      #    Windows legs build the module in _ci-desktop.yml; this leg used
+      #    to export no STREAMIFY_DESKTOP_HAL_DIR at all, so the round-trip
+      #    silently skipped here (the CI log's "desktopHalSinkRoundTrip
+      #    SKIPPED" line — a green that proved nothing on macOS). The
+      #    sink-registry half of the module is portable C++ (no platform
+      #    adapter sources on macOS — WASAPI is WIN32-gated, PipeWire is
+      #    Linux-gated), so the dylib builds with the stock toolchain and
+      #    the JNA round-trip exercises the same frozen ABI through the
+      #    REAL .dylib. Ninja is preinstalled on the macOS runner image.
+      - name: Build the desktop HAL library (WS-C C5, macOS leg)
+        run: |
+          cmake -B native/build-hal -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/build-hal --target streamify_desktop_hal
+          HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.dylib' -print -quit)")"
+          echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
+          echo "desktop HAL module at: $HAL_DIR"
+
       - name: "Desktop test suite (macOS CMP UI shell + shared desktopTest + JNA smoke)"
         env:
           PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}

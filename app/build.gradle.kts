@@ -508,3 +508,49 @@ tasks.matching { task ->
     dependsOn(generateUniffiKotlinBindings)
 }
 
+
+// ── Loud-CI contract: the zero-skip gate (app JVM lane) ──────────────────────
+//
+// On GitHub runners (CI=true — the standard env every hosted runner sets),
+// ANY skipped test fails the lane. A skip is at best a hidden degradation
+// (an assumption probing a dependency the lane did not provide) and at
+// worst a dead branch quietly eroding coverage — neither may ride a green
+// checkmark into main. Local hosts keep Gradle's default skip semantics;
+// the gate parses this module's JUnit XML (build/test-results/**) so it
+// also evaluates outcomes restored FROM-CACHE, and runs as a FINALIZER:
+// it executes even when the Test task itself was UP-TO-DATE.
+val enforceNoSkippedAppTests by tasks.registering {
+    group = "verification"
+    description = "Loud-CI gate: fails the lane when any executed app JVM test was skipped (CI lanes only)."
+    outputs.upToDateWhen { false }
+    // Locals only (configuration-cache discipline): never capture the script.
+    val resultsRoot = layout.buildDirectory.dir("test-results").get().asFile
+    val onCiLane = providers.environmentVariable("CI").getOrElse("") == "true"
+    onlyIf { onCiLane && resultsRoot.isDirectory }
+    doLast {
+        val skippedAttr = Regex("""skipped="(\d+)"""")
+        var skipped = 0
+        resultsRoot.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".xml") }
+            .forEach { xml ->
+                skippedAttr.findAll(xml.readText()).forEach { m ->
+                    skipped += m.groupValues[1].toIntOrNull() ?: 0
+                }
+            }
+        if (skipped > 0) {
+            throw GradleException(
+                "$skipped app JVM test(s) were SKIPPED on a CI lane — the loud-CI contract forbids skips: " +
+                    "provide the dependency the assumption probes (build/stage it in the lane) or delete the dead branch"
+            )
+        }
+    }
+}
+tasks.withType<Test>().configureEach {
+    finalizedBy(enforceNoSkippedAppTests)
+    // Visibility: skipped/failed tests print per-class lines in the CI log
+    // (Gradle's default only surfaces failures — a skip must at minimum be
+    // greppable when someone is reading a red lane).
+    testLogging {
+        events("failed", "skipped")
+    }
+}
