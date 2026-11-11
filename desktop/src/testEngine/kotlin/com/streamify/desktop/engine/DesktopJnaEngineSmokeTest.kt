@@ -228,7 +228,10 @@ class DesktopJnaEngineSmokeTest {
         val output = FloatArray(frames * 2) { -999f }
         val read = api.streamify_desktop_sink_read_f32(handle, output, frames)
         assertEquals("f32 pull returns every frame", frames, read)
-        assertArrayEquals("f32 storage is bit-identical through the ring", input, output)
+        // JUnit's float-array assertion requires a delta; 0.0f pins exact
+        // sample equality — the ring must be bit-identical (zero
+        // quantization), which a 0.0f delta asserts exactly.
+        assertArrayEquals("f32 storage is bit-identical through the ring", input, output, 0.0f)
 
         // Starvation: 0 frames, never blocks.
         assertEquals("empty ring starves", 0, api.streamify_desktop_sink_read_f32(handle, output, frames))
