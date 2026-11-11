@@ -6,6 +6,12 @@
 #include <atomic>
 #include <memory>
 
+// Shared alignment shims: the polyphase table and the ring are heap blocks
+// with 32-byte alignment, and the deleter below MUST stay paired with the
+// allocator (posix_memalign/free on POSIX, _aligned_malloc/_aligned_free
+// on MSVC — the C4 rot guard compiles this unit's header on Windows).
+#include "../util/NeonCompat.h"
+
 namespace streamify::dsp {
 
 // ============================================================================
@@ -172,11 +178,11 @@ private:
     // Polyphase table: (phaseCount + 1) rows x tapsPerPhase floats.
     // Row P duplicates the phase-0 shift so linear interpolation between
     // rows P-1 and P never reads out of bounds.
-    std::unique_ptr<float[], decltype(&::free)> table_{nullptr, &::free};
+    std::unique_ptr<float[], void (*)(void*)> table_{nullptr, &streamify::alignedFree};
 
     // Ring buffer holding unconsumed input (interleaved), zero-padded
     // history conceptually extending to negative stream indices.
-    std::unique_ptr<float[], decltype(&::free)> ring_{nullptr, &::free};
+    std::unique_ptr<float[], void (*)(void*)> ring_{nullptr, &streamify::alignedFree};
     int ringCapacity_ = 0;    // frames
     int ringFrames_ = 0;      // frames currently buffered
     int64_t ringStart_ = 0;   // absolute stream index of ring_[0]
