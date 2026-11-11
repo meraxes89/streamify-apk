@@ -417,18 +417,19 @@ private class NativeTasteBackend private constructor(
             seeds.map { r.buildBlendSeed(it) },
             nowMs
         )
-        val ranked = Reflect.field(raw, "ranked") as List<*>
+        val ranked = (Reflect.field(raw, "ranked") as? List<*>).orEmpty()
         ranked.map { row ->
             TasteLane.BlendRowKt(
-                id = (Reflect.field(row!!, "id") as Number).toLong(),
-                title = Reflect.field(row, "title") as String,
-                artist = Reflect.field(row, "artist") as String,
-                score = (Reflect.field(row, "score") as Number).toFloat(),
-                overlapMembers = (Reflect.field(row, "overlapMembers") as Number).toInt(),
-                mutualBlend = Reflect.field(row, "mutualBlend") as Boolean,
-                memberMatches = (Reflect.field(row, "memberMatches") as List<*>)
+                id = Reflect.num(row!!, "id").toLong(),
+                title = Reflect.str(row, "title"),
+                artist = Reflect.str(row, "artist"),
+                score = Reflect.num(row, "score").toFloat(),
+                overlapMembers = Reflect.num(row, "overlapMembers").toInt(),
+                mutualBlend = Reflect.bool(row, "mutualBlend"),
+                memberMatches = (Reflect.field(row, "memberMatches") as? List<*>)
+                    .orEmpty()
                     .mapNotNull { it?.toString() },
-                reason = (Reflect.field(row, "reason") as? String).orEmpty()
+                reason = Reflect.str(row, "reason")
             )
         }
     } ?: emptyList()
@@ -437,12 +438,12 @@ private class NativeTasteBackend private constructor(
         ready("computeAcousticEmbedding") { e, r ->
             val raw = r.computeEmbedding.invoke(e, interleavedStereoF32Le)
             TasteLane.EmbeddingSummary(
-                version = (Reflect.field(raw, "version") as Number).toInt(),
-                bpm = (Reflect.field(raw, "bpm") as Number).toFloat(),
-                camelotNumber = (Reflect.field(raw, "camelotNumber") as Number).toInt(),
-                camelotLetter = (Reflect.field(raw, "camelotLetter") as Number).toInt(),
-                integratedLufs = (Reflect.field(raw, "integratedLufs") as Number).toFloat(),
-                danceability = (Reflect.field(raw, "danceability") as Number).toFloat()
+                version = Reflect.num(raw, "version").toInt(),
+                bpm = Reflect.num(raw, "bpm").toFloat(),
+                camelotNumber = Reflect.num(raw, "camelotNumber").toInt(),
+                camelotLetter = Reflect.num(raw, "camelotLetter").toInt(),
+                integratedLufs = Reflect.num(raw, "integratedLufs").toFloat(),
+                danceability = Reflect.num(raw, "danceability").toFloat()
             )
         }
 
@@ -499,32 +500,32 @@ private class NativeTasteBackend private constructor(
             val breakdown = field(row, "breakdown")
             return TasteLane.TasteRow(
                 track = TasteLane.TasteTrack(
-                    id = field(candidate, "id") as String,
-                    title = field(candidate, "title") as String,
-                    artist = field(candidate, "artist") as String,
-                    album = (field(candidate, "album") as? String).orEmpty(),
-                    source = (field(candidate, "source") as Number).toInt(),
-                    bpm = (field(candidate, "bpm") as Number).toFloat(),
-                    key = field(candidate, "key") as String,
-                    energy = (field(candidate, "energy") as Number).toFloat(),
-                    valence = (field(candidate, "valence") as Number).toFloat(),
-                    acousticSim = (field(candidate, "acousticSim") as Number).toFloat(),
-                    userAffinity = (field(candidate, "userAffinity") as Number).toFloat(),
-                    lastPlayedSec = (field(candidate, "lastPlayedSec") as Number).toLong(),
-                    excludedFromTaste = field(candidate, "excludedFromTaste") as Boolean
+                    id = str(candidate, "id"),
+                    title = str(candidate, "title"),
+                    artist = str(candidate, "artist"),
+                    album = str(candidate, "album"),
+                    source = num(candidate, "source").toInt(),
+                    bpm = num(candidate, "bpm").toFloat(),
+                    key = str(candidate, "key"),
+                    energy = num(candidate, "energy").toFloat(),
+                    valence = num(candidate, "valence").toFloat(),
+                    acousticSim = num(candidate, "acousticSim").toFloat(),
+                    userAffinity = num(candidate, "userAffinity").toFloat(),
+                    lastPlayedSec = num(candidate, "lastPlayedSec").toLong(),
+                    excludedFromTaste = bool(candidate, "excludedFromTaste")
                 ),
-                score = (field(row, "score") as Number).toFloat(),
+                score = num(row, "score").toFloat(),
                 breakdown = TasteLane.TasteBreakdown(
-                    base = (field(breakdown, "base") as Number).toFloat(),
-                    satiationPenalty = (field(breakdown, "satiationPenalty") as Number).toFloat(),
-                    harmonicBonus = (field(breakdown, "harmonicBonus") as Number).toFloat(),
-                    circadianBonus = (field(breakdown, "circadianBonus") as Number).toFloat(),
-                    tempoDriftPenalty = (field(breakdown, "tempoDriftPenalty") as Number).toFloat(),
-                    bpmDistance = (field(breakdown, "bpmDistance") as Number).toFloat(),
-                    camelotDistance = (field(breakdown, "camelotDistance") as Number).toInt(),
-                    freshness = (field(breakdown, "freshness") as Number).toFloat()
+                    base = num(breakdown, "base").toFloat(),
+                    satiationPenalty = num(breakdown, "satiationPenalty").toFloat(),
+                    harmonicBonus = num(breakdown, "harmonicBonus").toFloat(),
+                    circadianBonus = num(breakdown, "circadianBonus").toFloat(),
+                    tempoDriftPenalty = num(breakdown, "tempoDriftPenalty").toFloat(),
+                    bpmDistance = num(breakdown, "bpmDistance").toFloat(),
+                    camelotDistance = num(breakdown, "camelotDistance").toInt(),
+                    freshness = num(breakdown, "freshness").toFloat()
                 ),
-                reason = (field(row, "reason") as? String).orEmpty()
+                reason = str(row, "reason")
             )
         }
 
@@ -568,6 +569,18 @@ private class NativeTasteBackend private constructor(
                 f.isAccessible = true
                 return f.get(target)
             }
+
+            /** Non-null typed readers (the generated records always carry
+             *  these fields; tolerant defaults keep a template drift from
+             *  crashing the lane). */
+            fun str(target: Any, property: String): String =
+                field(target, property) as? String ?: ""
+
+            fun num(target: Any, property: String): Number =
+                field(target, property) as? Number ?: 0
+
+            fun bool(target: Any, property: String): Boolean =
+                field(target, property) as? Boolean ?: false
         }
     }
 }
