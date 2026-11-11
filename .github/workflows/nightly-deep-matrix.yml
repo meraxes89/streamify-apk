@@ -61,15 +61,67 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Clang-17 & LibFuzzer
+      # Same infra-resilience discipline as the _ci-engine.yml sanitizer
+      # lane: a runner archive/DNS incident must neither burn 15+ minutes
+      # in apt's internal retry storm nor red the nightly. cmake/ninja ship
+      # on the image; clang-17 is preferred with the image's preinstalled
+      # clang (20/21/22) as fallback; ccache is a speedup, not a dependency.
+      - name: Install Clang & LibFuzzer toolchain (DNS-flake resilient)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-17 cmake ninja-build libstdc++-13-dev ccache
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 100
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100
+          DNS_OK=1
+          if ! timeout 15 getent hosts azure.archive.ubuntu.com >/dev/null 2>&1; then
+            DNS_OK=0
+            echo "::warning::runner DNS resolution is down — apt skipped; the image's preinstalled toolchain carries the lane"
+          fi
+
+          apt_install() {
+            if [ "$DNS_OK" -ne 1 ]; then return 1; fi
+            for attempt in 1 2 3; do
+              if sudo timeout 180 apt-get install -y -o Acquire::Retries=2 "$@"; then
+                return 0
+              fi
+              echo "apt install (attempt ${attempt}/3) failed — runner network flake? retrying after backoff"
+              sudo timeout 120 apt-get update -o Acquire::Retries=2 >/dev/null 2>&1 || true
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+
+          if [ "$DNS_OK" -eq 1 ]; then
+            sudo timeout 180 apt-get update -o Acquire::Retries=2 \
+              || echo "::warning::apt-get update failed — trying installs anyway (cached indexes)"
+          fi
+
+          SANI_CC=""; SANI_CXX=""
+          if apt_install clang-17 libstdc++-13-dev \
+             && command -v clang-17 >/dev/null 2>&1; then
+            SANI_CC="$(command -v clang-17)"
+            SANI_CXX="$(command -v clang++-17)"
+          else
+            for v in 22 21 20 19 18; do
+              if command -v clang-$v >/dev/null 2>&1 && command -v clang++-$v >/dev/null 2>&1; then
+                SANI_CC="$(command -v clang-$v)"
+                SANI_CXX="$(command -v clang++-$v)"
+                echo "::warning::clang-17 unavailable (apt flake) — running the lane on the image's clang-$v"
+                break
+              fi
+            done
+          fi
+          if [ -z "$SANI_CC" ] || [ -z "$SANI_CXX" ]; then
+            echo "::error::No usable clang on the runner (apt failed AND no preinstalled clang) — cannot run the fuzz lane."
+            exit 1
+          fi
+          echo "Fuzz toolchain: $SANI_CXX ($($SANI_CXX --version | head -n1))"
+
+          apt_install ccache \
+            || echo "::warning::ccache unavailable — building without the compile cache"
+
+          echo "SANI_CC=$SANI_CC"   >> "$GITHUB_ENV"
+          echo "SANI_CXX=$SANI_CXX" >> "$GITHUB_ENV"
 
       - name: Setup CCache for fuzzer compilation
         uses: hendrikmuhs/ccache-action@v1.2.24
+        continue-on-error: true
         with:
           key: ${{ runner.os }}-ccache-native-fuzz
           restore-keys: |
@@ -112,10 +164,18 @@ jobs:
           mkdir -p native/build native/fuzz/corpus native/fuzz/corpus-audio-sink \
                    native/fuzz/corpus-frame-palette native/fuzz/artifacts
           cd native/build
-          cmake -DCMAKE_CXX_COMPILER=clang++ \
-                -DCMAKE_C_COMPILER=clang \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          # ccache is a speedup, not a dependency (same discipline as the
+          # engine lanes): attach the launcher only when ccache is on PATH.
+          CCACHE_ARGS=""
+          if command -v ccache >/dev/null 2>&1; then
+            CCACHE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          else
+            echo "::warning::ccache unavailable — building without the compile cache"
+          fi
+          # shellcheck disable=SC2086
+          cmake -DCMAKE_CXX_COMPILER="$SANI_CXX" \
+                -DCMAKE_C_COMPILER="$SANI_CC" \
+                $CCACHE_ARGS \
                 -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -O2 -g" \
                 -DSTREAMIFY_BUILD_FUZZERS=ON \
                 -G Ninja ..
