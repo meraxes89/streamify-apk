@@ -538,14 +538,15 @@ private class NativeTasteBackend private constructor(
             } ?: throw NoSuchMethodException("${cls.name}.$name/$params")
 
         /** Construct a generated record, adapting numeric args to the
-         *  erased JVM parameter types (UByte→byte, UInt→int, ULong→long). */
-        private fun construct(clazz: Class<*>, vararg args: Any?): Any {
+         *  erased JVM parameter types (UByte→byte, UInt→int, ULong→long).
+         *  All builder args are non-null by construction. */
+        private fun construct(clazz: Class<*>, vararg args: Any): Any {
             val ctor = clazz.constructors.first { it.parameterCount == args.size }
-            val adapted = ctor.parameterTypes.mapIndexed { i, type -> adapt(args[i], type) }
-            return ctor.newInstance(*adapted.toTypedArray())
+            val adapted = Array(args.size) { i -> adapt(args[i], ctor.parameterTypes[i]) }
+            return ctor.newInstance(*adapted)
         }
 
-        private fun adapt(value: Any?, type: Class<*>): Any? = when {
+        private fun adapt(value: Any, type: Class<*>): Any = when {
             value is Number && type == Byte::class.javaPrimitiveType -> value.toByte()
             value is Number && type == Int::class.javaPrimitiveType -> value.toInt()
             value is Number && type == Long::class.javaPrimitiveType -> value.toLong()
