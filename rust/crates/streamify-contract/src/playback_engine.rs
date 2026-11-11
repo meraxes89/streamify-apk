@@ -36,7 +36,7 @@ use crate::contract::EngineShared;
 // The production range fetcher
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// The HTTP segmented-range fetcher (RFC §5.1 stage 1): a thin wrapper
+/// The production range fetcher (RFC §5.1 stage 1): a thin wrapper
 /// mapping `StreamDownloader::fetch_stream_range` onto the playback
 /// crate's trait — the same client, runtime and hang-guard discipline
 /// `download_stream_to_file` uses, so the producer's fetch stage
@@ -44,8 +44,55 @@ use crate::contract::EngineShared;
 #[derive(Debug, Default)]
 pub struct HttpRangeFetcher;
 
+impl HttpRangeFetcher {
+    /// The WS-B B7 offline lane: a staged row whose resolved URL points
+    /// at a LOCAL file (a completed `BackgroundDownloadService`
+    /// transfer) reads its ranges straight off disk — no network, no
+    /// HTTP client, airplane-mode safe. Accepts `file://` URLs and bare
+    /// absolute paths.
+    fn local_file_path(url: &str) -> Option<std::path::PathBuf> {
+        let trimmed = url.trim();
+        if let Some(stripped) = trimmed.strip_prefix("file://") {
+            let path = std::path::PathBuf::from(stripped);
+            return path.is_absolute().then_some(path);
+        }
+        if trimmed.starts_with('/') {
+            return Some(std::path::PathBuf::from(trimmed));
+        }
+        None
+    }
+
+    /// A range read over a local file, honoring the fetcher's contract:
+    /// up to `len` bytes, EMPTY at exhaustion past `start`, `Err` on I/O
+    /// failure.
+    fn read_local_range(
+        path: &std::path::Path,
+        start: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, EngineError> {
+        use std::io::{Read, Seek, SeekFrom};
+
+        let io_error = || EngineError::Storage {
+            kind: streamify_core::StorageErrorKind::Io,
+        };
+        let mut file = std::fs::File::open(path).map_err(|_| io_error())?;
+        // A seek past EOF is not an error on any Apple platform — the
+        // subsequent read simply returns 0 bytes ("exhausted").
+        file.seek(SeekFrom::Start(start)).map_err(|_| io_error())?;
+        let mut out = Vec::with_capacity(len.min(1 << 20) as usize);
+        let mut take = file.take(len);
+        take.read_to_end(&mut out).map_err(|_| io_error())?;
+        Ok(out)
+    }
+}
+
 impl RangeFetcher for HttpRangeFetcher {
     fn fetch_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, EngineError> {
+        // The offline lane first: a local file never touches the network
+        // stack (B7's airplane-mode acceptance path).
+        if let Some(path) = Self::local_file_path(url) {
+            return Self::read_local_range(&path, start, len);
+        }
         StreamDownloader::fetch_stream_range(url, start, len).map_err(|_| {
             // Status 0: the failure mode is transport-level (no HTTP
             // response reached us to quote a code from).

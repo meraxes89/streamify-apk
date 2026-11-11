@@ -13,6 +13,10 @@ import UIKit
 // joined buffer. The body is a ScrollViewReader + LazyVStack of monospaced
 // log rows — grey timestamp, 4 pt level dot, tag, message — auto-scrolled to
 // the tail on every new line while follow is on (Motion.snappy).
+//
+// WS-B B2 — fixture purge: `lines` defaults to honest empty (no engine slog
+// surface on the real lane yet); the buffer renders its empty state until
+// the shell lowers real log pushes. #Previews inject fixtures explicitly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Level filter for the stream (All shows every severity).
@@ -96,7 +100,7 @@ public struct DiagnosticsView: View {
     @State private var levelFilter: LogFilter = .all
 
     public init(
-        lines: [LogLine] = PreviewCatalog.slogTail,
+        lines: [LogLine] = [],
         onClear: @escaping () -> Void = {}
     ) {
         self.lines = lines
@@ -239,6 +243,10 @@ public struct DiagnosticsView: View {
     }
 }
 
-#Preview("Diagnostics") {
+#Preview("Diagnostics — fixture tail") {
+    DiagnosticsView(lines: PreviewCatalog.slogTail)
+}
+
+#Preview("Diagnostics — honest empty") {
     DiagnosticsView()
 }

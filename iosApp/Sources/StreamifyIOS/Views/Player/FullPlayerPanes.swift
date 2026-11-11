@@ -10,6 +10,11 @@ import SwiftUI
 // REGULAR width — the panes dock beside the player canvas in a split layout
 // (the HIG two-pane player idiom). Each pane is a self-contained universal
 // view (SW-DEC-04): the same code serves both placements.
+//
+// WS-B B2 — fixture purge: the related pane's `tracks` param defaults to
+// honest empty (rows arrive as props; no PreviewCatalog in the production
+// path) and degrades to its empty state until a related-tracks surface
+// lands. #Previews keep fixtures explicitly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Which companion pane the player shows on regular widths / sheet swipes.
@@ -88,14 +93,15 @@ public struct LandscapeLyricsPane: View {
 
 /// The related pane: the "Related / discover" surface (related artists,
 /// recommended tracks, start-radio) — the RelatedDiscoverSheet content in
-/// pane form, fed by the deterministic catalog.
+/// pane form. Rows arrive as props (WS-B B2): honest empty by default until
+/// the shell wires a related-tracks engine surface.
 public struct LandscapeRelatedPane: View {
     public var tracks: [VirtualShelfTrack]
     public var onStartRadio: (() -> Void)? = nil
     public var onOpenTrack: ((VirtualShelfTrack) -> Void)? = nil
 
     public init(
-        tracks: [VirtualShelfTrack] = Array(PreviewCatalog.tracks[4..<10]),
+        tracks: [VirtualShelfTrack] = [],
         onStartRadio: (() -> Void)? = nil,
         onOpenTrack: ((VirtualShelfTrack) -> Void)? = nil
     ) {
@@ -108,11 +114,19 @@ public struct LandscapeRelatedPane: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: StreamifyDimens.spaceLG) {
                 YtSectionHeader(title: "Similar to this", subtitle: nil, onMore: nil)
-                ForEach(tracks) { track in
-                    TrackListItem(
-                        track: track,
-                        onPlay: { onOpenTrack?(track) }
+                if tracks.isEmpty {
+                    EmptyStateView(
+                        symbol: StreamifyIcon.related,
+                        title: "No related tracks yet",
+                        message: "Related music will appear here once the resolver surfaces it."
                     )
+                } else {
+                    ForEach(tracks) { track in
+                        TrackListItem(
+                            track: track,
+                            onPlay: { onOpenTrack?(track) }
+                        )
+                    }
                 }
                 if let onStartRadio {
                     Button {
@@ -149,4 +163,10 @@ public struct LandscapeRelatedPane: View {
     }
     .background(StreamifyColors.bgBase)
     .preferredColorScheme(.dark)
+}
+
+#Preview("Related pane — fixture tracks") {
+    LandscapeRelatedPane(tracks: Array(PreviewCatalog.tracks[4..<10]))
+        .background(StreamifyColors.bgBase)
+        .preferredColorScheme(.dark)
 }

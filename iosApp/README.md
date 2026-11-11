@@ -165,12 +165,25 @@ Binding mode (MP-DEC-02): SwiftUI → `streamifyFFI` Swift proxies → the
 staticlib's `uniffi_*` C ABI. No `cinterop`, no Kotlin runtime, no Obj-C
 wrapper.
 
-## Host app target (5 minutes, one-time)
+## Host app target (checked in — WS-B B5)
 
 SPM cannot emit an App Store bundle, and an `@main` inside the library
 would collide with the host's own `@main` at link time — so the package
-exposes `StreamifyMainScene` (a `Scene`) and the Xcode app target is a
-husk:
+exposes `StreamifyMainScene` (a `Scene`) and the host lives in-repo at
+**`iosApp/Host/`** (a committed `StreamifyHost.xcodeproj` with the app +
+widget extension, CarPlay scene manifest, Live Activities, `streamify://`
+deep links and the App Group). A fresh clone builds it directly:
+
+```bash
+xcodebuild -project iosApp/Host/StreamifyHost.xcodeproj \
+           -scheme StreamifyHost \
+           -destination 'generic/platform=iOS Simulator' \
+           CODE_SIGNING_ALLOWED=NO build
+```
+
+Full details (real-lane staging, device capabilities, XcodeGen
+regeneration): **`iosApp/Host/README-host-target.md`**. The pre-B5 manual
+recipe is retired — for the historical record it read:
 
 1. Xcode → File → New → Target → **iOS App**, name it `Streamify`
    (bundle id / signing as usual), SwiftUI interface, no tests.

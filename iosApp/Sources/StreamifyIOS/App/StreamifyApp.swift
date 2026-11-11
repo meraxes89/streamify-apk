@@ -25,9 +25,14 @@ public struct StreamifyMainScene: Scene {
     // @MainActor: the @Observable model's initializer is main-actor-isolated
     // (SW-DEC-02); Scene bodies already run there, and the host's 3-line App
     // struct calls this init from its own @MainActor body.
+    //
+    // WS-B B1: the model rides AppServices' SHARED engine gateway — the
+    // same `StreamifyEngine` the feature library (UniFFIFeatureLibrary)
+    // speaks to. Two gateways would mean two engines, two queues, and a
+    // silent desync between what plays and what the screens show.
     @MainActor public init() {
         _model = State(
-            initialValue: PlaybackViewModel(gateway: EngineGatewayLoader.load())
+            initialValue: PlaybackViewModel(gateway: AppServices.engineGateway)
         )
     }
 
@@ -36,7 +41,14 @@ public struct StreamifyMainScene: Scene {
             RootShellView()
                 .environment(model)
                 .preferredColorScheme(StreamifyTheme.shellColorScheme)
-                .task { model.start() }
+                .task {
+                    model.start()
+                    // WS-B B6: reap any Live Activity a previous launch
+                    // left presenting (cold-launch staleness sweep).
+                    #if canImport(ActivityKit) && canImport(UIKit)
+                    await PlaybackLiveActivityController.endAllStale()
+                    #endif
+                }
                 .onDisappear { model.stop() }
         }
     }

@@ -168,6 +168,114 @@ final class UniFFIContractTests: XCTestCase {
         await fulfillment(of: [pushed], timeout: 10)
         collector.cancel()
     }
+
+    // ── WS-B B1/B3/B4: the drivetrain v2 surface (CONTRACT_VERSION 2) ─────
+
+    /// B1's acceptance core: the composition root's lane selector hands a
+    /// REAL gateway the UniFFIFeatureLibrary (and a non-UniFFI gateway the
+    /// preview lane) — the switch, proven on the linked lane in CI.
+    func testFeatureLibraryLoaderSelectsTheUniFFILane() throws {
+        let gateway = try UniFFIEngineGateway()
+        defer { gateway.shutdown() }
+        let library = FeatureLibraryLoader.load(gateway: gateway)
+        XCTAssertTrue(
+            library is UniFFIFeatureLibrary,
+            "a live UniFFI gateway must select the real feature lane"
+        )
+        let previewPick = FeatureLibraryLoader.load(gateway: PreviewEngineGateway())
+        XCTAssertTrue(
+            previewPick is PreviewFeatureLibrary,
+            "a non-UniFFI gateway keeps the deterministic preview lane"
+        )
+    }
+
+    /// The v2 contract is actually linked (the surface PR #151 bumped).
+    func testContractVersionIsTheV2Drivetrain() throws {
+        XCTAssertEqual(StreamifyIOS.contractVersion(), 2)
+    }
+
+    /// B4's pre-attach posture: buffer_progress degrades to the honest
+    /// zero record (producer_live false, no throw), and detach is
+    /// idempotent over a never-attached plane.
+    func testBufferProgressAndDetachAreCleanWithoutAPlane() async throws {
+        let gateway = try UniFFIEngineGateway()
+        defer { gateway.shutdown() }
+
+        let progress = await gateway.bufferProgress()
+        XCTAssertNotNil(progress)
+        XCTAssertEqual(progress?.producerLive, false)
+        XCTAssertEqual(progress?.renderedPositionMs, 0)
+
+        await gateway.detachSink()
+        await gateway.detachSink()
+    }
+
+    /// recordDacClock accepts a valid hardware sample (the DacClockPublisher
+    /// drain's destination) and the next pushed snapshot carries it.
+    func testRecordDacClockSurfacesInThePushedSnapshot() async throws {
+        let gateway = try UniFFIEngineGateway()
+        defer { gateway.shutdown() }
+
+        let sample = DacClockSample(framePosition: 48_000, sampleRateHz: 48_000, monotonicNs: 123_456_789)
+        await gateway.recordDacClock(sample)
+
+        let snapshot = await gateway.currentSnapshot()
+        XCTAssertEqual(snapshot?.clock?.framePosition, 48_000)
+        XCTAssertEqual(snapshot?.clock?.sampleRateHz, 48_000)
+    }
+
+    /// B1's feature plane over the real engine: the EQ profile maps onto
+    /// the ten-band engine curve (in-memory, network-free).
+    func testUniFFIFeatureLibraryAppliesEqualizerProfile() async throws {
+        let gateway = try UniFFIEngineGateway()
+        defer { gateway.shutdown() }
+        let library = UniFFIFeatureLibrary(gateway: gateway)
+
+        var profile = EqualizerProfile.flat
+        profile.bands[0].gainDb = 6
+        profile.bands[9].gainDb = -4
+        await library.applyEqualizerProfile(profile)
+
+        let bands = await gateway.equalizerBands()
+        XCTAssertEqual(bands.count, 10)
+        XCTAssertEqual(bands.first?.gainDb ?? 0, 6, accuracy: 0.01)
+        XCTAssertEqual(bands.last?.gainDb ?? 0, -4, accuracy: 0.01)
+    }
+
+    /// B1's queue plane: enqueueing rows + a control-plane push synthesizes
+    /// a queue snapshot onto `queueEvents` (the push-driven resync — no
+    /// polling). Network-free: enqueue is in-memory on the real engine.
+    func testUniFFIFeatureLibrarySynthesizesQueueEvents() async throws {
+        let gateway = try UniFFIEngineGateway()
+        defer { gateway.shutdown() }
+        let library = UniFFIFeatureLibrary(gateway: gateway)
+
+        let trackA = PreviewEngineGateway.fixtureCatalog[0]
+        let trackB = PreviewEngineGateway.fixtureCatalog[1]
+        let indexA = await gateway.enqueue(track: trackA, enqueuedBy: "local")
+        let indexB = await gateway.enqueue(track: trackB, enqueuedBy: "local")
+        XCTAssertNotNil(indexA)
+        XCTAssertNotNil(indexB)
+
+        let received = expectation(description: "queue snapshot synthesized onto queueEvents")
+        let collector = Task {
+            for await event in library.queueEvents {
+                if case .snapshot(let snapshot) = event {
+                    if snapshot.tracks.map(\.id).contains(trackA.id) {
+                        received.fulfill()
+                        break
+                    }
+                }
+            }
+        }
+        // A control-plane mutation triggers the engine's push cadence —
+        // the library's bridge re-reads the queue and pushes.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        _ = await gateway.send(.setVolume(0.4))
+
+        await fulfillment(of: [received], timeout: 10)
+        collector.cancel()
+    }
 }
 
 #endif  // canImport(streamifyFFI)

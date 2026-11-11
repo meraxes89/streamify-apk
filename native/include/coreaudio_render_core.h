@@ -92,18 +92,55 @@ inline uint64_t MachTimeToNs(uint64_t mach_ticks, uint32_t timebase_numer,
 
 // The real-time render core. One instance per live audio stream; all
 // methods are noexcept and the render path is wait-free.
+//
+// THE PULL EDGE (WS-B B4): the core consumes PCM through the abstract
+// [`RenderFrameSource`] below — one virtual call per quantum, still zero
+// dynamic allocations, zero locks and zero syscalls on the audio thread.
+// Two concrete sources exist:
+//   * [`SinkFrameSource`] — a `sink::AudioSink*` from the C++ registry
+//     (the Phase-4a JNI path);
+//   * `RustRingFrameSource` (coreaudio_pull_adapter.cpp) — the ENGINE's
+//     exported Rust SPSC ring over the frozen `streamify_ring_*` C ABI,
+//     so the CoreAudio callback and the A5 self-test consume the exact
+//     same `SpscAudioRing::read_frames_into` code path.
+class RenderFrameSource {
+public:
+    virtual ~RenderFrameSource() = default;
+
+    // Pull up to `max_frames` INTERLEAVED f32 frames into `dst`; returns
+    // the frame count served (0 == starved / flushed). MUST be wait-free.
+    virtual size_t ReadFramesF32(float* dst, size_t max_frames) noexcept = 0;
+};
+
+// A `sink::AudioSink*` as a RenderFrameSource (the registry path). The
+// sink must outlive every render until the core's Unbind (the header's
+// lifetime contract, unchanged).
+class SinkFrameSource final : public RenderFrameSource {
+public:
+    explicit SinkFrameSource(sink::AudioSink* sink) noexcept : sink_(sink) {}
+
+    size_t ReadFramesF32(float* dst, size_t max_frames) noexcept override {
+        if (sink_ == nullptr) return 0;
+        return sink_->ReadFramesF32(dst, max_frames);
+    }
+
+private:
+    sink::AudioSink* sink_;
+};
+
 class CoreAudioRenderCore {
 public:
     // ---- control thread ------------------------------------------------------
-    // Publish the sink the callback pulls from and cache the device rate.
-    // `sink` must outlive every render until Unbind() (see header contract).
-    void Bind(sink::AudioSink* sink, uint32_t device_rate) noexcept {
+    // Publish the source the callback pulls from and cache the device
+    // rate. `source` must outlive every render until Unbind() (see the
+    // header contract).
+    void Bind(RenderFrameSource* source, uint32_t device_rate) noexcept {
         rate_.store(device_rate, std::memory_order_relaxed);
-        sink_.store(sink, std::memory_order_release);
+        source_.store(source, std::memory_order_release);
     }
 
-    // Retract the sink pointer BEFORE the sink's last owner goes away.
-    void Unbind() noexcept { sink_.store(nullptr, std::memory_order_release); }
+    // Retract the source pointer BEFORE the source's last owner goes away.
+    void Unbind() noexcept { source_.store(nullptr, std::memory_order_release); }
 
     // Drain the latest clock sample (retry-on-tear seqlock read).
     // Returns false when no render has published a sample yet.
@@ -145,7 +182,7 @@ public:
                 uint64_t host_time_ns,
                 bool publish_clock = true) noexcept {
         callback_count_.fetch_add(1, std::memory_order_relaxed);
-        sink::AudioSink* s = sink_.load(std::memory_order_acquire);
+        RenderFrameSource* s = source_.load(std::memory_order_acquire);
         size_t got = 0;
         if (s != nullptr && dst != nullptr && nframes > 0) {
             got = s->ReadFramesF32(dst, nframes);
@@ -187,14 +224,14 @@ public:
         return underrun_callbacks_.load(std::memory_order_relaxed);
     }
     bool bound() const noexcept {
-        return sink_.load(std::memory_order_acquire) != nullptr;
+        return source_.load(std::memory_order_acquire) != nullptr;
     }
 
     static constexpr uint32_t kChannels = 2;  // canonical stereo pipeline
 
 private:
     // ---- published state --------------------------------------------------------
-    std::atomic<sink::AudioSink*> sink_{nullptr};
+    std::atomic<RenderFrameSource*> source_{nullptr};
     std::atomic<uint32_t> rate_{48000};
 
     // Seqlock-protected clock sample (single writer = audio thread).

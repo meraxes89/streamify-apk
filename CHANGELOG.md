@@ -3,6 +3,31 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — WS-B "Apple Integration": from showroom to first note (B1–B7)
+
+### Added
+- **`UniFFIFeatureLibrary` (B1)** — the real feature lane over the shared `UniFFIEngineGateway`: live search, a search-composed home feed, snapshot-driven queue-event synthesis, the ten-band EQ mapping and host-side jam sessions. Honest-empty defaults for every surface the Rust contract does not expose yet (community, stats, updates, profiles, ingestion, lyrics, blend). `AppServices` now owns ONE engine per process and `FeatureLibraryLoader` performs the lane switch (CI-proven by new `UniFFIContractTests`).
+- **The drivetrain v2 mapping (B3)** — `resolveStreamFormats` (+ session memo + the persistent resolver cache via `set_resolver_cache_db`), the full play path (`play(track:)`: resolve → stage → attach → `play_track`), `playStagedTrack` for queue-row taps, `attachSink`/`detachSink`/`bufferProgress`/`recordDacClock`, and staged-track snapshot enrichment (pushed snapshots now carry now-playing metadata).
+- **The CoreAudio data plane (B4)** — `PlaybackViewModel` mounts `CoreAudioRenderCore` and the 10 Hz `DacClockPublisher` drain (hardware → `record_dac_clock`, never the reverse); the native bracket: an abstract `RenderFrameSource` pull edge in the RT core, `streamify_coreaudio_start_rust_ring()` in the pull adapter, and the Rust ring's frozen C ABI (`streamify-playback/src/ring_export.rs`, installed by `attach_sink`). No AVPlayer anywhere on the path.
+- **The checked-in host app target (B5)** — `iosApp/Host/`: committed `StreamifyHost.xcodeproj` (app + widget extension, synchronized folders), CarPlay scene manifest, `NSSupportsLiveActivities`, `streamify://` deep links, background audio, App Group; `project.yml` as the XcodeGen source of truth; CI "Host app build gate" builds it from a fresh clone.
+- **Platform surface activation (B6)** — the CarPlay scene delegate is public + manifest-instantiated with its router assigned by the shell; the Live Activity controller is driven on the admitted push cadence with a cold-launch `endAllStale()` sweep; `StreamifyWidgetBundle` is public for the extension target.
+- **Downloads (B7)** — `DownloadViewModel` (manifest-indexed correlation, progress aggregation, resume-data verification with a remove-race sweep, real storage numbers) + the model-driven `DownloadsView` with offline play through the same engine path (`file://` resolved URL).
+- **`scripts/preview_catalog_guard.py` (B2)** — the production-path fixture lint (mirrors `docs_ledger_check.py`): zero `PreviewCatalog` references outside previews/tests/comments, enforced in CI preflight.
+- **`coreaudio_render_core_test_suite` in CI (C3)** — the Apple render core's host-lane RT audit joined the sanitizer matrix.
+- **Gate 4 runbook** — `docs/playbooks/gate4_fluidity_runbook.md`: the Instruments procedure + evidence format (the gate itself remains honestly unexecuted).
+
+### Changed
+- **All 14 view models ride live lanes (B2)** — the 9 orphaned VMs (Home, Search, Queue, Community, StatsWrapped, UpdatesHub, UserProfile, Ingestion, Settings) are constructed by their screens; `RootShellView` takes queue truth from the engine (`QueueViewModel` + a derived projection), drives search through the 300 ms-debounced `SearchViewModel`, and routes every play action into the engine. Album/Artist detail pages source their rows from live search; the player/lyrics/queue panes lost their fixture defaults.
+- **`UniFFIEngineGateway` push fan-out** — the snapshot stream supports multiple subscribers (transport ingest + the feature library's queue bridge) with late-subscriber hydration; fixes a latent single-consumer competition the second subscriber would have exposed.
+- **`HttpRangeFetcher` local-file lane** — `file://` (and bare absolute-path) resolved URLs read ranges straight off disk: the airplane-mode offline path (B7).
+- **`iosApp/README.md`** — the manual 5-minute host-husk recipe is retired in favor of the checked-in project.
+
+### Verified on the host lane (this PR's CI + local runs)
+- `cargo test -p streamify-contract --test test_live_audio_selftest` — 3/3 (engine says 440 through the producer + exported ring, resample leg, 100-intent skip-under-load with the ring export swapping on every attach/detach).
+- `cargo test -p streamify-playback` (21) and `--test test_uniffi_contract` (21) green; `cargo check --workspace` clean.
+- `coreaudio_render_core_test_suite` — 41/41 under the new `RenderFrameSource` abstraction (RT zero-alloc audit intact).
+- `preview_catalog_guard.py` — clean (negative-tested).
+- Pending hardware gates (recorded on the PR, not claimed): audible playback on device, interruption/route-change against the live path, CarPlay/Live Activity presentation, airplane-mode offline play, Gate 4 frame pacing.
 ## [Unreleased] — WS-A Drivetrain Wave 2: the audio data plane (A3/A4/A5, issue #151)
 
 ### Added

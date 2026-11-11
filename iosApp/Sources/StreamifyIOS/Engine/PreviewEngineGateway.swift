@@ -132,6 +132,26 @@ final class PreviewEngineGateway: EngineGateway {
         continuation?.yield(snapshot)
     }
 
+    /// Test/preview helper: push the playing successor for `track` —
+    /// `PlaybackSnapshot.status` is an immutable field, so the transition
+    /// is a fresh value (rev bumped so rev-guarded consumers ingest it).
+    private func pushPlaying(_ track: PresentationTrack) {
+        let (successor, continuation) = lock.withLock {
+            let successor = PlaybackSnapshot(
+                rev: state.rev + 1,
+                status: .playing,
+                volume: state.volume,
+                buffer: state.buffer,
+                clock: state.clock,
+                currentTrack: track,
+                jamSessionName: state.jamSessionName
+            )
+            state = successor
+            return (successor, self.continuation)
+        }
+        continuation?.yield(successor)
+    }
+
     // ── SW-ENG1-04: the typed data lane (deterministic fixtures) ──────────
 
     /// Scripted Jam room (created on demand via `createJamSession`).
@@ -217,6 +237,85 @@ final class PreviewEngineGateway: EngineGateway {
                 participants: ["local:preview", "preview-peer:1"]
             )
         }
+    }
+
+    // ── WS-B B3/B4: the drivetrain v2 surface (deterministic fixtures) ───
+
+    /// The scripted sink-plane state (tests assert the lifecycle).
+    private var _sinkAttached = false
+    var sinkAttached: Bool { lock.withLock { _sinkAttached } }
+
+    /// The last DAC clock sample fed back through `recordDacClock`.
+    private var _lastRecordedDacClock: DacClockSample?
+    var lastRecordedDacClock: DacClockSample? { lock.withLock { _lastRecordedDacClock } }
+
+    func resolveStreamFormats(videoId: String) async throws -> [EngineResolvedStreamFormat] {
+        guard !failAll else { throw UnavailableError() }
+        // Deterministic audio-only fixture: the preview lane resolves every
+        // id against a stable pseudo-URL (no network, ever).
+        return [
+            EngineResolvedStreamFormat(
+                url: "preview://audio/\(videoId)",
+                mimeType: "audio/mp4",
+                bitrate: 128_000,
+                durationSec: 240,
+                isAudioOnly: true
+            )
+        ]
+    }
+
+    func play(track: EngineTrack) async -> Int? {
+        guard !failAll else { return nil }
+        // Mirror the real lane's sequence: resolve → stage → attach → play.
+        var staged = track
+        if staged.resolvedStreamUrl == nil,
+           let best = try? await resolveStreamFormats(videoId: track.id),
+           let format = EngineResolvedStreamFormat.bestAudio(of: best) {
+            staged.resolvedStreamUrl = format.url
+        }
+        guard let index = await enqueue(track: staged, enqueuedBy: "local") else { return nil }
+        await attachSink(capacityFrames: EnginePlaybackPlane.capacityFrames)
+        pushPlaying(PresentationTrack(staged))
+        return index
+    }
+
+    func playStagedTrack(id: String) async -> Bool {
+        guard !failAll else { return false }
+        guard let row = lock.withLock({ stagedQueue.first(where: { $0.track.id == id }) }) else {
+            return false
+        }
+        pushPlaying(PresentationTrack(row.track))
+        return true
+    }
+
+    func attachSink(capacityFrames: Int) async {
+        guard !failAll else { return }
+        lock.withLock { _sinkAttached = true }
+    }
+
+    func detachSink() async {
+        lock.withLock { _sinkAttached = false }
+    }
+
+    func bufferProgress() async -> EngineBufferProgress? {
+        guard !failAll else { return nil }
+        return lock.withLock {
+            EngineBufferProgress(
+                bufferedMs: 12_000,
+                fillRatio: 0.9,
+                underrunEvents: 0,
+                overrunEvents: 0,
+                targetPositionMs: 0,
+                renderedPositionMs: 0,
+                trackId: state.currentTrack?.id,
+                producerLive: _sinkAttached,
+                eos: false
+            )
+        }
+    }
+
+    func recordDacClock(_ sample: DacClockSample) async {
+        lock.withLock { _lastRecordedDacClock = sample }
     }
 
     // ── scripted demo ─────────────────────────────────────────────────────

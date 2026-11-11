@@ -7,20 +7,30 @@ import SwiftUI
 // artist screen keeps its own copy), kind label, title, artist / year / count
 // row, Play + Shuffle capsules, heart / download / share row, indexed track
 // rows, then "More from artist" as a YtMediumCard rail.
+//
+// WS-B B2 — fixture purge: the track list sources from LIVE SEARCH by album
+// title (the collection page's only engine surface) through an internal
+// SearchViewModel; the injectable `tracks` param defaults to empty and is a
+// preview/test lane only. No PreviewCatalog in the production path.
 // ─────────────────────────────────────────────────────────────────────────────
 
+@MainActor
 public struct AlbumDetailView: View {
 
     public var title: String
     public var artist: String
     public var kind: String
     public var year: String?
+    /// Preview/test lane only: injected rows render as-is; when empty (the
+    /// production default) the live search task populates the list.
     public var tracks: [VirtualShelfTrack]
     public var onPlayTrack: (VirtualShelfTrack) -> Void
     public var onOpenArtist: (String) -> Void
     public var onLike: ((Bool) -> Void)?
     public var onBack: (() -> Void)?
 
+    /// WS-B B2: the live "search by name" loader behind the track list.
+    @State private var search = SearchViewModel()
     @State private var isLiked = false
     @State private var isDownloaded = false
     private static let heroHeight: CGFloat = 300
@@ -30,7 +40,7 @@ public struct AlbumDetailView: View {
         artist: String,
         kind: String = "ALBUM",
         year: String? = nil,
-        tracks: [VirtualShelfTrack] = PreviewCatalog.tracks,
+        tracks: [VirtualShelfTrack] = [],
         onPlayTrack: @escaping (VirtualShelfTrack) -> Void = { _ in },
         onOpenArtist: @escaping (String) -> Void = { _ in },
         onLike: ((Bool) -> Void)? = { _ in },
@@ -47,16 +57,42 @@ public struct AlbumDetailView: View {
         self.onBack = onBack
     }
 
-    /// Other releases by this artist: online results first (deduped against
-    /// the album's own titles), falling back to catalog tracks by the artist.
+    // MARK: - Row sources (WS-B B2)
+
+    /// The rendered track list: injected rows (previews/tests) when present,
+    /// otherwise the live search rows for the album title.
+    private var displayTracks: [VirtualShelfTrack] {
+        if !tracks.isEmpty { return tracks }
+        return songRows
+    }
+
+    /// Live song rows for the album's title, mapped onto the view currency.
+    private var songRows: [VirtualShelfTrack] {
+        search.currentResults
+            .filter { $0.kind == .song }
+            .map { VirtualShelfTrack(presentationTrack: $0.asPresentationTrack) }
+    }
+
+    /// Other releases by this artist: live search rows outside the album's
+    /// own track list, deduped by title — no catalog fallback (WS-B B2).
     private var moreFromArtist: [VirtualShelfTrack] {
-        let online = PreviewCatalog.onlineResults
-            .filter { $0.uploader == artist && $0.type != .album }
-            .filter { result in !tracks.contains { $0.title == result.title } }
-            .map { VirtualShelfTrack(id: $0.id, title: $0.title, artist: $0.uploader, durationSec: $0.durationSec, platformOrigin: "ytm") }
-        if !online.isEmpty { return online }
-        let albumIds = Set(tracks.map(\.id))
-        return PreviewCatalog.tracks.filter { $0.artist == artist && !albumIds.contains($0.id) }
+        guard !artist.isEmpty else { return [] }
+        var known = Set(displayTracks.map(\.title))
+        known.insert(title)
+        return search.currentResults
+            .filter { $0.kind != .song }
+            .filter { $0.uploader.localizedCaseInsensitiveContains(artist) }
+            .filter { !known.contains($0.title) }
+            .map { VirtualShelfTrack(presentationTrack: $0.asPresentationTrack) }
+    }
+
+    /// True until the first live result lands (`.idle` only ever precedes
+    /// the initial submit) — keeps the empty state from flashing mid-flight.
+    private var isAwaitingResults: Bool {
+        if !tracks.isEmpty { return false }
+        if search.isLoading { return true }
+        if case .idle = search.state { return true }
+        return false
     }
 
     public var body: some View {
@@ -77,7 +113,7 @@ public struct AlbumDetailView: View {
                 .padding(.horizontal, StreamifyDimens.spaceLG).padding(.top, StreamifyDimens.spaceXL)
                 actionRow
                 utilityRow
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                ForEach(Array(displayTracks.enumerated()), id: \.element.id) { index, track in
                     HStack(spacing: StreamifyDimens.spaceSM) {
                         Text("\(index + 1)").font(StreamifyType.seekbarTime.monospacedDigit())
                             .foregroundStyle(StreamifyColors.textTertiary)
@@ -85,6 +121,19 @@ public struct AlbumDetailView: View {
                         TrackListItem(track: track, onPlay: { onPlayTrack(track) })
                     }
                     .padding(.horizontal, StreamifyDimens.spaceLG)
+                }
+                if displayTracks.isEmpty {
+                    if isAwaitingResults {
+                        trackSkeleton
+                    } else {
+                        EmptyStateView(
+                            symbol: StreamifyIcon.musicNoteList,
+                            title: "No tracks found",
+                            message: "Nothing matched \"\(title)\" on the resolver lane yet."
+                        )
+                        .padding(.horizontal, StreamifyDimens.spaceLG)
+                        .padding(.top, StreamifyDimens.spaceXL)
+                    }
                 }
                 if !moreFromArtist.isEmpty {
                     YtSectionHeader(title: "More from \(artist)")
@@ -95,6 +144,12 @@ public struct AlbumDetailView: View {
         }
         .coordinateSpace(name: "albumScroll")
         .background(StreamifyColors.bgBase)
+        .task {
+            // WS-B B2: live search by album title is the collection page's
+            // only engine surface; injected rows (previews/tests) skip it.
+            guard tracks.isEmpty else { return }
+            search.submit(query: title)
+        }
         .overlay(alignment: .topLeading) { backButton }
         .navigationTitle(title)
     }
@@ -121,7 +176,7 @@ public struct AlbumDetailView: View {
                 Text("· \(year)").font(StreamifyType.bodySmall)
                     .foregroundStyle(StreamifyColors.textSecondary)
             }
-            Text("· \(tracks.count) tracks").font(StreamifyType.bodySmall)
+            Text("· \(displayTracks.count) tracks").font(StreamifyType.bodySmall)
                 .foregroundStyle(StreamifyColors.textSecondary)
         }
     }
@@ -209,11 +264,37 @@ public struct AlbumDetailView: View {
     }
 
     private func playAlbum() {
-        if let first = tracks.first { onPlayTrack(first) }
+        if let first = displayTracks.first { onPlayTrack(first) }
     }
 
     private func shuffleAlbum() {
-        if let pick = tracks.randomElement() { onPlayTrack(pick) }
+        if let pick = displayTracks.randomElement() { onPlayTrack(pick) }
+    }
+
+    /// The loading state — redacted placeholder rows while the resolver lane
+    /// answers (mirrors SearchView's skeleton).
+    private var trackSkeleton: some View {
+        LazyVStack(spacing: StreamifyDimens.spaceMD) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack(spacing: StreamifyDimens.spaceMD) {
+                    RoundedRectangle(cornerRadius: StreamifyRadius.md)
+                        .fill(StreamifyColors.bgChipInactive)
+                        .frame(width: StreamifyDimens.trackRowArt, height: StreamifyDimens.trackRowArt)
+                    VStack(alignment: .leading, spacing: StreamifyDimens.spaceSM) {
+                        RoundedRectangle(cornerRadius: StreamifyRadius.sm)
+                            .fill(StreamifyColors.bgChipInactive)
+                            .frame(height: 12)
+                        RoundedRectangle(cornerRadius: StreamifyRadius.sm)
+                            .fill(StreamifyColors.bgChipInactive)
+                            .frame(width: 140, height: 10)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, StreamifyDimens.spaceLG)
+            }
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Searching")
     }
 
     private var shareText: String {
@@ -251,7 +332,14 @@ private struct StretchyHeader<Content: View>: View {
     }
 }
 
-#Preview("Album detail") {
+#Preview("Album detail — fixture tracks (preview lane)") {
+    NavigationStack {
+        AlbumDetailView(title: "Meridian", artist: "Aurora Nine", tracks: PreviewCatalog.tracks)
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Album detail — honest live lane") {
     NavigationStack {
         AlbumDetailView(title: "Meridian", artist: "Aurora Nine")
     }

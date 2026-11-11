@@ -14,6 +14,12 @@ import Foundation
 // `#if canImport(streamifyFFI)`) lights up without a single edit in any
 // view model.
 //
+// WS-B B1: that real lane now EXISTS (UniFFIFeatureLibrary.swift, over the
+// UniFFI engine gateway) and `AppServices` below selects it automatically
+// whenever the xcframework is linked and the engine lane came up — the
+// hard truth rule. `PreviewFeatureLibrary` stays strictly for SwiftUI
+// previews, isolated tests, and the pre-framework scaffold period.
+//
 // Every requirement has a default (empty/idle) implementation below, so test
 // doubles conform and override only the methods they script.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -364,13 +370,34 @@ final class PreviewFeatureLibrary: FeatureLibrary, @unchecked Sendable {
 
 // MARK: - Composition root
 
+/// The real feature lane selector (WS-B B1's "hard truth" switch): the
+/// `UniFFIFeatureLibrary` whenever the UniFFI engine lane is linked AND
+/// the shared gateway actually came up on it; the deterministic preview
+/// library otherwise (previews/tests inject their libraries explicitly —
+/// the sanctioned pattern since SW-ENG4-01).
+enum FeatureLibraryLoader {
+
+    static func load(gateway: EngineGateway) -> any FeatureLibrary {
+        #if canImport(streamifyFFI)
+        if let uniffiGateway = gateway as? UniFFIEngineGateway {
+            return UniFFIFeatureLibrary(gateway: uniffiGateway)
+        }
+        #endif
+        return PreviewFeatureLibrary()
+    }
+}
+
 /// The shared, lazily-constructed instances the 14 view models default to.
-/// Views construct view models bare (`SearchViewModel()`) and get the preview
-/// lane until the real UniFFI lane is linked; previews and tests inject
-/// explicitly.
+/// ONE engine per process: the playback transport (`engineGateway`) and
+/// the feature plane (`library`) ride the SAME `StreamifyEngine` — two
+/// gateways would mean two engines, two queues and a silent desync.
+/// Views construct view models bare (`SearchViewModel()`) and get the real
+/// UniFFI lane when the xcframework is linked, the preview lane otherwise;
+/// previews and tests inject explicitly.
 @MainActor
 enum AppServices {
-    static let library: any FeatureLibrary = PreviewFeatureLibrary()
+    static let engineGateway: EngineGateway = EngineGatewayLoader.load()
+    static let library: any FeatureLibrary = FeatureLibraryLoader.load(gateway: engineGateway)
     static let events = UiEventBus()
     static let settings = SettingsStore.live
 }

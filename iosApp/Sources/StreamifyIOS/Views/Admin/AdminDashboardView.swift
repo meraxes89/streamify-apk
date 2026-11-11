@@ -4,10 +4,14 @@ import SwiftUI
 // SW-ENG2-08 — AdminDashboardView: the command center.
 //
 // SwiftUI port of ui/screens/AdminDashboardScreen.kt (the metrics grid +
-// fleet health cards, on PreviewCatalog.adminMetrics fixtures): a 2-column
-// LazyVGrid of KPI tiles with signed trend chips, the Edge mesh panel and
-// the Engine health panel. The crown ADMIN badge marks the restricted
-// surface (Android "Open Admin Command Center").
+// fleet health cards): a 2-column LazyVGrid of KPI tiles with signed trend
+// chips, the Edge mesh panel and the Engine health panel. The crown ADMIN
+// badge marks the restricted surface (Android "Open Admin Command Center").
+//
+// WS-B B2 — fixture purge: `metrics` defaults to honest empty (no engine
+// metrics surface on the real lane yet); the grid degrades to its empty
+// state until the shell lowers real telemetry. #Previews inject
+// PreviewCatalog.adminMetrics explicitly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Uppercase, letterspaced section label (Android SectionHeader, 1:1).
@@ -119,7 +123,7 @@ private struct HealthRow: View {
 public struct AdminDashboardView: View {
     public var metrics: [MetricTile]
 
-    public init(metrics: [MetricTile] = PreviewCatalog.adminMetrics) {
+    public init(metrics: [MetricTile] = []) {
         self.metrics = metrics
     }
 
@@ -127,15 +131,23 @@ public struct AdminDashboardView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: StreamifyDimens.spaceLG) {
                 header
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: StreamifyDimens.spaceMD),
-                        GridItem(.flexible(), spacing: StreamifyDimens.spaceMD),
-                    ],
-                    spacing: StreamifyDimens.spaceMD
-                ) {
-                    ForEach(metrics) { tile in
-                        MetricCard(tile: tile)
+                if metrics.isEmpty {
+                    EmptyStateView(
+                        symbol: StreamifyIcon.crown,
+                        title: "No metrics yet",
+                        message: "Fleet telemetry from the sovereign core will report here."
+                    )
+                } else {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: StreamifyDimens.spaceMD),
+                            GridItem(.flexible(), spacing: StreamifyDimens.spaceMD),
+                        ],
+                        spacing: StreamifyDimens.spaceMD
+                    ) {
+                        ForEach(metrics) { tile in
+                            MetricCard(tile: tile)
+                        }
                     }
                 }
                 adminSection("Edge mesh") {
@@ -200,6 +212,10 @@ public struct AdminDashboardView: View {
     }
 }
 
-#Preview("Admin dashboard") {
+#Preview("Admin dashboard — fixture metrics") {
+    AdminDashboardView(metrics: PreviewCatalog.adminMetrics)
+}
+
+#Preview("Admin dashboard — honest empty") {
     AdminDashboardView()
 }

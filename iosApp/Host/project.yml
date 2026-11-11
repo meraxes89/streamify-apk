@@ -1,0 +1,90 @@
+# =============================================================================
+# StreamifyHost — the checked-in host app project (WS-B B5).
+#
+# This manifest is the SOURCE OF TRUTH for regenerating the committed
+# StreamifyHost.xcodeproj (XcodeGen):
+#
+#     brew install xcodegen && cd iosApp/Host && xcodegen generate
+#
+# The generated project is COMMITTED so a fresh `git clone` builds directly
+# (the B5 acceptance criterion) without any generation step:
+#
+#     xcodebuild -project iosApp/Host/StreamifyHost.xcodeproj \
+#                -scheme StreamifyHost \
+#                -destination 'generic/platform=iOS Simulator' \
+#                CODE_SIGNING_ALLOWED=NO build
+#
+# The app links the local SwiftPM package (iosApp/Package.swift — the
+# StreamifyIOS library, which probe-gates the real UniFFI engine lane on
+# iosApp/Frameworks/StreamifyCore.xcframework; without it the app builds
+# and runs on the deterministic preview lane). See README-host-target.md.
+# =============================================================================
+
+name: StreamifyHost
+options:
+  bundleIdPrefix: com.streamify
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+
+packages:
+  StreamifyIOS:
+    path: ../
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: "0.1.0"
+
+targets:
+  StreamifyHost:
+    type: application
+    platform: iOS
+    sources:
+      - path: StreamifyHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.streamify.host
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        INFOPLIST_FILE: StreamifyHost/Info.plist
+        CODE_SIGN_ENTITLEMENTS: StreamifyHost/StreamifyHost.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_EMIT_LOC_STRINGS: "NO"
+        ENABLE_PREVIEWS: "YES"
+    dependencies:
+      - package: StreamifyIOS
+      - target: StreamifyWidgets
+
+  StreamifyWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: StreamifyWidgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.streamify.host.widgets
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        INFOPLIST_FILE: StreamifyWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: StreamifyWidgets/StreamifyWidgets.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: "YES"
+        SWIFT_EMIT_LOC_STRINGS: "NO"
+    dependencies:
+      - package: StreamifyIOS
+
+schemes:
+  StreamifyHost:
+    build:
+      targets:
+        StreamifyHost: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    archive:
+      config: Release
