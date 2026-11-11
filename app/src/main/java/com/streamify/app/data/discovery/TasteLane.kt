@@ -384,7 +384,7 @@ private class NativeTasteBackend private constructor(
             hourOfDay,
             targetCount,
             r.buildProfile(profile)
-        ) as List<*>
+        ) as? List<*> ?: return@ready emptyList()
         raw.map { r.readNeuroRow(it!!) }
     } ?: emptyList()
 
@@ -402,7 +402,7 @@ private class NativeTasteBackend private constructor(
             hourOfDay,
             targetCount,
             r.buildProfile(profile)
-        ) as List<*>
+        ) as? List<*> ?: return@ready emptyList()
         raw.map { r.readNeuroRow(it!!) }
     } ?: emptyList()
 
@@ -416,7 +416,7 @@ private class NativeTasteBackend private constructor(
             candidates.map { r.buildBlendCandidate(it) },
             seeds.map { r.buildBlendSeed(it) },
             nowMs
-        )
+        ) ?: return@ready emptyList()
         val ranked = (Reflect.field(raw, "ranked") as? List<*>).orEmpty()
         ranked.map { row ->
             TasteLane.BlendRowKt(
@@ -436,7 +436,7 @@ private class NativeTasteBackend private constructor(
 
     override fun computeAcousticEmbedding(interleavedStereoF32Le: ByteArray): TasteLane.EmbeddingSummary? =
         ready("computeAcousticEmbedding") { e, r ->
-            val raw = r.computeEmbedding.invoke(e, interleavedStereoF32Le)
+            val raw = r.computeEmbedding.invoke(e, interleavedStereoF32Le) ?: return@ready null
             TasteLane.EmbeddingSummary(
                 version = Reflect.num(raw, "version").toInt(),
                 bpm = Reflect.num(raw, "bpm").toFloat(),
@@ -572,15 +572,15 @@ private class NativeTasteBackend private constructor(
 
             /** Non-null typed readers (the generated records always carry
              *  these fields; tolerant defaults keep a template drift from
-             *  crashing the lane). */
-            fun str(target: Any, property: String): String =
-                field(target, property) as? String ?: ""
+             *  crashing the lane). Nullable targets read as defaults. */
+            fun str(target: Any?, property: String): String =
+                target?.let { field(it, property) as? String } ?: ""
 
-            fun num(target: Any, property: String): Number =
-                field(target, property) as? Number ?: 0
+            fun num(target: Any?, property: String): Number =
+                target?.let { field(it, property) as? Number } ?: 0
 
-            fun bool(target: Any, property: String): Boolean =
-                field(target, property) as? Boolean ?: false
+            fun bool(target: Any?, property: String): Boolean =
+                target?.let { field(it, property) as? Boolean } ?: false
         }
     }
 }
