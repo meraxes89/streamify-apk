@@ -17,11 +17,12 @@ import kotlinx.coroutines.withContext
  * Daylist v2 lane, and the D5 group blend with "N others like this" badges.
  *
  * Mirrors [com.streamify.app.data.uniffi.StreamifyEngineBridge]'s backend
- * seam: the raw generated UniFFI proxies (package `uniffi.streamify`) never
- * leak past this object. Callers get Kotlin-native DTOs, [Result]-shaped
- * semantics that degrade to empty outputs when the native lane is absent
- * (JVM unit tests, stubbed devices), and a swappable [TasteBackend] for
- * hermetic tests.
+ * seam — including its REFLECTION dispatch onto the generated
+ * `uniffi.streamify` proxies: every environment that compiles without the
+ * generated sources (hermetic JVM shards, the CodeQL tracing build —
+ * `generateUniffiKotlinBindings` skipped ⇒ `uniffi.*` classes never exist
+ * at compile time) keeps an identical binary. Real builds light the
+ * dispatch up with zero further app changes.
  *
  * YouTube remains the ONLINE "Main Brain" (ContinuumRadioEngine crawls it);
  * this lane is the local intelligence that takes over offline and during
@@ -139,6 +140,23 @@ object TasteLane {
         val othersCount: Int get() = (overlapMembers - 1).coerceAtLeast(0)
     }
 
+    /** The D2 embedding headline scalars (see the v1 schema doc). */
+    data class EmbeddingSummary(
+        val version: Int,
+        val bpm: Float,
+        val camelotNumber: Int,
+        val camelotLetter: Int,
+        val integratedLufs: Float,
+        val danceability: Float
+    ) {
+        /** Human-readable one-liner (the ingest log line). */
+        override fun toString(): String {
+            val letter = if (camelotLetter == 0) "A" else "B"
+            return "v$version bpm=${bpm.toInt()} key=$camelotNumber$letter " +
+                "lufs=${"%.1f".format(integratedLufs)} dance=${"%.2f".format(danceability)}"
+        }
+    }
+
     /** The swappable engine seam (production native vs hermetic mock). */
     interface TasteBackend {
         val availability: Availability
@@ -165,6 +183,10 @@ object TasteLane {
             seeds: List<BlendSeedKt>,
             nowMs: Long
         ): List<BlendRowKt>
+
+        /** D2: run the embedding producer (null when unsupported). */
+        fun computeAcousticEmbedding(interleavedStereoF32Le: ByteArray): EmbeddingSummary? =
+            null
     }
 
     // ── Backend lifecycle ──────────────────────────────────────────────────
@@ -179,7 +201,7 @@ object TasteLane {
         val current = backendRef.get()
         if (current != null) return current
         val native = try {
-            NativeTasteBackend()
+            NativeTasteBackend.create()
         } catch (t: Throwable) {
             // The generated proxies are not on the classpath or the
             // engine .so is not linkable — degrade, never crash.
@@ -249,17 +271,11 @@ object TasteLane {
         emptyList()
     }
 
-    /** The D2 embedding producer over canonical 48 kHz stereo PCM (LE bytes). */
-    suspend fun computeAcousticEmbedding(interleavedStereoF32Le: ByteArray): String? =
+    /** D2: the embedding producer over canonical 48 kHz stereo PCM (LE bytes). */
+    suspend fun computeAcousticEmbedding(interleavedStereoF32Le: ByteArray): EmbeddingSummary? =
         withContext(Dispatchers.Default) {
             try {
-                val native = backend() as? NativeTasteBackend
-                    ?: return@withContext null
-                native.computeAcousticEmbedding(interleavedStereoF32Le)?.let { e ->
-                    val letter = if (e.camelotLetter == 0u) "A" else "B"
-                    "v${e.version} bpm=${e.bpm.toInt()} " +
-                        "key=${e.camelotNumber}$letter lufs=${e.integratedLufs}"
-                }
+                backend().computeAcousticEmbedding(interleavedStereoF32Le)
             } catch (t: Throwable) {
                 SLog.st("TasteLane", "computeAcousticEmbedding degraded", t)
                 null
@@ -306,87 +322,49 @@ fun TasteLane.TasteRow.toTrack(sourceTag: String = "taste_engine"): Track = Trac
     reason = reason
 )
 
-/** The native UniFFI backend — the ONLY place `uniffi.streamify` leaks into. */
-private class NativeTasteBackend : TasteLane.TasteBackend {
+// ── The reflective native backend ─────────────────────────────────────────
 
-    private val engine: uniffi.streamify.TasteEngine
+/**
+ * The native UniFFI backend — the ONLY place the generated
+ * `uniffi.streamify` proxies are touched, and only via REFLECTION (the
+ * StreamifyEngineBridge seam: environments that compile without the
+ * bindgen output keep an identical binary). Kotlin unsigned params
+ * (`UByte`/`UInt`/`ULong`) erase to `byte`/`int`/`long` in the JVM
+ * signatures — [Reflect.adapt] bridges the values, and record fields are
+ * read through their public getters/backing fields.
+ */
+private class NativeTasteBackend private constructor(
+    private val engine: Any?,
+    private val reflect: Reflect?
+) : TasteLane.TasteBackend {
 
-    init {
-        // Class-load + native-link probe: a missing bindgen artifact or
-        // unlinked .so fails HERE, flipping the lane to degraded.
-        engine = uniffi.streamify.TasteEngine()
+    companion object {
+        /** Generated proxy class for the UDL `TasteEngine` interface. */
+        private const val PROXY_CLASS = "uniffi.streamify.TasteEngine"
+
+        fun create(): NativeTasteBackend = try {
+            val cls = Class.forName(PROXY_CLASS)
+            val engine = cls.getDeclaredConstructor().newInstance()
+            NativeTasteBackend(engine, Reflect(cls))
+        } catch (_: Throwable) {
+            NativeTasteBackend(null, null)
+        }
     }
 
     override val availability: TasteLane.Availability
-        get() = TasteLane.Availability.READY
+        get() = if (engine != null && reflect != null) TasteLane.Availability.READY
+        else TasteLane.Availability.NATIVE_UNAVAILABLE
 
-    private fun mapState(state: TasteLane.BrainStateKt) = when (state) {
-        TasteLane.BrainStateKt.FLOW -> uniffi.streamify.BrainState.FLOW
-        TasteLane.BrainStateKt.DISTRESS -> uniffi.streamify.BrainState.DISTRESS
-        TasteLane.BrainStateKt.HYPNOSIS -> uniffi.streamify.BrainState.HYPNOSIS
-        TasteLane.BrainStateKt.IMPATIENCE -> uniffi.streamify.BrainState.IMPATIENCE
-        TasteLane.BrainStateKt.OBSESSION -> uniffi.streamify.BrainState.OBSESSION
+    private fun <T> ready(op: String, body: (Any, Reflect) -> T): T? {
+        val e = engine ?: return degraded(op)
+        val r = reflect ?: return degraded(op)
+        return body(e, r)
     }
 
-    private fun mapVector(v: TasteLane.DaypartVectorKt) = uniffi.streamify.DaypartVector(
-        bpmTarget = v.bpmTarget,
-        energyTarget = v.energyTarget,
-        brightnessTarget = v.brightnessTarget,
-        freshnessBias = v.freshnessBias
-    )
-
-    private fun mapProfile(p: TasteLane.CircadianProfileKt) = uniffi.streamify.CircadianProfile(
-        morning = mapVector(p.morning),
-        afternoon = mapVector(p.afternoon),
-        evening = mapVector(p.evening),
-        lateNight = mapVector(p.lateNight)
-    )
-
-    private fun mapTrack(t: TasteLane.TasteTrack) = uniffi.streamify.NeuroCandidate(
-        id = t.id,
-        title = t.title,
-        artist = t.artist,
-        album = t.album,
-        source = t.source.toUByte(),
-        bpm = t.bpm,
-        key = t.key,
-        energy = t.energy,
-        valence = t.valence,
-        acousticSim = t.acousticSim,
-        userAffinity = t.userAffinity,
-        lastPlayedSec = t.lastPlayedSec.toULong(),
-        excludedFromTaste = t.excludedFromTaste
-    )
-
-    private fun mapRow(r: uniffi.streamify.NeuroQueueRow) = TasteLane.TasteRow(
-        track = TasteLane.TasteTrack(
-            id = r.candidate.id,
-            title = r.candidate.title,
-            artist = r.candidate.artist,
-            album = r.candidate.album,
-            source = r.candidate.source.toInt(),
-            bpm = r.candidate.bpm,
-            key = r.candidate.key,
-            energy = r.candidate.energy,
-            valence = r.candidate.valence,
-            acousticSim = r.candidate.acousticSim,
-            userAffinity = r.candidate.userAffinity,
-            lastPlayedSec = r.candidate.lastPlayedSec.toLong(),
-            excludedFromTaste = r.candidate.excludedFromTaste
-        ),
-        score = r.score,
-        breakdown = TasteLane.TasteBreakdown(
-            base = r.breakdown.base,
-            satiationPenalty = r.breakdown.satiationPenalty,
-            harmonicBonus = r.breakdown.harmonicBonus,
-            circadianBonus = r.breakdown.circadianBonus,
-            tempoDriftPenalty = r.breakdown.tempoDriftPenalty,
-            bpmDistance = r.breakdown.bpmDistance,
-            camelotDistance = r.breakdown.camelotDistance,
-            freshness = r.breakdown.freshness
-        ),
-        reason = r.reason
-    )
+    private fun <T> degraded(op: String): T? {
+        SLog.w("TasteLane", "$op: native taste engine not wired")
+        return null
+    }
 
     override fun generateRadioQueue(
         seed: TasteLane.TasteTrack,
@@ -396,15 +374,19 @@ private class NativeTasteBackend : TasteLane.TasteBackend {
         hourOfDay: Int,
         targetCount: Int,
         profile: TasteLane.CircadianProfileKt
-    ): List<TasteLane.TasteRow> = engine.generateRadioQueue(
-        seed = mapTrack(seed),
-        candidates = candidates.map { mapTrack(it) },
-        brainState = mapState(state),
-        nowSec = nowSec.toULong(),
-        hourOfDay = hourOfDay.toUInt(),
-        targetCount = targetCount.toUInt(),
-        profile = mapProfile(profile)
-    ).map { mapRow(it) }
+    ): List<TasteLane.TasteRow> = ready("generateRadioQueue") { e, r ->
+        val raw = r.generateRadioQueue.invoke(
+            e,
+            r.buildNeuroCandidate(seed),
+            candidates.map { r.buildNeuroCandidate(it) },
+            r.brainState(state),
+            nowSec,
+            hourOfDay,
+            targetCount,
+            r.buildProfile(profile)
+        ) as List<*>
+        raw.map { r.readNeuroRow(it!!) }
+    } ?: emptyList()
 
     override fun generateDaylist(
         candidates: List<TasteLane.TasteTrack>,
@@ -412,64 +394,181 @@ private class NativeTasteBackend : TasteLane.TasteBackend {
         hourOfDay: Int,
         targetCount: Int,
         profile: TasteLane.CircadianProfileKt
-    ): List<TasteLane.TasteRow> = engine.generateDaylist(
-        candidates = candidates.map { mapTrack(it) },
-        nowSec = nowSec.toULong(),
-        hourOfDay = hourOfDay.toUInt(),
-        targetCount = targetCount.toUInt(),
-        profile = mapProfile(profile)
-    ).map { mapRow(it) }
+    ): List<TasteLane.TasteRow> = ready("generateDaylist") { e, r ->
+        val raw = r.generateDaylist.invoke(
+            e,
+            candidates.map { r.buildNeuroCandidate(it) },
+            nowSec,
+            hourOfDay,
+            targetCount,
+            r.buildProfile(profile)
+        ) as List<*>
+        raw.map { r.readNeuroRow(it!!) }
+    } ?: emptyList()
 
     override fun scoreGroupBlend(
         candidates: List<TasteLane.BlendTrackKt>,
         seeds: List<TasteLane.BlendSeedKt>,
         nowMs: Long
-    ): List<TasteLane.BlendRowKt> {
-        val result = engine.scoreGroupBlend(
-            candidates = candidates.map { c ->
-                uniffi.streamify.BlendCandidate(
-                    id = c.id,
-                    title = c.title,
-                    artist = c.artist,
-                    album = c.album,
-                    durationSec = c.durationSec,
-                    bpm = c.bpm,
-                    key = c.key,
-                    genres = c.genres,
-                    addedAtMs = c.addedAtMs,
-                    coOccurrenceCount = c.coOccurrenceCount.toUInt(),
-                    excludedFromTaste = c.excludedFromTaste
-                )
-            },
-            seeds = seeds.map { s ->
-                uniffi.streamify.BlendMemberSeed(
-                    memberId = s.memberId,
-                    artists = s.artists,
-                    genres = s.genres,
-                    recentTracks = s.recentTracks.map { (title, artist) ->
-                        uniffi.streamify.BlendRecentTrack(title = title, artist = artist)
-                    }
-                )
-            },
-            nowMs = nowMs
+    ): List<TasteLane.BlendRowKt> = ready("scoreGroupBlend") { e, r ->
+        val raw = r.scoreGroupBlend.invoke(
+            e,
+            candidates.map { r.buildBlendCandidate(it) },
+            seeds.map { r.buildBlendSeed(it) },
+            nowMs
         )
-        return result.ranked.map { r ->
+        val ranked = Reflect.field(raw, "ranked") as List<*>
+        ranked.map { row ->
             TasteLane.BlendRowKt(
-                id = r.id,
-                title = r.title,
-                artist = r.artist,
-                score = r.score,
-                overlapMembers = r.overlapMembers.toInt(),
-                mutualBlend = r.mutualBlend,
-                memberMatches = r.memberMatches,
-                reason = r.reason
+                id = (Reflect.field(row!!, "id") as Number).toLong(),
+                title = Reflect.field(row, "title") as String,
+                artist = Reflect.field(row, "artist") as String,
+                score = (Reflect.field(row, "score") as Number).toFloat(),
+                overlapMembers = (Reflect.field(row, "overlapMembers") as Number).toInt(),
+                mutualBlend = Reflect.field(row, "mutualBlend") as Boolean,
+                memberMatches = (Reflect.field(row, "memberMatches") as List<*>)
+                    .mapNotNull { it?.toString() },
+                reason = (Reflect.field(row, "reason") as? String).orEmpty()
             )
         }
-    }
+    } ?: emptyList()
 
-    /** D2: the raw embedding record (headline scalars). */
-    fun computeAcousticEmbedding(interleavedStereoF32Le: ByteArray): uniffi.streamify.AcousticEmbedding? =
-        engine.computeAcousticEmbedding(interleavedStereoF32Le)
+    override fun computeAcousticEmbedding(interleavedStereoF32Le: ByteArray): TasteLane.EmbeddingSummary? =
+        ready("computeAcousticEmbedding") { e, r ->
+            val raw = r.computeEmbedding.invoke(e, interleavedStereoF32Le)
+            TasteLane.EmbeddingSummary(
+                version = (Reflect.field(raw, "version") as Number).toInt(),
+                bpm = (Reflect.field(raw, "bpm") as Number).toFloat(),
+                camelotNumber = (Reflect.field(raw, "camelotNumber") as Number).toInt(),
+                camelotLetter = (Reflect.field(raw, "camelotLetter") as Number).toInt(),
+                integratedLufs = (Reflect.field(raw, "integratedLufs") as Number).toFloat(),
+                danceability = (Reflect.field(raw, "danceability") as Number).toFloat()
+            )
+        }
+
+    /** One resolved method set + the record builders/readers. */
+    private class Reflect(cls: Class<*>) {
+        private val neuroCandidateClass = Class.forName("uniffi.streamify.NeuroCandidate")
+        private val brainStateClass = Class.forName("uniffi.streamify.BrainState")
+        private val daypartClass = Class.forName("uniffi.streamify.DaypartVector")
+        private val profileClass = Class.forName("uniffi.streamify.CircadianProfile")
+        private val blendCandidateClass = Class.forName("uniffi.streamify.BlendCandidate")
+        private val blendSeedClass = Class.forName("uniffi.streamify.BlendMemberSeed")
+        private val blendRecentClass = Class.forName("uniffi.streamify.BlendRecentTrack")
+
+        // Kotlin mangles the JVM names of functions whose signatures
+        // carry value classes (UByte/UInt/ULong -> `name-<hash>`), so
+        // methods resolve by name PREFIX + arity — tolerant to both
+        // the mangled and unmangled shapes across Kotlin versions.
+        val generateRadioQueue = findMethod(cls, "generateRadioQueue", 7)
+        val generateDaylist = findMethod(cls, "generateDaylist", 5)
+        val scoreGroupBlend = findMethod(cls, "scoreGroupBlend", 3)
+        val computeEmbedding = findMethod(cls, "computeAcousticEmbedding", 1)
+
+        /** UDL `u64`/`u32` params erase to long/int in the JVM signature. */
+        fun brainState(state: TasteLane.BrainStateKt): Any =
+            brainStateClass.enumConstants.first { it.toString() == state.name }
+
+        fun buildNeuroCandidate(t: TasteLane.TasteTrack): Any = construct(
+            neuroCandidateClass,
+            t.id, t.title, t.artist, t.album,
+            t.source, t.bpm, t.key, t.energy, t.valence,
+            t.acousticSim, t.userAffinity, t.lastPlayedSec, t.excludedFromTaste
+        )
+
+        fun buildProfile(p: TasteLane.CircadianProfileKt): Any {
+            fun vec(v: TasteLane.DaypartVectorKt) =
+                construct(daypartClass, v.bpmTarget, v.energyTarget, v.brightnessTarget, v.freshnessBias)
+            return construct(profileClass, vec(p.morning), vec(p.afternoon), vec(p.evening), vec(p.lateNight))
+        }
+
+        fun buildBlendCandidate(c: TasteLane.BlendTrackKt): Any = construct(
+            blendCandidateClass,
+            c.id, c.title, c.artist, c.album, c.durationSec, c.bpm, c.key,
+            c.genres, c.addedAtMs, c.coOccurrenceCount, c.excludedFromTaste
+        )
+
+        fun buildBlendSeed(s: TasteLane.BlendSeedKt): Any = construct(
+            blendSeedClass,
+            s.memberId, s.artists, s.genres,
+            s.recentTracks.map { (title, artist) -> construct(blendRecentClass, title, artist) }
+        )
+
+        fun readNeuroRow(row: Any): TasteLane.TasteRow {
+            val candidate = field(row, "candidate")
+            val breakdown = field(row, "breakdown")
+            return TasteLane.TasteRow(
+                track = TasteLane.TasteTrack(
+                    id = field(candidate, "id") as String,
+                    title = field(candidate, "title") as String,
+                    artist = field(candidate, "artist") as String,
+                    album = (field(candidate, "album") as? String).orEmpty(),
+                    source = (field(candidate, "source") as Number).toInt(),
+                    bpm = (field(candidate, "bpm") as Number).toFloat(),
+                    key = field(candidate, "key") as String,
+                    energy = (field(candidate, "energy") as Number).toFloat(),
+                    valence = (field(candidate, "valence") as Number).toFloat(),
+                    acousticSim = (field(candidate, "acousticSim") as Number).toFloat(),
+                    userAffinity = (field(candidate, "userAffinity") as Number).toFloat(),
+                    lastPlayedSec = (field(candidate, "lastPlayedSec") as Number).toLong(),
+                    excludedFromTaste = field(candidate, "excludedFromTaste") as Boolean
+                ),
+                score = (field(row, "score") as Number).toFloat(),
+                breakdown = TasteLane.TasteBreakdown(
+                    base = (field(breakdown, "base") as Number).toFloat(),
+                    satiationPenalty = (field(breakdown, "satiationPenalty") as Number).toFloat(),
+                    harmonicBonus = (field(breakdown, "harmonicBonus") as Number).toFloat(),
+                    circadianBonus = (field(breakdown, "circadianBonus") as Number).toFloat(),
+                    tempoDriftPenalty = (field(breakdown, "tempoDriftPenalty") as Number).toFloat(),
+                    bpmDistance = (field(breakdown, "bpmDistance") as Number).toFloat(),
+                    camelotDistance = (field(breakdown, "camelotDistance") as Number).toInt(),
+                    freshness = (field(breakdown, "freshness") as Number).toFloat()
+                ),
+                reason = (field(row, "reason") as? String).orEmpty()
+            )
+        }
+
+        /** Resolve one method by name prefix + parameter count (Kotlin
+         *  value-class mangling tolerance — see the class docs). */
+        private fun findMethod(cls: Class<*>, name: String, params: Int): java.lang.reflect.Method =
+            cls.methods.firstOrNull {
+                it.name == name && it.parameterCount == params
+            } ?: cls.methods.firstOrNull {
+                it.name.startsWith("$name-") && it.parameterCount == params
+            } ?: throw NoSuchMethodException("${cls.name}.$name/$params")
+
+        /** Construct a generated record, adapting numeric args to the
+         *  erased JVM parameter types (UByte→byte, UInt→int, ULong→long). */
+        private fun construct(clazz: Class<*>, vararg args: Any?): Any {
+            val ctor = clazz.constructors.first { it.parameterCount == args.size }
+            val adapted = ctor.parameterTypes.mapIndexed { i, type -> adapt(args[i], type) }
+            return ctor.newInstance(*adapted.toTypedArray())
+        }
+
+        private fun adapt(value: Any?, type: Class<*>): Any? = when {
+            value is Number && type == Byte::class.javaPrimitiveType -> value.toByte()
+            value is Number && type == Int::class.javaPrimitiveType -> value.toInt()
+            value is Number && type == Long::class.javaPrimitiveType -> value.toLong()
+            value is Number && type == Float::class.javaPrimitiveType -> value.toFloat()
+            value is Number && type == Double::class.javaPrimitiveType -> value.toDouble()
+            value is Number && type == Short::class.javaPrimitiveType -> value.toShort()
+            else -> value
+        }
+
+        companion object {
+            /** Read a property off a generated record: getter first, then
+             *  the backing field (data-class fields are public finals). */
+            fun field(target: Any, property: String): Any? {
+                val getter = "get" + property.replaceFirstChar { it.uppercase() }
+                target.javaClass.methods.firstOrNull {
+                    it.name == getter && it.parameterCount == 0
+                }?.let { return it.invoke(target) }
+                val f = target.javaClass.getDeclaredField(property)
+                f.isAccessible = true
+                return f.get(target)
+            }
+        }
+    }
 }
 
 /** The degraded fallback: every lane operation yields empty results. */

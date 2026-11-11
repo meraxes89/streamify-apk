@@ -1548,7 +1548,7 @@ private fun JamBlendShelf(
                         Text(
                             text = row.title,
                             style = LocalAppTypography.current.songTitle.copy(fontSize = 14.sp),
-                            color = TextPrimary,
+                            color = TextMain,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
