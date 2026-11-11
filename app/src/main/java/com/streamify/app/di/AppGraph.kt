@@ -44,7 +44,7 @@ object AppGraph {
      * 0) SLog (everything after it logs through the facade),
      * 1) fleet config + HTTP tracing,
      * 2) repositories + telemetry,
-     * 3) native DB (async), vector store + ONNX (async, off cold-start path),
+     * 3) native DB (async), vector store (async, off cold-start path),
      * 4) device/remote services,
      * 5) authenticated YouTube resolution.
      */
@@ -140,9 +140,8 @@ object AppGraph {
             com.streamify.app.util.SLog.e("StreamifyApp", "Failed to schedule NativeBridge Database init", e)
         }
 
-        // 3+4. COLD-START BUDGET: vector-store mmap and the multi-MB ONNX
-        // asset copy + native session creation are NOT needed for the first
-        // frame. Deferring them off the main thread removes 0.5–3s of frozen
+        // 3+4. COLD-START BUDGET: vector-store mmap is NOT needed for the first
+        // frame. Deferring it off the main thread removes 0.5–3s of frozen
         // window on eMMC-class devices.
         applicationScope.launch {
             // 3. Ensure files directory exists for VectorStore

@@ -45,9 +45,8 @@ streamify-apk/
 ├── rust/            Rust I/O & auth engine    (libstreamify_core_rs.so)
 ├── supabase/        backend schema + migrations
 ├── scripts/ tools/  verification probes & fleet ops
-├── docs/            engine deep-dives + guides (ARCHITECTURE, CODEBASE_GUIDE,
-│                   ADD_A_FEATURE, CI-TESTING-GUIDE, history/)
-└── legacy/          archived pre-Supabase code — NOT built, bit-frozen
+└── docs/            engine deep-dives + guides (ARCHITECTURE, CODEBASE_GUIDE,
+                    ADD_A_FEATURE, CI-TESTING-GUIDE, history/)
 ```
 
 Pinned contracts (do not move/rename): `data/models/` + `ui/models/`

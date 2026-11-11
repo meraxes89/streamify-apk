@@ -1,5 +1,9 @@
 # 🧠 NEURAL ML, CLAP ONNX EMBEDDINGS & CONTINUUM RADIO ENGINE — Engineering Documentation
 
+> **⚠️ Historical design doc.** The CLAP/ONNX 512-D path described below was retired. The shipping taste lane is the
+> pure-Rust, zero-ML WS-D engine (#156) — see `docs/architecture/acoustic_embedding_contract_v1.md`. The vendored
+> ONNX stub and the legacy server were removed in #157 (preserved on the `archive/legacy` branch).
+
 > **Streamify's continuous music recommendation, acoustic vector indexing, and psychological queue synthesis system.**
 > A cross-layer intelligence engine living across Kotlin, C++, and Rust — combining 512-dimensional CLAP ONNX acoustic
 > embeddings, multi-order Markov transition probability chains with Dirichlet smoothing, kinetic momentum vector anchoring,

@@ -24,7 +24,6 @@ rust/                                 Rust core engines (CRDT, mesh, tagging, cl
 supabase/                             Optional backend: schemas, RPCs, RLS
 docs/                                 Engine manuals + onboarding guides (source of truth)
 .github/workflows/                    CI: ci.yml (hub, Tier 1–3 gate), _ci-engine/_ci-android/_ci-desktop/_ci-ios (Tier-2 spokes), nightly-deep-matrix, resolver-canary, release, build-ref, codeql (advisory)
-legacy/                               Archived pre-rewrite code — do not extend; reference only
 ```
 
 Three languages, one product. The **boundaries matter more than the interiors**: JNI exports must match `external fun` declarations 1:1; Jam wire bytes must be bit-identical between the Kotlin (`app/src/main/java/com/streamify/app/jam/JamOpWire.kt`) and Rust (`rust/crates/streamify-jam/src/jam_crdt.rs`) stacks. If you change an interface, change both sides and their tests in the same PR.
