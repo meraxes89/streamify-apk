@@ -51,11 +51,11 @@ object DesktopHalBridge {
     /** Crate/module name — JNA maps it per platform (.dll/.so/.dylib). */
     const val HAL_LIBRARY = "streamify_desktop_hal"
 
-    /** Explicit-override system property (resolved before env/JNA paths). */
-    private const val HAL_DIR_PROPERTY = "streamify.desktop.hal.dir"
+    /** Explicit-override system property (resolved before env/JNA paths). Public: the smoke suite pins the lane-hint contract on the same names. */
+    const val HAL_DIR_PROPERTY = "streamify.desktop.hal.dir"
 
-    /** CI/local environment variable carrying the module's directory. */
-    private const val HAL_DIR_ENV = "STREAMIFY_DESKTOP_HAL_DIR"
+    /** CI/local environment variable carrying the module's directory. Public: same reason as [HAL_DIR_PROPERTY]. */
+    const val HAL_DIR_ENV = "STREAMIFY_DESKTOP_HAL_DIR"
 
     /**
      * The C ABI (native/include/desktop_hal.h) — JNA direct mapping.

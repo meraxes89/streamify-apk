@@ -1,6 +1,8 @@
 package com.streamify.desktop.engine
 
 import com.sun.jna.NativeLibrary
+import com.streamify.desktop.engine.DesktopHalBridge.HAL_DIR_ENV
+import com.streamify.desktop.engine.DesktopHalBridge.HAL_DIR_PROPERTY
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -196,18 +198,40 @@ class DesktopJnaEngineSmokeTest {
      *   cooperative flush (silence quantum, no underrun counted) →
      *   destroy (stale-handle degradation, idempotent).
      *
-     * Soft-skips when the module is absent (hermetic hosts) — the same
-     * degradation contract as the engine lane above.
+     * Degradation contract: soft-skips via assumption ONLY on hermetic
+     * hosts (no lane hint — the macOS Apple lane, toolchain-less local
+     * runs). When a lane hint IS present (`streamify.desktop.hal.dir`
+     * system property or `STREAMIFY_DESKTOP_HAL_DIR` env — the desktop
+     * CI legs export the latter after building the module), a null probe
+     * FAILS: the lane has declared the module exists, so an unresolvable
+     * path (relative dir resolved against the test JVM's module cwd, an
+     * MSYS /d/... form a Windows JVM cannot see, a missing dll) is a
+     * wiring regression, and a silent skip would fake the C5 green —
+     * exactly how the first WS-C desktop pass slipped through with the
+     * round-trip skipped on BOTH legs.
      */
     @Test
     fun desktopHalSinkRoundTrip() {
         val hal = DesktopHalBridge.probe()
-        assumeTrue(
-            "desktop HAL module '${DesktopHalBridge.HAL_LIBRARY}' not " +
-                "resolvable (build it with cmake, or set " +
-                "STREAMIFY_DESKTOP_HAL_DIR) — skipping the C5 round-trip",
-            hal != null,
-        )
+        val laneHintPresent =
+            !System.getProperty(HAL_DIR_PROPERTY).isNullOrBlank() ||
+                !System.getenv(HAL_DIR_ENV).isNullOrBlank()
+        if (laneHintPresent) {
+            assertNotNull(
+                "a lane hint ($HAL_DIR_PROPERTY / $HAL_DIR_ENV) says the desktop HAL module " +
+                    "'${DesktopHalBridge.HAL_LIBRARY}' was built, but JNA could not resolve it — " +
+                    "the C5 round-trip must not silently skip on a lane that pins the module " +
+                    "(check the exported dir is absolute and, on Windows, in the D:/... mixed form)",
+                hal,
+            )
+        } else {
+            assumeTrue(
+                "desktop HAL module '${DesktopHalBridge.HAL_LIBRARY}' not " +
+                    "resolvable (build it with cmake, or set " +
+                    "STREAMIFY_DESKTOP_HAL_DIR) — skipping the C5 round-trip",
+                hal != null,
+            )
+        }
         val api = hal!!
 
         // ── 1. create: valid geometry mints a positive registry handle ───

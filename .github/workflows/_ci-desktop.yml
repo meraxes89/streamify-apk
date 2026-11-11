@@ -122,19 +122,35 @@ jobs:
       # ── WS-C (C5): build the desktop HAL module (sink registry C ABI +
       #    the platform pull-adapter facades) so the JNA smoke lane can
       #    round-trip the frozen sink contract through the REAL .so/.dll.
-      #    Ninja on Linux, the VS generator on Windows (no vcvars needed
-      #    from bash); ~1 min on the cached lanes.
+      #    Ninja on Linux; on Windows CMake's DEFAULT generator (the newest
+      #    installed Visual Studio — no version pin, no vcvars needed from
+      #    bash), the same unpinned contract as the C4 windows-native rot
+      #    guard: windows-latest now resolves to the windows-2025-vs2026
+      #    image (VS 2026 only), and a hardcoded -G "Visual Studio 17 2022"
+      #    aborts at configure with "could not find any instance of Visual
+      #    Studio". ~1 min on the cached lanes.
+      #
+      #    STREAMIFY_DESKTOP_HAL_DIR must be ABSOLUTE (the Gradle test JVM
+      #    resolves JNA search paths against ITS working directory — the
+      #    :desktop module dir — so a relative path makes the C5 round-trip
+      #    silently skip via the assumeTrue hermetic degradation; that is
+      #    exactly how the first WS-C pass faked its Linux green) and, on
+      #    Windows, in the mixed drive-letter form (D:/a/...) — the MSYS
+      #    POSIX form (/d/a/...) is invisible to a Windows JVM. cygpath -m
+      #    "$PWD" emits the mixed form; $PWD already carries the workspace
+      #    root on both legs.
       - name: Build the desktop HAL library (WS-C C5)
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cmake -B native/build-hal -S native -G "Visual Studio 17 2022" -A x64
+            cmake -B native/build-hal -S native -A x64
             cmake --build native/build-hal --config Release --target streamify_desktop_hal
-            HAL_DIR="$(cygpath -u "$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)" | xargs dirname)"
+            HAL_DLL="$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)"
+            HAL_DIR="$(dirname "$(cygpath -m "$PWD")/$HAL_DLL")"
           else
             cmake -B native/build-hal -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
             cmake --build native/build-hal --target streamify_desktop_hal
-            HAL_DIR="$(dirname "$(find native/build-hal -name 'libstreamify_desktop_hal.so' -print -quit)")"
+            HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.so' -print -quit)")"
           fi
           echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
           echo "desktop HAL module at: $HAL_DIR"
