@@ -51,7 +51,7 @@ final class AcousticEmbeddingContractTests: XCTestCase {
         010000000000f8420000004100000000333363c100001841cdcccc3dcdcc4c3e9a99993ecdcccc3e0000003f9a99193f3333333fcdcc4c3f6766663f0000803f9a991940ec51383eec51b83dae47613eae47e13e00006040ec51383f295c4f3fd7a3303fe17a143f52b81e3fd7a3f03e00000000e1e0e03ce1e0603da9a8a83de1e0e03d8d8c0c3ea9a8283ec5c4443ee1e0603efdfc7c3e8d8c8c3e9b9a9a3ea9a8a83eb7b6b63ec5c4c43ed3d2d23ee1e0e03eefeeee3efdfcfc3e8685053f8d8c0c3f9493133f9b9a1a3fa2a1213fa9a8283fb0af2f3fb7b6363fbebd3d3fc5c4443fcccb4b3fd3d2523fdad9593fe1e0603fe8e7673fefee6e3ff6f5753f8180803b8180003df1f0703db1b0b03de9e8e83d9190103eadac2c3ec9c8483ee5e4643e8180803e8f8e8e3e9d9c9c3eabaaaa3eb9b8b83ec7c6c63ed5d4d43ee3e2e23ef1f0f03efffefe3e8786063f8e8d0d3f9594143f9c9b1b3fa3a2223faaa9293fb1b0303fb8b7373fbfbe3e3f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000803f
         """
 
-    private static func decodeHex(_ hex: String) -> [UInt8] {
+    private func decodeHex(_ hex: String) -> [UInt8] {
         var out = [UInt8]()
         out.reserveCapacity(hex.count / 2)
         var iter = hex.makeIterator()
@@ -62,7 +62,7 @@ final class AcousticEmbeddingContractTests: XCTestCase {
         return out
     }
 
-    private static func laneF32(_ bytes: [UInt8], _ lane: Int) -> Float {
+    private func laneF32(_ bytes: [UInt8], _ lane: Int) -> Float {
         let base = 4 + lane * 4
         var bits: UInt32 = 0
         for i in 0..<4 {
@@ -72,13 +72,13 @@ final class AcousticEmbeddingContractTests: XCTestCase {
     }
 
     func testWireGeometryIsExactlyFiveHundredSixteenBytes() {
-        let bytes = Self.decodeHex(Self.fixtureHex)
+        let bytes = decodeHex(Self.fixtureHex)
         XCTAssertEqual(bytes.count, Layout.wireBytes, "the v1 wire image is 516 bytes")
         XCTAssertEqual(Layout.wireBytes, 516)
     }
 
     func testVersionHeaderIsV1LittleEndian() {
-        let bytes = Self.decodeHex(Self.fixtureHex)
+        let bytes = decodeHex(Self.fixtureHex)
         XCTAssertEqual(bytes[0], 1, "version low byte")
         XCTAssertEqual(bytes[1], 0)
         XCTAssertEqual(bytes[2], 0)
@@ -86,7 +86,7 @@ final class AcousticEmbeddingContractTests: XCTestCase {
     }
 
     func testDocumentedLanesParseLayoutForLayout() {
-        let bytes = Self.decodeHex(Self.fixtureHex)
+        let bytes = decodeHex(Self.fixtureHex)
         // The reference values the Rust suite pins (reference_vector()).
         XCTAssertEqual(laneF32(bytes, Layout.bpm), 124.0, "lane 0 = BPM")
         XCTAssertEqual(laneF32(bytes, Layout.camelotNumber), 8.0, "lane 1 = Camelot number")
@@ -103,7 +103,7 @@ final class AcousticEmbeddingContractTests: XCTestCase {
     }
 
     func testSpectralAndWaveformBlocksCoverTheirRanges() {
-        let bytes = Self.decodeHex(Self.fixtureHex)
+        let bytes = decodeHex(Self.fixtureHex)
         // The 10-band block occupies [5, 15).
         for i in 0..<Layout.spectralBandCount {
             let v = laneF32(bytes, Layout.spectralBandFirst + i)
