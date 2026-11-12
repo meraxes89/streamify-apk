@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WS-W (web port) front-end Rust workspace — created in P0 (proof phase).
+#
+# Deliberately SEPARATE from ../rust (the frozen engine workspace) so the
+# wasm target graph never touches the engine's native-only build matrix
+# (tokio rt-multi-thread, reqwest rustls backend, rusqlite bundled, JNI).
+# The engine stays the source of truth: pure logic reused here is vendored
+# verbatim with provenance headers until P1 extracts it into a crate both
+# workspaces can share (engine change request — see front-end/decisions/).
+#
+# Build-matrix contract (mirror of the rust/ root covenant, wasm flavor):
+#   * `cargo check --manifest-path front-end/Cargo.toml --target wasm32-unknown-unknown`
+#   * `wasm-pack build front-end/crates/streamify-wasm --target web`
+#   * `cargo test --manifest-path front-end/Cargo.toml --target wasm32-unknown-unknown`
+#     (runner configured per-crate via .cargo/config.toml → wasm-bindgen-test-runner)
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Streamify Team"]
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.10"
+urlencoding = "2.1"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+wasm-bindgen-test = "0.3"
+
+# Lean browser artifact for the GitHub Pages bundle.
+[profile.release]
+opt-level = "s"
+lto = true

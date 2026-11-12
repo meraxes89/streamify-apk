@@ -1,0 +1,42 @@
+# streamify-wasm — WS-W P0 proof crate (W0.2 spike + W0.4 facade).
+[package]
+name = "streamify-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Streamify wasm-bindgen facade: innertube extraction for the web port (P0 proof)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Request",
+    "RequestInit",
+    "Headers",
+    "Response",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# regex is required by the vendored engine parser (innertube.rs, session-token
+# scan). urlencoding percent-encodes relay target URLs (pure Rust, wasm-clean).
+regex = { workspace = true }
+urlencoding = { workspace = true }
+
+# W0.2 SPIKE OUTCOME (2026-11, P0): the attempted
+#   rustypipe = { version = "0.11.4", default-features = false }
+# dependency is KILLED for wasm32-unknown-unknown — rquickjs-sys (QuickJS,
+# rustypipe's embedded deobfuscation engine) is an UNCONDITIONAL dependency
+# with no wasm32 bindings and no libc on this target. rustypipe's features
+# cannot exclude it. Full evidence + analysis:
+#   front-end/decisions/W0.2-spike-rustypipe-wasm32.md
+# The facade therefore rides the engine's own pure parsing core
+# (vendored src/innertube.rs — the production InnertubeParser path), which is
+# what the Tier-5 fleet extraction uses natively anyway.
+
+[dev-dependencies]
+wasm-bindgen-test = { workspace = true }

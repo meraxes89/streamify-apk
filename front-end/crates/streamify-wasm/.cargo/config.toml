@@ -1,0 +1,4 @@
+# wasm-bindgen-test drives in-browser tests through a WebDriver; CI runs
+# cargo test from this crate directory so this runner binding applies.
+[target.wasm32-unknown-unknown]
+runner = "wasm-bindgen-test-runner"
