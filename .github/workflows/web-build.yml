@@ -36,10 +36,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: front-end
-      - name: cargo check (wasm32-unknown-unknown)
+      - name: "cargo check (wasm32-unknown-unknown)"
         run: cargo check --target wasm32-unknown-unknown -p streamify-wasm
         working-directory: front-end
-      - name: AC - rquickjs must NOT appear in the wasm32 tree
+      - name: "AC — rquickjs must NOT appear in the wasm32 tree"
         run: |
           if cargo tree --target wasm32-unknown-unknown -p streamify-wasm -e normal | grep -q rquickjs; then
             echo "::error::rquickjs found in the wasm32 dependency tree — W0.2 acceptance violated"
@@ -52,7 +52,7 @@ jobs:
         working-directory: front-end
       - name: Install wasm-pack
         run: npm i -g wasm-pack@0.15.1
-      - name: wasm-pack build (web target, --no-opt: bundled wasm-opt rejects rustc bulk-memory ops)
+      - name: "wasm-pack build (web target, --no-opt — the bundled wasm-opt rejects rustc bulk-memory ops)"
         run: wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
         working-directory: front-end
       - uses: actions/upload-artifact@v4
@@ -79,7 +79,7 @@ jobs:
       # MUST match the wasm-bindgen version resolved in front-end/Cargo.lock
       # (0.2.130 as of W0.2). A mismatch fails at test time with a version
       # skew error — bump this pin together with the lockfile.
-      - name: Install wasm-bindgen-cli (pin matches Cargo.lock)
+      - name: "Install wasm-bindgen-cli (pin matches Cargo.lock)"
         run: cargo install wasm-bindgen-cli --version 0.2.130
       - uses: browser-actions/setup-chrome@v1
         id: chrome

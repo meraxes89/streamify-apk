@@ -56,6 +56,11 @@ jobs:
         run: npm run build -w web
         working-directory: front-end
       - uses: actions/configure-pages@v5
+        with:
+          # First deploy: create the Pages site if it is not enabled yet
+          # (the repo owner has already enabled it via the API — this keeps
+          # the workflow self-sufficient for fresh checkouts).
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: front-end/web/dist
