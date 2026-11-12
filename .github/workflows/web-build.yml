@@ -87,8 +87,8 @@ jobs:
           chrome-add-to-path: true
       - name: Expose chrome to wasm-bindgen-test-runner
         run: echo "CHROME_BIN=${{ steps.chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
-      - name: Run wasm-bindgen-test (ping must return pong)
-        run: cargo test -p streamify-wasm --target wasm32-unknown-unknown --headless
+      - name: "Run wasm-bindgen-test (ping must return pong)"
+        run: cargo test -p streamify-wasm --target wasm32-unknown-unknown -- --headless
         working-directory: front-end
 
   web:
@@ -104,11 +104,14 @@ jobs:
         with:
           name: streamify-wasm-pkg
           path: pkg
-      - name: Stage wasm pkg into web/src/wasm
+      - name: "Stage wasm pkg into web/src/wasm"
         run: |
-          cp pkg/streamify_wasm.js pkg/streamify_wasm.d.ts \
-             pkg/streamify_wasm_bg.wasm pkg/streamify_wasm_bg.wasm.d.ts \
-             web/src/wasm/
+          mkdir -p web/src/wasm
+          find pkg -type f \
+            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \
+               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \
+            -exec cp {} web/src/wasm/ \;
+          ls -la web/src/wasm/
         working-directory: front-end
       - name: Install deps
         run: npm install --no-fund --no-audit
