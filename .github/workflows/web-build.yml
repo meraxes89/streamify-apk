@@ -103,7 +103,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: streamify-wasm-pkg
-          path: pkg
+          # download-artifact paths are relative to the JOB workspace (repo
+          # root), not the step's working-directory — land it inside
+          # front-end so the staging find below sees it.
+          path: front-end/pkg
       - name: "Stage wasm pkg into web/src/wasm"
         run: |
           mkdir -p web/src/wasm
