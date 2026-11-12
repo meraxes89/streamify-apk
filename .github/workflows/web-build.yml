@@ -93,6 +93,15 @@ jobs:
         # front-end/.cargo/config.toml [target.wasm32-unknown-unknown].
         run: cargo test -p streamify-wasm --target wasm32-unknown-unknown
         working-directory: front-end
+      - name: "W1.7: golden-vector DSP parity (headless Chrome)"
+        # The frozen rust/crates/streamify-audio golden suite mirrored onto
+        # wasm32 (front-end/crates/streamify-golden-wasm): 5 canonical
+        # vectors through CanonicalSrc -> StudioEqualizer -> LufsNormalizer
+        # against the native reference fixture at eps=1e-5. The crate
+        # path-depends READ-ONLY into the frozen tree; the fixture is
+        # embedded via include_bytes! from the frozen path.
+        run: cargo test -p streamify-golden-wasm --target wasm32-unknown-unknown
+        working-directory: front-end
 
   web:
     name: web build (vite + strict tsc)
