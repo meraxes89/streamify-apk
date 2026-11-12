@@ -1,0 +1,433 @@
+/* canary.css — W0.1b residential canary console styling.
+ * Dark zinc only — no blue/indigo. Every selector is scoped under .canary-root so the
+ * component can be mounted inside the web app without leaking or being leaked on.
+ * Palette: bg #0a0a0a, surface #18181b, border #27272a, text #e4e4e7, muted #a1a1aa,
+ * emerald #34d399, amber #fbbf24, red #f87171. System-ui font stack, 44px buttons. */
+
+.canary-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  color: #e4e4e7;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.canary-root *,
+.canary-root *::before,
+.canary-root *::after {
+  box-sizing: border-box;
+}
+
+.canary-root > * + * {
+  margin-top: 16px;
+}
+
+.canary-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* header ------------------------------------------------------------------ */
+
+.canary-header h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: #e4e4e7;
+}
+
+.canary-sub {
+  margin: 0;
+  color: #a1a1aa;
+  font-size: 13px;
+}
+
+.canary-sub strong {
+  color: #e4e4e7;
+  font-weight: 600;
+}
+
+/* cards ------------------------------------------------------------------- */
+
+.canary-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.canary-card h2 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a1a1aa;
+}
+
+/* explainer ---------------------------------------------------------------- */
+
+.canary-explainer ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #a1a1aa;
+  font-size: 13px;
+}
+
+.canary-explainer li + li {
+  margin-top: 6px;
+}
+
+.canary-explainer strong {
+  color: #e4e4e7;
+  font-weight: 600;
+}
+
+/* controls ------------------------------------------------------------------ */
+
+.canary-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.canary-controls label {
+  color: #a1a1aa;
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.canary-controls input {
+  flex: 1 1 320px;
+  min-width: 240px;
+  min-height: 44px;
+  background: #0a0a0a;
+  color: #e4e4e7;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+}
+
+.canary-controls input:focus {
+  outline: 1px solid #34d399;
+  border-color: #34d399;
+}
+
+.canary-controls input:disabled {
+  opacity: 0.55;
+}
+
+/* buttons (44px minimum) ------------------------------------------------------ */
+
+.canary-btn {
+  min-height: 44px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid #27272a;
+  background: #27272a;
+  color: #e4e4e7;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.canary-btn:hover:not(:disabled) {
+  background: #3f3f46;
+}
+
+.canary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.canary-btn-primary {
+  background: #34d399;
+  border-color: #34d399;
+  color: #0a0a0a;
+}
+
+.canary-btn-primary:hover:not(:disabled) {
+  background: #6ee7b7;
+  border-color: #6ee7b7;
+}
+
+/* chips ------------------------------------------------------------------------ */
+
+.canary-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.canary-chip-ok {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.canary-chip-bad {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.canary-chip-warn {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.canary-chip-zero {
+  color: #a1a1aa;
+  border-color: rgba(161, 161, 170, 0.45);
+  background: rgba(161, 161, 170, 0.1);
+}
+
+/* progress + log ------------------------------------------------------------------ */
+
+.canary-progress {
+  font-size: 13px;
+  color: #e4e4e7;
+  margin-bottom: 8px;
+}
+
+.canary-log {
+  max-height: 176px;
+  overflow-y: auto;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #a1a1aa;
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+.canary-log::-webkit-scrollbar {
+  width: 6px;
+}
+
+.canary-log::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+.canary-log::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* matrix table: 384px max height, thin scrollbar, sticky thead, x-scroll on small screens */
+
+.canary-tablewrap {
+  overflow-x: auto;
+}
+
+.canary-tablescroll {
+  max-height: 384px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+.canary-tablescroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.canary-tablescroll::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+.canary-tablescroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.canary-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.canary-table th,
+.canary-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid #27272a;
+  vertical-align: top;
+}
+
+.canary-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #18181b;
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid #3f3f46;
+}
+
+.canary-table tbody tr:hover {
+  background: rgba(63, 63, 70, 0.35);
+}
+
+.canary-play-ok {
+  color: #34d399;
+}
+
+.canary-play-bad {
+  color: #f87171;
+}
+
+.canary-251 {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.canary-reason {
+  color: #a1a1aa;
+  max-width: 280px;
+  overflow-wrap: anywhere;
+}
+
+.canary-empty {
+  color: #a1a1aa;
+  text-align: center;
+  padding: 24px;
+}
+
+/* R-C cards ------------------------------------------------------------------------ */
+
+.canary-rcond {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.canary-rcond + .canary-rcond {
+  margin-top: 10px;
+}
+
+.canary-rcond-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.canary-rcond-id {
+  color: #e4e4e7;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.canary-rcond-name {
+  flex: 1 1 auto;
+  color: #e4e4e7;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.canary-rcond-detail {
+  margin-top: 6px;
+  color: #a1a1aa;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* post card + inline messages ---------------------------------------------------------- */
+
+.canary-ok {
+  margin: 10px 0 0;
+  color: #34d399;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.canary-err {
+  margin: 10px 0 0;
+  color: #f87171;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.canary-muted {
+  margin: 8px 0 0;
+  color: #a1a1aa;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.canary-warn {
+  margin: 10px 0 0;
+  color: #fbbf24;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.canary-warn-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.canary-warn-note .canary-mono {
+  color: #fbbf24;
+}
+
+/* sticky footer (root is min-height:100vh flex column; footer rides on margin-top:auto) */
+
+.canary-footer {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid #27272a;
+  color: #71717a;
+  font-size: 11.5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+@media (max-width: 640px) {
+  .canary-root {
+    padding: 14px;
+  }
+
+  .canary-controls input {
+    flex-basis: 100%;
+  }
+
+  .canary-footer {
+    flex-direction: column;
+  }
+}
