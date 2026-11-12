@@ -1,0 +1,86 @@
+# web-deploy — WS-W GitHub Pages deployment (W0.3).
+#
+# On push to main (or manual dispatch): wasm-pack the facade, build the web
+# app, publish to GitHub Pages via actions/deploy-pages. Target: the "≤60 s
+# merge-to-live" deployment budget from the P0 brief.
+#
+# Required repository configuration (one-time, PO):
+#   * Settings → Pages → Build and deployment → Source: GitHub Actions
+#   * Repository variable VITE_RELAY_BASE_URL (Settings → Secrets and
+#     variables → Actions → Variables), set to the deployed worker URL after
+#     `cd front-end/relay && npx wrangler deploy`, e.g.
+#     https://streamify-relay.<account>.workers.dev
+#   * VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY for the W0.1b canary
+#     (the page degrades gracefully when unset).
+name: web-deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "front-end -> front-end/target"
+          key: ${{ hashFiles('front-end/Cargo.lock') }}
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: wasm-pack build (target web)
+        run: wasm-pack build front-end/crates/streamify-wasm --target web
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: front-end/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: front-end
+
+      - name: Build (web)
+        run: npm run build
+        working-directory: front-end
+        env:
+          VITE_RELAY_BASE_URL: ${{ vars.VITE_RELAY_BASE_URL }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: front-end/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

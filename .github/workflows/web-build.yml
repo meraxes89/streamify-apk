@@ -1,0 +1,87 @@
+# web-build — WS-W front-end build + wasm32 gate.
+#
+# Fast lane for every PR (and main): typecheck + vite build + wasm32 cargo
+# check + wasm-pack pkg + in-browser wasm-bindgen tests (headless Chrome).
+# The heavy 429-test native suite stays in ci.yml / _ci-engine.yml — this
+# lane only guards the front-end workspace (and G0.1: no rquickjs-sys may
+# ever appear in the wasm32 tree).
+name: web-build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: front-end
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "front-end -> front-end/target"
+          key: ${{ hashFiles('front-end/Cargo.lock') }}
+
+      - name: cargo check (wasm32)
+        run: cargo check --target wasm32-unknown-unknown
+
+      - name: G0.1 gate — no rquickjs-sys in the wasm32 tree
+        run: |
+          if cargo tree --target wasm32-unknown-unknown | grep -q "rquickjs"; then
+            echo "::error::rquickjs-sys found in the wasm32 dependency tree — G0.1 regression (see front-end/decisions/W0.2-spike-rustypipe-wasm32.md)"
+            exit 1
+          fi
+          echo "G0.1 clean: no rquickjs in wasm32 tree"
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: wasm-pack build (target web)
+        run: wasm-pack build crates/streamify-wasm --target web
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: front-end/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Typecheck (web)
+        run: npm run lint
+
+      - name: Build (web)
+        run: npm run build
+
+      - name: Typecheck (relay)
+        run: npm run check -w relay
+
+      - name: Install wasm-bindgen-cli (version-matched to Cargo.lock)
+        run: |
+          WB_VERSION="$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | grep '^version' | head -1 | cut -d'"' -f2)"
+          echo "wasm-bindgen ${WB_VERSION}"
+          cargo install wasm-bindgen-cli --version "${WB_VERSION}" --locked
+
+      # Hosted ubuntu runners ship Google Chrome + ChromeDriver; wasm-bindgen's
+      # test runner picks up chromedriver from PATH/CHROMEWEBDRIVER.
+      - name: wasm-bindgen-test (headless Chrome)
+        run: cargo test --target wasm32-unknown-unknown
+        working-directory: front-end/crates/streamify-wasm
+        env:
+          RUST_LOG: wasm_bindgen_test=warn
