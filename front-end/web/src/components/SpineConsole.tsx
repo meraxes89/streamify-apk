@@ -17,10 +17,19 @@ import { Spine, phaseLabel } from '../audio/spine';
 import { g1UnderrunGate } from '../audio/store';
 import { useSpineStore } from '../audio/store';
 import { relayBaseCandidate } from '../lib/engine';
+import {
+  clearSeed,
+  ensureLiveSession,
+  seedPotSession,
+  subscribeMint,
+} from '../audio/botguard/potSession';
+import type { MintStatus } from '../audio/botguard/protocol';
 import type { SinkStats } from '../audio/statsWire';
 
 /** The G1 canonical target (standard content — the unlicensed proof). */
 const G1_VIDEO_ID = 'dQw4w9WgXcQ';
+/** The G1 licensed target (W1.0 — the bot-wall unlock proof). */
+const G1_LICENSED_ID = '4NRXx6U8ABQ';
 
 function fmtBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MiB`;
@@ -46,6 +55,37 @@ export function SpineConsole(): JSX.Element {
   const positionUs = useSpineStore((s) => s.positionUs);
   const fetch = useSpineStore((s) => s.fetch);
   const packetsDemuxed = useSpineStore((s) => s.packetsDemuxed);
+
+  // -- W1.0 mint status (module singleton → React) ------------------------
+  const [mint, setMint] = useState<MintStatus>({
+    phase: 'idle',
+    detail: 'no mint yet',
+    relayTooOld: false,
+  });
+  const [seedOpen, setSeedOpen] = useState(false);
+  const [seedText, setSeedText] = useState('');
+  const [seedError, setSeedError] = useState<string | null>(null);
+  useEffect(() => subscribeMint(setMint), []);
+
+  const handleMint = useCallback(async () => {
+    try {
+      await ensureLiveSession(relay, { force: true });
+    } catch {
+      /* status carries the failure detail */
+    }
+  }, [relay]);
+
+  const handleSeed = useCallback(() => {
+    setSeedError(null);
+    try {
+      const { videoId } = seedPotSession(seedText);
+      setSeedOpen(false);
+      setSeedText('');
+      void videoId;
+    } catch (err) {
+      setSeedError(err instanceof Error ? err.message : String(err));
+    }
+  }, [seedText]);
 
   useEffect(() => {
     return () => {
@@ -113,6 +153,75 @@ export function SpineConsole(): JSX.Element {
         <button type="button" className="btn" onClick={handleStop} disabled={phase === 'idle'}>
           Stop
         </button>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            setVideoId(G1_LICENSED_ID);
+          }}
+          disabled={busy || videoId === G1_LICENSED_ID}
+          title="The licensed-track G1 target (Blinding Lights) — exercises the WEB+POT rung"
+        >
+          licensed target
+        </button>
+      </div>
+
+      {/* -- W1.0: the PO-token mint panel --------------------------------- */}
+      <div className="spine-pot" aria-label="PO token session">
+        <button
+          type="button"
+          className="btn btn--small"
+          onClick={() => {
+            void handleMint();
+          }}
+          disabled={mint.phase !== 'idle' && mint.phase !== 'ready'}
+        >
+          Mint PO session
+        </button>
+        <span
+          className={`chip chip--${mint.phase === 'ready' ? 'loaded' : 'pending'}`}
+          role="status"
+          aria-label="mint status"
+        >
+          PO: {mint.phase}
+        </span>
+        <span className="muted spine-pot-detail">{mint.detail}</span>
+        <button
+          type="button"
+          className="btn btn--small"
+          onClick={() => setSeedOpen((v) => !v)}
+          aria-expanded={seedOpen}
+        >
+          {seedOpen ? 'hide seed' : 'dev seed…'}
+        </button>
+        {mint.phase === 'ready' && mint.detail.startsWith('SEEDED') && (
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={() => {
+              clearSeed();
+            }}
+          >
+            clear seed
+          </button>
+        )}
+        {seedOpen && (
+          <div className="spine-seed">
+            <textarea
+              className="spine-seed-input"
+              aria-label="dev seed JSON"
+              value={seedText}
+              onChange={(e) => setSeedText(e.target.value)}
+              placeholder={'{ "videoId": "4NRXx6U8ABQ", "visitorData": "…", "playerToken": "…", "gvsToken": "…" } — pot-lab pot-seed.json (video-scoped dev token; proves the player wiring when the environment cannot mint)'}
+              rows={3}
+              spellCheck={false}
+            />
+            <button type="button" className="btn btn--small" onClick={handleSeed}>
+              apply seed
+            </button>
+            {seedError !== null && <span className="spine-error">{seedError}</span>}
+          </div>
+        )}
       </div>
 
       <div className="spine-status">
@@ -134,6 +243,13 @@ export function SpineConsole(): JSX.Element {
       {error !== null && phase === 'errored' && (
         <p className="spine-error" role="alert">
           {error}
+        </p>
+      )}
+      {mint.relayTooOld && (
+        <p className="spine-error" role="alert">
+          This relay predates W1.0 — minting needs the upgraded worker deployed
+          (wrangler deploy; see front-end/relay/README.md). Media + resolve still
+          work through it.
         </p>
       )}
 

@@ -7,28 +7,28 @@
  * the first chunk and seek is just "next chunk at a new offset"
  * (epoch flush, W1.4/W1.5).
  *
- * REDIRECT PROTOCOL — the deliberate 302 dance
+ * REDIRECT PROTOCOL — the deliberate hop dance
  * ─────────────────────────────────────────────
  * googlevideo `videoplayback` answers with 302 + `Location` to a
  * per-edge URL on a fresh probe (and when `ratebypass`/`rn` params go
- * stale). The RELAY performs its upstream fetch with
- * `redirect: 'manual'` and passes any 3xx STRAIGHT THROUGH with
- * `Location` in `Access-Control-Expose-Headers` (W1.0 relay update).
- * Why not let the relay follow server-side? Two reasons:
+ * stale). A literal 3xx can NEVER cross CORS into a page (manual →
+ * opaque-redirect with unreadable headers; follow → the browser hops
+ * STRAIGHT to the raw upstream URL, which sends no ACAO), so the W1.0
+ * relay surfaces hops as **200 + X-Relay-Location/X-Relay-Status**
+ * (custom headers ARE CORS-exposed) when the client sends
+ * `X-Relay-Redirect: manual`. This fetcher owns the hop decision:
  *
- *   1. Browsers cannot read a 302's Location themselves
- *      (`redirect:'manual'` in the page yields an opaque-redirect,
- *      status 0, headers empty) — so the relay must surface it, and
- *      once it does, the CLIENT owns the hop decision.
- *   2. Amortization: the hop-resolved edge URL is stable for minutes.
- *      Caching it here means chunk #1 pays one redirect round-trip
- *      and chunks #2..N hit the edge directly instead of paying the
- *      hop through the relay EVERY chunk (server-side follow would
- *      silently do that).
+ *   1. hop-resolve once (probe / first chunk), re-wrapping each
+ *      X-Relay-Location through the relay (the relay re-validates the
+ *      target against its allowlist — the fetcher trusts but the relay
+ *      re-checks);
+ *   2. cache the edge URL — chunk #1 pays one redirect round-trip and
+ *      chunks #2..N hit the edge directly instead of re-paying the hop
+ *      through the relay EVERY chunk (server-side follow would silently
+ *      do that).
  *
  * Hops are BOUNDED (default 5) — a redirect loop must die, not pin
- * the CPU. Each hop re-checks the relay allowlist contract (the relay
- * re-validates every target; the fetcher trusts but logs).
+ * the CPU.
  *
  * STATUS FIDELITY: 206 stays 206. A 200 in response to a Range
  * request (upstream ignored the header — seen on some edges) is
@@ -140,6 +140,13 @@ export class ChunkFetcher {
     if (this.opts.clientName != null && this.opts.clientName !== '') {
       h['x-youtube-client-name'] = this.opts.clientName;
     }
+    // W1.0 relay contract: ask the relay to SURFACE upstream 3xx (status +
+    // CORS-exposed Location) instead of following server-side — the hop
+    // loop below owns the hop decision and amortizes the edge URL.
+    // Meaningless (and dropped) on direct/tooling fetches.
+    if (this.opts.relayBase !== null && this.opts.relayBase !== '') {
+      h['x-relay-redirect'] = 'manual';
+    }
     return h;
   }
 
@@ -148,23 +155,53 @@ export class ChunkFetcher {
   }
 
   /**
-   * Fetch `url` following relay-surfaced redirects up to the hop
-   * budget. Non-2xx/3xx statuses are RETURNED (caller decides retry),
-   * network throws propagate after the internal hop loop gives up.
+   * Fetch `url` owning redirect hops up to the budget. TWO hop dialects:
+   *
+   *   • relay dialect (W1.0 contract): the relay converts upstream 3xx into
+   *     200 + X-Relay-Location (custom headers are CORS-readable; a literal
+   *     3xx is NOT — manual → opaque-redirect, follow → CORS death on the
+   *     raw upstream URL). The fetch uses redirect:'manual' so the browser
+   *     never auto-follows anything the relay might pass through, hops on
+   *     X-Relay-Location by RE-WRAPPING through the relay (the relay
+   *     re-validates every hop against its allowlist), and amortizes the
+   *     hop-resolved edge URL across chunks.
+   *
+   *   • direct dialect (Node/tooling, relay-less): literal 3xx + Location,
+   *     default follow semantics, hop on read Location.
+   *
+   * Non-2xx/3xx statuses are RETURNED (caller decides retry); network
+   * throws propagate after the internal hop loop gives up.
    */
   private async fetchWithHops(
     url: string,
     headers: Record<string, string>,
   ): Promise<Response> {
+    const viaRelay = this.opts.relayBase !== null && this.opts.relayBase !== '';
     let target = url;
     for (let hop = 0; hop <= this.opts.maxRedirects; hop++) {
       if (this.aborted()) throw new DOMException('aborted', 'AbortError');
-      // redirect:'follow' ON THE RELAY URL is correct: the relay itself
-      // never 3xx's; upstream 3xx arrives as a normal readable response
-      // (the relay surfaced it — see file header). A direct URL that
-      // 3xx's is outside the browser contract (tooling only) and the
-      // browser's own follow would kick in harmlessly.
-      const res = await this.doFetch(this.wrap(target), { headers });
+      const res = await this.doFetch(this.wrap(target), {
+        headers,
+        // Manual mode never 3xx's (it converts to 200 + X-Relay-Location),
+        // so 'manual' just guarantees the browser cannot auto-follow a
+        // surprise redirect straight into a CORS wall. Old (P0) relays
+        // never 3xx either (server-side follow) — safe with both.
+        redirect: viaRelay ? 'manual' : 'follow',
+      });
+      // Relay dialect: a surfaced hop.
+      const relayLocation = res.headers.get('x-relay-location');
+      if (relayLocation !== null) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          /* hop responses carry no body */
+        }
+        target = relayLocation; // absolute (the relay resolved it)
+        this.resolvedUrl = target;
+        continue;
+      }
+      // Direct dialect: a literal redirect (tooling only — a browser never
+      // reaches here with the relay, and without the relay CORS owns it).
       if (isRedirect(res.status)) {
         const location = res.headers.get('location');
         // Drain so the connection can be reused, then hop.

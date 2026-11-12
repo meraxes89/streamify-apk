@@ -97,7 +97,9 @@ export class Spine {
           startedAt: Date.now(),
         },
         'webcodecs',
-        `webcodecs:${stream.codec} (P1 ladder: ANDROID_VR rung)`,
+        stream.rung === 'web-pot'
+          ? `webcodecs:${stream.codec} (WEB+POT rung, ${stream.potKind} token)`
+          : `webcodecs:${stream.codec} (ANDROID_VR rung)`,
       );
 
       // -- fetch + demux + decode + sink ------------------------------------
@@ -152,7 +154,11 @@ export class Spine {
     // -- fetch loop (detached) ----------------------------------------------
     const fetcher = new ChunkFetcher({
       relayBase: this.relayBase,
-      clientName: '28', // ANDROID_VR — relay swaps the matrix UA
+      // ANDROID_VR-rung URLs carry the app session — the relay swaps the
+      // matrix UA (X-YouTube-Client-Name 28). WEB+POT-rung URLs belong to
+      // the browser's web session: no client header, browser UA forwarded
+      // as-is (it matches the &pot= binding).
+      clientName: stream.rung === 'android-vr' ? '28' : null,
       // googlevideo expires/limits stream URLs; on 403/410 rotate via
       // a fresh resolve (same video, new URL token).
       onStaleUrl: async () => {

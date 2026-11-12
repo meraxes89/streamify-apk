@@ -616,3 +616,48 @@ button:disabled {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
 }
+
+/* -- W1.0 PO-token mint panel ------------------------------------------- */
+.spine-pot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.06);
+}
+.btn--small {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+.spine-pot-detail {
+  font-size: 0.78rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  flex: 1 1 240px;
+}
+.spine-seed {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.spine-seed-input {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+}
+.spine-seed-input:focus-visible {
+  outline: 2px solid var(--accent, #34d399);
+  outline-offset: 1px;
+}

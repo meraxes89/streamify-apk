@@ -1,5 +1,5 @@
 /**
- * streamify-relay — P0 minimal CORS relay (W0.4 / Task 3-b).
+ * streamify-relay — P0 minimal CORS relay + P1 minting surface (W1.0).
  *
  * WHY THIS EXISTS
  *   The Streamify web port (https://meraxes89.github.io/streamify-apk/) runs
@@ -12,7 +12,37 @@
  *                                        headers (minus origin/referer/…), then
  *                                        stream the response back with ACAO:*.
  *
- * PHASE NOTE (P0 — W0.4)
+ * P1 / W1.0 — THE MINTING SURFACE (why this relay grew two more duties)
+ *   Licensed music (e.g. 4NRXx6U8ABQ) sits behind YouTube's "Sign in to
+ *   confirm you're not a bot" wall for datacenter IPs. The unlock is a
+ *   PO token minted by REAL browser hardware (BotGuard VM environment
+ *   scoring — JSDOM/headless mints are low-trust; measured 2026-11-12).
+ *   The mint needs three network legs, and ALL of them go through this
+ *   relay so the whole session (challenge, GenerateIT, player call, media
+ *   bytes) egresses from ONE consistent IP:
+ *
+ *     1. GET /bg-session           homepage challenge, extracted server-side
+ *     2. GET /r?u=…www.google.com/js/th/…   the BotGuard interpreter script
+ *     3. POST /r?u=…jnn-pa.googleapis.com/… Waa/GenerateIT (integrity token)
+ *
+ *   The jnn-pa WAA request key is ORIGIN-RESTRICTED: a foreign Origin makes
+ *   it invalid. Browsers force Origin onto every cross-origin fetch, but the
+ *   relay strips it (REQUEST_DROP) — upstream sees an origin-less request,
+ *   exactly like the proven Node mint. This is why minting traffic MUST be
+ *   same-origin through the relay rather than direct to jnn-pa.
+ *
+ *   PO token INJECTION into the player request happens CLIENT-SIDE (the web
+ *   app builds serviceIntegrityDimensions.poToken + X-Goog-Visitor-Id and
+ *   POSTs through /r) — a deliberate choice: it works unchanged against the
+ *   already-deployed P0 relay, and keeps this worker dumb.
+ *
+ *   BINDING RULES (yt-dlp pot/utils.py, verified against the live homepage):
+ *     • player request poToken  → mintAsWebsafeString(VIDEO_ID)
+ *     • googlevideo &pot=       → VIDEO_ID while the html5_generate_content_
+ *       po_token experiment flag is set on the homepage (it IS, 2026-11-12),
+ *       else visitorData
+ *
+ * PHASE NOTE
  *   No JWT, no rate limiting, no kill switch. Those land in P4 (W4.1):
  *   TODO(P4/W4.1): JWT auth on /r.
  *   TODO(P4/W4.1): per-client rate limiting (per-IP / per-token buckets).
@@ -20,11 +50,11 @@
  *
  * HARD RULES baked in from the W0.1 spike:
  *   • The client's User-Agent is FORWARDED VERBATIM. Workers' default UA gets
- *     404s on some YouTube endpoints while a browser-like UA passes — UA
- *     fidelity is deliberate, not an oversight.
+ *   404s on some YouTube endpoints while a browser-like UA passes — UA
+ *   fidelity is deliberate, not an oversight.
  *   • The upstream STATUS is preserved EXACTLY (206 stays 206, 403 stays 403)
- *     and the body is passed as a STREAM, never buffered. Byte-range audio
- *     from googlevideo through this relay is the project kill criterion.
+ *   and the body is passed as a STREAM, never buffered. Byte-range audio
+ *   from googlevideo through this relay is the project kill criterion.
  *
  * Pure Workers runtime — no external dependencies. ES-module default export.
  */
@@ -53,15 +83,19 @@ const HOP_BY_HOP: ReadonlySet<string> = new Set([
  * Request-side-only drops, applied ON TOP of {@link HOP_BY_HOP} when building
  * the outgoing upstream request:
  *   • host / origin / referer — leak the calling site, and upstreams key
- *     behavior off them (YouTube treats wrong-origin requests differently);
+ *     behavior off them (YouTube treats wrong-origin requests differently;
+ *     jnn-pa's WAA request key is ORIGIN-RESTRICTED — see file header);
  *   • cookie — an open relay must never ride the caller's session;
  *   • cf-* / x-forwarded-* / x-real-ip / true-client-ip — injected by
  *     Cloudflare's edge, they describe THIS worker, not the browser;
  *   • content-length — the runtime recomputes it from the actual (streamed)
- *     body; a stale copy would corrupt Range math.
+ *     body; a stale copy would corrupt Range math;
+ *   • x-relay-redirect — a RELAY CONTROL header (opt-in 302 passthrough),
+ *     never meaningful upstream.
  * Everything else the client sent is forwarded — notably User-Agent (W0.1
  * finding, see file header), accept*, content-type, range, and the YouTube
- * client headers (x-youtube-client-*, x-goog-api-key, authorization).
+ * client headers (x-youtube-client-*, x-goog-api-key, x-goog-visitor-id,
+ * authorization).
  */
 const REQUEST_DROP: ReadonlySet<string> = new Set([
   "host",
@@ -77,6 +111,7 @@ const REQUEST_DROP: ReadonlySet<string> = new Set([
   "x-real-ip",
   "true-client-ip",
   "content-length",
+  "x-relay-redirect",
   // WS-W P0 landmine fix: browsers FORCE Sec-Fetch-*/sec-ch-ua* markers onto
   // every fetch (forbidden headers — the wasm engine cannot strip them).
   // YouTube reads them as "this ANDROID app request actually comes from a
@@ -155,22 +190,172 @@ function upstreamUserAgent(headers: Headers): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// /bg-session — the homepage challenge cache (W1.0)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fallback UA for the server-side homepage fetch when the caller sends none.
+ * Desktop Chrome — the environment the challenge/session pair is consistent
+ * with (the browser client that will consume it sends its own UA, which is
+ * preferred and used as the cache key).
+ */
+const BG_SESSION_FALLBACK_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36";
+
+/** How long a cached (visitorData, ytcfg, ytAtN) triple stays fresh. */
+const BG_SESSION_TTL_MS = 60 * 60 * 1000;
+
+/** Modest cap: one entry per distinct client UA (realistically 1–3). */
+const BG_SESSION_MAX_ENTRIES = 4;
+
+interface BgSession {
+  fetchedAt: number;
+  /** ytcfg VISITOR_DATA — the anonymous session id PO tokens bind against. */
+  visitorData: string;
+  /** Raw ytcfg JSON (strict JSON; the client parses + injects as yt.config_). */
+  ytcfg: string;
+  /** Raw ytAtN loose-JSON payload (client runs parseLooseJSON on it). */
+  ytAtN: string;
+}
+
+/**
+ * Module-level cache. Workers isolates are per-colo and recycled at will —
+ * worst case a cold isolate refetches the homepage once. The (ytcfg, ytAtN)
+ * pair must come from the SAME homepage render (the 2026-08 provider patch:
+ * plugin-passed challenges lack their page's ytcfg/EVENT_ID and /att/get
+ * tokens are rejected) — extraction below grabs both from one fetch.
+ */
+const bgSessionCache = new Map<string, BgSession>();
+
+/**
+ * Extract the minting triple from homepage HTML. Regexes mirror the proven
+ * pot-lab recipe (pot-mint2/pot-videobind, provider session_manager 2026-08
+ * patch): first ytcfg.set block, first "visitorData" occurrence, the
+ * window.ytAtN(...) loose-JSON payload.
+ */
+function extractBgSession(html: string): BgSession | { error: string } {
+  const vdMatch = /"visitorData":"([^"]+)"/.exec(html);
+  if (vdMatch === null) return { error: "homepage has no visitorData (consent wall?)" };
+
+  const cfgMatch = /ytcfg\.set\(({.+?})\);/s.exec(html);
+  if (cfgMatch === null) return { error: "homepage has no ytcfg.set" };
+
+  const attMatch = /window\.ytAtN\(\s*({[\s\S]*?})\s*\)/.exec(html);
+  if (attMatch === null) return { error: "homepage has no ytAtN bgChallenge" };
+
+  return {
+    fetchedAt: Date.now(),
+    visitorData: vdMatch[1],
+    ytcfg: cfgMatch[1],
+    ytAtN: attMatch[1],
+  };
+}
+
+/**
+ * GET /bg-session — the browser mint stack's first leg.
+ *
+ * Server-side homepage fetch with SOCS=CAI (consent-bypass cookie; the
+ * browser cannot set Cookie on fetch — forbidden header), UA forwarded from
+ * the caller so the (challenge, visitorData) pair stays coherent with the
+ * very browser that will run the VM. Result cached per-UA for an hour.
+ * `?fresh=1` bypasses the cache (mint retry path).
+ */
+async function bgSession(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const forceFresh = url.searchParams.get("fresh") === "1";
+  const ua = request.headers.get("user-agent") ?? BG_SESSION_FALLBACK_UA;
+
+  if (!forceFresh) {
+    const hit = bgSessionCache.get(ua);
+    if (hit !== undefined && Date.now() - hit.fetchedAt < BG_SESSION_TTL_MS) {
+      return jsonResponse({ ...hit, cache: "hit" }, 200);
+    }
+  }
+
+  let html: string;
+  try {
+    const res = await fetch("https://www.youtube.com/", {
+      headers: {
+        accept: "text/html",
+        "accept-language": "en-US,en;q=0.7",
+        "user-agent": ua,
+        cookie: "SOCS=CAI",
+      },
+      redirect: "follow",
+    });
+    if (!res.ok) {
+      return jsonResponse(
+        { error: "homepage fetch failed", status: res.status },
+        502,
+      );
+    }
+    html = await res.text();
+  } catch (err) {
+    return jsonResponse(
+      {
+        error: "homepage fetch failed",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      502,
+    );
+  }
+
+  const extracted = extractBgSession(html);
+  if ("error" in extracted) {
+    return jsonResponse({ error: extracted.error }, 502);
+  }
+
+  // Tiny LRU: evict oldest entries beyond the cap.
+  if (bgSessionCache.size >= BG_SESSION_MAX_ENTRIES) {
+    const oldest = bgSessionCache.keys().next();
+    if (oldest.done !== true) bgSessionCache.delete(oldest.value);
+  }
+  bgSessionCache.set(ua, extracted);
+
+  return jsonResponse(
+    {
+      ...extracted,
+      expiresAt: extracted.fetchedAt + BG_SESSION_TTL_MS,
+      cache: "miss",
+    },
+    200,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Upstream host allowlist. googlevideo uses per-edge hostnames such as
+ * Upstream target allowlist. googlevideo uses per-edge hostnames such as
  * `rr4---sn-x0.googlevideo.com`, so googlevideo is matched by the
  * `.googlevideo.com` SUFFIX; the bare apex is allowed defensively.
+ *
+ * W1.0 minting additions (path-scoped where possible):
+ *   • www.google.com   — ONLY /js/th/* (the BotGuard interpreter "trayride"
+ *     scripts the challenge's interpreterUrl points at). Any other google.com
+ *     path stays out — this is not a general google proxy.
+ *   • jnn-pa.googleapis.com — the Waa/GenerateIT integrity-token endpoint
+ *     (attestation for the PO mint). Nothing else lives on that host.
  */
-function isAllowedHost(host: string): boolean {
-  return (
+function isAllowedTarget(target: URL): boolean {
+  const host = target.hostname.toLowerCase();
+  if (
     host === "www.youtube.com" ||
     host === "music.youtube.com" ||
     host === "youtubei.googleapis.com" ||
     host === "googlevideo.com" ||
     host.endsWith(".googlevideo.com")
-  );
+  ) {
+    return true;
+  }
+  if (host === "www.google.com") {
+    return target.pathname.startsWith("/js/th/");
+  }
+  if (host === "jnn-pa.googleapis.com") {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -178,14 +363,15 @@ function isAllowedHost(host: string): boolean {
  * error, preflight, and upstream passthrough alike. `Access-Control-Expose-
  * Headers` whitelists exactly what browser-side JS (the wasm engine) may
  * read: the Range trio (Content-Range / Accept-Ranges / Content-Length) is
- * REQUIRED for byte-range audio; X-Relay-Ms is this relay's timing header.
- * Open ACAO:* is a DELIBERATE P0 decision — hardening lands P4 (W4.1).
+ * REQUIRED for byte-range audio; X-Relay-Location / X-Relay-Status power
+ * the hop-surfacing mode (see relay()); X-Relay-Ms is this relay's timing
+ * header. Open ACAO:* is a DELIBERATE P0 decision — hardening lands P4 (W4.1).
  */
 function corsHeaders(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Expose-Headers":
-      "Content-Range, Accept-Ranges, Content-Length, Content-Type, X-Relay-Ms",
+      "Content-Range, Accept-Ranges, Content-Length, Content-Type, X-Relay-Location, X-Relay-Status, X-Relay-Ms",
   };
 }
 
@@ -195,6 +381,7 @@ function jsonResponse(body: unknown, status: number): Response {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
       ...corsHeaders(),
     },
   });
@@ -222,7 +409,7 @@ export default {
   },
 };
 
-/** Route table: OPTIONS anywhere → preflight; /health; /; /r; else 404. */
+/** Route table: OPTIONS anywhere → preflight; /health; /; /bg-session; /r; else 404. */
 async function route(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
@@ -263,11 +450,18 @@ async function route(request: Request): Promise<Response> {
     return jsonResponse(
       {
         service: "streamify-relay",
-        usage: "/r?u=<urlencoded-target>",
-        phase: "P0 minimal — hardening lands P4 (W4.1)",
+        usage: "/r?u=<urlencoded-target> · /bg-session",
+        phase: "P1 — minting surface (W1.0); hardening lands P4 (W4.1)",
       },
       200,
     );
+  }
+
+  if (path === "/bg-session") {
+    if (method !== "GET") {
+      return jsonResponse({ error: "method not allowed", method }, 405);
+    }
+    return bgSession(request);
   }
 
   if (path === "/r") {
@@ -307,11 +501,33 @@ async function relay(request: Request, url: URL): Promise<Response> {
     return jsonResponse({ error: "only http/https targets are supported" }, 400);
   }
 
-  const host = target.hostname.toLowerCase();
-  if (!isAllowedHost(host)) {
+  if (!isAllowedTarget(target)) {
+    const host = target.hostname.toLowerCase();
     // TODO(P4/W4.1): log/alert on allowlist violations (abuse signal).
     return jsonResponse({ error: "host not allowed", host }, 403);
   }
+
+  // ---- Redirect mode (W1.0) ----------------------------------------------
+  // Default: follow (the audio path wants bytes, not hops). Opt-in via
+  // `X-Relay-Redirect: manual` — googlevideo sometimes answers cross-edge
+  // 302s and the chunk fetcher's hop protocol wants to OWN the hop (amortize
+  // the edge URL across chunks instead of re-paying the hop every chunk).
+  //
+  // THE BROWSER TRAP (why hops surface as 200 + X-Relay-Location, NEVER as
+  // a literal 3xx): a literal 302 with the raw Location is unusable from a
+  // page — redirect:'manual' yields an opaque-redirect (status 0, headers
+  // unreadable) and redirect:'follow' auto-follows STRAIGHT to the raw
+  // upstream URL, which has no ACAO → CORS death. So in manual mode the
+  // relay converts upstream 3xx into a plain 200 whose custom headers
+  // (CORS-exposed, unlike Location) carry the hop:
+  //
+  //     X-Relay-Location: <absolute upstream Location>
+  //     X-Relay-Status:  <the true upstream status, diagnostics>
+  //
+  // The client re-wraps X-Relay-Location through /r itself and the relay
+  // re-validates the hop target against the allowlist like any other.
+  const manualRedirect = request.headers.get("x-relay-redirect") === "manual";
+  const redirect: RequestRedirect = manualRedirect ? "manual" : "follow";
 
   // ---- Outgoing headers ---------------------------------------------------
   // Copy ALL client headers minus the drop sets (hop-by-hop + request-side
@@ -336,8 +552,8 @@ async function relay(request: Request, url: URL): Promise<Response> {
   }
 
   // ---- Body -----------------------------------------------------------------
-  // POST bodies (innertube JSON payloads) stream through untouched.
-  // GET/HEAD must be bodyless — fetch() throws otherwise.
+  // POST bodies (innertube JSON payloads, WAA protobuf-JSON) stream through
+  // untouched. GET/HEAD must be bodyless — fetch() throws otherwise.
   const body: ReadableStream<Uint8Array> | null =
     method === "POST" ? request.body : null;
 
@@ -348,7 +564,7 @@ async function relay(request: Request, url: URL): Promise<Response> {
       method,
       headers: outgoing,
       body,
-      redirect: "follow",
+      redirect,
     });
   } catch (err) {
     return jsonResponse(
@@ -358,6 +574,36 @@ async function relay(request: Request, url: URL): Promise<Response> {
       },
       502,
     );
+  }
+
+  // ---- Hop surfacing (manual mode) -----------------------------------------
+  // Convert upstream 3xx → 200 + X-Relay-Location/X-Relay-Status (see the
+  // redirect-mode comment above for why a literal 3xx cannot cross CORS).
+  // A 3xx without Location falls through to normal passthrough (a broken
+  // upstream should fail loudly, not hang the client's hop loop).
+  if (manualRedirect && upstream.status >= 300 && upstream.status <= 399) {
+    const location = upstream.headers.get("location");
+    if (location !== null) {
+      let absolute: string;
+      try {
+        absolute = new URL(location, target).toString();
+      } catch {
+        return jsonResponse(
+          { error: "upstream redirect has an unparseable Location", location },
+          502,
+        );
+      }
+      return new Response(null, {
+        status: 200,
+        headers: {
+          ...corsHeaders(),
+          "X-Relay-Location": absolute,
+          "X-Relay-Status": String(upstream.status),
+          "Cache-Control": "no-store",
+          "X-Relay-Ms": String(Date.now() - started),
+        },
+      });
+    }
   }
 
   // ---- Response passthrough ----------------------------------------------------

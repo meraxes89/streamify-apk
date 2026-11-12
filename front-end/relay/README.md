@@ -1,9 +1,10 @@
-# streamify-relay — W0.4 P0 minimal CORS relay (Task 3-b)
+# streamify-relay — P0 minimal CORS relay + P1 minting surface (W0.4 / W1.0)
 
 A single-file Cloudflare Worker that acts as a deliberately **dumb, CORS-open relay** so the
 Streamify web port (wasm Rust engine in the browser, deployed at
 `https://meraxes89.github.io/streamify-apk/`) can reach YouTube's **innertube API** and the
-**googlevideo** media CDN.
+**googlevideo** media CDN — plus, since P1 (W1.0), the **BotGuard/PO-token minting legs**
+needed to unlock licensed music behind YouTube's datacenter bot wall.
 
 ## Why this exists
 
@@ -19,6 +20,54 @@ browser ──GET /r?u=<urlencoded-target>──▶ streamify-relay (Workers)
          ◀── upstream response, streamed, ACAO:* ──┘
 ```
 
+## P1 / W1.0 — the minting surface
+
+Licensed tracks (e.g. `4NRXx6U8ABQ`) answer the player endpoint with `LOGIN_REQUIRED`
+("Sign in to confirm you're not a bot") from datacenter IPs. The unlock is a **PO token
+minted by real browser hardware** — the BotGuard VM scores its environment, and
+JSDOM/headless-environment mints measure as low-trust (they do NOT lift the wall;
+verified 2026-11-12 with provider-recipe Node mints across every binding/client/IP
+combination). So the mint runs **natively in the user's browser**, and every network leg
+of the mint goes through this relay:
+
+```
+browser ──GET /bg-session────────────────────▶ relay ──▶ youtube.com homepage
+                (visitorData + ytcfg + ytAtN challenge, server-cached 1 h)
+browser ──GET /r?u=…www.google.com/js/th/…───▶ relay ──▶ BotGuard interpreter JS
+browser ──POST /r?u=…jnn-pa…/GenerateIT──────▶ relay ──▶ WAA integrity token
+browser   (locally: VM → snapshot → WebPoMinter → per-video PO token)
+browser ──POST /r?u=…/youtubei/v1/player─────▶ relay ──▶ formats  (poToken injected
+                                                           client-side in the body)
+```
+
+Why all legs through the relay:
+
+1. **The WAA request key is origin-restricted.** `jnn-pa.googleapis.com` echoes any
+   Origin in ACAO, but the bgutils `GenerateIT` request key is only valid for requests
+   **without a foreign Origin**. Browsers force `Origin` onto every cross-origin fetch;
+   the relay strips it (REQUEST_DROP) — upstream sees an origin-less request, exactly
+   like the proven Node mint.
+2. **One consistent egress IP.** Challenge, integrity token, player call and media bytes
+   all egress from the same Worker — no mint-IP/use-IP mismatch (POTs are IP-bound per
+   the bgutil provider's own notes).
+3. **No CORS anywhere** — the page talks only same-origin to the relay.
+
+PO-token **injection into the player request is client-side by design**: the web app
+builds `serviceIntegrityDimensions.poToken` + `X-Goog-Visitor-Id` itself and POSTs
+through `/r` — this works unchanged against the already-deployed P0 relay, and keeps the
+worker dumb. Binding rules (yt-dlp `pot/utils.py`, cross-checked against the live
+homepage): the **player** poToken is minted with `mintAsWebsafeString(VIDEO_ID)`; the
+**googlevideo** `&pot=` param uses VIDEO_ID while the homepage's
+`html5_generate_content_po_token` experiment flag is set (it is, 2026-11-12), else
+visitorData.
+
+> **Deploy note:** minting against the LIVE worker requires redeploying this file
+> (`npx wrangler deploy` — credentials see *Deploy* below). The P0-era deployment does
+> not know `/bg-session` nor the `www.google.com` / `jnn-pa.googleapis.com` allowlist
+> entries; until redeployed, the web app's mint button reports the relay as
+> mint-incapable and only the P0 paths work. CI does **not** deploy the relay — it is a
+> manual step by design (deploy credentials are never in the tree).
+
 ## Endpoints
 
 | Endpoint                | Behaviour |
@@ -26,15 +75,56 @@ browser ──GET /r?u=<urlencoded-target>──▶ streamify-relay (Workers)
 | `OPTIONS *`             | 204 preflight: `Allow-Methods: GET, POST, HEAD, OPTIONS`, echoes the request's `Access-Control-Request-Headers` (fallback `*`), `Max-Age: 86400`. |
 | `GET /health`           | 200 `text/plain` `ok`. |
 | `GET /`                 | 200 JSON `{ service, usage, phase }`. |
-| `GET/HEAD/POST /r?u=…`  | The relay (see allowlist below). Other methods → 405. |
+| `GET /bg-session`       | W1.0: cached homepage challenge — `{ visitorData, ytcfg, ytAtN, fetchedAt, expiresAt, cache }` (see below). `?fresh=1` bypasses the cache. |
+| `GET/HEAD/POST /r?u=…`  | The relay (see allowlist below). `X-Relay-Redirect: manual` opts into 302 passthrough. Other methods → 405. |
 | anything else           | 404 JSON `{ error: "not found" }`. |
 
 Every response — success, error, or upstream passthrough — carries:
 
 ```
 Access-Control-Allow-Origin: *
-Access-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length, Content-Type, X-Relay-Ms
+Access-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length, Content-Type, Location, X-Relay-Ms
 ```
+
+(`Location` powers the opt-in 302-passthrough mode; see *Redirect mode* below.)
+
+### `GET /bg-session` (W1.0)
+
+The first leg of the browser mint. The worker fetches the YouTube homepage **server-side**
+with `SOCS=CAI` (the consent-bypass cookie — browsers cannot set `Cookie` on fetch, it is
+a forbidden header) and the **caller's User-Agent** (so the challenge/visitorData pair is
+coherent with the very browser that will run the VM), then extracts and returns:
+
+| Field | What it is |
+| ----- | ---------- |
+| `visitorData` | the anonymous session id PO tokens bind against (first `"visitorData"` in the page) |
+| `ytcfg` | the raw `ytcfg.set({...})` JSON — the client injects it as `yt.config_` (BotGuard reads `EVENT_ID`) |
+| `ytAtN` | the raw `window.ytAtN({...})` loose-JSON payload — the client runs bgutils `parseLooseJSON` on it to get `R.bgChallenge` |
+| `fetchedAt` / `expiresAt` / `cache` | cache bookkeeping (server caches per-UA for 1 h; the (ytcfg, ytAtN) pair must come from one render — the 2026-08 provider patch) |
+
+Why server-side extraction: the homepage is ~1 MB; the extracted triple ~50 KB. And the
+SOCS cookie is impossible client-side.
+
+### Redirect mode (W1.0)
+
+`/r` follows upstream redirects by default (the audio path wants bytes, not hops). With
+`X-Relay-Redirect: manual` the upstream fetch uses `redirect: "manual"` and any 3xx is
+**converted to a plain 200** whose CORS-exposed custom headers carry the hop:
+
+```
+HTTP/1.1 200
+X-Relay-Location: <absolute upstream Location>
+X-Relay-Status:  <true upstream status, e.g. 302>
+```
+
+Why not pass the literal 3xx + `Location` through? **A literal redirect can never cross CORS
+into a page**: with `redirect:'manual'` the browser yields an opaque-redirect (status 0,
+headers unreadable), and with `redirect:'follow'` it hops straight to the raw upstream URL —
+googlevideo sends no ACAO, so the fetch dies. Custom headers listed in `Access-Control-
+Expose-Headers` are the only hop signal a page can actually read. The chunk fetcher's hop
+protocol consumes `X-Relay-Location`, re-wraps it through `/r` (so the allowlist re-validates
+every hop), and caches the edge URL to amortize the hop across chunks. The header is
+relay-control only: it is in `REQUEST_DROP` and never forwarded upstream.
 
 ## Upstream host allowlist
 
@@ -45,6 +135,8 @@ Access-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length, Con
 | `youtubei.googleapis.com` | exact | innertube API host used by some clients |
 | `*.googlevideo.com` | suffix | media CDN edge nodes (`rr4---sn-x0.googlevideo.com`, …) |
 | `googlevideo.com` | exact (defensive) | bare apex, just in case |
+| `www.google.com` | exact host **and** `/js/th/*` path | W1.0: the BotGuard interpreter ("trayride") scripts the challenge's `interpreterUrl` points at — nothing else on google.com is proxied |
+| `jnn-pa.googleapis.com` | exact | W1.0: the `Waa/GenerateIT` integrity-token endpoint (PO mint attestation) |
 
 Anything else → 403 JSON `{ error: "host not allowed", host }`. The relay is an open proxy for
 exactly these hosts and nothing else.
@@ -79,7 +171,8 @@ Forwarded to upstream: **every** client header except —
 Explicitly forwarded (worth naming): `user-agent` (see the UA policy below — W0.1 finding: the
 Workers default UA gets 404s on some YouTube endpoints while a browser-like UA passes),
 `accept`, `accept-language`, `accept-encoding`, `content-type`, `range`,
-`x-youtube-client-name`, `x-youtube-client-version`, `x-goog-api-key`, `authorization`.
+`x-youtube-client-name`, `x-youtube-client-version`, `x-goog-api-key`,
+`x-goog-visitor-id`, `x-user-agent`, `authorization`.
 
 ### User-Agent policy (P0 landmine fix)
 
@@ -132,6 +225,8 @@ curl -i http://localhost:8787/health
 curl -i "http://localhost:8787/"
 curl -i "http://localhost:8787/r?u=https%3A%2F%2Fwww.youtube.com%2F"          # 200 (or upstream's status)
 curl -i "http://localhost:8787/r?u=https%3A%2F%2Fevil.example.com%2F"          # 403 host not allowed
+curl -i "http://localhost:8787/bg-session"                                    # W1.0 challenge triple (JSON)
+curl -i "http://localhost:8787/r?u=https%3A%2F%2Fwww.google.com%2Fjs%2Fnot-th%2Fx.js"   # 403 (path-scoped)
 curl -i -H "Range: bytes=0-1023" \
   "http://localhost:8787/r?u=https%3A%2F%2Frr4---sn-x0.googlevideo.com%2Fvideoplayback%3F..."   # 206 must survive
 ```

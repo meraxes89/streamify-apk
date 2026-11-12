@@ -12,6 +12,12 @@
 #            CLOUDFLARE_API_TOKEN (Workers Scripts:Edit scope) and
 #            CLOUDFLARE_ACCOUNT_ID in the environment. The token is handed
 #            over a secure channel and used once — it NEVER enters the tree.
+# W1.0 NOTE: the LIVE worker still runs the P0 code (deployed 2026-11-12,
+#            pre-minting-surface). REDEPLOYING THIS FILE is required to
+#            enable /bg-session + the www.google.com/js/th/* and
+#            jnn-pa.googleapis.com allowlist entries (browser PO mints);
+#            the hop-surfacing mode and everything P0 keep working either
+#            way. CI does NOT deploy the relay — manual step by design.
 # LOCAL DEV: `bunx wrangler dev --port 8787` — no account needed.
 #
 # Deploy record + live verification matrix (2026-11-12):
