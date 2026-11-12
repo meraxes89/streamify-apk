@@ -1,0 +1,22 @@
+/**
+ * Shared TypeScript base configuration for the Streamify web workspaces.
+ *
+ * This is the common strictness contract for the `web` app and the
+ * `canary` probe (and, once it adopts TS tooling in W0.4, the `relay`
+ * worker). Workspace-specific options — module resolution, JSX mode,
+ * emit behavior, `include` paths — live in each workspace's own
+ * tsconfig, which `extends` this file.
+ */
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  }
+}

@@ -1,0 +1,18 @@
+# Streamify front-end — install & build artifacts.
+#
+# Repo convention (mirrors the root .gitignore policy): Cargo.lock IS
+# committed — an app shipping native Rust deps pins its dependency
+# graph exactly. The same logic applies here: front-end/package-lock.json
+# is committed so CI's hashFiles key pins the npm graph; only derived
+# build output and local state are ignored.
+
+node_modules/
+web/dist/
+crates/*/pkg/
+target/
+.wrangler/
+.env
+.env.*
+.vite/
+*.tsbuildinfo
+*.log

@@ -1,0 +1,446 @@
+/*
+ * Streamify Web — P0 proof-phase styles.
+ *
+ * Hand-written, framework-free CSS. Mobile-first: the base rules target
+ * small viewports and the media query at the bottom progressively
+ * enhances wider screens. Dark theme with an emerald accent; no blue or
+ * indigo tones anywhere in the palette.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                       */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Near-black neutral base with a faint green cast, no blue. */
+  --color-bg: #0e1211;
+  --color-bg-raised: #141a18;
+  --color-fg: #e7ece9;
+  --color-fg-muted: #9fb0aa;
+  --color-accent: #34d399;
+  --color-accent-hover: #6ee7b7;
+  --color-on-accent: #052e21;
+  --color-border: #22302b;
+
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --content-max-width: 46rem;
+  --space-gutter: 1.25rem;
+
+  /* Comfortable touch target for pointer and screen-reader users. */
+  --touch-target-min: 44px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                 */
+/* ------------------------------------------------------------------ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * App shell: flex column with a viewport minimum height so the footer
+ * stays at the bottom on short pages (`.footer` uses margin-top: auto).
+ */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Single readable content column, centered. */
+.content {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+  padding: 2rem var(--space-gutter) 3rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Typography                                                           */
+/* ------------------------------------------------------------------ */
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0.5rem 0 2rem;
+  color: var(--color-accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ */
+/* Cards                                                                */
+/* ------------------------------------------------------------------ */
+
+.card {
+  padding: 1.25rem;
+  background-color: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.card-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  line-height: 1.3;
+}
+
+.card-text {
+  margin: 0 0 1.25rem;
+  color: var(--color-fg-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                             */
+/* ------------------------------------------------------------------ */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  padding: 0.5rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background-color: var(--color-accent);
+  color: var(--color-on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+}
+
+.button:disabled {
+  background-color: var(--color-bg);
+  border-color: var(--color-border);
+  color: var(--color-fg-muted);
+  cursor: not-allowed;
+}
+
+/* Visible keyboard focus, never suppressed. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Handshake probe readout                                              */
+/* ------------------------------------------------------------------ */
+
+.ping-result {
+  margin: 1rem 0 0;
+  padding: 0.625rem 0.875rem;
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-control);
+  background-color: rgba(52, 211, 153, 0.08);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 0.875rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Footer (pinned to the bottom via the flex shell)                    */
+/* ------------------------------------------------------------------ */
+
+.footer {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+}
+
+.footer p {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 1rem var(--space-gutter);
+}
+
+/* ------------------------------------------------------------------ */
+/* Utilities                                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Scrollable list scaffold for later phases (queue, search results):
+ * capped height with a styled, contained overflow area. Not used by
+ * the P0 page yet.
+ */
+.scroll-list {
+  max-height: 24rem;
+  overflow-y: auto;
+  padding-inline-end: 0.25rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* W0.4 — search, playback, proof                                       */
+/* ------------------------------------------------------------------ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.section-gap {
+  margin-top: 1.25rem;
+}
+
+.status-line {
+  margin: 0.875rem 0 0;
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+}
+
+.search-form {
+  display: flex;
+  gap: 0.625rem;
+}
+
+.search-form input {
+  flex: 1;
+  min-height: var(--touch-target-min);
+  padding: 0 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font: inherit;
+}
+
+.search-form input::placeholder {
+  color: var(--color-fg-muted);
+}
+
+.track-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-raised);
+}
+
+.track-thumb {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 0.375rem;
+  object-fit: cover;
+  background-color: var(--color-bg);
+}
+
+.track-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.track-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-artist {
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-duration {
+  flex-shrink: 0;
+  color: var(--color-fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.button-small {
+  min-width: 0;
+  padding: 0.375rem 0.875rem;
+}
+
+audio {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.meter {
+  height: 0.5rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  background-color: var(--color-bg);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  background-color: var(--color-accent);
+  transition: width 0.2s linear;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  color: var(--color-fg-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* W0.1b — residential canary (#/canary)                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Results table: compact rows, tabular numerals, a border under every
+ * row. The wrapper scrolls horizontally on small screens (8 columns do
+ * not fit a phone) and is keyboard-focusable so non-touch users can
+ * scroll it too.
+ */
+.canary-table-scroll {
+  overflow-x: auto;
+  margin-top: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  -webkit-overflow-scrolling: touch;
+}
+
+.canary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.canary-table th,
+.canary-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.canary-table thead th {
+  white-space: nowrap;
+  color: var(--color-fg-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.canary-table tbody tr:last-child th,
+.canary-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.canary-table .canary-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* R-C condition verdict list. */
+.canary-rc-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+.canary-rc-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.canary-rc-head code {
+  color: var(--color-accent);
+}
+
+.canary-rc-detail {
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Wider viewports (mobile-first enhancement)                           */
+/* ------------------------------------------------------------------ */
+
+@media (min-width: 48rem) {
+  .content {
+    padding-top: 3rem;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}

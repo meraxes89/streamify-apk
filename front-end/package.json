@@ -1,0 +1,15 @@
+{
+  "name": "streamify-web",
+  "private": true,
+  "workspaces": [
+    "web",
+    "relay",
+    "canary"
+  ],
+  "scripts": {
+    "build": "npm run build -w web",
+    "dev": "npm run dev -w web",
+    "preview": "npm run preview -w web",
+    "lint": "tsc -b web"
+  }
+}

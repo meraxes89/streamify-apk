@@ -1,0 +1,12 @@
+# streamify-relay — WS-W P0 minimal CORS relay (Cloudflare Worker).
+#
+# P0 scope (W0.4): GET/POST /r?u=<urlencoded-target> → forward method +
+# headers to the allowlisted target, stream the response back with CORS *.
+# No JWT, no rate limiting, no kill switch — those land in P4 (W4.1).
+#
+# Deploy: cd front-end/relay && npx wrangler deploy   (needs CF credentials)
+# Local:  cd front-end/relay && npx wrangler dev --port 8787   (no login needed)
+name = "streamify-relay"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+workers_dev = true

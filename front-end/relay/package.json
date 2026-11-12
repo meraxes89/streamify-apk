@@ -1,0 +1,16 @@
+{
+  "name": "streamify-relay",
+  "private": true,
+  "description": "WS-W P0 minimal CORS relay (Cloudflare Worker): host allowlist, X-Streamify-UA swap, Range/206 passthrough. Full hardening (JWT, rate limit, kill switch) is P4 (W4.1) — deliberately not here.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.0.0"
+  }
+}
