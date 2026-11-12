@@ -1,0 +1,67 @@
+# Web Deploy — GitHub Pages deployment for the Streamify web port (W0.3/W0.4).
+#
+# NOTE: branch deploys from `ws-w/p0-proof` are intentional during the proof
+# phase — the P0 gates (G0.2 ping / G0.3 search / G0.4 10s audio) must be
+# verifiable on the Pages URL while the proof work streams on one branch.
+name: Web Deploy
+
+on:
+  push:
+    branches: [main, 'ws-w/p0-proof']
+    paths: ['front-end/**', '.github/workflows/web-deploy.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time; never cancel an in-flight deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # W0.4: build the Rust wasm engine (vendored web rustypipe →
+      # wasm32-unknown-unknown) and copy the wasm-pack pkg output into the
+      # web app before the vite build. --no-opt: the wasm-pack-bundled
+      # wasm-opt rejects rustc's bulk-memory ops (see the crate's
+      # Cargo.toml note).
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: npm i -g wasm-pack@0.15.1
+      - name: Build wasm facade
+        run: |
+          wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
+          cp crates/streamify-wasm/pkg/streamify_wasm.js \
+             crates/streamify-wasm/pkg/streamify_wasm.d.ts \
+             crates/streamify-wasm/pkg/streamify_wasm_bg.wasm \
+             crates/streamify-wasm/pkg/streamify_wasm_bg.wasm.d.ts \
+             web/src/wasm/
+        working-directory: front-end
+      - name: Install deps
+        run: npm install --no-fund --no-audit
+        working-directory: front-end
+      - name: Build web
+        run: npm run build -w web
+        working-directory: front-end
+      - uses: actions/configure-pages@v5
+        with:
+          # First deploy: create the Pages site if it is not enabled yet
+          # (the repo owner has already enabled it via the API — this keeps
+          # the workflow self-sufficient for fresh checkouts).
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: front-end/web/dist
+      - uses: actions/deploy-pages@v4

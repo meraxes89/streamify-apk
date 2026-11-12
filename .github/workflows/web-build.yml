@@ -1,0 +1,142 @@
+# Web Build — CI gate for the Streamify web port (WS-W P0).
+#
+# Per the P0 testing protocol: heavy suites run HERE, not in the dev
+# sandbox. This workflow proves, per push/PR:
+#   1. wasm32 compile gate (W0.2): the vendored web rustypipe +
+#      streamify-wasm compile to wasm32-unknown-unknown with NO rquickjs
+#      in the tree, and wasm-pack produces the web-target pkg.
+#   2. wasm-bindgen-test (headless Chrome): the W0.2 ping test.
+#   3. The web bundle builds (vite + strict tsc against the generated .d.ts).
+#   4. The relay worker bundles (wrangler dry-run — no Cloudflare creds).
+#
+# The engine's own 429-test suite belongs to the frozen rust/ workspace's
+# CI — it is deliberately NOT invoked here.
+name: Web Build
+
+on:
+  pull_request:
+    paths:
+      - 'front-end/**'
+      - '.github/workflows/web-build.yml'
+  push:
+    branches: [main, 'ws-w/p0-proof']
+    paths:
+      - 'front-end/**'
+      - '.github/workflows/web-build.yml'
+
+jobs:
+  wasm:
+    name: wasm32 compile gate (W0.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: front-end
+      - name: "cargo check (wasm32-unknown-unknown)"
+        run: cargo check --target wasm32-unknown-unknown -p streamify-wasm
+        working-directory: front-end
+      - name: "AC — rquickjs must NOT appear in the wasm32 tree"
+        run: |
+          if cargo tree --target wasm32-unknown-unknown -p streamify-wasm -e normal | grep -q rquickjs; then
+            echo "::error::rquickjs found in the wasm32 dependency tree — W0.2 acceptance violated"
+            exit 1
+          fi
+          echo "OK: no rquickjs in the wasm32 tree"
+        working-directory: front-end
+      - name: cargo build (wasm32-unknown-unknown)
+        run: cargo build --target wasm32-unknown-unknown -p streamify-wasm
+        working-directory: front-end
+      - name: Install wasm-pack
+        run: npm i -g wasm-pack@0.15.1
+      - name: "wasm-pack build (web target, --no-opt — the bundled wasm-opt rejects rustc bulk-memory ops)"
+        run: wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
+        working-directory: front-end
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streamify-wasm-pkg
+          path: |
+            front-end/crates/streamify-wasm/pkg/streamify_wasm.js
+            front-end/crates/streamify-wasm/pkg/streamify_wasm.d.ts
+            front-end/crates/streamify-wasm/pkg/streamify_wasm_bg.wasm
+            front-end/crates/streamify-wasm/pkg/streamify_wasm_bg.wasm.d.ts
+          if-no-files-found: error
+
+  wasm-tests:
+    name: wasm-bindgen-test (headless Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: front-end
+      # MUST match the wasm-bindgen version resolved in front-end/Cargo.lock
+      # (0.2.130 as of W0.2). A mismatch fails at test time with a version
+      # skew error — bump this pin together with the lockfile.
+      - name: "Install wasm-bindgen-cli (pin matches Cargo.lock)"
+        run: cargo install wasm-bindgen-cli --version 0.2.130
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-add-to-path: true
+      - name: Expose chrome to wasm-bindgen-test-runner
+        run: echo "CHROME_BIN=${{ steps.chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+      - name: "Run wasm-bindgen-test (ping must return pong)"
+        # No --headless flag: the 0.2.130 runner is env-driven (headless by
+        # default; CHROME_BIN selects the binary). The runner is wired via
+        # front-end/.cargo/config.toml [target.wasm32-unknown-unknown].
+        run: cargo test -p streamify-wasm --target wasm32-unknown-unknown
+        working-directory: front-end
+
+  web:
+    name: web build (vite + strict tsc)
+    runs-on: ubuntu-latest
+    needs: [wasm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: streamify-wasm-pkg
+          # download-artifact paths are relative to the JOB workspace (repo
+          # root), not the step's working-directory — land it inside
+          # front-end so the staging find below sees it.
+          path: front-end/pkg
+      - name: "Stage wasm pkg into web/src/wasm"
+        run: |
+          mkdir -p web/src/wasm
+          find pkg -type f \
+            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \
+               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \
+            -exec cp {} web/src/wasm/ \;
+          ls -la web/src/wasm/
+        working-directory: front-end
+      - name: Install deps
+        run: npm install --no-fund --no-audit
+        working-directory: front-end
+      - name: Build web (tsc --noEmit + vite build)
+        run: npm run build -w web
+        working-directory: front-end
+
+  relay:
+    name: relay worker bundles (wrangler dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install deps
+        run: npm install --no-fund --no-audit
+        working-directory: front-end
+      - name: wrangler dry-run (no Cloudflare creds needed)
+        run: npx wrangler deploy --dry-run --outdir dist
+        working-directory: front-end/relay

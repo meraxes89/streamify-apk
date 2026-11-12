@@ -1,0 +1,30 @@
+# front-end Cargo workspace root (WS-W P0 / W0.2).
+#
+# The web proof compiles the YouTube resolver to wasm32-unknown-unknown:
+#
+#   * `crates/*`   — the wasm facade crates (streamify-wasm).
+#   * `third_party/rustypipe` — a vendored, wasm-patched copy of crates.io
+#     rustypipe 0.11.4 (rquickjs/QuickJS compiled OUT; PO-free client
+#     ladder; relay URL-rewrite hook). Patched via [patch.crates-io] so the
+#     frozen engine workspace at ../rust (crates.io crate, its own lockfile)
+#     is untouched — native builds are unaffected.
+#
+# This workspace is wasm-only: `cargo check --target wasm32-unknown-unknown`.
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[patch.crates-io]
+rustypipe = { path = "third_party/rustypipe" }
+
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+# No `strip` — wasm-bindgen needs the `target_features` custom section to
+# detect which Wasm features the module requires (bulk memory et al).

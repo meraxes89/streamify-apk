@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+.wrangler/
+.vite/
+*.tsbuildinfo
+.env.local
+.env.*.local
