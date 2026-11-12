@@ -1,0 +1,40 @@
+# streamify-wasm — WS-W P0 proof facade (W0.2 / W0.4).
+#
+# The wasm-bindgen surface over the vendored web rustypipe engine. Built
+# with:
+#   wasm-pack build crates/streamify-wasm --target web --out-dir pkg
+# (run from front-end/; the pkg/ output is copied into web/src/wasm/ by the
+# build tooling — see web/src/wasm/README.md).
+[package]
+name = "streamify-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Streamify web proof facade: wasm-bindgen surface over the (vendored) rustypipe YouTube Music engine"
+publish = false
+
+# wasm-pack: the bundled wasm-opt (binaryen) shipped with wasm-pack 0.15
+# rejects the bulk-memory ops rustc emits ("memory.copy operations require
+# bulk memory operations") — skip the post-opt pass; LTO release output is
+# what ships.
+[package.metadata.wasm-pack.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+# The #[wasm_bindgen] async-fn expansion links against these (JsFuture glue).
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The vendored wasm-patched rustypipe (front-end/third_party/rustypipe,
+# resolved through the [patch.crates-io] table in the workspace root).
+# default-features = false — no TLS features (the browser fetch layer
+# provides TLS), no QuickJS (rquickjs-sys does not compile to wasm — W0.1
+# landmine; the PO-free client ladder is the web strategy).
+rustypipe = { version = "0.11.4", default-features = false }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.2"
