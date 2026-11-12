@@ -4,18 +4,18 @@
 # PLAN:      Workers FREE plan. Nothing here uses a paid feature — no KV, no
 #            Durable Objects, no Queues, no Cron, no custom domains. The free
 #            tier's 100k requests/day is plenty for the P0 proof.
-# URL:       after deploy the worker answers at
-#              https://streamify-relay.<ACCOUNT>.workers.dev
-#            (<ACCOUNT> is the account subdomain picked at Cloudflare signup —
-#            confirm it after the first real deploy, it is not knowable ahead
-#            of credentials).
-# DEPLOY:    `npx wrangler deploy` (or `bun run deploy`).
-#            Requires CLOUDFLARE_API_TOKEN (Workers Scripts:Edit scope) or an
-#            interactive `wrangler login`. THE LEAD DOES NOT HAVE CREDENTIALS
-#            YET — the P0 deploy is pending creds. Validation without any
-#            Cloudflare account:
-#              npx wrangler deploy --dry-run --outdir /tmp/relay-dry-run
+# URL:       LIVE since 2026-11-12 (deployed from merged main after PR #159):
+#              https://streamify-relay.zephyr4289.workers.dev
+#            (account subdomain "zephyr4289", confirmed on first deploy —
+#            it replaced the account's initial Hello-World placeholder).
+# DEPLOY:    `npx wrangler deploy` (or `bun run deploy`) with
+#            CLOUDFLARE_API_TOKEN (Workers Scripts:Edit scope) and
+#            CLOUDFLARE_ACCOUNT_ID in the environment. The token is handed
+#            over a secure channel and used once — it NEVER enters the tree.
 # LOCAL DEV: `bunx wrangler dev --port 8787` — no account needed.
+#
+# Deploy record + live verification matrix (2026-11-12):
+#            front-end/decisions/W0.6-live-wiring.md
 # ---------------------------------------------------------------------------
 
 name = "streamify-relay"

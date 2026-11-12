@@ -48,17 +48,27 @@ missing, the engine status card shows
 
 ## Deploy
 
-Pushes to `main` or `ws-w/p0-proof` touching `front-end/**` run the
+Pushes to `main` or a `ws-w/*` proof branch touching `front-end/**` run the
 `Web Deploy` workflow (`.github/workflows/web-deploy.yml`) which builds
-`web/dist/` and publishes it to GitHub Pages. The wasm step is a documented
-placeholder — the lead wires the real `wasm-pack` invocation there in W0.4.
+`web/dist/` (wasm facade + vite) and publishes it to GitHub Pages. Since the
+WS-W live wiring (2026-11-12) that workflow bakes the live env into the
+bundle — see *Relay / env* below.
 
 ## Relay / env
 
-- Default relay base: none in production builds; `http://localhost:8787` in dev.
-- `VITE_RELAY_BASE_URL` (build-time env) sets the default relay base.
+Production defaults since the live wiring (2026-11-12, `W0.6`):
+
+- Default relay base: `https://streamify-relay.zephyr4289.workers.dev` — the
+  **deployed** Cloudflare Worker, baked at build time by `web-deploy.yml` via
+  `VITE_RELAY_BASE_URL` (a public constant, committed in the workflow).
+- The canary page (`/streamify-apk/canary.html`) additionally gets
+  `VITE_SUPABASE_URL` (public constant) + `VITE_SUPABASE_ANON_KEY` (repo
+  secret `SUPABASE_ANON_KEY` — JWT-shaped, never committed) for the
+  "Post results to Supabase" leg.
 - `?relay=https://your-relay.example` (query param) overrides everything —
-  handy for pointing the deployed page at a live relay.
+  handy for pointing the deployed page at another relay.
+- In dev (`npm run dev -w web`) the default remains `http://localhost:8787`
+  unless `VITE_RELAY_BASE_URL` is exported.
 
 ## Regenerating the wasm facade
 

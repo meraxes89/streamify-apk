@@ -1,13 +1,13 @@
 # Web Deploy — GitHub Pages deployment for the Streamify web port (W0.3/W0.4).
 #
-# NOTE: branch deploys from `ws-w/p0-proof` are intentional during the proof
+# NOTE: branch deploys from `ws-w/*` are intentional during the proof
 # phase — the P0 gates (G0.2 ping / G0.3 search / G0.4 10s audio) must be
 # verifiable on the Pages URL while the proof work streams on one branch.
 name: Web Deploy
 
 on:
   push:
-    branches: [main, 'ws-w/p0-proof']
+    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring']
     paths: ['front-end/**', '.github/workflows/web-deploy.yml']
   workflow_dispatch: {}
 
@@ -25,6 +25,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: github-pages
+    # WS-W live wiring (2026-11-12, W0.6): Vite bakes these into the Pages
+    # bundle at build time. The relay + Supabase URLs are public constants
+    # (same values as app/build.gradle.kts defaults); the anon key flows from
+    # the repo secret SUPABASE_ANON_KEY — it is JWT-shaped, so gitleaks flags
+    # it if committed. Runs without the secret (fork PRs / workflow_dispatch
+    # from forks) build in anon-degraded mode: the canary page falls back to
+    # its amber "not configured" note + copy-rows-JSON button, and the app
+    # itself is unaffected (the relay URL is a public constant).
+    env:
+      VITE_RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
+      VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -56,12 +56,27 @@ Resolution order for the relay base: `?relay=<base>` query param (per-tester ove
 `VITE_RELAY_BASE_URL` → `''` in production / `http://localhost:8787` only when
 `import.meta.env.DEV`. The input on the page is editable regardless.
 
+**Wired since 2026-11-12 (W0.6 live wiring):** `web-deploy.yml` / `web-build.yml`
+bake all three into the Pages build — the relay + Supabase URLs as committed public
+constants, the anon key from the repo secret `SUPABASE_ANON_KEY` (JWT-shaped, gitleaks
+flags it if committed; fork-PR builds run anon-degraded and this page keeps its amber
+“not configured” note + copy-rows-JSON fallback). The live relay is
+<https://streamify-relay.zephyr4289.workers.dev> — the deployed page needs no `?relay=`
+override anymore.
+
 ## Migration (PO's job)
 
 `migrations/001_canary_results.sql` — **PO reviews + applies**. Grants anon **INSERT
 only** on `public.canary_results`; there is deliberately **no anon SELECT** (service
 role reads; adding authenticated read is a later PO call). Applying it is a prerequisite
 for the “Post results to Supabase” button to succeed.
+
+Since 2026-11-12 the table is also registered in the repo's DB contract as
+`supabase/migrations/2026_11_ws_w_canary_results.sql` (same shape, re-run guards) so
+live-vs-repo drift audits (`docs/playbooks/BACKEND_DB_SYNC.md`) account for it — apply
+whichever copy is handier; they create the same table. **Status: pending apply on the
+live project `dbgtvzgwixerhnwvhtil`** (SQL Editor → paste → Run; until then the post
+button fails with PostgREST `PGRST205`).
 
 ## Known deviation: User-Agent forwarding (documented, not worked around)
 

@@ -138,15 +138,23 @@ curl -i -H "Range: bytes=0-1023" \
 
 ## Deploy
 
+**LIVE** since 2026-11-12 at <https://streamify-relay.zephyr4289.workers.dev>
+(account subdomain `zephyr4289`; first real deploy replaced the account's initial
+Hello-World placeholder — wrangler version `ac91b113-9197-40af-853c-1cad5acb5d40`).
+
+Redeploying:
+
 ```bash
-npx wrangler deploy        # or: bun run deploy
+export CLOUDFLARE_API_TOKEN=<token>      # Workers Scripts:Edit scope
+export CLOUDFLARE_ACCOUNT_ID=<account-id> # not required with a single-account token
+cd front-end/relay
+npx wrangler deploy                       # or: bun run deploy
 ```
 
-This needs a `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit scope) or an interactive
-`wrangler login`. **The lead does not have Cloudflare credentials yet — the P0 deploy is
-pending creds.** Once deployed the worker answers at
-`https://streamify-relay.<ACCOUNT>.workers.dev` (`<ACCOUNT>` = the account subdomain picked at
-signup — confirm it after first deploy).
+The token is handed over a secure channel and used once — it never enters the tree
+(gitleaks runs on every PR). The full deploy record + the live verification matrix
+(player matrix, 206 byte-range, mid-file seek, WEB_REMIX search — all through the
+deployed worker) lives in `front-end/decisions/W0.6-live-wiring.md`.
 
 Validation with **no account at all**:
 
@@ -176,13 +184,21 @@ above and in `src/index.ts`.
 
 ## Known caveats
 
+* **`*.workers.dev` edge protection rejects non-browser User-Agents (2026-11-12 finding).**
+  Cloudflare's edge in front of `workers.dev` domains runs browser-integrity checks: a
+  request carrying e.g. `Python-urllib/3.12` gets `403 error code: 1010` **before the worker
+  code ever runs** (verified: same request with a browser UA → `200 ok`). The relay's real
+  clients (browsers on `github.io`) are unaffected. Implication for probing tooling: curl and
+  browser-UA'd HTTP clients pass; bare python-urllib / default scripting UAs are banned at the
+  edge — set a browser-like `User-Agent` on any health checks or canary tooling that hits the
+  deployed URL.
 * **`Content-Encoding` passthrough.** Upstream headers are copied verbatim. If the Workers
   runtime ever transparently decompresses a subresponse *without* dropping the
   `Content-Encoding` header, a browser would try to gunzip plain bytes. In practice the audio
   path (googlevideo) is identity-encoded (media bytes are already compressed — no
   `Content-Encoding`), so the kill-criterion path is unaffected; the innertube JSON path stays
-  internally consistent. Verify with the canary (W0.x) on the first live deploy before
-  hardening in P4.
+  internally consistent. Verified on the first live deploy (2026-11-12, W0.6) before the P4
+  hardening.
 * **URL normalization.** The target is parsed with `new URL()` for validation and re-serialized
   for the upstream fetch. Well-formed youtubei/googlevideo URLs round-trip unchanged; a
   hand-mangled target could get normalized (this is acceptable for P0 and fails safe with an

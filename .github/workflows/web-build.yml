@@ -19,7 +19,7 @@ on:
       - 'front-end/**'
       - '.github/workflows/web-build.yml'
   push:
-    branches: [main, 'ws-w/p0-proof']
+    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring']
     paths:
       - 'front-end/**'
       - '.github/workflows/web-build.yml'
@@ -98,6 +98,14 @@ jobs:
     name: web build (vite + strict tsc)
     runs-on: ubuntu-latest
     needs: [wasm]
+    # Same env the Pages deploy builds with (WS-W live wiring, 2026-11-12 —
+    # see web-deploy.yml): the CI gate must run against the exact wired env,
+    # not a bare one. Fork PRs see an empty anon key and build anon-degraded
+    # (the canary env vars are all optional; the build stays green).
+    env:
+      VITE_RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
+      VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
