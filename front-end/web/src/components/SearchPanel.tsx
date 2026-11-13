@@ -13,16 +13,33 @@ export interface SearchPanelProps {
   results: Track[];
   playback: Record<string, RowPlayback>;
   onPlay: (track: Track) => void;
+  onQueue?: (track: Track) => void;
+  onLike?: (track: Track) => void;
+  likedIds?: Set<string>;
+  currentId?: string | null;
 }
 
 const SKELETON_ROWS = 6;
 const PROOF_QUERY_HINT = 'Blinding Lights The Weeknd';
 
 export function SearchPanel(props: SearchPanelProps): JSX.Element {
-  const { phase, query, onQueryChange, onSubmit, error, results, playback, onPlay } = props;
+  const {
+    phase,
+    query,
+    onQueryChange,
+    onSubmit,
+    error,
+    results,
+    playback,
+    onPlay,
+    onQueue,
+    onLike,
+    likedIds,
+    currentId,
+  } = props;
 
   return (
-    <section aria-label="YouTube Music search">
+    <section className="card search" aria-label="YouTube Music search">
       <form
         className="search-form"
         aria-label="Search YouTube Music"
@@ -56,8 +73,9 @@ export function SearchPanel(props: SearchPanelProps): JSX.Element {
 
       {phase === 'idle' && (
         <p className="muted idle-hint">
-          Idle — try &quot;{PROOF_QUERY_HINT}&quot;. The P0 proof expects at least 5 tracks
-          and a 10-second playback per track.
+          Idle — try &quot;{PROOF_QUERY_HINT}&quot;. Tap <strong>Play</strong> to resolve + queue
+          through the engine (direct egress on mobile), <strong>Queue</strong> to append,{' '}
+          <strong>♡</strong> to like (signed in).
         </p>
       )}
 
@@ -97,6 +115,10 @@ export function SearchPanel(props: SearchPanelProps): JSX.Element {
                   track={track}
                   playback={playback[track.videoId]}
                   onPlay={onPlay}
+                  onQueue={onQueue}
+                  onLike={onLike}
+                  liked={likedIds?.has(track.videoId)}
+                  isCurrent={currentId === track.videoId}
                 />
               ))}
             </ul>

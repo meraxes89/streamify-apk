@@ -1,19 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { loadEngine, relayBaseCandidate, relayWrap, resolveStream, searchMusic } from './lib/engine';
-import type { EngineStatus, StreamInfo, Track } from './lib/engine';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { loadEngine, relayBaseCandidate, searchMusic } from './lib/engine';
+import type { EngineStatus, Track } from './lib/engine';
+import { createEngineStack } from './lib/wasmEngine';
+import type { WasmEnginePort, EgressMode } from './lib/wasmEngine';
+import { toTrackRow, usePlayerStore } from './lib/playerStore';
 import { SearchPanel } from './components/SearchPanel';
 import type { SearchPhase } from './components/SearchPanel';
-import { StatusCard } from './components/StatusCard';
-import { SpineConsole } from './components/SpineConsole';
 import type { RowPlayback } from './components/TrackRow';
+import { PlayerBar } from './components/PlayerBar';
+import { QueueList } from './components/QueueList';
+import { AuthPanel } from './components/AuthPanel';
+import { SpineConsole } from './components/SpineConsole';
+import {
+  cloudTrackId,
+  getSession,
+  likeTrack,
+  recordPlayEvent,
+  supabaseConfigured,
+  type SupabaseSession,
+} from './lib/supabase';
 
-const PROOF_MS = 10_000; // the P0 audio proof plays 10 seconds, then auto-pauses
+/**
+ * App — the P2 mobile-first shell (W2.0 + W2.1 + W2.2 + W2.3).
+ *
+ * The wasm ENGINE (queue, state machine, commands — front-end/crates/
+ * streamify-engine-wasm) owns playback; the DIRECT-EGRESS element sink
+ * (W2.0) rides the user's IP for media bytes; the relay serves only the
+ * tiny resolve/mint legs. The P1 spine (WASM DSP pipeline) stays one tap
+ * away as the opt-in "engine path" (desktop quality mode, G1 gate).
+ */
 
-/** G0.4's spec video — standard content (Rick Astley), the canonical
- * 10-second playback proof target. Licensed search rows stay bot-walled
- * from datacenter IPs (the canary's W0.5 question); this button runs the
- * gate's exact test. */
-const G04_VIDEO_ID = 'dQw4w9WgXcQ';
+function detectDefaultEgressMode(): EgressMode {
+  // Coarse pointer (phones/tablets) → direct egress by default; the relay
+  // byte path is a datacenter IP and dies after a handful of plays there.
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  return coarse ? 'element' : 'element';
+}
 
 export function App(): JSX.Element {
   const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null);
@@ -21,248 +43,173 @@ export function App(): JSX.Element {
   const [query, setQuery] = useState<string>('');
   const [results, setResults] = useState<Track[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [lastSearchCount, setLastSearchCount] = useState<number | null>(null);
   const [playback, setPlayback] = useState<Record<string, RowPlayback>>({});
-  const [g04State, setG04State] = useState<RowPlayback | null>(null);
+  const [port, setPort] = useState<WasmEnginePort | null>(null);
+  const [egressMode, setEgressMode] = useState<EgressMode>(detectDefaultEgressMode);
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(false);
+  const [session, setSession] = useState<SupabaseSession | null>(null);
+  const [likedIds, setLikedIds] = useState<Set<string>>(() => new Set());
 
   const aliveRef = useRef<boolean>(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeVideoRef = useRef<string | null>(null);
+  const bind = usePlayerStore((s) => s.bind);
+  const setLastRung = usePlayerStore((s) => s.setLastRung);
+  const snapshot = usePlayerStore((s) => s.snapshot);
+  const lastResolve = port?.lastResolved ?? null;
 
-  // Boot the engine once with the relay candidate (?relay= > env > dev default).
+  // ---- boot: resolver engine (search) + the wasm control plane --------
   useEffect(() => {
     aliveRef.current = true;
-    let cancelled = false;
-    void loadEngine(relayBaseCandidate()).then((status: EngineStatus) => {
-      if (!cancelled) {
-        setEngineStatus(status);
-      }
+    const relay = relayBaseCandidate();
+    void loadEngine(relay).then((status: EngineStatus) => {
+      if (aliveRef.current) setEngineStatus(status);
     });
-    return () => {
-      cancelled = true;
-      aliveRef.current = false;
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
+    void createEngineStack({ relayBase: relay, egressMode: 'element' }).then((stack) => {
+      if (!aliveRef.current) {
+        stack.sink.dispose();
+        return;
       }
-      if (audioRef.current !== null) {
-        audioRef.current.pause();
-        audioRef.current.removeAttribute('src');
-        audioRef.current = null;
-      }
-    };
-  }, []);
-
-  const setRow = useCallback((videoId: string, row: RowPlayback) => {
-    setPlayback((prev) => ({ ...prev, [videoId]: row }));
-  }, []);
-
-  // Stop whatever is playing: clear the proof timer, pause/release the audio,
-  // and reset the previous row to its idle state.
-  const stopPlayback = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (audioRef.current !== null) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-      audioRef.current = null;
-    }
-    const previous = activeVideoRef.current;
-    if (previous !== null) {
-      activeVideoRef.current = null;
-      setPlayback((prev) => {
-        if (!(previous in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[previous];
-        return next;
+      bind(stack.port);
+      setPort(stack.port);
+      // Debug handle (the __spine convention): the live port for console
+      // diagnostics — queue inspection, command injection.
+      (window as unknown as { __enginePort: WasmEnginePort }).__enginePort = stack.port;
+    });
+    // Supabase session boot (best-effort, parallel).
+    if (supabaseConfigured()) {
+      void getSession().then((s) => {
+        if (aliveRef.current) setSession(s);
       });
     }
-  }, []);
+    return () => {
+      aliveRef.current = false;
+    };
+  }, [bind]);
+
+  // Egress-mode switches flow into the port (which data plane the next
+  // play intent drives).
+  useEffect(() => {
+    port?.setEgressMode(egressMode);
+  }, [port, egressMode]);
+
+  // Rung chip sync (the port's last resolve, polled on snapshot pushes).
+  useEffect(() => {
+    if (lastResolve !== null) setLastRung(lastResolve.rung);
+  }, [lastResolve, snapshot?.rev, setLastRung]);
+
+  // Play-event telemetry (W2.2, best-effort, signed-in only): report when
+  // a track LEAVES the cursor — the row's meta comes from the queue read,
+  // the played seconds from the engine position at that moment.
+  const reportedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const current = snapshot?.currentTrack?.id ?? null;
+    const prev = reportedRef.current;
+    if (prev !== null && prev !== current && session !== null && port !== null) {
+      const row = port
+        .getQueue()
+        .rows.find((r) => r.track.id === prev)?.track;
+      if (row !== undefined) {
+        void recordPlayEvent({
+          trackSig: cloudTrackId(row.title, row.artist),
+          title: row.title,
+          artist: row.artist,
+          durationPlayedSec: (snapshot?.positionMs ?? 0) / 1000,
+          completionRatio:
+            row.durationMs > 0 ? Math.min(1, (snapshot?.positionMs ?? 0) / row.durationMs) : 0,
+        });
+      }
+    }
+    reportedRef.current = current;
+  }, [snapshot?.currentTrack?.id, snapshot?.positionMs, session, port]);
+
+  // ---- search ----------------------------------------------------------
 
   const runSearch = useCallback(async () => {
     const q = query.trim();
-    if (q === '') {
-      return;
-    }
+    if (q === '') return;
     setSearchPhase('loading');
     setSearchError(null);
     try {
       const tracks = await searchMusic(q);
-      if (!aliveRef.current) {
-        return;
-      }
+      if (!aliveRef.current) return;
       setResults(tracks);
-      setLastSearchCount(tracks.length);
       setSearchPhase('results');
     } catch (err) {
-      if (!aliveRef.current) {
-        return;
-      }
+      if (!aliveRef.current) return;
       setSearchPhase('error');
       setSearchError(err instanceof Error ? err.message : String(err));
     }
   }, [query]);
 
+  const setRow = useCallback((videoId: string, row: RowPlayback) => {
+    setPlayback((prev) => ({ ...prev, [videoId]: row }));
+  }, []);
+
   const handlePlay = useCallback(
     async (track: Track) => {
-      // Only one proof at a time — stop whatever was playing before.
-      stopPlayback();
-
-      const videoId = track.videoId;
-      activeVideoRef.current = videoId;
-      setRow(videoId, { status: 'resolving' });
-
-      let info: StreamInfo | null;
+      if (port === null) return;
+      setRow(track.videoId, { status: 'resolving' });
       try {
-        info = await resolveStream(videoId);
+        await port.playNow(toTrackRow(track));
+        setRow(track.videoId, { status: 'playing' });
       } catch (err) {
-        if (aliveRef.current && activeVideoRef.current === videoId) {
-          setRow(videoId, {
-            status: 'failed',
-            message: err instanceof Error ? err.message : String(err),
-          });
-        }
-        return;
+        setRow(track.videoId, {
+          status: 'failed',
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
-      if (!aliveRef.current || activeVideoRef.current !== videoId) {
-        return;
-      }
-      if (info === null || info.streamUrl === '') {
-        setRow(videoId, { status: 'failed', message: 'no playable stream resolved' });
-        return;
-      }
-
-      // Direct googlevideo URLs go through the relay; already-relayed URLs stay as-is.
-      const base = engineStatus?.relayBase ?? '';
-      const src = info.streamUrl.startsWith(base) ? info.streamUrl : relayWrap(info.streamUrl);
-
-      const audio = new Audio(src);
-      audioRef.current = audio;
-      audio.addEventListener('error', () => {
-        if (timerRef.current !== null) {
-          clearTimeout(timerRef.current);
-          timerRef.current = null;
-        }
-        if (aliveRef.current && activeVideoRef.current === videoId) {
-          setRow(videoId, {
-            status: 'failed',
-            message: 'stream error — relay unreachable or URL rejected',
-          });
-        }
-      });
-      audio.addEventListener('ended', () => {
-        if (timerRef.current !== null) {
-          clearTimeout(timerRef.current);
-          timerRef.current = null;
-        }
-        if (aliveRef.current && activeVideoRef.current === videoId) {
-          setRow(videoId, {
-            status: 'failed',
-            message: 'stream ended before the 10s proof completed',
-          });
-        }
-      });
-
-      try {
-        await audio.play();
-      } catch (err) {
-        if (aliveRef.current && activeVideoRef.current === videoId) {
-          setRow(videoId, {
-            status: 'failed',
-            message: err instanceof Error ? err.message : String(err),
-          });
-        }
-        return;
-      }
-      if (!aliveRef.current || activeVideoRef.current !== videoId) {
-        return;
-      }
-
-      setRow(videoId, { status: 'playing' });
-      timerRef.current = setTimeout(() => {
-        timerRef.current = null;
-        audio.pause();
-        if (aliveRef.current && activeVideoRef.current === videoId) {
-          setRow(videoId, { status: 'passed' });
-        }
-      }, PROOF_MS);
     },
-    [engineStatus, setRow, stopPlayback],
+    [port, setRow],
   );
 
-  // G0.4: the gate's canonical 10-second playback proof on standard content
-  // (dQw4w9WgXcQ) — resolves through the wasm engine + relay, plays 10s of
-  // audio, then PASSes. Rendered in the status area because it is a gate
-  // affordance, not a search result (licensed rows are bot-walled from
-  // datacenter IPs — expected, measured by the canary).
-  const runG04Proof = useCallback(async () => {
-    if (g04State?.status === 'resolving' || g04State?.status === 'playing') {
-      return;
-    }
-    stopPlayback();
-    setG04State({ status: 'resolving' });
-    let info: StreamInfo | null;
-    try {
-      info = await resolveStream(G04_VIDEO_ID);
-    } catch (err) {
-      setG04State({
-        status: 'failed',
-        message: err instanceof Error ? err.message : String(err),
-      });
-      return;
-    }
-    if (info === null || info.streamUrl === '') {
-      setG04State({ status: 'failed', message: 'no playable stream resolved' });
-      return;
-    }
-    const base = engineStatus?.relayBase ?? '';
-    const src = info.streamUrl.startsWith(base) ? info.streamUrl : relayWrap(info.streamUrl);
-    const audio = new Audio(src);
-    audioRef.current = audio;
-    activeVideoRef.current = G04_VIDEO_ID;
-    audio.addEventListener('error', () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      setG04State({ status: 'failed', message: 'stream error — relay unreachable or URL rejected' });
-    });
-    audio.addEventListener('ended', () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      setG04State({ status: 'failed', message: 'stream ended before the 10s proof completed' });
-    });
-    try {
-      await audio.play();
-    } catch (err) {
-      setG04State({ status: 'failed', message: err instanceof Error ? err.message : String(err) });
-      return;
-    }
-    setG04State({ status: 'playing' });
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      audio.pause();
-      setG04State({ status: 'passed' });
-    }, PROOF_MS);
-  }, [engineStatus, g04State, stopPlayback]);
+  const handleQueue = useCallback(
+    (track: Track) => {
+      port?.enqueue(toTrackRow(track));
+    },
+    [port],
+  );
 
-  const enginePhase = engineStatus === null ? 'pending' : engineStatus.loaded ? 'loaded' : 'error';
+  const handleLike = useCallback(
+    async (track: Track) => {
+      if (session === null) return;
+      const ok = await likeTrack({
+        title: track.title,
+        artist: track.artist,
+        album: track.album ?? null,
+        durationSec: track.durationSec ?? null,
+        coverUrl: track.thumbnailUrl ?? null,
+        videoId: track.videoId,
+      });
+      if (ok) {
+        setLikedIds((prev) => new Set(prev).add(track.videoId));
+      }
+    },
+    [session],
+  );
+
+  const currentId = snapshot?.currentTrack?.id ?? null;
+
+  const enginePhase =
+    engineStatus === null ? 'pending' : engineStatus.loaded ? 'loaded' : 'error';
+
+  const egressLabel = useMemo(
+    () => (egressMode === 'element' ? 'direct (user IP)' : 'spine (relay bytes)'),
+    [egressMode],
+  );
 
   return (
-    <>
+    <div className="app-shell">
       <header className="site-header">
         <div className="titles">
-          <h1>Streamify Web — P1 Audio Spine</h1>
-          <p className="subtitle">Rust engine → wasm → relay → YouTube, in a browser</p>
+          <h1>Streamify</h1>
+          <p className="subtitle">
+            wasm engine · direct egress · {egressLabel}
+          </p>
         </div>
-        <span className={`chip chip--${enginePhase}`} role="status" aria-label="Engine status">
+        <span
+          className={`chip chip--${enginePhase}`}
+          role="status"
+          aria-label="Engine status"
+        >
           {enginePhase === 'pending'
             ? 'engine: loading…'
             : enginePhase === 'loaded'
@@ -273,34 +220,7 @@ export function App(): JSX.Element {
 
       <main className="app-main">
         <div className="stack">
-          <StatusCard status={engineStatus} lastSearchCount={lastSearchCount} />
-          <section className="card g04-card" aria-label="G0.4 playback proof">
-            <h2 className="card-title">G0.4 — 10s playback proof (standard content)</h2>
-            <p className="muted">
-              Resolves <code>dQw4w9WgXcQ</code> through the wasm engine + relay and plays 10 seconds of audio.
-              Licensed search rows are bot-walled from datacenter IPs — expected baseline; the canary measures it
-              from residential IPs.
-            </p>
-            <div className="g04-actions">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  void runG04Proof();
-                }}
-                disabled={g04State?.status === 'resolving' || g04State?.status === 'playing'}
-              >
-                Run G0.4 proof (dQw4w9WgXcQ)
-              </button>
-              {g04State?.status === 'resolving' && <span className="badge">resolving…</span>}
-              {g04State?.status === 'playing' && <span className="badge">▶ playing 10s…</span>}
-              {g04State?.status === 'passed' && <span className="badge badge--pass">PASS: 10s audio played</span>}
-              {g04State?.status === 'failed' && (
-                <span className="badge badge--fail">FAIL: {g04State.message ?? 'unknown error'}</span>
-              )}
-            </div>
-          </section>
-          <SpineConsole />
+          <PlayerBar egressMode={egressMode} onEgressModeChange={setEgressMode} />
           <SearchPanel
             phase={searchPhase}
             query={query}
@@ -314,18 +234,43 @@ export function App(): JSX.Element {
             onPlay={(track) => {
               void handlePlay(track);
             }}
+            onQueue={handleQueue}
+            onLike={(track) => {
+              void handleLike(track);
+            }}
+            likedIds={session !== null ? likedIds : undefined}
+            currentId={currentId}
           />
+          <QueueList port={port} />
+          <AuthPanel port={port} />
+
+          <details
+            className="advanced"
+            open={advancedOpen}
+            onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+          >
+            <summary>
+              Engine console — the P1 WASM spine (G1 verification, relay bytes)
+            </summary>
+            <p className="muted advanced__hint">
+              The opt-in engine path: media bytes flow through the relay into the WASM
+              demux → WebCodecs → worklet pipeline (LUFS-normalized, underrun-gated).
+              Datacenter relay IPs throttle after a handful of plays — that is the
+              wall the direct path above sidesteps.
+            </p>
+            <SpineConsole />
+          </details>
         </div>
       </main>
 
-      <footer>
+      <footer className="site-footer">
         <p>
-          WS-W P0 + P1 Audio Spine · one branch, one PR · G0.2 / G0.3 / G0.4 / G1 · canary:{' '}
+          WS-W P2 — engine breadth &amp; egress · G0.2/G0.3/G0.4/G1 · canary:{' '}
           <a className="footer-link" href="canary.html">
             /canary.html
           </a>
         </p>
       </footer>
-    </>
+    </div>
   );
 }

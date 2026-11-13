@@ -2,16 +2,46 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- W2.0 DIRECT EGRESS (measured 2026-11-13): googlevideo's hotlink
+         protection 403s media requests carrying Sec-Fetch-Site: cross-site
+         TOGETHER WITH a non-YouTube Referer (the browser media element sends
+         both, always — forbidden headers). With NO Referer the same URL
+         serves 206 (bisected: referer-only 206, sec-fetch-only 206, both
+         with a foreign referer 403). A page-wide no-referrer policy strips
+         it from every subresource — the direct <audio> path depends on it. -->
+    <meta name="referrer" content="no-referrer" />
     <meta
       name="description"
-      content="Streamify web port P0 proof phase — Rust wasm engine, YouTube Music search via relay, and a 10-second audio playback proof, in the browser."
+      content="Streamify — the Rust audio engine in your browser: wasm queue engine, direct-egress playback, cloud library."
     />
-    <title>Streamify Web — P1 Audio Spine</title>
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Streamify" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon192.png" />
+    <link rel="apple-touch-icon" href="./icon192.png" />
+    <title>Streamify — Music, engineered</title>
   </head>
   <!-- inline background avoids a white flash before styles.css loads -->
   <body style="background:#0a0a0a">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // PWA service worker (W2.3) — production only; dev keeps its
+      // no-cache semantics. Registered inline so first paint does not
+      // wait for the module graph.
+      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker
+            .register('./sw.js', { scope: './' })
+            .catch(function () {
+              /* offline shell is best-effort; the app works without it */
+            });
+        });
+      }
+    </script>
   </body>
 </html>

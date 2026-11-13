@@ -9,6 +9,14 @@ export interface TrackRowProps {
   track: Track;
   playback: RowPlayback | undefined;
   onPlay: (track: Track) => void;
+  /** W2.1: enqueue into the engine queue without playing. */
+  onQueue?: (track: Track) => void;
+  /** W2.2: like to the cloud library (signed-in only). */
+  onLike?: (track: Track) => void;
+  /** Whether this row is already liked (heart state). */
+  liked?: boolean;
+  /** Whether this row is the engine's current track. */
+  isCurrent?: boolean;
 }
 
 function formatDuration(durationSec: number | undefined): string {
@@ -21,7 +29,7 @@ function formatDuration(durationSec: number | undefined): string {
 }
 
 export function TrackRow(props: TrackRowProps): JSX.Element {
-  const { track, playback, onPlay } = props;
+  const { track, playback, onPlay, onQueue, onLike, liked, isCurrent } = props;
   const status = playback?.status ?? 'idle';
   const busy = status === 'resolving' || status === 'playing';
 
@@ -39,7 +47,7 @@ export function TrackRow(props: TrackRowProps): JSX.Element {
   const metaText = metaParts.length > 0 ? metaParts.join(' • ') : '—';
 
   return (
-    <li className="track-row">
+    <li className={`track-row ${isCurrent === true ? 'track-row--current' : ''}`}>
       <div className="track-media">
         {typeof track.thumbnailUrl === 'string' && track.thumbnailUrl.length > 0 ? (
           <img
@@ -63,9 +71,7 @@ export function TrackRow(props: TrackRowProps): JSX.Element {
           {track.isLicensed === true && (
             <span className="badge badge--licensed">licensed</span>
           )}
-          {status === 'passed' && (
-            <span className="badge badge--pass">PASS: 10s audio played</span>
-          )}
+          {isCurrent === true && <span className="badge badge--pass">playing</span>}
           {status === 'failed' && (
             <span className="badge badge--fail">FAIL: {playback?.message ?? 'unknown error'}</span>
           )}
@@ -73,15 +79,27 @@ export function TrackRow(props: TrackRowProps): JSX.Element {
             type="button"
             className={status === 'idle' ? 'button--primary' : undefined}
             disabled={busy}
-            aria-label={`Play ${track.title} for 10 seconds`}
+            aria-label={`Play ${track.title}`}
             onClick={() => onPlay(track)}
           >
-            {status === 'resolving'
-              ? 'resolving…'
-              : status === 'playing'
-                ? 'playing (10s proof)…'
-                : 'Play 10s'}
+            {status === 'resolving' ? 'resolving…' : status === 'playing' ? 'playing…' : 'Play'}
           </button>
+          {onQueue !== undefined && (
+            <button type="button" aria-label={`Queue ${track.title}`} onClick={() => onQueue(track)}>
+              Queue
+            </button>
+          )}
+          {onLike !== undefined && (
+            <button
+              type="button"
+              className={`btn--like ${liked === true ? 'btn--like--on' : ''}`}
+              aria-label={liked === true ? `Unlike ${track.title}` : `Like ${track.title}`}
+              aria-pressed={liked === true}
+              onClick={() => onLike(track)}
+            >
+              {liked === true ? '♥' : '♡'}
+            </button>
+          )}
         </div>
       </div>
     </li>
