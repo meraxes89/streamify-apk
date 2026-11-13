@@ -1,5 +1,6 @@
 /**
- * audio/botguard/protocol.ts — W1.0 wire types & endpoints.
+ * audio/botguard/protocol.ts — W1.0 wire types & endpoints + the P3b
+ * 3-Tier client specs (VISIONOS fast path, WEB_SAFARI HLS fallback).
  *
  * The minting stack speaks three protocols, all relayed same-origin (see
  * front-end/relay/README.md "P1 / W1.0 — the minting surface" for why every
@@ -43,6 +44,38 @@ export const WEB_CLIENT = {
   clientNumber: '1',
 } as const;
 
+/**
+ * P3b Tier 1 — the VISIONOS client (clientName 101, Apple Vision Pro).
+ * Verified live 2026-11-14 through the relay: token-exempt, full-length
+ * direct googlevideo URLs (no ANDROID_VR 60 s cap) AND a bonus
+ * hlsManifestUrl in the same response. The device fields mirror the canary
+ * matrix (front-end/canary/src/matrix.ts) — the relay swaps the UA to the
+ * matching Safari matrix value via X-YouTube-Client-Name.
+ */
+export const VISIONOS_CLIENT = {
+  clientName: 'VISIONOS',
+  clientVersion: '1.02',
+  clientNumber: '101',
+  deviceMake: 'Apple',
+  deviceModel: 'RealityDevice17,1',
+  osName: 'visionOS',
+  osVersion: '26.5.23O471',
+} as const;
+
+/**
+ * P3b Tier 1 fallback — WEB_SAFARI (the WEB client through a Safari-class
+ * UA). Browsers cannot set a Safari User-Agent (fetch forbidden header), so
+ * the relay applies the named override via the `X-Relay-UA` control header
+ * (P3b relay capability — an old relay forwards the header harmlessly and
+ * the rung honestly reports its verdict). Safari-flavored WEB calls receive
+ * HLS (m3u8) manifests that need no GVS PO token; the element plays them
+ * natively on Safari browsers, other engines rotate down the ladder.
+ */
+export const WEB_SAFARI_PROFILE = {
+  ...WEB_CLIENT,
+  uaOverride: 'safari-mac',
+} as const;
+
 // ---------------------------------------------------------------------------
 // Shapes
 // ---------------------------------------------------------------------------
@@ -75,9 +108,19 @@ export type IntegrityTokenData = {
   websafeFallbackToken: string;
 };
 
-/** A ready-to-use mint session (live or dev-seeded). */
+/** A ready-to-use mint session (live, dev-seeded, or a P3b fallback). */
 export interface PotSession {
-  kind: 'live' | 'seeded';
+  /**
+   * 'live'             — full WebPoMinter in the mint iframe (both tokens).
+   * 'seeded'           — dev seed override (video-scoped, SpineConsole).
+   * 'websafe-fallback' — GenerateIT answered but the privacy-buffer path
+   *                      left no usable minter (Brave-class browsers): the
+   *                      server's websafeFallbackToken rides in place of
+   *                      client mints (weaker attestation, honest label).
+   * 'coldstart'        — GenerateIT itself failed; fully-local XOR cold
+   *                      start tokens (sps=2 unlock of the first ~1–2 MB).
+   */
+  kind: 'live' | 'seeded' | 'websafe-fallback' | 'coldstart';
   visitorData: string;
   /** Integrity-token expiry (live) or seed horizon (seeded), epoch ms. */
   expiresAtMs: number;
@@ -86,10 +129,34 @@ export interface PotSession {
    * experiment set on the homepage), false → visitorData.
    */
   gvsBindsToVideoId: boolean;
-  /** PLAYER-context poToken (serviceIntegrityDimensions). */
+  /** PLAYER-context poToken (serviceIntegrityDimensions) — videoId-bound. */
   mintPlayerToken: (videoId: string) => Promise<string>;
   /** GVS-context poToken (googlevideo &pot=) — binding per the flag above. */
   mintGvsToken: (videoId: string) => Promise<string>;
+  /**
+   * P3b dual-token: the SESSION-bound token (visitorData), minted eagerly
+   * at boot and persisted to localStorage (~6 h). Null when the kind has
+   * no minter (websafe-fallback/coldstart carry their token inline).
+   */
+  sessionToken: string | null;
+}
+
+/**
+ * P3b — the localStorage pot-session cache. Restoring a fresh entry skips
+ * BotGuard for replayed tracks (playerTokens map) and serves &pot=
+ * (sessionToken) instantly; a NEW video still triggers a full live mint
+ * (the minter itself cannot cross page loads — only its tokens can).
+ */
+export interface PotSessionCache {
+  schema: 1;
+  kind: 'live' | 'websafe-fallback' | 'coldstart';
+  visitorData: string;
+  sessionToken: string | null;
+  gvsBindsToVideoId: boolean;
+  mintedAt: number;
+  ttlSecs: number;
+  /** Recently minted player tokens (videoId → token), LRU-capped. */
+  playerTokens: Record<string, string>;
 }
 
 /** Dev seed (from pot-lab's provider-recipe Node mint) — video-scoped. */
@@ -109,10 +176,13 @@ export type MintPhase =
   | 'bg-session'
   | 'challenge'
   | 'interpreter'
+  | 'iframe'
   | 'vm'
   | 'snapshot'
   | 'generate-it'
   | 'minter'
+  | 'session-token'
+  | 'cache'
   | 'ready';
 
 export interface MintStatus {
@@ -120,6 +190,13 @@ export interface MintStatus {
   detail: string;
   /** Set when the relay itself is the old P0 deployment (no minting surface). */
   relayTooOld: boolean;
+  /**
+   * P3b: the privacy-buffer fallback fired (Brave-class fingerprinting
+   * blocks left webPoSignalOutput empty and the mint continued on
+   * skipPrivacyBuffer / websafeFallbackToken). The UI surfaces the Brave
+   * Shields advisory when set.
+   */
+  braveShieldsAdvice: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +210,7 @@ export class MintError extends Error {
     | 'bg-session'
     | 'no-challenge'
     | 'interpreter'
+    | 'iframe'
     | 'vm'
     | 'vm-score'
     | 'snapshot'

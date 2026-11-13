@@ -20,6 +20,19 @@ export default defineConfig({
       input: {
         main: resolve('index.html'),
         canary: resolve('canary.html'),
+        // P3b: the BotGuard mint harness — a SEPARATE ES-module entry the
+        // hidden srcdoc iframe loads via <script type="module" src=…>.
+        // It must be a real rollup INPUT (bundled + TS-stripped); a `?url`
+        // import emits the RAW .ts source, which the browser cannot run.
+        // Fixed output name (no hash): the main bundle references it by
+        // BASE_URL at runtime (see audio/botguard/mintIframe.ts).
+        'mint-harness': resolve('src/audio/botguard/mintHarness.ts'),
+      },
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name === 'mint-harness'
+            ? 'assets/mint-harness.js'
+            : 'assets/[name]-[hash].js',
       },
     },
   },

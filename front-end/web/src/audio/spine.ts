@@ -1,7 +1,7 @@
 /**
  * audio/spine.ts — THE ORCHESTRATOR (P1). Wires the whole audio spine:
  *
- *      resolve (relay/ANDROID_VR)
+ *      resolve (relay/VISIONOS — P3b Tier 1)
  *        → ChunkFetcher (256 KiB ranged, relay, hop-cached)
  *        → Webm/Mp4 Demuxer (incremental, adversarial-chunk-proof)
  *        → WebCodecs Decoder (f32-planar → interleaved, mono upmixed)
@@ -99,7 +99,7 @@ export class Spine {
         'webcodecs',
         stream.rung === 'web-pot'
           ? `webcodecs:${stream.codec} (WEB+POT rung, ${stream.potKind} token)`
-          : `webcodecs:${stream.codec} (ANDROID_VR rung)`,
+          : `webcodecs:${stream.codec} (${stream.rung} rung)`,
       );
 
       // -- fetch + demux + decode + sink ------------------------------------
@@ -154,11 +154,11 @@ export class Spine {
     // -- fetch loop (detached) ----------------------------------------------
     const fetcher = new ChunkFetcher({
       relayBase: this.relayBase,
-      // ANDROID_VR-rung URLs carry the app session — the relay swaps the
-      // matrix UA (X-YouTube-Client-Name 28). WEB+POT-rung URLs belong to
-      // the browser's web session: no client header, browser UA forwarded
-      // as-is (it matches the &pot= binding).
-      clientName: stream.rung === 'android-vr' ? '28' : null,
+      // VISIONOS-rung URLs carry the app client — the relay swaps the
+      // matrix UA (X-YouTube-Client-Name 101). WEB+POT-rung URLs belong to
+      // the browser's web session: no client header, browser UA + client
+      // hints forwarded as-is (they match the &pot= binding).
+      clientName: stream.rung === 'visionos' ? '101' : null,
       // googlevideo expires/limits stream URLs; on 403/410 rotate via
       // a fresh resolve (same video, new URL token).
       onStaleUrl: async () => {

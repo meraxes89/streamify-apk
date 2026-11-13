@@ -1,10 +1,12 @@
-# streamify-relay — P0 minimal CORS relay + P1 minting surface (W0.4 / W1.0)
+# streamify-relay — P0 minimal CORS relay + P1 minting surface + P3b BotGuard egress (W0.4 / W1.0 / P3b)
 
 A single-file Cloudflare Worker that acts as a deliberately **dumb, CORS-open relay** so the
 Streamify web port (wasm Rust engine in the browser, deployed at
 `https://meraxes89.github.io/streamify-apk/`) can reach YouTube's **innertube API** and the
 **googlevideo** media CDN — plus, since P1 (W1.0), the **BotGuard/PO-token minting legs**
-needed to unlock licensed music behind YouTube's datacenter bot wall.
+needed to unlock licensed music behind YouTube's datacenter bot wall, and since P3b, the
+**3-Tier egress surface** (VISIONOS fast path, Safari UA overrides, session envelope
+pinning).
 
 ## Why this exists
 
@@ -61,6 +63,33 @@ homepage): the **player** poToken is minted with `mintAsWebsafeString(VIDEO_ID)`
 `html5_generate_content_po_token` experiment flag is set (it is, 2026-11-12), else
 visitorData.
 
+## P3b — the BotGuard egress pivot (3-Tier surface)
+
+The resolver's ladder is now **VISIONOS → WEB_SAFARI HLS → WEB+POT**, and the relay grew
+three capabilities for it (all backward-compatible — the web app degrades honestly
+against an older deployment):
+
+1. **`X-Relay-UA: <name>` — named UA overrides.** Browsers cannot set a Safari User-Agent
+   (a fetch forbidden header), but the WEB_SAFARI rung needs one to receive HLS manifests.
+   `X-Relay-UA: safari-mac` (or `safari-ios`) swaps the upstream UA to the matrix value;
+   the header itself is relay-control (dropped, like `X-Relay-Redirect`). An APP client's
+   matrix UA (via `X-YouTube-Client-Name`) always wins over the named override.
+2. **Session envelope pinning (the split-brain fix).** The browser mints PO tokens under
+   its real client-hint envelope; hops that contradict it invalidate the mint. The
+   `sec-ch-ua*` family — dropped everywhere else (the P0 landmine rule for APP clients
+   stands) — is now forwarded VERBATIM on exactly two hops: `jnn-pa.googleapis.com` (the
+   WAA mint legs) and `www.youtube.com|music.youtube.com /youtubei/*` calls declaring
+   `X-YouTube-Client-Name: 1` (WEB — a real browser's WEB player call carries its client
+   hints). A UA override implies Safari (which sends no client hints), so overrides strip
+   the family to keep the envelope coherent.
+3. **Capability echo.** `GET /` now reports a `capabilities` array
+   (`bg-session`, `ua-override`, `client-hints-passthrough`) so the web app can probe
+   what the deployed worker supports.
+
+VISIONOS itself needed no relay change beyond the (pre-existing) `101` UA matrix entry —
+verified live 2026-11-14: full-length direct googlevideo URLs (itag 140, 3.4 MB / 213 s —
+no ANDROID_VR 60 s cap) plus a bonus `hlsManifestUrl`, through the deployed worker.
+
 > **Deploy note (resolved 2026-11-13):** the W1.0 code IS the live worker now —
 > version `ab781f0f-c9b7-4d2a-a848-ecc9af6631bd` serves `/bg-session` and the
 > `www.google.com/js/th/*` + `jnn-pa.googleapis.com` allowlist entries; live
@@ -73,9 +102,9 @@ visitorData.
 | ----------------------- | --------- |
 | `OPTIONS *`             | 204 preflight: `Allow-Methods: GET, POST, HEAD, OPTIONS`, echoes the request's `Access-Control-Request-Headers` (fallback `*`), `Max-Age: 86400`. |
 | `GET /health`           | 200 `text/plain` `ok`. |
-| `GET /`                 | 200 JSON `{ service, usage, phase }`. |
+| `GET /`                 | 200 JSON `{ service, usage, phase, capabilities }` (P3b: capabilities = `bg-session`, `ua-override`, `client-hints-passthrough`). |
 | `GET /bg-session`       | W1.0: cached homepage challenge — `{ visitorData, ytcfg, ytAtN, fetchedAt, expiresAt, cache }` (see below). `?fresh=1` bypasses the cache. |
-| `GET/HEAD/POST /r?u=…`  | The relay (see allowlist below). `X-Relay-Redirect: manual` opts into 302 passthrough. Other methods → 405. |
+| `GET/HEAD/POST /r?u=…`  | The relay (see allowlist below). `X-Relay-Redirect: manual` opts into 302 passthrough; `X-Relay-UA: <name>` (P3b) applies a named UA override. Other methods → 405. |
 | anything else           | 404 JSON `{ error: "not found" }`. |
 
 Every response — success, error, or upstream passthrough — carries:
@@ -163,7 +192,8 @@ Forwarded to upstream: **every** client header except —
 | `host`, `origin`, `referer` | leak / mis-describe the calling site; YouTube keys behavior off them |
 | `cookie` | the open relay must never ride the caller's session |
 | `cf-connecting-ip`, `cf-ipcountry`, `cf-ray`, `cf-visitor`, `x-forwarded-for`, `x-forwarded-proto`, `x-real-ip`, `true-client-ip` | injected by Cloudflare's edge — they describe the worker, not the browser |
-| `sec-fetch-*`, `sec-ch-ua*`, `sec-purpose`, `dnt` | **P0 landmine fix**: browsers FORCE these markers onto every fetch (forbidden headers — the wasm engine cannot strip them). YouTube reads them as "this ANDROID app request actually comes from a browser page" and soft-blocks the player endpoint ("The page needs to be reloaded"). The relay is the true client from the upstream's perspective — these headers mis-describe the caller, so they never pass. |
+| `sec-fetch-*`, `sec-purpose`, `dnt` | **P0 landmine fix**: browsers FORCE these markers onto every fetch (forbidden headers — the wasm engine cannot strip them). YouTube reads them as "this ANDROID app request actually comes from a browser page" and soft-blocks the player endpoint ("The page needs to be reloaded"). The relay is the true client from the upstream's perspective — these headers mis-describe the caller, so they never pass. |
+| `sec-ch-ua*` | Dropped by default (same landmine rule), **except** the two P3b envelope-pinned hops: `jnn-pa.googleapis.com` (WAA mint legs) and `/youtubei/*` calls declaring `X-YouTube-Client-Name: 1` (WEB) — there the browser's real client hints ARE the coherent envelope and ride verbatim. A `X-Relay-UA` override strips the family (Safari sends none). |
 | `connection`, `keep-alive`, `proxy-authorization`, `proxy-authenticate`, `te`, `trailer`, `transfer-encoding`, `upgrade` | hop-by-hop (RFC 7230 §6.1), never forwarded by a proxy |
 | `content-length` | runtime recomputes it from the streamed body |
 
@@ -187,6 +217,12 @@ re-verify monthly). Web clients (`WEB_REMIX`, `MWEB`, embedded) and media-byte f
 forwarded browser UA — it is their natural UA. This also upgrades the canary matrix: its
 browser-side probes now reach YouTube with faithful app UAs (largely mitigating the
 "ua=browser (fetch cannot set UA)" deviation the canary documents per row).
+
+**P3b addition — named overrides:** `X-Relay-UA: safari-mac | safari-ios` swaps the upstream
+UA to the matching Safari-class value (the WEB_SAFARI rung's HLS manifest needs a Safari
+flavor no browser can set itself). The control header is dropped upstream; an APP client's
+matrix UA always wins; client hints are stripped while an override is active (Safari sends
+none — forwarding Chrome's would re-split the envelope).
 
 POST bodies (innertube JSON payloads) stream through untouched.
 

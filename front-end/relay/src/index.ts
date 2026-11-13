@@ -42,6 +42,31 @@
  *       po_token experiment flag is set on the homepage (it IS, 2026-11-12),
  *       else visitorData
  *
+ * P3b / BOTGUARD EGRESS — THE 3-TIER PIVOT (2026-11-14):
+ *   Tier 1 (zero-token fast path): the resolver's primary rung is now the
+ *   VISIONOS client (X-YouTube-Client-Name 101, matrix UA above — verified
+ *   live: full-length direct googlevideo URLs + a bonus hlsManifestUrl,
+ *   no PO token, no 60-second ANDROID_VR cap). WEB_SAFARI (the WEB client,
+ *   X-YouTube-Client-Name 1 + `X-Relay-UA: safari-mac`) is the HLS fallback
+ *   rung. ANDROID_VR (28) stays in the matrix for the canary only — it is
+ *   burned for full tracks (hard ~60 s byte cap, measured 2026-11-14).
+ *
+ *   STRICT SESSION ENVELOPE PINNING (the split-brain fix): the browser
+ *   mints PO tokens under its REAL client-hint envelope; upstream hops
+ *   that disagree with that envelope invalidate the mint (HTTP 403 /
+ *   empty webPoSignalOutput). Two passthrough exceptions therefore apply
+ *   to the sec-ch-ua* family (dropped for everything else — the P0
+ *   landmine fix for APP clients stands):
+ *     • jnn-pa.googleapis.com (WAA / GenerateIT) — the architect-pinned
+ *       leg: forward the browser's exact User-Agent + Sec-CH-UA-*.
+ *     • www.youtube.com/youtubei/* declaring X-YouTube-Client-Name 1
+ *       (WEB / WEB_SAFARI) — a real browser's WEB player call CARRIES its
+ *       client hints; stripping them is what made the relay's WEB rung
+ *       look like a non-browser to the anti-abuse pipeline.
+ *   `X-Relay-UA` (named UA override) implies Safari-class UAs, which send
+ *   NO client hints — when an override is active the sec-ch-ua* family is
+ *   stripped to keep the envelope coherent.
+ *
  * PHASE NOTE
  *   No JWT, no rate limiting, no kill switch. Those land in P4 (W4.1):
  *   TODO(P4/W4.1): JWT auth on /r.
@@ -112,17 +137,32 @@ const REQUEST_DROP: ReadonlySet<string> = new Set([
   "true-client-ip",
   "content-length",
   "x-relay-redirect",
-  // WS-W P0 landmine fix: browsers FORCE Sec-Fetch-*/sec-ch-ua* markers onto
-  // every fetch (forbidden headers — the wasm engine cannot strip them).
-  // YouTube reads them as "this ANDROID app request actually comes from a
-  // browser page" and answers the player endpoint with the soft-block
-  // "The page needs to be reloaded". The relay is the true client from the
-  // upstream's perspective — these headers mis-describe the caller, so they
-  // never pass.
+  // WS-W P0 landmine fix: browsers FORCE Sec-Fetch-* markers onto every
+  // fetch (forbidden headers — the wasm engine cannot strip them). YouTube
+  // reads them as "this ANDROID app request actually comes from a browser
+  // page" and answers the player endpoint with the soft-block "The page
+  // needs to be reloaded". The relay is the true client from the upstream's
+  // perspective — these headers mis-describe the caller, so they never pass.
   "sec-fetch-dest",
   "sec-fetch-mode",
   "sec-fetch-site",
   "sec-fetch-user",
+  "sec-purpose",
+  "dnt",
+  // X-Relay-UA is a RELAY CONTROL header (P3b: named UA override for the
+  // WEB_SAFARI rung), never meaningful upstream.
+  "x-relay-ua",
+]);
+
+/**
+ * The Sec-CH-UA family — SPECIAL-CASED per target (P3b envelope pinning).
+ * DROPPED by default (the P0 landmine rule: these markers on APP-client
+ * calls earn the "page needs to be reloaded" soft-block), but PASSED
+ * THROUGH on the two hops where the browser's real client hints ARE the
+ * coherent envelope: the WAA mint legs (jnn-pa) and WEB-declared innertube
+ * calls. See the file header's P3b section for the full rationale.
+ */
+const SEC_CH_UA: ReadonlySet<string> = new Set([
   "sec-ch-ua",
   "sec-ch-ua-arch",
   "sec-ch-ua-bitness",
@@ -133,8 +173,6 @@ const REQUEST_DROP: ReadonlySet<string> = new Set([
   "sec-ch-ua-platform",
   "sec-ch-ua-platform-version",
   "sec-ch-ua-wow64",
-  "sec-purpose",
-  "dnt",
 ]);
 
 /** Methods the relay forwards upstream; anything else on /r → 405. */
@@ -187,6 +225,52 @@ function upstreamUserAgent(headers: Headers): string | null {
     return CLIENT_NAME_UA.get(clientName) ?? null;
   }
   return null;
+}
+
+/**
+ * P3b named UA overrides (`X-Relay-UA: <name>`) — the UAs a browser CANNOT
+ * set (fetch forbidden header) but the WEB_SAFARI rung needs: Safari-class
+ * user agents are what make the WEB client receive HLS manifests. Values
+ * mirror the VISIONOS family UA (canary matrix, tools/probe-clients.sh).
+ */
+const UA_OVERRIDES: ReadonlyMap<string, string> = new Map([
+  [
+    "safari-mac",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+  ],
+  [
+    "safari-ios",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
+  ],
+]);
+
+/**
+ * P3b client-hint passthrough rule (the split-brain fix). Returns true when
+ * the sec-ch-ua* family must be FORWARDED VERBATIM for this hop:
+ *   • jnn-pa.googleapis.com — the WAA mint legs (Create/GenerateIT): the
+ *     BotGuard VM telemetry was captured under the browser's real client
+ *     hints; contradicting them upstream invalidates the mint.
+ *   • www.youtube.com / music.youtube.com /youtubei/* declaring client 1
+ *     (WEB / WEB_SAFARI): a real browser's WEB player call carries its
+ *     client hints; they belong on the wire.
+ * `uaOverrideActive` (an X-Relay-UA override) forces false — Safari sends
+ * NO client hints, so forwarding Chrome's would re-split the envelope.
+ */
+function clientHintsPassThrough(
+  target: URL,
+  headers: Headers,
+  uaOverrideActive: boolean,
+): boolean {
+  if (uaOverrideActive) return false;
+  const host = target.hostname.toLowerCase();
+  if (host === "jnn-pa.googleapis.com") return true;
+  const isYoutubeWeb =
+    (host === "www.youtube.com" || host === "music.youtube.com") &&
+    target.pathname.startsWith("/youtubei/");
+  if (isYoutubeWeb && headers.get("x-youtube-client-name") === "1") {
+    return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +535,15 @@ async function route(request: Request): Promise<Response> {
       {
         service: "streamify-relay",
         usage: "/r?u=<urlencoded-target> · /bg-session",
-        phase: "P1 — minting surface (W1.0); hardening lands P4 (W4.1)",
+        phase: "P3b — BotGuard egress pivot (VisionOS fast path, envelope pinning)",
+        // P3b capability probe: the web app checks these to know whether the
+        // deployed worker has the 3-Tier surface (an old P0/W1.0 deployment
+        // answers this route without the field — capability = absent).
+        capabilities: [
+          "bg-session", // W1.0 — minting surface
+          "ua-override", // P3b — X-Relay-UA named overrides (WEB_SAFARI)
+          "client-hints-passthrough", // P3b — sec-ch-ua* on WAA + WEB legs
+        ],
       },
       200,
     );
@@ -539,11 +631,27 @@ async function relay(request: Request, url: URL): Promise<Response> {
   // the matrix UA for that client (see upstreamUserAgent) — the browser
   // itself cannot set app UAs (forbidden header) and YouTube bot-walls the
   // player endpoint for browser-UA'd app clients.
-  const uaOverride = upstreamUserAgent(request.headers);
+  //
+  // P3b: `X-Relay-UA: <name>` (a control header — dropped below) overrides
+  // the UA with a named matrix value (WEB_SAFARI needs a Safari-class UA the
+  // browser cannot set). The matrix UA (app clients) wins over the named
+  // override — an app client's UA identity is its client claim, not a
+  // cosmetic choice.
+  const clientNameUa = upstreamUserAgent(request.headers);
+  const namedUa = request.headers.get("x-relay-ua");
+  const namedUaValue =
+    namedUa !== null ? UA_OVERRIDES.get(namedUa.toLowerCase()) : undefined;
+  const uaOverride = clientNameUa ?? (namedUaValue ?? null);
+  // P3b envelope pinning: sec-ch-ua* rides ONLY on the hops where the
+  // browser's real client hints belong on the wire (WAA mint legs, WEB
+  // innertube) — and never alongside a Safari-class UA override (Safari
+  // sends no client hints; forwarding Chrome's would re-split the envelope).
+  const hintsThrough = clientHintsPassThrough(target, request.headers, uaOverride !== null);
   const outgoing = new Headers();
   request.headers.forEach((value, name) => {
     const lower = name.toLowerCase();
     if (HOP_BY_HOP.has(lower) || REQUEST_DROP.has(lower)) return;
+    if (!hintsThrough && SEC_CH_UA.has(lower)) return;
     if (uaOverride !== null && lower === "user-agent") return; // set below
     outgoing.set(name, value);
   });
