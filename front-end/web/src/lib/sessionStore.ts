@@ -10,6 +10,7 @@
 
 import { create } from 'zustand';
 import {
+  awaitOAuthExchange,
   fetchLikes,
   getSession,
   likeTrack,
@@ -40,10 +41,10 @@ export interface SessionState {
   likedVideoIds: Set<string>;
   likesBusy: boolean;
   configured: boolean;
-  /** Boot: consume an OAuth redirect (if any) → persisted session → likes. */
+  /** Boot: await any OAuth redirect exchange → session → likes. */
   init(): Promise<void>;
-  /** Google OAuth (full-page redirect; supabase credentials required). */
-  signInWithGoogle(): boolean;
+  /** Google OAuth (PKCE full-page redirect; supabase credentials required). */
+  signInWithGoogle(): Promise<boolean>;
   signOut(): Promise<void>;
   /** Like/unlike toggle against the cloud library (signed-in only). */
   toggleLike(track: LikeableTrack): Promise<boolean>;
@@ -60,8 +61,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   configured: supabaseConfigured(),
 
   async init() {
-    // An OAuth redirect lands with the tokens pre-parsed (consumeOAuthRedirect
-    // ran before render); surface its error, if any.
+    // An OAuth redirect was consumed pre-render (consumeOAuthRedirect in
+    // main.tsx — URL already scrubbed). A PKCE `?code=` redirect kicks off
+    // an async exchange; await it so the session/error read below is
+    // settled, never a race with the network.
+    await awaitOAuthExchange();
     const oauthError = takePendingOAuthError();
     const oauthSession = takePendingOAuthSession();
     let session: SupabaseSession | null = oauthSession;
@@ -74,7 +78,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  signInWithGoogle() {
+  async signInWithGoogle() {
     if (!supabaseConfigured()) {
       set({ authError: 'Supabase credentials not baked into this build.' });
       return false;

@@ -7,10 +7,14 @@
  * by design and NEVER committed — it arrives via VITE_SUPABASE_ANON_KEY,
  * baked by CI from the repo secret).
  *
- * AUTH: Google OAuth (P3a) — the full-page implicit redirect through
- * /auth/v1/authorize (the Android One-Tap lane's web lowering), plus the
- * legacy email+password lane (kept for fallbacks). Sessions persist in
- * localStorage; 401s trigger the refresh-token flow once, then replay.
+ * AUTH: Google OAuth (P3a) — the Android One-Tap lane's web lowering:
+ * full-page redirect through /auth/v1/authorize using the PKCE flow
+ * (S256 code challenge; tokens arrive via the code exchange, never the
+ * URL), with the legacy implicit fragment lane kept as a fallback for
+ * insecure contexts / private mode. The redirect back is consumed
+ * pre-render (see SUPABASE_CLIENT_OPTIONS + consumeOAuthRedirect below).
+ * Sessions persist in localStorage; 401s trigger the refresh-token flow
+ * once, then replay.
  *
  * LIBRARY: mirrors the Android clients' exact calls (SupabaseTracksClient
  * / SupabaseStatsClient): likes two-way (user_likes + tracks upsert with
@@ -101,7 +105,11 @@ interface AuthResponse {
   msg?: string;
 }
 
-async function authCall(path: string, body: unknown): Promise<AuthResponse> {
+async function authCall(
+  path: string,
+  body: unknown,
+  init?: { signal?: AbortSignal },
+): Promise<AuthResponse> {
   const env = supabaseEnv();
   if (env === null) throw new Error('Supabase not configured');
   const res = await fetch(`${env.url}/auth/v1/${path}`, {
@@ -112,6 +120,7 @@ async function authCall(path: string, body: unknown): Promise<AuthResponse> {
       authorization: `Bearer ${env.anonKey}`,
     },
     body: JSON.stringify(body),
+    signal: init?.signal,
   });
   return (await res.json()) as AuthResponse;
 }
@@ -179,82 +188,268 @@ export async function signInWithPassword(email: string, password: string): Promi
 // ---------------------------------------------------------------------------
 // Google OAuth (P3a) — the Android app's One-Tap lane, web lowering.
 //
-// Same raw-fetch house style: NO SDK. The flow is Supabase's implicit
-// OAuth: full-page navigate to /auth/v1/authorize?provider=google; Google
-// consent; Supabase redirects back to THIS page with the tokens in the
-// URL fragment (#access_token=…&refresh_token=…&user=<urlencoded JSON>).
-// consumeOAuthRedirect() runs synchronously BEFORE the router mounts
-// (main.tsx), parses the fragment, persists the session, and strips the
-// URL clean — the hash router never sees the OAuth payload.
+// Same raw-fetch house style: NO SDK. The client honors the supabase-js
+// createClient semantics below — the SDK equivalent of
+// `createClient(url, key, { auth: { detectSessionInUrl: true,
+// flowType: 'pkce' } })`, implemented directly on fetch:
+//
+//   - detectSessionInUrl: consumeOAuthRedirect() (main.tsx, BEFORE the
+//     router mounts) parses BOTH redirect shapes Supabase returns —
+//     the PKCE authorization code in the query string (`?code=…`) and
+//     the legacy implicit tokens in the fragment (`#access_token=…`) —
+//     then scrubs the URL so nothing lingers in the address bar.
+//   - flowType 'pkce': signInWithGoogle() sends an S256 code challenge;
+//     the tokens then arrive via the POST exchange response (which
+//     carries the full user object), never through the URL.
+//   - persistSession / autoRefreshToken: localStorage persistence plus
+//     the 401 → refresh → replay lane in restCall() (pre-existing).
 // ---------------------------------------------------------------------------
 
-/** The URL Supabase should redirect back to (this page, hash-free). */
+/** The supabase-js client options this raw-fetch client implements. */
+const SUPABASE_CLIENT_OPTIONS = {
+  auth: {
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+} as const;
+
+/** The URL Supabase should redirect back to (this page, query/hash-free). */
 function oauthRedirectTo(): string {
   return `${window.location.origin}${window.location.pathname}`;
+}
+
+// ---- PKCE (RFC 7636) — verifier + S256 challenge --------------------
+
+const PKCE_VERIFIER_KEY = 'streamify.pkce.verifier';
+
+function base64UrlFromBytes(bytes: Uint8Array): string {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** A 43-char base64url verifier (32 random bytes — RFC 7636 §4.1). */
+function newPkceVerifier(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64UrlFromBytes(bytes);
+}
+
+/** The S256 challenge: base64url(SHA-256(verifier)). */
+async function pkceChallengeS256(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return base64UrlFromBytes(new Uint8Array(digest));
 }
 
 /**
  * Begin Google sign-in: full-page navigation to the Supabase authorize
  * endpoint (the supabase-js `signInWithOAuth({provider:'google'})`
- * equivalent, minus the SDK). Returns false when the build carries no
- * Supabase credentials.
+ * equivalent, minus the SDK). PKCE by default: the verifier is stored
+ * client-side and the challenge rides the authorize URL, so the session
+ * tokens come back through the code exchange — never the URL. Falls
+ * back to the implicit fragment flow when WebCrypto/storage are
+ * unavailable. Returns false when the build carries no Supabase
+ * credentials.
  */
-export function signInWithGoogle(): boolean {
+export async function signInWithGoogle(): Promise<boolean> {
   const env = supabaseEnv();
   if (env === null) return false;
-  const url =
-    `${env.url}/auth/v1/authorize?provider=google` +
-    `&redirect_to=${encodeURIComponent(oauthRedirectTo())}` +
-    `&apikey=${encodeURIComponent(env.anonKey)}`;
-  window.location.assign(url);
+  const params = new URLSearchParams({
+    provider: 'google',
+    redirect_to: oauthRedirectTo(),
+    apikey: env.anonKey,
+  });
+  if (SUPABASE_CLIENT_OPTIONS.auth.flowType === 'pkce' && window.isSecureContext) {
+    const verifier = newPkceVerifier();
+    let stored = false;
+    try {
+      localStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+      stored = localStorage.getItem(PKCE_VERIFIER_KEY) === verifier;
+    } catch {
+      stored = false; // private mode etc. — implicit flow still works
+    }
+    if (stored) {
+      try {
+        params.set('code_challenge', await pkceChallengeS256(verifier));
+        params.set('code_challenge_method', 's256');
+      } catch {
+        /* crypto.subtle unavailable — keep the implicit flow */
+      }
+    }
+  }
+  window.location.assign(`${env.url}/auth/v1/authorize?${params.toString()}`);
   return true;
 }
 
 let pendingOAuthSession: SupabaseSession | null = null;
 let pendingOAuthError: string | null = null;
+let oauthExchangeInFlight: Promise<void> | null = null;
 
 /**
- * Consume an OAuth redirect (if any) — SYNCHRONOUS, pre-render.
- * Parses the implicit-flow fragment, caches + persists the session for
- * the session store to pick up, and scrubs the URL. Safe to call on
- * every load (no-ops when the fragment carries no tokens).
+ * Decode the user identity (sub / email claims) straight out of a
+ * Supabase access-token JWT. The implicit fragment no longer carries a
+ * `user` param on current GoTrue — the token itself is the payload of
+ * record (this is what un-breaks the "no user payload" redirect).
  */
-export function consumeOAuthRedirect(): void {
-  if (window.location.hash.length < 2) return;
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  const accessToken = params.get('access_token');
-  const refreshToken = params.get('refresh_token');
-  const error = params.get('error');
-  if (accessToken === null && error === null) return; // a router route, not OAuth
+function userFromAccessToken(token: string): { id?: string; email?: string } {
+  const parts = token.split('.');
+  if (parts.length !== 3) return {};
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    const payload = JSON.parse(
+      new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))),
+    ) as { sub?: unknown; email?: unknown };
+    if (typeof payload.sub === 'string' && payload.sub !== '') {
+      return {
+        id: payload.sub,
+        email: typeof payload.email === 'string' ? payload.email : undefined,
+      };
+    }
+  } catch {
+    /* not a decodable JWT — caller reports the honest error */
+  }
+  return {};
+}
 
-  if (error !== null) {
-    pendingOAuthError =
-      params.get('error_description') ?? `OAuth failed: ${error.replace(/_/g, ' ')}`;
-  } else if (accessToken !== null && refreshToken !== null) {
-    let user: { id?: string; email?: string } | undefined;
+/** Implicit branch: tokens (and best-effort identity) from the fragment. */
+function consumeImplicitFragment(fragment: URLSearchParams): void {
+  const accessToken = fragment.get('access_token');
+  const refreshToken = fragment.get('refresh_token');
+  if (accessToken === null || refreshToken === null) {
+    pendingOAuthError = 'OAuth redirect carried no tokens';
+    return;
+  }
+  // Identity: the `user` param when GoTrue sends it, else decoded from
+  // the access-token JWT (sub/email claims).
+  let user: { id?: string; email?: string } | undefined;
+  const rawUser = fragment.get('user');
+  if (rawUser !== null) {
     try {
-      const rawUser = params.get('user');
-      user = rawUser === null ? undefined : (JSON.parse(rawUser) as { id?: string; email?: string });
+      user = JSON.parse(rawUser) as { id?: string; email?: string };
     } catch {
       user = undefined;
     }
-    const expiresIn = Number(params.get('expires_in') ?? '3600');
-    if (user?.id !== undefined) {
-      const session: SupabaseSession = {
-        accessToken,
-        refreshToken,
-        expiresAt: Math.floor(Date.now() / 1000) + (Number.isFinite(expiresIn) ? expiresIn : 3600),
-        user: { id: user.id, email: user.email ?? null },
-      };
-      sessionCache = session;
-      persistSession(session);
-      pendingOAuthSession = session;
-    } else {
-      pendingOAuthError = 'OAuth redirect carried no user payload';
-    }
   }
-  // Scrub the fragment — the hash router must never see the tokens.
-  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  if (user?.id === undefined) user = userFromAccessToken(accessToken);
+  if (user?.id === undefined) {
+    pendingOAuthError = 'OAuth redirect carried no user payload';
+    return;
+  }
+  const expiresIn = Number(fragment.get('expires_in') ?? '3600');
+  const session: SupabaseSession = {
+    accessToken,
+    refreshToken,
+    expiresAt:
+      Math.floor(Date.now() / 1000) + (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 3600),
+    user: { id: user.id, email: user.email ?? null },
+  };
+  sessionCache = session;
+  persistSession(session);
+  pendingOAuthSession = session;
+}
+
+/** PKCE branch: exchange the one-time `?code=` for the session (POST). */
+async function exchangePkceCode(code: string): Promise<void> {
+  const env = supabaseEnv();
+  let verifier: string | null = null;
+  try {
+    verifier = localStorage.getItem(PKCE_VERIFIER_KEY);
+    if (verifier !== null) localStorage.removeItem(PKCE_VERIFIER_KEY); // one-time
+  } catch {
+    verifier = null;
+  }
+  if (env === null || verifier === null) {
+    pendingOAuthError =
+      'OAuth code could not be exchanged (missing PKCE verifier) — please sign in again.';
+    return;
+  }
+  // The exchange response carries the full session + user object. A 10 s
+  // abort guard keeps a hung network call from wedging the app boot.
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await authCall(
+      'token?grant_type=pkce',
+      { auth_code: code, code_verifier: verifier },
+      { signal: controller.signal },
+    );
+    const session = toSession(res);
+    if (session === null) {
+      pendingOAuthError =
+        res.error_description ??
+        res.msg ??
+        res.error ??
+        'OAuth code exchange failed — please sign in again.';
+      return;
+    }
+    sessionCache = session;
+    persistSession(session);
+    pendingOAuthSession = session;
+  } catch (err) {
+    pendingOAuthError = `OAuth code exchange failed: ${errText(err)}`;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+/**
+ * Consume an OAuth redirect (if any) — the detectSessionInUrl lane.
+ *
+ * Runs synchronously BEFORE the router mounts (main.tsx). Handles BOTH
+ * redirect shapes: PKCE `?code=…` in window.location.search (the flow
+ * signInWithGoogle now initiates) and implicit `#access_token=…` in
+ * window.location.hash (the legacy/fallback flow). The URL is scrubbed
+ * with replaceState FIRST — synchronously, so the hash router never
+ * sees the payload as a route and the tokens never linger in the
+ * address bar or history. The PKCE code exchange then runs in the
+ * background; await via awaitOAuthExchange() (sessionStore.init does).
+ * Safe to call on every load (no-ops when neither shape is present).
+ */
+export function consumeOAuthRedirect(): void {
+  if (!SUPABASE_CLIENT_OPTIONS.auth.detectSessionInUrl) return;
+
+  const search = window.location.search.startsWith('?')
+    ? new URLSearchParams(window.location.search.slice(1))
+    : new URLSearchParams();
+  const fragment =
+    window.location.hash.length >= 2
+      ? new URLSearchParams(window.location.hash.slice(1))
+      : null;
+
+  const code = search.get('code'); // PKCE: ?code=…
+  const accessToken = fragment?.get('access_token') ?? null; // implicit: #access_token=…
+  const errorParam =
+    (fragment?.get('error_description') ?? fragment?.get('error')) ??
+    (search.get('error_description') ?? search.get('error'));
+
+  if (code === null && accessToken === null && errorParam === null) {
+    return; // a normal load / a hash-router route — not OAuth
+  }
+
+  // Scrub FIRST (query AND fragment, replaceState — no history entry).
+  window.history.replaceState(null, '', window.location.pathname);
+
+  if (errorParam !== null) {
+    pendingOAuthError = errorParam;
+    return;
+  }
+  if (accessToken !== null) {
+    consumeImplicitFragment(fragment as URLSearchParams);
+    return;
+  }
+  oauthExchangeInFlight = exchangePkceCode(code as string);
+}
+
+/**
+ * The in-flight PKCE code exchange kicked off by consumeOAuthRedirect
+ * (resolves immediately when no exchange is running). sessionStore.init
+ * awaits this so the session is settled before the UI reads it.
+ */
+export function awaitOAuthExchange(): Promise<void> {
+  return oauthExchangeInFlight ?? Promise.resolve();
 }
 
 /** The session parsed from an OAuth redirect (one-shot, for the store). */
