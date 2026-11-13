@@ -19,7 +19,7 @@ on:
       - 'front-end/**'
       - '.github/workflows/web-build.yml'
   push:
-    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine']
+    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine', 'ws-w/p2-engine-egress']
     paths:
       - 'front-end/**'
       - '.github/workflows/web-build.yml'
@@ -37,7 +37,7 @@ jobs:
         with:
           workspaces: front-end
       - name: "cargo check (wasm32-unknown-unknown)"
-        run: cargo check --target wasm32-unknown-unknown -p streamify-wasm
+        run: cargo check --target wasm32-unknown-unknown -p streamify-wasm -p streamify-engine-wasm
         working-directory: front-end
       - name: "AC — rquickjs must NOT appear in the wasm32 tree"
         run: |
@@ -48,12 +48,14 @@ jobs:
           echo "OK: no rquickjs in the wasm32 tree"
         working-directory: front-end
       - name: cargo build (wasm32-unknown-unknown)
-        run: cargo build --target wasm32-unknown-unknown -p streamify-wasm
+        run: cargo build --target wasm32-unknown-unknown -p streamify-wasm -p streamify-engine-wasm
         working-directory: front-end
       - name: Install wasm-pack
         run: npm i -g wasm-pack@0.15.1
       - name: "wasm-pack build (web target, --no-opt — the bundled wasm-opt rejects rustc bulk-memory ops)"
-        run: wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
+        run: |
+          wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
+          wasm-pack build crates/streamify-engine-wasm --target web --out-dir pkg --no-opt
         working-directory: front-end
       - uses: actions/upload-artifact@v4
         with:
@@ -63,6 +65,10 @@ jobs:
             front-end/crates/streamify-wasm/pkg/streamify_wasm.d.ts
             front-end/crates/streamify-wasm/pkg/streamify_wasm_bg.wasm
             front-end/crates/streamify-wasm/pkg/streamify_wasm_bg.wasm.d.ts
+            front-end/crates/streamify-engine-wasm/pkg/streamify_engine_wasm.js
+            front-end/crates/streamify-engine-wasm/pkg/streamify_engine_wasm.d.ts
+            front-end/crates/streamify-engine-wasm/pkg/streamify_engine_wasm_bg.wasm
+            front-end/crates/streamify-engine-wasm/pkg/streamify_engine_wasm_bg.wasm.d.ts
           if-no-files-found: error
 
   wasm-tests:
@@ -92,6 +98,13 @@ jobs:
         # default; CHROME_BIN selects the binary). The runner is wired via
         # front-end/.cargo/config.toml [target.wasm32-unknown-unknown].
         run: cargo test -p streamify-wasm --target wasm32-unknown-unknown
+        working-directory: front-end
+      - name: "W2.1: engine control-plane semantics (headless Chrome)"
+        # The wasm engine facade (front-end/crates/streamify-engine-wasm):
+        # 17 semantic tests mirroring the UDL contract — debounce, rev
+        # monotonicity, queue wrap-around, transport-never-touches-lifecycle,
+        # seek clamping, DAC clock envelope, sink-state narrowing.
+        run: cargo test -p streamify-engine-wasm --target wasm32-unknown-unknown
         working-directory: front-end
       - name: "W1.7: golden-vector DSP parity (headless Chrome)"
         # The frozen rust/crates/streamify-audio golden suite mirrored onto
@@ -127,14 +140,18 @@ jobs:
           # root), not the step's working-directory — land it inside
           # front-end so the staging find below sees it.
           path: front-end/pkg
-      - name: "Stage wasm pkg into web/src/wasm"
+      - name: "Stage wasm pkgs into web/src/wasm + web/src/wasm-engine"
         run: |
-          mkdir -p web/src/wasm
+          mkdir -p web/src/wasm web/src/wasm-engine
           find pkg -type f \
-            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \
-               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \
+            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \\
+               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \\
             -exec cp {} web/src/wasm/ \;
-          ls -la web/src/wasm/
+          find pkg -type f \
+            \( -name 'streamify_engine_wasm.js' -o -name 'streamify_engine_wasm.d.ts' \\
+               -o -name 'streamify_engine_wasm_bg.wasm' -o -name 'streamify_engine_wasm_bg.wasm.d.ts' \) \\
+            -exec cp {} web/src/wasm-engine/ \;
+          ls -la web/src/wasm/ web/src/wasm-engine/
         working-directory: front-end
       - name: Install deps
         run: npm install --no-fund --no-audit

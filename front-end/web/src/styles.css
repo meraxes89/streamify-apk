@@ -661,3 +661,462 @@ button:disabled {
   outline: 2px solid var(--accent, #34d399);
   outline-offset: 1px;
 }
+
+/* ==========================================================================
+   P2 (WS-W2) — mobile-first shell: player bar, queue, auth, egress chips.
+   Safe-area aware; all controls ≥44px touch targets.
+   ========================================================================== */
+
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell main {
+  flex: 1;
+}
+
+.site-footer {
+  margin-top: auto;
+}
+
+/* ---- player bar --------------------------------------------------------- */
+
+.playerbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.playerbar__media {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.playerbar__art {
+  position: relative;
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--thumb);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 22px;
+}
+
+.playerbar__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.playerbar__art--empty span {
+  opacity: 0.6;
+}
+
+.playerbar__spinner {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 10, 10, 0.55);
+  font-size: 18px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.playerbar__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.playerbar__title {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playerbar__artist {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playerbar__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.chip--idle { color: var(--muted); }
+.chip--buffering { color: var(--warn); }
+.chip--playing { color: var(--accent); }
+.chip--paused { color: var(--muted); }
+.chip--error { color: var(--error); }
+.chip--rung, .chip--egress {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.playerbar__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.playerbar__time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 38px;
+  text-align: center;
+}
+
+.playerbar__seek, .playerbar__volume {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 28px; /* fat touch target */
+}
+
+.playerbar__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn--transport {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 17px;
+  padding: 0 10px;
+}
+
+.btn--transport-main {
+  min-width: 56px;
+  min-height: 56px;
+  font-size: 21px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+
+.playerbar__volume {
+  max-width: 110px;
+  margin-left: auto;
+}
+
+.playerbar__stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- queue --------------------------------------------------------------- */
+
+.queue__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.queue__head .card-title {
+  margin: 0;
+  flex: 1;
+}
+
+.queue__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.queue__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.queue__row:hover, .queue__row:focus-visible {
+  background: rgba(63, 63, 70, 0.25);
+}
+
+.queue__row--current {
+  border-color: var(--accent);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.queue__row-index {
+  flex: none;
+  width: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue__row--current .queue__row-index {
+  color: var(--accent);
+}
+
+.queue__row-art {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.queue__row-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.queue__row-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue__row-artist {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue__row-dur {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue__empty {
+  margin: 4px 0 0;
+}
+
+/* ---- auth ---------------------------------------------------------------- */
+
+.auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 340px;
+}
+
+.auth__mode {
+  display: flex;
+  gap: 8px;
+}
+
+.btn--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.auth__input {
+  padding: 10px 12px;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.auth__notice {
+  color: var(--warn);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+.auth__error {
+  color: var(--error);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+.auth__email {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth__likes {
+  margin-top: 14px;
+}
+
+.auth__likes-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.auth__likes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.auth__like-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.auth__like-row:hover {
+  background: rgba(63, 63, 70, 0.25);
+}
+
+.auth__hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ---- like button --------------------------------------------------------- */
+
+.btn--like {
+  min-width: 44px;
+  min-height: 36px;
+  font-size: 16px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.btn--like--on {
+  color: var(--error);
+}
+
+/* ---- advanced (engine console) -------------------------------------------- */
+
+.advanced {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 12px 14px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.advanced__hint {
+  font-size: 12px;
+  margin: 6px 0 10px;
+}
+
+.track-row--current {
+  border-color: var(--accent);
+}
+
+/* ---- responsive: fixed bottom player on phones ----------------------------- */
+
+@media (max-width: 767px) {
+  .playerbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    border-radius: 16px 16px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .app-shell {
+    padding-bottom: 210px; /* player bar height + breathing room */
+  }
+
+  .site-footer {
+    padding-bottom: 8px;
+  }
+
+  .playerbar__volume {
+    display: none; /* hardware volume on phones */
+  }
+}

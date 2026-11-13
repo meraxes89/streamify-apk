@@ -7,7 +7,7 @@ name: Web Deploy
 
 on:
   push:
-    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine']
+    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine', 'ws-w/p2-engine-egress']
     paths: ['front-end/**', '.github/workflows/web-deploy.yml']
   workflow_dispatch: {}
 
@@ -52,7 +52,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Install wasm-pack
         run: npm i -g wasm-pack@0.15.1
-      - name: Build wasm facade
+      - name: Build wasm facade + engine control plane
         run: |
           wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
           cp crates/streamify-wasm/pkg/streamify_wasm.js \
@@ -60,6 +60,12 @@ jobs:
              crates/streamify-wasm/pkg/streamify_wasm_bg.wasm \
              crates/streamify-wasm/pkg/streamify_wasm_bg.wasm.d.ts \
              web/src/wasm/
+          wasm-pack build crates/streamify-engine-wasm --target web --out-dir pkg --no-opt
+          cp crates/streamify-engine-wasm/pkg/streamify_engine_wasm.js \
+             crates/streamify-engine-wasm/pkg/streamify_engine_wasm.d.ts \
+             crates/streamify-engine-wasm/pkg/streamify_engine_wasm_bg.wasm \
+             crates/streamify-engine-wasm/pkg/streamify_engine_wasm_bg.wasm.d.ts \
+             web/src/wasm-engine/
         working-directory: front-end
       - name: Install deps
         run: npm install --no-fund --no-audit

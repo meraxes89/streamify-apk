@@ -82,6 +82,13 @@ export interface ResolveContext {
    * (default true — licensed tracks need it; the mint runs once per ~12 h).
    */
   autoMint?: boolean;
+  /**
+   * W2.0 element-path mode: prefer itag 140 (AAC/MP4) EXCLUSIVELY — the
+   * `<audio>` element decodes AAC everywhere (Safari cannot play
+   * opus-in-webm via media elements). The WASM-spine preference
+   * ([251, 140] with WebCodecs) applies otherwise.
+   */
+  elementCompat?: boolean;
 }
 
 interface PlayerFormat {
@@ -103,14 +110,21 @@ interface PlayerResponse {
 }
 
 /** Extract the playable audio format by machine capability. */
-function pickFormat(player: PlayerResponse): PlayerFormat | undefined {
+function pickFormat(player: PlayerResponse, elementCompat = false): PlayerFormat | undefined {
   const formats = player.streamingData?.adaptiveFormats ?? [];
   const pick = (itag: number): PlayerFormat | undefined =>
     formats.find((f) => f.itag === itag && typeof f.url === 'string');
   // Preference by machine capability (not by bitrate): the W1.2 deviation
   // (no symphonia Opus decoder) makes AAC the only WASM rung, and this
   // resolver refuses to hand the spine a codec the machine cannot decode.
-  const want: number[] = webCodecsAvailable() ? [251, 140] : [140];
+  // W2.0: the ELEMENT path (direct egress) is always AAC-first — media
+  // elements decode mp4a.40.2 on every browser; opus-in-webm does not
+  // survive Safari's element pipeline.
+  const want: number[] = elementCompat
+    ? [140]
+    : webCodecsAvailable()
+      ? [251, 140]
+      : [140];
   for (const itag of want) {
     const chosen = pick(itag);
     if (chosen !== undefined) return chosen;
@@ -161,7 +175,7 @@ export async function resolveAudioStream(
     const player = await playerCallAndroidVr(videoId, ctx);
     const status = player.playabilityStatus?.status ?? 'UNKNOWN';
     if (status === 'OK') {
-      const format = pickFormat(player);
+      const format = pickFormat(player, ctx.elementCompat === true);
       if (format !== undefined && format.url !== undefined) {
         return toStream(videoId, player, format, 'android-vr', 'none');
       }
@@ -187,7 +201,7 @@ export async function resolveAudioStream(
       const player = await playerCallWebPot(videoId, ctx, token);
       const status = player.playabilityStatus?.status ?? 'UNKNOWN';
       if (status === 'OK') {
-        const format = pickFormat(player);
+        const format = pickFormat(player, ctx.elementCompat === true);
         if (format !== undefined && format.url !== undefined) {
           const stream = toStream(videoId, player, format, 'web-pot', token.kind);
           // WEB-rung googlevideo URLs: append the GVS token (binding per
