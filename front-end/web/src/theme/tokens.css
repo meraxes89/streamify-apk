@@ -1,0 +1,161 @@
+/* ==========================================================================
+   theme/tokens.css — P3a: the StreamifyTheme port (§9.3 design system).
+   
+   Verbatim values from the Android ui/theme package (Color.kt, Type.kt,
+   Shape.kt, Dimens.kt): YouTube-Music OLED true-dark graphite + brand red,
+   DARK-ONLY (the app ships a single darkColorScheme). These custom
+   properties are the single source of truth; the legacy P0–P2 variables
+   alias them (see styles.css) so the whole app re-skins from one place.
+   ========================================================================== */
+
+:root {
+  /* ---- Color.kt: surfaces -------------------------------------------- */
+  --sf-bg-base: #030303;            /* BgBase — true OLED dark graphite */
+  --sf-bg-surface: #0f0f0f;         /* BgSurface — primary container */
+  --sf-bg-surface-elevated: #212121;/* BgSurfaceElevated — sheets, menus, dialogs */
+  --sf-bg-card: #181818;            /* BgCard — feed cards */
+  --sf-bg-chip-inactive: #212121;
+  --sf-bg-chip-active: #ffffff;
+  --sf-bg-mini-player: #212121;
+  --sf-bg-search-bar: #212121;
+  --sf-bg-card-hover: #282828;      /* StreamifyColors.BgCardHover */
+  --sf-bg-player: #0a0a0a;          /* StreamifyColors.BgPlayer */
+
+  /* Elevation ramp (StreamifyColors.Surface0dp…4dp) */
+  --sf-surface-0dp: #030303;
+  --sf-surface-1dp: #0f0f0f;
+  --sf-surface-2dp: #181818;
+  --sf-surface-3dp: #212121;
+  --sf-surface-4dp: #282828;
+
+  /* ---- Color.kt: brand & accent --------------------------------------- */
+  --sf-primary: #ff0000;            /* Primary — YouTube brand red */
+  --sf-primary-accent: #ff0033;     /* PrimaryAccent — red-orange variant */
+  --sf-primary-hover: #ff3333;      /* StreamifyColors.PrimaryHover */
+  --sf-primary-dark: #cc0000;       /* StreamifyColors.PrimaryDark */
+  --sf-active-control: #ffffff;     /* ActiveControl — high-contrast white */
+  --sf-accent-blue: #3ea6ff;        /* AccentBlue — links, verified */
+
+  /* ---- Color.kt: text hierarchy (WCAG AAA on #030303) ------------------ */
+  --sf-text-main: #ffffff;          /* TextMain */
+  --sf-text-secondary: #aaaaaa;     /* TextSecondary — artist, album, views */
+  --sf-text-tertiary: #717171;      /* TextTertiary — inactive lyrics, times */
+  --sf-text-on-active-chip: #030303;/* TextOnActiveChip — dark on white pills */
+
+  /* ---- Color.kt: borders & dividers ------------------------------------ */
+  --sf-border-subtle: #282828;      /* BorderSubtle — card & sheet borders */
+  --sf-border-chip: #383838;        /* BorderChip — unselected pill outline */
+  --sf-divider: #212121;            /* Divider — hairline list dividers */
+
+  /* ---- Color.kt: overlays & feedback ------------------------------------ */
+  --sf-scrim: rgba(0, 0, 0, 0.8);   /* Scrim — 80% black */
+  --sf-player-gradient: rgba(10, 10, 10, 0.9); /* PlayerGradient @ 90% */
+  --sf-error-red: #ff4d4d;          /* StreamifyColors.ErrorRed */
+  --sf-error-bg: rgba(235, 87, 87, 0.15);      /* ErrorBg @ 15% */
+  --sf-explicit: #888888;           /* StreamifyColors.Explicit */
+
+  /* ---- Screen-local near-blacks (ported verbatim) ----------------------- */
+  --sf-bg-splash: #07070a;          /* PrismaticSplashScreen canvas */
+  --sf-bg-updates: #0a0a0f;         /* UpdatesHubScreen */
+  --sf-bg-profile-card: #141418;    /* ProfileSelection cards */
+  --sf-bg-updates-row: #16161e;     /* UpdatesHub release rows */
+  --sf-bg-updates-chip: #23232e;    /* UpdatesHub countdown chip / pre-save */
+
+  /* ---- One-off brand greens (ported verbatim) ---------------------------- */
+  --sf-updates-green: #1ed760;      /* UpdatesHub notifications/accent */
+  --sf-spotify: #1db954;            /* Spotify profile card */
+  --sf-terminal-green: #4af626;     /* Diagnostic terminal */
+
+  /* ---- Danger zone (SettingsScreen) -------------------------------------- */
+  --sf-danger: #d32f2f;             /* nuke button */
+  --sf-danger-disabled: #5c1d1d;
+  --sf-danger-border: #e53935;
+  --sf-danger-card: #200a0a;
+  --sf-danger-text: #ef9a9a;
+
+  /* ---- Type.kt: the StreamifyTypography scale (sp → px 1:1) -------------- */
+  /* font: weight size/line-height (font-family inherits the system stack) */
+  --sf-type-headline-large: 700 22px/28px inherit;
+  --sf-type-headline-medium: 700 18px/24px inherit;
+  --sf-type-headline-small: 700 16px/22px inherit;
+  --sf-type-title-large: 600 16px/22px inherit;
+  --sf-type-title-medium: 600 15px/20px inherit;
+  --sf-type-title-small: 700 14px/18px inherit;
+  --sf-type-song-title: 500 15px/20px inherit;
+  --sf-type-song-artist: 400 13px/18px inherit;
+  --sf-type-chip-text: 500 13px/18px inherit;
+  --sf-type-player-title: 700 22px/26px inherit;
+  --sf-type-player-artist: 400 15px/20px inherit;
+  --sf-type-seekbar-time: 400 12px/16px inherit;
+  --sf-type-lyrics-active: 700 24px/32px inherit;
+  --sf-type-lyrics-inactive: 600 22px/30px inherit;
+  --sf-type-body-large: 400 15px/22px inherit;
+  --sf-type-body-medium: 400 14px/20px inherit;
+  --sf-type-body-small: 400 12px/16px inherit;
+  --sf-type-caption: 400 11px/14px inherit;
+  /* letter-spacing tokens used with the scale above */
+  --sf-ls-song: 0.1px;
+  --sf-ls-seekbar: 0.2px;
+  --sf-ls-body-small: 0.2px;
+  --sf-ls-caption: 0.3px;
+  --sf-ls-section: 1.2px; /* SettingsScreen SectionHeader (LabelSmall + 1.2sp) */
+
+  /* ---- Shape.kt / Dimens.kt: radius scale -------------------------------- */
+  --sf-radius-none: 0px;
+  --sf-radius-sm: 4px;    /* thumbnailSmall */
+  --sf-radius-md: 8px;    /* thumbnailMedium/Large, chips, cards */
+  --sf-radius-lg: 12px;   /* bottomSheet top, settings cards */
+  --sf-radius-xl: 16px;   /* profile cards, dialogs, updates rows */
+  --sf-radius-full: 50px; /* action pills */
+  --sf-radius-search: 24px;  /* SearchBarShape */
+
+  /* ---- Dimens.kt: spacing (4dp grid) -------------------------------------- */
+  --sf-space-xxs: 2px;
+  --sf-space-xs: 4px;
+  --sf-space-sm: 8px;
+  --sf-space-md: 12px;
+  --sf-space-lg: 16px;
+  --sf-space-xl: 20px;
+  --sf-space-xxl: 24px;
+  --sf-space-huge: 32px;
+  --sf-space-giant: 48px;
+
+  /* ---- Dimens.kt: component sizes ------------------------------------------ */
+  --sf-bottom-nav-height: 58px;
+  --sf-mini-player-height: 64px;
+  --sf-mini-player-art: 48px;
+  --sf-mini-progress-height: 2px;
+  --sf-track-row-height: 56px;
+  --sf-track-row-art: 48px;
+  --sf-chip-height: 32px;
+  --sf-player-action-pill: 36px;
+  --sf-divider-thickness: 1px;
+  --sf-screen-max-width: 1100px; /* ScreenConfiguration.centerInLargeScreen */
+
+  /* ---- StreamifyAnimations -------------------------------------------------- */
+  --sf-anim-fast: 150ms;
+  --sf-anim-normal: 300ms;
+  --sf-anim-slow: 500ms;
+  --sf-anim-super-slow: 800ms;
+  --sf-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --sf-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --sf-spring-bouncy: cubic-bezier(0.34, 1.56, 0.64, 1); /* MediumBouncy feel */
+
+  /* ---- Genre mood gradients (StreamifyColors.Gradient*) ---------------------- */
+  --sf-gradient-pop: linear-gradient(135deg, #e13300, #ff8a65);
+  --sf-gradient-hiphop: linear-gradient(135deg, #ba5d07, #ffb74d);
+  --sf-gradient-rock: linear-gradient(135deg, #e91e63, #f48fb1);
+  --sf-gradient-indie: linear-gradient(135deg, #608108, #aed581);
+  --sf-gradient-focus: linear-gradient(135deg, #509bf5, #90caf9);
+  --sf-gradient-chill: linear-gradient(135deg, #8d67ab, #ce93d8);
+  --sf-gradient-sleep: linear-gradient(135deg, #1e3264, #5c6bc0);
+
+  /* Splash ribbon palette (PrismaticSplashScreen, verbatim) */
+  --sf-splash-ribbon-1: #8b5cf6;
+  --sf-splash-ribbon-2: #a855f7;
+  --sf-splash-ribbon-3: #06b6d4;
+  --sf-splash-ribbon-4: #10b981;
+  --sf-splash-ribbon-5: #f59e0b;
+  --sf-splash-ribbon-6: #ff0000;
+  --sf-splash-ribbon-7: #ec4899;
+}

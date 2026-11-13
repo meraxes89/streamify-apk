@@ -28,16 +28,28 @@ export function PlayerBar({
   onEgressModeChange: (mode: 'element' | 'spine') => void;
 }): JSX.Element {
   const snapshot = usePlayerStore((s) => s.snapshot);
+  const queue = usePlayerStore((s) => s.queue);
   const lastRung = usePlayerStore((s) => s.lastRung);
   const send = usePlayerStore((s) => s.send);
+  const playOrToggle = usePlayerStore((s) => s.playOrToggle);
   const seekRef = useRef<HTMLInputElement | null>(null);
 
-  const track: TrackRow | null = snapshot?.currentTrack ?? null;
+  // The honest display track: the cursor's row, falling back to the
+  // HEAD of the queue — a queued-but-not-playing list must not read
+  // "Nothing queued" (the P2 desync: the bar ignored the queue).
+  const track: TrackRow | null =
+    snapshot?.currentTrack ?? queue.rows[queue.cursor ?? 0]?.track ?? null;
   const status = snapshot?.status ?? 'Idle';
   const positionMs = snapshot?.positionMs ?? 0;
   const durationMs = track?.durationMs ?? 0;
   const playing = status === 'Playing';
   const buffering = status === 'Buffering';
+  // The engine boots into Buffering (initialize: Idle→Buffering, the UDL
+  // contract) — with no track anywhere that's rest, not buffering.
+  const statusLabel =
+    buffering && track === null && (queue.rows.length === 0 || queue.cursor === null) && snapshot?.clock === null
+      ? 'idle'
+      : status.toLowerCase();
 
   const onSeek = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +79,7 @@ export function PlayerBar({
           <span className="playerbar__title">{track?.title ?? 'Nothing queued'}</span>
           <span className="playerbar__artist">{track?.artist ?? 'Search and tap Play'}</span>
           <span className="playerbar__chips">
-            <span className={`chip chip--${status.toLowerCase()}`}>{status.toLowerCase()}</span>
+            <span className={`chip chip--${statusLabel === 'idle' ? 'idle' : statusLabel}`}>{statusLabel}</span>
             {lastRung !== null && <span className="chip chip--rung">rung: {lastRung}</span>}
             <button
               type="button"
@@ -111,7 +123,7 @@ export function PlayerBar({
         <button
           type="button"
           className="btn btn--transport btn--transport-main"
-          onClick={() => send({ type: 'toggle' })}
+          onClick={playOrToggle}
           disabled={track === null}
           aria-label={playing ? 'Pause' : 'Play'}
         >
