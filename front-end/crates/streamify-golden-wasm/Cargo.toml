@@ -1,0 +1,43 @@
+# streamify-golden-wasm — W1.7: the frozen golden-vector DSP suite on wasm32.
+#
+# Mirrors rust/crates/streamify-audio/tests/golden_audio_vectors.rs (the
+# native parity suite) onto wasm32-unknown-unknown, run under headless
+# Chrome via wasm-bindgen-test in CI (web-build.yml, wasm-tests job):
+#
+#   synthesize the 5 canonical vectors  →  CanonicalSrc → StudioEqualizer
+#   → LufsNormalizer  →  compare against the FROZEN native reference
+#   fixture at ε = 1e-5 (frames_out EXACT; rms/peak/lufs_i/gain_db, 24
+#   spot samples, per-1024-frame block-RMS fingerprint within ε;
+#   bits_fnv1a informational — cross-libm last-ulp drift is expected).
+#
+# This proves the DSP the WEB build will ship computes the same audio the
+# native engine does — the W1.7 browser-parity gate.
+#
+# READ-ONLY REFERENCE INTO THE FROZEN TREE (deliberate):
+#   * the suite must exercise the REAL production DSP — a vendored copy
+#     would drift, which is precisely what golden vectors exist to catch;
+#   * the fixture is embedded at compile time via include_bytes! from the
+#     frozen path (same file the native suite reads at runtime);
+#   * the rust/ workspace is never modified and never built as a
+#     workspace — cargo resolves only this crate's dependency closure
+#     (streamify-audio → streamify-core + rubato + tracing; streamify-
+#     audio's own dev-deps like tempfile are not pulled in).
+[package]
+name = "streamify-golden-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "W1.7: golden-vector DSP parity suite (rust/crates/streamify-audio) compiled to wasm32, verified in headless Chrome"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[dev-dependencies]
+# Same version-pin note as streamify-wasm: the 0.3 series pairs with
+# wasm-bindgen 0.2.130 (what the front-end lock resolves); a skew breaks
+# the test registration protocol ("no tests to run!").
+wasm-bindgen-test = "0.3"
+# Fixture codec (tests only).
+serde_json = "1"
+# The frozen production DSP crate — see the header's read-only note.
+streamify-audio = { path = "../../../rust/crates/streamify-audio" }

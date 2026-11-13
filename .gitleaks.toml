@@ -1,5 +1,5 @@
-# gitleaks configuration — extends the full default rule set, with ONE
-# narrowly-scoped, documented exception.
+# gitleaks configuration — extends the full default rule set, with
+# narrowly-scoped, documented exceptions.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ALLOWLISTED: the YouTube Music PUBLIC InnerTube web-client key
@@ -36,9 +36,18 @@
 useDefault = true
 
 [allowlist]
-id = "public-innertube-web-client-key"
-description = "YouTube Music's public InnerTube web-client key (ships in every YTM web client; not a GCP credential — see header above)"
+# W1.0 addition — the bgutils WebPo PUBLIC WAA request key
+#   O43z0dpjhgX20SCx4KAo
+# Why this is not a secret: it is the first element of the
+# $rpc/google.internal.waa.v1.Waa/GenerateIT request body that the
+# bgutils-js npm package (MIT) hardcodes for EVERY consumer — a protocol
+# constant, not a credential (same class as the InnerTube client
+# identifier above). Referenced in exactly one place:
+# front-end/web/src/audio/botguard/protocol.ts (WAA_REQUEST_KEY).
+id = "public client-protocol constants (documented per-regex above)"
+description = "YouTube InnerTube web-client key + bgutils WebPo WAA request key — public protocol constants, not credentials (see header)"
 regexTarget = "match"
 regexes = [
     '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
+    '''O43z0dpjhgX20SCx4KAo''',
 ]

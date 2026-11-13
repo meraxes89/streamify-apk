@@ -4,6 +4,7 @@ import type { EngineStatus, StreamInfo, Track } from './lib/engine';
 import { SearchPanel } from './components/SearchPanel';
 import type { SearchPhase } from './components/SearchPanel';
 import { StatusCard } from './components/StatusCard';
+import { SpineConsole } from './components/SpineConsole';
 import type { RowPlayback } from './components/TrackRow';
 
 const PROOF_MS = 10_000; // the P0 audio proof plays 10 seconds, then auto-pauses
@@ -258,7 +259,7 @@ export function App(): JSX.Element {
     <>
       <header className="site-header">
         <div className="titles">
-          <h1>Streamify Web — P0 Proof Phase</h1>
+          <h1>Streamify Web — P1 Audio Spine</h1>
           <p className="subtitle">Rust engine → wasm → relay → YouTube, in a browser</p>
         </div>
         <span className={`chip chip--${enginePhase}`} role="status" aria-label="Engine status">
@@ -299,6 +300,7 @@ export function App(): JSX.Element {
               )}
             </div>
           </section>
+          <SpineConsole />
           <SearchPanel
             phase={searchPhase}
             query={query}
@@ -318,7 +320,7 @@ export function App(): JSX.Element {
 
       <footer>
         <p>
-          WS-W P0 Proof · one branch, one PR · G0.2 / G0.3 / G0.4 · canary:{' '}
+          WS-W P0 + P1 Audio Spine · one branch, one PR · G0.2 / G0.3 / G0.4 / G1 · canary:{' '}
           <a className="footer-link" href="canary.html">
             /canary.html
           </a>

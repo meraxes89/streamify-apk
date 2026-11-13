@@ -10,6 +10,11 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: '/streamify-apk/',
   plugins: [react()],
+  // AudioWorklet modules must be ES modules (audioWorklet.addModule);
+  // the sink worklet is imported via `?worker&url` (transport.ts).
+  worker: {
+    format: 'es',
+  },
   build: {
     rollupOptions: {
       input: {
