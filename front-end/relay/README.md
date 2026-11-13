@@ -61,11 +61,10 @@ homepage): the **player** poToken is minted with `mintAsWebsafeString(VIDEO_ID)`
 `html5_generate_content_po_token` experiment flag is set (it is, 2026-11-12), else
 visitorData.
 
-> **Deploy note:** minting against the LIVE worker requires redeploying this file
-> (`npx wrangler deploy` — credentials see *Deploy* below). The P0-era deployment does
-> not know `/bg-session` nor the `www.google.com` / `jnn-pa.googleapis.com` allowlist
-> entries; until redeployed, the web app's mint button reports the relay as
-> mint-incapable and only the P0 paths work. CI does **not** deploy the relay — it is a
+> **Deploy note (resolved 2026-11-13):** the W1.0 code IS the live worker now —
+> version `ab781f0f-c9b7-4d2a-a848-ecc9af6631bd` serves `/bg-session` and the
+> `www.google.com/js/th/*` + `jnn-pa.googleapis.com` allowlist entries; live
+> verification matrix in *Deploy* below. CI does **not** deploy the relay — it is a
 > manual step by design (deploy credentials are never in the tree).
 
 ## Endpoints
@@ -236,6 +235,18 @@ curl -i -H "Range: bytes=0-1023" \
 **LIVE** since 2026-11-12 at <https://streamify-relay.zephyr4289.workers.dev>
 (account subdomain `zephyr4289`; first real deploy replaced the account's initial
 Hello-World placeholder — wrangler version `ac91b113-9197-40af-853c-1cad5acb5d40`).
+
+Redeployed **2026-11-13** with the W1.0 minting surface — version
+`ab781f0f-c9b7-4d2a-a848-ecc9af6631bd`. Live verification (cold probes against
+production, not `wrangler dev`): `/` reports the P1 phase banner; `/health` 200;
+`/bg-session` returns the full triple (visitorData 452 chars, ytcfg ~762 KB, ytAtN
+~42 KB with the `bgChallenge` payload) and answers `cache: hit` on the immediate
+second call; `www.google.com/js/th/<probe>` passes the allowlist (Google's own 404
+on the fake path — not the relay's `host not allowed`) while
+`www.google.com/search` is refused with 403 (the `/js/th/*` path scoping holds);
+`jnn-pa.googleapis.com/$rpc/…/GenerateIT` passes; `example.com` refused 403;
+`www.youtube.com` passthrough 200 with `ACAO:*`, the full expose list and
+`X-Relay-Ms`.
 
 Redeploying:
 

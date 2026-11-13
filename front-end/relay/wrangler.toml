@@ -12,16 +12,17 @@
 #            CLOUDFLARE_API_TOKEN (Workers Scripts:Edit scope) and
 #            CLOUDFLARE_ACCOUNT_ID in the environment. The token is handed
 #            over a secure channel and used once — it NEVER enters the tree.
-# W1.0 NOTE: the LIVE worker still runs the P0 code (deployed 2026-11-12,
-#            pre-minting-surface). REDEPLOYING THIS FILE is required to
-#            enable /bg-session + the www.google.com/js/th/* and
+# W1.0 NOTE: REDEPLOYED 2026-11-13 with the minting surface — version
+#            ab781f0f-c9b7-4d2a-a848-ecc9af6631bd. The LIVE worker now
+#            serves /bg-session + the www.google.com/js/th/* and
 #            jnn-pa.googleapis.com allowlist entries (browser PO mints);
-#            the hop-surfacing mode and everything P0 keep working either
-#            way. CI does NOT deploy the relay — manual step by design.
+#            P0 passthrough verified intact on the same redeploy. CI does
+#            NOT deploy the relay — manual step by design.
 # LOCAL DEV: `bunx wrangler dev --port 8787` — no account needed.
 #
-# Deploy record + live verification matrix (2026-11-12):
-#            front-end/decisions/W0.6-live-wiring.md
+# Deploy record + live verification matrix:
+#            2026-11-12 (P0):  front-end/decisions/W0.6-live-wiring.md
+#            2026-11-13 (W1.0): front-end/decisions/W1.0-minting-surface.md
 # ---------------------------------------------------------------------------
 
 name = "streamify-relay"
