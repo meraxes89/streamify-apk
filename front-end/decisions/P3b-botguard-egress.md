@@ -131,10 +131,24 @@ tokens only").
   client-hints-passthrough] }`; an old deployment answers without the field,
   which the web app treats as "capability absent" and degrades honestly.
 
-**The deployed worker predates P3b** — it already serves everything the mint
-needs (the W1.0 surface; VISIONOS needed only the pre-existing `101` UA matrix
-entry, live-verified). The new capabilities activate on the next
-`wrangler deploy` (manual by design; credentials never enter the tree).
+**The deployed worker IS the P3b code since 2026-11-14** — version
+`aae9b71a-2d51-45da-8fde-5b04d02290f` (redeployed with a one-shot token over
+a secure channel; never in the tree). Live verification: capability echo on
+`/`, `/health` 200, VISIONOS regression green (full-length + HLS), the
+`X-Relay-UA` override executing. The P3b WEB app shipped to gh-pages the same
+day (Web Deploy run #19 on the branch push) — the production pair
+(app + relay) was then browser-verified end-to-end: mint completes on the
+github.io origin (spoof probe green, `realDocumentPatched: true`), the
+element lane plays dQw (`visionos/aac`, tokenless, 202 s buffered).
+
+The 2026-11-14 production bisect also CONFIRMED the phone failure's root
+cause: the anonymous WEB client gets `UNPLAYABLE — The page needs to be
+reloaded` from datacenter egress under EVERY header shape (Chrome/Safari UA,
+±visitorData, ±Origin/Referer/Sec-Fetch/Sec-CH-UA — the full coherent
+envelope included). That wall is the PO-token enforcement itself; only a
+real-browser-minted token lifts it — which is exactly what the P3a main-window
+mint could not produce (empty `webPoSignalOutput` on the github.io origin)
+and the P3b iframe does.
 
 ## The verification matrix (2026-11-14, headless Chromium + local wrangler dev)
 

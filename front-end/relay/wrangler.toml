@@ -18,6 +18,13 @@
 #            jnn-pa.googleapis.com allowlist entries (browser PO mints);
 #            P0 passthrough verified intact on the same redeploy. CI does
 #            NOT deploy the relay — manual step by design.
+# P3b NOTE:  REDEPLOYED 2026-11-14 with the BotGuard egress pivot — version
+#            aae9b71a-2d51-45da-8fde-5b04d022090f. The LIVE worker now
+#            carries the 3-Tier surface: X-Relay-UA named overrides, the
+#            sec-ch-ua* envelope pinning (WAA legs + WEB-declared innertube),
+#            and the / capability echo. VISIONOS matrix UA (client 101)
+#            regression-verified on the same deploy (full-length itag 140/251
+#            + hlsManifestUrl, dQw).
 # LOCAL DEV: `bunx wrangler dev --port 8787` — no account needed.
 #
 # Deploy record + live verification matrix:

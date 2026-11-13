@@ -284,6 +284,19 @@ on the fake path — not the relay's `host not allowed`) while
 `www.youtube.com` passthrough 200 with `ACAO:*`, the full expose list and
 `X-Relay-Ms`.
 
+Redeployed **2026-11-14** with the P3b BotGuard egress surface — version
+`aae9b71a-2d51-45da-8fde-5b04d022090f`. Live verification (cold probes against
+production): `/` reports the P3b phase banner + the `capabilities` array
+(`bg-session`, `ua-override`, `client-hints-passthrough`); `/health` 200;
+VISIONOS (client 101, matrix UA) regression-verified — `OK`, full-length
+direct URLs (itag 140 clen 3,449,447; itag 251 clen 3,433,755) + the bonus
+`hlsManifestUrl`; the `X-Relay-UA: safari-mac` override executes (WEB_SAFARI
+rung answers its honest datacenter verdict); the full P3b WEB app deployed to
+gh-pages the same day (Web Deploy run #19) and was browser-verified
+end-to-end against THIS worker: the mint completes on the github.io origin
+(3-layer spoof probe green, `realDocumentPatched: true`) and the element lane
+plays dQw (`rung: visionos/aac`, tokenless, 202 s buffered).
+
 Redeploying:
 
 ```bash
