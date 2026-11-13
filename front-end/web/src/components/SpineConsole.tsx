@@ -57,11 +57,10 @@ export function SpineConsole(): JSX.Element {
   const fetch = useSpineStore((s) => s.fetch);
   const packetsDemuxed = useSpineStore((s) => s.packetsDemuxed);
 
-  // -- W1.0 + P3b mint status (module singleton → React) ------------------
+  // -- W1.0 + G3b mint status (module singleton → React) ------------------
   const [mint, setMint] = useState<MintStatus>({
     phase: 'idle',
     detail: 'no mint yet',
-    relayTooOld: false,
     braveShieldsAdvice: false,
   });
   const [seedOpen, setSeedOpen] = useState(false);
@@ -259,13 +258,6 @@ export function SpineConsole(): JSX.Element {
       {error !== null && phase === 'errored' && (
         <p className="spine-error" role="alert">
           {error}
-        </p>
-      )}
-      {mint.relayTooOld && (
-        <p className="spine-error" role="alert">
-          This relay predates W1.0 — minting needs the upgraded worker deployed
-          (wrangler deploy; see front-end/relay/README.md). Media + resolve still
-          work through it.
         </p>
       )}
       {mint.braveShieldsAdvice && (

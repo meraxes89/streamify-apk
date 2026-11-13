@@ -31,6 +31,7 @@ import { ElementPlayer } from '../audio/elementPlayer';
 import type { ElementTrackMeta } from '../audio/elementPlayer';
 import { resolveAudioStream, markRungFailed, type ResolvedStream } from '../audio/resolve';
 import { ensureMediaBridge, type MediaBridgeHandle } from './mediaBridge';
+import { nativeHlsPlayback, remuxHlsForElement } from '../audio/hls/hlsRemux';
 
 // The wasm-pack output (generated territory — see src/wasm-engine/).
 type EngineModule = typeof import('../wasm-engine/streamify_engine_wasm.js');
@@ -439,7 +440,7 @@ export class WasmEnginePort {
       return;
     }
     // 'play': the engine guarantees a staged URL on this intent.
-    const url = intent.streamUrl;
+    let url = intent.streamUrl;
     if (url === undefined || url === '') return;
     if (this.egressMode === 'element' && this.sink !== null) {
       const meta: ElementTrackMeta = {
@@ -465,6 +466,36 @@ export class WasmEnginePort {
         void this.sink.resume();
         return;
       }
+      // G3b: HLS rungs — Chromium-class engines cannot play m3u8 in a
+      // media element. Remux the manifest into ONE element-playable file
+      // (audio/hls/hlsRemux.ts: fMP4 byte-concat fast path, ffmpeg.wasm
+      // remux lane for TS segments) BEFORE any load. A remux failure is
+      // a definitive rung rejection: ledger it (the rotation must
+      // ESCALATE the ladder, never re-pick the dead manifest) and leave
+      // the track parked for an honest retry.
+      const last = this.lastResolve;
+      if (
+        last !== null &&
+        last.videoId === meta.videoId &&
+        last.isHls &&
+        !nativeHlsPlayback()
+      ) {
+        try {
+          const remuxed = await remuxHlsForElement(url, {
+            relayBase: this.relayBase,
+          });
+          url = remuxed.url; // blob: — element-playable, never goes stale
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error('[wasmEngine] HLS remux failed', { rung: last.rung, message });
+          markRungFailed(meta.videoId, last.rung);
+          this.resolveError = `HLS remux failed (${last.rung}): ${message}`;
+          this.onResolveError?.(meta.videoId, this.resolveError);
+          this.sink.park(); // parked, not spinning — an honest retry surface
+          return;
+        }
+      }
+
       // Dual-lane (W2.0): direct URL first, the SW bridge URL armed as the
       // automatic fallback (open-range-hostile networks flip to it). The
       // session registration is AWAITED — the element must not fetch the
@@ -472,7 +503,12 @@ export class WasmEnginePort {
       // a rotation and strand the sink on the dead direct lane).
       let bridgeUrl: string | undefined;
       const videoId = meta.videoId;
-      if (this.mediaBridge !== null && this.mediaBridge.live && videoId !== '') {
+      if (
+        !url.startsWith('blob:') &&
+        this.mediaBridge !== null &&
+        this.mediaBridge.live &&
+        videoId !== ''
+      ) {
         try {
           await this.mediaBridge.register(WasmEnginePort.mediaToken(videoId), url);
         } catch {

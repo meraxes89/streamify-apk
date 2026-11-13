@@ -1,41 +1,45 @@
 /**
- * audio/resolve.ts — the stream resolver ladder (P3b: the 3-Tier pivot).
+ * audio/resolve.ts — the stream resolver ladder (G3b: the open-source
+ * pivot — YouTube.js + BgUtils).
  *
- * TIER 1 — THE ZERO-TOKEN FAST PATH (replaces the burned ANDROID_VR rung):
+ * RUNG 1 — VISIONOS (tokenless, YouTube.js client 'VISIONOS' = id 101,
+ *   v1.02): verified live in P3b through the relay — DIRECT, pre-signed
+ *   googlevideo URLs (itag 140/251, full contentLength, standard Range
+ *   streaming) with NO PO token and NO 60-second cap, plus a bonus
+ *   hlsManifestUrl in the same response. The relay swaps the matrix UA
+ *   via X-YouTube-Client-Name 101. The raw format URLs are used AS-IS
+ *   (no decipher — the P3b-proven behavior).
  *
- *   1. VISIONOS (clientName 101, v1.02, Apple Vision Pro) — verified live
- *      2026-11-14 through the relay: serves DIRECT, pre-signed googlevideo
- *      URLs (itag 140/251, full contentLength, standard Range streaming)
- *      with NO PO token and NO 60-second cap (ANDROID_VR is capped at
- *      ~60 s for full tracks — hard-measured; the rung is gone).
- *      Bonus: the same response carries an hlsManifestUrl — when the
- *      adaptive formats are missing but HLS is present, the rung serves
- *      the manifest to the element path (Safari-class engines play m3u8
- *      natively; others rotate down the ladder).
+ * RUNG 2 — WEB + PO TOKEN (the licensed-music rung): a bgutils-js mint
+ *   (potSession) with the YouTube.js session's visitorData envelope:
+ *   • context.client.visitorData + X-Goog-Visitor-Id — the session the
+ *     mint bound against (youtubei.js sets both from its session);
+ *   • serviceIntegrityDimensions.poToken ← mint(videoId) — the PLAYER-
+ *     bound token (per-call po_token option);
+ *   • &pot= on the deciphered googlevideo URL ← mint(videoId) while the
+ *     homepage experiment flag binds GVS to videoId (GVS_BINDS_TO_VIDEO_ID),
+ *     else visitorData — appended by youtubei.js's Player.decipher.
+ *   When the response is SABR-only (the modern web-client reality: the
+ *   audio itags arrive as URL-less descriptors), the rung hands back the
+ *   response's own HLS manifest (elementCompat) — the remux lane makes
+ *   it playable on every engine.
  *
- *   2. WEB_SAFARI HLS — the WEB client (clientName 1) presented through a
- *      Safari-class UA (the relay's X-Relay-UA override — a forbidden
- *      header no browser can set itself). Safari-flavored WEB calls
- *      receive HLS (m3u8) manifests that require NO GVS PO token. The
- *      visitorData envelope comes from the relay-cached /bg-session.
+ * RUNG 3 — WEB_SAFARI HLS (elementCompat only): a raw player POST (the
+ *   WEB client through the relay's Safari-class UA override — youtubei.js
+ *   has no web_safari client, and a browser cannot set a Safari UA),
+ *   carrying the rung-2 player token when the mint produced one.
+ *   Safari-flavored WEB calls receive HLS (m3u8) manifests that require
+ *   NO GVS PO token; Chromium-class engines consume them through the
+ *   G3b remux path (audio/hls/hlsRemux.ts — fMP4 byte-concat fast path,
+ *   ffmpeg.wasm remux for TS segments).
  *
- * TIER 2 — WEB + PO TOKEN (the licensed-music rung, W1.0 + P3b dual
- * tokens): when Tier 1 answers LOGIN_REQUIRED (licensed tracks from the
- * relay's datacenter egress), the resolver lazily ensures a browser-native
- * BotGuard mint (potSession) and calls the player endpoint with:
- *   • context.client.visitorData  (the mint's homepage session)
- *   • X-Goog-Visitor-Id           (same value, header form)
- *   • serviceIntegrityDimensions.poToken ← mint(videoId) — the PLAYER-bound
- *     token; the SESSION-bound token (visitorData) rides &pot= on the
- *     googlevideo URL per the homepage experiment flag (videoId while the
- *     flag is set — measured 2026-11-12 — else visitorData).
- * The P3b mint degrades honestly (live → websafe-fallback → coldstart);
- * potKind labels which token class actually backs the stream.
- *
- * ALL rungs go THROUGH THE RELAY (the relay swaps in the matrix UA for
- * X-YouTube-Client-Name 101 / the Safari override for the WEB_SAFARI rung;
- * the plain WEB rung keeps the browser's own UA + client hints — its
- * natural envelope, pinned by the P3b relay).
+ * ALL rungs go THROUGH THE RELAY (youtubei.js fetch funnel — see
+ * lib/ytSession.ts): the relay swaps in the matrix UA for client 101,
+ * applies the Safari override on the WEB_SAFARI rung, and pins the
+ * browser's own UA + client hints on the WEB legs (their natural
+ * envelope). visitor_data + po_token cross the relay UNMODIFIED in the
+ * request bodies/headers (the TSG IP/ASN binding rule: one egress for
+ * the whole session).
  *
  * ROTATION LOOP GUARD: rungs that returned a DEFINITIVE refusal (status
  * verdict, not a network error) for a video are ledgered and skipped for
@@ -45,15 +49,10 @@
 
 import { webCodecsAvailable } from './webcodecsDecoder';
 import { playerPoToken, gvsPoToken } from './botguard/potSession';
-import {
-  PLAYER_ENDPOINT,
-  VISIONOS_CLIENT,
-  WEB_CLIENT,
-  WEB_SAFARI_PROFILE,
-  relayUrl,
-} from './botguard/protocol';
-import { fetchBgSession } from './botguard/mintCore';
+import { PLAYER_ENDPOINT, SAFARI_UA_OVERRIDE } from './botguard/protocol';
+import { getYt, ytFetch } from '../lib/ytSession';
 import type { AudioCodec } from './types';
+import type { Innertube } from 'youtubei.js/web';
 
 /** itag → codec routing (audio-only set). */
 const ITAG_CODEC: Record<number, AudioCodec> = { 140: 'aac', 251: 'opus' };
@@ -99,14 +98,38 @@ export interface ResolveContext {
   elementCompat?: boolean;
 }
 
-interface PlayerFormat {
-  itag: number;
+// ---------------------------------------------------------------------------
+// youtubei.js structural types (Format/VideoInfo are not exported from
+// 'youtubei.js/web' — these are the fields the resolver consumes)
+// ---------------------------------------------------------------------------
+
+interface YtFormat {
+  itag?: number;
   url?: string;
-  mimeType?: string;
+  signature_cipher?: string;
+  cipher?: string;
+  mime_type?: string;
   bitrate?: number;
-  contentLength?: string;
+  content_length?: number;
+  has_audio?: boolean;
+  has_video?: boolean;
+  decipher(player: unknown): Promise<string>;
 }
 
+interface YtBasicInfo {
+  playability_status?: { status?: string; reason?: string } | null;
+  basic_info?: {
+    title?: string;
+    author?: string;
+    duration?: number;
+  };
+  streaming_data?: {
+    adaptive_formats?: YtFormat[];
+    hls_manifest_url?: string;
+  } | null;
+}
+
+/** Raw /player POST body shape (the WEB_SAFARI rung). */
 interface PlayerResponse {
   playabilityStatus?: { status?: string; reason?: string };
   videoDetails?: {
@@ -115,7 +138,6 @@ interface PlayerResponse {
     lengthSeconds?: string;
   };
   streamingData?: {
-    adaptiveFormats?: PlayerFormat[];
     hlsManifestUrl?: string;
   };
 }
@@ -159,17 +181,26 @@ function rungAlive(videoId: string, rung: LadderRung): boolean {
 // Format picking
 // ---------------------------------------------------------------------------
 
-/** Extract the playable audio format by machine capability. */
-function pickFormat(player: PlayerResponse, elementCompat = false): PlayerFormat | undefined {
-  const formats = player.streamingData?.adaptiveFormats ?? [];
-  const pick = (itag: number): PlayerFormat | undefined =>
-    formats.find((f) => f.itag === itag && typeof f.url === 'string');
-  // Preference by machine capability (not by bitrate): the W1.2 deviation
-  // (no symphonia Opus decoder) makes AAC the only WASM rung, and this
-  // resolver refuses to hand the spine a codec the machine cannot decode.
-  // W2.0/P3b: the ELEMENT path (direct egress) is always AAC-first — media
-  // elements decode mp4a.40.2 on every browser; opus-in-webm does not
-  // survive Safari's element pipeline.
+/**
+ * Extract the playable audio format by machine capability. Preference by
+ * machine capability (not by bitrate): the W1.2 deviation (no symphonia
+ * Opus decoder) makes AAC the only WASM rung, and this resolver refuses
+ * to hand the spine a codec the machine cannot decode. The ELEMENT path
+ * (direct egress) is always AAC-first — media elements decode mp4a.40.2
+ * on every browser; opus-in-webm does not survive Safari's element
+ * pipeline.
+ */
+function pickYtFormat(
+  info: YtBasicInfo,
+  elementCompat = false,
+): YtFormat | undefined {
+  const formats = info.streaming_data?.adaptive_formats ?? [];
+  const playable = (f: YtFormat): boolean =>
+    (f.has_audio === true || f.has_audio === undefined) &&
+    f.has_video !== true &&
+    (typeof f.url === 'string' || typeof f.signature_cipher === 'string' || typeof f.cipher === 'string');
+  const pick = (itag: number): YtFormat | undefined =>
+    formats.find((f) => f.itag === itag && playable(f));
   const want: number[] = elementCompat
     ? [140]
     : webCodecsAvailable()
@@ -182,29 +213,28 @@ function pickFormat(player: PlayerResponse, elementCompat = false): PlayerFormat
   return undefined;
 }
 
-/** Map a player response to a direct-format ResolvedStream (shared rungs). */
+/** Map a youtubei.js basic info + format to a ResolvedStream (shared rungs). */
 function toStream(
   videoId: string,
-  player: PlayerResponse,
-  format: PlayerFormat,
+  info: YtBasicInfo,
+  format: YtFormat,
+  url: string,
   rung: LadderRung,
   potKind: ResolvedStream['potKind'],
 ): ResolvedStream {
   return {
     videoId,
-    itag: format.itag,
-    codec: ITAG_CODEC[format.itag] ?? 'aac',
-    url: format.url as string,
-    mimeType: format.mimeType ?? '',
+    itag: format.itag ?? 0,
+    codec: ITAG_CODEC[format.itag ?? 0] ?? 'aac',
+    url,
+    mimeType: format.mime_type ?? '',
     bitrate: format.bitrate ?? 0,
     contentLength:
-      format.contentLength !== undefined ? Number(format.contentLength) : null,
+      typeof format.content_length === 'number' ? format.content_length : null,
     durationSec:
-      player.videoDetails?.lengthSeconds !== undefined
-        ? Number(player.videoDetails.lengthSeconds)
-        : null,
-    title: player.videoDetails?.title ?? videoId,
-    artist: player.videoDetails?.author ?? '',
+      typeof info.basic_info?.duration === 'number' ? info.basic_info.duration : null,
+    title: info.basic_info?.title ?? videoId,
+    artist: info.basic_info?.author ?? '',
     rung,
     potKind,
     isHls: false,
@@ -214,24 +244,21 @@ function toStream(
 /** Map a player response to an HLS-manifest ResolvedStream. */
 function toHlsStream(
   videoId: string,
-  player: PlayerResponse,
+  meta: { title: string; artist: string; durationSec: number | null },
   manifestUrl: string,
   rung: LadderRung,
 ): ResolvedStream {
   return {
     videoId,
     itag: 0, // HLS: itag-less variant playlists
-    codec: 'aac', // YouTube HLS audio variants are fMP4/AAC
+    codec: 'aac', // YouTube HLS audio variants are AAC (fMP4 or TS)
     url: manifestUrl,
     mimeType: 'application/vnd.apple.mpegurl',
     bitrate: 0,
     contentLength: null,
-    durationSec:
-      player.videoDetails?.lengthSeconds !== undefined
-        ? Number(player.videoDetails.lengthSeconds)
-        : null,
-    title: player.videoDetails?.title ?? videoId,
-    artist: player.videoDetails?.author ?? '',
+    durationSec: meta.durationSec,
+    title: meta.title,
+    artist: meta.artist,
     rung,
     potKind: 'none',
     isHls: true,
@@ -244,8 +271,13 @@ function toHlsStream(
 
 /**
  * Resolve one video's best playable audio stream.
- *   Tier 1: VISIONOS (tokenless direct URLs / same-call HLS) → WEB_SAFARI
- *   Tier 2: WEB + PO token (dual-token mint)
+ *   Rung 1: VISIONOS (tokenless direct URLs / same-call HLS)
+ *   Rung 2: WEB + PO token (bgutils-js dual-token mint — the licensed
+ *           rung; falls through to its own HLS manifest when the
+ *           response is SABR-only, the modern web-client reality)
+ *   Rung 3: WEB_SAFARI HLS (elementCompat only — carries the rung-2
+ *           player token when the mint produced one; HLS needs no GVS
+ *           token, but licensed playability needs the player call's)
  * The thrown error carries EVERY rung's verdict for honest diagnosis.
  */
 export async function resolveAudioStream(
@@ -254,29 +286,33 @@ export async function resolveAudioStream(
 ): Promise<ResolvedStream> {
   const verdicts: string[] = [];
   const elementCompat = ctx.elementCompat === true;
+  const yt = await getYt();
 
-  // ---- Tier 1 rung 1: VISIONOS (tokenless) ------------------------------
+  // ---- Rung 1: VISIONOS (tokenless) --------------------------------------
   if (rungAlive(videoId, 'visionos') || rungAlive(videoId, 'visionos-hls')) {
     let vrVerdict = 'not attempted';
     try {
-      const player = await playerCallVisionos(videoId, ctx);
-      const status = player.playabilityStatus?.status ?? 'UNKNOWN';
+      const info = await yt.getBasicInfo(videoId, { client: 'VISIONOS' });
+      const status = info.playability_status?.status ?? 'UNKNOWN';
       if (status === 'OK') {
-        const format = pickFormat(player, elementCompat);
-        if (format !== undefined && format.url !== undefined) {
-          return toStream(videoId, player, format, 'visionos', 'none');
+        const format = pickYtFormat(info, elementCompat);
+        if (format !== undefined && typeof format.url === 'string') {
+          // VISIONOS URLs are direct + pre-signed — used AS-IS (the
+          // P3b-proven behavior; no decipher on this rung).
+          return toStream(videoId, info, format, format.url, 'visionos', 'none');
         }
-        const hls = player.streamingData?.hlsManifestUrl;
+        const hls = info.streaming_data?.hls_manifest_url;
         if (hls !== undefined && hls.length > 0 && elementCompat) {
-          // Adaptive missing, HLS present: serve the manifest (Safari-class
-          // engines play it; others rotate down — the ledger then escalates).
-          return toHlsStream(videoId, player, hls, 'visionos-hls');
+          // Adaptive missing, HLS present: serve the manifest (Safari
+          // engines play it natively; Chromium-class engines consume it
+          // through the G3b remux path — hlsRemux.ts).
+          return toHlsStream(videoId, metaOf(info), hls, 'visionos-hls');
         }
         vrVerdict = 'OK but no playable audio itag (140/251) or HLS manifest';
         markRungFailed(videoId, 'visionos');
         markRungFailed(videoId, 'visionos-hls');
       } else {
-        vrVerdict = `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
+        vrVerdict = `${status}: ${info.playability_status?.reason ?? 'no reason'}`;
         markRungFailed(videoId, 'visionos');
         markRungFailed(videoId, 'visionos-hls');
       }
@@ -286,26 +322,7 @@ export async function resolveAudioStream(
     verdicts.push(`[VISIONOS] ${vrVerdict}`);
   }
 
-  // ---- Tier 1 rung 2: WEB_SAFARI HLS ------------------------------------
-  if (elementCompat && rungAlive(videoId, 'web-safari-hls')) {
-    let safariVerdict = 'not attempted';
-    try {
-      const player = await playerCallWebSafari(videoId, ctx);
-      const status = player.playabilityStatus?.status ?? 'UNKNOWN';
-      const hls = player.streamingData?.hlsManifestUrl;
-      if (status === 'OK' && hls !== undefined && hls.length > 0) {
-        return toHlsStream(videoId, player, hls, 'web-safari-hls');
-      }
-      safariVerdict =
-        status === 'OK' ? 'OK but no hlsManifestUrl' : `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
-      markRungFailed(videoId, 'web-safari-hls');
-    } catch (err) {
-      safariVerdict = err instanceof Error ? err.message : String(err);
-    }
-    verdicts.push(`[WEB_SAFARI] ${safariVerdict}`);
-  }
-
-  // ---- Tier 2: WEB + PO token (the licensed-music path) ------------------
+  // ---- Rung 2: WEB + PO token (the licensed-music path) --------------------
   let potVerdict = 'not attempted';
   const token = await playerPoToken(videoId, ctx.relayBase, {
     autoMint: ctx.autoMint !== false,
@@ -316,23 +333,50 @@ export async function resolveAudioStream(
       'no PO token available (mint failed — see the mint status; coldstart/websafe fallbacks exhausted)';
   } else {
     try {
-      const player = await playerCallWebPot(videoId, ctx, token);
-      const status = player.playabilityStatus?.status ?? 'UNKNOWN';
+      const info = await yt.getBasicInfo(videoId, {
+        client: 'WEB',
+        // PLAYER-context token (serviceIntegrityDimensions.poToken) —
+        // videoId-bound, per-call so it never leaks into other clients.
+        po_token: token.poToken,
+      });
+      const status = info.playability_status?.status ?? 'UNKNOWN';
       if (status === 'OK') {
-        const format = pickFormat(player, elementCompat);
-        if (format !== undefined && format.url !== undefined) {
-          const stream = toStream(videoId, player, format, 'web-pot', token.kind);
-          // WEB-rung googlevideo URLs: append the GVS token (binding per
-          // the homepage experiment flag — see potSession/mintCore).
-          const gvs = await gvsPoToken(videoId);
-          if (gvs !== null) {
-            stream.url = `${stream.url}&pot=${encodeURIComponent(gvs)}`;
+        const format = pickYtFormat(info, elementCompat);
+        if (format !== undefined) {
+          // GVS-context &pot= on the deciphered URL: Player.decipher
+          // appends player.po_token (after nsig/sig) — set it to the
+          // GVS binding (videoId while the homepage flag is set).
+          const player = yt.session.player;
+          if (player === undefined) {
+            potVerdict = 'OK but no deciphering player (retrieve_player failed)';
+          } else {
+            const gvs = await gvsPoToken(videoId);
+            if (gvs !== null) {
+              player.po_token = gvs;
+            }
+            const url = await format.decipher(player);
+            return toStream(videoId, info, format, url, 'web-pot', token.kind);
           }
-          return stream;
+        } else {
+          // The modern web-client reality: URL-less SABR descriptors for
+          // the audio itags. When the same response carries an HLS
+          // manifest (and the element path can consume one), hand the
+          // manifest back — the remux lane (hlsRemux.ts) makes it
+          // element-playable on every engine.
+          const hls = info.streaming_data?.hls_manifest_url;
+          if (hls !== undefined && hls.length > 0 && elementCompat) {
+            return toHlsStream(videoId, metaOf(info), hls, 'web-pot');
+          }
+          // Honest inventory in the verdict: which audio itags the response
+          // actually carried (SABR-only responses have none with URLs).
+          const audioItags = (info.streaming_data?.adaptive_formats ?? [])
+            .filter((f) => f.has_video !== true)
+            .map((f) => f.itag ?? '?')
+            .join(',');
+          potVerdict = `OK but no playable audio itag (want ${elementCompat ? '140' : '251/140'} — audio itags present: ${audioItags.length > 0 ? audioItags : 'NONE (SABR-only?)'})`;
         }
-        potVerdict = 'OK but no playable audio itag (251/140)';
       } else {
-        potVerdict = `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
+        potVerdict = `${status}: ${info.playability_status?.reason ?? 'no reason'}`;
       }
     } catch (err) {
       potVerdict = err instanceof Error ? err.message : String(err);
@@ -340,102 +384,91 @@ export async function resolveAudioStream(
   }
   verdicts.push(`[WEB+POT] ${potVerdict}`);
 
+  // ---- Rung 3: WEB_SAFARI HLS (elementCompat only) ------------------------
+  // Carries the rung-2 player token when the mint produced one (licensed
+  // playability needs the player call's PO token regardless of UA; the
+  // HLS manifests themselves need no GVS token — the yt-dlp web_safari
+  // exception, still true at the time of writing).
+  if (elementCompat && rungAlive(videoId, 'web-safari-hls')) {
+    let safariVerdict = 'not attempted';
+    try {
+      const player = await playerCallWebSafari(
+        videoId,
+        yt,
+        ctx,
+        token !== null ? token.poToken : null,
+      );
+      const status = player.playabilityStatus?.status ?? 'UNKNOWN';
+      const hls = player.streamingData?.hlsManifestUrl;
+      if (status === 'OK' && hls !== undefined && hls.length > 0) {
+        return toHlsStream(
+          videoId,
+          {
+            title: player.videoDetails?.title ?? videoId,
+            artist: player.videoDetails?.author ?? '',
+            durationSec:
+              player.videoDetails?.lengthSeconds !== undefined
+                ? Number(player.videoDetails.lengthSeconds)
+                : null,
+          },
+          hls,
+          'web-safari-hls',
+        );
+      }
+      safariVerdict =
+        status === 'OK'
+          ? 'OK but no hlsManifestUrl'
+          : `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
+      markRungFailed(videoId, 'web-safari-hls');
+    } catch (err) {
+      safariVerdict = err instanceof Error ? err.message : String(err);
+    }
+    verdicts.push(`[WEB_SAFARI] ${safariVerdict}`);
+  }
+
   throw new Error(`no rung resolved ${videoId} — ${verdicts.join(' · ')}`);
 }
 
 // ---------------------------------------------------------------------------
-// Tier 1 rung 1 — VISIONOS player POST through the relay (tokenless)
+// Rung 3 — WEB_SAFARI: raw player POST through the relay (Safari UA)
 // ---------------------------------------------------------------------------
 
-async function playerCallVisionos(
-  videoId: string,
-  ctx: ResolveContext,
-): Promise<PlayerResponse> {
-  // Keyless www.youtube.com innertube — the repo's established pattern
-  // (see front-end/canary/src/probeMatrix.ts): the www host accepts
-  // innertube POSTs without ?key=. The relay swaps the UA to the Vision
-  // Pro matrix value via X-YouTube-Client-Name 101 (P3b).
-  const res = await fetch(relayUrl(ctx.relayBase, PLAYER_ENDPOINT), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-youtube-client-name': VISIONOS_CLIENT.clientNumber,
-      'x-youtube-client-version': VISIONOS_CLIENT.clientVersion,
-    },
-    body: JSON.stringify({
-      context: {
-        client: {
-          clientName: VISIONOS_CLIENT.clientName,
-          clientVersion: VISIONOS_CLIENT.clientVersion,
-          deviceMake: VISIONOS_CLIENT.deviceMake,
-          deviceModel: VISIONOS_CLIENT.deviceModel,
-          osName: VISIONOS_CLIENT.osName,
-          osVersion: VISIONOS_CLIENT.osVersion,
-          hl: 'en',
-          gl: 'US',
-        },
-      },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-    }),
-    signal: ctx.signal ?? undefined,
-  });
-  if (!res.ok) {
-    throw new Error(`player relay call ${res.status}`);
-  }
-  return (await res.json()) as PlayerResponse;
-}
-
-// ---------------------------------------------------------------------------
-// Tier 1 rung 2 — WEB_SAFARI (WEB client, Safari UA via the relay override)
-// ---------------------------------------------------------------------------
-
+/**
+ * The WEB client presented through a Safari-class UA (the relay's
+ * X-Relay-UA override — a forbidden header no browser can set itself).
+ * A RAW POST rather than a youtubei.js client call: youtubei.js has no
+ * web_safari client and offers no per-call header injection. The body
+ * carries the YouTube.js session's own context (deep-copy semantics
+ * match what its HTTPClient would send), so the visitorData envelope
+ * stays coherent across all rungs.
+ */
 async function playerCallWebSafari(
   videoId: string,
+  yt: Innertube,
   ctx: ResolveContext,
+  poToken: string | null,
 ): Promise<PlayerResponse> {
-  // The visitorData envelope: the relay-cached /bg-session homepage scrape
-  // (no mint needed — this is the tokenless HLS rung). Best-effort: the
-  // call proceeds without it when the relay predates /bg-session.
-  let visitorData: string | null = null;
-  try {
-    const bg = await fetchBgSession(ctx.relayBase, { signal: ctx.signal ?? null });
-    visitorData = bg.visitorData;
-  } catch {
-    visitorData = null;
-  }
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    'x-youtube-client-name': WEB_SAFARI_PROFILE.clientNumber,
-    'x-youtube-client-version': WEB_SAFARI_PROFILE.clientVersion,
-    // The P3b relay control header — swaps in the Safari-class UA the
-    // browser cannot set (and, per the envelope rule, strips the browser's
-    // Chrome client hints: Safari sends none). An OLD relay forwards it
-    // harmlessly upstream (an unknown header) and the rung reports its
-    // honest verdict from the browser-UA'd call.
-    'x-relay-ua': WEB_SAFARI_PROFILE.uaOverride,
-  };
-  if (visitorData !== null) {
-    headers['x-goog-visitor-id'] = visitorData;
-  }
-  const client: Record<string, string> = {
-    clientName: WEB_SAFARI_PROFILE.clientName,
-    clientVersion: WEB_SAFARI_PROFILE.clientVersion,
-    hl: 'en',
-    gl: 'US',
-  };
-  if (visitorData !== null) {
-    client.visitorData = visitorData;
-  }
-  const res = await fetch(relayUrl(ctx.relayBase, PLAYER_ENDPOINT), {
+  const context = yt.session.context;
+  const res = await ytFetch(PLAYER_ENDPOINT, {
     method: 'POST',
-    headers,
+    headers: {
+      'content-type': 'application/json',
+      'x-youtube-client-name': '1', // WEB
+      'x-youtube-client-version': context.client.clientVersion,
+      'x-goog-visitor-id': context.client.visitorData ?? '',
+      // The relay control header — swaps in the Safari-class UA (and,
+      // per the envelope rule, strips the browser's Chrome client
+      // hints: Safari sends none).
+      'x-relay-ua': SAFARI_UA_OVERRIDE,
+    },
     body: JSON.stringify({
-      context: { client },
+      context,
       videoId,
       contentCheckOk: true,
       racyCheckOk: true,
+      // PLAYER-context PO token when the rung-2 mint produced one —
+      // licensed playability needs it on the player call itself.
+      ...(poToken !== null ? { serviceIntegrityDimensions: { poToken } } : {}),
     }),
     signal: ctx.signal ?? undefined,
   });
@@ -446,45 +479,18 @@ async function playerCallWebSafari(
 }
 
 // ---------------------------------------------------------------------------
-// Tier 2 — WEB + PO token through the relay (W1.0 + P3b dual tokens)
+// Helpers
 // ---------------------------------------------------------------------------
 
-async function playerCallWebPot(
-  videoId: string,
-  ctx: ResolveContext,
-  token: { poToken: string; visitorData: string },
-): Promise<PlayerResponse> {
-  const res = await fetch(relayUrl(ctx.relayBase, PLAYER_ENDPOINT), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      // WEB keeps the browser's own UA + client hints (its natural
-      // envelope — the P3b relay pins them through). visitorData rides
-      // both the body and the header — the coherent "web session" story.
-      'x-goog-visitor-id': token.visitorData,
-      'x-youtube-client-name': WEB_CLIENT.clientNumber,
-      'x-youtube-client-version': WEB_CLIENT.clientVersion,
-    },
-    body: JSON.stringify({
-      context: {
-        client: {
-          clientName: WEB_CLIENT.clientName,
-          clientVersion: WEB_CLIENT.clientVersion,
-          visitorData: token.visitorData,
-          hl: 'en',
-          gl: 'US',
-        },
-      },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-      // PLAYER-context PO token — VIDEO_ID bound (yt-dlp binding rule).
-      serviceIntegrityDimensions: { poToken: token.poToken },
-    }),
-    signal: ctx.signal ?? undefined,
-  });
-  if (!res.ok) {
-    throw new Error(`player relay call ${res.status}`);
-  }
-  return (await res.json()) as PlayerResponse;
+function metaOf(info: YtBasicInfo): {
+  title: string;
+  artist: string;
+  durationSec: number | null;
+} {
+  return {
+    title: info.basic_info?.title ?? '',
+    artist: info.basic_info?.author ?? '',
+    durationSec:
+      typeof info.basic_info?.duration === 'number' ? info.basic_info.duration : null,
+  };
 }
