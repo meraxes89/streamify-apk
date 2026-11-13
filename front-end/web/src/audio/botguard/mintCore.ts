@@ -1,52 +1,77 @@
 /**
- * audio/botguard/mintCore.ts — the browser-native BotGuard/PO mint (W1.0).
+ * audio/botguard/mintCore.ts — P3b Tier 2: the browser-native BotGuard/PO
+ * mint, in a hidden srcdoc iframe with a spoofed youtube.com origin.
  *
- * Mirrors the provider's proven session flow (bgutil-ytdlp-pot-provider
- * session_manager.ts incl. the 2026-08 homepage-challenge patch) but runs
- * in the REAL page — the BotGuard VM scores its environment (canvas,
- * webgl, hardware entropy) and JSDOM/headless environments measure as
- * low-trust: provider-recipe Node mints with correct video-id binding were
- * measured NOT to lift the licensed-content wall from datacenter IPs
- * (2026-11-12, pot-lab matrix). Real browser hardware is the point.
+ * WHY THE IFRAME CHANGED EVERYTHING (P3b post-mortem of the W1.0 mint):
+ *   The W1.0 mint ran the VM in the MAIN window and measured
+ *   `webPoSignalOutput empty` on anything that was not youtube.com — the
+ *   BotGuard bytecode inspects window.location / document.URL and aborts
+ *   minter initialization on a foreign origin. The fix (architect's Angle
+ *   B/C): a SAME-ORIGIN srcdoc iframe on the Main UI Thread whose
+ *   window/document/location globals are presented through Proxy wrappers
+ *   reporting https://www.youtube.com, while canvas, WebGL, navigator,
+ *   performance, and audio pass STRAIGHT THROUGH to the user's real
+ *   (mobile) hardware. See mintHarness.ts (the in-frame realm) and
+ *   mintIframe.ts (the host).
  *
  * FLOW (every network leg through the relay — see protocol.ts):
  *
  *   1. GET /bg-session        visitorData + ytcfg + ytAtN (server-cached)
  *   2. parseLooseJSON(ytAtN)  → R.bgChallenge { program, globalName,
- *                                interpreterUrl }   (camelCase wrapped URL)
+ *                               interpreterUrl }
  *   3. GET /r?u=<interpreter> → the "trayride" VM script
- *   4. window.yt = { config_: ytcfg }        (BotGuard reads EVENT_ID)
- *   5. new Function(interpreterJS)()         → window[globalName] (the VM)
- *   6. BotGuardClient.create + snapshot({ webPoSignalOutput })
- *   7. POST /r?u=<GenerateIT> [REQUEST_KEY, snapshot] → integrity token
- *   8. WebPoMinter.create(itData, webPoSignalOutput) — LOCAL from here:
- *      mintAsWebsafeString(videoId) per video, no network, for the token's
- *      ~12 h life.
+ *   4. harness.bootVM(...)    shadow-eval under the spoofed origin (IFRAME)
+ *   5. harness.runSnapshot()  BotGuard snapshot — attempt 1 (privacy buffer
+ *      ON). Empty webPoSignalOutput (Brave-class farbling) → attempt 2
+ *      with skipPrivacyBuffer: true (the VM's built-in bypass).
+ *   6. POST /r?u=<GenerateIT> [REQUEST_KEY, snapshot] → the 4-tuple
+ *      (integrityToken, ttl, refreshThreshold, websafeFallbackToken).
+ *   7. Signal output present → harness.buildMinter + the DUAL tokens:
+ *      the session token (visitorData-bound, minted eagerly, persisted to
+ *      localStorage ~6 h) and the per-track player token (videoId-bound,
+ *      <5 ms from the warm minter).
+ *      Signal output empty (privacy buffer won) → the WEBSAFE FALLBACK
+ *      session: the server's websafeFallbackToken rides in place of
+ *      client mints (weaker attestation, honestly labeled).
+ *   8. GenerateIT itself failed → the COLDSTART session: fully-local XOR
+ *      cold start tokens (bgutils createColdStartToken — sps=2 unlock of
+ *      the first ~1–2 MB while a full attestation is retried).
  *
- * ENVIRONMENT CHOICE: the VM is loaded into the MAIN window, not an iframe
- * and not a worker — the main page is the most authentic environment the
- * challenge can observe (real URL, history, visibility, canvas), which
- * maximizes the snapshot's trust score. The two globals it touches
- * (`window.yt`, `window[globalName]`) are unused by this app.
+ * BINDING (unchanged, yt-dlp pot/utils.py): the /player poToken is
+ * VIDEO_ID-bound; the &pot= token follows the homepage experiment flag
+ * (videoId while set, else visitorData — the session token).
  */
 
 import { parseLooseJSON, getHeaders } from 'bgutils-js/utils';
-import { BotGuardClient } from 'bgutils-js/botguard';
-import { WebPoMinter } from 'bgutils-js/webpo';
-import type { WebPoSignalOutput } from 'bgutils-js/shared-types';
+import { createColdStartToken } from 'bgutils-js/webpo';
+import { ensureMintIframe } from './mintIframe';
 import {
   WAA_GENERATE_IT_URL,
   WAA_REQUEST_KEY,
   MintError,
   relayUrl,
 } from './protocol';
-import type { BgChallenge, BgSessionInfo, MintPhase, PotSession } from './protocol';
+import type {
+  BgChallenge,
+  BgSessionInfo,
+  MintPhase,
+  PotSession,
+} from './protocol';
 
 export interface MintOptions {
   relayBase: string;
   signal?: AbortSignal | null;
   /** Progress sink (UI mirror). */
   onPhase?: (phase: MintPhase, detail: string) => void;
+}
+
+/** runMintSession's verdict extras (status surfacing beyond the session). */
+export interface MintSessionResult {
+  session: PotSession;
+  /** The privacy-buffer fallback fired (Brave-class environment). */
+  braveShieldsAdvice: boolean;
+  /** Which snapshot attempt produced the accepted bytes ('first' | 'skip-privacy-buffer' | 'none'). */
+  snapshotAttempt: 'first' | 'skip-privacy-buffer' | 'none';
 }
 
 // ---------------------------------------------------------------------------
@@ -174,15 +199,67 @@ export function gvsBindsToVideoId(ytcfgRaw: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Fallback sessions (no minter — see the header's steps 7b/8)
+// ---------------------------------------------------------------------------
+
+/**
+ * The WEBSAFE FALLBACK session: GenerateIT answered, but the privacy-buffer
+ * path left no usable client minter (Brave-class farbling). The server's
+ * websafeFallbackToken rides in place of both token lanes — weaker
+ * attestation, honestly labeled 'websafe-fallback' up to the UI.
+ */
+function websafeFallbackSession(
+  visitorData: string,
+  itData: { estimatedTtlSecs: number; websafeFallbackToken: string },
+): PotSession {
+  const ttlSecs =
+    typeof itData.estimatedTtlSecs === 'number' && itData.estimatedTtlSecs > 0
+      ? Math.min(itData.estimatedTtlSecs, 6 * 3600)
+      : 3600;
+  return {
+    kind: 'websafe-fallback',
+    visitorData,
+    expiresAtMs: Date.now() + ttlSecs * 1000,
+    gvsBindsToVideoId: true, // the fallback token is a single opaque string
+    mintPlayerToken: async () => itData.websafeFallbackToken,
+    mintGvsToken: async () => itData.websafeFallbackToken,
+    sessionToken: itData.websafeFallbackToken,
+  };
+}
+
+/** Cold-start horizon: these are transitional tokens (sps=2 window). */
+const COLDSTART_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * The COLDSTART session: the full mint pipeline failed (VM, snapshot, or
+ * GenerateIT) but the bg-session visitorData is in hand. Fully-local XOR
+ * cold start tokens (bgutils createColdStartToken) — under Status 2
+ * enforcement they unlock the first ~1–2 MB of media immediately while a
+ * full attestation is retried on the next mint.
+ */
+function coldstartSession(visitorData: string, videoBind: boolean): PotSession {
+  return {
+    kind: 'coldstart',
+    visitorData,
+    expiresAtMs: Date.now() + COLDSTART_TTL_MS,
+    gvsBindsToVideoId: videoBind,
+    mintPlayerToken: async (videoId: string) => createColdStartToken(videoId),
+    mintGvsToken: async (videoId: string) =>
+      createColdStartToken(videoBind ? videoId : visitorData),
+    sessionToken: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The full session mint
 // ---------------------------------------------------------------------------
 
 /**
- * Run one complete mint session. Returns a PotSession whose mint functions
- * are LOCAL (WebPoMinter over the integrity token) — no further network
- * until the token expires (estimatedTtlSecs, typically 12 h).
+ * Run one complete mint session in the hidden iframe. Returns the session
+ * (live minter, websafe-fallback, or coldstart — the ladder degrades
+ * honestly) plus the verdict extras for the status lane.
  */
-export async function runMintSession(opts: MintOptions): Promise<PotSession> {
+export async function runMintSession(opts: MintOptions): Promise<MintSessionResult> {
   const { relayBase, signal, onPhase } = opts;
   const phase = (p: MintPhase, detail: string): void => onPhase?.(p, detail);
 
@@ -204,69 +281,77 @@ export async function runMintSession(opts: MintOptions): Promise<PotSession> {
   const interpreterJS = await fetchInterpreter(relayBase, challenge, { signal });
   phase('interpreter', `${interpreterJS.length}B of VM`);
 
-  // 4 — yt config injection (BotGuard reads yt.config_.EVENT_ID)
-  const w = window as unknown as Record<string, unknown>;
+  // 4 — the hidden mint iframe (Main UI Thread, spoofed origin)
+  phase('iframe', 'booting the srcdoc mint frame (spoofed youtube.com origin)');
+  const harness = await ensureMintIframe();
+  harness.reset();
   let ytcfgObj: Record<string, unknown> = {};
   try {
     ytcfgObj = JSON.parse(bg.ytcfg) as Record<string, unknown>;
   } catch {
     /* EVENT_ID is best-effort; the mint proceeds without it */
   }
-  w.yt = { config_: ytcfgObj };
+  const probe = harness.environmentProbe();
+  const boot = harness.bootVM({ interpreterJS, program: challenge.program, globalName: challenge.globalName, ytcfg: ytcfgObj });
+  if (!boot.ok) {
+    throw new MintError('vm', `interpreter eval failed in the mint frame: ${boot.error}`);
+  }
+  phase(
+    'iframe',
+    `VM ready under spoofed origin ${probe.origin} (${probe.url}) — top-level: ${probe.isTopLevel}`,
+  );
 
-  // 5 — VM into the main window (most authentic environment — see header)
-  phase('vm', 'evaluating interpreter (main window)');
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- the interpreter IS the challenge
-    new Function(interpreterJS)();
-  } catch (err) {
-    throw new MintError(
-      'vm',
-      `interpreter eval threw: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  if (w[challenge.globalName] === undefined) {
-    throw new MintError('vm', `interpreter did not define window.${challenge.globalName}`);
-  }
-  phase('vm', `VM ready: window.${challenge.globalName}`);
-
-  // 6 — BotGuard snapshot (THIS is where environment trust is measured)
-  phase('snapshot', 'running BotGuard challenge program');
-  let bgClient: BotGuardClient;
-  try {
-    bgClient = await BotGuardClient.create({
-      program: challenge.program,
-      globalName: challenge.globalName,
-      globalObject: window,
-    });
-  } catch (err) {
-    throw new MintError(
-      'vm',
-      `BotGuardClient.create failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  const webPoSignalOutput: WebPoSignalOutput = [];
-  let snapshot: string;
-  try {
-    snapshot = await bgClient.snapshot({ webPoSignalOutput });
-  } catch (err) {
-    throw new MintError(
+  // 5 — BotGuard snapshot (attempt 1: privacy buffer on)
+  phase('snapshot', 'running BotGuard challenge program (privacy buffer on)');
+  let snapshotBytes = '';
+  let signalReady = false;
+  let attempt: MintSessionResult['snapshotAttempt'] = 'none';
+  const first = await harness.runSnapshot();
+  if (first.ok && first.snapshot !== undefined) {
+    snapshotBytes = first.snapshot;
+    signalReady = first.signalOutputReady;
+    attempt = 'first';
+    phase(
       'snapshot',
-      `snapshot failed: ${err instanceof Error ? err.message : String(err)}`,
+      signalReady
+        ? `snapshot ${snapshotBytes.length}B · signal output live`
+        : `snapshot ${snapshotBytes.length}B · signal output EMPTY (fingerprinting shield?)`,
     );
+  } else {
+    phase('snapshot', `attempt 1 failed: ${first.error ?? 'no bytes'}`);
   }
-  if (webPoSignalOutput.length === 0) {
-    // The VM refused to score this environment (headless/automation case).
-    throw new MintError(
-      'vm-score',
-      'BotGuard VM scored the environment as untrusted (webPoSignalOutput empty) — ' +
-        'headless/automated browsers cannot mint; real user hardware can',
-    );
-  }
-  phase('snapshot', `snapshot ${snapshot.length}B · ${webPoSignalOutput.length} signal fn(s)`);
 
-  // 7 — GenerateIT through the relay (origin stripped → WAA key valid)
-  phase('generate-it', 'POST Waa/GenerateIT (relay, origin stripped)');
+  // 5b — the Brave catch: empty signal output → retry with the VM's
+  // privacy-buffer bypass (skipPrivacyBuffer: true).
+  let braveShieldsAdvice = false;
+  if (!signalReady) {
+    braveShieldsAdvice = true;
+    phase('snapshot', 'retrying with skipPrivacyBuffer (Brave-class farbling bypass)');
+    const second = await harness.runSnapshot({ skipPrivacyBuffer: true });
+    if (second.ok && second.snapshot !== undefined && second.snapshot.length > 0) {
+      snapshotBytes = second.snapshot;
+      signalReady = second.signalOutputReady;
+      attempt = 'skip-privacy-buffer';
+      phase(
+        'snapshot',
+        signalReady
+          ? `retry snapshot ${snapshotBytes.length}B · signal output live (bypass)`
+          : `retry snapshot ${snapshotBytes.length}B · signal output still empty — websafe fallback next`,
+      );
+    } else if (signalReady === false && snapshotBytes.length === 0) {
+      // No usable bytes at all — the VM refused this environment outright.
+      throw new MintError(
+        'vm-score',
+        'BotGuard VM produced no snapshot in the mint frame (webPoSignalOutput empty on both attempts) — ' +
+          'a fingerprinting shield (Brave "Block Fingerprinting"?) may be breaking the challenge; ' +
+          'toggling it off for this site usually restores the mint',
+      );
+    }
+  }
+
+  // 6 — GenerateIT through the relay (P3b relay forwards the browser's
+  // exact UA + Sec-CH-UA-* on this leg — the envelope pinning)
+  phase('generate-it', 'POST Waa/GenerateIT (relay, envelope pinned)');
   let itRes: Response;
   try {
     itRes = await fetch(relayUrl(relayBase, WAA_GENERATE_IT_URL), {
@@ -274,7 +359,7 @@ export async function runMintSession(opts: MintOptions): Promise<PotSession> {
       // getHeaders(): content-type json+protobuf + the public WebPo GAPI key
       // + x-user-agent. The browser replaces the (forbidden) UA with its own.
       headers: getHeaders(),
-      body: JSON.stringify([WAA_REQUEST_KEY, snapshot]),
+      body: JSON.stringify([WAA_REQUEST_KEY, snapshotBytes]),
       signal: signal ?? undefined,
     });
   } catch (err) {
@@ -293,29 +378,136 @@ export async function runMintSession(opts: MintOptions): Promise<PotSession> {
     const detail = await itRes.text().catch(() => '');
     throw new MintError('generate-it', `GenerateIT ${itRes.status}: ${detail.slice(0, 160)}`);
   }
-  const [integrityToken, estimatedTtlSecs, mintRefreshThreshold, websafeFallbackToken] =
+  const [integrityTokenRaw, estimatedTtlSecsRaw, mintRefreshThresholdRaw, websafeFallbackTokenRaw] =
     (await itRes.json()) as [string, number, number, string];
-  if (typeof integrityToken !== 'string' || integrityToken.length === 0) {
-    throw new MintError('empty-token', 'GenerateIT returned an empty integrity token');
+  const estimatedTtlSecs =
+    typeof estimatedTtlSecsRaw === 'number' && estimatedTtlSecsRaw > 0
+      ? estimatedTtlSecsRaw
+      : 3600;
+  const integrityToken =
+    typeof integrityTokenRaw === 'string' && integrityTokenRaw.length > 0
+      ? integrityTokenRaw
+      : null;
+  const websafeFallbackToken =
+    typeof websafeFallbackTokenRaw === 'string' && websafeFallbackTokenRaw.length > 0
+      ? websafeFallbackTokenRaw
+      : null;
+  const videoBind = gvsBindsToVideoId(bg.ytcfg);
+
+  // ---- The GenerateIT verdict ladder (P3b) ---------------------------------
+  // An EMPTY integrity token is not a crash: it is the WAA's honest "this
+  // snapshot scores too low" (headless-class environments measure exactly
+  // this). The architect's degradation order applies:
+  //   • integrityToken + signal output → the live dual-token minter
+  //   • websafeFallbackToken (4th tuple element) → the websafe-fallback
+  //     session — it exists precisely for degraded-environment mints
+  //   • nothing usable server-side → the local coldstart session
+  if (integrityToken === null) {
+    phase(
+      'generate-it',
+      `integrity token REFUSED (low-trust snapshot) — websafe: ${websafeFallbackToken !== null ? `yes (${websafeFallbackToken.length}B)` : 'no'}`,
+    );
+    if (websafeFallbackToken !== null) {
+      phase('ready', 'websafe-fallback session (WAA refused the full attestation)');
+      return {
+        session: websafeFallbackSession(bg.visitorData, { estimatedTtlSecs, websafeFallbackToken }),
+        braveShieldsAdvice,
+        snapshotAttempt: attempt,
+      };
+    }
+    phase('ready', 'coldstart session (WAA refused everything — local XOR tokens)');
+    return {
+      session: coldstartSession(bg.visitorData, videoBind),
+      braveShieldsAdvice,
+      snapshotAttempt: attempt,
+    };
   }
   phase('generate-it', `integrity token ${integrityToken.length}B · ttl ${estimatedTtlSecs}s`);
 
-  // 8 — the LOCAL minter
-  phase('minter', 'constructing WebPoMinter');
-  const minter = await WebPoMinter.create(
-    { integrityToken, estimatedTtlSecs, mintRefreshThreshold, websafeFallbackToken },
-    webPoSignalOutput,
-  );
-  const videoBind = gvsBindsToVideoId(bg.ytcfg);
-  phase('ready', `mint session live (${videoBind ? 'video-id' : 'visitorData'} GVS binding)`);
+  const itData = { integrityToken, estimatedTtlSecs, mintRefreshThreshold: typeof mintRefreshThresholdRaw === 'number' ? mintRefreshThresholdRaw : 0, websafeFallbackToken: websafeFallbackToken ?? '' };
 
+  // 7 — the LOCAL minter (live) or the fallback ladder
+  if (signalReady) {
+    phase('minter', 'constructing WebPoMinter (mint frame realm)');
+    const built = await harness.buildMinter(itData);
+    if (built.ok) {
+      // 7a — the DUAL tokens: session (visitorData) eagerly, player
+      // (videoId) per track from the warm minter.
+      phase('session-token', 'minting the session-bound token (visitorData)');
+      let sessionToken: string | null = null;
+      try {
+        const minted = await harness.mint(bg.visitorData);
+        sessionToken = minted.ok ? (minted.token as string) : null;
+        if (!minted.ok) {
+          phase('session-token', `session token mint failed: ${minted.error}`);
+        }
+      } catch {
+        sessionToken = null; // non-fatal: &pot= falls back per-track
+      }
+      phase(
+        'ready',
+        `live mint session (${videoBind ? 'video-id' : 'visitorData'} GVS binding` +
+          `${sessionToken !== null ? ', session token cached' : ''})`,
+      );
+      return {
+        session: {
+          kind: 'live',
+          visitorData: bg.visitorData,
+          expiresAtMs: Date.now() + estimatedTtlSecs * 1000,
+          gvsBindsToVideoId: videoBind,
+          mintPlayerToken: (videoId: string) =>
+            harness.mint(videoId).then((r) => {
+              if (!r.ok || r.token === undefined) {
+                throw new Error(`player token mint failed: ${r.error}`);
+              }
+              return r.token;
+            }),
+          mintGvsToken: (videoId: string) =>
+            harness
+              .mint(videoBind ? videoId : bg.visitorData)
+              .then((r) => {
+                if (!r.ok || r.token === undefined) {
+                  throw new Error(`GVS token mint failed: ${r.error}`);
+                }
+                return r.token;
+              }),
+          sessionToken,
+        },
+        braveShieldsAdvice,
+        snapshotAttempt: attempt,
+      };
+    }
+    // buildMinter failed despite a signal output (PMD:Undefined race —
+    // Brave's farbling can poison the minter hook AFTER the snapshot).
+    braveShieldsAdvice = true;
+    phase('minter', `minter construction failed (${built.error}) — websafe fallback`);
+  }
+
+  // 7b — WEBSAFE FALLBACK: the server's websafeFallbackToken in place of
+  // client mints (the minter did not survive the privacy buffer).
+  if (websafeFallbackToken !== null) {
+    phase('ready', 'websafe-fallback session (privacy buffer won the minter)');
+    return {
+      session: websafeFallbackSession(bg.visitorData, itData),
+      braveShieldsAdvice,
+      snapshotAttempt: attempt,
+    };
+  }
+
+  // 8 — COLDSTART: nothing server-side survived — local cold start tokens.
+  phase('ready', 'coldstart session (local XOR tokens, first ~1–2 MB unlock)');
   return {
-    kind: 'live',
-    visitorData: bg.visitorData,
-    expiresAtMs: Date.now() + estimatedTtlSecs * 1000,
-    gvsBindsToVideoId: videoBind,
-    mintPlayerToken: (videoId: string) => minter.mintAsWebsafeString(videoId),
-    mintGvsToken: (videoId: string) =>
-      minter.mintAsWebsafeString(videoBind ? videoId : bg.visitorData),
+    session: coldstartSession(bg.visitorData, videoBind),
+    braveShieldsAdvice,
+    snapshotAttempt: attempt,
   };
+}
+
+/**
+ * The coldstart-only mint (public helper): binds a local cold start token
+ * to a videoId WITHOUT any network or VM — the instant, zero-dependency
+ * rung for the resolver's last resort.
+ */
+export function coldStartTokenFor(binding: string): string {
+  return createColdStartToken(binding);
 }

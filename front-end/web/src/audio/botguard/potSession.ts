@@ -1,18 +1,23 @@
 /**
- * audio/botguard/potSession.ts — the W1.0 session manager.
+ * audio/botguard/potSession.ts — the session manager (W1.0 + P3b).
  *
  * One mint session per integrity-token lifetime (~12 h): the session is a
  * module singleton with in-flight dedupe (five parts of the app asking for
  * a token simultaneously must trigger exactly ONE BotGuard run).
  *
- * Two sources of tokens:
- *   • 'live'  — browser-native mint (mintCore.runMintSession): the
- *     production path; needs the W1.0 relay (deployed with the minting
- *     allowlist + /bg-session).
- *   • 'seeded' — a dev override (pot-lab's provider-recipe Node mint),
- *     video-scoped: proves the PLAYER-side wiring (serviceIntegrityDimensions
- *     + X-Goog-Visitor-Id + &pot=) even where the environment cannot mint
- *     (headless verification). Seeded tokens answer only for their videoId.
+ * Sources of tokens (the P3b ladder, strongest first):
+ *   • 'live'             — the full iframe mint (mintCore.runMintSession):
+ *                          dual tokens (player = videoId, session =
+ *                          visitorData) from the real browser hardware.
+ *   • 'cached'           — a restored localStorage session: replayed
+ *                          videos serve their cached player tokens and &pot=
+ *                          serves the cached session token with ZERO
+ *                          BotGuard; a NEW video triggers a full live mint.
+ *   • 'seeded'           — a dev override (pot-lab's provider-recipe Node
+ *                          mint), video-scoped.
+ *   • 'websafe-fallback' — the privacy-buffer fallback (Brave-class): the
+ *                          server's websafeFallbackToken in place of mints.
+ *   • 'coldstart'        — local XOR cold start tokens (sps=2 window).
  *
  * The seeded path is DEV-ONLY by construction: it is never consulted unless
  * seedPotSession() ran first (the SpineConsole seed box), and it reports
@@ -20,7 +25,7 @@
  */
 
 import { runMintSession } from './mintCore';
-import type { MintStatus, PotSeed, PotSession } from './protocol';
+import type { MintStatus, PotSeed, PotSession, PotSessionCache } from './protocol';
 
 // ---------------------------------------------------------------------------
 // State
@@ -29,14 +34,149 @@ import type { MintStatus, PotSeed, PotSession } from './protocol';
 let session: PotSession | null = null;
 let inFlight: Promise<PotSession> | null = null;
 let seed: PotSeed | null = null;
+/**
+ * True ONLY when THIS page load ran a real mint (a minter exists for NEW
+ * videos). A restored cache session serves its cached tokens but cannot
+ * mint fresh ones — ensureLiveSession must replace it on demand.
+ */
+let sessionHasMinter = false;
 
-let status: MintStatus = { phase: 'idle', detail: 'no mint yet', relayTooOld: false };
+let status: MintStatus = {
+  phase: 'idle',
+  detail: 'no mint yet',
+  relayTooOld: false,
+  braveShieldsAdvice: false,
+};
 const listeners = new Set<(s: MintStatus) => void>();
 
 function setStatus(next: Partial<MintStatus>): void {
   status = { ...status, ...next };
   for (const l of [...listeners]) l(status);
 }
+
+// ---------------------------------------------------------------------------
+// The localStorage cache (P3b — replays skip BotGuard)
+// ---------------------------------------------------------------------------
+
+const CACHE_KEY = 'streamify.pot.session.v1';
+/** LRU cap for cached per-video player tokens. */
+const CACHE_PLAYER_TOKENS_MAX = 16;
+/** Never trust a cached entry closer than this to its expiry. */
+const CACHE_FRESHNESS_MARGIN_MS = 5 * 60 * 1000;
+
+function readCache(): PotSessionCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as PotSessionCache;
+    if (
+      parsed.schema !== 1 ||
+      typeof parsed.visitorData !== 'string' ||
+      parsed.visitorData.length === 0 ||
+      typeof parsed.mintedAt !== 'number' ||
+      typeof parsed.ttlSecs !== 'number'
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null; // private mode / corrupted entry — mint from scratch
+  }
+}
+
+function cacheFresh(cache: PotSessionCache): boolean {
+  return Date.now() < cache.mintedAt + cache.ttlSecs * 1000 - CACHE_FRESHNESS_MARGIN_MS;
+}
+
+function writeCache(session: PotSession, playerTokens: Record<string, string>): void {
+  if (session.kind === 'seeded' || session.kind === 'coldstart') return; // never persist
+  const ttlSecs = Math.min(
+    Math.max(Math.round((session.expiresAtMs - Date.now()) / 1000), 60),
+    6 * 3600, // the architect's cache horizon: 6–12 h, clamped conservatively
+  );
+  const cache: PotSessionCache = {
+    schema: 1,
+    kind: session.kind,
+    visitorData: session.visitorData,
+    sessionToken: session.sessionToken,
+    gvsBindsToVideoId: session.gvsBindsToVideoId,
+    mintedAt: Date.now(),
+    ttlSecs,
+    playerTokens,
+  };
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    /* private mode — the live session still serves this page load */
+  }
+}
+
+function dropCache(): void {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Per-video player tokens minted this page load (cache write-through). */
+const playerTokens = new Map<string, string>();
+
+function recordPlayerToken(videoId: string, token: string): void {
+  playerTokens.set(videoId, token);
+  if (playerTokens.size > CACHE_PLAYER_TOKENS_MAX) {
+    // LRU: drop the oldest entry (insertion order).
+    const oldest = playerTokens.keys().next();
+    if (!oldest.done) playerTokens.delete(oldest.value);
+  }
+  if (session !== null && (session.kind === 'live' || session.kind === 'websafe-fallback')) {
+    writeCache(session, Object.fromEntries(playerTokens));
+  }
+}
+
+/**
+ * A session restored from localStorage — token-serving only (no minter for
+ * new videos): cached player tokens + the session token. A cache miss on
+ * mintPlayerToken escalates to a full live mint via the caller's autoMint.
+ */
+function cachedSession(cache: PotSessionCache): PotSession {
+  const tokens = new Map(Object.entries(cache.playerTokens));
+  return {
+    kind: cache.kind,
+    visitorData: cache.visitorData,
+    expiresAtMs: cache.mintedAt + cache.ttlSecs * 1000,
+    gvsBindsToVideoId: cache.gvsBindsToVideoId,
+    mintPlayerToken: async (videoId: string) => {
+      const hit = tokens.get(videoId);
+      if (hit !== undefined) return hit;
+      throw new Error('cache miss — a fresh live mint is required for this video');
+    },
+    mintGvsToken: async (videoId: string) => {
+      if (cache.gvsBindsToVideoId) {
+        const hit = tokens.get(videoId);
+        if (hit !== undefined) return hit;
+      }
+      if (cache.sessionToken !== null) return cache.sessionToken;
+      throw new Error('cache miss — no session token cached');
+    },
+    sessionToken: cache.sessionToken,
+  };
+}
+
+// Restore at module load: a fresh cache instantly serves &pot= and replays.
+(function restoreCache(): void {
+  const cache = readCache();
+  if (cache === null || !cacheFresh(cache)) return;
+  session = cachedSession(cache);
+  sessionHasMinter = false;
+  for (const [videoId, token] of Object.entries(cache.playerTokens)) {
+    playerTokens.set(videoId, token);
+  }
+  setStatus({
+    phase: 'cache',
+    detail: `restored ${cache.kind} session from cache (visitorData ${cache.visitorData.slice(0, 12)}…, ${Object.keys(cache.playerTokens).length} cached token(s))`,
+  });
+})();
 
 // ---------------------------------------------------------------------------
 // Subscriptions (UI mirror)
@@ -94,11 +234,14 @@ export function seedPotSession(raw: string): { videoId: string } {
     gvsBindsToVideoId: true,
     mintPlayerToken: async () => parsed.playerToken as string,
     mintGvsToken: async () => parsed.gvsToken ?? (parsed.playerToken as string),
+    sessionToken: parsed.gvsToken ?? null,
   };
+  sessionHasMinter = false; // seeds answer only their own video
   setStatus({
     phase: 'ready',
     detail: `SEEDED token for ${parsed.videoId} (expires ${new Date(expiresAtMs).toLocaleTimeString()})`,
     relayTooOld: false,
+    braveShieldsAdvice: false,
   });
   return { videoId: parsed.videoId };
 }
@@ -107,12 +250,33 @@ export function seedPotSession(raw: string): { videoId: string } {
 export function clearSeed(): void {
   seed = null;
   session = null;
-  setStatus({ phase: 'idle', detail: 'seed cleared', relayTooOld: false });
+  sessionHasMinter = false;
+  setStatus({
+    phase: 'idle',
+    detail: 'seed cleared',
+    relayTooOld: false,
+    braveShieldsAdvice: false,
+  });
 }
 
 /** The seeded video id, if any (UI label). */
 export function seededVideoId(): string | null {
   return seed !== null ? seed.videoId : null;
+}
+
+/** Drop the mint session AND the localStorage cache (dev reset). */
+export function resetPotSession(): void {
+  session = null;
+  seed = null;
+  sessionHasMinter = false;
+  playerTokens.clear();
+  dropCache();
+  setStatus({
+    phase: 'idle',
+    detail: 'session + cache dropped',
+    relayTooOld: false,
+    braveShieldsAdvice: false,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +288,10 @@ function sessionUsable(): boolean {
 }
 
 /**
- * Ensure a LIVE mint session exists (seeds do not trigger mints). Deduped:
- * concurrent callers share one mint. Set force to re-mint (retry button).
+ * Ensure a LIVE mint session exists (seeds and stale caches do not count).
+ * Deduped: concurrent callers share one mint. Set force to re-mint (retry
+ * button) — a fresh live mint replaces any seed/cache and rewrites the
+ * localStorage cache.
  */
 export async function ensureLiveSession(
   relayBase: string,
@@ -135,15 +301,22 @@ export async function ensureLiveSession(
     // An explicit live request overrides a seed (user clicked "Mint").
     if (opts.force !== true) return session;
   }
-  if (sessionUsable() && opts.force !== true) return session as PotSession;
+  const usable =
+    session !== null &&
+    sessionUsable() &&
+    sessionHasMinter &&
+    (session.kind === 'live' || session.kind === 'websafe-fallback' || session.kind === 'coldstart');
+  if (usable && opts.force !== true) return session as PotSession;
   if (inFlight !== null) return inFlight;
 
   inFlight = (async () => {
-    // A fresh live mint replaces any seed.
+    // A fresh live mint replaces any seed or cache.
     seed = null;
+    playerTokens.clear();
     let lastDetail = 'mint session live';
+    let brave = false;
     try {
-      const minted = await runMintSession({
+      const { session: minted, braveShieldsAdvice } = await runMintSession({
         relayBase,
         signal: opts.signal ?? null,
         onPhase: (phase, detail) => {
@@ -151,8 +324,16 @@ export async function ensureLiveSession(
           setStatus({ phase, detail, relayTooOld: false });
         },
       });
+      brave = braveShieldsAdvice;
       session = minted;
-      setStatus({ phase: 'ready', detail: lastDetail, relayTooOld: false });
+      sessionHasMinter = true; // this page load owns a real minter/fallback
+      writeCache(minted, {});
+      setStatus({
+        phase: 'ready',
+        detail: lastDetail,
+        relayTooOld: false,
+        braveShieldsAdvice: brave,
+      });
       return minted;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -161,6 +342,7 @@ export async function ensureLiveSession(
         phase: 'idle',
         detail: `mint failed: ${message}`,
         relayTooOld: code === 'relay-too-old',
+        braveShieldsAdvice: brave || code === 'vm-score',
       });
       throw err;
     } finally {
@@ -177,14 +359,14 @@ export async function ensureLiveSession(
 export interface PlayerToken {
   poToken: string;
   visitorData: string;
-  kind: 'live' | 'seeded';
+  kind: PotSession['kind'];
 }
 
 /**
  * PLAYER-context poToken for a video (serviceIntegrityDimensions).
- * Uses a usable session (live or seeded — a seed answers only its video);
- * optionally mints one first (auto: the licensed rung's lazy path).
- * Returns null when no token is available (caller falls down the ladder).
+ * Ladder: usable session (live/cached/seeded — a seed answers only its
+ * video) → lazy live mint → null (caller falls down the resolver ladder).
+ * Minted tokens are write-through recorded for the localStorage cache.
  */
 export async function playerPoToken(
   videoId: string,
@@ -193,15 +375,26 @@ export async function playerPoToken(
 ): Promise<PlayerToken | null> {
   if (sessionUsable()) {
     const s = session as PotSession;
-    if (s.kind === 'seeded' && s !== null && seed !== null && seed.videoId !== videoId) {
-      return null; // seeded token is video-scoped — no false positives
+    if (s.kind === 'seeded') {
+      if (seed !== null && seed.videoId !== videoId) {
+        return null; // seeded token is video-scoped — no false positives
+      }
     }
-    return { poToken: await s.mintPlayerToken(videoId), visitorData: s.visitorData, kind: s.kind };
+    try {
+      const poToken = await s.mintPlayerToken(videoId);
+      recordPlayerToken(videoId, poToken);
+      return { poToken, visitorData: s.visitorData, kind: s.kind };
+    } catch {
+      // A cached session's cache miss (new video) or a dead minter —
+      // fall through to the lazy live mint below.
+    }
   }
   if (opts.autoMint !== true) return null;
   try {
     const s = await ensureLiveSession(relayBase, { signal: opts.signal });
-    return { poToken: await s.mintPlayerToken(videoId), visitorData: s.visitorData, kind: s.kind };
+    const poToken = await s.mintPlayerToken(videoId);
+    recordPlayerToken(videoId, poToken);
+    return { poToken, visitorData: s.visitorData, kind: s.kind };
   } catch {
     return null; // status already carries the failure detail
   }
@@ -217,7 +410,8 @@ export async function gvsPoToken(videoId: string): Promise<string | null> {
   const s = session as PotSession;
   if (s.kind === 'seeded' && seed !== null && seed.videoId !== videoId) return null;
   try {
-    return await s.mintGvsToken(videoId);
+    const token = await s.mintGvsToken(videoId);
+    return typeof token === 'string' && token.length > 0 ? token : null;
   } catch {
     return null;
   }

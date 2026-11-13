@@ -20,6 +20,7 @@ import { relayBaseCandidate } from '../lib/engine';
 import {
   clearSeed,
   ensureLiveSession,
+  resetPotSession,
   seedPotSession,
   subscribeMint,
 } from '../audio/botguard/potSession';
@@ -56,11 +57,12 @@ export function SpineConsole(): JSX.Element {
   const fetch = useSpineStore((s) => s.fetch);
   const packetsDemuxed = useSpineStore((s) => s.packetsDemuxed);
 
-  // -- W1.0 mint status (module singleton → React) ------------------------
+  // -- W1.0 + P3b mint status (module singleton → React) ------------------
   const [mint, setMint] = useState<MintStatus>({
     phase: 'idle',
     detail: 'no mint yet',
     relayTooOld: false,
+    braveShieldsAdvice: false,
   });
   const [seedOpen, setSeedOpen] = useState(false);
   const [seedText, setSeedText] = useState('');
@@ -174,7 +176,9 @@ export function SpineConsole(): JSX.Element {
           onClick={() => {
             void handleMint();
           }}
-          disabled={mint.phase !== 'idle' && mint.phase !== 'ready'}
+          disabled={
+            mint.phase !== 'idle' && mint.phase !== 'ready' && mint.phase !== 'cache'
+          }
         >
           Mint PO session
         </button>
@@ -203,6 +207,18 @@ export function SpineConsole(): JSX.Element {
             }}
           >
             clear seed
+          </button>
+        )}
+        {(mint.phase === 'ready' || mint.phase === 'cache') && !mint.detail.startsWith('SEEDED') && (
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={() => {
+              resetPotSession();
+            }}
+            title="Drop the mint session and the localStorage token cache (fresh BotGuard on next mint)"
+          >
+            reset session
           </button>
         )}
         {seedOpen && (
@@ -250,6 +266,14 @@ export function SpineConsole(): JSX.Element {
           This relay predates W1.0 — minting needs the upgraded worker deployed
           (wrangler deploy; see front-end/relay/README.md). Media + resolve still
           work through it.
+        </p>
+      )}
+      {mint.braveShieldsAdvice && (
+        <p className="spine-error" role="alert">
+          Fingerprinting shields broke the mint's privacy buffer — the session
+          continues on the skipPrivacyBuffer / websafe fallback (weaker
+          attestation). If licensed playback stalls after the first ~1–2 MB,
+          toggle off "Block fingerprinting" for this site in Brave Shields.
         </p>
       )}
 

@@ -18,7 +18,8 @@
  * PlayIntents (play / resolve / seek / stop); this port consumes them and
  * drives the DIRECT-EGRESS ElementPlayer (default, mobile) or the P1
  * WASM spine (opt-in engine path, desktop). The resolver ladder
- * (ANDROID_VR → WEB+POT) runs on `resolve` intents and stale-URL
+ * (VISIONOS → WEB_SAFARI → WEB+POT — the P3b 3-Tier ladder) runs on
+ * `resolve` intents and stale-URL
  * rotations — through the RELAY (tiny JSON legs), while every media byte
  * rides the user's own IP via the element.
  *
@@ -28,7 +29,7 @@
 
 import { ElementPlayer } from '../audio/elementPlayer';
 import type { ElementTrackMeta } from '../audio/elementPlayer';
-import { resolveAudioStream, type ResolvedStream } from '../audio/resolve';
+import { resolveAudioStream, markRungFailed, type ResolvedStream } from '../audio/resolve';
 import { ensureMediaBridge, type MediaBridgeHandle } from './mediaBridge';
 
 // The wasm-pack output (generated territory — see src/wasm-engine/).
@@ -550,6 +551,14 @@ export async function createEngineStack(
     onStats: (s) => port.reportElementStats(s),
     onSinkState: (state) => port.reportSinkState(state),
     onStaleUrl: async (videoId, positionMs) => {
+      // P3b rotation loop guard: when the element rejects the LAST stream
+      // and it was an HLS manifest (Chromium-class engines cannot play
+      // m3u8 in a media element), ledger that rung — the re-resolve must
+      // ESCALATE the ladder (Tier 2), never hand back the same manifest.
+      const last = port.lastResolved;
+      if (last !== null && last.videoId === videoId && last.isHls) {
+        markRungFailed(videoId, last.rung);
+      }
       const stream = await port.resolveAndStage(videoId);
       if (stream === null) return null;
       // Rotation through the bridge: swap the upstream in-place — the
