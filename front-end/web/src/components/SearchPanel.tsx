@@ -11,7 +11,8 @@ export interface SearchPanelProps {
   onSubmit: () => void;
   error: string | null;
   results: Track[];
-  playback: Record<string, RowPlayback>;
+  /** Per-row playback state resolver (snapshot-derived — one truth). */
+  playback: (track: Track) => RowPlayback | undefined;
   onPlay: (track: Track) => void;
   onQueue?: (track: Track) => void;
   onLike?: (track: Track) => void;
@@ -113,7 +114,7 @@ export function SearchPanel(props: SearchPanelProps): JSX.Element {
                 <TrackRow
                   key={track.videoId}
                   track={track}
-                  playback={playback[track.videoId]}
+                  playback={playback(track)}
                   onPlay={onPlay}
                   onQueue={onQueue}
                   onLike={onLike}

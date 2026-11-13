@@ -7,11 +7,10 @@
  * by design and NEVER committed — it arrives via VITE_SUPABASE_ANON_KEY,
  * baked by CI from the repo secret).
  *
- * AUTH: email+password (enabled by default on Supabase projects; the
- * Android app's Google id_token flow needs a web origin registered in
- * the Google console — out of the sandbox's reach, so the email lane is
- * the web default). Sessions persist in localStorage; 401s trigger the
- * refresh-token flow once, then replay.
+ * AUTH: Google OAuth (P3a) — the full-page implicit redirect through
+ * /auth/v1/authorize (the Android One-Tap lane's web lowering), plus the
+ * legacy email+password lane (kept for fallbacks). Sessions persist in
+ * localStorage; 401s trigger the refresh-token flow once, then replay.
  *
  * LIBRARY: mirrors the Android clients' exact calls (SupabaseTracksClient
  * / SupabaseStatsClient): likes two-way (user_likes + tracks upsert with
@@ -175,6 +174,101 @@ export async function signInWithPassword(email: string, password: string): Promi
   } catch (err) {
     return { session: null, needsConfirmation: false, error: errText(err) };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Google OAuth (P3a) — the Android app's One-Tap lane, web lowering.
+//
+// Same raw-fetch house style: NO SDK. The flow is Supabase's implicit
+// OAuth: full-page navigate to /auth/v1/authorize?provider=google; Google
+// consent; Supabase redirects back to THIS page with the tokens in the
+// URL fragment (#access_token=…&refresh_token=…&user=<urlencoded JSON>).
+// consumeOAuthRedirect() runs synchronously BEFORE the router mounts
+// (main.tsx), parses the fragment, persists the session, and strips the
+// URL clean — the hash router never sees the OAuth payload.
+// ---------------------------------------------------------------------------
+
+/** The URL Supabase should redirect back to (this page, hash-free). */
+function oauthRedirectTo(): string {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+/**
+ * Begin Google sign-in: full-page navigation to the Supabase authorize
+ * endpoint (the supabase-js `signInWithOAuth({provider:'google'})`
+ * equivalent, minus the SDK). Returns false when the build carries no
+ * Supabase credentials.
+ */
+export function signInWithGoogle(): boolean {
+  const env = supabaseEnv();
+  if (env === null) return false;
+  const url =
+    `${env.url}/auth/v1/authorize?provider=google` +
+    `&redirect_to=${encodeURIComponent(oauthRedirectTo())}` +
+    `&apikey=${encodeURIComponent(env.anonKey)}`;
+  window.location.assign(url);
+  return true;
+}
+
+let pendingOAuthSession: SupabaseSession | null = null;
+let pendingOAuthError: string | null = null;
+
+/**
+ * Consume an OAuth redirect (if any) — SYNCHRONOUS, pre-render.
+ * Parses the implicit-flow fragment, caches + persists the session for
+ * the session store to pick up, and scrubs the URL. Safe to call on
+ * every load (no-ops when the fragment carries no tokens).
+ */
+export function consumeOAuthRedirect(): void {
+  if (window.location.hash.length < 2) return;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  const error = params.get('error');
+  if (accessToken === null && error === null) return; // a router route, not OAuth
+
+  if (error !== null) {
+    pendingOAuthError =
+      params.get('error_description') ?? `OAuth failed: ${error.replace(/_/g, ' ')}`;
+  } else if (accessToken !== null && refreshToken !== null) {
+    let user: { id?: string; email?: string } | undefined;
+    try {
+      const rawUser = params.get('user');
+      user = rawUser === null ? undefined : (JSON.parse(rawUser) as { id?: string; email?: string });
+    } catch {
+      user = undefined;
+    }
+    const expiresIn = Number(params.get('expires_in') ?? '3600');
+    if (user?.id !== undefined) {
+      const session: SupabaseSession = {
+        accessToken,
+        refreshToken,
+        expiresAt: Math.floor(Date.now() / 1000) + (Number.isFinite(expiresIn) ? expiresIn : 3600),
+        user: { id: user.id, email: user.email ?? null },
+      };
+      sessionCache = session;
+      persistSession(session);
+      pendingOAuthSession = session;
+    } else {
+      pendingOAuthError = 'OAuth redirect carried no user payload';
+    }
+  }
+  // Scrub the fragment — the hash router must never see the tokens.
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+
+/** The session parsed from an OAuth redirect (one-shot, for the store). */
+export function takePendingOAuthSession(): SupabaseSession | null {
+  const s = pendingOAuthSession;
+  pendingOAuthSession = null;
+  return s;
+}
+
+/** The OAuth error from a failed redirect (one-shot, for the store). */
+export function takePendingOAuthError(): string | null {
+  const e = pendingOAuthError;
+  pendingOAuthError = null;
+  return e;
 }
 
 /** The refresh flow (once-per-401; single-flight). */

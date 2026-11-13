@@ -192,8 +192,25 @@ export class WasmEnginePort {
       this.sink?.setVolume(command.volume);
       return 'APPLIED';
     }
+    // Gesture-derived commands bless the element for later programmatic
+    // plays (mobile autoplay policy — see ElementPlayer.unlock).
+    if (command.type === 'play' || command.type === 'toggle') {
+      this.sink?.unlock();
+    }
     const applied = this.engine.on_media_command(JSON.stringify(command));
+    if (command.type === 'pause') {
+      // The Rust command plane sets Paused WITHOUT emitting an intent
+      // (pause is a pure state transition). The element-side half of the
+      // handshake happens here: park it, or the audio keeps playing while
+      // every UI surface shows Paused (the P2 pause bug).
+      this.sink?.park();
+    }
     return applied ? 'APPLIED' : 'DEBOUNCED';
+  }
+
+  /** Bless the element inside a user gesture (mobile autoplay unlock). */
+  unlockSink(): void {
+    this.sink?.unlock();
   }
 
   /** One-shot cold-start read. */
@@ -293,6 +310,15 @@ export class WasmEnginePort {
     return this.lastResolve;
   }
 
+  /** The last resolve FAILURE verdict (surfaced to the UI's error lane). */
+  get lastResolveError(): string | null {
+    return this.resolveError;
+  }
+
+  /** Optional hook: resolve failures surfaced upward (the store's lane). */
+  onResolveError: ((videoId: string, message: string) => void) | null = null;
+  private resolveError: string | null = null;
+
   // -- the resolver lane (async, relayed — the tiny legs) --------------------------
 
   /** Resolve + stage one track. Deduplicates in-flight resolves. */
@@ -308,13 +334,22 @@ export class WasmEnginePort {
     })
       .then((stream) => {
         this.lastResolve = stream;
+        this.resolveError = null;
         // Element-compat: the element path prefers itag 140 (AAC) — see
         // pickFormat in resolve.ts (elementCompat flag). The URL we stage
         // is exactly what the resolver picked for this mode.
         this.engine.stage_stream_url(videoId, stream.url);
         return stream;
       })
-      .catch(() => null)
+      .catch((err: unknown) => {
+        // The verdict (which rung refused, why) is preserved — the old
+        // code swallowed it entirely, so a dead resolve left the row
+        // button stuck on "playing…" with nothing honest anywhere.
+        const message = err instanceof Error ? err.message : String(err);
+        this.resolveError = message;
+        this.onResolveError?.(videoId, message);
+        return null;
+      })
       .finally(() => {
         this.resolving.delete(videoId);
       });
@@ -322,10 +357,17 @@ export class WasmEnginePort {
     return promise;
   }
 
-  /** Convenience: enqueue + resolve + play (the "Play" button path). */
+  /** Convenience: enqueue + resolve + play (the "Play" button path).
+   *
+   * THROWS when the resolve fails — the caller surfaces the verdict on the
+   * row (the engine never latches a cursor onto a URL-less row, so the
+   * bar/queue stay honest: no more "playing…" buttons over dead tracks). */
   async playNow(track: TrackRow): Promise<void> {
     this.enqueue(track);
-    await this.resolveAndStage(track.id);
+    const stream = await this.resolveAndStage(track.id);
+    if (stream === null) {
+      throw new Error(this.resolveError ?? `resolve failed for ${track.title}`);
+    }
     this.engine.play_track(track.id);
   }
 
@@ -386,8 +428,9 @@ export class WasmEnginePort {
       if (videoId === undefined) return;
       void this.resolveAndStage(videoId).then((stream) => {
         if (stream === null) {
-          // Resolve failed: surface the engine's honest state — the queue
-          // stays; the user can retry. (No silent skipping.)
+          // Resolve failed: the verdict already surfaced through
+          // onResolveError; the queue stays for a user retry. (No silent
+          // skipping.)
           return;
         }
         this.engine.play_track(videoId);
@@ -406,6 +449,21 @@ export class WasmEnginePort {
         artworkUrl: snap.currentTrack?.thumbnailUrl ?? null,
         durationMs: snap.currentTrack?.durationMs,
       };
+      // RESUME vs RELOAD (the P2 un-pause bug): a 'play' intent for the
+      // SAME track that is parked mid-track resumes IN PLACE. The old
+      // path always did a full sink.load() with the engine's stale
+      // position_target_ms (usually 0) — un-pausing restarted the song
+      // from 0:00. A startPositionMs within 1.5 s of the parked playhead
+      // (a paused seek already moved the element) still resumes; anything
+      // else (fresh track, ended, at-tail, stopped, real jump) takes the
+      // full dual-lane load below.
+      const startMs = intent.startPositionMs ?? 0;
+      const parkedMs = this.sink.currentPositionMs;
+      const nearParked = startMs === 0 || Math.abs(startMs - parkedMs) < 1500;
+      if (this.sink.currentVideoId === meta.videoId && this.sink.canResume && nearParked) {
+        void this.sink.resume();
+        return;
+      }
       // Dual-lane (W2.0): direct URL first, the SW bridge URL armed as the
       // automatic fallback (open-range-hostile networks flip to it). The
       // session registration is AWAITED — the element must not fetch the

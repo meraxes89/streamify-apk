@@ -23,7 +23,9 @@ export function QueueList({ port }: { port: WasmEnginePort | null }): JSX.Elemen
   const playRow = useCallback(
     async (trackId: string) => {
       if (port === null) return;
-      // playTrack fails on URL-less rows — resolve on demand, then play.
+      // Unlock inside the gesture (mobile autoplay policy), then
+      // playTrack — resolving on demand when the row lacks a URL.
+      port.unlockSink();
       if (!port.playTrack(trackId)) {
         await port.resolveAndStage(trackId);
         port.playTrack(trackId);

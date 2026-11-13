@@ -27,6 +27,14 @@ export interface PlayerActions {
   send(command: PlayerCommand): void;
   setLastRung(rung: ResolvedStream['rung']): void;
   setResolveError(message: string | null): void;
+  /**
+   * The primary transport action (the big play/pause button everywhere):
+   * toggle during a session; from Idle (queue exhausted / stopped) RESTART
+   * the cursor row — the Rust command plane's toggle is an acknowledged
+   * no-op from Idle, so the dock would otherwise be dead after a queue
+   * runs out (the P3a gap: end-of-queue → Play did nothing).
+   */
+  playOrToggle(): void;
 }
 
 const IDLE_QUEUE: QueueRead = { rows: [], cursor: null };
@@ -50,6 +58,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       set((prev) => ({
         snapshot: snap,
         queue: queueChanged ? port.getQueue() : prev.queue,
+        // A healthy Playing snapshot retires the last resolve verdict.
+        resolveError: snap.status === 'Playing' ? null : prev.resolveError,
       }));
     });
   },
@@ -68,6 +78,26 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
   setResolveError(message) {
     set({ resolveError: message });
+  },
+
+  playOrToggle() {
+    const { port, snapshot } = get();
+    if (port === null) return;
+    port.unlockSink();
+    const status = snapshot?.status ?? 'Idle';
+    if (status === 'Idle' || status === 'Error') {
+      const queue = port.getQueue();
+      const row = queue.rows[queue.cursor ?? snapshot?.cursor ?? 0];
+      if (row === undefined) return;
+      if (!port.playTrack(row.track.id)) {
+        // URLless row (e.g. a resolve that never landed): resolve then play.
+        void port.resolveAndStage(row.track.id).then((stream) => {
+          if (stream !== null) port.playTrack(row.track.id);
+        });
+      }
+      return;
+    }
+    port.send({ type: 'toggle' });
   },
 }));
 

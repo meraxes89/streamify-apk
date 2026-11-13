@@ -31,6 +31,40 @@
  * DSP is possible on the direct path (measured: P3 of the egress suite).
  */
 
+/**
+ * A tiny silent WAV (44-byte header + 0.05 s of 8-bit mono silence at
+ * 8 kHz), built at runtime — the classic iOS/Android mobile unlock:
+ * `play()` called ON A REAL (silent) SOURCE inside the user gesture
+ * blesses the element for later programmatic plays. Without this, the
+ * mobile chain tap → resolve (seconds on 5G) → play() loses the gesture
+ * context and the browser silently rejects the load (the P2 "button says
+ * playing, no sound" bug).
+ */
+function buildSilentWavUrl(): string {
+  const sampleRate = 8000;
+  const samples = 400; // 50 ms
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const ascii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  ascii(0, 'RIFF');
+  view.setUint32(4, 36 + samples, true);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  view.setUint32(16, 16, true); // PCM chunk size
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true); // byte rate
+  view.setUint16(32, 1, true); // block align
+  view.setUint16(34, 8, true); // bits per sample
+  ascii(36, 'data');
+  view.setUint32(40, samples, true);
+  // samples stay zero = silence
+  return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+}
+
 /** Track metadata the element surface needs (Media Session et al). */
 export interface ElementTrackMeta {
   videoId: string;
@@ -96,6 +130,10 @@ export class ElementPlayer {
    * working lane — a fresh direct URL on a bridge-needing network just
    * 403s again and burns the rotation budget). */
   private currentBridgeUrl: string | null = null;
+  /** Whether the gesture-unlock ran through (mobile autoplay policy). */
+  private unlocked = false;
+  /** Object URL of the silent unlock source (revoked after use). */
+  private unlockUrl: string | null = null;
 
   /** Max in-place URL rotations per load before surfacing the failure. */
   private static readonly MAX_ROTATIONS = 3;
@@ -110,17 +148,27 @@ export class ElementPlayer {
     document.body.appendChild(this.el);
 
     this.el.addEventListener('playing', () => {
+      // Pre-load element events (the unlock silence, stray loads on the
+      // empty element) must NEVER reach the engine's sink lane: the engine
+      // boots into Buffering (initialize: Idle→Buffering, the UDL contract)
+      // and report_sink_state ACCEPTS transitions from Buffering — an
+      // unlock-time 'playing' would flip the engine to Playing with a null
+      // cursor (the P3a ghost: "playing" chip, nothing loaded, dead
+      // transport).
+      if (this.meta === null) return;
       this.rotations = 0;
       this.handlers.onSinkState('Playing');
     });
     this.el.addEventListener('pause', () => {
       // Paused by the user/commands — only a transport mirror when we were
-      // actually mid-playback (not the initial pre-play pause).
-      if (this.el.currentTime > 0 && !this.el.ended) {
+      // actually mid-playback (a loaded track, not the unlock cleanup's
+      // pause of the silent wav — pre-load events stay in the sink).
+      if (this.meta !== null && this.el.currentTime > 0 && !this.el.ended) {
         this.handlers.onSinkState('Paused');
       }
     });
     this.el.addEventListener('waiting', () => {
+      if (this.meta === null) return; // pre-load events stay in the sink
       // Rebuffer: the honest element-side underrun signal.
       this.underruns += 1;
       this.handlers.onSinkState('Buffering');
@@ -137,6 +185,12 @@ export class ElementPlayer {
     this.el.addEventListener('progress', () => this.emitStats());
     this.el.addEventListener('timeupdate', () => this.emitStats());
     this.el.addEventListener('ended', () => {
+      // The unlock silence must NEVER advance the queue: its 'ended'
+      // fired while a cursor was latched would report_track_ended →
+      // stop_pipeline — the unlock sabotaging its own gesture (measured:
+      // first real tap on a parked track → wav ends → pipeline stops →
+      // the tap's own toggle no-ops from Idle).
+      if (this.meta === null) return;
       this.handlers.onEnded();
     });
     this.el.addEventListener('error', () => {
@@ -161,6 +215,70 @@ export class ElementPlayer {
   }
 
   /**
+   * Unlock the element inside a user gesture (mobile autoplay policy).
+   *
+   * MUST be called synchronously from a real gesture handler (before any
+   * await). Plays 50 ms of silence on the element, which blesses it for
+   * the later programmatic play() after the (slow, network-bound) resolve.
+   * Best-effort and idempotent: a rejection simply retries on the next
+   * gesture; a real load() racing it overrides the unlock source safely.
+   */
+  unlock(): void {
+    if (this.disposed || this.unlocked) return;
+    if (this.unlockUrl === null) this.unlockUrl = buildSilentWavUrl();
+    const gen = ++this.unlockGeneration;
+    this.el.src = this.unlockUrl;
+    const p = this.el.play();
+    if (p !== undefined) {
+      p.then(() => {
+        this.unlocked = true;
+        // A real load() may have already swapped the source — only clean
+        // up when the element is still on the unlock source.
+        if (gen === this.unlockGeneration && this.meta === null) {
+          this.el.pause();
+          this.el.removeAttribute('src');
+          this.el.load();
+        }
+      }).catch(() => {
+        /* still locked — the next gesture retries */
+      });
+    }
+  }
+
+  private unlockGeneration = 0;
+
+  /** The videoId currently loaded (null when stopped/idle). */
+  get currentVideoId(): string | null {
+    return this.meta?.videoId ?? null;
+  }
+
+  /** The element's current playhead (ms). */
+  get currentPositionMs(): number {
+    return this.el.currentTime * 1000;
+  }
+
+  /**
+   * Whether resume() can honestly continue the current track: parked
+   * mid-track with a live source (NOT ended, NOT at the tail, NOT the
+   * pre-unlock silence). The engine's resume-vs-reload decision reads
+   * this — a 'play' intent for the SAME parked track resumes in place;
+   * anything else is a fresh load (the old code reloaded from 0:00).
+   */
+  get canResume(): boolean {
+    if (this.meta === null || !this.el.paused) return false;
+    return this.canResumeBody();
+  }
+
+  private canResumeBody(): boolean {
+    if (this.el.src === '' || this.el.ended) return false;
+    if (this.unlockUrl !== null && this.el.src === this.unlockUrl) return false;
+    const t = this.el.currentTime;
+    const d = this.el.duration;
+    if (t <= 0 || !Number.isFinite(d) || d <= 0) return false;
+    return t < d - 0.25; // at-tail: a wrap-around replay must restart
+  }
+
+  /**
    * Load a (resolved) media URL and start playback. DUAL-LANE (W2.0):
    * the direct googlevideo URL rides the user's IP (the default lane —
    * zero relay bytes); when the network refuses open-ended element ranges
@@ -174,6 +292,7 @@ export class ElementPlayer {
     options: ElementLoadOptions = {},
   ): Promise<void> {
     if (this.disposed) return;
+    this.unlockGeneration += 1; // any real load supersedes an unlock race
     // Rotation bookkeeping is PER TRACK: a fresh videoId resets the
     // counters, a rotation (same track, fresh URL) PRESERVES them —
     // otherwise the rotate→load→error loop never exhausts MAX_ROTATIONS
@@ -219,9 +338,17 @@ export class ElementPlayer {
     await this.el.play().catch(() => this.handlers.onSinkState('Paused'));
   }
 
-  /** Park (Pause command) — buffered data retained by the element. */
+  /** Park (Pause command) — buffered data retained by the element.
+   * Reports Paused explicitly: the engine's command plane emits no pause
+   * intent, so the park is the element-side half of the pause handshake
+   * (the pre-play guard in the 'pause' listener suppresses the redundant
+   * event report when currentTime is still 0). */
   park(): void {
+    if (this.meta === null && this.el.src === '') return;
     this.el.pause();
+    if (this.meta !== null && this.el.currentTime > 0 && !this.el.ended) {
+      this.handlers.onSinkState('Paused');
+    }
   }
 
   /** Seek within the current track. */
@@ -250,6 +377,10 @@ export class ElementPlayer {
     this.stop();
     this.stopStatsTimer();
     if (this.stalledTimer !== null) clearTimeout(this.stalledTimer);
+    if (this.unlockUrl !== null) {
+      URL.revokeObjectURL(this.unlockUrl);
+      this.unlockUrl = null;
+    }
     this.el.remove();
   }
 
@@ -264,9 +395,10 @@ export class ElementPlayer {
     const meta = this.meta;
     if (meta === null || this.disposed) return;
     if (this.rotations >= ElementPlayer.MAX_ROTATIONS) {
-      // Surface honestly: the sink stays buffering; the UI's error state
-      // comes from the engine's own verdicts (rotation failure ≠ crash).
-      this.handlers.onSinkState('Buffering');
+      // Surface honestly: rotations exhausted — the track is NOT coming.
+      // Paused (not Buffering) so the UI stops spinning and the user's
+      // next gesture retries through the normal play path.
+      this.handlers.onSinkState('Paused');
       return;
     }
     this.rotations += 1;

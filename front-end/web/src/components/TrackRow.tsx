@@ -31,7 +31,10 @@ function formatDuration(durationSec: number | undefined): string {
 export function TrackRow(props: TrackRowProps): JSX.Element {
   const { track, playback, onPlay, onQueue, onLike, liked, isCurrent } = props;
   const status = playback?.status ?? 'idle';
-  const busy = status === 'resolving' || status === 'playing';
+  // Only the transient states disable: the current PAUSED row stays
+  // tappable (resume) and a failed row retries — the P2 bug left rows
+  // stuck disabled on "playing…" forever.
+  const busy = status === 'resolving';
 
   const metaParts: string[] = [];
   if (track.artist.length > 0) {
@@ -79,10 +82,18 @@ export function TrackRow(props: TrackRowProps): JSX.Element {
             type="button"
             className={status === 'idle' ? 'button--primary' : undefined}
             disabled={busy}
-            aria-label={`Play ${track.title}`}
+            aria-label={`${status === 'playing' ? 'Pause' : 'Play'} ${track.title}`}
             onClick={() => onPlay(track)}
           >
-            {status === 'resolving' ? 'resolving…' : status === 'playing' ? 'playing…' : 'Play'}
+            {status === 'resolving'
+              ? 'loading…'
+              : status === 'playing'
+                ? 'pause'
+                : status === 'passed'
+                  ? 'resume'
+                  : status === 'failed'
+                    ? 'retry'
+                    : 'Play'}
           </button>
           {onQueue !== undefined && (
             <button type="button" aria-label={`Queue ${track.title}`} onClick={() => onQueue(track)}>
