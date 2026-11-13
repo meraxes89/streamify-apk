@@ -144,12 +144,12 @@ jobs:
         run: |
           mkdir -p web/src/wasm web/src/wasm-engine
           find pkg -type f \
-            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \\
-               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \\
+            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \
+               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \
             -exec cp {} web/src/wasm/ \;
           find pkg -type f \
-            \( -name 'streamify_engine_wasm.js' -o -name 'streamify_engine_wasm.d.ts' \\
-               -o -name 'streamify_engine_wasm_bg.wasm' -o -name 'streamify_engine_wasm_bg.wasm.d.ts' \) \\
+            \( -name 'streamify_engine_wasm.js' -o -name 'streamify_engine_wasm.d.ts' \
+               -o -name 'streamify_engine_wasm_bg.wasm' -o -name 'streamify_engine_wasm_bg.wasm.d.ts' \) \
             -exec cp {} web/src/wasm-engine/ \;
           ls -la web/src/wasm/ web/src/wasm-engine/
         working-directory: front-end
