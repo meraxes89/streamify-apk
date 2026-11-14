@@ -581,18 +581,18 @@ export async function ytFetch(
     target.hostname = 'youtubei.googleapis.com';
   }
 
-  if (isDirectEgressHost(target) && directLaneHealthy(target)) {
-    // The direct attempt rides a clone with the (possibly rewritten) URL;
-    // the original stays intact for the relay fallback.
-    const directInput =
-      input instanceof Request
-        ? new Request(target.toString(), input.clone())
-        : target;
-    try {
-      // G4.3: the native bridge (when a shell provides it) owns the direct
-      // lane — the OS network stack, no CORS preflight, the phone's IP.
-      const bridge = nativeFetchBridge();
-      if (bridge !== null) {
+  if (isDirectEgressHost(target)) {
+    // The lane ladder, in order — and NOTE what each lane does NOT depend
+    // on: the native bridge and the GSF script never touch the target
+    // host's CORS posture (the OS stack / script.google.com's own
+    // allowlist), so they run EVEN when the plain-fetch posture cache
+    // says the host is dead. Only the plain fetch is posture-gated.
+    //
+    // 1. The NATIVE bridge (a shell present) — the OS network stack, no
+    //    CORS preflight, the phone's IP.
+    const bridge = nativeFetchBridge();
+    if (bridge !== null) {
+      try {
         const response = await bridgeFetchVia(
           bridge,
           target.toString(),
@@ -602,38 +602,50 @@ export async function ytFetch(
         );
         lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
         return response;
+      } catch {
+        // Bridge-level failure — the GSF lane and the rest follow.
       }
-      // G5: the GSF script (Google-ASN egress) — BEFORE the plain fetch
-      // lane, which dies at preflight in every plain browser anyway.
-      if (gsfAlive()) {
-        try {
-          const response = await gsfFetchVia(
-            target.toString(),
-            input instanceof Request ? input.clone() : null,
-            init,
-            headers,
-          );
-          lastEgressLane.set(target.hostname.toLowerCase(), 'gsf');
-          return response;
-        } catch {
-          // Lane-level failure — the plain fetch and the relay follow.
-        }
+    }
+    // 2. The GSF script (Google-ASN egress) — BEFORE the plain fetch
+    //    lane, which dies at preflight in every plain browser anyway.
+    if (gsfAlive()) {
+      try {
+        const response = await gsfFetchVia(
+          target.toString(),
+          input instanceof Request ? input.clone() : null,
+          init,
+          headers,
+        );
+        lastEgressLane.set(target.hostname.toLowerCase(), 'gsf');
+        return response;
+      } catch {
+        // Lane-level failure — the plain fetch and the relay follow.
       }
-      const response = await fetch(directInput, {
-        ...init,
-        headers,
-        credentials: 'omit',
-      });
-      lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
-      return response;
-    } catch {
-      // Network-layer failure only (fetch throws on DNS/TLS/CORS/refused —
-      // NOT on HTTP error statuses, which are returned above as-is).
-      // G4.1: a dead direct lane is remembered for the page session —
-      // the CORS posture cannot heal mid-load, so later requests skip
-      // the doomed preflight entirely. This request still falls through
-      // to the relay: degraded (datacenter) egress beats no egress.
-      markDirectLaneDead(target.hostname.toLowerCase());
+    }
+    // 3. The plain fetch() CORS lane — the ONLY posture-gated lane (the
+    //    G4.1 negative cache: the first network-layer failure on a host
+    //    marks it dead for the page session; the doomed preflight is
+    //    pure latency on every subsequent attempt).
+    if (directLaneHealthy(target)) {
+      const directInput =
+        input instanceof Request
+          ? new Request(target.toString(), input.clone())
+          : target;
+      try {
+        const response = await fetch(directInput, {
+          ...init,
+          headers,
+          credentials: 'omit',
+        });
+        lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
+        return response;
+      } catch {
+        // Network-layer failure only (fetch throws on DNS/TLS/CORS/refused
+        // — NOT on HTTP error statuses, which are returned above as-is).
+        // This request still falls through to the relay: degraded
+        // (datacenter) egress beats no egress.
+        markDirectLaneDead(target.hostname.toLowerCase());
+      }
     }
   }
 
@@ -735,17 +747,16 @@ export async function directPlayerPost(
     ...headers,
   };
   const target = new URL(endpoint);
-  // G4.1: a direct lane that already failed this page session (the
-  // canary-measured CORS posture: no ACAO for foreign origins on
-  // youtubei.googleapis.com) goes straight to the relay — the doomed
-  // preflight round-trip is pure latency on every subsequent attempt.
-  if (isDirectEgressHost(target) && directLaneHealthy(target)) {
-    try {
-      // G4.3: the native bridge owns this lane under a shell (phone IP,
-      // no CORS) — G5 puts the GSF script (Google ASN) between it and the
-      // plain browser CORS lane.
-      const bridge = nativeFetchBridge();
-      if (bridge !== null) {
+  // The lane ladder (G5): the NATIVE bridge and the GSF script never
+  // depend on the target host's CORS posture, so they run even when the
+  // plain-fetch posture cache (G4.1 — a foreign-origin preflight on
+  // youtubei.googleapis.com dies in every plain browser) says dead. Only
+  // the plain fetch is posture-gated.
+  if (isDirectEgressHost(target)) {
+    // 1. The NATIVE bridge (a shell present) — phone IP, no CORS.
+    const bridge = nativeFetchBridge();
+    if (bridge !== null) {
+      try {
         const r = await bridge.fetch(endpoint, {
           method: 'POST',
           headers: merged,
@@ -756,37 +767,47 @@ export async function directPlayerPost(
           response: new Response(r.body, { status: r.status, headers: r.headers }),
           lane: 'direct',
         };
+      } catch {
+        // Bridge-level failure — the GSF lane and the rest follow.
       }
-      if (gsfAlive()) {
-        try {
-          const response = await gsfFetch(endpoint, {
-            method: 'POST',
-            headers: merged,
-            body,
-            ...(signal !== null && signal !== undefined ? { signal } : {}),
-          });
-          lastEgressLane.set(target.hostname.toLowerCase(), 'gsf');
-          return { response, lane: 'gsf' };
-        } catch {
-          // Lane-level failure — the plain fetch and the relay follow.
-        }
+    }
+    // 2. The GSF script (Google-ASN egress, the user's own quota).
+    if (gsfAlive()) {
+      try {
+        const response = await gsfFetch(endpoint, {
+          method: 'POST',
+          headers: merged,
+          body,
+          ...(signal !== null && signal !== undefined ? { signal } : {}),
+        });
+        lastEgressLane.set(target.hostname.toLowerCase(), 'gsf');
+        return { response, lane: 'gsf' };
+      } catch {
+        // Lane-level failure — the plain fetch and the relay follow.
       }
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: merged,
-        body,
-        credentials: 'omit',
-        ...(signal !== null && signal !== undefined ? { signal } : {}),
-      } as RequestInit);
-      lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
-      return { response, lane: 'direct' };
-    } catch {
-      // Local lanes unreachable (CORS preflight refused / network
-      // blocked) — remembered for the page session, retried once on the
-      // relay: the verdict (if any) belongs to the relay egress.
-      markDirectLaneDead(target.hostname.toLowerCase());
+    }
+    // 3. The plain fetch() CORS lane — posture-gated (G4.1: the first
+    //    network-layer failure marks the host dead for the page session;
+    //    the doomed preflight is pure latency on every subsequent call).
+    if (directLaneHealthy(target)) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: merged,
+          body,
+          credentials: 'omit',
+          ...(signal !== null && signal !== undefined ? { signal } : {}),
+        } as RequestInit);
+        lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
+        return { response, lane: 'direct' };
+      } catch {
+        // Plain lane unreachable (CORS preflight refused / network
+        // blocked) — remembered for the page session; the relay is next.
+        markDirectLaneDead(target.hostname.toLowerCase());
+      }
     }
   }
+  // 4. The relay — the verdict (if any) belongs to the relay egress.
   const relayTarget = relayUrl(relayBaseCandidate(), endpoint);
   const response = await fetch(relayTarget, {
     method: 'POST',
