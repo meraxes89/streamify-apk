@@ -114,20 +114,22 @@ export function egressLaneFor(url: string): 'direct' | 'relay' | 'untried' {
 /**
  * G4.1 — the direct-lane negative cache.
  *
- * CANARY-MEASURED 2026-11-14 (run 43564752070, clean runner IP):
- * youtubei.googleapis.com's CORS preflight carries NO
- * access-control-allow-origin for a foreign origin — a browser page on
- * github.io can NEVER fetch it directly (kira's proxy exists for exactly
- * this reason: it spoofs a youtube.com origin and rewrites ACAO on the
- * way back). Every direct player fetch therefore dies at preflight
- * (~100–300 ms per attempt — six-plus attempts on a first licensed play).
+ * MEASURED 2026-11-14 (resolver-canary runs 43564752070 / 43566827760 +
+ * the lab): youtubei.googleapis.com is unreachable from EVERY datacenter
+ * egress we control (Google's "Sorry… automated queries" 403 wall) and
+ * its foreign-origin CORS posture is only measurable from the phone. If
+ * the direct lane is dead from the user's network too (a CORS refusal, a
+ * firewall, the same IP wall), every direct player fetch throws after a
+ * wasted preflight round-trip (~100–300 ms per attempt — six-plus
+ * attempts on a first licensed play).
  *
- * The first network-layer failure on a direct host marks it DEAD for this
- * page session: later requests for the same host go straight to the relay
- * (whose egress the googleapis surface still serves — IOS answered OK for
- * licensed content even from the burned Cloudflare IP, the G4 matrix).
- * jnn-pa (the mint) is CORS-OPEN to foreign origins — live-verified — so
- * it never lands here and the PO-token mint stays on the phone's IP.
+ * The first network-layer failure on a direct host therefore marks it
+ * DEAD for this page session: later requests for the same host go
+ * straight to the relay (whose Cloudflare egress the googleapis surface
+ * DOES serve — IOS answered OK for licensed content from it, the G4
+ * matrix). jnn-pa (the mint) is CORS-OPEN to foreign origins —
+ * live-verified — so it never lands here and the PO-token mint stays on
+ * the phone's IP.
  *
  * The set is per page load (a posture change or a network change heals on
  * refresh); the nightly resolver-canary watches the posture itself.

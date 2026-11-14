@@ -84,9 +84,17 @@ jobs:
           } | tee /tmp/g4-cors.txt
           cat /tmp/g4-cors.txt >> "$GITHUB_STEP_SUMMARY"
 
-          # The real question, in one line: does the preflight answer ACAO?
+          # The real question, disambiguated: an IP wall answers the
+          # "Sorry… automated queries" HTML 403 BEFORE CORS is considered
+          # (both 2026-11-14 dispatches hit it — youtubei.googleapis.com
+          # blocks datacenter IPs; notably the relay's Cloudflare egress IS
+          # served by this surface, the G4 matrix). Only a 2xx/4xx non-HTML
+          # preflight WITHOUT ACAO is a true CORS refusal. The phone's
+          # g3b-test row 1 is the final arbiter either way.
           if grep -qi 'access-control-allow-origin' /tmp/g4-cors.txt; then
             echo "::notice::youtubei.googleapis.com serves CORS preflight to foreign origins — the direct rungs are browser-viable."
+          elif grep -qiE "we're sorry|automated queries" /tmp/g4-cors.txt; then
+            echo "::warning::youtubei.googleapis.com refused the RUNNER IP itself (the datacenter-IP wall — 'Sorry… automated queries' 403 HTML). The CORS posture for foreign origins is NOT measurable from this egress; the phone (g3b-test row 1) is the arbiter. The relay's Cloudflare egress IS served by this surface (G4 matrix evidence)."
           else
             echo "::warning::youtubei.googleapis.com preflight carries NO access-control-allow-origin for a foreign origin — the direct rungs will relay-fallback (degraded egress) in every browser. The G4 ladder survives via the relay, but licensed content loses the phone-egress advantage."
           fi
