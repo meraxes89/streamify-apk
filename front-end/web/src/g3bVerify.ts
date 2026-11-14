@@ -1,15 +1,29 @@
 /**
- * g3bVerify.ts — DEV-ONLY verification harness (g3b-test.html).
+ * g3bVerify.ts — DEV-ONLY verification harness (g3b-test.html), G4 edition.
  *
- * Runs the G3b acceptance matrix in a REAL browser, logging every step to
+ * Runs the G4 acceptance matrix in a REAL browser, logging every step to
  * the DOM + title so headless tooling can read results without eval.
  * The relay comes from the standard candidate chain (?relay=… query,
  * VITE_RELAY_BASE_URL, dev default localhost:8787) — point ?relay= at the
  * production worker for a live smoke test. NOT part of the app build
  * (vite dev serves it; rollup only bundles main + canary).
+ *
+ * G4 acceptance rows (decisions/G4-residential-direct.md):
+ *   1. DIRECT-lane reachability (youtubei.googleapis.com CORS probe)
+ *   2. YouTube.js session boot (dual-lane)
+ *   3. The ladder on the three canonical videos:
+ *        dQw4w9WgXcQ   — standard content (expect visionos-direct, fast)
+ *        tixIb21MO5U   — the licensed Bohemia track that failed every G3b
+ *                        rung on the phone (expect ios-direct / ios-pot)
+ *        4NRXx6U8ABQ   — The Weeknd (licensed, the G3b acceptance target)
+ *   4. The mint (BgUtils main realm — now on the DIRECT jnn-pa legs)
+ *   5. The SABR lane (googlevideo SabrStream → MSE → element probe)
+ *   6. The HLS remux lane (fMP4 concat / ffmpeg.wasm) for hls rungs
+ * ?v=VIDEO_ID adds an extra resolve probe for any video.
  */
 
 import { relayBaseCandidate } from './lib/engine';
+import type { ResolvedStream } from './audio/resolve';
 
 const RELAY = relayBaseCandidate();
 const logEl = document.getElementById('log') as HTMLPreElement;
@@ -18,8 +32,8 @@ const t0 = Date.now();
 function log(line: string): void {
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1).padStart(6, ' ');
   logEl.textContent += `[${elapsed}s] ${line}\n`;
-  document.title = `G3B ${line.slice(0, 60)}`;
-  console.log(`[g3b] ${line}`);
+  document.title = `G4 ${line.slice(0, 60)}`;
+  console.log(`[g4] ${line}`);
 }
 
 function fail(err: unknown): string {
@@ -51,15 +65,53 @@ async function withBudget<T>(
   }
 }
 
+/** Probe an <audio> element against a URL: duration or error. */
+function elementProbe(url: string, budgetMs = 20_000): Promise<string> {
+  return new Promise<string>((res) => {
+    const a = document.createElement('audio');
+    a.preload = 'metadata';
+    a.src = url;
+    const done = setTimeout(() => res('ELEMENT TIMEOUT'), budgetMs);
+    a.addEventListener('loadedmetadata', () => {
+      clearTimeout(done);
+      res(`duration=${Number.isFinite(a.duration) ? a.duration.toFixed(1) : '∞'}s`);
+    });
+    a.addEventListener('error', () => {
+      clearTimeout(done);
+      res('ELEMENT ERROR');
+    });
+  });
+}
+
 async function main(): Promise<void> {
-  log('boot — importing modules');
+  log('boot — G4 residential-direct matrix');
 
   const ytSession = await import('./lib/ytSession');
   const resolve = await import('./audio/resolve');
+  const resolveApi = resolve as typeof import('./audio/resolve');
   const potSession = await import('./audio/botguard/potSession');
-  const hls = await import('./audio/hls/hlsRemux');
 
-  // ---- 1. YouTube.js session boot -----------------------------------------
+  // ---- 1. DIRECT-lane reachability (CORS probe, googleapis surface) -------
+  const cors = await withBudget('direct-cors-probe', 20_000, async () => {
+    const r = await fetch(
+      'https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          context: { client: { clientName: 'WEB', clientVersion: '2.20260708.00.00', hl: 'en', gl: 'US' } },
+          videoId: 'dQw4w9WgXcQ',
+        }),
+      },
+    );
+    const bodyText = await r.text();
+    return `HTTP ${r.status} (${bodyText.length} B)`;
+  });
+  log(
+    `direct lane (youtubei.googleapis.com): ${cors ?? 'UNREACHABLE — every direct rung will relay-fallback (degraded)'}`,
+  );
+
+  // ---- 2. YouTube.js session boot (dual-lane) ------------------------------
   const yt = await withBudget('session', 30_000, () => ytSession.getYt());
   if (yt === null) return;
   const c = yt.session.context.client;
@@ -67,23 +119,27 @@ async function main(): Promise<void> {
     `session: PASS — ${c.clientName} ${c.clientVersion} visitor ${(c.visitorData ?? '').slice(0, 14)}… sts=${yt.session.player?.signature_timestamp ?? 'none'}`,
   );
 
-  // ---- 2. VISIONOS rung (unlicensed, element compat) ------------------------
-  const s2 = await withBudget('resolve-dQw-element', 45_000, () =>
-    resolve.resolveAudioStream('dQw4w9WgXcQ', { relayBase: RELAY, elementCompat: true }),
-  );
-  if (s2 === null) return;
-  log(
-    `resolve dQw (element): ${s2.rung} itag=${s2.itag} ${s2.codec} clen=${s2.contentLength} hls=${s2.isHls} pot=${s2.potKind}`,
-  );
+  // ---- 3. The ladder on the canonical videos --------------------------------
+  const extra = new URLSearchParams(window.location.search).getAll('v');
+  const targets: Array<[string, string]> = [
+    ['dQw4w9WgXcQ', 'standard'],
+    ['tixIb21MO5U', 'licensed (the phone-failure case)'],
+    ['4NRXx6U8ABQ', 'licensed (the G3b target)'],
+    ...extra.map((v) => [v, '?v= probe'] as [string, string]),
+  ];
+  const resolvedStreams: ResolvedStream[] = [];
+  for (const [videoId, label] of targets) {
+    const s = await withBudget(`resolve-${videoId}`, 90_000, () =>
+      resolveApi.resolveAudioStream(videoId, { relayBase: RELAY, elementCompat: true }),
+    );
+    if (s === null) continue;
+    resolvedStreams.push(s);
+    log(
+      `resolve ${videoId} (${label}): ${s.rung} itag=${s.itag} ${s.codec} hls=${s.isHls} sabr=${s.isSabr} pot=${s.potKind} clen=${s.contentLength} title="${s.title.slice(0, 28)}"`,
+    );
+  }
 
-  // ---- 3. Spine-mode resolve (webcodecs preference) ---------------------------
-  const s3 = await withBudget('resolve-dQw-spine', 45_000, () =>
-    resolve.resolveAudioStream('dQw4w9WgXcQ', { relayBase: RELAY }),
-  );
-  if (s3 === null) return;
-  log(`resolve dQw (spine): ${s3.rung} itag=${s3.itag} ${s3.codec} clen=${s3.contentLength}`);
-
-  // ---- 4. THE MINT (BgUtils main realm — the risky one) ------------------------
+  // ---- 4. The mint (BgUtils main realm, DIRECT jnn-pa legs) -----------------
   log('mint: starting ensureLiveSession(force) — instrumented');
   const mintStart = Date.now();
   const minted = await withBudget('mint', 120_000, () =>
@@ -94,7 +150,7 @@ async function main(): Promise<void> {
   if (minted !== null) {
     try {
       const tok = await minted.mintPlayerToken('dQw4w9WgXcQ');
-      mintDetail = ` kind=${minted.kind} playerTokenLen=${tok.length} sessionTokenLen=${minted.sessionToken?.length ?? 0} gvsBindsVideoId=${minted.gvsBindsToVideoId}`;
+      mintDetail = ` kind=${minted.kind} playerTokenLen=${tok.length} sessionTokenLen=${minted.sessionToken?.length ?? 0}`;
     } catch (err) {
       mintDetail = ` kind=${minted.kind} probeMintFailed=${fail(err).slice(0, 80)}`;
     }
@@ -103,60 +159,41 @@ async function main(): Promise<void> {
     `mint: ${minted !== null ? 'PASS' : 'FAILED'} in ${((Date.now() - mintStart) / 1000).toFixed(1)}s${mintDetail} — phase=${snap.phase} brave=${snap.braveShieldsAdvice} detail="${snap.detail.slice(0, 180)}"`,
   );
 
-  // ---- 5. Licensed track (full ladder — datacenter egress honesty) ---------------
-  const s5 = await withBudget('resolve-licensed', 90_000, () =>
-    resolve.resolveAudioStream('4NRXx6U8ABQ', { relayBase: RELAY, elementCompat: true }),
-  );
-  if (s5 !== null) {
-    log(
-      `resolve 4NRXx6U8ABQ (licensed): RESOLVED ${s5.rung} itag=${s5.itag} pot=${s5.potKind} hls=${s5.isHls} clen=${s5.contentLength} title="${s5.title.slice(0, 24)}"`,
-    );
+  // ---- 5. The SABR lane (googlevideo SabrStream → MSE → element) ------------
+  const sabrStream = resolvedStreams.find((s) => s.isSabr && s.sabr !== undefined);
+  if (sabrStream === undefined) {
+    log('sabr lane: not exercised (no SABR-only resolve in this run)');
   } else {
-    log('resolve 4NRXx6U8ABQ: full ladder refused (see verdict above) — headless datacenter expectation');
+    const sabr = await import('./audio/sabr/sabrStreamPlayer');
+    const handle = await withBudget('sabr-start', 60_000, () =>
+      sabr.startSabrAudio(sabrStream.sabr!, true, RELAY),
+    );
+    if (handle === null) {
+      log('sabr lane: FAILED to start');
+    } else {
+      handle.onFail((message) => log(`sabr lane: session failed — ${message.slice(0, 200)}`));
+      const probe = await elementProbe(handle.objectUrl, 30_000);
+      log(
+        `sabr lane: ${sabrStream.rung} → MSE objectUrl · element probe: ${probe}`,
+      );
+      // Let the download run to 'finished' when it can (bounded).
+      const settled = await Promise.race([
+        handle.done.then(() => 'finished').catch((e: unknown) => `failed: ${fail(e).slice(0, 120)}`),
+        new Promise<string>((res) => setTimeout(() => res('still-downloading'), 30_000)),
+      ]);
+      log(`sabr lane: download ${settled}`);
+      handle.abort();
+    }
   }
 
-  // ---- 6. HLS remux lane (VISIONOS manifest — independent of the
-  //         WEB_SAFARI rung's datacenter soft-wall) -----------------------------
-  const manifestUrl = await withBudget('visionos-manifest', 45_000, async () => {
-    const res = await fetch(
-      `${RELAY}/r?u=${encodeURIComponent('https://www.youtube.com/youtubei/v1/player?prettyPrint=false&alt=json')}`,
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-youtube-client-name': '101',
-          'x-youtube-client-version': '1.02',
-        },
-        body: JSON.stringify({
-          context: {
-            client: {
-              clientName: 'VISIONOS',
-              clientVersion: '1.02',
-              deviceMake: 'Apple',
-              deviceModel: 'RealityDevice17,1',
-              osName: 'visionOS',
-              osVersion: '26.5.23O471',
-              hl: 'en',
-              gl: 'US',
-            },
-          },
-          videoId: 'dQw4w9WgXcQ',
-          contentCheckOk: true,
-          racyCheckOk: true,
-        }),
-      },
-    );
-    const player = (await res.json()) as { streamingData?: { hlsManifestUrl?: string } };
-    const hlsUrl = player.streamingData?.hlsManifestUrl;
-    if (hlsUrl === undefined || hlsUrl.length === 0) throw new Error('visionos response has no hlsManifestUrl');
-    return hlsUrl;
-  });
-  if (manifestUrl === null) {
-    log('hls manifest: FAILED (visionos manifest fetch)');
+  // ---- 6. The HLS remux lane (fMP4 concat / ffmpeg.wasm) --------------------
+  const hls = await import('./audio/hls/hlsRemux');
+  const hlsStream = resolvedStreams.find((s) => s.isHls);
+  if (hlsStream === undefined) {
+    log('hls lane: not exercised (no HLS resolve in this run)');
   } else {
-    log(`hls manifest: ${manifestUrl.slice(0, 60)}…`);
     const remux = await withBudget('hls-remux', 180_000, () =>
-      hls.remuxHlsForElement(manifestUrl, {
+      hls.remuxHlsForElement(hlsStream.url, {
         relayBase: RELAY,
         onProgress: (l, t, b) => {
           if (l === t || l % 20 === 0) log(`  remux progress ${l}/${t} segs (${(b / 1048576).toFixed(2)} MiB)`);
@@ -164,98 +201,13 @@ async function main(): Promise<void> {
       }),
     );
     if (remux !== null) {
-      // Probe: can the element actually load + decode the produced file?
-      const probe = await new Promise<string>((res) => {
-        const a = document.createElement('audio');
-        a.preload = 'metadata';
-        a.src = remux.url;
-        const done = setTimeout(() => res('ELEMENT TIMEOUT'), 20_000);
-        a.addEventListener('loadedmetadata', () => {
-          clearTimeout(done);
-          res(`duration=${Number.isFinite(a.duration) ? a.duration.toFixed(1) : '∞'}s`);
-        });
-        a.addEventListener('error', () => {
-          clearTimeout(done);
-          res('ELEMENT ERROR');
-        });
-      });
-      log(
-        `remux: PASS — mode=${remux.mode} bytes=${(remux.bytes / 1048576).toFixed(2)} MiB · element probe: ${probe}`,
-      );
+      const probe = await elementProbe(remux.url);
+      log(`hls remux: PASS — mode=${remux.mode} bytes=${(remux.bytes / 1048576).toFixed(2)} MiB · element probe: ${probe}`);
     }
-  }
-
-  // ---- 6b. WEB_SAFARI rung + TS-segment remux (the lane the APP hit) ----------
-  resolve.markRungFailed('dQw4w9WgXcQ', 'visionos');
-  resolve.markRungFailed('dQw4w9WgXcQ', 'visionos-hls');
-  const s6b = await withBudget('resolve-safari-hls', 45_000, () =>
-    resolve.resolveAudioStream('dQw4w9WgXcQ', { relayBase: RELAY, elementCompat: true }),
-  );
-  if (s6b === null || !s6b.isHls) {
-    log(`safari hls rung: ${s6b === null ? 'refused (probabilistic datacenter soft-wall)' : `${s6b.rung} (not hls)`}`);
-  } else {
-    log(`safari hls rung: ${s6b.rung} — remuxing (TS lane expected)`);
-    const remux2 = await withBudget('safari-hls-remux', 180_000, () =>
-      hls.remuxHlsForElement(s6b.url, {
-        relayBase: RELAY,
-        onProgress: (l, t, b) => {
-          if (l === t || l % 50 === 0) log(`  ts-remux progress ${l}/${t} segs (${(b / 1048576).toFixed(2)} MiB)`);
-        },
-      }),
-    );
-    if (remux2 !== null) {
-      const probe2 = await new Promise<string>((res) => {
-        const a = document.createElement('audio');
-        a.preload = 'metadata';
-        a.src = remux2.url;
-        const done = setTimeout(() => res('ELEMENT TIMEOUT'), 20_000);
-        a.addEventListener('loadedmetadata', () => {
-          clearTimeout(done);
-          res(`duration=${Number.isFinite(a.duration) ? a.duration.toFixed(1) : '∞'}s`);
-        });
-        a.addEventListener('error', () => {
-          clearTimeout(done);
-          res('ELEMENT ERROR');
-        });
-      });
-      log(
-        `safari-hls remux: ${remux2 !== null ? 'PASS' : 'FAILED'} — mode=${remux2.mode} bytes=${(remux2.bytes / 1048576).toFixed(2)} MiB · element probe: ${probe2}`,
-      );
-    }
-  }
-
-  // ---- 7. ffmpeg.wasm lane (worker spawn + core load + a REAL remux) -----------
-  const ff = await withBudget('ffmpeg-load', 90_000, () => hls.ensureFfmpeg());
-  if (ff !== null) {
-    const remux = await withBudget('ffmpeg-ts-remux', 90_000, async () => {
-      // Synthesize 2s of silent AAC in an MPEG-TS container, then remux
-      // it TS→m4a with the EXACT flags the HLS lane uses.
-      await ff.exec([
-        '-hide_banner',
-        '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
-        '-t', '2', '-c:a', 'aac', '-b:a', '64k',
-        'probe.ts',
-      ]);
-      await ff.exec([
-        '-hide_banner', '-i', 'probe.ts',
-        '-vn', '-c:a', 'copy', '-f', 'mp4', '-movflags', '+faststart',
-        'probe.m4a',
-      ]);
-      const data = await ff.readFile('probe.m4a');
-      const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
-      await ff.deleteFile('probe.ts').catch(() => undefined);
-      await ff.deleteFile('probe.m4a').catch(() => undefined);
-      return bytes.byteLength;
-    });
-    log(
-      `ffmpeg: LOAD PASS · ts→m4a remux: ${remux !== null ? `PASS (${remux} B out)` : 'FAILED (lavfi may be absent in the wasm core — see log)'}`,
-    );
-  } else {
-    log('ffmpeg: LOAD FAILED');
   }
 
   log('MATRIX DONE');
-  document.title = 'G3B MATRIX DONE';
+  document.title = 'G4 MATRIX DONE';
 }
 
 void main();

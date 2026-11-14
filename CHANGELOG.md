@@ -3,6 +3,21 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — WS-W G4: the residential-direct pivot (licensed playback from the phone's own IP)
+
+### Added
+- **`audio/sabr/sabrStreamPlayer.ts`** — the SABR playback lane: googlevideo's `SabrStream` (audio-only, AAC-preferred) piped into a MediaSource SourceBuffer; URL-less SABR descriptors (the modern IOS-client reality) now play on the element path with an MSE object URL. Egress: the RELAY — probe-measured, googlevideo's CORS is youtube.com-only, so foreign pages cannot POST to the SABR endpoint directly (kira routes googlevideo through its own bridge for the same reason); the IP-pin is tolerated on SABR POSTs (curl-verified from a mismatched IP).
+- **The direct rungs** (`visionos-direct`, `ios-direct`, `ios-pot-direct`) — raw player POSTs to `youtubei.googleapis.com` (the CORS-open innertube surface youtubei.js itself defaults to), DIRECT from the phone's residential IP. Probe-verified: IOS returns playability OK for the licensed track that failed every G3b rung (`tixIb21MO5U`), even from the burned Cloudflare relay egress.
+- **The flap-retry policy** — the relay egress's licensed-content verdicts are PROBABILISTIC (six byte-identical IOS POSTs: OK/LR/OK/LR/OK/OK), so every raw rung runs up to 3 attempts before ledgering; on the last local matrix this caught both licensed videos on `ios-direct` where the G3b ladder refused them everywhere.
+- **`lib/ytSession.ts` dual-lane funnel** — youtubei.js `/youtubei/*` API calls are host-rewritten onto `youtubei.googleapis.com` and fetched DIRECT (network-failure → per-request relay fallback; HTTP verdicts never re-laned). The mint's WAA legs (jnn-pa, CORS-open) follow automatically — PO tokens now bind to the phone's IP, coherent with the player calls that use them.
+- **The stale-search fix** (`lib/searchStore.ts`)** — a request-epoch guard: a superseded query's response can never land its results (the "searched blinding lights, a Bohemia track played" anomaly class).
+- **`decisions/G4-residential-direct.md`** — the full diagnosis (13-client × 2-video live matrix: the relay egress is selectively burned for licensed music on every client), the OSS research (yt-dlp client policies, kira's SABR architecture, googlevideo/BgUtils), and the probe evidence for every rung.
+
+### Changed
+- **The resolver ladder is now direct-first** (`visionos-direct → ios-direct → ios-pot-direct → web-pot-direct → visionos-relay → web-safari-hls`): the licensed-music unlock is `IOS + player PO token` on the direct surface (yt-dlp's `not_required_with_player_token` waiver); the www-surface relay rungs remain as the standard-content lifeline and direct-hostile-network fallback. The relay itself is UNCHANGED and was NOT redeployed.
+- **`searchMusic` rides the YouTube.js session** (`yt.search`, direct googleapis via the funnel rewrite) — one session envelope for search + playback; the Rust engine's relay-egressed `search_music` becomes the fallback lane.
+- **`g3b-test.html` is the G4 matrix** — direct-lane CORS probe, three canonical resolves (standard / the phone-failure case / the G3b target), the instrumented mint, and the SABR + HLS lane element probes.
+
 ## [Unreleased] — WS-B "Apple Integration": from showroom to first note (B1–B7)
 
 ### Added

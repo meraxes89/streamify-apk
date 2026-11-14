@@ -31,6 +31,22 @@ export const WAA_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 export const PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player';
 
 /**
+ * G4 — the CORS-OPEN innertube surface: youtubei.googleapis.com is the
+ * API_ORIGIN youtubei.js itself defaults to (browser build), i.e. the one
+ * innertube host Google's API frontend serves to CROSS-ORIGIN browser
+ * clients (the same CORS posture as jnn-pa and googlevideo — exactly the
+ * surfaces the real YouTube web player itself calls cross-origin). Every
+ * IP-sensitive direct lane (player POSTs, search, config) rides this host,
+ * so the phone's residential IP — not the relay's shared Cloudflare egress
+ * (measured 2026-11-14: LOGIN_REQUIRED for licensed content on every
+ * client) — becomes the session egress.
+ *
+ * The key is youtubei.js's public API key (Constants.API_KEY).
+ */
+export const GAPI_PLAYER_ENDPOINT =
+  'https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false';
+
+/**
  * The WEB_SAFARI rung's relay UA override (P3b, still the deployed
  * mechanism): browsers cannot set a Safari User-Agent (fetch forbidden
  * header), so the relay applies the Safari-class matrix UA via this

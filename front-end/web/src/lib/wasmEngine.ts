@@ -32,6 +32,10 @@ import type { ElementTrackMeta } from '../audio/elementPlayer';
 import { resolveAudioStream, markRungFailed, type ResolvedStream } from '../audio/resolve';
 import { ensureMediaBridge, type MediaBridgeHandle } from './mediaBridge';
 import { nativeHlsPlayback, remuxHlsForElement } from '../audio/hls/hlsRemux';
+import {
+  startSabrAudio,
+  type SabrSessionHandle,
+} from '../audio/sabr/sabrStreamPlayer';
 
 // The wasm-pack output (generated territory — see src/wasm-engine/).
 type EngineModule = typeof import('../wasm-engine/streamify_engine_wasm.js');
@@ -321,6 +325,12 @@ export class WasmEnginePort {
   onResolveError: ((videoId: string, message: string) => void) | null = null;
   private resolveError: string | null = null;
 
+  /**
+   * The live SABR playback session (G4). Null when the current track is
+   * not on the SABR lane; aborted + dropped on every track switch.
+   */
+  private sabrSession: SabrSessionHandle | null = null;
+
   // -- the resolver lane (async, relayed — the tiny legs) --------------------------
 
   /** Resolve + stage one track. Deduplicates in-flight resolves. */
@@ -494,6 +504,47 @@ export class WasmEnginePort {
           this.sink.park(); // parked, not spinning — an honest retry surface
           return;
         }
+      }
+
+      // G4: the SABR lane — URL-less format descriptors (the modern
+      // IOS-client reality) played through googlevideo's SabrStream into
+      // an MSE-backed object URL. The staged url was the
+      // serverAbrStreamingUrl (a placeholder the intent machinery could
+      // carry); it is swapped for the object URL BEFORE any load. A
+      // failure is a definitive rung rejection: ledger + park, exactly
+      // like the HLS remux lane.
+      if (
+        last !== null &&
+        last.videoId === meta.videoId &&
+        last.isSabr &&
+        last.sabr !== undefined
+      ) {
+        // One session at a time: a track switch aborts the previous one.
+        this.sabrSession?.abort();
+        this.sabrSession = null;
+        try {
+          const handle = await startSabrAudio(last.sabr, true, this.relayBase);
+          this.sabrSession = handle;
+          handle.onFail((message) => {
+            console.error('[wasmEngine] SABR session failed', { rung: last.rung, message });
+            markRungFailed(meta.videoId, last.rung);
+            this.resolveError = `SABR stream failed (${last.rung}): ${message}`;
+            this.onResolveError?.(meta.videoId, this.resolveError);
+          });
+          url = handle.objectUrl; // blob: — MSE-fed, bridge lane skipped
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error('[wasmEngine] SABR start failed', { rung: last.rung, message });
+          markRungFailed(meta.videoId, last.rung);
+          this.resolveError = `SABR start failed (${last.rung}): ${message}`;
+          this.onResolveError?.(meta.videoId, this.resolveError);
+          this.sink.park();
+          return;
+        }
+      } else if (this.sabrSession !== null && this.sabrSession !== undefined) {
+        // A non-SABR load: tear the previous session down.
+        this.sabrSession.abort();
+        this.sabrSession = null;
       }
 
       // Dual-lane (W2.0): direct URL first, the SW bridge URL armed as the
