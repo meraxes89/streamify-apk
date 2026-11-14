@@ -31,15 +31,15 @@ export const WAA_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 export const PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player';
 
 /**
- * G4 — the CORS-OPEN innertube surface: youtubei.googleapis.com is the
- * API_ORIGIN youtubei.js itself defaults to (browser build), i.e. the one
- * innertube host Google's API frontend serves to CROSS-ORIGIN browser
- * clients (the same CORS posture as jnn-pa and googlevideo — exactly the
- * surfaces the real YouTube web player itself calls cross-origin). Every
- * IP-sensitive direct lane (player POSTs, search, config) rides this host,
- * so the phone's residential IP — not the relay's shared Cloudflare egress
- * (measured 2026-11-14: LOGIN_REQUIRED for licensed content on every
- * client) — becomes the session egress.
+ * G4 — the googleapis innertube surface (youtubei.googleapis.com, the API
+ * host youtubei.js can address). CANARY-MEASURED 2026-11-14 (run
+ * 43564752070): its CORS preflight serves NO access-control-allow-origin
+ * to foreign origins — a browser page cannot fetch it directly, so these
+ * player POSTs ride the RELAY (directPlayerPost: one direct attempt per
+ * page session, then the negative cache routes straight to the relay).
+ * The surface is still the RIGHT target host: the googleapis frontend
+ * (unlike the www one) answers IOS playability OK for licensed content
+ * even from the relay's burned Cloudflare egress — the G4 matrix.
  *
  * The key is youtubei.js's public API key (Constants.API_KEY).
  */

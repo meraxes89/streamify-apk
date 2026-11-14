@@ -11,16 +11,23 @@
  * IPs)". The phone's own browser — real hardware, residential IP — is the
  * only first-class egress we have.
  *
- * YouTube serves exactly three surface families to CROSS-ORIGIN browsers
- * (the same surfaces the real web player calls cross-origin, so they ship
- * Access-Control-Allow-Origin):
+ * YouTube serves three surface families to CROSS-ORIGIN browser callers —
+ * MEASURED 2026-11-14 (resolver-canary run 43564752070, clean runner IP):
  *
- *   • youtubei.googleapis.com — the innertube API host youtubei.js itself
- *     defaults to (its Constants.API_ORIGIN); player/search/config calls.
  *   • jnn-pa.googleapis.com — the WAA BotGuard endpoints (Create /
- *     GenerateIT), the mint legs.
- *   • *.googlevideo.com — the media CDN (progressive bytes, HLS manifests,
- *     SABR initplayback), CORS-open for MSE-style consumption.
+ *     GenerateIT): CORS-OPEN, preflight reflects the foreign origin and
+ *     allows the exact bgutils header set. THE mint legs — the PO token
+ *     binds to the phone's IP.
+ *   • youtubei.googleapis.com — the innertube API host: NO ACAO for
+ *     foreign origins (the preflight carries no access-control-allow-
+ *     origin; kira's proxy spoofs a youtube.com origin for exactly this
+ *     reason). Every direct player/search/config fetch dies at preflight
+ *     in a browser → the per-request relay fallback is the operative
+ *     lane, and the direct-lane negative cache (below) makes later
+ *     attempts skip the doomed preflight entirely.
+ *   • *.googlevideo.com — the media CDN (progressive bytes via the
+ *     no-cors <audio> element; HLS manifests; SABR initplayback POSTs —
+ *     those serve ACAO to youtube.com only and ride the relay).
  *
  * ytFetch therefore routes per-host:
  *
@@ -104,13 +111,54 @@ export function egressLaneFor(url: string): 'direct' | 'relay' | 'untried' {
   }
 }
 
+/**
+ * G4.1 — the direct-lane negative cache.
+ *
+ * CANARY-MEASURED 2026-11-14 (run 43564752070, clean runner IP):
+ * youtubei.googleapis.com's CORS preflight carries NO
+ * access-control-allow-origin for a foreign origin — a browser page on
+ * github.io can NEVER fetch it directly (kira's proxy exists for exactly
+ * this reason: it spoofs a youtube.com origin and rewrites ACAO on the
+ * way back). Every direct player fetch therefore dies at preflight
+ * (~100–300 ms per attempt — six-plus attempts on a first licensed play).
+ *
+ * The first network-layer failure on a direct host marks it DEAD for this
+ * page session: later requests for the same host go straight to the relay
+ * (whose egress the googleapis surface still serves — IOS answered OK for
+ * licensed content even from the burned Cloudflare IP, the G4 matrix).
+ * jnn-pa (the mint) is CORS-OPEN to foreign origins — live-verified — so
+ * it never lands here and the PO-token mint stays on the phone's IP.
+ *
+ * The set is per page load (a posture change or a network change heals on
+ * refresh); the nightly resolver-canary watches the posture itself.
+ */
+const directLaneDeadHosts = new Set<string>();
+
+function markDirectLaneDead(host: string): void {
+  if (directLaneDeadHosts.size < 32) directLaneDeadHosts.add(host); // bound paranoia
+}
+
+/** Dev/diagnostics: is this host's direct lane still considered alive? */
+export function directLaneHealthy(url: URL): boolean {
+  return !directLaneDeadHosts.has(url.hostname.toLowerCase());
+}
+
 // ---------------------------------------------------------------------------
 // G4.1 — the direct-born visitorData
 // ---------------------------------------------------------------------------
 
 const VISITOR_KEY = 'streamify.yt.visitor.v2';
-/** A visitor identity is long-lived; 30 d keeps it fresh without churning. */
+/** A visitor identity is long-lived; a direct birth is trusted for 30 d. */
 const VISITOR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * A relay-born visitor is the NORM, not the exception (canary-measured
+ * 2026-11-14: youtubei.googleapis.com serves no ACAO to foreign origins,
+ * so the /config birth rides the relay in every browser). It is trusted
+ * for 7 d — long enough to keep the visitor (and the POT cache bound to
+ * it) stable across app opens, short enough that a healed direct posture
+ * upgrades the identity within a week.
+ */
+const RELAY_VISITOR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface StoredVisitor {
   visitorData: string;
@@ -125,6 +173,10 @@ export function visitorProvenance(): 'direct' | 'relay' | 'session' {
   return visitorProvenanceState;
 }
 
+function visitorTtlMs(provenance: StoredVisitor['provenance']): number {
+  return provenance === 'direct' ? VISITOR_TTL_MS : RELAY_VISITOR_TTL_MS;
+}
+
 function readStoredVisitor(): StoredVisitor | null {
   try {
     const raw = localStorage.getItem(VISITOR_KEY);
@@ -134,12 +186,15 @@ function readStoredVisitor(): StoredVisitor | null {
       typeof parsed.visitorData !== 'string' ||
       parsed.visitorData.length === 0 ||
       typeof parsed.bornAt !== 'number' ||
-      Date.now() - parsed.bornAt > VISITOR_TTL_MS ||
       (parsed.provenance !== 'direct' && parsed.provenance !== 'relay')
     ) {
       return null;
     }
-    return parsed as StoredVisitor;
+    const stored = parsed as StoredVisitor;
+    if (Date.now() - stored.bornAt > visitorTtlMs(stored.provenance)) {
+      return null; // expired — a fresh birth (direct lane first) is due
+    }
+    return stored;
   } catch {
     return null; // private mode / corrupted — mint a fresh one
   }
@@ -159,10 +214,13 @@ function storeVisitor(v: StoredVisitor): void {
  * POST /youtubei/v1/config on the googleapis surface carrying NO visitor id
  * (neither header nor context) — the responseContext.visitorData that comes
  * back is a visitor BORN on the calling egress. Lane order: DIRECT first
- * (phone IP), then one relay retry (a datacenter-born visitor is still a
- * coherent identity — but it is NOT persisted, so the next page load
- * retries for a direct birth). Live-verified 2026-11-14: the endpoint mints
- * a fresh visitor even from the relay's burned Cloudflare egress.
+ * (phone IP), then one relay retry — with the canary-measured posture the
+ * relay is the lane that answers, and its birth is persisted too (7 d): a
+ * stable relay-born identity beats a fresh visitor every page load (visitor
+ * churn would also drop the POT cache on every boot — the binding-drift
+ * guard). A direct birth (a healed posture, an extension-context future)
+ * persists for 30 d. Live-verified 2026-11-14: the endpoint mints a fresh
+ * visitor even from the relay's burned Cloudflare egress.
  */
 export async function directBornVisitorData(
   signal?: AbortSignal | null,
@@ -201,11 +259,7 @@ export async function directBornVisitorData(
       const vd = json.responseContext?.visitorData;
       if (typeof vd === 'string' && vd.length > 0) {
         visitorProvenanceState = lane.provenance;
-        // Only a direct birth is persisted: a transiently-down direct lane
-        // must not pin a datacenter-born identity for 30 days.
-        if (lane.provenance === 'direct') {
-          storeVisitor({ visitorData: vd, bornAt: Date.now(), provenance: 'direct' });
-        }
+        storeVisitor({ visitorData: vd, bornAt: Date.now(), provenance: lane.provenance });
         return vd;
       }
     } catch {
@@ -277,7 +331,7 @@ export async function ytFetch(
     target.hostname = 'youtubei.googleapis.com';
   }
 
-  if (isDirectEgressHost(target)) {
+  if (isDirectEgressHost(target) && directLaneHealthy(target)) {
     // The direct attempt rides a clone with the (possibly rewritten) URL;
     // the original stays intact for the relay fallback.
     const directInput =
@@ -295,7 +349,11 @@ export async function ytFetch(
     } catch {
       // Network-layer failure only (fetch throws on DNS/TLS/CORS/refused —
       // NOT on HTTP error statuses, which are returned above as-is).
-      // Fall through to the relay: degraded egress beats no egress.
+      // G4.1: a dead direct lane is remembered for the page session —
+      // the CORS posture cannot heal mid-load, so later requests skip
+      // the doomed preflight entirely. This request still falls through
+      // to the relay: degraded (datacenter) egress beats no egress.
+      markDirectLaneDead(target.hostname.toLowerCase());
     }
   }
 
@@ -337,18 +395,27 @@ export async function directPlayerPost(
     credentials: 'omit',
     ...(signal !== null && signal !== undefined ? { signal } : {}),
   };
-  try {
-    const response = await fetch(endpoint, init);
-    lastEgressLane.set(new URL(endpoint).hostname.toLowerCase(), 'direct');
-    return { response, lane: 'direct' };
-  } catch {
-    // Direct lane unreachable (CORS preflight refused / network blocked).
-    // One relay retry — the verdict (if any) belongs to the relay egress.
-    const target = relayUrl(relayBaseCandidate(), endpoint);
-    const response = await fetch(target, init);
-    lastEgressLane.set(new URL(endpoint).hostname.toLowerCase(), 'relay');
-    return { response, lane: 'relay' };
+  const target = new URL(endpoint);
+  // G4.1: a direct lane that already failed this page session (the
+  // canary-measured CORS posture: no ACAO for foreign origins on
+  // youtubei.googleapis.com) goes straight to the relay — the doomed
+  // preflight round-trip is pure latency on every subsequent attempt.
+  if (isDirectEgressHost(target) && directLaneHealthy(target)) {
+    try {
+      const response = await fetch(endpoint, init);
+      lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
+      return { response, lane: 'direct' };
+    } catch {
+      // Direct lane unreachable (CORS preflight refused / network
+      // blocked) — remembered for the page session, retried once on the
+      // relay: the verdict (if any) belongs to the relay egress.
+      markDirectLaneDead(target.hostname.toLowerCase());
+    }
   }
+  const relayTarget = relayUrl(relayBaseCandidate(), endpoint);
+  const response = await fetch(relayTarget, init);
+  lastEgressLane.set(target.hostname.toLowerCase(), 'relay');
+  return { response, lane: 'relay' };
 }
 
 // ---------------------------------------------------------------------------

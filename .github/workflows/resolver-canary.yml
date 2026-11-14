@@ -93,6 +93,11 @@ jobs:
           # Licensed verdicts on the googleapis surface (IOS + VISIONOS, the
           # G4 rungs 1-3 clients) — the probe-matrix twin, on the surface the
           # phone actually calls. DOGP2dYUGE0 = the phone-reported failure.
+          # NOTE: each jq assignment is failure-guarded — a non-JSON body
+          # (an HTML error page answers some IP blocks) must degrade the
+          # row to PARSE-ERR, not kill the step (the first canary run died
+          # exactly there: bash -e + a command substitution's exit status).
+          jqf() { jq -r "$1" 2>/dev/null <<<"$2" || printf 'PARSE-ERR'; }
           {
             echo
             echo "#### googleapis surface — playability (runner IP, informational)"
@@ -105,16 +110,20 @@ jobs:
                 RESP=$(curl -sS --max-time 20 "$GAPI" \
                   -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
                   -H "X-YouTube-Client-Name: $NUM" -H "X-YouTube-Client-Version: $CVER" \
-                  --data "$BODY" || echo '{}')
-                STATUS=$(printf '%s' "$RESP" | jq -r '.playabilityStatus.status // "NO-RESPONSE"')
-                FMTS=$(printf '%s' "$RESP" | jq -r '[.streamingData.adaptiveFormats[]?] | length')
-                SABR=$(printf '%s' "$RESP" | jq -r '.streamingData.serverAbrStreamingUrl != null')
-                ACAO=$(curl -sS -o /dev/null -w '%header{access-control-allow-origin}' -X POST "$GAPI" \
+                  --data "$BODY") || RESP=''
+                STATUS=$(jqf '.playabilityStatus.status // "NO-RESPONSE"' "$RESP")
+                FMTS=$(jqf '[.streamingData.adaptiveFormats[]?] | length' "$RESP")
+                SABR=$(jqf '.streamingData.serverAbrStreamingUrl != null' "$RESP")
+                HEAD=$(curl -sS -o /dev/null -D - -X POST "$GAPI" \
                   -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
                   -H "X-YouTube-Client-Name: $NUM" -H "X-YouTube-Client-Version: $CVER" \
                   --data "$BODY" --max-time 20 || true)
-                printf '%-10s %-13s %-16s fmts=%-3s sabr=%-5s acao=%s\n' \
-                  "$NAME" "$VID" "$STATUS" "$FMTS" "$SABR" "${ACAO:-none}"
+                ACAO=$(printf '%s' "$HEAD" | tr -d '\r' | awk 'tolower($1)=="access-control-allow-origin:" {sub(/^[^:]*:[ ]*/,""); print; exit}')
+                HTTPCODE=$(printf '%s' "$HEAD" | awk 'NR==1 {print $2}')
+                RAW="$(printf '%s' "$RESP" | head -c 60 | tr '\n' ' ')"
+                printf '%-10s %-13s %-16s http=%-4s fmts=%-3s sabr=%-5s acao=%s\n' \
+                  "$NAME" "$VID" "${STATUS:0:16}" "${HTTPCODE:-?}" "${FMTS:0:3}" "$SABR" "${ACAO:-none}"
+                [ "${STATUS:-}" != 'PARSE-ERR' ] || printf '  raw: %s\n' "$RAW"
                 sleep 2
               done
             done

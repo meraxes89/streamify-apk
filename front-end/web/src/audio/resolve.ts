@@ -15,6 +15,18 @@
  * the same surfaces the real web player calls cross-origin), so the
  * IP-sensitive legs now go DIRECT from the phone:
  *
+ * G4.1 MEASURED REALITY (resolver-canary run 43564752070, 2026-11-14):
+ * youtubei.googleapis.com serves NO ACAO to foreign origins — in a browser
+ * every direct player fetch dies at preflight and the relay fallback is the
+ * operative lane (the direct-lane negative cache in ytSession makes later
+ * attempts skip the doomed preflight). The `*-direct` rungs keep their
+ * names because their CLIENT SPECS target the googleapis surface — the one
+ * innertube frontend that still answers IOS playability OK for licensed
+ * content from the relay's egress — and their verdicts carry the honest
+ * `@relay-egress` marker when the relay answered. jnn-pa (the mint) IS
+ * CORS-open to foreign origins (live-verified) — PO tokens still bind to
+ * the phone's IP.
+ *
  *   RUNG 1 — VISIONOS-DIRECT (tokenless, youtubei.googleapis.com): probe-
  *     verified on the live relay egress — standard content returns OK with
  *     DIRECT pre-signed itag 140/251 URLs (used AS-IS, no decipher), plus a
