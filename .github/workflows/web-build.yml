@@ -29,7 +29,7 @@ jobs:
     name: wasm32 compile gate (W0.2)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -57,7 +57,7 @@ jobs:
           wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
           wasm-pack build crates/streamify-engine-wasm --target web --out-dir pkg --no-opt
         working-directory: front-end
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: streamify-wasm-pkg
           path: |
@@ -75,7 +75,7 @@ jobs:
     name: wasm-bindgen-test (headless Chrome)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -87,7 +87,7 @@ jobs:
       # skew error — bump this pin together with the lockfile.
       - name: "Install wasm-bindgen-cli (pin matches Cargo.lock)"
         run: cargo install wasm-bindgen-cli --version 0.2.130
-      - uses: browser-actions/setup-chrome@v1
+      - uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           chrome-add-to-path: true
@@ -129,11 +129,11 @@ jobs:
       VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: streamify-wasm-pkg
           # download-artifact paths are relative to the JOB workspace (repo
@@ -164,8 +164,8 @@ jobs:
     name: relay worker bundles (wrangler dry-run)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install deps

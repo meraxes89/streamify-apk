@@ -38,8 +38,8 @@ jobs:
       VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       # W0.4: build the Rust wasm engine (vendored web rustypipe →
@@ -73,13 +73,13 @@ jobs:
       - name: Build web
         run: npm run build -w web
         working-directory: front-end
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           # First deploy: create the Pages site if it is not enabled yet
           # (the repo owner has already enabled it via the API — this keeps
           # the workflow self-sufficient for fresh checkouts).
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: front-end/web/dist
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
