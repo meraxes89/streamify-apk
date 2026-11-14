@@ -93,7 +93,7 @@ jobs:
 
       - name: Restore Prebuilt StreamifyCore.xcframework (5-second cache)
         id: xcframework_cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             dist/ios/StreamifyCore.xcframework
@@ -200,7 +200,7 @@ jobs:
       # first time (SWIFT_MIGRATION_PLAN Gate 2). No -quiet:
       # assertion-level failure messages are the primary debugging surface.
       - name: Cache DerivedData & SwiftPM (resp7 risk register)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData
@@ -306,7 +306,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle (with dependency cache)
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
