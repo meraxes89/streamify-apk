@@ -44,6 +44,11 @@ jobs:
       VITE_RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
       VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      # G5 (optional): the owner's deployed tools/gsf Apps Script URL
+      # (repository VARIABLE, not a secret — it is meant to be public).
+      # Unset → empty → the GSF lane stays off and every visitor can still
+      # set their own script in the Engine Egress panel or via ?gsf=.
+      VITE_GSF_URL: ${{ vars.GSF_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
