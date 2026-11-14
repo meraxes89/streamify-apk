@@ -81,7 +81,8 @@ jobs:
               -H 'Access-Control-Request-Headers: content-type,x-goog-visitor-id,x-youtube-client-name,x-youtube-client-version' \
               --max-time 20 | tr -d '\r' | sed -n '1,20p'
             echo '```'
-          } | tee /tmp/g4-cors.txt >> "$GITHUB_STEP_SUMMARY"
+          } | tee /tmp/g4-cors.txt
+          cat /tmp/g4-cors.txt >> "$GITHUB_STEP_SUMMARY"
 
           # The real question, in one line: does the preflight answer ACAO?
           if grep -qi 'access-control-allow-origin' /tmp/g4-cors.txt; then
@@ -128,7 +129,8 @@ jobs:
               done
             done
             echo '```'
-          } | tee /tmp/g4-surface.txt >> "$GITHUB_STEP_SUMMARY"
+          } | tee /tmp/g4-surface.txt
+          cat /tmp/g4-surface.txt >> "$GITHUB_STEP_SUMMARY"
 
       # ── GATING: standard content, fleet ladder only ───────────────────
       # A fleet-ladder client (ANDROID / ANDROID_VR / IOS — exactly the
