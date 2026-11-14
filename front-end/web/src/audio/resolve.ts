@@ -1,70 +1,187 @@
 /**
- * audio/resolve.ts — the stream resolver ladder (G3b: the open-source
- * pivot — YouTube.js + BgUtils).
+ * audio/resolve.ts — the stream resolver ladder (G4: residential-direct).
  *
- * RUNG 1 — VISIONOS (tokenless, YouTube.js client 'VISIONOS' = id 101,
- *   v1.02): verified live in P3b through the relay — DIRECT, pre-signed
- *   googlevideo URLs (itag 140/251, full contentLength, standard Range
- *   streaming) with NO PO token and NO 60-second cap, plus a bonus
- *   hlsManifestUrl in the same response. The relay swaps the matrix UA
- *   via X-YouTube-Client-Name 101. The raw format URLs are used AS-IS
- *   (no decipher — the P3b-proven behavior).
+ * WHY G4 EXISTS (measured 2026-11-14, decisions/G4-residential-direct.md):
+ * the relay's shared Cloudflare egress answers EVERY innertube client with
+ * LOGIN_REQUIRED for licensed music ("Sign in to confirm you're not a bot")
+ * and the session-carrying variants get the harsher UNPLAYABLE "This video
+ * is unavailable" — the exact phone-reported failure. PO tokens minted
+ * through that egress cannot help (the BgUtils README's documented ceiling:
+ * PO tokens do not bypass IP-based login restrictions on datacenter IPs).
  *
- * RUNG 2 — WEB + PO TOKEN (the licensed-music rung): a bgutils-js mint
- *   (potSession) with the YouTube.js session's visitorData envelope:
- *   • context.client.visitorData + X-Goog-Visitor-Id — the session the
- *     mint bound against (youtubei.js sets both from its session);
- *   • serviceIntegrityDimensions.poToken ← mint(videoId) — the PLAYER-
- *     bound token (per-call po_token option);
- *   • &pot= on the deciphered googlevideo URL ← mint(videoId) while the
- *     homepage experiment flag binds GVS to videoId (GVS_BINDS_TO_VIDEO_ID),
- *     else visitorData — appended by youtubei.js's Player.decipher.
- *   When the response is SABR-only (the modern web-client reality: the
- *   audio itags arrive as URL-less descriptors), the rung hands back the
- *   response's own HLS manifest (elementCompat) — the remux lane makes
- *   it playable on every engine.
+ * THE PIVOT: the phone's own browser is a first-class egress. YouTube
+ * serves three surface families to cross-origin browsers by design
+ * (youtubei.googleapis.com innertube, jnn-pa WAA, *.googlevideo.com media —
+ * the same surfaces the real web player calls cross-origin), so the
+ * IP-sensitive legs now go DIRECT from the phone:
  *
- * RUNG 3 — WEB_SAFARI HLS (elementCompat only): a raw player POST (the
- *   WEB client through the relay's Safari-class UA override — youtubei.js
- *   has no web_safari client, and a browser cannot set a Safari UA),
- *   carrying the rung-2 player token when the mint produced one.
- *   Safari-flavored WEB calls receive HLS (m3u8) manifests that require
- *   NO GVS PO token; Chromium-class engines consume them through the
- *   G3b remux path (audio/hls/hlsRemux.ts — fMP4 byte-concat fast path,
- *   ffmpeg.wasm remux for TS segments).
+ * G4.1 MEASURED REALITY (resolver-canary runs 43564752070/43566827760,
+ * 2026-11-14): youtubei.googleapis.com is IP-walled from every datacenter
+ * egress we control, and its foreign-origin CORS posture is measurable only
+ * from the phone (g3b-test row 1). If the direct lane is dead from the
+ * user's network, every direct player fetch throws at the network layer and
+ * the relay fallback is the operative lane (the direct-lane negative cache
+ * in ytSession makes later attempts skip the doomed preflight). The
+ * `*-direct` rungs keep their names because their CLIENT SPECS target the
+ * googleapis surface — the one innertube frontend that answers IOS
+ * playability OK for licensed content from the relay's egress — and their
+ * verdicts carry the honest `@relay-egress` marker when the relay answered.
+ * jnn-pa (the mint) IS CORS-open to foreign origins (live-verified) — PO
+ * tokens still bind to the phone's IP.
  *
- * ALL rungs go THROUGH THE RELAY (youtubei.js fetch funnel — see
- * lib/ytSession.ts): the relay swaps in the matrix UA for client 101,
- * applies the Safari override on the WEB_SAFARI rung, and pins the
- * browser's own UA + client hints on the WEB legs (their natural
- * envelope). visitor_data + po_token cross the relay UNMODIFIED in the
- * request bodies/headers (the TSG IP/ASN binding rule: one egress for
- * the whole session).
+ * G4.3 — THE EGRESS-DISCIPLINE LADDER (the senior verdict, 2026-11-14):
+ * the phone's live trace (one full play, then EVERY rung LOGIN_REQUIRED,
+ * `visitor=relay` on all six rungs) proved the 6-rung × 3-attempt ladder
+ * was an ~18×/track request AMPLIFIER on the one shared Worker IP —
+ * exactly the scraper profile YouTube's ASN-reputation scoring burns. The
+ * ladder now runs under the senior's request-discipline rules:
  *
- * ROTATION LOOP GUARD: rungs that returned a DEFINITIVE refusal (status
- * verdict, not a network error) for a video are ledgered and skipped for
- * the rest of the page session — a URL rotation after an element error
- * must ESCALATE the ladder, never re-pick the same dead rung.
+ *   1. LOGIN_REQUIRED is a DETERMINISTIC policy verdict — NEVER retried
+ *      (the flap-retry loop is dead; it amplified the very signal that
+ *      burned the egress). Verdict string carries `bot-gate=1` so the UI's
+ *      IFrame lane (the official-player fallback) can take over.
+ *   2. A Worker-egress rung answers ONCE (single-shot) — and the ladder
+ *      makes at most TWO relay-egress player calls per resolve (the
+ *      worker-egress rung cap). Direct-lane rungs (native bridge / healed
+ *      posture) keep the G4.1 retry policy and are NOT capped.
+ *   3. One visitorData per CLIENT FAMILY (web / app) — never morphing a
+ *      VisionPro→iPhone→desktop out of one anonymous identity — rotated
+ *      (once per page load per family) on a persistent LOGIN_REQUIRED.
+ *   4. Licensed tracks that gate out hand off to the official YouTube
+ *      IFrame Player lane (audio/iframeLane.ts) — youtube.com's own origin,
+ *      the user's residential egress, its own attestation. The custom
+ *      engine stays the lane for standard / non-gated content.
+ *
+ *   RUNG 1 — VISIONOS-DIRECT (tokenless, youtubei.googleapis.com): the
+ *     standard-content fast path — probe-verified OK with DIRECT pre-signed
+ *     itag 140/251 URLs (used AS-IS, no decipher). Carries the APP-family
+ *     visitor (G4.3).
+ *
+ *   RUNG 2 — WEB + PO TOKEN (youtubei.js WEB client, direct googleapis via
+ *     the dual-lane session fetch): THE LICENSED PRIMARY — the kira
+ *     recipe. The videoId-bound PO token on the player call unlocks
+ *     playability, and the SABR payload (deciphered serverAbrStreamingUrl
+ *     + buildSabrFormat descriptors + WEB clientInfo + the same poToken)
+ *     is the ONE envelope the lab measured flowing licensed media through
+ *     the relay. Also carries the signatureCipher deciphering machinery
+ *     for progressive WEB URLs.
+ *
+ *   RUNG 3 — IOS + PLAYER PO TOKEN (direct): the licensed-tolerant client
+ *     carrying the videoId-bound player token (yt-dlp's IOS GVS policy:
+ *     `not_required_with_player_token`) — progressive/HLS outcomes only:
+ *     its SABR window was MEASURED capping at the ~62 KB burst with or
+ *     without a token (G4.2), so SABR acceptance is WEB-only.
+ *
+ *   RUNG 4 — IOS-DIRECT (tokenless, DEMOTED from slot 2 by G4.2): its
+ *     SABR-only outcome is the measured 9-second wall; the rung answers
+ *     only progressive/HLS outcomes now.
+ *
+ *   RUNG 5 — VISIONOS-RELAY (www.youtube.com through the relay): the
+ *     standard-content lifeline for environments where the direct lane is
+ *     unreachable (probe-verified STILL WORKING through the live relay for
+ *     standard content: OK + URL-ful formats).
+ *
+ *   RUNG 6 — WEB_SAFARI HLS (www.youtube.com through the relay + the
+ *     Safari-class UA override): the G3b elementCompat fallback. NOTE the
+ *     yt-dlp master comment (2026.07): web_safari HLS is only returned for
+ *     logged-in or "trusted" sessions — this rung is vestigial and kept
+ *     last on purpose.
+ *
+ * In the plain browser (direct lane dead) the effective ladder is rungs 1
+ * and 2 — two relay-egress calls — then the honest bot-gate diagnosis;
+ * rungs 3–6 skip under the worker-egress cap. Under a native-shell bridge
+ * (window.streamifyNative) the direct rungs run on the phone's own IP,
+ * uncapped, and the relay rungs stay the fallback.
+ *
+ * G4.2 LADDER RULE: a SABR outcome is only accepted when its rung carries
+ * a PO token (evaluateRawResponse enforces it; see the 9-second wall note
+ * there). The token mints BEFORE the licensed rungs — once per ~12 h, in
+ * the main realm, with every mint leg riding the same relay egress the
+ * player and SABR POSTs ride (one envelope).
+ *
+ * ALL rungs prefer, in order: progressive URLs (element: itag 140 AAC;
+ * spine: 251/140 by codec capability) → HLS manifest (the remux lanes) →
+ * the SABR lane (audio/hls's sibling audio/sabr: googlevideo's SabrStream
+ * over the CORS-open media CDN, MSE-fed to the element).
+ *
+ * The dual-lane fetch (lib/ytSession.ts) makes every youtubei.googleapis.com
+ * call DIRECT with per-request relay fallback on network failure — a
+ * network-level failure never gets ledgered (only definitive upstream
+ * verdicts do), so a flaky direct lane degrades instead of burning rungs.
  */
 
 import { webCodecsAvailable } from './webcodecsDecoder';
-import { playerPoToken, gvsPoToken } from './botguard/potSession';
-import { PLAYER_ENDPOINT, SAFARI_UA_OVERRIDE } from './botguard/protocol';
-import { getYt, ytFetch } from '../lib/ytSession';
+import { playerPoToken, gvsPoToken, resetPotSession } from './botguard/potSession';
+import {
+  GAPI_PLAYER_ENDPOINT,
+  PLAYER_ENDPOINT,
+  SAFARI_UA_OVERRIDE,
+  relayUrl,
+} from './botguard/protocol';
+import {
+  getYt,
+  directPlayerPost,
+  visitorProvenance,
+  visitorForFamily,
+  rotateVisitorFamily,
+  appVisitorProvenance,
+  directLaneHealthy,
+  egressLaneFor,
+  type VisitorFamily,
+} from '../lib/ytSession';
+import { buildSabrFormat } from 'googlevideo/utils';
 import type { AudioCodec } from './types';
-import type { Innertube } from 'youtubei.js/web';
 
 /** itag → codec routing (audio-only set). */
 const ITAG_CODEC: Record<number, AudioCodec> = { 140: 'aac', 251: 'opus' };
 
-/** The ladder rungs (ledger + diagnostics). */
-export type LadderRung = 'visionos' | 'visionos-hls' | 'web-safari-hls' | 'web-pot';
+/**
+ * The ladder rungs (ledger + diagnostics). Direct rungs egress from the
+ * phone (youtubei.googleapis.com / googlevideo); relay rungs egress from
+ * the Cloudflare Worker (www.youtube.com surface).
+ */
+export type LadderRung =
+  | 'visionos-direct'
+  | 'ios-direct'
+  | 'ios-pot-direct'
+  | 'web-pot-direct'
+  | 'visionos-relay'
+  | 'web-safari-hls';
+
+/**
+ * The SABR playback payload (the audio/sabr lane's input). Carried on the
+ * ResolvedStream when a rung answers SABR-only descriptors; the element
+ * path consumes it through googlevideo's SabrStream (MSE audio).
+ */
+export interface SabrPayload {
+  /** The player response's streamingData.serverAbrStreamingUrl. */
+  serverAbrStreamingUrl: string;
+  /** videoPlaybackUstreamerConfig (base64) — authorizes the stream session. */
+  ustreamerConfig: string | null;
+  /** Audio-only SABR format descriptors (wire shape, itag/mimeType/…). */
+  formats: unknown[];
+  /** Numeric innertube client identity for the SABR requests. */
+  clientInfo: {
+    clientName: number;
+    clientVersion: string;
+    osName?: string;
+    osVersion?: string;
+  };
+  /** videoId-bound player PO token when the rung carried one. */
+  poToken: string | null;
+  /** Total duration in ms (format metadata fallback for SabrStream). */
+  durationMs: number;
+}
 
 export interface ResolvedStream {
   videoId: string;
   itag: number;
   codec: AudioCodec;
-  /** Direct googlevideo URL or the HLS manifest URL (isHls). */
+  /**
+   * Direct googlevideo URL, the HLS manifest URL (isHls), or — for the
+   * SABR lane — the serverAbrStreamingUrl (isSabr; the element path swaps
+   * it for an MSE object URL before any load).
+   */
   url: string;
   mimeType: string;
   bitrate: number;
@@ -78,31 +195,71 @@ export interface ResolvedStream {
   potKind: 'none' | 'live' | 'seeded' | 'websafe-fallback' | 'coldstart';
   /** True when url is an HLS (m3u8) manifest — element path only. */
   isHls: boolean;
+  /** True when the SABR payload below is the playback source. */
+  isSabr: boolean;
+  /** Present iff isSabr — the audio/sabr lane's input. */
+  sabr?: SabrPayload;
 }
 
 export interface ResolveContext {
-  /** Relay base URL (REQUIRED in the page — googlevideo is CORS-walled). */
+  /** Relay base URL (the www-surface rungs + relay fallbacks). */
   relayBase: string;
   /** Abort the resolve. */
   signal?: AbortSignal | null;
   /**
-   * Allow the WEB+POT rung to lazily MINT a BotGuard session when missing
+   * Allow the POT rungs to lazily MINT a BotGuard session when missing
    * (default true — licensed tracks need it; the mint runs once per ~12 h).
    */
   autoMint?: boolean;
   /**
    * W2.0 element-path mode: prefer itag 140 (AAC/MP4) EXCLUSIVELY and allow
-   * the HLS rungs (the `<audio>` element decodes AAC + HLS everywhere it
-   * matters; the WASM spine can demux neither HLS nor Safari's stack).
+   * the HLS/SABR lanes (the `<audio>` element decodes AAC everywhere it
+   * matters; the WASM spine can demux neither HLS nor SABR).
    */
   elementCompat?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// youtubei.js structural types (Format/VideoInfo are not exported from
-// 'youtubei.js/web' — these are the fields the resolver consumes)
+// Raw player-response shapes (the wire JSON — the direct/relay rungs)
 // ---------------------------------------------------------------------------
 
+interface WireFormat {
+  itag?: number;
+  url?: string;
+  signatureCipher?: string;
+  cipher?: string;
+  mimeType?: string;
+  bitrate?: number;
+  contentLength?: number | string;
+  audioQuality?: string;
+  lastModified?: number | string;
+}
+
+interface PlayerResponse {
+  playabilityStatus?: { status?: string; reason?: string };
+  videoDetails?: {
+    title?: string;
+    author?: string;
+    lengthSeconds?: string;
+    videoId?: string;
+  };
+  streamingData?: {
+    adaptiveFormats?: WireFormat[];
+    formats?: WireFormat[];
+    hlsManifestUrl?: string;
+    serverAbrStreamingUrl?: string;
+    expiresInSeconds?: string | number;
+  };
+  playerConfig?: {
+    mediaCommonConfig?: {
+      mediaUstreamerRequestConfig?: {
+        videoPlaybackUstreamerConfig?: string;
+      };
+    };
+  };
+}
+
+/** youtubei.js structural types (the WEB+POT rung). */
 interface YtFormat {
   itag?: number;
   url?: string;
@@ -126,21 +283,69 @@ interface YtBasicInfo {
   streaming_data?: {
     adaptive_formats?: YtFormat[];
     hls_manifest_url?: string;
+    /** G4.2: WEB responses carry the ciphered SABR endpoint (kira recipe). */
+    server_abr_streaming_url?: string;
+  } | null;
+  player_config?: {
+    media_common_config?: {
+      media_ustreamer_request_config?: {
+        video_playback_ustreamer_config?: string;
+      };
+    };
   } | null;
 }
 
-/** Raw /player POST body shape (the WEB_SAFARI rung). */
-interface PlayerResponse {
-  playabilityStatus?: { status?: string; reason?: string };
-  videoDetails?: {
-    title?: string;
-    author?: string;
-    lengthSeconds?: string;
-  };
-  streamingData?: {
-    hlsManifestUrl?: string;
-  };
+// ---------------------------------------------------------------------------
+// The client matrix (raw rungs) — field-for-field the canary/probe payloads
+// that were live-verified 2026-11-14 (tools/probe-clients.sh lineage; the
+// versions rot monthly — re-verify alongside the relay's UA matrix).
+// ---------------------------------------------------------------------------
+
+interface ClientSpec {
+  /** Ladder-rung prefix + display name. */
+  rung: LadderRung;
+  /** X-YouTube-Client-Name (numeric innertube client id). */
+  clientNumber: string;
+  clientName: string;
+  clientVersion: string;
+  /** context.client.userAgent — the BODY carries the client's app UA
+   * (browsers cannot set the header; the relay matrix rewrites the header
+   * on the www surface, the direct lane rides the honest browser UA). */
+  userAgent: string;
+  extraClient: Record<string, unknown>;
 }
+
+const SAFARI_MAC_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+
+const VISIONOS_SPEC: ClientSpec = {
+  rung: 'visionos-direct',
+  clientNumber: '101',
+  clientName: 'VISIONOS',
+  clientVersion: '1.02',
+  userAgent: SAFARI_MAC_UA,
+  extraClient: {
+    deviceMake: 'Apple',
+    deviceModel: 'RealityDevice17,1',
+    osName: 'visionOS',
+    osVersion: '26.5.23O471',
+  },
+};
+
+const IOS_SPEC: ClientSpec = {
+  rung: 'ios-direct',
+  clientNumber: '5',
+  clientName: 'IOS',
+  clientVersion: '21.26.4',
+  userAgent:
+    'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+  extraClient: {
+    deviceMake: 'Apple',
+    deviceModel: 'iPhone16,2',
+    osName: 'iPhone',
+    osVersion: '18.3.2.22D82',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // The failed-rung ledger (rotation loop guard)
@@ -178,7 +383,990 @@ function rungAlive(videoId: string, rung: LadderRung): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Format picking
+// Wire-format picking (raw player responses)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pick the playable PROGRESSIVE audio format from a raw response. Only
+ * formats with a literal `url` qualify (VISIONOS/IOS URLs are pre-signed;
+ * deciphering exists only on the WEB rung). elementCompat → itag 140 only
+ * (the element's AAC guarantee); spine → 251/140 by codec capability.
+ */
+function pickWireFormat(
+  resp: PlayerResponse,
+  elementCompat: boolean,
+): WireFormat | undefined {
+  const formats = [
+    ...(resp.streamingData?.adaptiveFormats ?? []),
+    ...(resp.streamingData?.formats ?? []),
+  ];
+  const playable = (f: WireFormat): boolean =>
+    typeof f.url === 'string' &&
+    f.url.length > 0 &&
+    typeof f.mimeType === 'string' &&
+    f.mimeType.startsWith('audio/');
+  const pick = (itag: number): WireFormat | undefined =>
+    formats.find((f) => f.itag === itag && playable(f));
+  const want: number[] = elementCompat
+    ? [140]
+    : webCodecsAvailable()
+      ? [251, 140]
+      : [140];
+  for (const itag of want) {
+    const chosen = pick(itag);
+    if (chosen !== undefined) return chosen;
+  }
+  return undefined;
+}
+
+/**
+ * The FULL SABR descriptor set for the SabrStream payload. SabrStream's
+ * selection requires a video format to exist even for AUDIO_ONLY playback
+ * (selectFormats throws without one — measured); the AUDIO_ONLY track
+ * bitfield is what keeps video from being fetched.
+ */
+function sabrAllFormats(resp: PlayerResponse): unknown[] {
+  return [
+    ...(resp.streamingData?.adaptiveFormats ?? []),
+    ...(resp.streamingData?.formats ?? []),
+  ];
+}
+
+function durationSecOf(resp: PlayerResponse): number | null {
+  const raw = resp.videoDetails?.lengthSeconds;
+  if (raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function titleOf(resp: PlayerResponse): { title: string; artist: string } {
+  return {
+    title: resp.videoDetails?.title ?? '',
+    artist: resp.videoDetails?.author ?? '',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stream builders
+// ---------------------------------------------------------------------------
+
+function wireToStream(
+  videoId: string,
+  resp: PlayerResponse,
+  format: WireFormat,
+  rung: LadderRung,
+  potKind: ResolvedStream['potKind'],
+): ResolvedStream {
+  return {
+    videoId,
+    itag: format.itag ?? 0,
+    codec: ITAG_CODEC[format.itag ?? 0] ?? 'aac',
+    url: format.url ?? '',
+    mimeType: format.mimeType ?? '',
+    bitrate: format.bitrate ?? 0,
+    contentLength:
+      typeof format.contentLength === 'number'
+        ? format.contentLength
+        : typeof format.contentLength === 'string' && format.contentLength !== ''
+          ? Number(format.contentLength)
+          : null,
+    durationSec: durationSecOf(resp),
+    ...titleOf(resp),
+    rung,
+    potKind,
+    isHls: false,
+    isSabr: false,
+  };
+}
+
+function toHlsStream(
+  videoId: string,
+  meta: { title: string; artist: string; durationSec: number | null },
+  manifestUrl: string,
+  rung: LadderRung,
+  potKind: ResolvedStream['potKind'] = 'none',
+): ResolvedStream {
+  return {
+    videoId,
+    itag: 0, // HLS: itag-less variant playlists
+    codec: 'aac', // YouTube HLS audio variants are AAC (fMP4 or TS)
+    url: manifestUrl,
+    mimeType: 'application/vnd.apple.mpegurl',
+    bitrate: 0,
+    contentLength: null,
+    durationSec: meta.durationSec,
+    title: meta.title,
+    artist: meta.artist,
+    rung,
+    potKind,
+    isHls: true,
+    isSabr: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The raw player calls
+// ---------------------------------------------------------------------------
+
+/**
+ * POST a raw player call to the CORS-open googleapis surface, DIRECT from
+ * the phone (lib/ytSession.ts#directPlayerPost retries once on the relay
+ * when the direct lane is unreachable — the response's lane is reported so
+ * the verdict stays egress-attributable).
+ *
+ * G4.3: the visitorData is the rung's CLIENT-FAMILY visitor (app rungs →
+ * 'app', never the session's web-born identity) — a real device does not
+ * morph client envelopes on one anonymous identity. Tokenless rungs carry
+ * it too: a stable per-family visitor is the device-like posture.
+ */
+async function playerCallDirect(
+  spec: ClientSpec,
+  videoId: string,
+  ctx: ResolveContext,
+  poToken: string | null,
+  family: VisitorFamily = 'app',
+): Promise<{ resp: PlayerResponse; lane: 'direct' | 'relay' }> {
+  const client: Record<string, unknown> = {
+    clientName: spec.clientName,
+    clientVersion: spec.clientVersion,
+    hl: 'en',
+    gl: 'US',
+    userAgent: spec.userAgent,
+    ...spec.extraClient,
+  };
+  const headers: Record<string, string> = {
+    'x-youtube-client-name': spec.clientNumber,
+    'x-youtube-client-version': spec.clientVersion,
+  };
+  // The APP-family visitor (born on the calling egress, persisted 14 d).\n  // The POT'd rungs used to bind the SESSION's (web-born) visitor — the
+  // cross-family morphing the senior's verdict killed.
+  const visitorData = await visitorForFamily(family, ctx.signal ?? null);
+  if (visitorData !== null) {
+    client.visitorData = visitorData;
+    headers['x-goog-visitor-id'] = visitorData;
+  }
+  const payload: Record<string, unknown> = {
+    context: { client },
+    videoId,
+    contentCheckOk: true,
+    racyCheckOk: true,
+    ...(poToken !== null
+      ? { serviceIntegrityDimensions: { poToken } }
+      : {}),
+  };
+  const { response, lane } = await directPlayerPost(
+    GAPI_PLAYER_ENDPOINT,
+    payload,
+    headers,
+    ctx.signal,
+  );
+  if (!response.ok) {
+    throw new Error(`player call ${lane} ${response.status}`);
+  }
+  return { resp: (await response.json()) as PlayerResponse, lane };
+}
+
+/**
+ * POST a raw player call to the www.youtube.com surface THROUGH THE RELAY
+ * (the G3b WEB_SAFARI mechanism, generalized): the relay swaps in the
+ * matrix UA for app clients (X-YouTube-Client-Name) and applies the named
+ * Safari override when requested. Deliberately NOT ytFetch — the session
+ * funnel rewrites www /youtubei/* calls onto the googleapis surface, and
+ * these rungs exist precisely as the www-via-relay fallback lane.
+ *
+ * G4.3: `visitorData` is the rung's FAMILY visitor (app rungs get the
+ * app-family identity; WEB_SAFARI keeps the session's web one).
+ */
+async function playerCallRelay(
+  spec: { clientNumber: string; clientName: string; clientVersion: string },
+  videoId: string,
+  ctx: ResolveContext,
+  opts: {
+    uaOverride?: string;
+    poToken?: string | null;
+    visitorData?: string | null;
+  } = {},
+): Promise<PlayerResponse> {
+  const visitorData =
+    (opts.visitorData !== undefined
+      ? opts.visitorData
+      : ((await getYt()).session.context.client.visitorData ?? null)) ?? '';
+  const res = await fetch(
+    relayUrl(ctx.relayBase, `${PLAYER_ENDPOINT}?prettyPrint=false&alt=json`),
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-youtube-client-name': spec.clientNumber,
+        'x-youtube-client-version': spec.clientVersion,
+        ...(visitorData.length > 0
+          ? { 'x-goog-visitor-id': visitorData }
+          : {}),
+        ...(opts.uaOverride !== undefined
+          ? { 'x-relay-ua': opts.uaOverride }
+          : {}),
+      },
+      body: JSON.stringify({
+        // The relay rungs deliberately declare their OWN client context (the
+        // session context is WEB-shaped; the matrix UA must match the body).
+        context: {
+          client: {
+            clientName: spec.clientName,
+            clientVersion: spec.clientVersion,
+            hl: 'en',
+            gl: 'US',
+            ...(visitorData.length > 0 ? { visitorData } : {}),
+            userAgent:
+              spec.clientNumber === '101' ? SAFARI_MAC_UA : undefined,
+            ...(spec.clientNumber === '101'
+              ? VISIONOS_SPEC.extraClient
+              : {}),
+          },
+        },
+        videoId,
+        contentCheckOk: true,
+        racyCheckOk: true,
+        ...(opts.poToken != null
+          ? { serviceIntegrityDimensions: { poToken: opts.poToken } }
+          : {}),
+      }),
+      credentials: 'omit',
+      signal: ctx.signal ?? undefined,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`player relay call ${res.status}`);
+  }
+  return (await res.json()) as PlayerResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Rung evaluation: one raw response → progressive / HLS / SABR / verdict
+// ---------------------------------------------------------------------------
+
+interface RungOutcome {
+  stream: ResolvedStream | null;
+  verdict: string;
+  definitive: boolean;
+  /** The upstream playability status (when a response was evaluated). */
+  status?: string;
+  /** True when the verdict was the licensed bot-gate (LOGIN_REQUIRED). */
+  loginRequired: boolean;
+  /** Which egress actually answered (null = network-error path). */
+  laneUsed: 'direct' | 'relay' | null;
+}
+
+/** The G4.3 bot-gate predicate — LOGIN_REQUIRED is the deterministic wall. */
+function isLoginRequired(status: string): boolean {
+  return status === 'LOGIN_REQUIRED';
+}
+
+function evaluateRawResponse(
+  videoId: string,
+  resp: PlayerResponse,
+  rung: LadderRung,
+  potKind: ResolvedStream['potKind'],
+  elementCompat: boolean,
+): RungOutcome {
+  const status = resp.playabilityStatus?.status ?? 'UNKNOWN';
+  if (status !== 'OK') {
+    return {
+      stream: null,
+      verdict: `${status}: ${resp.playabilityStatus?.reason ?? 'no reason'}`,
+      definitive: true,
+      status,
+      loginRequired: isLoginRequired(status),
+      laneUsed: null, // runRawRung attributes the lane
+    };
+  }
+  // 1. Progressive URLs — the cheapest playback (no lanes, plain src).
+  const format = pickWireFormat(resp, elementCompat);
+  if (format !== undefined) {
+    return {
+      stream: wireToStream(videoId, resp, format, rung, potKind),
+      verdict: 'OK (progressive)',
+      definitive: false,
+      status,
+      loginRequired: false,
+      laneUsed: null,
+    };
+  }
+  // 2. HLS manifest — the remux lanes (elementCompat only).
+  const hls = resp.streamingData?.hlsManifestUrl;
+  if (hls !== undefined && hls.length > 0 && elementCompat) {
+    return {
+      stream: toHlsStream(
+        videoId,
+        { ...titleOf(resp), durationSec: durationSecOf(resp) },
+        hls,
+        rung,
+        potKind,
+      ),
+      verdict: 'OK (hls manifest)',
+      definitive: false,
+      status,
+      loginRequired: false,
+      laneUsed: null,
+    };
+  }
+  // 3. The SABR lane — G4.2: SABR-ONLY for the WEB-class envelope.
+  //    MEASURED (2026-11-14, lab + agent-browser): IOS/VISIONOS-class SABR
+  //    sessions cap at ONE ~62 KB unprotected burst (~9–10 s of itag-139
+  //    AAC) and then hit the stream-protection wall — WITH OR WITHOUT a PO
+  //    token (the token unlocks playability, not the IOS SABR window).
+  //    Only the WEB-class envelope (the kira recipe, rung WEB+POT below)
+  //    was measured flowing licensed media past the burst. The raw
+  //    app-client rungs therefore never accept a SABR-only outcome; the
+  //    verdict says so honestly and the ladder escalates.
+  const sabrUrl = resp.streamingData?.serverAbrStreamingUrl;
+  const sabrFormats = sabrAllFormats(resp);
+  const sabrAudioItags = sabrFormats
+    .filter(
+      (f) =>
+        typeof (f as WireFormat).mimeType === 'string' &&
+        (f as WireFormat).mimeType?.startsWith('audio/'),
+    )
+    .map((f) => (f as WireFormat).itag ?? '?');
+  if (sabrUrl !== undefined && sabrUrl.length > 0 && sabrAudioItags.length > 0) {
+    return {
+      stream: null,
+      verdict: `OK but SABR-only on an app-client envelope (audio ${sabrAudioItags.join(',')} — the measured 62 KB burst cap; the WEB+POT rung owns the SABR lane)`,
+      definitive: true,
+      status,
+      loginRequired: false,
+      laneUsed: null,
+    };
+  }
+  return {
+    stream: null,
+    verdict: `OK but no playable lane (progressive=none, hls=${hls !== undefined ? 'yes' : 'no'}, sabr=${sabrUrl !== undefined ? 'yes' : 'no'}, audio itags: ${sabrAudioItags.length > 0 ? sabrAudioItags.join(',') : 'NONE'})`,
+    definitive: true,
+    status,
+    loginRequired: false,
+    laneUsed: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rung execution — the G4.3 egress-discipline policy
+// ---------------------------------------------------------------------------
+
+/**
+ * THE RETRY POLICY (G4.3, the senior verdict — replaces the G4/G4.1 flap
+ * policy): the phone's live trace proved the flap-retry loop was an
+ * ~18×/track request AMPLIFIER on the one shared Worker IP, and that
+ * LOGIN_REQUIRED flapping is the BURN signal itself, not noise to retry
+ * through. The rules now:
+ *
+ *   • LOGIN_REQUIRED → STOP the rung immediately. It is a deterministic
+ *     policy verdict (an egress/IP-class wall), not a transient error —
+ *     every retry reinforces the bot signal on the same egress.
+ *   • A RELAY-EGRESS attempt (the shared Cloudflare Worker lane) is
+ *     SINGLE-SHOT — no flap-retry on the burned IP, per the measured
+ *     amplifier arithmetic.
+ *   • A DIRECT-lane attempt (the native bridge under a shell, or a healed
+ *     CORS posture) keeps the G4.1 two-attempt policy: licensed refusals
+ *     from a stable residential IP are stable verdicts, and the second
+ *     attempt only covers format-availability flake.
+ */
+const RUNG_ATTEMPTS = 3;
+const DIRECT_RUNG_ATTEMPTS = 2;
+
+/** What one rung attempt's player call reports back. */
+interface RungCallResult {
+  resp: PlayerResponse;
+  /** Which egress actually answered (direct rungs may relay-fallback). */
+  lane?: 'direct' | 'relay';
+}
+
+/**
+ * Run one raw rung under the G4.3 discipline. Returns the stream when any
+ * attempt yields one; otherwise the final verdict (for the verdicts
+ * aggregate + the ledger decision).
+ *
+ * HONEST LANES (G4.1): when a `*-direct` rung's fetch network-failed on the
+ * direct lane and answered via the relay fallback, the verdict is a
+ * RELAY-EGRESS verdict — it is labeled `@relay-egress` so a phone-side
+ * LOGIN_REQUIRED under a `*` rung is correctly attributed (the direct lane
+ * was unreachable, not refused).
+ */
+async function runRawRung(
+  label: string,
+  videoId: string,
+  rung: LadderRung,
+  potKind: ResolvedStream['potKind'],
+  elementCompat: boolean,
+  call: () => Promise<RungCallResult>,
+  opts: { maxAttempts?: number } = {},
+): Promise<RungOutcome> {
+  const maxAttempts = opts.maxAttempts ?? RUNG_ATTEMPTS;
+  let outcome: RungOutcome = {
+    stream: null,
+    verdict: 'not attempted',
+    definitive: true,
+    loginRequired: false,
+    laneUsed: null,
+  };
+  let networkError: string | null = null;
+  /** Any attempt returned a definitive upstream verdict (sticky). */
+  let sawDefinitive = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const { resp, lane } = await call();
+      outcome = evaluateRawResponse(
+        videoId,
+        resp,
+        rung,
+        potKind,
+        elementCompat,
+      );
+      outcome.laneUsed = lane ?? null;
+      if (lane === 'relay') {
+        outcome.verdict = `${outcome.verdict} @relay-egress`;
+      }
+      networkError = null;
+      if (outcome.definitive) sawDefinitive = true;
+      if (outcome.stream !== null) return outcome;
+      // G4.3 — the discipline breaks:
+      if (outcome.loginRequired) {
+        // LOGIN_REQUIRED is a deterministic policy verdict — retrying it
+        // hammers the very egress that refused (the amplifier, dead).
+        break;
+      }
+      if (lane === 'relay') {
+        // A shared-Worker-egress refusal gets ONE attempt — the flap-retry
+        // policy was measured amplifying the burn signal.
+        break;
+      }
+      // A direct-lane non-LR miss (format flake): retry per the G4.1 policy.
+    } catch (err) {
+      networkError = err instanceof Error ? err.message : String(err);
+      outcome = {
+        stream: null,
+        verdict: networkError,
+        definitive: false, // network-ish: never ledgered
+        loginRequired: false,
+        laneUsed: null,
+      };
+    }
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 350 * attempt));
+    }
+  }
+  if (sawDefinitive) {
+    // At least one attempt got a REAL upstream refusal — the rung is
+    // ledgerable even if the last attempt died at the network layer (a
+    // trailing network error must not launder a verdict into a loop).
+    return { ...outcome, definitive: true };
+  }
+  if (networkError !== null) {
+    // Every attempt died at the network layer — a dead lane, not a
+    // verdict. Report honestly; the caller does NOT ledger it.
+    return {
+      stream: null,
+      verdict: `${label} ${networkError}`,
+      definitive: false,
+      loginRequired: false,
+      laneUsed: null,
+    };
+  }
+  return outcome;
+}
+
+// ---------------------------------------------------------------------------
+// G4.2 — &pot= pinning on progressive googlevideo URLs
+// ---------------------------------------------------------------------------
+
+/**
+ * Append the GVS-context PO token (`&pot=`) to a progressive googlevideo
+ * URL when a mint session already exists (BEST-EFFORT, never mints: the
+ * fast standard-content path must not pay the BotGuard latency). yt-dlp's
+ * GVS policy: web-family videoplayback URLs from a POT'd session carry the
+ * token as a query param — it keeps licensed media serving past the first
+ * chunk when the server asks for attestation mid-stream.
+ */
+async function pinGvsPot(
+  stream: ResolvedStream,
+  videoId: string,
+): Promise<ResolvedStream> {
+  if (stream.isHls || stream.isSabr) return stream;
+  if (!stream.url.includes('googlevideo.com/')) return stream;
+  if (stream.url.includes('pot=')) return stream;
+  try {
+    const gvs = await gvsPoToken(videoId);
+    if (gvs === null) return stream;
+    return { ...stream, url: `${stream.url}&pot=${encodeURIComponent(gvs)}` };
+  } catch {
+    return stream; // best-effort — the bare URL stays
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The ladder
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// G4.3 — the worker-egress budget + the bot-gate handoff marker
+// ---------------------------------------------------------------------------
+
+/**
+ * The senior's Q4 rule: "Cap any resolution attempt to at most 2 rungs with
+ * 0 flap-retries when egressing via the Worker. Never execute an 18-request
+ * ladder on a shared IP." This is that cap — the number of RUNGS whose
+ * player calls answered on the relay (Cloudflare Worker) egress. Direct-lane
+ * rungs (the native bridge under a shell, a healed CORS posture) do not
+ * consume budget: they ride the phone's own IP, not the shared one.
+ */
+const RELAY_EGRESS_RUNG_CAP = 2;
+
+/**
+ * The marker embedded in the terminal `no rung resolved` error when the
+ * licensed bot-gate (LOGIN_REQUIRED) is what killed the ladder — the UI's
+ * IFrame lane (audio/iframeLane.ts, the official-player fallback) keys on
+ * it to take over the track.
+ */
+const BOT_GATE_MARKER = 'bot-gate=1';
+
+/** Does a resolve error carry the licensed bot-gate signature? */
+export function isBotGateError(message: string): boolean {
+  return message.includes(BOT_GATE_MARKER);
+}
+
+/**
+ * Visitor rotation is ONCE per page load per family — repeat rotation per
+ * play would be its own churn/burn pattern (every WEB rotation also drops
+ * the mint cache → a re-mint per retry). Module scope survives resolves.
+ */
+const rotatedFamilies = new Set<VisitorFamily>();
+
+/**
+ * Resolve one video's best playable audio stream. The thrown error carries
+ * EVERY rung's verdict for honest diagnosis.
+ *
+ * G4.2 LADDER ORDER (measured 2026-11-14 — see the 9-second wall note on
+ * evaluateRawResponse): the tokenless IOS rung used to sit at slot 2 and
+ * its SABR-only outcome (URL-less descriptors) was accepted as playable —
+ * but a tokenless SABR session delivers exactly one ~62 KB burst and then
+ * the stream-protection wall, which the user hears as “plays 9 seconds,
+ * then buffers forever”. The PO token now mints BEFORE the licensed rungs
+ * and every SABR outcome must carry it; the tokenless IOS rung is demoted
+ * to a fallback that only yields progressive/HLS outcomes.
+ *
+ * G4.3 EGRESS DISCIPLINE: at most {@link RELAY_EGRESS_RUNG_CAP} relay-egress
+ * rungs run per resolve (the rest SKIP with an honest verdict — the shared
+ * Worker IP stays cold), LOGIN_REQUIRED never retries, and every family
+ * whose rungs gated out gets its visitor rotated (once per page load).
+ */
+export async function resolveAudioStream(
+  videoId: string,
+  ctx: ResolveContext,
+): Promise<ResolvedStream> {
+  const verdicts: string[] = [];
+  const elementCompat = ctx.elementCompat === true;
+  const yt = await getYt();
+
+  /** Relay-egress rungs consumed so far (the Worker-egress budget). */
+  let relayEgressRungs = 0;
+  /** Families whose rungs answered LOGIN_REQUIRED (rotation candidates). */
+  const gatedFamilies = new Set<VisitorFamily>();
+
+  const gapiDirectAlive = (): boolean =>
+    directLaneHealthy(new URL(GAPI_PLAYER_ENDPOINT));
+
+  /** Count one rung against the Worker-egress budget (relay-egress only). */
+  const countRung = (outcome: RungOutcome, directCapable: boolean): void => {
+    if (outcome.laneUsed === 'relay') {
+      relayEgressRungs += 1;
+      return;
+    }
+    if (outcome.laneUsed === 'direct') return; // the phone's own IP
+    // Network-error path: a direct-capable rung with a dead direct lane
+    // necessarily rode the relay; a www rung always does.
+    if (!directCapable || !gapiDirectAlive()) relayEgressRungs += 1;
+  };
+
+  /** The G4.3 skip verdict when the budget is spent. */
+  const capSkipVerdict =
+    'skipped — worker-egress rung cap (2) reached: the shared relay IP stays cold (the official-player lane takes licensed tracks)';
+
+  // ---- Rung 1: VISIONOS-DIRECT (tokenless, phone egress) ------------------
+  // The standard-content fast path (probe-verified OK + pre-signed itag
+  // 140/251 URLs — no mint, no lanes). Carries the APP-family visitor.
+  if (rungAlive(videoId, 'visionos-direct')) {
+    if (gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
+      const outcome = await runRawRung(
+        '[VISIONOS*]',
+        videoId,
+        'visionos-direct',
+        'none',
+        elementCompat,
+        () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null, 'app'),
+        // The attempt budget only matters on the DIRECT lane (relay
+        // attempts are single-shot inside runRawRung — the G4.3 rule).
+        { maxAttempts: RUNG_ATTEMPTS },
+      );
+      if (outcome.stream !== null) return outcome.stream;
+      countRung(outcome, true);
+      if (outcome.loginRequired) gatedFamilies.add('app');
+      if (outcome.definitive) markRungFailed(videoId, 'visionos-direct');
+      verdicts.push(`[VISIONOS*] ${outcome.verdict}`);
+    } else {
+      verdicts.push(`[VISIONOS*] ${capSkipVerdict}`);
+    }
+  }
+
+  // ---- The PO token (BEFORE the licensed rungs — G4.2) --------------------
+  // Every rung below this line either carries the token or is a fallback.
+  // autoMint (default) runs the BgUtils mint once per ~12 h; a null token
+  // means the mint ladder exhausted (Brave-class) and the SABR lanes are
+  // dead by policy (the 9-second wall) — the relay rungs remain.
+  const token = await playerPoToken(videoId, ctx.relayBase, {
+    autoMint: ctx.autoMint !== false,
+    signal: ctx.signal ?? null,
+  });
+
+  // ---- Rung 2: WEB + PO TOKEN (youtubei.js, dual-lane session fetch) ------
+  // The kira recipe (G4.2): the WEB-class envelope + the videoId-bound PO
+  // token unlocks licensed playability where IOS caps the SABR window, and
+  // its SABR payload (deciphered serverAbrStreamingUrl + buildSabrFormat
+  // descriptors + WEB clientInfo + the same poToken) is the one the lab
+  // measured flowing media through the relay (1.08 MiB before the egress
+  // burn, vs 62 KB tokenless).
+  //
+  // G4.3: the rung obeys the discipline — LOGIN_REQUIRED breaks the loop
+  // immediately (deterministic verdict), and a relay-egress attempt (the
+  // funnel's operative lane in every plain browser) is SINGLE-SHOT. Only a
+  // direct-lane miss (native bridge) keeps the flap budget. The rung still
+  // runs when there is no token (its honest no-token verdict matters for
+  // the diagnosis), but never past the Worker-egress cap.
+  if (token === null || gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
+    let verdict = 'not attempted';
+    if (token === null) {
+      verdict =
+        'no PO token available (mint failed — coldstart/websafe fallbacks exhausted)';
+    } else {
+      try {
+        let info: YtBasicInfo | null = null;
+        let status = 'UNKNOWN';
+        let gated = false;
+        for (let attempt = 1; attempt <= RUNG_ATTEMPTS; attempt += 1) {
+          const candidate = (await yt.getBasicInfo(videoId, {
+            client: 'WEB',
+            // PLAYER-context token (serviceIntegrityDimensions.poToken) —
+            // videoId-bound, per-call so it never leaks into other clients.
+            po_token: token.poToken,
+          })) as YtBasicInfo;
+          status = candidate.playability_status?.status ?? 'UNKNOWN';
+          if (status === 'OK') {
+            info = candidate;
+            break;
+          }
+          verdict = `attempt ${attempt}: ${status}: ${candidate.playability_status?.reason ?? 'no reason'}`;
+          if (isLoginRequired(status)) {
+            // G4.3: deterministic — never retried.
+            gated = true;
+            break;
+          }
+          // G4.3: single-shot on the Worker egress (the funnel's lane for
+          // this call in every plain browser — egressLaneFor reports it).
+          if (egressLaneFor(GAPI_PLAYER_ENDPOINT) === 'relay') break;
+          if (attempt < RUNG_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, 350 * attempt));
+          }
+        }
+        if (gated) gatedFamilies.add('web');
+        // The funnel's egress lane for this call (relay in every plain
+        // browser — the Worker-egress budget counts it).
+        if (egressLaneFor(GAPI_PLAYER_ENDPOINT) === 'relay') {
+          relayEgressRungs += 1;
+        }
+        const okInfo: YtBasicInfo | null = info;
+        if (okInfo !== null) {
+          const info = okInfo;
+          const format = pickYtFormat(info, elementCompat);
+          if (format !== undefined) {
+            // GVS-context &pot= on the deciphered URL: Player.decipher
+            // appends player.po_token (after nsig/sig) — set it to the
+            // GVS binding (videoId while the homepage flag is set).
+            const player = yt.session.player;
+            if (player === undefined) {
+              verdict = 'OK but no deciphering player (retrieve_player failed)';
+            } else {
+              const gvs = await gvsPoToken(videoId);
+              if (gvs !== null) {
+                player.po_token = gvs;
+              }
+              const url = await format.decipher(player);
+              return toStream(videoId, info, format, url, 'web-pot-direct', token.kind);
+            }
+          } else {
+            const audioItags = (info.streaming_data?.adaptive_formats ?? [])
+              .filter((f) => f.has_video !== true)
+              .map((f) => f.itag ?? '?')
+              .join(',');
+            const hls = info.streaming_data?.hls_manifest_url;
+            if (hls !== undefined && hls.length > 0 && elementCompat) {
+              return toHlsStream(
+                videoId,
+                {
+                  title: info.basic_info?.title ?? videoId,
+                  artist: info.basic_info?.author ?? '',
+                  durationSec:
+                    typeof info.basic_info?.duration === 'number'
+                      ? info.basic_info.duration
+                      : null,
+                },
+                hls,
+                'web-pot-direct',
+                token.kind,
+              );
+            }
+            // G4.2: the kira-recipe SABR payload — deciphered
+            // serverAbrStreamingUrl + buildSabrFormat descriptors + the
+            // WEB-class clientInfo + the same videoId-bound poToken.
+            const sabrUrlRaw = info.streaming_data?.server_abr_streaming_url;
+            const ustreamerConfig =
+              info.player_config?.media_common_config
+                ?.media_ustreamer_request_config
+                ?.video_playback_ustreamer_config;
+            const adaptive = info.streaming_data?.adaptive_formats ?? [];
+            const player = yt.session.player;
+            if (
+              elementCompat &&
+              typeof sabrUrlRaw === 'string' &&
+              sabrUrlRaw.length > 0 &&
+              adaptive.length > 0 &&
+              ustreamerConfig !== undefined &&
+              player !== undefined
+            ) {
+              try {
+                const sabrUrl = await player.decipher(sabrUrlRaw);
+                const duration = info.basic_info?.duration;
+                return {
+                  videoId,
+                  itag: 0,
+                  codec: 'aac',
+                  url: sabrUrl,
+                  mimeType: 'application/vnd.yt.sabr',
+                  bitrate: 0,
+                  contentLength: null,
+                  durationSec: typeof duration === 'number' ? duration : null,
+                  title: info.basic_info?.title ?? videoId,
+                  artist: info.basic_info?.author ?? '',
+                  rung: 'web-pot-direct',
+                  potKind: token.kind,
+                  isHls: false,
+                  isSabr: true,
+                  sabr: {
+                    serverAbrStreamingUrl: sabrUrl,
+                    ustreamerConfig: ustreamerConfig ?? null,
+                    formats: adaptive.map((f) =>
+                      // YtFormat (youtubei.js) and FormatStream (googlevideo)
+                      // are the same wire shape with different strictness;
+                      // kira passes them straight through — cast the joint.
+                      buildSabrFormat(f as unknown as Parameters<typeof buildSabrFormat>[0]),
+                    ),
+                    clientInfo: {
+                      clientName: 1, // WEB — the envelope the token was minted for
+                      clientVersion: yt.session.context.client.clientVersion,
+                    },
+                    poToken: token.poToken,
+                    durationMs:
+                      typeof duration === 'number' ? Math.round(duration * 1000) : 0,
+                  },
+                };
+              } catch (err) {
+                verdict = `OK but SABR decipher failed (${err instanceof Error ? err.message : String(err)})`;
+              }
+            } else {
+              verdict = `OK but no playable audio itag (want ${elementCompat ? '140' : '251/140'} — audio itags present: ${audioItags.length > 0 ? audioItags : 'NONE (SABR-only?)'}, sabrUrl=${sabrUrlRaw !== undefined ? 'yes' : 'no'})`;
+            }
+          }
+        }
+        // info === null: every flap-retry attempt refused — the per-attempt
+        // verdict string above already carries the honest reason.
+      } catch (err) {
+        verdict = err instanceof Error ? err.message : String(err);
+      }
+    }
+    verdicts.push(`[WEB+POT*] ${verdict}`);
+  } else if (token !== null) {
+    // The only reachable shape: rungs before this one already spent the
+    // Worker budget AND the direct lane is dead. Zero silent rungs.
+    verdicts.push(`[WEB+POT*] ${capSkipVerdict}`);
+  }
+
+  // ---- Rung 3: IOS + PLAYER PO TOKEN (direct) ------------------------------
+  // The licensed-tolerant client with the videoId-bound player token:
+  // playability OK where WEB flaps, and per yt-dlp's IOS GVS policy
+  // (`not_required_with_player_token`) a POT'd IOS call may hand back
+  // direct progressive URLs; SABR outcomes carry the token into the
+  // streamerContext (sabrStreamPlayer → SabrStream). App-family visitor.
+  if (
+    token !== null &&
+    rungAlive(videoId, 'ios-pot-direct') &&
+    (gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP)
+  ) {
+    const outcome = await runRawRung(
+      '[IOS+POT*]',
+      videoId,
+      'ios-pot-direct',
+      token.kind,
+      elementCompat,
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken, 'app'),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+    );
+    if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
+    countRung(outcome, true);
+    if (outcome.loginRequired) gatedFamilies.add('app');
+    if (outcome.definitive) markRungFailed(videoId, 'ios-pot-direct');
+    verdicts.push(`[IOS+POT*] ${outcome.verdict}`);
+  } else if (token !== null && rungAlive(videoId, 'ios-pot-direct')) {
+    verdicts.push(`[IOS+POT*] ${capSkipVerdict}`);
+  }
+
+  // ---- Rung 4: IOS-DIRECT (tokenless — progressive/HLS only) ---------------
+  // G4.2: DEMOTED from slot 2. Without a PO token this client's SABR-only
+  // outcome is the measured 9-second wall (evaluateRawResponse rejects it);
+  // the rung stays for its progressive/HLS answers (the odd non-SABR
+  // response) and honest attribution.
+  if (
+    rungAlive(videoId, 'ios-direct') &&
+    (gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP)
+  ) {
+    const outcome = await runRawRung(
+      '[IOS*]',
+      videoId,
+      'ios-direct',
+      'none',
+      elementCompat,
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, null, 'app'),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+    );
+    if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
+    countRung(outcome, true);
+    if (outcome.loginRequired) gatedFamilies.add('app');
+    if (outcome.definitive) markRungFailed(videoId, 'ios-direct');
+    verdicts.push(`[IOS*] ${outcome.verdict}`);
+  } else if (rungAlive(videoId, 'ios-direct')) {
+    verdicts.push(`[IOS*] ${capSkipVerdict}`);
+  }
+
+  // ---- Rung 5: VISIONOS-RELAY (www surface through the relay) -------------
+  // Always a Worker-egress rung — only runs inside the budget. Carries the
+  // APP-family visitor (a VisionPro envelope on the app identity).
+  if (rungAlive(videoId, 'visionos-relay') && relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
+    const outcome = await runRawRung(
+      '[VISIONOS]',
+      videoId,
+      'visionos-relay',
+      'none',
+      elementCompat,
+      async () => ({
+        resp: await playerCallRelay(
+          {
+            clientNumber: VISIONOS_SPEC.clientNumber,
+            clientName: VISIONOS_SPEC.clientName,
+            clientVersion: VISIONOS_SPEC.clientVersion,
+          },
+          videoId,
+          ctx,
+          { visitorData: await visitorForFamily('app', ctx.signal ?? null) },
+        ),
+        lane: 'relay' as const,
+      }),
+    );
+    if (outcome.stream !== null) return outcome.stream;
+    countRung(outcome, false);
+    if (outcome.loginRequired) gatedFamilies.add('app');
+    if (outcome.definitive) markRungFailed(videoId, 'visionos-relay');
+    verdicts.push(`[VISIONOS] ${outcome.verdict}`);
+  } else if (rungAlive(videoId, 'visionos-relay')) {
+    verdicts.push(`[VISIONOS] ${capSkipVerdict}`);
+  }
+
+  // ---- Rung 6: WEB_SAFARI HLS (relay + Safari UA, elementCompat only) -----
+  // yt-dlp master (2026.07): web_safari HLS is only returned for logged-in
+  // or "trusted" sessions — vestigial, deliberately last.
+  if (
+    elementCompat &&
+    rungAlive(videoId, 'web-safari-hls') &&
+    relayEgressRungs < RELAY_EGRESS_RUNG_CAP
+  ) {
+    let safariVerdict = 'not attempted';
+    try {
+      const player = await playerCallRelay(
+        { clientNumber: '1', clientName: 'WEB', clientVersion: '2.20260708.00.00' },
+        videoId,
+        ctx,
+        {
+          uaOverride: SAFARI_UA_OVERRIDE,
+          poToken: token !== null ? token.poToken : null,
+        },
+      );
+      const status = player.playabilityStatus?.status ?? 'UNKNOWN';
+      const hls = player.streamingData?.hlsManifestUrl;
+      if (status === 'OK' && hls !== undefined && hls.length > 0) {
+        return toHlsStream(
+          videoId,
+          {
+            title: player.videoDetails?.title ?? videoId,
+            artist: player.videoDetails?.author ?? '',
+            durationSec:
+              player.videoDetails?.lengthSeconds !== undefined
+                ? Number(player.videoDetails.lengthSeconds)
+                : null,
+          },
+          hls,
+          'web-safari-hls',
+          token !== null ? token.kind : 'none',
+        );
+      }
+      safariVerdict =
+        status === 'OK'
+          ? 'OK but no hlsManifestUrl'
+          : `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
+      if (isLoginRequired(status)) gatedFamilies.add('web');
+      relayEgressRungs += 1; // the www rung always rides the Worker
+      markRungFailed(videoId, 'web-safari-hls');
+    } catch (err) {
+      safariVerdict = err instanceof Error ? err.message : String(err);
+    }
+    verdicts.push(`[WEB_SAFARI] ${safariVerdict}`);
+  }
+
+  // ---- The terminal diagnosis (G4.3) ---------------------------------------
+  // The gated families get their visitors rotated — ONCE per page load per
+  // family (churn is its own burn signal; the neg-cache-backed retries fail
+  // closed in <1 ms and the IFrame lane owns the track after that).
+  const rotated: string[] = [];
+  for (const family of gatedFamilies) {
+    if (rotatedFamilies.has(family)) continue;
+    rotatedFamilies.add(family);
+    rotateVisitorFamily(family);
+    if (family === 'web') {
+      resetPotSession(); // the mint is visitor-bound — it must not survive
+    }
+    rotated.push(family);
+  }
+
+  // The bot-gate marker: the licensed wall is what killed the ladder → the
+  // UI's IFrame lane (the official YouTube embed, youtube.com's own origin,
+  // the user's residential egress) takes the track. The visitor provenance
+  // (both families, G4.3) rides on the diagnosis for honest attribution.
+  const gate =
+    gatedFamilies.size > 0
+      ? ` · ${BOT_GATE_MARKER}`
+      : '';
+  const rotationNote =
+    rotated.length > 0 ? ` · visitors rotated: ${rotated.join(',')}` : '';
+  throw new Error(
+    `no rung resolved ${videoId} — ${verdicts.join(' · ')} · visitor=${visitorProvenance()}/app=${appVisitorProvenance()}${rotationNote}${gate}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// youtubei.js format picking (the WEB+POT rung)
 // ---------------------------------------------------------------------------
 
 /**
@@ -238,259 +1426,6 @@ function toStream(
     rung,
     potKind,
     isHls: false,
-  };
-}
-
-/** Map a player response to an HLS-manifest ResolvedStream. */
-function toHlsStream(
-  videoId: string,
-  meta: { title: string; artist: string; durationSec: number | null },
-  manifestUrl: string,
-  rung: LadderRung,
-): ResolvedStream {
-  return {
-    videoId,
-    itag: 0, // HLS: itag-less variant playlists
-    codec: 'aac', // YouTube HLS audio variants are AAC (fMP4 or TS)
-    url: manifestUrl,
-    mimeType: 'application/vnd.apple.mpegurl',
-    bitrate: 0,
-    contentLength: null,
-    durationSec: meta.durationSec,
-    title: meta.title,
-    artist: meta.artist,
-    rung,
-    potKind: 'none',
-    isHls: true,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// The ladder
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve one video's best playable audio stream.
- *   Rung 1: VISIONOS (tokenless direct URLs / same-call HLS)
- *   Rung 2: WEB + PO token (bgutils-js dual-token mint — the licensed
- *           rung; falls through to its own HLS manifest when the
- *           response is SABR-only, the modern web-client reality)
- *   Rung 3: WEB_SAFARI HLS (elementCompat only — carries the rung-2
- *           player token when the mint produced one; HLS needs no GVS
- *           token, but licensed playability needs the player call's)
- * The thrown error carries EVERY rung's verdict for honest diagnosis.
- */
-export async function resolveAudioStream(
-  videoId: string,
-  ctx: ResolveContext,
-): Promise<ResolvedStream> {
-  const verdicts: string[] = [];
-  const elementCompat = ctx.elementCompat === true;
-  const yt = await getYt();
-
-  // ---- Rung 1: VISIONOS (tokenless) --------------------------------------
-  if (rungAlive(videoId, 'visionos') || rungAlive(videoId, 'visionos-hls')) {
-    let vrVerdict = 'not attempted';
-    try {
-      const info = await yt.getBasicInfo(videoId, { client: 'VISIONOS' });
-      const status = info.playability_status?.status ?? 'UNKNOWN';
-      if (status === 'OK') {
-        const format = pickYtFormat(info, elementCompat);
-        if (format !== undefined && typeof format.url === 'string') {
-          // VISIONOS URLs are direct + pre-signed — used AS-IS (the
-          // P3b-proven behavior; no decipher on this rung).
-          return toStream(videoId, info, format, format.url, 'visionos', 'none');
-        }
-        const hls = info.streaming_data?.hls_manifest_url;
-        if (hls !== undefined && hls.length > 0 && elementCompat) {
-          // Adaptive missing, HLS present: serve the manifest (Safari
-          // engines play it natively; Chromium-class engines consume it
-          // through the G3b remux path — hlsRemux.ts).
-          return toHlsStream(videoId, metaOf(info), hls, 'visionos-hls');
-        }
-        vrVerdict = 'OK but no playable audio itag (140/251) or HLS manifest';
-        markRungFailed(videoId, 'visionos');
-        markRungFailed(videoId, 'visionos-hls');
-      } else {
-        vrVerdict = `${status}: ${info.playability_status?.reason ?? 'no reason'}`;
-        markRungFailed(videoId, 'visionos');
-        markRungFailed(videoId, 'visionos-hls');
-      }
-    } catch (err) {
-      vrVerdict = err instanceof Error ? err.message : String(err); // network-ish: NOT ledgered
-    }
-    verdicts.push(`[VISIONOS] ${vrVerdict}`);
-  }
-
-  // ---- Rung 2: WEB + PO token (the licensed-music path) --------------------
-  let potVerdict = 'not attempted';
-  const token = await playerPoToken(videoId, ctx.relayBase, {
-    autoMint: ctx.autoMint !== false,
-    signal: ctx.signal ?? null,
-  });
-  if (token === null) {
-    potVerdict =
-      'no PO token available (mint failed — see the mint status; coldstart/websafe fallbacks exhausted)';
-  } else {
-    try {
-      const info = await yt.getBasicInfo(videoId, {
-        client: 'WEB',
-        // PLAYER-context token (serviceIntegrityDimensions.poToken) —
-        // videoId-bound, per-call so it never leaks into other clients.
-        po_token: token.poToken,
-      });
-      const status = info.playability_status?.status ?? 'UNKNOWN';
-      if (status === 'OK') {
-        const format = pickYtFormat(info, elementCompat);
-        if (format !== undefined) {
-          // GVS-context &pot= on the deciphered URL: Player.decipher
-          // appends player.po_token (after nsig/sig) — set it to the
-          // GVS binding (videoId while the homepage flag is set).
-          const player = yt.session.player;
-          if (player === undefined) {
-            potVerdict = 'OK but no deciphering player (retrieve_player failed)';
-          } else {
-            const gvs = await gvsPoToken(videoId);
-            if (gvs !== null) {
-              player.po_token = gvs;
-            }
-            const url = await format.decipher(player);
-            return toStream(videoId, info, format, url, 'web-pot', token.kind);
-          }
-        } else {
-          // The modern web-client reality: URL-less SABR descriptors for
-          // the audio itags. When the same response carries an HLS
-          // manifest (and the element path can consume one), hand the
-          // manifest back — the remux lane (hlsRemux.ts) makes it
-          // element-playable on every engine.
-          const hls = info.streaming_data?.hls_manifest_url;
-          if (hls !== undefined && hls.length > 0 && elementCompat) {
-            return toHlsStream(videoId, metaOf(info), hls, 'web-pot');
-          }
-          // Honest inventory in the verdict: which audio itags the response
-          // actually carried (SABR-only responses have none with URLs).
-          const audioItags = (info.streaming_data?.adaptive_formats ?? [])
-            .filter((f) => f.has_video !== true)
-            .map((f) => f.itag ?? '?')
-            .join(',');
-          potVerdict = `OK but no playable audio itag (want ${elementCompat ? '140' : '251/140'} — audio itags present: ${audioItags.length > 0 ? audioItags : 'NONE (SABR-only?)'})`;
-        }
-      } else {
-        potVerdict = `${status}: ${info.playability_status?.reason ?? 'no reason'}`;
-      }
-    } catch (err) {
-      potVerdict = err instanceof Error ? err.message : String(err);
-    }
-  }
-  verdicts.push(`[WEB+POT] ${potVerdict}`);
-
-  // ---- Rung 3: WEB_SAFARI HLS (elementCompat only) ------------------------
-  // Carries the rung-2 player token when the mint produced one (licensed
-  // playability needs the player call's PO token regardless of UA; the
-  // HLS manifests themselves need no GVS token — the yt-dlp web_safari
-  // exception, still true at the time of writing).
-  if (elementCompat && rungAlive(videoId, 'web-safari-hls')) {
-    let safariVerdict = 'not attempted';
-    try {
-      const player = await playerCallWebSafari(
-        videoId,
-        yt,
-        ctx,
-        token !== null ? token.poToken : null,
-      );
-      const status = player.playabilityStatus?.status ?? 'UNKNOWN';
-      const hls = player.streamingData?.hlsManifestUrl;
-      if (status === 'OK' && hls !== undefined && hls.length > 0) {
-        return toHlsStream(
-          videoId,
-          {
-            title: player.videoDetails?.title ?? videoId,
-            artist: player.videoDetails?.author ?? '',
-            durationSec:
-              player.videoDetails?.lengthSeconds !== undefined
-                ? Number(player.videoDetails.lengthSeconds)
-                : null,
-          },
-          hls,
-          'web-safari-hls',
-        );
-      }
-      safariVerdict =
-        status === 'OK'
-          ? 'OK but no hlsManifestUrl'
-          : `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
-      markRungFailed(videoId, 'web-safari-hls');
-    } catch (err) {
-      safariVerdict = err instanceof Error ? err.message : String(err);
-    }
-    verdicts.push(`[WEB_SAFARI] ${safariVerdict}`);
-  }
-
-  throw new Error(`no rung resolved ${videoId} — ${verdicts.join(' · ')}`);
-}
-
-// ---------------------------------------------------------------------------
-// Rung 3 — WEB_SAFARI: raw player POST through the relay (Safari UA)
-// ---------------------------------------------------------------------------
-
-/**
- * The WEB client presented through a Safari-class UA (the relay's
- * X-Relay-UA override — a forbidden header no browser can set itself).
- * A RAW POST rather than a youtubei.js client call: youtubei.js has no
- * web_safari client and offers no per-call header injection. The body
- * carries the YouTube.js session's own context (deep-copy semantics
- * match what its HTTPClient would send), so the visitorData envelope
- * stays coherent across all rungs.
- */
-async function playerCallWebSafari(
-  videoId: string,
-  yt: Innertube,
-  ctx: ResolveContext,
-  poToken: string | null,
-): Promise<PlayerResponse> {
-  const context = yt.session.context;
-  const res = await ytFetch(PLAYER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-youtube-client-name': '1', // WEB
-      'x-youtube-client-version': context.client.clientVersion,
-      'x-goog-visitor-id': context.client.visitorData ?? '',
-      // The relay control header — swaps in the Safari-class UA (and,
-      // per the envelope rule, strips the browser's Chrome client
-      // hints: Safari sends none).
-      'x-relay-ua': SAFARI_UA_OVERRIDE,
-    },
-    body: JSON.stringify({
-      context,
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-      // PLAYER-context PO token when the rung-2 mint produced one —
-      // licensed playability needs it on the player call itself.
-      ...(poToken !== null ? { serviceIntegrityDimensions: { poToken } } : {}),
-    }),
-    signal: ctx.signal ?? undefined,
-  });
-  if (!res.ok) {
-    throw new Error(`player relay call ${res.status}`);
-  }
-  return (await res.json()) as PlayerResponse;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function metaOf(info: YtBasicInfo): {
-  title: string;
-  artist: string;
-  durationSec: number | null;
-} {
-  return {
-    title: info.basic_info?.title ?? '',
-    artist: info.basic_info?.author ?? '',
-    durationSec:
-      typeof info.basic_info?.duration === 'number' ? info.basic_info.duration : null,
+    isSabr: false,
   };
 }
