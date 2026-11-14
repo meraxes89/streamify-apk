@@ -23,9 +23,9 @@ import { PlayerBar } from '../components/PlayerBar';
 import { QueueList } from '../components/QueueList';
 import { AuthPanel } from '../components/AuthPanel';
 import { SpineConsole } from '../components/SpineConsole';
-import { IframeLanePanel } from '../components/IframeLanePanel';
-import { useIframeLane } from '../audio/iframeLane';
+import { GsfLanePanel } from '../components/GsfLanePanel';
 import { isBotGateError } from '../audio/resolve';
+import { gsfConfigured } from '../lib/gsfLane';
 import type { RowPlayback } from '../components/TrackRow';
 
 export function HomeScreen(): JSX.Element {
@@ -41,7 +41,6 @@ export function HomeScreen(): JSX.Element {
   const [egressMode, setEgressMode] = useState<EgressMode>('element');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [rowLocal, setRowLocal] = useState<Record<string, RowPlayback>>({});
-  const openIframeLane = useIframeLane((s) => s.open);
 
   const currentId = snapshot?.currentTrack?.id ?? null;
   const currentStatus = snapshot?.status ?? 'Idle';
@@ -92,28 +91,28 @@ export function HomeScreen(): JSX.Element {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (isBotGateError(message)) {
-          // G4.3: the licensed bot-gate (LOGIN_REQUIRED on the worker
-          // egress) — the official YouTube embed takes the track (its own
-          // origin + attestation, the user's residential IP). The engine
-          // parks; the row says where the track actually went.
-          openIframeLane({
-            videoId: track.videoId,
-            title: track.title,
-            artist: track.artist,
-            durationSec: track.durationSec,
-            thumbnailUrl: track.thumbnailUrl,
-          });
+          // G5: the licensed bot-gate is an EGRESS-CLASS wall — the shared
+          // relay burned again. The fix is the unburnable GSF egress (the
+          // Engine Egress panel below: deploy tools/gsf once, play anything,
+          // unlimited); the official-embed lane is RETIRED (ads, whole-video
+          // playback — rejected by the product verdict).
           setRow(track.videoId, {
             status: 'failed',
-            message: 'bot-gated — playing via the official YouTube embed below',
+            message: gsfConfigured()
+              ? 'bot-gated — the GSF egress refused this track (see Engine Egress: Test)'
+              : 'bot-gated — the shared relay egress burned; deploy the GSF egress (Engine Egress panel below) for unlimited licensed plays',
           });
-          toast('Licensed track — playing via the official YouTube embed');
+          toast(
+            gsfConfigured()
+              ? 'Bot-gated even on the GSF egress — run Engine Egress: Test'
+              : 'Bot-gated — the GSF egress (below) unlocks unlimited licensed plays',
+          );
         } else {
           setRow(track.videoId, { status: 'failed', message });
         }
       }
     },
-    [port, currentId, currentStatus, send, setRow, openIframeLane],
+    [port, currentId, currentStatus, send, setRow],
   );
 
   const handleQueue = useCallback(
@@ -160,7 +159,7 @@ export function HomeScreen(): JSX.Element {
     <div className="stack home-stack">
       <PlayerBar egressMode={egressMode} onEgressModeChange={setEgressMode} />
       {resolveError !== null && <p className="home-resolve-error">{resolveError}</p>}
-      <IframeLanePanel />
+      <GsfLanePanel />
       <SearchPanel
         phase={search.phase}
         query={search.query}

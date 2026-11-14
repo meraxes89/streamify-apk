@@ -73,6 +73,9 @@
 import { Innertube, Platform, UniversalCache } from 'youtubei.js/web';
 import { relayBaseCandidate } from './engine';
 import { relayUrl } from '../audio/botguard/protocol';
+import { gsfAlive, gsfFetch } from './gsfLane';
+
+export type InnertubeLane = 'direct' | 'gsf' | 'relay';
 
 // ---------------------------------------------------------------------------
 // The eval shim (once, at module load)
@@ -101,9 +104,9 @@ export function isDirectEgressHost(url: URL): boolean {
   );
 }
 
-/** Dev/diagnostics: was the last ytFetch for this host direct or relayed? */
-const lastEgressLane = new Map<string, 'direct' | 'relay'>();
-export function egressLaneFor(url: string): 'direct' | 'relay' | 'untried' {
+/** Dev/diagnostics: was the last ytFetch for this host direct, gsf'd or relayed? */
+const lastEgressLane = new Map<string, InnertubeLane>();
+export function egressLaneFor(url: string): InnertubeLane | 'untried' {
   try {
     return lastEgressLane.get(new URL(url).hostname.toLowerCase()) ?? 'untried';
   } catch {
@@ -183,17 +186,41 @@ export function nativeFetchBridge(): NativeFetchBridge | null {
 }
 
 /**
+ * G5 — THE GSF LANE (decisions/G5-gsf-unburnable-lane.md): the user's
+ * tools/gsf Apps Script (deployed once, their own 20k-calls/day quota)
+ * carries every direct-class CONTROL-PLANE call out through Google's own
+ * ASN 15169 — the egress class YouTube's first-party traffic rides —
+ * because script.google.com is on youtubei.googleapis.com's CORS
+ * allowlist (probe-measured 2026-11-14) while foreign origins are not.
+ * The lane order for every direct-class host is therefore:
+ *
+ *   1. the NATIVE bridge (shell present) — phone IP, no CORS;
+ *   2. the GSF script (configured + alive) — Google ASN, no preflight
+ *      (the envelope rides a plain GET with zero custom headers);
+ *   3. plain fetch() — dies at preflight in every plain browser (the
+ *      canary-measured posture), kept for healed postures/tooling;
+ *   4. the relay — the shared Cloudflare egress, now the LAST resort
+ *      instead of the operative lane.
+ *
+ * Media bytes never ride 1–3's control planes (googlevideo authorizes
+ * cross-IP fetches — W2.0 — so the element path streams from the user's
+ * own IP regardless of which egress resolved the URL).
+ */
+
+/**
  * One direct-class fetch through the best available lane:
  *   1. the NATIVE bridge (shell present) — phone IP, no CORS;
- *   2. plain fetch() (the browser CORS lane — dies at preflight on
+ *   2. the GSF script (configured + alive) — Google-ASN egress;
+ *   3. plain fetch() (the browser CORS lane — dies at preflight on
  *      youtubei.googleapis.com from a foreign origin, per the canary);
  * throws on network-layer failure either way, so callers keep their
- * existing relay-fallback + negative-cache handling.
+ * existing relay-fallback + negative-cache handling. The lane that
+ * answered is reported (verdicts stay egress-attributable).
  */
 async function laneFetch(
   url: string,
   init: { method?: string; headers?: Record<string, string>; body?: string } = {},
-): Promise<Response> {
+): Promise<{ response: Response; lane: 'direct' | 'gsf' }> {
   const bridge = nativeFetchBridge();
   if (bridge !== null) {
     const r = await bridge.fetch(url, {
@@ -201,14 +228,35 @@ async function laneFetch(
       ...(init.headers !== undefined ? { headers: init.headers } : {}),
       ...(init.body !== undefined ? { body: init.body } : {}),
     });
-    return new Response(r.body, { status: r.status, headers: r.headers });
+    return {
+      response: new Response(r.body, { status: r.status, headers: r.headers }),
+      lane: 'direct',
+    };
   }
-  return fetch(url, {
-    method: init.method ?? 'GET',
-    ...(init.headers !== undefined ? { headers: init.headers } : {}),
-    ...(init.body !== undefined ? { body: init.body } : {}),
-    credentials: 'omit',
-  } as RequestInit);
+  if (gsfAlive()) {
+    try {
+      return {
+        response: await gsfFetch(url, {
+          ...(init.method !== undefined ? { method: init.method } : {}),
+          ...(init.headers !== undefined ? { headers: init.headers } : {}),
+          ...(init.body !== undefined ? { body: init.body } : {}),
+        }),
+        lane: 'gsf',
+      };
+    } catch {
+      // Lane-level failure (script unreachable/refused) — the local fetch
+      // lane and then the caller's relay fallback get their chances.
+    }
+  }
+  return {
+    response: await fetch(url, {
+      method: init.method ?? 'GET',
+      ...(init.headers !== undefined ? { headers: init.headers } : {}),
+      ...(init.body !== undefined ? { body: init.body } : {}),
+      credentials: 'omit',
+    } as RequestInit),
+    lane: 'direct',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -237,39 +285,48 @@ const VISITOR_KEYS: Record<VisitorFamily, string> = {
 /** A visitor identity is long-lived; a direct birth is trusted for 30 d. */
 const VISITOR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /**
- * A relay-born visitor is the NORM, not the exception (canary-measured
- * 2026-11-14: youtubei.googleapis.com serves no ACAO to foreign origins,
- * so the /config birth rides the relay in every browser). It is trusted
- * for 7 d — long enough to keep the visitor (and the POT cache bound to
- * it) stable across app opens, short enough that a healed direct posture
- * upgrades the identity within a week.
+ * A relay-born visitor is the G4.3 NORM on a GSF-less build (canary-
+ * measured: youtubei.googleapis.com serves no ACAO to foreign origins,
+ * so the /config birth rides the relay in every plain browser). It is
+ * trusted for 7 d — long enough to keep the visitor (and the POT cache
+ * bound to it) stable across app opens, short enough that a healed direct
+ * posture upgrades the identity within a week.
  */
 const RELAY_VISITOR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * G5: a GSF-born visitor rides the user's OWN unburnable script egress
+ * (Google ASN, their quota) — direct-class trust: 30 d web family.
+ */
+const GSF_VISITOR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /**
  * G4.3 (the senior's identity lifecycle): an APP-family visitor persists
  * 14 d flat — the app rungs never bind the mint, so there is no cache
  * drift to protect; churn protection alone justifies the longer horizon.
+ * G5: a GSF-born app visitor keeps the same 14 d.
  */
 const APP_VISITOR_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface StoredVisitor {
   visitorData: string;
   bornAt: number;
-  provenance: 'direct' | 'relay';
+  provenance: 'direct' | 'gsf' | 'relay';
 }
 
-const visitorProvenanceState: Record<VisitorFamily, 'direct' | 'relay' | 'session'> = {
+const visitorProvenanceState: Record<
+  VisitorFamily,
+  'direct' | 'gsf' | 'relay' | 'session'
+> = {
   web: 'session',
   app: 'session',
 };
 
 /** Where the WEB-family (session/mint) visitorData was born (UI/diagnostics). */
-export function visitorProvenance(): 'direct' | 'relay' | 'session' {
+export function visitorProvenance(): 'direct' | 'gsf' | 'relay' | 'session' {
   return visitorProvenanceState.web;
 }
 
 /** Where the APP-family visitorData was born (UI/diagnostics). */
-export function appVisitorProvenance(): 'direct' | 'relay' | 'session' {
+export function appVisitorProvenance(): 'direct' | 'gsf' | 'relay' | 'session' {
   return visitorProvenanceState.app;
 }
 
@@ -278,7 +335,9 @@ function visitorTtlMs(
   provenance: StoredVisitor['provenance'],
 ): number {
   if (family === 'app') return APP_VISITOR_TTL_MS;
-  return provenance === 'direct' ? VISITOR_TTL_MS : RELAY_VISITOR_TTL_MS;
+  if (provenance === 'relay') return RELAY_VISITOR_TTL_MS;
+  if (provenance === 'gsf') return GSF_VISITOR_TTL_MS;
+  return VISITOR_TTL_MS;
 }
 
 function readStoredVisitor(family: VisitorFamily): StoredVisitor | null {
@@ -290,7 +349,9 @@ function readStoredVisitor(family: VisitorFamily): StoredVisitor | null {
       typeof parsed.visitorData !== 'string' ||
       parsed.visitorData.length === 0 ||
       typeof parsed.bornAt !== 'number' ||
-      (parsed.provenance !== 'direct' && parsed.provenance !== 'relay')
+      (parsed.provenance !== 'direct' &&
+        parsed.provenance !== 'gsf' &&
+        parsed.provenance !== 'relay')
     ) {
       return null;
     }
@@ -326,18 +387,17 @@ const VISITOR_BIRTH_CLIENTS: Record<VisitorFamily, Record<string, unknown>> = {
 const visitorBirths = new Map<VisitorFamily, Promise<string | null>>();
 
 /**
- * Mint (or restore) one family's visitorData (G4.1 birth, G4.3 families).
+ * Mint (or restore) one family's visitorData (G4.1 birth, G4.3 families,
+ * G5 lanes).
  *
  * POST /youtubei/v1/config on the googleapis surface carrying NO visitor id
  * (neither header nor context) — the responseContext.visitorData that comes
- * back is a visitor BORN on the calling egress. Lane order: DIRECT first
- * (phone IP — the native bridge's lane when a shell provides it), then one
- * relay retry — with the canary-measured posture the relay is the lane that
- * answers, and its birth is persisted too (7 d web / 14 d app): a stable
- * relay-born identity beats a fresh visitor every page load (visitor churn
- * would also drop the POT cache on every boot — the binding-drift guard).
- * A direct birth (a healed posture, a native-bridge shell) persists for
- * 30 d. Live-verified 2026-11-14: the endpoint mints a fresh visitor even
+ * back is a visitor BORN on the calling egress. Lane order: NATIVE bridge
+ * (phone IP) → GSF (Google ASN — the G5 operative lane) → plain fetch →
+ * one relay retry (the G4.3 norm on GSF-less builds; its birth is
+ * persisted too — 7 d web / 14 d app: a stable relay-born identity beats
+ * a fresh visitor every page load). A direct or GSF birth persists 30 d
+ * (web). Live-verified 2026-11-14: the endpoint mints a fresh visitor even
  * from the relay's burned Cloudflare egress.
  */
 function birthVisitorData(
@@ -357,31 +417,54 @@ function birthVisitorData(
     const body = JSON.stringify({
       context: { client: VISITOR_BIRTH_CLIENTS[family] },
     });
-    const lanes: Array<{ url: string; provenance: 'direct' | 'relay' }> = [
-      { url: endpoint, provenance: 'direct' },
-      { url: relayUrl(relayBaseCandidate(), endpoint), provenance: 'relay' },
+    const lanes: Array<{
+      run: () => Promise<{ response: Response; provenance: 'direct' | 'gsf' | 'relay' }>;
+    }> = [
+      {
+        // The local lane ladder: NATIVE bridge → GSF → plain fetch. All
+        // three die at the network layer in a plain GSF-less browser
+        // (CORS) — the catch moves to the relay leg.
+        run: async () => {
+          const { response, lane } = await laneFetch(endpoint, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+          });
+          return { response, provenance: lane };
+        },
+      },
+      {
+        run: async () => ({
+          response: await fetch(
+            relayUrl(relayBaseCandidate(), endpoint),
+            {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body,
+              credentials: 'omit',
+              ...(signal !== null && signal !== undefined ? { signal } : {}),
+            } as RequestInit,
+          ),
+          provenance: 'relay' as const,
+        }),
+      },
     ];
     for (const lane of lanes) {
       try {
-        const res = await laneFetch(lane.url, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body,
-          ...(signal !== null && signal !== undefined ? { signal } : {}),
-        });
+        const { response, provenance } = await lane.run();
         // An HTTP error is a real verdict for THIS lane (e.g. an IP block) —
         // the other lane gets its chance.
-        if (!res.ok) continue;
-        const json = (await res.json()) as {
+        if (!response.ok) continue;
+        const json = (await response.json()) as {
           responseContext?: { visitorData?: string };
         };
         const vd = json.responseContext?.visitorData;
         if (typeof vd === 'string' && vd.length > 0) {
-          visitorProvenanceState[family] = lane.provenance;
+          visitorProvenanceState[family] = provenance;
           storeVisitor(family, {
             visitorData: vd,
             bornAt: Date.now(),
-            provenance: lane.provenance,
+            provenance,
           });
           return vd;
         }
@@ -509,20 +592,38 @@ export async function ytFetch(
       // G4.3: the native bridge (when a shell provides it) owns the direct
       // lane — the OS network stack, no CORS preflight, the phone's IP.
       const bridge = nativeFetchBridge();
-      const response =
-        bridge !== null
-          ? await bridgeFetchVia(
-              bridge,
-              target.toString(),
-              input instanceof Request ? input.clone() : null,
-              init,
-              headers,
-            )
-          : await fetch(directInput, {
-              ...init,
-              headers,
-              credentials: 'omit',
-            });
+      if (bridge !== null) {
+        const response = await bridgeFetchVia(
+          bridge,
+          target.toString(),
+          input instanceof Request ? input.clone() : null,
+          init,
+          headers,
+        );
+        lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
+        return response;
+      }
+      // G5: the GSF script (Google-ASN egress) — BEFORE the plain fetch
+      // lane, which dies at preflight in every plain browser anyway.
+      if (gsfAlive()) {
+        try {
+          const response = await gsfFetchVia(
+            target.toString(),
+            input instanceof Request ? input.clone() : null,
+            init,
+            headers,
+          );
+          lastEgressLane.set(target.hostname.toLowerCase(), 'gsf');
+          return response;
+        } catch {
+          // Lane-level failure — the plain fetch and the relay follow.
+        }
+      }
+      const response = await fetch(directInput, {
+        ...init,
+        headers,
+        credentials: 'omit',
+      });
       lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
       return response;
     } catch {
@@ -565,6 +666,40 @@ async function bridgeFetchVia(
   init: RequestInit | undefined,
   headers: Headers,
 ): Promise<Response> {
+  const s = await serializeLaneRequest(req, init, headers);
+  const r = await bridge.fetch(url, {
+    method: s.method,
+    headers: s.headers,
+    ...(s.body !== undefined ? { body: s.body } : {}),
+  });
+  return new Response(r.body, { status: r.status, headers: r.headers });
+}
+
+/**
+ * Serialize one funnel request onto the GSF lane (G5). Same text-only
+ * contract as the bridge — the funnel's bodies are JSON strings by
+ * construction; binary bodies throw and the caller falls through.
+ */
+async function gsfFetchVia(
+  url: string,
+  req: Request | null,
+  init: RequestInit | undefined,
+  headers: Headers,
+): Promise<Response> {
+  const s = await serializeLaneRequest(req, init, headers);
+  return gsfFetch(url, {
+    method: s.method,
+    headers: s.headers,
+    ...(s.body !== undefined ? { body: s.body } : {}),
+  });
+}
+
+/** The text-serialized shape both local lanes (bridge / GSF) speak. */
+async function serializeLaneRequest(
+  req: Request | null,
+  init: RequestInit | undefined,
+  headers: Headers,
+): Promise<{ method: string; headers: Record<string, string>; body?: string }> {
   const method =
     req !== null ? req.method : (init?.method ?? 'GET');
   let body: string | undefined;
@@ -577,27 +712,23 @@ async function bridgeFetchVia(
   headers.forEach((value, name) => {
     hdrs[name] = value;
   });
-  const r = await bridge.fetch(url, {
-    method,
-    headers: hdrs,
-    ...(body !== undefined ? { body } : {}),
-  });
-  return new Response(r.body, { status: r.status, headers: r.headers });
+  return { method, headers: hdrs, ...(body !== undefined ? { body } : {}) };
 }
 
 /**
  * A raw JSON POST to a DIRECT-class host (youtubei.googleapis.com player
  * calls). NOT routed through ytFetch: the resolver needs the fetch to go
- * DIRECT FIRST and to distinguish "direct lane unreachable" (network throw
- * → try relay) from a real upstream verdict (any HTTP status → return it).
- * Never retries a returned verdict — egress attribution stays honest.
+ * through the LOCAL LANES first (native bridge → GSF → plain fetch) and to
+ * distinguish "local lanes unreachable" (network throw → try relay) from a
+ * real upstream verdict (any HTTP status → return it). Never retries a
+ * returned verdict — egress attribution stays honest.
  */
 export async function directPlayerPost(
   endpoint: string,
   payload: unknown,
   headers: Record<string, string>,
   signal?: AbortSignal | null,
-): Promise<{ response: Response; lane: 'direct' | 'relay' }> {
+): Promise<{ response: Response; lane: InnertubeLane }> {
   const body = JSON.stringify(payload);
   const merged: Record<string, string> = {
     'content-type': 'application/json',
@@ -611,29 +742,46 @@ export async function directPlayerPost(
   if (isDirectEgressHost(target) && directLaneHealthy(target)) {
     try {
       // G4.3: the native bridge owns this lane under a shell (phone IP,
-      // no CORS); the plain browser keeps the fetch() CORS lane.
+      // no CORS) — G5 puts the GSF script (Google ASN) between it and the
+      // plain browser CORS lane.
       const bridge = nativeFetchBridge();
-      const response =
-        bridge !== null
-          ? await bridge.fetch(endpoint, {
-              method: 'POST',
-              headers: merged,
-              body,
-            }).then(
-              (r) =>
-                new Response(r.body, { status: r.status, headers: r.headers }),
-            )
-          : await fetch(endpoint, {
-              method: 'POST',
-              headers: merged,
-              body,
-              credentials: 'omit',
-              ...(signal !== null && signal !== undefined ? { signal } : {}),
-            } as RequestInit);
+      if (bridge !== null) {
+        const r = await bridge.fetch(endpoint, {
+          method: 'POST',
+          headers: merged,
+          body,
+        });
+        lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
+        return {
+          response: new Response(r.body, { status: r.status, headers: r.headers }),
+          lane: 'direct',
+        };
+      }
+      if (gsfAlive()) {
+        try {
+          const response = await gsfFetch(endpoint, {
+            method: 'POST',
+            headers: merged,
+            body,
+            ...(signal !== null && signal !== undefined ? { signal } : {}),
+          });
+          lastEgressLane.set(target.hostname.toLowerCase(), 'gsf');
+          return { response, lane: 'gsf' };
+        } catch {
+          // Lane-level failure — the plain fetch and the relay follow.
+        }
+      }
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: merged,
+        body,
+        credentials: 'omit',
+        ...(signal !== null && signal !== undefined ? { signal } : {}),
+      } as RequestInit);
       lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
       return { response, lane: 'direct' };
     } catch {
-      // Direct lane unreachable (CORS preflight refused / network
+      // Local lanes unreachable (CORS preflight refused / network
       // blocked) — remembered for the page session, retried once on the
       // relay: the verdict (if any) belongs to the relay egress.
       markDirectLaneDead(target.hostname.toLowerCase());

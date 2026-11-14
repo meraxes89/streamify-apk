@@ -140,6 +140,25 @@ jobs:
           } | tee /tmp/g4-surface.txt
           cat /tmp/g4-surface.txt >> "$GITHUB_STEP_SUMMARY"
 
+      # ── G5 GSF canary: the unburnable lane's live posture ─────────────
+      # Runs only when the GSF_URL repository variable is set (the owner's
+      # deployed tools/gsf Apps Script — see tools/gsf/README.md). Measures
+      # the whole G5 bet nightly from a clean runner: the script's ping +
+      # a tokenless IOS player POST for a licensed track THROUGH the
+      # script — i.e., whether Google's own ASN egress serves licensed
+      # playability where the shared Cloudflare relay gets LOGIN_REQUIRED
+      # after 1-2 plays. NON-GATING (environmental detection + evidence).
+      - name: G5 GSF canary (the unburnable lane, optional)
+        if: ${{ vars.GSF_URL != '' }}
+        run: |
+          {
+            echo "### 🛡️ G5 GSF canary — the unburnable lane"
+            echo '```'
+            bash tools/gsf/probe-gsf.sh "${{ vars.GSF_URL }}" || true
+            echo '```'
+          } | tee /tmp/gsf-canary.txt
+          cat /tmp/gsf-canary.txt >> "$GITHUB_STEP_SUMMARY"
+
       # ── GATING: standard content, fleet ladder only ───────────────────
       # A fleet-ladder client (ANDROID / ANDROID_VR / IOS — exactly the
       # specs write_fleet_config.py can rotate to) must still resolve

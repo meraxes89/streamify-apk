@@ -38,19 +38,19 @@
  *
  *   1. LOGIN_REQUIRED is a DETERMINISTIC policy verdict — NEVER retried
  *      (the flap-retry loop is dead; it amplified the very signal that
- *      burned the egress). Verdict string carries `bot-gate=1` so the UI's
- *      IFrame lane (the official-player fallback) can take over.
+ *      burned the egress). Verdict string carries `bot-gate=1` — the
+ *      honest licensed-wall diagnosis the UI surfaces with the GSF fix.
  *   2. A Worker-egress rung answers ONCE (single-shot) — and the ladder
  *      makes at most TWO relay-egress player calls per resolve (the
- *      worker-egress rung cap). Direct-lane rungs (native bridge / healed
- *      posture) keep the G4.1 retry policy and are NOT capped.
+ *      worker-egress rung cap). Direct-lane rungs (native bridge / GSF /
+ *      healed posture) keep the G4.1 retry policy and are NOT capped.
  *   3. One visitorData per CLIENT FAMILY (web / app) — never morphing a
  *      VisionPro→iPhone→desktop out of one anonymous identity — rotated
  *      (once per page load per family) on a persistent LOGIN_REQUIRED.
- *   4. Licensed tracks that gate out hand off to the official YouTube
- *      IFrame Player lane (audio/iframeLane.ts) — youtube.com's own origin,
- *      the user's residential egress, its own attestation. The custom
- *      engine stays the lane for standard / non-gated content.
+ *   4. G5: the official-embed lane is RETIRED (ads, whole-video playback —
+ *      the product verdict). Licensed tracks that gate out on the shared
+ *      relay get the unburnable GSF egress instead (the user's own
+ *      Apps Script — Google ASN, tools/gsf) — the fix, not the fallback.
  *
  *   RUNG 1 — VISIONOS-DIRECT (tokenless, youtubei.googleapis.com): the
  *     standard-content fast path — probe-verified OK with DIRECT pre-signed
@@ -128,7 +128,9 @@ import {
   directLaneHealthy,
   egressLaneFor,
   type VisitorFamily,
+  type InnertubeLane,
 } from '../lib/ytSession';
+import { gsfConfigured } from '../lib/gsfLane';
 import { buildSabrFormat } from 'googlevideo/utils';
 import type { AudioCodec } from './types';
 
@@ -525,7 +527,7 @@ async function playerCallDirect(
   ctx: ResolveContext,
   poToken: string | null,
   family: VisitorFamily = 'app',
-): Promise<{ resp: PlayerResponse; lane: 'direct' | 'relay' }> {
+): Promise<{ resp: PlayerResponse; lane: InnertubeLane }> {
   const client: Record<string, unknown> = {
     clientName: spec.clientName,
     clientVersion: spec.clientVersion,
@@ -653,7 +655,7 @@ interface RungOutcome {
   /** True when the verdict was the licensed bot-gate (LOGIN_REQUIRED). */
   loginRequired: boolean;
   /** Which egress actually answered (null = network-error path). */
-  laneUsed: 'direct' | 'relay' | null;
+  laneUsed: InnertubeLane | null;
 }
 
 /** The G4.3 bot-gate predicate — LOGIN_REQUIRED is the deterministic wall. */
@@ -775,8 +777,8 @@ const DIRECT_RUNG_ATTEMPTS = 2;
 /** What one rung attempt's player call reports back. */
 interface RungCallResult {
   resp: PlayerResponse;
-  /** Which egress actually answered (direct rungs may relay-fallback). */
-  lane?: 'direct' | 'relay';
+  /** Which egress actually answered (direct rungs may gsf/relay-fallback). */
+  lane?: InnertubeLane;
 }
 
 /**
@@ -823,6 +825,10 @@ async function runRawRung(
       outcome.laneUsed = lane ?? null;
       if (lane === 'relay') {
         outcome.verdict = `${outcome.verdict} @relay-egress`;
+      } else if (lane === 'gsf') {
+        // G5: the user's own Apps Script egress (Google ASN) — verdicts
+        // attributed to the unburnable lane, never to the shared Worker.
+        outcome.verdict = `${outcome.verdict} @gsf-egress`;
       }
       networkError = null;
       if (outcome.definitive) sawDefinitive = true;
@@ -839,6 +845,8 @@ async function runRawRung(
         break;
       }
       // A direct-lane non-LR miss (format flake): retry per the G4.1 policy.
+      // (The GSF lane rides the user's own quota — same two-attempt
+      // patience as the native bridge.)
     } catch (err) {
       networkError = err instanceof Error ? err.message : String(err);
       outcome = {
@@ -914,16 +922,17 @@ async function pinGvsPot(
  * 0 flap-retries when egressing via the Worker. Never execute an 18-request
  * ladder on a shared IP." This is that cap — the number of RUNGS whose
  * player calls answered on the relay (Cloudflare Worker) egress. Direct-lane
- * rungs (the native bridge under a shell, a healed CORS posture) do not
- * consume budget: they ride the phone's own IP, not the shared one.
+ * rungs (the native bridge under a shell, a healed CORS posture) and GSF
+ * rungs (the user's own Apps Script — G5) do not consume budget: they ride
+ * the phone's own IP / the user's own Google-ASN quota, not the shared one.
  */
 const RELAY_EGRESS_RUNG_CAP = 2;
 
 /**
  * The marker embedded in the terminal `no rung resolved` error when the
- * licensed bot-gate (LOGIN_REQUIRED) is what killed the ladder — the UI's
- * IFrame lane (audio/iframeLane.ts, the official-player fallback) keys on
- * it to take over the track.
+ * licensed bot-gate (LOGIN_REQUIRED) is what killed the ladder — the honest
+ * licensed-wall diagnosis the UI surfaces (the IFrame lane is RETIRED in
+ * G5: the fix is the unburnable GSF egress, not the official embed).
  */
 const BOT_GATE_MARKER = 'bot-gate=1';
 
@@ -979,6 +988,7 @@ export async function resolveAudioStream(
       relayEgressRungs += 1;
       return;
     }
+    if (outcome.laneUsed === 'gsf') return; // the user's own Google-ASN quota
     if (outcome.laneUsed === 'direct') return; // the phone's own IP
     // Network-error path: a direct-capable rung with a dead direct lane
     // necessarily rode the relay; a www rung always does.
@@ -987,7 +997,7 @@ export async function resolveAudioStream(
 
   /** The G4.3 skip verdict when the budget is spent. */
   const capSkipVerdict =
-    'skipped — worker-egress rung cap (2) reached: the shared relay IP stays cold (the official-player lane takes licensed tracks)';
+    'skipped — worker-egress rung cap (2) reached: the shared relay IP stays cold (the unburnable GSF egress — tools/gsf — lifts the cap)';
 
   // ---- Rung 1: VISIONOS-DIRECT (tokenless, phone egress) ------------------
   // The standard-content fast path (probe-verified OK + pre-signed itag
@@ -1350,18 +1360,21 @@ export async function resolveAudioStream(
     rotated.push(family);
   }
 
-  // The bot-gate marker: the licensed wall is what killed the ladder → the
-  // UI's IFrame lane (the official YouTube embed, youtube.com's own origin,
-  // the user's residential egress) takes the track. The visitor provenance
-  // (both families, G4.3) rides on the diagnosis for honest attribution.
+  // The bot-gate marker: the licensed wall is what killed the ladder. The
+  // G5 fix surface rides on the diagnosis — the unburnable GSF egress when
+  // it is not deployed yet, its state when it is. The visitor provenance
+  // (both families, G4.3) rides for honest attribution.
   const gate =
     gatedFamilies.size > 0
       ? ` · ${BOT_GATE_MARKER}`
       : '';
+  const gsfNote = gsfConfigured()
+    ? ' · gsf=on'
+    : ' · gsf=off — deploy the unburnable lane (tools/gsf/README.md) and set it in Engine Egress';
   const rotationNote =
     rotated.length > 0 ? ` · visitors rotated: ${rotated.join(',')}` : '';
   throw new Error(
-    `no rung resolved ${videoId} — ${verdicts.join(' · ')} · visitor=${visitorProvenance()}/app=${appVisitorProvenance()}${rotationNote}${gate}`,
+    `no rung resolved ${videoId} — ${verdicts.join(' · ')} · visitor=${visitorProvenance()}/app=${appVisitorProvenance()}${rotationNote}${gate}${gsfNote}`,
   );
 }
 

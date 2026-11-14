@@ -24,10 +24,14 @@
  * youtube.com-only — foreign pages CANNOT POST to the SABR endpoint
  * directly (the preflight carries no ACAO), on the phone exactly like in
  * the lab. kira solves this with its ytc-bridge proxy (or an extension's
- * origin-stripping); we solve it with the relay: the small UMP requests
- * and the segment responses ride the Worker, which streams both ways and
- * adds ACAO:*. The IP-pin is tolerated on SABR POSTs (curl-verified from
- * a mismatched lab IP against a URL minted for a Cloudflare egress).
+ * origin-stripping); we solve it with TWO lanes (G5): the GSF script
+ * FIRST (the user's own Apps Script — Google ASN, their quota — carrying
+ * the UMP bodies base64 in the GET envelope, whole-response, no
+ * streaming), and the RELAY as the fallback (streams both ways, adds
+ * ACAO:*). The IP-pin is tolerated on SABR POSTs (curl-verified from
+ * a mismatched lab IP against a URL minted for a Cloudflare egress) —
+ * which is also why the Google-ASN egress can carry a session whose URL
+ * was minted elsewhere.
  *
  * FAILURE SURFACE: stream-protection refusals (LICENSE_REQUIRED-class),
  * server reload directives and stalls reject the `done` promise and fire
@@ -52,7 +56,25 @@ import { SabrStream } from 'googlevideo/sabr-stream';
 import { EnabledTrackTypes } from 'googlevideo/utils';
 import type { SabrFormat } from 'googlevideo/shared-types';
 import { relayUrl } from '../botguard/protocol';
+import { gsfAlive, gsfFetch } from '../../lib/gsfLane';
 import type { SabrPayload } from '../resolve';
+
+/**
+ * Adapt one SabrStream fetch body to the GSF envelope's text/binary
+ * contract (UMP protobufs arrive as Uint8Array; blobs/arraybuffers are
+ * awaited into bytes; anything exotic is stringified — the lane refuses
+ * what it cannot carry and the relay takes over).
+ */
+async function sabrBodyFor(
+  body: BodyInit | null | undefined,
+): Promise<string | Uint8Array | ArrayBuffer | undefined> {
+  if (body === undefined || body === null) return undefined;
+  if (typeof body === 'string') return body;
+  if (body instanceof Uint8Array) return body;
+  if (body instanceof ArrayBuffer) return body;
+  if (body instanceof Blob) return await body.arrayBuffer();
+  return String(body);
+}
 
 /** A handle on one live SABR playback session. */
 export interface SabrSessionHandle {
@@ -252,17 +274,39 @@ export async function startSabrAudio(
 
     const run = async (): Promise<void> => {
       sabr = new SabrStream({
-        // SABR through the RELAY: googlevideo's CORS is youtube.com-only
-        // (see the egress rule above) — the preflight would kill a direct
-        // POST from any foreign origin. The relay streams the UMP bodies
-        // both ways and adds ACAO:*.
-        fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        // SABR egress (G5): GSF first — googlevideo's CORS is youtube.com-only
+        // (the egress rule above) so a direct POST from any foreign origin is
+        // preflight-dead; the user's Apps Script carries the UMP bodies
+        // (base64 in the GET envelope, whole responses) out of Google's ASN
+        // on their own quota, and the relay streams both ways as the fallback
+        // when GSF is off/dead.
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const url =
             input instanceof URL
               ? input.toString()
               : typeof input === 'string'
                 ? input
                 : input.url;
+          if (gsfAlive()) {
+            try {
+              const headers: Record<string, string> = {};
+              new Headers(init?.headers).forEach((value, name) => {
+                headers[name] = value;
+              });
+              const body = await sabrBodyFor(init?.body);
+              return await gsfFetch(url, {
+                ...(init?.method !== undefined ? { method: init.method } : {}),
+                ...(Object.keys(headers).length > 0 ? { headers } : {}),
+                ...(body !== undefined ? { body } : {}),
+                ...(init?.signal !== undefined && init?.signal !== null
+                  ? { signal: init.signal }
+                  : {}),
+              });
+            } catch {
+              // Lane-level failure (script unreachable / envelope too large)
+              // — the relay takes this POST.
+            }
+          }
           const target =
             relayBase !== '' ? relayUrl(relayBase, url) : url;
           return fetch(target, init);

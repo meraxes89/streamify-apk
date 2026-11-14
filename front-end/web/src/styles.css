@@ -2825,55 +2825,53 @@ button:disabled {
   cursor: pointer;
 }
 
-/* ---- G4.3: the official-player fallback lane --------------------------------------------------------- */
+/* ---- G5: the Engine Egress panel (the GSF lane) ------------------------------------------------------- */
 
-.iframe-lane {
+.gsf-panel {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
-.iframe-lane__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.iframe-lane__head > div {
+.gsf-panel__head > div {
   min-width: 0;
 }
 
-.iframe-lane__title {
+.gsf-panel__title {
   margin: 0 0 4px;
   font-size: 16px;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.iframe-lane__player {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 320px;
-  background: #000;
+.gsf-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.gsf-panel__input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 10px;
   border-radius: 8px;
-  overflow: hidden;
+  border: 1px solid var(--border, #2a2a35);
+  background: var(--surface, #17171f);
+  color: inherit;
+  font-size: 13px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-.iframe-lane__mount,
-.iframe-lane__mount > div,
-.iframe-lane__mount iframe,
-.iframe-lane__player iframe {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
+.gsf-panel__input:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
-.iframe-lane__hint {
+.gsf-panel__status {
+  margin: 0;
+  font-size: 12px;
+}
+
+.gsf-panel__hint {
   margin: 0;
   font-size: 12px;
 }
