@@ -111,12 +111,12 @@ async function main(): Promise<void> {
     `direct lane (youtubei.googleapis.com): ${cors ?? 'UNREACHABLE — every direct rung will relay-fallback (degraded)'}`,
   );
 
-  // ---- 2. YouTube.js session boot (dual-lane) ------------------------------
+  // ---- 2. YouTube.js session boot (dual-lane + direct-born visitor) --------
   const yt = await withBudget('session', 30_000, () => ytSession.getYt());
   if (yt === null) return;
   const c = yt.session.context.client;
   log(
-    `session: PASS — ${c.clientName} ${c.clientVersion} visitor ${(c.visitorData ?? '').slice(0, 14)}… sts=${yt.session.player?.signature_timestamp ?? 'none'}`,
+    `session: PASS — ${c.clientName} ${c.clientVersion} visitor ${(c.visitorData ?? '').slice(0, 14)}… (born: ${ytSession.visitorProvenance()}) sts=${yt.session.player?.signature_timestamp ?? 'none'}`,
   );
 
   // ---- 3. The ladder on the canonical videos --------------------------------
@@ -125,6 +125,7 @@ async function main(): Promise<void> {
     ['dQw4w9WgXcQ', 'standard'],
     ['tixIb21MO5U', 'licensed (the phone-failure case)'],
     ['4NRXx6U8ABQ', 'licensed (the G3b target)'],
+    ['DOGP2dYUGE0', 'licensed (the G4 phone-failure case)'],
     ...extra.map((v) => [v, '?v= probe'] as [string, string]),
   ];
   const resolvedStreams: ResolvedStream[] = [];

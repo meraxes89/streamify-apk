@@ -48,6 +48,19 @@
  * `{ sig, n }` directly (src/utils/Utils.ts#getNsigProcessorFn), so a plain
  * `new Function(data.output)()` satisfies the contract — the same pattern
  * kira and the bgutils examples use.
+ *
+ * G4.1 — THE DIRECT-BORN VISITOR (decisions/G4-residential-direct.md): the
+ * session's visitorData used to be born on the RELAY egress (youtubei.js
+ * mints it from sw.js_data, a www leg), making every "phone-egress" player
+ * call carry a datacenter-born visitor identity — a split-brain envelope
+ * the G4 doc flagged as the next lever. The lever, now pulled: POST
+ * /youtubei/v1/config on the googleapis surface with NO visitor id; the
+ * responseContext.visitorData is a visitor BORN on this egress (the phone's
+ * IP on the direct lane). It is persisted (30 d) and fed into
+ * Innertube.create({ visitor_data }) — youtubei.js honors the seed in both
+ * the fresh and the cached session paths (Session.js #getSessionData:
+ * `visitor_data: options.visitor_data || device_info[13]`), so visitor,
+ * mint and player calls all share ONE phone-born identity.
  */
 
 import { Innertube, Platform, UniversalCache } from 'youtubei.js/web';
@@ -89,6 +102,117 @@ export function egressLaneFor(url: string): 'direct' | 'relay' | 'untried' {
   } catch {
     return 'untried';
   }
+}
+
+// ---------------------------------------------------------------------------
+// G4.1 — the direct-born visitorData
+// ---------------------------------------------------------------------------
+
+const VISITOR_KEY = 'streamify.yt.visitor.v2';
+/** A visitor identity is long-lived; 30 d keeps it fresh without churning. */
+const VISITOR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+interface StoredVisitor {
+  visitorData: string;
+  bornAt: number;
+  provenance: 'direct' | 'relay';
+}
+
+let visitorProvenanceState: 'direct' | 'relay' | 'session' = 'session';
+
+/** Where the session's visitorData was born (UI/diagnostics). */
+export function visitorProvenance(): 'direct' | 'relay' | 'session' {
+  return visitorProvenanceState;
+}
+
+function readStoredVisitor(): StoredVisitor | null {
+  try {
+    const raw = localStorage.getItem(VISITOR_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredVisitor>;
+    if (
+      typeof parsed.visitorData !== 'string' ||
+      parsed.visitorData.length === 0 ||
+      typeof parsed.bornAt !== 'number' ||
+      Date.now() - parsed.bornAt > VISITOR_TTL_MS ||
+      (parsed.provenance !== 'direct' && parsed.provenance !== 'relay')
+    ) {
+      return null;
+    }
+    return parsed as StoredVisitor;
+  } catch {
+    return null; // private mode / corrupted — mint a fresh one
+  }
+}
+
+function storeVisitor(v: StoredVisitor): void {
+  try {
+    localStorage.setItem(VISITOR_KEY, JSON.stringify(v));
+  } catch {
+    /* private mode — this page load keeps its visitor in memory */
+  }
+}
+
+/**
+ * Mint (or restore) the DIRECT-BORN visitorData (G4.1).
+ *
+ * POST /youtubei/v1/config on the googleapis surface carrying NO visitor id
+ * (neither header nor context) — the responseContext.visitorData that comes
+ * back is a visitor BORN on the calling egress. Lane order: DIRECT first
+ * (phone IP), then one relay retry (a datacenter-born visitor is still a
+ * coherent identity — but it is NOT persisted, so the next page load
+ * retries for a direct birth). Live-verified 2026-11-14: the endpoint mints
+ * a fresh visitor even from the relay's burned Cloudflare egress.
+ */
+export async function directBornVisitorData(
+  signal?: AbortSignal | null,
+): Promise<string | null> {
+  const stored = readStoredVisitor();
+  if (stored !== null) {
+    visitorProvenanceState = stored.provenance;
+    return stored.visitorData;
+  }
+  const endpoint =
+    'https://youtubei.googleapis.com/youtubei/v1/config?prettyPrint=false&alt=json';
+  const body = JSON.stringify({
+    context: {
+      client: { clientName: 'WEB', clientVersion: '2.20260708.00.00', hl: 'en', gl: 'US' },
+    },
+  });
+  const lanes: Array<{ url: string; provenance: 'direct' | 'relay' }> = [
+    { url: endpoint, provenance: 'direct' },
+    { url: relayUrl(relayBaseCandidate(), endpoint), provenance: 'relay' },
+  ];
+  for (const lane of lanes) {
+    try {
+      const res = await fetch(lane.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        credentials: 'omit',
+        ...(signal !== null && signal !== undefined ? { signal } : {}),
+      });
+      // An HTTP error is a real verdict for THIS lane (e.g. an IP block) —
+      // the other lane gets its chance.
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        responseContext?: { visitorData?: string };
+      };
+      const vd = json.responseContext?.visitorData;
+      if (typeof vd === 'string' && vd.length > 0) {
+        visitorProvenanceState = lane.provenance;
+        // Only a direct birth is persisted: a transiently-down direct lane
+        // must not pin a datacenter-born identity for 30 days.
+        if (lane.provenance === 'direct') {
+          storeVisitor({ visitorData: vd, bornAt: Date.now(), provenance: 'direct' });
+        }
+        return vd;
+      }
+    } catch {
+      // Network-layer failure (CORS/DNS/offline) — next lane.
+    }
+  }
+  return null; // both lanes dead → the session falls back to its own mint
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +360,10 @@ let ytPromise: Promise<Innertube> | null = null;
 /**
  * The app-wide Innertube session (memoized; concurrent callers share one
  * bootstrap). Bootstraps through the dual-lane funnel:
+ *   • a DIRECT-BORN visitorData (G4.1: minted by /config on the googleapis
+ *     surface, persisted 30 d, restored zero-network) seeds the session —
+ *     youtubei.js honors the seed in both the fresh and the cached paths,
+ *     so visitor + mint + player calls share one phone-born identity;
  *   • /youtubei/v1/config on youtubei.googleapis.com — DIRECT (the phone's
  *     own IP is now the session egress);
  *   • sw.js_data + iframe_api + /s/player/<id>/base.js on www.youtube.com —
@@ -245,12 +373,20 @@ let ytPromise: Promise<Innertube> | null = null;
  */
 export function getYt(): Promise<Innertube> {
   if (ytPromise === null) {
-    ytPromise = Innertube.create({
-      fetch: ytFetch,
-      cache: new UniversalCache(true),
-      retrieve_player: true,
-      enable_safety_mode: false,
-    }).catch((err: unknown) => {
+    ytPromise = (async () => {
+      // G4.1: the direct-born visitor seed — a ~300 ms config POST on the
+      // first visit (instant from localStorage afterwards). A null (both
+      // lanes dead) falls back to youtubei.js's own sw.js_data mint, the
+      // G4 behavior — degraded but alive.
+      const visitorData = await directBornVisitorData();
+      return await Innertube.create({
+        fetch: ytFetch,
+        cache: new UniversalCache(true),
+        retrieve_player: true,
+        enable_safety_mode: false,
+        ...(visitorData !== null ? { visitor_data: visitorData } : {}),
+      });
+    })().catch((err: unknown) => {
       // A failed bootstrap must not poison later retries.
       ytPromise = null;
       throw err;
@@ -269,7 +405,15 @@ export async function ytVisitorData(): Promise<string> {
   return visitorData;
 }
 
-/** Dev/diagnostics: drop the singleton (the IndexedDB cache stays). */
+/**
+ * Dev/diagnostics: drop the singleton (the IndexedDB cache stays) and the
+ * persisted direct-born visitor (forces a fresh birth on the next getYt).
+ */
 export function resetYtSession(): void {
   ytPromise = null;
+  try {
+    localStorage.removeItem(VISITOR_KEY);
+  } catch {
+    /* best-effort */
+  }
 }

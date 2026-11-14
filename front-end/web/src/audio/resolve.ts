@@ -69,7 +69,7 @@ import {
   SAFARI_UA_OVERRIDE,
   relayUrl,
 } from './botguard/protocol';
-import { getYt, directPlayerPost } from '../lib/ytSession';
+import { getYt, directPlayerPost, visitorProvenance } from '../lib/ytSession';
 import type { AudioCodec } from './types';
 
 /** itag → codec routing (audio-only set). */
@@ -683,22 +683,39 @@ function evaluateRawResponse(
 // ---------------------------------------------------------------------------
 
 /**
- * THE FLAP-RETRY POLICY (probe-measured 2026-11-14): the relay egress's
- * licensed-content verdicts are PROBABILISTIC — six byte-identical IOS
- * player POSTs through the live relay answered OK / LOGIN_REQUIRED /
- * OK / LOGIN_REQUIRED / OK / OK (a soft per-request wall, not a stable
- * block). A single-shot rung is therefore a coin flip on the fallback
- * lane; three attempts push the miss chance to ~1/8 at ~150–300 ms per
- * attempt — cheap enough to bake into every raw rung. Genuine refusals
- * (private videos, embed-disabled) just spend two extra fast calls; the
- * LAST attempt's verdict is the one reported and ledgered.
+ * THE FLAP-RETRY POLICY (probe-measured 2026-11-14, G4.1 lane-aware): the
+ * RELAY egress's licensed-content verdicts are PROBABILISTIC — six
+ * byte-identical IOS player POSTs through the live relay answered OK /
+ * LOGIN_REQUIRED / OK / LOGIN_REQUIRED / OK / OK (a soft per-request wall,
+ * not a stable block). A single-shot RELAY rung is therefore a coin flip;
+ * three attempts push the miss chance to ~1/8 at ~150–300 ms per attempt.
+ *
+ * DIRECT-lane verdicts do NOT flap (the flap lives in the relay's shared-IP
+ * wall, not in YouTube's per-IP scoring) — so G4.1 halves the direct rungs
+ * to two attempts: a licensed refusal from the phone's own IP is a stable
+ * verdict, and every wasted attempt is latency the user hears as silence
+ * before the ladder reaches the rung that can actually unlock the track.
  */
 const RUNG_ATTEMPTS = 3;
+const DIRECT_RUNG_ATTEMPTS = 2;
+
+/** What one rung attempt's player call reports back. */
+interface RungCallResult {
+  resp: PlayerResponse;
+  /** Which egress actually answered (direct rungs may relay-fallback). */
+  lane?: 'direct' | 'relay';
+}
 
 /**
  * Run one raw rung with retries. Returns the stream when any attempt
  * yields one; otherwise the final verdict (for the verdicts aggregate +
  * the ledger decision).
+ *
+ * HONEST LANES (G4.1): when a `*-direct` rung's fetch network-failed on the
+ * direct lane and answered via the relay fallback, the verdict is a
+ * RELAY-EGRESS verdict — it is labeled `@relay-egress` so a phone-side
+ * LOGIN_REQUIRED under a `*` rung is correctly attributed (the direct lane
+ * was unreachable, not refused).
  */
 async function runRawRung(
   label: string,
@@ -708,17 +725,21 @@ async function runRawRung(
   potKind: ResolvedStream['potKind'],
   poToken: string | null,
   elementCompat: boolean,
-  call: () => Promise<PlayerResponse>,
+  call: () => Promise<RungCallResult>,
+  opts: { maxAttempts?: number } = {},
 ): Promise<RungOutcome> {
+  const maxAttempts = opts.maxAttempts ?? RUNG_ATTEMPTS;
   let outcome: RungOutcome = {
     stream: null,
     verdict: 'not attempted',
     definitive: true,
   };
   let networkError: string | null = null;
-  for (let attempt = 1; attempt <= RUNG_ATTEMPTS; attempt += 1) {
+  /** Any attempt returned a definitive upstream verdict (sticky). */
+  let sawDefinitive = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const resp = await call();
+      const { resp, lane } = await call();
       outcome = evaluateRawResponse(
         videoId,
         resp,
@@ -728,10 +749,14 @@ async function runRawRung(
         poToken,
         elementCompat,
       );
+      if (lane === 'relay') {
+        outcome.verdict = `${outcome.verdict} @relay-egress`;
+      }
       networkError = null;
+      if (outcome.definitive) sawDefinitive = true;
       if (outcome.stream !== null) return outcome;
-      // A refusal (or an OK without a playable lane): retry — the wall
-      // flaps per request, and format availability flaps with it.
+      // A refusal (or an OK without a playable lane): retry — the relay
+      // wall flaps per request, and format availability flaps with it.
     } catch (err) {
       networkError = err instanceof Error ? err.message : String(err);
       outcome = {
@@ -740,9 +765,15 @@ async function runRawRung(
         definitive: false, // network-ish: never ledgered
       };
     }
-    if (attempt < RUNG_ATTEMPTS) {
+    if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 350 * attempt));
     }
+  }
+  if (sawDefinitive) {
+    // At least one attempt got a REAL upstream refusal — the rung is
+    // ledgerable even if the last attempt died at the network layer (a
+    // trailing network error must not launder a verdict into a loop).
+    return { ...outcome, definitive: true };
   }
   if (networkError !== null) {
     // Every attempt died at the network layer — a dead lane, not a
@@ -778,7 +809,8 @@ export async function resolveAudioStream(
       'none',
       null,
       elementCompat,
-      () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null).then((r) => r.resp),
+      () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
     );
     if (outcome.stream !== null) return outcome.stream;
     if (outcome.definitive) markRungFailed(videoId, 'visionos-direct');
@@ -795,7 +827,8 @@ export async function resolveAudioStream(
       'none',
       null,
       elementCompat,
-      () => playerCallDirect(IOS_SPEC, videoId, ctx, null).then((r) => r.resp),
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, null),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
     );
     if (outcome.stream !== null) return outcome.stream;
     if (outcome.definitive) markRungFailed(videoId, 'ios-direct');
@@ -818,7 +851,8 @@ export async function resolveAudioStream(
       token.kind,
       token.poToken,
       elementCompat,
-      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken).then((r) => r.resp),
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
     );
     if (outcome.stream !== null) return outcome.stream;
     if (outcome.definitive) markRungFailed(videoId, 'ios-pot-direct');
@@ -905,8 +939,8 @@ export async function resolveAudioStream(
       'none',
       null,
       elementCompat,
-      () =>
-        playerCallRelay(
+      async () => ({
+        resp: await playerCallRelay(
           {
             clientNumber: VISIONOS_SPEC.clientNumber,
             clientName: VISIONOS_SPEC.clientName,
@@ -916,6 +950,7 @@ export async function resolveAudioStream(
           ctx,
           {},
         ),
+      }),
     );
     if (outcome.stream !== null) return outcome.stream;
     if (outcome.definitive) markRungFailed(videoId, 'visionos-relay');
@@ -966,7 +1001,12 @@ export async function resolveAudioStream(
     verdicts.push(`[WEB_SAFARI] ${safariVerdict}`);
   }
 
-  throw new Error(`no rung resolved ${videoId} — ${verdicts.join(' · ')}`);
+  // G4.1: the session's visitor provenance rides on the diagnosis — a
+  // relay-born visitor on a phone-egress session is the split-brain
+  // signature, and the fix (a hard refresh) is actionable from the string.
+  throw new Error(
+    `no rung resolved ${videoId} — ${verdicts.join(' · ')} · visitor=${visitorProvenance()}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

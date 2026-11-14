@@ -3,6 +3,21 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — WS-W G4.1: the deploy fix + the direct-born visitor (iterate-on-PR #167)
+
+The phone kept reporting `no rung resolved … LOGIN_REQUIRED` on every rung for a full day after the G4 push — **because the G4 code never reached the phone**: `web-deploy.yml`'s branch list did not include `ws-w/g4-residential-direct`, so every push shipped CI-green but never deployed to Pages (the live bundle was still G3b — its rung labels `[VISIONOS]/[WEB+POT]/[WEB_SAFARI]`, with no `*` direct markers, are the forensic proof).
+
+### Fixed
+- **`web-deploy.yml` branch list** — `[main, 'ws-w/g4-residential-direct']` (the historical merged `ws-w/*` branches were pruned so a stray push can never redeploy stale code). Every push to the PR branch now deploys to Pages; merging deploys from `main`.
+- **Direct-lane rung latency** — direct rungs now run 2 attempts (down from 3): the OK/LR flap was measured on the RELAY's shared-IP wall, not on direct verdicts; a licensed refusal from the phone's own IP is stable, and the wasted third attempt was pure pre-unlock silence.
+
+### Added
+- **The direct-born visitorData (`lib/ytSession.ts`)** — the G4 doc's deferred lever, pulled: the session's visitorData used to be born on the relay egress (youtubei.js mints it from `sw.js_data`, a www leg), making every "phone-egress" player call carry a datacenter-born visitor identity. `directBornVisitorData()` POSTs `/youtubei/v1/config` on the googleapis surface with NO visitor id — the `responseContext.visitorData` is a visitor BORN on the calling egress (live-verified: the endpoint mints one even from the relay's burned Cloudflare IP). It is persisted (30 d, direct births only) and fed into `Innertube.create({ visitor_data })` — youtubei.js honors the seed in both its fresh and cached session paths, so visitor, mint and player calls finally share ONE phone-born identity.
+- **Honest lane attribution** — a `*-direct` rung whose fetch network-failed and relay-fallbacked now labels its verdict `@relay-egress`, and the terminal `no rung resolved` error carries `visitor=direct|relay|session`. A phone-side LOGIN_REQUIRED is now correctly attributable to either the direct lane being refused or the relay fallback answering.
+- **The definitive-verdict stickiness** — a rung that got a real upstream refusal followed by a trailing network error is still ledgered (a trailing network failure can no longer launder a verdict into an un-ledgered rotation loop).
+- **The G4 direct-lane canary (`resolver-canary.yml`)** — nightly, from a clean runner IP: the CORS preflight posture of `youtubei.googleapis.com` for foreign origins (the load-bearing unknown — the lab IP is blocked at that host), plus IOS/VISIONOS playability for `dQw4w9WgXcQ` and `DOGP2dYUGE0` (the phone-reported failure) on the googleapis surface, with the ACAO response header recorded per call. Non-gating (environmental, not registry rot) — detection and evidence.
+- **`DOGP2dYUGE0` joins the g3b-test matrix** (the licensed Arpit Bala track the phone failed on) and the session row reports the visitor's birth provenance.
+
 ## [Unreleased] — WS-W G4: the residential-direct pivot (licensed playback from the phone's own IP)
 
 ### Added
