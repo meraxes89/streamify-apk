@@ -73,6 +73,25 @@
  *   TODO(P4/W4.1): per-client rate limiting (per-IP / per-token buckets).
  *   TODO(P4/W4.1): remote kill switch (env-bound flag → 503, still CORS-open).
  *
+ * G4.3 — THE EDGE NEGATIVE CACHE (the senior verdict, 2026-11-14): the
+ *   phone's live trace (one full play → every rung LOGIN_REQUIRED,
+ *   visitor=relay ×6) proved the client-side ladder was an ~18×/track
+ *   request AMPLIFIER on this Worker's single shared egress IP. The client
+ *   now runs the egress-discipline ladder (≤2 relay rungs, no LR retries —
+ *   front-end/web/src/audio/resolve.ts); THIS worker does its half: a
+ *   player-POST refusal (playabilityStatus.status === "LOGIN_REQUIRED")
+ *   is cached AT THE EDGE (Cache API, per-colo) for 30 min, keyed by
+ *   (client, poToken-present, videoId). A retried gated track fails
+ *   CLOSED in <1 ms — the shared IP never sees the repeat — and the client
+ *   surfaces its official-embed fallback lane instead. Bypass for
+ *   diagnostics: request header `X-Relay-NegCache: off`.
+ *
+ *   Deliberately NEGATIVE-only: positive verdicts carry per-visitor session
+ *   state (expiring signed URLs, visitor-scoped fields) — replaying them
+ *   across users risks exactly the anomaly signals this whole phase is
+ *   cooling down. Streaming is untouched for everything that is not a
+ *   player POST (media bytes NEVER buffer).
+ *
  * HARD RULES baked in from the W0.1 spike:
  *   • The client's User-Agent is FORWARDED VERBATIM. Workers' default UA gets
  *   404s on some YouTube endpoints while a browser-like UA passes — UA
@@ -152,6 +171,9 @@ const REQUEST_DROP: ReadonlySet<string> = new Set([
   // X-Relay-UA is a RELAY CONTROL header (P3b: named UA override for the
   // WEB_SAFARI rung), never meaningful upstream.
   "x-relay-ua",
+  // G4.3: the negative-cache bypass is a RELAY CONTROL header (canary /
+  // diagnostics), never meaningful upstream.
+  "x-relay-negcache",
 ]);
 
 /**
@@ -472,6 +494,141 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 // ---------------------------------------------------------------------------
+// G4.3 — the edge negative cache (player POSTs only)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a cached LOGIN_REQUIRED refusal stays authoritative (the
+ * senior's 15–30 min window — the colo/ASN reputation decay horizon).
+ */
+const NEG_CACHE_TTL_MS = 30 * 60 * 1000;
+
+/** Only bodies this small are ever buffered for the cache (player JSON is
+ * typically ≪ 1 MB; anything bigger passes straight through, uncached). */
+const NEG_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+
+/** The innertube hosts whose /player endpoints are cacheable surfaces. */
+function isInnertubePlayerPost(target: URL, method: string): boolean {
+  const host = target.hostname.toLowerCase();
+  const innertube =
+    host === "youtubei.googleapis.com" ||
+    host === "www.youtube.com" ||
+    host === "music.youtube.com";
+  return (
+    method === "POST" &&
+    innertube &&
+    /^\/youtubei\/v[0-9]+\/player(\/.*)?$/.test(target.pathname)
+  );
+}
+
+/**
+ * The cache key for one player call: the client identity (body's
+ * context.client.clientName, falling back to the X-YouTube-Client-Name
+ * header), whether the call carried a PO token, and the videoId. Distinct
+ * envelopes never collide (a WEB refusal does not poison the IOS rung).
+ */
+async function playerNegCacheKey(
+  request: Request,
+): Promise<string | null> {
+  try {
+    const body = (await request.clone().json()) as {
+      videoId?: string;
+      context?: { client?: { clientName?: string } };
+      serviceIntegrityDimensions?: { poToken?: string };
+    };
+    const videoId = body.videoId;
+    if (typeof videoId !== "string" || videoId.length === 0) return null;
+    const client =
+      body.context?.client?.clientName ??
+      request.headers.get("x-youtube-client-name") ??
+      "unknown";
+    const pot = body.serviceIntegrityDimensions?.poToken !== undefined;
+    return `g43/player/${String(client).toUpperCase()}/${pot ? "pot" : "bare"}/${videoId}`;
+  } catch {
+    return null; // not JSON / unreadable — not a cacheable player call
+  }
+}
+
+/** The synthetic GET request that addresses one cache entry (Cache API
+ * only stores GETs; the synthetic origin never leaves the edge). */
+function negCacheRequest(key: string): Request {
+  return new Request(`https://negcache.streamify.internal/${key}`, {
+    method: "GET",
+  });
+}
+
+/**
+ * The edge cache handle — `caches.default` in the Workers runtime. The
+ * tsconfig's DOM lib also declares a CacheStorage (without `.default`),
+ * so the access goes through a local narrowing cast (runtime-true).
+ */
+function edgeCache(): Cache {
+  return (caches as unknown as { default: Cache }).default;
+}
+
+interface NegCacheEnvelope {
+  cachedAt: number;
+  body: string;
+}
+
+/** Look up one cached refusal; null on miss/expiry. */
+async function negCacheLookup(key: string): Promise<Response | null> {
+  try {
+    const hit = await edgeCache().match(negCacheRequest(key));
+    if (hit === undefined) return null;
+    const envelope = (await hit.json()) as NegCacheEnvelope;
+    if (Date.now() - envelope.cachedAt > NEG_CACHE_TTL_MS) {
+      void edgeCache().delete(negCacheRequest(key));
+      return null;
+    }
+    return new Response(envelope.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        ...corsHeaders(),
+        "X-Relay-Negcache": "hit",
+        "X-Relay-Ms": "0",
+      },
+    });
+  } catch {
+    return null; // a broken cache entry must never break the relay
+  }
+}
+
+/** Store one refusal body (fire-and-forget; failures are non-fatal). */
+async function negCacheStore(key: string, body: string): Promise<void> {
+  try {
+    const envelope: NegCacheEnvelope = { cachedAt: Date.now(), body };
+    await edgeCache().put(
+      negCacheRequest(key),
+      new Response(JSON.stringify(envelope), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          // TTL + slack (the lookup re-validates age explicitly — belt and
+          // braces: the Cache API's eviction is not a clock).
+          "Cache-Control": `public, max-age=${Math.ceil(NEG_CACHE_TTL_MS / 1000) + 60}`,
+        },
+      }),
+    );
+  } catch {
+    /* best-effort — the passthrough still answered */
+  }
+}
+
+/** Parse playabilityStatus.status out of a buffered player JSON body. */
+function playabilityStatusOf(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as {
+      playabilityStatus?: { status?: string };
+    };
+    return parsed.playabilityStatus?.status ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Worker entry
 // ---------------------------------------------------------------------------
 
@@ -535,7 +692,7 @@ async function route(request: Request): Promise<Response> {
       {
         service: "streamify-relay",
         usage: "/r?u=<urlencoded-target> · /bg-session",
-        phase: "G3b — open-source stack (YouTube.js + BgUtils main-realm mint)",
+        phase: "G4.3 — egress discipline (the senior verdict): edge negative cache",
         // Capability probe: the web app checks these to know whether the
         // deployed worker has the surface a milestone needs (an older
         // deployment answers this route without the field — capability =
@@ -548,6 +705,7 @@ async function route(request: Request): Promise<Response> {
           "ua-override", // P3b — X-Relay-UA named overrides (WEB_SAFARI)
           "client-hints-passthrough", // P3b — sec-ch-ua* on WAA + WEB legs
           "g3b-oss-stack", // G3b — YouTube.js + bgutils-js egress surface
+          "neg-cache", // G4.3 — edge negative cache (LOGIN_REQUIRED, 30 min)
         ],
       },
       200,
@@ -602,6 +760,21 @@ async function relay(request: Request, url: URL): Promise<Response> {
     const host = target.hostname.toLowerCase();
     // TODO(P4/W4.1): log/alert on allowlist violations (abuse signal).
     return jsonResponse({ error: "host not allowed", host }, 403);
+  }
+
+  // ---- G4.3: the edge negative cache (player POSTs only) ------------------
+  // Lookup BEFORE the upstream fetch: a gated track fails closed in <1 ms
+  // and the shared egress never sees the repeat. `X-Relay-NegCache: off`
+  // bypasses (canary/diagnostics); the header is dropped upstream.
+  const negKey = isInnertubePlayerPost(target, method)
+    ? await playerNegCacheKey(request)
+    : null;
+  if (
+    negKey !== null &&
+    request.headers.get("x-relay-negcache") !== "off"
+  ) {
+    const hit = await negCacheLookup(negKey);
+    if (hit !== null) return hit;
   }
 
   // ---- Redirect mode (W1.0) ----------------------------------------------
@@ -726,6 +899,51 @@ async function relay(request: Request, url: URL): Promise<Response> {
   // is identity-encoded, and the JSON path stays internally consistent — see
   // README "Known caveats" before touching this.
   //
+  // G4.3 EXCEPTION (player POSTs with a cache key): the body is buffered
+  // (small JSON — NEVER media), inspected for the LOGIN_REQUIRED refusal,
+  // and cached at the edge when gated. Everything else keeps the strict
+  // streaming passthrough below — byte-range audio remains untouched.
+  if (negKey !== null && upstream.status === 200) {
+    const contentType = upstream.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const text = await upstream.text(); // buffer (bounded by the check below)
+      if (text.length <= NEG_CACHE_MAX_BYTES) {
+        const status = playabilityStatusOf(text);
+        if (status === "LOGIN_REQUIRED") {
+          await negCacheStore(negKey, text);
+        }
+        const headers = new Headers();
+        upstream.headers.forEach((value, name) => {
+          const lower = name.toLowerCase();
+          if (HOP_BY_HOP.has(lower) || lower === "content-length") return;
+          headers.set(name, value);
+        });
+        for (const [name, value] of Object.entries(corsHeaders())) {
+          headers.set(name, value);
+        }
+        headers.set("X-Relay-Ms", String(Date.now() - started));
+        headers.set(
+          "X-Relay-Negcache",
+          status === "LOGIN_REQUIRED" ? "stored" : "miss",
+        );
+        return new Response(text, { status: upstream.status, headers });
+      }
+      // Too large to cache — still JSON, still answer from the buffer.
+      const headers = new Headers();
+      upstream.headers.forEach((value, name) => {
+        const lower = name.toLowerCase();
+        if (HOP_BY_HOP.has(lower) || lower === "content-length") return;
+        headers.set(name, value);
+      });
+      for (const [name, value] of Object.entries(corsHeaders())) {
+        headers.set(name, value);
+      }
+      headers.set("X-Relay-Ms", String(Date.now() - started));
+      headers.set("X-Relay-Negcache", "too-large");
+      return new Response(text, { status: upstream.status, headers });
+    }
+  }
+
   // The upstream STATUS is preserved EXACTLY: 206 stays 206, 403 stays 403.
   // That fidelity plus STREAMING the body (never buffering it) is the project
   // kill criterion — do not "fix" 206 → 200 and do not buffer for logging.

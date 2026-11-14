@@ -29,10 +29,33 @@
  * jnn-pa (the mint) IS CORS-open to foreign origins (live-verified) — PO
  * tokens still bind to the phone's IP.
  *
+ * G4.3 — THE EGRESS-DISCIPLINE LADDER (the senior verdict, 2026-11-14):
+ * the phone's live trace (one full play, then EVERY rung LOGIN_REQUIRED,
+ * `visitor=relay` on all six rungs) proved the 6-rung × 3-attempt ladder
+ * was an ~18×/track request AMPLIFIER on the one shared Worker IP —
+ * exactly the scraper profile YouTube's ASN-reputation scoring burns. The
+ * ladder now runs under the senior's request-discipline rules:
+ *
+ *   1. LOGIN_REQUIRED is a DETERMINISTIC policy verdict — NEVER retried
+ *      (the flap-retry loop is dead; it amplified the very signal that
+ *      burned the egress). Verdict string carries `bot-gate=1` so the UI's
+ *      IFrame lane (the official-player fallback) can take over.
+ *   2. A Worker-egress rung answers ONCE (single-shot) — and the ladder
+ *      makes at most TWO relay-egress player calls per resolve (the
+ *      worker-egress rung cap). Direct-lane rungs (native bridge / healed
+ *      posture) keep the G4.1 retry policy and are NOT capped.
+ *   3. One visitorData per CLIENT FAMILY (web / app) — never morphing a
+ *      VisionPro→iPhone→desktop out of one anonymous identity — rotated
+ *      (once per page load per family) on a persistent LOGIN_REQUIRED.
+ *   4. Licensed tracks that gate out hand off to the official YouTube
+ *      IFrame Player lane (audio/iframeLane.ts) — youtube.com's own origin,
+ *      the user's residential egress, its own attestation. The custom
+ *      engine stays the lane for standard / non-gated content.
+ *
  *   RUNG 1 — VISIONOS-DIRECT (tokenless, youtubei.googleapis.com): the
  *     standard-content fast path — probe-verified OK with DIRECT pre-signed
- *     itag 140/251 URLs (used AS-IS, no decipher). Licensed verdicts flap
- *     per request on the relay egress; a miss falls to the POT'd rungs.
+ *     itag 140/251 URLs (used AS-IS, no decipher). Carries the APP-family
+ *     visitor (G4.3).
  *
  *   RUNG 2 — WEB + PO TOKEN (youtubei.js WEB client, direct googleapis via
  *     the dual-lane session fetch): THE LICENSED PRIMARY — the kira
@@ -64,6 +87,12 @@
  *     logged-in or "trusted" sessions — this rung is vestigial and kept
  *     last on purpose.
  *
+ * In the plain browser (direct lane dead) the effective ladder is rungs 1
+ * and 2 — two relay-egress calls — then the honest bot-gate diagnosis;
+ * rungs 3–6 skip under the worker-egress cap. Under a native-shell bridge
+ * (window.streamifyNative) the direct rungs run on the phone's own IP,
+ * uncapped, and the relay rungs stay the fallback.
+ *
  * G4.2 LADDER RULE: a SABR outcome is only accepted when its rung carries
  * a PO token (evaluateRawResponse enforces it; see the 9-second wall note
  * there). The token mints BEFORE the licensed rungs — once per ~12 h, in
@@ -82,14 +111,24 @@
  */
 
 import { webCodecsAvailable } from './webcodecsDecoder';
-import { playerPoToken, gvsPoToken } from './botguard/potSession';
+import { playerPoToken, gvsPoToken, resetPotSession } from './botguard/potSession';
 import {
   GAPI_PLAYER_ENDPOINT,
   PLAYER_ENDPOINT,
   SAFARI_UA_OVERRIDE,
   relayUrl,
 } from './botguard/protocol';
-import { getYt, directPlayerPost, visitorProvenance } from '../lib/ytSession';
+import {
+  getYt,
+  directPlayerPost,
+  visitorProvenance,
+  visitorForFamily,
+  rotateVisitorFamily,
+  appVisitorProvenance,
+  directLaneHealthy,
+  egressLaneFor,
+  type VisitorFamily,
+} from '../lib/ytSession';
 import { buildSabrFormat } from 'googlevideo/utils';
 import type { AudioCodec } from './types';
 
@@ -474,12 +513,18 @@ function toHlsStream(
  * the phone (lib/ytSession.ts#directPlayerPost retries once on the relay
  * when the direct lane is unreachable — the response's lane is reported so
  * the verdict stays egress-attributable).
+ *
+ * G4.3: the visitorData is the rung's CLIENT-FAMILY visitor (app rungs →
+ * 'app', never the session's web-born identity) — a real device does not
+ * morph client envelopes on one anonymous identity. Tokenless rungs carry
+ * it too: a stable per-family visitor is the device-like posture.
  */
 async function playerCallDirect(
   spec: ClientSpec,
   videoId: string,
   ctx: ResolveContext,
   poToken: string | null,
+  family: VisitorFamily = 'app',
 ): Promise<{ resp: PlayerResponse; lane: 'direct' | 'relay' }> {
   const client: Record<string, unknown> = {
     clientName: spec.clientName,
@@ -493,14 +538,12 @@ async function playerCallDirect(
     'x-youtube-client-name': spec.clientNumber,
     'x-youtube-client-version': spec.clientVersion,
   };
-  if (poToken !== null) {
-    // The PO-token'd rungs bind against the YouTube.js session's
-    // visitorData — the same root the mint bound to.
-    const visitorData = (await getYt()).session.context.client.visitorData;
-    if (typeof visitorData === 'string' && visitorData.length > 0) {
-      client.visitorData = visitorData;
-      headers['x-goog-visitor-id'] = visitorData;
-    }
+  // The APP-family visitor (born on the calling egress, persisted 14 d).\n  // The POT'd rungs used to bind the SESSION's (web-born) visitor — the
+  // cross-family morphing the senior's verdict killed.
+  const visitorData = await visitorForFamily(family, ctx.signal ?? null);
+  if (visitorData !== null) {
+    client.visitorData = visitorData;
+    headers['x-goog-visitor-id'] = visitorData;
   }
   const payload: Record<string, unknown> = {
     context: { client },
@@ -530,15 +573,24 @@ async function playerCallDirect(
  * Safari override when requested. Deliberately NOT ytFetch — the session
  * funnel rewrites www /youtubei/* calls onto the googleapis surface, and
  * these rungs exist precisely as the www-via-relay fallback lane.
+ *
+ * G4.3: `visitorData` is the rung's FAMILY visitor (app rungs get the
+ * app-family identity; WEB_SAFARI keeps the session's web one).
  */
 async function playerCallRelay(
   spec: { clientNumber: string; clientName: string; clientVersion: string },
   videoId: string,
   ctx: ResolveContext,
-  opts: { uaOverride?: string; poToken?: string | null } = {},
+  opts: {
+    uaOverride?: string;
+    poToken?: string | null;
+    visitorData?: string | null;
+  } = {},
 ): Promise<PlayerResponse> {
-  const yt = await getYt();
-  const context = yt.session.context;
+  const visitorData =
+    (opts.visitorData !== undefined
+      ? opts.visitorData
+      : ((await getYt()).session.context.client.visitorData ?? null)) ?? '';
   const res = await fetch(
     relayUrl(ctx.relayBase, `${PLAYER_ENDPOINT}?prettyPrint=false&alt=json`),
     {
@@ -547,7 +599,9 @@ async function playerCallRelay(
         'content-type': 'application/json',
         'x-youtube-client-name': spec.clientNumber,
         'x-youtube-client-version': spec.clientVersion,
-        'x-goog-visitor-id': context.client.visitorData ?? '',
+        ...(visitorData.length > 0
+          ? { 'x-goog-visitor-id': visitorData }
+          : {}),
         ...(opts.uaOverride !== undefined
           ? { 'x-relay-ua': opts.uaOverride }
           : {}),
@@ -561,6 +615,7 @@ async function playerCallRelay(
             clientVersion: spec.clientVersion,
             hl: 'en',
             gl: 'US',
+            ...(visitorData.length > 0 ? { visitorData } : {}),
             userAgent:
               spec.clientNumber === '101' ? SAFARI_MAC_UA : undefined,
             ...(spec.clientNumber === '101'
@@ -593,6 +648,17 @@ interface RungOutcome {
   stream: ResolvedStream | null;
   verdict: string;
   definitive: boolean;
+  /** The upstream playability status (when a response was evaluated). */
+  status?: string;
+  /** True when the verdict was the licensed bot-gate (LOGIN_REQUIRED). */
+  loginRequired: boolean;
+  /** Which egress actually answered (null = network-error path). */
+  laneUsed: 'direct' | 'relay' | null;
+}
+
+/** The G4.3 bot-gate predicate — LOGIN_REQUIRED is the deterministic wall. */
+function isLoginRequired(status: string): boolean {
+  return status === 'LOGIN_REQUIRED';
 }
 
 function evaluateRawResponse(
@@ -608,12 +674,22 @@ function evaluateRawResponse(
       stream: null,
       verdict: `${status}: ${resp.playabilityStatus?.reason ?? 'no reason'}`,
       definitive: true,
+      status,
+      loginRequired: isLoginRequired(status),
+      laneUsed: null, // runRawRung attributes the lane
     };
   }
   // 1. Progressive URLs — the cheapest playback (no lanes, plain src).
   const format = pickWireFormat(resp, elementCompat);
   if (format !== undefined) {
-    return { stream: wireToStream(videoId, resp, format, rung, potKind), verdict: 'OK (progressive)', definitive: false };
+    return {
+      stream: wireToStream(videoId, resp, format, rung, potKind),
+      verdict: 'OK (progressive)',
+      definitive: false,
+      status,
+      loginRequired: false,
+      laneUsed: null,
+    };
   }
   // 2. HLS manifest — the remux lanes (elementCompat only).
   const hls = resp.streamingData?.hlsManifestUrl;
@@ -628,6 +704,9 @@ function evaluateRawResponse(
       ),
       verdict: 'OK (hls manifest)',
       definitive: false,
+      status,
+      loginRequired: false,
+      laneUsed: null,
     };
   }
   // 3. The SABR lane — G4.2: SABR-ONLY for the WEB-class envelope.
@@ -653,32 +732,42 @@ function evaluateRawResponse(
       stream: null,
       verdict: `OK but SABR-only on an app-client envelope (audio ${sabrAudioItags.join(',')} — the measured 62 KB burst cap; the WEB+POT rung owns the SABR lane)`,
       definitive: true,
+      status,
+      loginRequired: false,
+      laneUsed: null,
     };
   }
   return {
     stream: null,
     verdict: `OK but no playable lane (progressive=none, hls=${hls !== undefined ? 'yes' : 'no'}, sabr=${sabrUrl !== undefined ? 'yes' : 'no'}, audio itags: ${sabrAudioItags.length > 0 ? sabrAudioItags.join(',') : 'NONE'})`,
     definitive: true,
+    status,
+    loginRequired: false,
+    laneUsed: null,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Rung execution with the flap-retry policy
+// Rung execution — the G4.3 egress-discipline policy
 // ---------------------------------------------------------------------------
 
 /**
- * THE FLAP-RETRY POLICY (probe-measured 2026-11-14, G4.1 lane-aware): the
- * RELAY egress's licensed-content verdicts are PROBABILISTIC — six
- * byte-identical IOS player POSTs through the live relay answered OK /
- * LOGIN_REQUIRED / OK / LOGIN_REQUIRED / OK / OK (a soft per-request wall,
- * not a stable block). A single-shot RELAY rung is therefore a coin flip;
- * three attempts push the miss chance to ~1/8 at ~150–300 ms per attempt.
+ * THE RETRY POLICY (G4.3, the senior verdict — replaces the G4/G4.1 flap
+ * policy): the phone's live trace proved the flap-retry loop was an
+ * ~18×/track request AMPLIFIER on the one shared Worker IP, and that
+ * LOGIN_REQUIRED flapping is the BURN signal itself, not noise to retry
+ * through. The rules now:
  *
- * DIRECT-lane verdicts do NOT flap (the flap lives in the relay's shared-IP
- * wall, not in YouTube's per-IP scoring) — so G4.1 halves the direct rungs
- * to two attempts: a licensed refusal from the phone's own IP is a stable
- * verdict, and every wasted attempt is latency the user hears as silence
- * before the ladder reaches the rung that can actually unlock the track.
+ *   • LOGIN_REQUIRED → STOP the rung immediately. It is a deterministic
+ *     policy verdict (an egress/IP-class wall), not a transient error —
+ *     every retry reinforces the bot signal on the same egress.
+ *   • A RELAY-EGRESS attempt (the shared Cloudflare Worker lane) is
+ *     SINGLE-SHOT — no flap-retry on the burned IP, per the measured
+ *     amplifier arithmetic.
+ *   • A DIRECT-lane attempt (the native bridge under a shell, or a healed
+ *     CORS posture) keeps the G4.1 two-attempt policy: licensed refusals
+ *     from a stable residential IP are stable verdicts, and the second
+ *     attempt only covers format-availability flake.
  */
 const RUNG_ATTEMPTS = 3;
 const DIRECT_RUNG_ATTEMPTS = 2;
@@ -691,9 +780,9 @@ interface RungCallResult {
 }
 
 /**
- * Run one raw rung with retries. Returns the stream when any attempt
- * yields one; otherwise the final verdict (for the verdicts aggregate +
- * the ledger decision).
+ * Run one raw rung under the G4.3 discipline. Returns the stream when any
+ * attempt yields one; otherwise the final verdict (for the verdicts
+ * aggregate + the ledger decision).
  *
  * HONEST LANES (G4.1): when a `*-direct` rung's fetch network-failed on the
  * direct lane and answered via the relay fallback, the verdict is a
@@ -715,6 +804,8 @@ async function runRawRung(
     stream: null,
     verdict: 'not attempted',
     definitive: true,
+    loginRequired: false,
+    laneUsed: null,
   };
   let networkError: string | null = null;
   /** Any attempt returned a definitive upstream verdict (sticky). */
@@ -729,20 +820,33 @@ async function runRawRung(
         potKind,
         elementCompat,
       );
+      outcome.laneUsed = lane ?? null;
       if (lane === 'relay') {
         outcome.verdict = `${outcome.verdict} @relay-egress`;
       }
       networkError = null;
       if (outcome.definitive) sawDefinitive = true;
       if (outcome.stream !== null) return outcome;
-      // A refusal (or an OK without a playable lane): retry — the relay
-      // wall flaps per request, and format availability flaps with it.
+      // G4.3 — the discipline breaks:
+      if (outcome.loginRequired) {
+        // LOGIN_REQUIRED is a deterministic policy verdict — retrying it
+        // hammers the very egress that refused (the amplifier, dead).
+        break;
+      }
+      if (lane === 'relay') {
+        // A shared-Worker-egress refusal gets ONE attempt — the flap-retry
+        // policy was measured amplifying the burn signal.
+        break;
+      }
+      // A direct-lane non-LR miss (format flake): retry per the G4.1 policy.
     } catch (err) {
       networkError = err instanceof Error ? err.message : String(err);
       outcome = {
         stream: null,
         verdict: networkError,
         definitive: false, // network-ish: never ledgered
+        loginRequired: false,
+        laneUsed: null,
       };
     }
     if (attempt < maxAttempts) {
@@ -758,7 +862,13 @@ async function runRawRung(
   if (networkError !== null) {
     // Every attempt died at the network layer — a dead lane, not a
     // verdict. Report honestly; the caller does NOT ledger it.
-    return { stream: null, verdict: `${label} ${networkError}`, definitive: false };
+    return {
+      stream: null,
+      verdict: `${label} ${networkError}`,
+      definitive: false,
+      loginRequired: false,
+      laneUsed: null,
+    };
   }
   return outcome;
 }
@@ -795,6 +905,40 @@ async function pinGvsPot(
 // The ladder
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// G4.3 — the worker-egress budget + the bot-gate handoff marker
+// ---------------------------------------------------------------------------
+
+/**
+ * The senior's Q4 rule: "Cap any resolution attempt to at most 2 rungs with
+ * 0 flap-retries when egressing via the Worker. Never execute an 18-request
+ * ladder on a shared IP." This is that cap — the number of RUNGS whose
+ * player calls answered on the relay (Cloudflare Worker) egress. Direct-lane
+ * rungs (the native bridge under a shell, a healed CORS posture) do not
+ * consume budget: they ride the phone's own IP, not the shared one.
+ */
+const RELAY_EGRESS_RUNG_CAP = 2;
+
+/**
+ * The marker embedded in the terminal `no rung resolved` error when the
+ * licensed bot-gate (LOGIN_REQUIRED) is what killed the ladder — the UI's
+ * IFrame lane (audio/iframeLane.ts, the official-player fallback) keys on
+ * it to take over the track.
+ */
+const BOT_GATE_MARKER = 'bot-gate=1';
+
+/** Does a resolve error carry the licensed bot-gate signature? */
+export function isBotGateError(message: string): boolean {
+  return message.includes(BOT_GATE_MARKER);
+}
+
+/**
+ * Visitor rotation is ONCE per page load per family — repeat rotation per
+ * play would be its own churn/burn pattern (every WEB rotation also drops
+ * the mint cache → a re-mint per retry). Module scope survives resolves.
+ */
+const rotatedFamilies = new Set<VisitorFamily>();
+
 /**
  * Resolve one video's best playable audio stream. The thrown error carries
  * EVERY rung's verdict for honest diagnosis.
@@ -807,6 +951,11 @@ async function pinGvsPot(
  * then buffers forever”. The PO token now mints BEFORE the licensed rungs
  * and every SABR outcome must carry it; the tokenless IOS rung is demoted
  * to a fallback that only yields progressive/HLS outcomes.
+ *
+ * G4.3 EGRESS DISCIPLINE: at most {@link RELAY_EGRESS_RUNG_CAP} relay-egress
+ * rungs run per resolve (the rest SKIP with an honest verdict — the shared
+ * Worker IP stays cold), LOGIN_REQUIRED never retries, and every family
+ * whose rungs gated out gets its visitor rotated (once per page load).
  */
 export async function resolveAudioStream(
   videoId: string,
@@ -816,26 +965,54 @@ export async function resolveAudioStream(
   const elementCompat = ctx.elementCompat === true;
   const yt = await getYt();
 
+  /** Relay-egress rungs consumed so far (the Worker-egress budget). */
+  let relayEgressRungs = 0;
+  /** Families whose rungs answered LOGIN_REQUIRED (rotation candidates). */
+  const gatedFamilies = new Set<VisitorFamily>();
+
+  const gapiDirectAlive = (): boolean =>
+    directLaneHealthy(new URL(GAPI_PLAYER_ENDPOINT));
+
+  /** Count one rung against the Worker-egress budget (relay-egress only). */
+  const countRung = (outcome: RungOutcome, directCapable: boolean): void => {
+    if (outcome.laneUsed === 'relay') {
+      relayEgressRungs += 1;
+      return;
+    }
+    if (outcome.laneUsed === 'direct') return; // the phone's own IP
+    // Network-error path: a direct-capable rung with a dead direct lane
+    // necessarily rode the relay; a www rung always does.
+    if (!directCapable || !gapiDirectAlive()) relayEgressRungs += 1;
+  };
+
+  /** The G4.3 skip verdict when the budget is spent. */
+  const capSkipVerdict =
+    'skipped — worker-egress rung cap (2) reached: the shared relay IP stays cold (the official-player lane takes licensed tracks)';
+
   // ---- Rung 1: VISIONOS-DIRECT (tokenless, phone egress) ------------------
   // The standard-content fast path (probe-verified OK + pre-signed itag
-  // 140/251 URLs — no mint, no lanes). Licensed verdicts flap per request;
-  // a miss here falls through to the POT'd rungs below.
+  // 140/251 URLs — no mint, no lanes). Carries the APP-family visitor.
   if (rungAlive(videoId, 'visionos-direct')) {
-    const outcome = await runRawRung(
-      '[VISIONOS*]',
-      videoId,
-      'visionos-direct',
-      'none',
-      elementCompat,
-      () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null),
-      // 3 attempts (not DIRECT_RUNG_ATTEMPTS=2): a URL-ful verdict here is
-      // the FULL-playback outcome — the extra ~300 ms on a flapping miss
-      // is cheap against the ladder it saves.
-      { maxAttempts: RUNG_ATTEMPTS },
-    );
-    if (outcome.stream !== null) return outcome.stream;
-    if (outcome.definitive) markRungFailed(videoId, 'visionos-direct');
-    verdicts.push(`[VISIONOS*] ${outcome.verdict}`);
+    if (gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
+      const outcome = await runRawRung(
+        '[VISIONOS*]',
+        videoId,
+        'visionos-direct',
+        'none',
+        elementCompat,
+        () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null, 'app'),
+        // The attempt budget only matters on the DIRECT lane (relay
+        // attempts are single-shot inside runRawRung — the G4.3 rule).
+        { maxAttempts: RUNG_ATTEMPTS },
+      );
+      if (outcome.stream !== null) return outcome.stream;
+      countRung(outcome, true);
+      if (outcome.loginRequired) gatedFamilies.add('app');
+      if (outcome.definitive) markRungFailed(videoId, 'visionos-direct');
+      verdicts.push(`[VISIONOS*] ${outcome.verdict}`);
+    } else {
+      verdicts.push(`[VISIONOS*] ${capSkipVerdict}`);
+    }
   }
 
   // ---- The PO token (BEFORE the licensed rungs — G4.2) --------------------
@@ -855,18 +1032,23 @@ export async function resolveAudioStream(
   // descriptors + WEB clientInfo + the same poToken) is the one the lab
   // measured flowing media through the relay (1.08 MiB before the egress
   // burn, vs 62 KB tokenless).
-  {
+  //
+  // G4.3: the rung obeys the discipline — LOGIN_REQUIRED breaks the loop
+  // immediately (deterministic verdict), and a relay-egress attempt (the
+  // funnel's operative lane in every plain browser) is SINGLE-SHOT. Only a
+  // direct-lane miss (native bridge) keeps the flap budget. The rung still
+  // runs when there is no token (its honest no-token verdict matters for
+  // the diagnosis), but never past the Worker-egress cap.
+  if (token === null || gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
     let verdict = 'not attempted';
     if (token === null) {
       verdict =
         'no PO token available (mint failed — coldstart/websafe fallbacks exhausted)';
     } else {
       try {
-        // G4.2: the relay egress's licensed verdicts FLAP per request (the
-        // measured soft wall) — this rung gets the same 3-attempt policy
-        // the raw rungs have before it reports a verdict.
         let info: YtBasicInfo | null = null;
         let status = 'UNKNOWN';
+        let gated = false;
         for (let attempt = 1; attempt <= RUNG_ATTEMPTS; attempt += 1) {
           const candidate = (await yt.getBasicInfo(videoId, {
             client: 'WEB',
@@ -880,9 +1062,23 @@ export async function resolveAudioStream(
             break;
           }
           verdict = `attempt ${attempt}: ${status}: ${candidate.playability_status?.reason ?? 'no reason'}`;
+          if (isLoginRequired(status)) {
+            // G4.3: deterministic — never retried.
+            gated = true;
+            break;
+          }
+          // G4.3: single-shot on the Worker egress (the funnel's lane for
+          // this call in every plain browser — egressLaneFor reports it).
+          if (egressLaneFor(GAPI_PLAYER_ENDPOINT) === 'relay') break;
           if (attempt < RUNG_ATTEMPTS) {
             await new Promise((r) => setTimeout(r, 350 * attempt));
           }
+        }
+        if (gated) gatedFamilies.add('web');
+        // The funnel's egress lane for this call (relay in every plain
+        // browser — the Worker-egress budget counts it).
+        if (egressLaneFor(GAPI_PLAYER_ENDPOINT) === 'relay') {
+          relayEgressRungs += 1;
         }
         const okInfo: YtBasicInfo | null = info;
         if (okInfo !== null) {
@@ -994,6 +1190,10 @@ export async function resolveAudioStream(
       }
     }
     verdicts.push(`[WEB+POT*] ${verdict}`);
+  } else if (token !== null) {
+    // The only reachable shape: rungs before this one already spent the
+    // Worker budget AND the direct lane is dead. Zero silent rungs.
+    verdicts.push(`[WEB+POT*] ${capSkipVerdict}`);
   }
 
   // ---- Rung 3: IOS + PLAYER PO TOKEN (direct) ------------------------------
@@ -1001,20 +1201,28 @@ export async function resolveAudioStream(
   // playability OK where WEB flaps, and per yt-dlp's IOS GVS policy
   // (`not_required_with_player_token`) a POT'd IOS call may hand back
   // direct progressive URLs; SABR outcomes carry the token into the
-  // streamerContext (sabrStreamPlayer → SabrStream).
-  if (token !== null && rungAlive(videoId, 'ios-pot-direct')) {
+  // streamerContext (sabrStreamPlayer → SabrStream). App-family visitor.
+  if (
+    token !== null &&
+    rungAlive(videoId, 'ios-pot-direct') &&
+    (gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP)
+  ) {
     const outcome = await runRawRung(
       '[IOS+POT*]',
       videoId,
       'ios-pot-direct',
       token.kind,
       elementCompat,
-      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken),
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken, 'app'),
       { maxAttempts: DIRECT_RUNG_ATTEMPTS },
     );
     if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
+    countRung(outcome, true);
+    if (outcome.loginRequired) gatedFamilies.add('app');
     if (outcome.definitive) markRungFailed(videoId, 'ios-pot-direct');
     verdicts.push(`[IOS+POT*] ${outcome.verdict}`);
+  } else if (token !== null && rungAlive(videoId, 'ios-pot-direct')) {
+    verdicts.push(`[IOS+POT*] ${capSkipVerdict}`);
   }
 
   // ---- Rung 4: IOS-DIRECT (tokenless — progressive/HLS only) ---------------
@@ -1022,23 +1230,32 @@ export async function resolveAudioStream(
   // outcome is the measured 9-second wall (evaluateRawResponse rejects it);
   // the rung stays for its progressive/HLS answers (the odd non-SABR
   // response) and honest attribution.
-  if (rungAlive(videoId, 'ios-direct')) {
+  if (
+    rungAlive(videoId, 'ios-direct') &&
+    (gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP)
+  ) {
     const outcome = await runRawRung(
       '[IOS*]',
       videoId,
       'ios-direct',
       'none',
       elementCompat,
-      () => playerCallDirect(IOS_SPEC, videoId, ctx, null),
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, null, 'app'),
       { maxAttempts: DIRECT_RUNG_ATTEMPTS },
     );
     if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
+    countRung(outcome, true);
+    if (outcome.loginRequired) gatedFamilies.add('app');
     if (outcome.definitive) markRungFailed(videoId, 'ios-direct');
     verdicts.push(`[IOS*] ${outcome.verdict}`);
+  } else if (rungAlive(videoId, 'ios-direct')) {
+    verdicts.push(`[IOS*] ${capSkipVerdict}`);
   }
 
   // ---- Rung 5: VISIONOS-RELAY (www surface through the relay) -------------
-  if (rungAlive(videoId, 'visionos-relay')) {
+  // Always a Worker-egress rung — only runs inside the budget. Carries the
+  // APP-family visitor (a VisionPro envelope on the app identity).
+  if (rungAlive(videoId, 'visionos-relay') && relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
     const outcome = await runRawRung(
       '[VISIONOS]',
       videoId,
@@ -1054,19 +1271,28 @@ export async function resolveAudioStream(
           },
           videoId,
           ctx,
-          {},
+          { visitorData: await visitorForFamily('app', ctx.signal ?? null) },
         ),
+        lane: 'relay' as const,
       }),
     );
     if (outcome.stream !== null) return outcome.stream;
+    countRung(outcome, false);
+    if (outcome.loginRequired) gatedFamilies.add('app');
     if (outcome.definitive) markRungFailed(videoId, 'visionos-relay');
     verdicts.push(`[VISIONOS] ${outcome.verdict}`);
+  } else if (rungAlive(videoId, 'visionos-relay')) {
+    verdicts.push(`[VISIONOS] ${capSkipVerdict}`);
   }
 
   // ---- Rung 6: WEB_SAFARI HLS (relay + Safari UA, elementCompat only) -----
   // yt-dlp master (2026.07): web_safari HLS is only returned for logged-in
   // or "trusted" sessions — vestigial, deliberately last.
-  if (elementCompat && rungAlive(videoId, 'web-safari-hls')) {
+  if (
+    elementCompat &&
+    rungAlive(videoId, 'web-safari-hls') &&
+    relayEgressRungs < RELAY_EGRESS_RUNG_CAP
+  ) {
     let safariVerdict = 'not attempted';
     try {
       const player = await playerCallRelay(
@@ -1100,6 +1326,8 @@ export async function resolveAudioStream(
         status === 'OK'
           ? 'OK but no hlsManifestUrl'
           : `${status}: ${player.playabilityStatus?.reason ?? 'no reason'}`;
+      if (isLoginRequired(status)) gatedFamilies.add('web');
+      relayEgressRungs += 1; // the www rung always rides the Worker
       markRungFailed(videoId, 'web-safari-hls');
     } catch (err) {
       safariVerdict = err instanceof Error ? err.message : String(err);
@@ -1107,11 +1335,33 @@ export async function resolveAudioStream(
     verdicts.push(`[WEB_SAFARI] ${safariVerdict}`);
   }
 
-  // G4.1: the session's visitor provenance rides on the diagnosis — a
-  // relay-born visitor on a phone-egress session is the split-brain
-  // signature, and the fix (a hard refresh) is actionable from the string.
+  // ---- The terminal diagnosis (G4.3) ---------------------------------------
+  // The gated families get their visitors rotated — ONCE per page load per
+  // family (churn is its own burn signal; the neg-cache-backed retries fail
+  // closed in <1 ms and the IFrame lane owns the track after that).
+  const rotated: string[] = [];
+  for (const family of gatedFamilies) {
+    if (rotatedFamilies.has(family)) continue;
+    rotatedFamilies.add(family);
+    rotateVisitorFamily(family);
+    if (family === 'web') {
+      resetPotSession(); // the mint is visitor-bound — it must not survive
+    }
+    rotated.push(family);
+  }
+
+  // The bot-gate marker: the licensed wall is what killed the ladder → the
+  // UI's IFrame lane (the official YouTube embed, youtube.com's own origin,
+  // the user's residential egress) takes the track. The visitor provenance
+  // (both families, G4.3) rides on the diagnosis for honest attribution.
+  const gate =
+    gatedFamilies.size > 0
+      ? ` · ${BOT_GATE_MARKER}`
+      : '';
+  const rotationNote =
+    rotated.length > 0 ? ` · visitors rotated: ${rotated.join(',')}` : '';
   throw new Error(
-    `no rung resolved ${videoId} — ${verdicts.join(' · ')} · visitor=${visitorProvenance()}`,
+    `no rung resolved ${videoId} — ${verdicts.join(' · ')} · visitor=${visitorProvenance()}/app=${appVisitorProvenance()}${rotationNote}${gate}`,
   );
 }
 

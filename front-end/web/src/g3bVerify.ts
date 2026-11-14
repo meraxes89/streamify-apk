@@ -118,6 +118,14 @@ async function main(): Promise<void> {
   log(
     `session: PASS — ${c.clientName} ${c.clientVersion} visitor ${(c.visitorData ?? '').slice(0, 14)}… (born: ${ytSession.visitorProvenance()}) sts=${yt.session.player?.signature_timestamp ?? 'none'}`,
   );
+  // G4.3: the APP-family visitor (the raw rungs' identity — a second,
+  // family-isolated birth; null means both lanes refused the /config).
+  const appVisitor = await withBudget('app-visitor-birth', 15_000, () =>
+    ytSession.appFamilyVisitorData(),
+  );
+  log(
+    `app-family visitor: ${appVisitor !== null ? `PASS ${(appVisitor.slice(0, 14))}… (born: ${ytSession.appVisitorProvenance()})` : 'FAILED (both lanes refused the /config birth)'}`,
+  );
 
   // ---- 3. The ladder on the canonical videos --------------------------------
   const extra = new URLSearchParams(window.location.search).getAll('v');

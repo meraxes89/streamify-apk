@@ -23,6 +23,9 @@ import { PlayerBar } from '../components/PlayerBar';
 import { QueueList } from '../components/QueueList';
 import { AuthPanel } from '../components/AuthPanel';
 import { SpineConsole } from '../components/SpineConsole';
+import { IframeLanePanel } from '../components/IframeLanePanel';
+import { useIframeLane } from '../audio/iframeLane';
+import { isBotGateError } from '../audio/resolve';
 import type { RowPlayback } from '../components/TrackRow';
 
 export function HomeScreen(): JSX.Element {
@@ -38,6 +41,7 @@ export function HomeScreen(): JSX.Element {
   const [egressMode, setEgressMode] = useState<EgressMode>('element');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [rowLocal, setRowLocal] = useState<Record<string, RowPlayback>>({});
+  const openIframeLane = useIframeLane((s) => s.open);
 
   const currentId = snapshot?.currentTrack?.id ?? null;
   const currentStatus = snapshot?.status ?? 'Idle';
@@ -86,13 +90,30 @@ export function HomeScreen(): JSX.Element {
         // Success: the snapshot takes over this row (effect above clears
         // the local entry) — no optimistic "playing" flag to go stale.
       } catch (err) {
-        setRow(track.videoId, {
-          status: 'failed',
-          message: err instanceof Error ? err.message : String(err),
-        });
+        const message = err instanceof Error ? err.message : String(err);
+        if (isBotGateError(message)) {
+          // G4.3: the licensed bot-gate (LOGIN_REQUIRED on the worker
+          // egress) — the official YouTube embed takes the track (its own
+          // origin + attestation, the user's residential IP). The engine
+          // parks; the row says where the track actually went.
+          openIframeLane({
+            videoId: track.videoId,
+            title: track.title,
+            artist: track.artist,
+            durationSec: track.durationSec,
+            thumbnailUrl: track.thumbnailUrl,
+          });
+          setRow(track.videoId, {
+            status: 'failed',
+            message: 'bot-gated — playing via the official YouTube embed below',
+          });
+          toast('Licensed track — playing via the official YouTube embed');
+        } else {
+          setRow(track.videoId, { status: 'failed', message });
+        }
       }
     },
-    [port, currentId, currentStatus, send, setRow],
+    [port, currentId, currentStatus, send, setRow, openIframeLane],
   );
 
   const handleQueue = useCallback(
@@ -139,6 +160,7 @@ export function HomeScreen(): JSX.Element {
     <div className="stack home-stack">
       <PlayerBar egressMode={egressMode} onEgressModeChange={setEgressMode} />
       {resolveError !== null && <p className="home-resolve-error">{resolveError}</p>}
+      <IframeLanePanel />
       <SearchPanel
         phase={search.phase}
         query={search.query}

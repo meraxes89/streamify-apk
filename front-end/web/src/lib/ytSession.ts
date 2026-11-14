@@ -146,10 +146,94 @@ export function directLaneHealthy(url: URL): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// G4.1 — the direct-born visitorData
+// G4.3 — the native-shell HTTP bridge (the senior's Q1 verdict)
 // ---------------------------------------------------------------------------
 
-const VISITOR_KEY = 'streamify.yt.visitor.v2';
+/**
+ * The contract a native shell (the streamify APK / iOS host) injects as
+ * `window.streamifyNative` — the ONE lane where the G4 thesis actually
+ * works: HTTP executed by the OS network stack (the phone's residential
+ * IP, its own TLS), with NO browser CORS preflight to die on. Every
+ * DIRECT-class googleapis call in this module checks for the bridge
+ * first; without it (the plain *.pages.dev web build) the fetch() CORS
+ * lane + relay fallback keep exactly their G4.1 behavior.
+ *
+ * CONTRACT v1 (text-oriented — the API legs this module makes):
+ *   fetch(url, { method, headers, body }) →
+ *     { status: number, headers: Record<string,string>, body: string }
+ * Errors (network-level) THROW, like fetch. Binary bodies are NOT in
+ * scope — media bytes ride the <audio> element path, never this bridge.
+ */
+export interface NativeFetchBridge {
+  fetch(
+    url: string,
+    init?: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+    },
+  ): Promise<{ status: number; headers: Record<string, string>; body: string }>;
+}
+
+/** The injected bridge, when a native shell provides it (null on the web). */
+export function nativeFetchBridge(): NativeFetchBridge | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as { streamifyNative?: NativeFetchBridge };
+  return w.streamifyNative ?? null;
+}
+
+/**
+ * One direct-class fetch through the best available lane:
+ *   1. the NATIVE bridge (shell present) — phone IP, no CORS;
+ *   2. plain fetch() (the browser CORS lane — dies at preflight on
+ *      youtubei.googleapis.com from a foreign origin, per the canary);
+ * throws on network-layer failure either way, so callers keep their
+ * existing relay-fallback + negative-cache handling.
+ */
+async function laneFetch(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string } = {},
+): Promise<Response> {
+  const bridge = nativeFetchBridge();
+  if (bridge !== null) {
+    const r = await bridge.fetch(url, {
+      ...(init.method !== undefined ? { method: init.method } : {}),
+      ...(init.headers !== undefined ? { headers: init.headers } : {}),
+      ...(init.body !== undefined ? { body: init.body } : {}),
+    });
+    return new Response(r.body, { status: r.status, headers: r.headers });
+  }
+  return fetch(url, {
+    method: init.method ?? 'GET',
+    ...(init.headers !== undefined ? { headers: init.headers } : {}),
+    ...(init.body !== undefined ? { body: init.body } : {}),
+    credentials: 'omit',
+  } as RequestInit);
+}
+
+// ---------------------------------------------------------------------------
+// G4.1 — the direct-born visitorData · G4.3 — per-CLIENT-FAMILY visitors
+// ---------------------------------------------------------------------------
+
+/**
+ * The two client families the ladder speaks (G4.3, the senior verdict):
+ * a real device never morphs VISIONOS → WEB → IOS → WEB_SAFARI on ONE
+ * visitorData within seconds — reusing one anonymous identity across
+ * client envelopes is an immediate anomaly signal to YouTube's behavioral
+ * classifiers. Each family therefore owns its OWN visitor: born once,
+ * persisted on-device, rotated on a persistent LOGIN_REQUIRED.
+ *
+ *   'web' — the WEB family: the youtubei.js session (search, config, the
+ *           WEB+POT rung), the WEB_SAFARI relay rung, and the MINT (PO
+ *           tokens bind against this visitor — the session root).
+ *   'app' — the APP family: the raw VISIONOS/IOS rungs (direct + relay).
+ */
+export type VisitorFamily = 'web' | 'app';
+
+const VISITOR_KEYS: Record<VisitorFamily, string> = {
+  web: 'streamify.yt.visitor.v2',
+  app: 'streamify.yt.visitor.app.v1',
+};
 /** A visitor identity is long-lived; a direct birth is trusted for 30 d. */
 const VISITOR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /**
@@ -161,6 +245,12 @@ const VISITOR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * upgrades the identity within a week.
  */
 const RELAY_VISITOR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * G4.3 (the senior's identity lifecycle): an APP-family visitor persists
+ * 14 d flat — the app rungs never bind the mint, so there is no cache
+ * drift to protect; churn protection alone justifies the longer horizon.
+ */
+const APP_VISITOR_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface StoredVisitor {
   visitorData: string;
@@ -168,20 +258,32 @@ interface StoredVisitor {
   provenance: 'direct' | 'relay';
 }
 
-let visitorProvenanceState: 'direct' | 'relay' | 'session' = 'session';
+const visitorProvenanceState: Record<VisitorFamily, 'direct' | 'relay' | 'session'> = {
+  web: 'session',
+  app: 'session',
+};
 
-/** Where the session's visitorData was born (UI/diagnostics). */
+/** Where the WEB-family (session/mint) visitorData was born (UI/diagnostics). */
 export function visitorProvenance(): 'direct' | 'relay' | 'session' {
-  return visitorProvenanceState;
+  return visitorProvenanceState.web;
 }
 
-function visitorTtlMs(provenance: StoredVisitor['provenance']): number {
+/** Where the APP-family visitorData was born (UI/diagnostics). */
+export function appVisitorProvenance(): 'direct' | 'relay' | 'session' {
+  return visitorProvenanceState.app;
+}
+
+function visitorTtlMs(
+  family: VisitorFamily,
+  provenance: StoredVisitor['provenance'],
+): number {
+  if (family === 'app') return APP_VISITOR_TTL_MS;
   return provenance === 'direct' ? VISITOR_TTL_MS : RELAY_VISITOR_TTL_MS;
 }
 
-function readStoredVisitor(): StoredVisitor | null {
+function readStoredVisitor(family: VisitorFamily): StoredVisitor | null {
   try {
-    const raw = localStorage.getItem(VISITOR_KEY);
+    const raw = localStorage.getItem(VISITOR_KEYS[family]);
     if (raw === null) return null;
     const parsed = JSON.parse(raw) as Partial<StoredVisitor>;
     if (
@@ -193,7 +295,7 @@ function readStoredVisitor(): StoredVisitor | null {
       return null;
     }
     const stored = parsed as StoredVisitor;
-    if (Date.now() - stored.bornAt > visitorTtlMs(stored.provenance)) {
+    if (Date.now() - stored.bornAt > visitorTtlMs(family, stored.provenance)) {
       return null; // expired — a fresh birth (direct lane first) is due
     }
     return stored;
@@ -202,73 +304,136 @@ function readStoredVisitor(): StoredVisitor | null {
   }
 }
 
-function storeVisitor(v: StoredVisitor): void {
+function storeVisitor(family: VisitorFamily, v: StoredVisitor): void {
   try {
-    localStorage.setItem(VISITOR_KEY, JSON.stringify(v));
+    localStorage.setItem(VISITOR_KEYS[family], JSON.stringify(v));
   } catch {
     /* private mode — this page load keeps its visitor in memory */
   }
 }
 
 /**
- * Mint (or restore) the DIRECT-BORN visitorData (G4.1).
+ * The client context each family's /config birth declares — the birth
+ * envelope matches the family that will carry the visitor (a WEB-shaped
+ * birth for the session/mint root, an IOS-shaped birth for the app rungs).
+ */
+const VISITOR_BIRTH_CLIENTS: Record<VisitorFamily, Record<string, unknown>> = {
+  web: { clientName: 'WEB', clientVersion: '2.20260708.00.00', hl: 'en', gl: 'US' },
+  app: { clientName: 'IOS', clientVersion: '21.26.4', hl: 'en', gl: 'US' },
+};
+
+/** In-flight birth dedupe (per family — concurrent rungs share one POST). */
+const visitorBirths = new Map<VisitorFamily, Promise<string | null>>();
+
+/**
+ * Mint (or restore) one family's visitorData (G4.1 birth, G4.3 families).
  *
  * POST /youtubei/v1/config on the googleapis surface carrying NO visitor id
  * (neither header nor context) — the responseContext.visitorData that comes
  * back is a visitor BORN on the calling egress. Lane order: DIRECT first
- * (phone IP), then one relay retry — with the canary-measured posture the
- * relay is the lane that answers, and its birth is persisted too (7 d): a
- * stable relay-born identity beats a fresh visitor every page load (visitor
- * churn would also drop the POT cache on every boot — the binding-drift
- * guard). A direct birth (a healed posture, an extension-context future)
- * persists for 30 d. Live-verified 2026-11-14: the endpoint mints a fresh
- * visitor even from the relay's burned Cloudflare egress.
+ * (phone IP — the native bridge's lane when a shell provides it), then one
+ * relay retry — with the canary-measured posture the relay is the lane that
+ * answers, and its birth is persisted too (7 d web / 14 d app): a stable
+ * relay-born identity beats a fresh visitor every page load (visitor churn
+ * would also drop the POT cache on every boot — the binding-drift guard).
+ * A direct birth (a healed posture, a native-bridge shell) persists for
+ * 30 d. Live-verified 2026-11-14: the endpoint mints a fresh visitor even
+ * from the relay's burned Cloudflare egress.
  */
-export async function directBornVisitorData(
+function birthVisitorData(
+  family: VisitorFamily,
   signal?: AbortSignal | null,
 ): Promise<string | null> {
-  const stored = readStoredVisitor();
+  const stored = readStoredVisitor(family);
   if (stored !== null) {
-    visitorProvenanceState = stored.provenance;
-    return stored.visitorData;
+    visitorProvenanceState[family] = stored.provenance;
+    return Promise.resolve(stored.visitorData);
   }
-  const endpoint =
-    'https://youtubei.googleapis.com/youtubei/v1/config?prettyPrint=false&alt=json';
-  const body = JSON.stringify({
-    context: {
-      client: { clientName: 'WEB', clientVersion: '2.20260708.00.00', hl: 'en', gl: 'US' },
-    },
-  });
-  const lanes: Array<{ url: string; provenance: 'direct' | 'relay' }> = [
-    { url: endpoint, provenance: 'direct' },
-    { url: relayUrl(relayBaseCandidate(), endpoint), provenance: 'relay' },
-  ];
-  for (const lane of lanes) {
-    try {
-      const res = await fetch(lane.url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body,
-        credentials: 'omit',
-        ...(signal !== null && signal !== undefined ? { signal } : {}),
-      });
-      // An HTTP error is a real verdict for THIS lane (e.g. an IP block) —
-      // the other lane gets its chance.
-      if (!res.ok) continue;
-      const json = (await res.json()) as {
-        responseContext?: { visitorData?: string };
-      };
-      const vd = json.responseContext?.visitorData;
-      if (typeof vd === 'string' && vd.length > 0) {
-        visitorProvenanceState = lane.provenance;
-        storeVisitor({ visitorData: vd, bornAt: Date.now(), provenance: lane.provenance });
-        return vd;
+  const inFlight = visitorBirths.get(family);
+  if (inFlight !== undefined) return inFlight;
+  const promise = (async (): Promise<string | null> => {
+    const endpoint =
+      'https://youtubei.googleapis.com/youtubei/v1/config?prettyPrint=false&alt=json';
+    const body = JSON.stringify({
+      context: { client: VISITOR_BIRTH_CLIENTS[family] },
+    });
+    const lanes: Array<{ url: string; provenance: 'direct' | 'relay' }> = [
+      { url: endpoint, provenance: 'direct' },
+      { url: relayUrl(relayBaseCandidate(), endpoint), provenance: 'relay' },
+    ];
+    for (const lane of lanes) {
+      try {
+        const res = await laneFetch(lane.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+          ...(signal !== null && signal !== undefined ? { signal } : {}),
+        });
+        // An HTTP error is a real verdict for THIS lane (e.g. an IP block) —
+        // the other lane gets its chance.
+        if (!res.ok) continue;
+        const json = (await res.json()) as {
+          responseContext?: { visitorData?: string };
+        };
+        const vd = json.responseContext?.visitorData;
+        if (typeof vd === 'string' && vd.length > 0) {
+          visitorProvenanceState[family] = lane.provenance;
+          storeVisitor(family, {
+            visitorData: vd,
+            bornAt: Date.now(),
+            provenance: lane.provenance,
+          });
+          return vd;
+        }
+      } catch {
+        // Network-layer failure (CORS/DNS/offline) — next lane.
       }
-    } catch {
-      // Network-layer failure (CORS/DNS/offline) — next lane.
     }
+    return null; // both lanes dead → the session falls back to its own mint
+  })().finally(() => {
+    visitorBirths.delete(family);
+  });
+  visitorBirths.set(family, promise);
+  return promise;
+}
+
+/** The WEB-family visitor (the session/mint root — the G4.1 surface). */
+export function directBornVisitorData(signal?: AbortSignal | null): Promise<string | null> {
+  return birthVisitorData('web', signal);
+}
+
+/** The APP-family visitor (the raw VISIONOS/IOS rungs — G4.3). */
+export function appFamilyVisitorData(signal?: AbortSignal | null): Promise<string | null> {
+  return birthVisitorData('app', signal);
+}
+
+/** Resolve one family's visitor (the resolver rungs' entry point). */
+export function visitorForFamily(
+  family: VisitorFamily,
+  signal?: AbortSignal | null,
+): Promise<string | null> {
+  return birthVisitorData(family, signal);
+}
+
+/**
+ * G4.3 — rotate one family's visitor identity: "rotated immediately upon
+ * receiving a persistent LOGIN_REQUIRED" (the senior's identity lifecycle).
+ * Drops the persisted visitor; the next rung that needs the family births a
+ * fresh one. The WEB rotation also drops the session singleton (the next
+ * getYt re-bootstraps with the new visitor — callers drop the POT cache
+ * too, it is visitor-bound: resolve.ts orchestrates via resetPotSession).
+ */
+export function rotateVisitorFamily(family: VisitorFamily): void {
+  try {
+    localStorage.removeItem(VISITOR_KEYS[family]);
+  } catch {
+    /* private mode — best-effort */
   }
-  return null; // both lanes dead → the session falls back to its own mint
+  visitorProvenanceState[family] = 'session';
+  visitorBirths.delete(family);
+  if (family === 'web') {
+    ytPromise = null; // the session re-bootstraps on the next getYt
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,11 +506,23 @@ export async function ytFetch(
         ? new Request(target.toString(), input.clone())
         : target;
     try {
-      const response = await fetch(directInput, {
-        ...init,
-        headers,
-        credentials: 'omit',
-      });
+      // G4.3: the native bridge (when a shell provides it) owns the direct
+      // lane — the OS network stack, no CORS preflight, the phone's IP.
+      const bridge = nativeFetchBridge();
+      const response =
+        bridge !== null
+          ? await bridgeFetchVia(
+              bridge,
+              target.toString(),
+              input instanceof Request ? input.clone() : null,
+              init,
+              headers,
+            )
+          : await fetch(directInput, {
+              ...init,
+              headers,
+              credentials: 'omit',
+            });
       lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
       return response;
     } catch {
@@ -377,6 +554,38 @@ export async function ytFetch(
 // ---------------------------------------------------------------------------
 
 /**
+ * Serialize one funnel request onto the native bridge (ytFetch's direct
+ * lane under a shell). The bridge contract is text-only (v1) — the funnel's
+ * bodies are JSON strings by construction (youtubei.js API calls).
+ */
+async function bridgeFetchVia(
+  bridge: NativeFetchBridge,
+  url: string,
+  req: Request | null,
+  init: RequestInit | undefined,
+  headers: Headers,
+): Promise<Response> {
+  const method =
+    req !== null ? req.method : (init?.method ?? 'GET');
+  let body: string | undefined;
+  if (init?.body !== undefined) {
+    body = typeof init.body === 'string' ? init.body : String(init.body);
+  } else if (req !== null && req.method !== 'GET' && req.method !== 'HEAD') {
+    body = await req.clone().text();
+  }
+  const hdrs: Record<string, string> = {};
+  headers.forEach((value, name) => {
+    hdrs[name] = value;
+  });
+  const r = await bridge.fetch(url, {
+    method,
+    headers: hdrs,
+    ...(body !== undefined ? { body } : {}),
+  });
+  return new Response(r.body, { status: r.status, headers: r.headers });
+}
+
+/**
  * A raw JSON POST to a DIRECT-class host (youtubei.googleapis.com player
  * calls). NOT routed through ytFetch: the resolver needs the fetch to go
  * DIRECT FIRST and to distinguish "direct lane unreachable" (network throw
@@ -390,12 +599,9 @@ export async function directPlayerPost(
   signal?: AbortSignal | null,
 ): Promise<{ response: Response; lane: 'direct' | 'relay' }> {
   const body = JSON.stringify(payload);
-  const init: RequestInit = {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body,
-    credentials: 'omit',
-    ...(signal !== null && signal !== undefined ? { signal } : {}),
+  const merged: Record<string, string> = {
+    'content-type': 'application/json',
+    ...headers,
   };
   const target = new URL(endpoint);
   // G4.1: a direct lane that already failed this page session (the
@@ -404,7 +610,26 @@ export async function directPlayerPost(
   // preflight round-trip is pure latency on every subsequent attempt.
   if (isDirectEgressHost(target) && directLaneHealthy(target)) {
     try {
-      const response = await fetch(endpoint, init);
+      // G4.3: the native bridge owns this lane under a shell (phone IP,
+      // no CORS); the plain browser keeps the fetch() CORS lane.
+      const bridge = nativeFetchBridge();
+      const response =
+        bridge !== null
+          ? await bridge.fetch(endpoint, {
+              method: 'POST',
+              headers: merged,
+              body,
+            }).then(
+              (r) =>
+                new Response(r.body, { status: r.status, headers: r.headers }),
+            )
+          : await fetch(endpoint, {
+              method: 'POST',
+              headers: merged,
+              body,
+              credentials: 'omit',
+              ...(signal !== null && signal !== undefined ? { signal } : {}),
+            } as RequestInit);
       lastEgressLane.set(target.hostname.toLowerCase(), 'direct');
       return { response, lane: 'direct' };
     } catch {
@@ -415,7 +640,13 @@ export async function directPlayerPost(
     }
   }
   const relayTarget = relayUrl(relayBaseCandidate(), endpoint);
-  const response = await fetch(relayTarget, init);
+  const response = await fetch(relayTarget, {
+    method: 'POST',
+    headers: merged,
+    body,
+    credentials: 'omit',
+    ...(signal !== null && signal !== undefined ? { signal } : {}),
+  } as RequestInit);
   lastEgressLane.set(target.hostname.toLowerCase(), 'relay');
   return { response, lane: 'relay' };
 }
@@ -476,13 +707,10 @@ export async function ytVisitorData(): Promise<string> {
 
 /**
  * Dev/diagnostics: drop the singleton (the IndexedDB cache stays) and the
- * persisted direct-born visitor (forces a fresh birth on the next getYt).
+ * persisted WEB-family visitor (forces a fresh birth on the next getYt).
+ * G4.3: rotation flows through rotateVisitorFamily('web') — same effect,
+ * one canonical path.
  */
 export function resetYtSession(): void {
-  ytPromise = null;
-  try {
-    localStorage.removeItem(VISITOR_KEY);
-  } catch {
-    /* best-effort */
-  }
+  rotateVisitorFamily('web');
 }
