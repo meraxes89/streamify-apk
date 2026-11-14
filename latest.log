@@ -1,6 +1,6 @@
 ========================================================================
-STREAMIFY NIGHTLY DEEP MATRIX RUN #15
-COMMIT: b8f7cd5560a5946b9e881f75805912d82e19c933
+STREAMIFY NIGHTLY DEEP MATRIX RUN #16
+COMMIT: d3310e72163f0773f9faee6bba5fb4697818703f
 ========================================================================
 openjdk version "17.0.21" 2026-10-20
 OpenJDK Runtime Environment Temurin-17.0.21+9 (build 17.0.21+9)
@@ -10,70 +10,66 @@ Calculating task graph as no cached configuration is available for tasks: connec
 Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
 > Task :app:generateUniffiKotlinBindings SKIPPED
 > Task :shared-android:preBuild UP-TO-DATE
-> Task :shared-android:preDebugBuild UP-TO-DATE
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preDebugBuild UP-TO-DATE
+> Task :shared-android:preDebugBuild UP-TO-DATE
 > Task :app:checkKotlinGradlePluginConfigurationErrors
-> Task :app:generateDebugResValues FROM-CACHE
-> Task :app:generateDebugResources UP-TO-DATE
+> Task :shared-android:checkKotlinGradlePluginConfigurationErrors
 > Task :shared-android:generateDebugResValues FROM-CACHE
 > Task :shared-android:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:generateDebugResources UP-TO-DATE
 > Task :shared-android:packageDebugResources FROM-CACHE
+> Task :shared-android:writeDebugAarMetadata
 > Task :app:generateDebugBuildConfig
 > Task :app:packageDebugResources FROM-CACHE
-> Task :shared-android:writeDebugAarMetadata
 > Task :app:parseDebugLocalResources FROM-CACHE
 > Task :app:createDebugCompatibleScreenManifests
 > Task :app:extractDeepLinksDebug FROM-CACHE
 > Task :shared-android:extractDeepLinksDebug FROM-CACHE
 > Task :shared-android:processDebugManifest FROM-CACHE
 > Task :app:mapDebugSourceSetPaths
-> Task :app:checkDebugAarMetadata
 > Task :shared-android:compileDebugLibraryResources FROM-CACHE
-> Task :shared-android:checkKotlinGradlePluginConfigurationErrors
 > Task :shared-android:parseDebugLocalResources FROM-CACHE
+> Task :shared-android:generateDebugRFile FROM-CACHE
+> Task :app:checkDebugAarMetadata
 > Task :shared-android:javaPreCompileDebug FROM-CACHE
 > Task :app:javaPreCompileDebug FROM-CACHE
 > Task :app:preDebugAndroidTestBuild SKIPPED
-> Task :shared-android:generateDebugRFile FROM-CACHE
 > Task :app:mergeDebugResources FROM-CACHE
 > Task :app:processDebugMainManifest
 > Task :app:processDebugManifest
-> Task :app:processDebugManifestForPackage
-> Task :app:checkDebugAndroidTestAarMetadata
-> Task :app:generateDebugAndroidTestResValues FROM-CACHE
 > Task :shared-android:compileDebugKotlin FROM-CACHE
-> Task :app:processDebugAndroidTestManifest
 > Task :shared-android:compileDebugJavaWithJavac NO-SOURCE
-> Task :app:generateDebugAndroidTestBuildConfig
+> Task :app:processDebugManifestForPackage
+> Task :shared-android:bundleLibCompileToJarDebug
+> Task :app:generateDebugAndroidTestResValues FROM-CACHE
+> Task :app:checkDebugAndroidTestAarMetadata
 > Task :app:generateDebugAndroidTestResources UP-TO-DATE
 > Task :app:mapDebugAndroidTestSourceSetPaths
 > Task :app:javaPreCompileDebugAndroidTest FROM-CACHE
-> Task :shared-android:bundleLibCompileToJarDebug
-> Task :shared-android:mergeDebugShaders
-> Task :app:mergeDebugShaders
+> Task :app:mergeDebugShaders FROM-CACHE
 > Task :app:compileDebugShaders NO-SOURCE
-> Task :shared-android:compileDebugShaders NO-SOURCE
 > Task :app:generateDebugAssets UP-TO-DATE
+> Task :shared-android:mergeDebugShaders FROM-CACHE
+> Task :shared-android:compileDebugShaders NO-SOURCE
 > Task :shared-android:generateDebugAssets UP-TO-DATE
 > Task :shared-android:packageDebugAssets FROM-CACHE
+> Task :app:processDebugAndroidTestManifest
+> Task :app:generateDebugAndroidTestBuildConfig
 > Task :shared-android:bundleLibRuntimeToJarDebug
-> Task :app:mergeDebugAssets
-> Task :app:compressDebugAssets
-> Task :app:desugarDebugFileDependencies
+> Task :app:mergeDebugAssets FROM-CACHE
+> Task :app:compressDebugAssets FROM-CACHE
+> Task :app:desugarDebugFileDependencies FROM-CACHE
 > Task :shared-android:processDebugJavaRes
-> Task :app:mergeDebugAndroidTestResources
-> Task :app:processDebugResources
-> Task :app:checkDebugDuplicateClasses
-> Task :app:processDebugAndroidTestResources
+> Task :shared-android:bundleLibRuntimeToDirDebug
 > Task :app:mergeDebugJniLibFolders FROM-CACHE
 > Task :shared-android:mergeDebugJniLibFolders FROM-CACHE
 > Task :shared-android:mergeDebugNativeLibs NO-SOURCE
-> Task :app:compileDebugKotlin
-> Task :app:mergeExtDexDebug
-> Task :shared-android:bundleLibRuntimeToDirDebug
 > Task :shared-android:copyDebugJniLibsProjectOnly
+> Task :app:checkDebugDuplicateClasses
 > Task :app:mergeDebugNativeLibs
+> Task :app:mergeLibDexDebug FROM-CACHE
 
 > Task :app:stripDebugDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libjnidispatch.so.
@@ -84,50 +80,54 @@ Unable to strip the following libraries, packaging them as they are: libjnidispa
 > Task :app:mergeDebugAndroidTestShaders FROM-CACHE
 > Task :app:compileDebugAndroidTestShaders NO-SOURCE
 > Task :app:generateDebugAndroidTestAssets UP-TO-DATE
-> Task :app:mergeLibDexDebug
+> Task :app:mergeExtDexDebug FROM-CACHE
+> Task :app:mergeDebugAndroidTestResources
 > Task :app:desugarDebugAndroidTestFileDependencies FROM-CACHE
 > Task :app:checkDebugAndroidTestDuplicateClasses
+> Task :app:processDebugResources
 > Task :app:mergeDebugAndroidTestAssets
+> Task :app:processDebugAndroidTestResources
 > Task :app:compressDebugAndroidTestAssets
-> Task :app:mergeLibDexDebugAndroidTest
 > Task :app:mergeDebugAndroidTestJniLibFolders FROM-CACHE
+> Task :app:mergeLibDexDebugAndroidTest
+> Task :app:validateSigningDebugAndroidTest
+> Task :app:writeDebugAndroidTestSigningConfigVersions
+> Task :shared-android:preDebugAndroidTestBuild UP-TO-DATE
 > Task :app:mergeDebugAndroidTestNativeLibs
+> Task :shared-android:checkDebugAndroidTestAarMetadata
+> Task :shared-android:generateDebugAndroidTestResValues FROM-CACHE
 
 > Task :app:stripDebugAndroidTestDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbenchmarkNative.so, libtracing_perfetto.so.
 
-> Task :app:validateSigningDebugAndroidTest
-> Task :app:writeDebugAndroidTestSigningConfigVersions
-> Task :shared-android:preDebugAndroidTestBuild UP-TO-DATE
-> Task :shared-android:checkDebugAndroidTestAarMetadata
-> Task :shared-android:generateDebugAndroidTestResValues FROM-CACHE
-> Task :shared-android:mapDebugAndroidTestSourceSetPaths
 > Task :shared-android:generateDebugAndroidTestResources UP-TO-DATE
-> Task :shared-android:mergeDebugAndroidTestResources
+> Task :shared-android:mapDebugAndroidTestSourceSetPaths
 > Task :shared-android:processDebugAndroidTestManifest
-> Task :shared-android:processDebugAndroidTestResources
-> Task :shared-android:compileDebugAndroidTestKotlin NO-SOURCE
 > Task :shared-android:javaPreCompileDebugAndroidTest FROM-CACHE
-> Task :shared-android:compileDebugAndroidTestJavaWithJavac NO-SOURCE
 > Task :shared-android:mergeDebugAndroidTestShaders FROM-CACHE
 > Task :shared-android:compileDebugAndroidTestShaders NO-SOURCE
 > Task :shared-android:generateDebugAndroidTestAssets UP-TO-DATE
 > Task :shared-android:mergeDebugAndroidTestAssets FROM-CACHE
 > Task :shared-android:compressDebugAndroidTestAssets
 > Task :shared-android:desugarDebugAndroidTestFileDependencies FROM-CACHE
-> Task :shared-android:dexBuilderDebugAndroidTest
 > Task :app:mergeExtDexDebugAndroidTest
-> Task :shared-android:mergeDebugAndroidTestGlobalSynthetics
-> Task :shared-android:processDebugAndroidTestJavaRes NO-SOURCE
-> Task :shared-android:checkDebugAndroidTestDuplicateClasses
-> Task :shared-android:mergeDebugAndroidTestJavaResource
-> Task :shared-android:mergeLibDexDebugAndroidTest FROM-CACHE
-> Task :shared-android:mergeProjectDexDebugAndroidTest
 > Task :shared-android:mergeDebugAndroidTestJniLibFolders FROM-CACHE
 > Task :shared-android:mergeDebugAndroidTestNativeLibs NO-SOURCE
 > Task :shared-android:stripDebugAndroidTestDebugSymbols NO-SOURCE
+> Task :shared-android:checkDebugAndroidTestDuplicateClasses
+> Task :shared-android:mergeDebugAndroidTestResources
 > Task :shared-android:validateSigningDebugAndroidTest
+> Task :shared-android:mergeLibDexDebugAndroidTest FROM-CACHE
 > Task :shared-android:writeDebugAndroidTestSigningConfigVersions
+> Task :shared-android:processDebugAndroidTestResources
+> Task :shared-android:compileDebugAndroidTestKotlin NO-SOURCE
+> Task :shared-android:compileDebugAndroidTestJavaWithJavac NO-SOURCE
+> Task :shared-android:processDebugAndroidTestJavaRes NO-SOURCE
+> Task :app:compileDebugKotlin
+> Task :shared-android:dexBuilderDebugAndroidTest
+> Task :shared-android:mergeDebugAndroidTestGlobalSynthetics FROM-CACHE
+> Task :shared-android:mergeProjectDexDebugAndroidTest
+> Task :shared-android:mergeDebugAndroidTestJavaResource
 > Task :shared-android:mergeExtDexDebugAndroidTest
 > Task :shared-android:packageDebugAndroidTest
 > Task :shared-android:createDebugAndroidTestApkListingFileRedirect
@@ -337,8 +337,8 @@ w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/st
 > Task :app:mergeDebugAndroidTestJavaResource
 > Task :app:compileDebugAndroidTestJavaWithJavac
 > Task :app:dexBuilderDebugAndroidTest
-> Task :app:mergeProjectDexDebugAndroidTest
 > Task :app:mergeDebugAndroidTestGlobalSynthetics FROM-CACHE
+> Task :app:mergeProjectDexDebugAndroidTest
 > Task :app:packageDebugAndroidTest
 > Task :app:createDebugAndroidTestApkListingFileRedirect
 > Task :app:dexBuilderDebug
@@ -357,7 +357,7 @@ com.streamify.benchmark.StreamifyMacrobenchmark > benchmark120FpsScrollAndLyricS
 Tests on emulator-5554 - 14 failed: There was 1 failure(s).
 
 > Task :app:connectedDebugAndroidTest FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__reactivecircus_android-emulator-runner-1794542840281.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__reactivecircus_android-emulator-runner-1794629034331.json
 
 FAILURE: Build failed with an exception.
 
@@ -402,36 +402,6 @@ org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:con
 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
-	at org.gradle.execution.plan.DefaultPlanExecutor.process(DefaultPlanExecutor.java:116)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.executeWithServices(DefaultTaskExecutionGraph.java:138)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.execute(DefaultTaskExecutionGraph.java:123)
-	at org.gradle.execution.SelectedTaskExecutionAction.execute(SelectedTaskExecutionAction.java:35)
-	at org.gradle.execution.DryRunBuildExecutionAction.execute(DryRunBuildExecutionAction.java:51)
-	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:54)
-	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:43)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
-	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor.execute(BuildOperationFiringBuildWorkerExecutor.java:40)
-	at org.gradle.internal.build.DefaultBuildLifecycleController.lambda$executeTasks$10(DefaultBuildLifecycleController.java:313)
-	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
-	at org.gradle.internal.model.StateTransitionController.lambda$tryTransition$8(StateTransitionController.java:177)
-	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:44)
-	at org.gradle.internal.model.StateTransitionController.tryTransition(StateTransitionController.java:177)
-	at org.gradle.internal.build.DefaultBuildLifecycleController.executeTasks(DefaultBuildLifecycleController.java:304)
-	at org.gradle.internal.build.DefaultBuildWorkGraphController$DefaultBuildWorkGraph.runWork(DefaultBuildWorkGraphController.java:220)
-	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:264)
-	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:128)
-	at org.gradle.composite.internal.DefaultBuildController.doRun(DefaultBuildController.java:181)
-	at org.gradle.composite.internal.DefaultBuildController.access$000(DefaultBuildController.java:50)
-	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.lambda$run$0(DefaultBuildController.java:198)
-	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
-	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.run(DefaultBuildController.java:198)
 	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 Caused by: org.gradle.api.GradleException: There were failing tests. See the report at: file:///home/runner/work/streamify-apk/streamify-apk/app/build/reports/androidTests/connected/debug/index.html
@@ -439,7 +409,7 @@ Caused by: org.gradle.api.GradleException: There were failing tests. See the rep
 	at com.android.build.gradle.internal.tasks.NonIncrementalTask$taskAction$$inlined$recordTaskAction$1.invoke(BaseTask.kt:66)
 	at com.android.build.gradle.internal.tasks.Blocks.recordSpan(Blocks.java:51)
 	at com.android.build.gradle.internal.tasks.NonIncrementalTask.taskAction(NonIncrementalTask.kt:97)
-	at jdk.internal.reflect.GeneratedMethodAccessor112.invoke(Unknown Source)
+	at jdk.internal.reflect.GeneratedMethodAccessor108.invoke(Unknown Source)
 	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
 	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
 	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
@@ -559,36 +529,6 @@ Caused by: org.gradle.api.GradleException: There were failing tests. See the rep
 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
-	at org.gradle.execution.plan.DefaultPlanExecutor.process(DefaultPlanExecutor.java:116)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.executeWithServices(DefaultTaskExecutionGraph.java:138)
-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.execute(DefaultTaskExecutionGraph.java:123)
-	at org.gradle.execution.SelectedTaskExecutionAction.execute(SelectedTaskExecutionAction.java:35)
-	at org.gradle.execution.DryRunBuildExecutionAction.execute(DryRunBuildExecutionAction.java:51)
-	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:54)
-	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:43)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
-	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor.execute(BuildOperationFiringBuildWorkerExecutor.java:40)
-	at org.gradle.internal.build.DefaultBuildLifecycleController.lambda$executeTasks$10(DefaultBuildLifecycleController.java:313)
-	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
-	at org.gradle.internal.model.StateTransitionController.lambda$tryTransition$8(StateTransitionController.java:177)
-	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:44)
-	at org.gradle.internal.model.StateTransitionController.tryTransition(StateTransitionController.java:177)
-	at org.gradle.internal.build.DefaultBuildLifecycleController.executeTasks(DefaultBuildLifecycleController.java:304)
-	at org.gradle.internal.build.DefaultBuildWorkGraphController$DefaultBuildWorkGraph.runWork(DefaultBuildWorkGraphController.java:220)
-	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:264)
-	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:128)
-	at org.gradle.composite.internal.DefaultBuildController.doRun(DefaultBuildController.java:181)
-	at org.gradle.composite.internal.DefaultBuildController.access$000(DefaultBuildController.java:50)
-	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.lambda$run$0(DefaultBuildController.java:198)
-	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
-	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.run(DefaultBuildController.java:198)
 	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
@@ -599,6 +539,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 5m 57s
-111 actionable tasks: 79 executed, 32 from cache
+BUILD FAILED in 3m 34s
+111 actionable tasks: 71 executed, 40 from cache
 Configuration cache entry stored.
