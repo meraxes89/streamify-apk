@@ -530,6 +530,12 @@ export class WasmEnginePort {
             markRungFailed(meta.videoId, last.rung);
             this.resolveError = `SABR stream failed (${last.rung}): ${message}`;
             this.onResolveError?.(meta.videoId, this.resolveError);
+            // G4.2: a failed SABR session must not leave the element
+            // spinning in Buffering on its partial buffer forever — park
+            // it (the partial ~62 KB burst keeps the playhead; the UI shows
+            // the error and the user's retry escalates the ladder past the
+            // ledgered rung).
+            this.sink?.park();
           });
           url = handle.objectUrl; // blob: — MSE-fed, bridge lane skipped
         } catch (err) {
@@ -648,6 +654,16 @@ export async function createEngineStack(
       }
       const stream = await port.resolveAndStage(videoId);
       if (stream === null) return null;
+      // G4.2: the rotation contract is an ELEMENT-LOADABLE URL — a fresh
+      // SABR (serverAbrStreamingUrl placeholder) or HLS (m3u8 manifest)
+      // stream is NOT one; loading either into the element would burn the
+      // rotation budget on a guaranteed media error. Ledger the rung and
+      // park honestly instead; the user's next tap goes through the full
+      // play-intent path (which owns the SABR/HLS swap machinery).
+      if (stream.isSabr || stream.isHls) {
+        markRungFailed(videoId, stream.rung);
+        return null;
+      }
       // Rotation through the bridge: swap the upstream in-place — the
       // element's same-origin URL never changes.
       void port.swapMediaSession(videoId, stream.url);

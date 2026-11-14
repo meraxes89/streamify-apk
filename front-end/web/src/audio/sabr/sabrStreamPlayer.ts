@@ -33,6 +33,19 @@
  * server reload directives and stalls reject the `done` promise and fire
  * the onFail callbacks; the caller (wasmEngine's element hook) ledgers the
  * rung dead and escalates the ladder, exactly like an HLS remux failure.
+ *
+ * G4.2 — THE PROTECTION-WALL CIRCUIT BREAKER (measured 2026-11-14): a
+ * walled SABR session does not fail fast on its own — googlevideo answers
+ * every UMP POST with HTTP 200 + streamProtectionStatus 2 + ZERO media
+ * parts, and SabrStream's retry loop happily hammers thousands of those
+ * empty POSTs through the relay (one lab run: 2 458 POSTs in 60 s), which
+ * is exactly what burns the shared relay egress for every other rung.
+ * This module therefore owns two guards:
+ *   • FIRST-MEDIA BUDGET — no media bytes within 8 s of start → abort.
+ *   • NO-MEDIA BREAKER — 6 consecutive protection-status responses with
+ *     no interleaving media → abort. Both fire onFail so the engine can
+ *     ledger the rung and escalate the ladder instead of buffering
+ *     forever (the reported “plays 9 seconds, then only buffers”).
  */
 
 import { SabrStream } from 'googlevideo/sabr-stream';
@@ -58,6 +71,11 @@ export interface SabrSessionHandle {
 }
 
 const AAC_MIME = 'audio/mp4; codecs="mp4a.40.2"';
+
+/** G4.2: no media bytes within this window → the session is walled. */
+const FIRST_MEDIA_BUDGET_MS = 8_000;
+/** G4.2: consecutive protection-status responses with zero media → abort. */
+const NO_MEDIA_BREAKER_LIMIT = 6;
 
 /** MSE support probe (every modern browser; old WebViews lack it). */
 export function mseAudioAvailable(): boolean {
@@ -136,9 +154,19 @@ export async function startSabrAudio(
   let failed = false;
   let sabr: SabrStream | null = null;
 
+  // G4.2 circuit-breaker state: bytes seen + consecutive empty responses.
+  let mediaBytesSeen = 0;
+  let bytesAtLastProtectionEvent = -1;
+  let noMediaStreak = 0;
+  let firstMediaTimer: ReturnType<typeof setTimeout> | null = null;
+
   const fail = (message: string): void => {
     if (failed) return;
     failed = true;
+    if (firstMediaTimer !== null) {
+      clearTimeout(firstMediaTimer);
+      firstMediaTimer = null;
+    }
     try {
       if (mediaSource.readyState === 'open') mediaSource.endOfStream();
     } catch {
@@ -254,9 +282,33 @@ export async function startSabrAudio(
           //   flowing while the attestation settles; killing the session
           //   here was a lab-measured false positive) · 3 — attestation
           //   REQUIRED (the hard refusal SabrStream itself throws on).
-          if (typeof status?.status === 'number' && status.status >= 3) {
-            fail(`SABR protection status ${status.status}`);
-            reject(new Error(`SABR protection status ${status.status}`));
+          const s = typeof status?.status === 'number' ? status.status : 0;
+          if (s >= 3) {
+            fail(`SABR protection status ${s}`);
+            reject(new Error(`SABR protection status ${s}`));
+            return;
+          }
+          // G4.2 breaker: a protection-status response that delivered no
+          // NEW media since the previous one is an empty answer — six in a
+          // row is the measured wall (both patterns: never-any-media AND
+          // the one-~62 KB-burst-then-wall the users heard as “9 seconds
+          // of playback, then infinite buffering”).
+          if (s >= 2) {
+            if (mediaBytesSeen === bytesAtLastProtectionEvent) {
+              noMediaStreak += 1;
+              if (noMediaStreak >= NO_MEDIA_BREAKER_LIMIT) {
+                fail(
+                  `SABR protection wall — ${noMediaStreak} consecutive responses with zero media (status ${s}, ${mediaBytesSeen} B total)`,
+                );
+                reject(
+                  new Error(`SABR protection wall (status ${s}, no media)`),
+                );
+                return;
+              }
+            } else {
+              noMediaStreak = 0; // media flowed since the last event
+            }
+            bytesAtLastProtectionEvent = mediaBytesSeen;
           }
         },
       );
@@ -272,11 +324,28 @@ export async function startSabrAudio(
         preferMP4: preferAac,
         preferOpus: !preferAac,
       });
+      // G4.2 first-media budget: a healthy session delivers its first
+      // UMP media parts within a second or two; nothing in 8 s means the
+      // wall came down before ANY media (fail now — the breaker above
+      // only counts protection-status responses that carry none).
+      firstMediaTimer = setTimeout(() => {
+        if (!failed && mediaBytesSeen === 0) {
+          fail('SABR first-media budget exceeded (8 s, zero bytes)');
+          reject(new Error('SABR first-media budget exceeded'));
+        }
+      }, FIRST_MEDIA_BUDGET_MS);
       const reader = audioStream.getReader();
       for (;;) {
         const { done: streamDone, value } = await reader.read();
         if (streamDone) break;
         if (value !== undefined) {
+          if (value.byteLength > 0) {
+            mediaBytesSeen += value.byteLength;
+            if (firstMediaTimer !== null) {
+              clearTimeout(firstMediaTimer);
+              firstMediaTimer = null;
+            }
+          }
           queue.push(value);
           drain();
         }

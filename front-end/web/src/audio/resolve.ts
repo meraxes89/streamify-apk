@@ -29,29 +29,29 @@
  * jnn-pa (the mint) IS CORS-open to foreign origins (live-verified) — PO
  * tokens still bind to the phone's IP.
  *
- *   RUNG 1 — VISIONOS-DIRECT (tokenless, youtubei.googleapis.com): probe-
- *     verified on the live relay egress — standard content returns OK with
- *     DIRECT pre-signed itag 140/251 URLs (used AS-IS, no decipher), plus a
- *     bonus hlsManifestUrl and the SABR url. From the phone's residential
- *     IP this is the fast path.
+ *   RUNG 1 — VISIONOS-DIRECT (tokenless, youtubei.googleapis.com): the
+ *     standard-content fast path — probe-verified OK with DIRECT pre-signed
+ *     itag 140/251 URLs (used AS-IS, no decipher). Licensed verdicts flap
+ *     per request on the relay egress; a miss falls to the POT'd rungs.
  *
- *   RUNG 2 — IOS-DIRECT (tokenless, youtubei.googleapis.com): the
- *     licensed-tolerant client — probe-verified OK for the exact video that
- *     failed every G3b rung (BOHEMIA - Ek Tera Pyar) even from the BURNED
- *     Cloudflare egress. Answers URL-less SABR descriptors + an HLS
- *     manifest; both are consumed below.
+ *   RUNG 2 — WEB + PO TOKEN (youtubei.js WEB client, direct googleapis via
+ *     the dual-lane session fetch): THE LICENSED PRIMARY — the kira
+ *     recipe. The videoId-bound PO token on the player call unlocks
+ *     playability, and the SABR payload (deciphered serverAbrStreamingUrl
+ *     + buildSabrFormat descriptors + WEB clientInfo + the same poToken)
+ *     is the ONE envelope the lab measured flowing licensed media through
+ *     the relay. Also carries the signatureCipher deciphering machinery
+ *     for progressive WEB URLs.
  *
- *   RUNG 3 — IOS + PLAYER PO TOKEN (direct): the licensed unlock. yt-dlp's
- *     IOS GVS policy: `not_required_with_player_token=True` — a videoId-
- *     bound PO token on the PLAYER call waives the GVS token requirement
- *     for the media URLs. The mint (potMinter) now rides jnn-pa DIRECT
- *     (CORS-open), so token, player call and media fetches all egress from
- *     the phone — one coherent envelope.
+ *   RUNG 3 — IOS + PLAYER PO TOKEN (direct): the licensed-tolerant client
+ *     carrying the videoId-bound player token (yt-dlp's IOS GVS policy:
+ *     `not_required_with_player_token`) — progressive/HLS outcomes only:
+ *     its SABR window was MEASURED capping at the ~62 KB burst with or
+ *     without a token (G4.2), so SABR acceptance is WEB-only.
  *
- *   RUNG 4 — WEB + PO TOKEN (youtubei.js WEB client, direct googleapis via
- *     the dual-lane session fetch): the G3b licensed rung, kept for its
- *     deciphering machinery (signatureCipher URLs) and its SABR→HLS
- *     fallthrough.
+ *   RUNG 4 — IOS-DIRECT (tokenless, DEMOTED from slot 2 by G4.2): its
+ *     SABR-only outcome is the measured 9-second wall; the rung answers
+ *     only progressive/HLS outcomes now.
  *
  *   RUNG 5 — VISIONOS-RELAY (www.youtube.com through the relay): the
  *     standard-content lifeline for environments where the direct lane is
@@ -63,6 +63,12 @@
  *     yt-dlp master comment (2026.07): web_safari HLS is only returned for
  *     logged-in or "trusted" sessions — this rung is vestigial and kept
  *     last on purpose.
+ *
+ * G4.2 LADDER RULE: a SABR outcome is only accepted when its rung carries
+ * a PO token (evaluateRawResponse enforces it; see the 9-second wall note
+ * there). The token mints BEFORE the licensed rungs — once per ~12 h, in
+ * the main realm, with every mint leg riding the same relay egress the
+ * player and SABR POSTs ride (one envelope).
  *
  * ALL rungs prefer, in order: progressive URLs (element: itag 140 AAC;
  * spine: 251/140 by codec capability) → HLS manifest (the remux lanes) →
@@ -84,6 +90,7 @@ import {
   relayUrl,
 } from './botguard/protocol';
 import { getYt, directPlayerPost, visitorProvenance } from '../lib/ytSession';
+import { buildSabrFormat } from 'googlevideo/utils';
 import type { AudioCodec } from './types';
 
 /** itag → codec routing (audio-only set). */
@@ -237,6 +244,15 @@ interface YtBasicInfo {
   streaming_data?: {
     adaptive_formats?: YtFormat[];
     hls_manifest_url?: string;
+    /** G4.2: WEB responses carry the ciphered SABR endpoint (kira recipe). */
+    server_abr_streaming_url?: string;
+  } | null;
+  player_config?: {
+    media_common_config?: {
+      media_ustreamer_request_config?: {
+        video_playback_ustreamer_config?: string;
+      };
+    };
   } | null;
 }
 
@@ -449,51 +465,6 @@ function toHlsStream(
   };
 }
 
-function toSabrStream(
-  videoId: string,
-  resp: PlayerResponse,
-  spec: ClientSpec,
-  rung: LadderRung,
-  potKind: ResolvedStream['potKind'],
-  poToken: string | null,
-): ResolvedStream {
-  const durationSec = durationSecOf(resp);
-  return {
-    videoId,
-    itag: 0, // SABR: itag-less descriptors (SabrStream selects)
-    codec: 'aac', // selection prefers itag 140 (element-compat AAC)
-    url: resp.streamingData?.serverAbrStreamingUrl ?? '',
-    mimeType: 'application/vnd.yt.sabr',
-    bitrate: 0,
-    contentLength: null,
-    durationSec,
-    ...titleOf(resp),
-    rung,
-    potKind,
-    isHls: false,
-    isSabr: true,
-    sabr: {
-      serverAbrStreamingUrl: resp.streamingData?.serverAbrStreamingUrl ?? '',
-      ustreamerConfig:
-        resp.playerConfig?.mediaCommonConfig?.mediaUstreamerRequestConfig
-          ?.videoPlaybackUstreamerConfig ?? null,
-      formats: sabrAllFormats(resp),
-      clientInfo: {
-        clientName: Number(spec.clientNumber),
-        clientVersion: spec.clientVersion,
-        ...(typeof spec.extraClient.osName === 'string'
-          ? { osName: spec.extraClient.osName }
-          : {}),
-        ...(typeof spec.extraClient.osVersion === 'string'
-          ? { osVersion: spec.extraClient.osVersion }
-          : {}),
-      },
-      poToken,
-      durationMs: durationSec !== null ? Math.round(durationSec * 1000) : 0,
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // The raw player calls
 // ---------------------------------------------------------------------------
@@ -627,10 +598,8 @@ interface RungOutcome {
 function evaluateRawResponse(
   videoId: string,
   resp: PlayerResponse,
-  spec: ClientSpec,
   rung: LadderRung,
   potKind: ResolvedStream['potKind'],
-  poToken: string | null,
   elementCompat: boolean,
 ): RungOutcome {
   const status = resp.playabilityStatus?.status ?? 'UNKNOWN';
@@ -661,8 +630,15 @@ function evaluateRawResponse(
       definitive: false,
     };
   }
-  // 3. The SABR lane — URL-less descriptors + the serverAbrStreamingUrl
-  //    (the modern reality for IOS-class clients; audio/sabr plays it).
+  // 3. The SABR lane — G4.2: SABR-ONLY for the WEB-class envelope.
+  //    MEASURED (2026-11-14, lab + agent-browser): IOS/VISIONOS-class SABR
+  //    sessions cap at ONE ~62 KB unprotected burst (~9–10 s of itag-139
+  //    AAC) and then hit the stream-protection wall — WITH OR WITHOUT a PO
+  //    token (the token unlocks playability, not the IOS SABR window).
+  //    Only the WEB-class envelope (the kira recipe, rung WEB+POT below)
+  //    was measured flowing licensed media past the burst. The raw
+  //    app-client rungs therefore never accept a SABR-only outcome; the
+  //    verdict says so honestly and the ladder escalates.
   const sabrUrl = resp.streamingData?.serverAbrStreamingUrl;
   const sabrFormats = sabrAllFormats(resp);
   const sabrAudioItags = sabrFormats
@@ -672,17 +648,11 @@ function evaluateRawResponse(
         (f as WireFormat).mimeType?.startsWith('audio/'),
     )
     .map((f) => (f as WireFormat).itag ?? '?');
-  if (
-    sabrUrl !== undefined &&
-    sabrUrl.length > 0 &&
-    sabrAudioItags.length > 0 &&
-    sabrFormats.length > 0 &&
-    elementCompat
-  ) {
+  if (sabrUrl !== undefined && sabrUrl.length > 0 && sabrAudioItags.length > 0) {
     return {
-      stream: toSabrStream(videoId, resp, spec, rung, potKind, poToken),
-      verdict: `OK (sabr: ${sabrFormats.length} descriptors, audio ${sabrAudioItags.join(',')})`,
-      definitive: false,
+      stream: null,
+      verdict: `OK but SABR-only on an app-client envelope (audio ${sabrAudioItags.join(',')} — the measured 62 KB burst cap; the WEB+POT rung owns the SABR lane)`,
+      definitive: true,
     };
   }
   return {
@@ -734,10 +704,8 @@ interface RungCallResult {
 async function runRawRung(
   label: string,
   videoId: string,
-  spec: ClientSpec,
   rung: LadderRung,
   potKind: ResolvedStream['potKind'],
-  poToken: string | null,
   elementCompat: boolean,
   call: () => Promise<RungCallResult>,
   opts: { maxAttempts?: number } = {},
@@ -757,10 +725,8 @@ async function runRawRung(
       outcome = evaluateRawResponse(
         videoId,
         resp,
-        spec,
         rung,
         potKind,
-        poToken,
         elementCompat,
       );
       if (lane === 'relay') {
@@ -798,12 +764,49 @@ async function runRawRung(
 }
 
 // ---------------------------------------------------------------------------
+// G4.2 — &pot= pinning on progressive googlevideo URLs
+// ---------------------------------------------------------------------------
+
+/**
+ * Append the GVS-context PO token (`&pot=`) to a progressive googlevideo
+ * URL when a mint session already exists (BEST-EFFORT, never mints: the
+ * fast standard-content path must not pay the BotGuard latency). yt-dlp's
+ * GVS policy: web-family videoplayback URLs from a POT'd session carry the
+ * token as a query param — it keeps licensed media serving past the first
+ * chunk when the server asks for attestation mid-stream.
+ */
+async function pinGvsPot(
+  stream: ResolvedStream,
+  videoId: string,
+): Promise<ResolvedStream> {
+  if (stream.isHls || stream.isSabr) return stream;
+  if (!stream.url.includes('googlevideo.com/')) return stream;
+  if (stream.url.includes('pot=')) return stream;
+  try {
+    const gvs = await gvsPoToken(videoId);
+    if (gvs === null) return stream;
+    return { ...stream, url: `${stream.url}&pot=${encodeURIComponent(gvs)}` };
+  } catch {
+    return stream; // best-effort — the bare URL stays
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The ladder
 // ---------------------------------------------------------------------------
 
 /**
  * Resolve one video's best playable audio stream. The thrown error carries
  * EVERY rung's verdict for honest diagnosis.
+ *
+ * G4.2 LADDER ORDER (measured 2026-11-14 — see the 9-second wall note on
+ * evaluateRawResponse): the tokenless IOS rung used to sit at slot 2 and
+ * its SABR-only outcome (URL-less descriptors) was accepted as playable —
+ * but a tokenless SABR session delivers exactly one ~62 KB burst and then
+ * the stream-protection wall, which the user hears as “plays 9 seconds,
+ * then buffers forever”. The PO token now mints BEFORE the licensed rungs
+ * and every SABR outcome must carry it; the tokenless IOS rung is demoted
+ * to a fallback that only yields progressive/HLS outcomes.
  */
 export async function resolveAudioStream(
   videoId: string,
@@ -814,66 +817,44 @@ export async function resolveAudioStream(
   const yt = await getYt();
 
   // ---- Rung 1: VISIONOS-DIRECT (tokenless, phone egress) ------------------
+  // The standard-content fast path (probe-verified OK + pre-signed itag
+  // 140/251 URLs — no mint, no lanes). Licensed verdicts flap per request;
+  // a miss here falls through to the POT'd rungs below.
   if (rungAlive(videoId, 'visionos-direct')) {
     const outcome = await runRawRung(
       '[VISIONOS*]',
       videoId,
-      VISIONOS_SPEC,
       'visionos-direct',
       'none',
-      null,
       elementCompat,
       () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null),
-      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+      // 3 attempts (not DIRECT_RUNG_ATTEMPTS=2): a URL-ful verdict here is
+      // the FULL-playback outcome — the extra ~300 ms on a flapping miss
+      // is cheap against the ladder it saves.
+      { maxAttempts: RUNG_ATTEMPTS },
     );
     if (outcome.stream !== null) return outcome.stream;
     if (outcome.definitive) markRungFailed(videoId, 'visionos-direct');
     verdicts.push(`[VISIONOS*] ${outcome.verdict}`);
   }
 
-  // ---- Rung 2: IOS-DIRECT (tokenless, licensed-tolerant) ------------------
-  if (rungAlive(videoId, 'ios-direct')) {
-    const outcome = await runRawRung(
-      '[IOS*]',
-      videoId,
-      IOS_SPEC,
-      'ios-direct',
-      'none',
-      null,
-      elementCompat,
-      () => playerCallDirect(IOS_SPEC, videoId, ctx, null),
-      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
-    );
-    if (outcome.stream !== null) return outcome.stream;
-    if (outcome.definitive) markRungFailed(videoId, 'ios-direct');
-    verdicts.push(`[IOS*] ${outcome.verdict}`);
-  }
-
-  // ---- The PO token (the licensed rungs share one mint) --------------------
+  // ---- The PO token (BEFORE the licensed rungs — G4.2) --------------------
+  // Every rung below this line either carries the token or is a fallback.
+  // autoMint (default) runs the BgUtils mint once per ~12 h; a null token
+  // means the mint ladder exhausted (Brave-class) and the SABR lanes are
+  // dead by policy (the 9-second wall) — the relay rungs remain.
   const token = await playerPoToken(videoId, ctx.relayBase, {
     autoMint: ctx.autoMint !== false,
     signal: ctx.signal ?? null,
   });
 
-  // ---- Rung 3: IOS + PLAYER PO TOKEN (direct) ------------------------------
-  if (token !== null && rungAlive(videoId, 'ios-pot-direct')) {
-    const outcome = await runRawRung(
-      '[IOS+POT*]',
-      videoId,
-      IOS_SPEC,
-      'ios-pot-direct',
-      token.kind,
-      token.poToken,
-      elementCompat,
-      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken),
-      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
-    );
-    if (outcome.stream !== null) return outcome.stream;
-    if (outcome.definitive) markRungFailed(videoId, 'ios-pot-direct');
-    verdicts.push(`[IOS+POT*] ${outcome.verdict}`);
-  }
-
-  // ---- Rung 4: WEB + PO TOKEN (youtubei.js, dual-lane session fetch) ------
+  // ---- Rung 2: WEB + PO TOKEN (youtubei.js, dual-lane session fetch) ------
+  // The kira recipe (G4.2): the WEB-class envelope + the videoId-bound PO
+  // token unlocks licensed playability where IOS caps the SABR window, and
+  // its SABR payload (deciphered serverAbrStreamingUrl + buildSabrFormat
+  // descriptors + WEB clientInfo + the same poToken) is the one the lab
+  // measured flowing media through the relay (1.08 MiB before the egress
+  // burn, vs 62 KB tokenless).
   {
     let verdict = 'not attempted';
     if (token === null) {
@@ -881,14 +862,31 @@ export async function resolveAudioStream(
         'no PO token available (mint failed — coldstart/websafe fallbacks exhausted)';
     } else {
       try {
-        const info = await yt.getBasicInfo(videoId, {
-          client: 'WEB',
-          // PLAYER-context token (serviceIntegrityDimensions.poToken) —
-          // videoId-bound, per-call so it never leaks into other clients.
-          po_token: token.poToken,
-        });
-        const status = info.playability_status?.status ?? 'UNKNOWN';
-        if (status === 'OK') {
+        // G4.2: the relay egress's licensed verdicts FLAP per request (the
+        // measured soft wall) — this rung gets the same 3-attempt policy
+        // the raw rungs have before it reports a verdict.
+        let info: YtBasicInfo | null = null;
+        let status = 'UNKNOWN';
+        for (let attempt = 1; attempt <= RUNG_ATTEMPTS; attempt += 1) {
+          const candidate = (await yt.getBasicInfo(videoId, {
+            client: 'WEB',
+            // PLAYER-context token (serviceIntegrityDimensions.poToken) —
+            // videoId-bound, per-call so it never leaks into other clients.
+            po_token: token.poToken,
+          })) as YtBasicInfo;
+          status = candidate.playability_status?.status ?? 'UNKNOWN';
+          if (status === 'OK') {
+            info = candidate;
+            break;
+          }
+          verdict = `attempt ${attempt}: ${status}: ${candidate.playability_status?.reason ?? 'no reason'}`;
+          if (attempt < RUNG_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, 350 * attempt));
+          }
+        }
+        const okInfo: YtBasicInfo | null = info;
+        if (okInfo !== null) {
+          const info = okInfo;
           const format = pickYtFormat(info, elementCompat);
           if (format !== undefined) {
             // GVS-context &pot= on the deciphered URL: Player.decipher
@@ -906,10 +904,6 @@ export async function resolveAudioStream(
               return toStream(videoId, info, format, url, 'web-pot-direct', token.kind);
             }
           } else {
-            // SABR-only web responses still carry HLS manifests for
-            // Safari-class UAs — not here; but the raw WEB shape is not
-            // ours on this rung (youtubei.js parsed it). Fall through with
-            // an honest inventory.
             const audioItags = (info.streaming_data?.adaptive_formats ?? [])
               .filter((f) => f.has_video !== true)
               .map((f) => f.itag ?? '?')
@@ -931,11 +925,70 @@ export async function resolveAudioStream(
                 token.kind,
               );
             }
-            verdict = `OK but no playable audio itag (want ${elementCompat ? '140' : '251/140'} — audio itags present: ${audioItags.length > 0 ? audioItags : 'NONE (SABR-only?)'})`;
+            // G4.2: the kira-recipe SABR payload — deciphered
+            // serverAbrStreamingUrl + buildSabrFormat descriptors + the
+            // WEB-class clientInfo + the same videoId-bound poToken.
+            const sabrUrlRaw = info.streaming_data?.server_abr_streaming_url;
+            const ustreamerConfig =
+              info.player_config?.media_common_config
+                ?.media_ustreamer_request_config
+                ?.video_playback_ustreamer_config;
+            const adaptive = info.streaming_data?.adaptive_formats ?? [];
+            const player = yt.session.player;
+            if (
+              elementCompat &&
+              typeof sabrUrlRaw === 'string' &&
+              sabrUrlRaw.length > 0 &&
+              adaptive.length > 0 &&
+              ustreamerConfig !== undefined &&
+              player !== undefined
+            ) {
+              try {
+                const sabrUrl = await player.decipher(sabrUrlRaw);
+                const duration = info.basic_info?.duration;
+                return {
+                  videoId,
+                  itag: 0,
+                  codec: 'aac',
+                  url: sabrUrl,
+                  mimeType: 'application/vnd.yt.sabr',
+                  bitrate: 0,
+                  contentLength: null,
+                  durationSec: typeof duration === 'number' ? duration : null,
+                  title: info.basic_info?.title ?? videoId,
+                  artist: info.basic_info?.author ?? '',
+                  rung: 'web-pot-direct',
+                  potKind: token.kind,
+                  isHls: false,
+                  isSabr: true,
+                  sabr: {
+                    serverAbrStreamingUrl: sabrUrl,
+                    ustreamerConfig: ustreamerConfig ?? null,
+                    formats: adaptive.map((f) =>
+                      // YtFormat (youtubei.js) and FormatStream (googlevideo)
+                      // are the same wire shape with different strictness;
+                      // kira passes them straight through — cast the joint.
+                      buildSabrFormat(f as unknown as Parameters<typeof buildSabrFormat>[0]),
+                    ),
+                    clientInfo: {
+                      clientName: 1, // WEB — the envelope the token was minted for
+                      clientVersion: yt.session.context.client.clientVersion,
+                    },
+                    poToken: token.poToken,
+                    durationMs:
+                      typeof duration === 'number' ? Math.round(duration * 1000) : 0,
+                  },
+                };
+              } catch (err) {
+                verdict = `OK but SABR decipher failed (${err instanceof Error ? err.message : String(err)})`;
+              }
+            } else {
+              verdict = `OK but no playable audio itag (want ${elementCompat ? '140' : '251/140'} — audio itags present: ${audioItags.length > 0 ? audioItags : 'NONE (SABR-only?)'}, sabrUrl=${sabrUrlRaw !== undefined ? 'yes' : 'no'})`;
+            }
           }
-        } else {
-          verdict = `${status}: ${info.playability_status?.reason ?? 'no reason'}`;
         }
+        // info === null: every flap-retry attempt refused — the per-attempt
+        // verdict string above already carries the honest reason.
       } catch (err) {
         verdict = err instanceof Error ? err.message : String(err);
       }
@@ -943,15 +996,54 @@ export async function resolveAudioStream(
     verdicts.push(`[WEB+POT*] ${verdict}`);
   }
 
+  // ---- Rung 3: IOS + PLAYER PO TOKEN (direct) ------------------------------
+  // The licensed-tolerant client with the videoId-bound player token:
+  // playability OK where WEB flaps, and per yt-dlp's IOS GVS policy
+  // (`not_required_with_player_token`) a POT'd IOS call may hand back
+  // direct progressive URLs; SABR outcomes carry the token into the
+  // streamerContext (sabrStreamPlayer → SabrStream).
+  if (token !== null && rungAlive(videoId, 'ios-pot-direct')) {
+    const outcome = await runRawRung(
+      '[IOS+POT*]',
+      videoId,
+      'ios-pot-direct',
+      token.kind,
+      elementCompat,
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+    );
+    if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
+    if (outcome.definitive) markRungFailed(videoId, 'ios-pot-direct');
+    verdicts.push(`[IOS+POT*] ${outcome.verdict}`);
+  }
+
+  // ---- Rung 4: IOS-DIRECT (tokenless — progressive/HLS only) ---------------
+  // G4.2: DEMOTED from slot 2. Without a PO token this client's SABR-only
+  // outcome is the measured 9-second wall (evaluateRawResponse rejects it);
+  // the rung stays for its progressive/HLS answers (the odd non-SABR
+  // response) and honest attribution.
+  if (rungAlive(videoId, 'ios-direct')) {
+    const outcome = await runRawRung(
+      '[IOS*]',
+      videoId,
+      'ios-direct',
+      'none',
+      elementCompat,
+      () => playerCallDirect(IOS_SPEC, videoId, ctx, null),
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+    );
+    if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
+    if (outcome.definitive) markRungFailed(videoId, 'ios-direct');
+    verdicts.push(`[IOS*] ${outcome.verdict}`);
+  }
+
   // ---- Rung 5: VISIONOS-RELAY (www surface through the relay) -------------
   if (rungAlive(videoId, 'visionos-relay')) {
     const outcome = await runRawRung(
       '[VISIONOS]',
       videoId,
-      VISIONOS_SPEC,
       'visionos-relay',
       'none',
-      null,
       elementCompat,
       async () => ({
         resp: await playerCallRelay(
