@@ -1,4 +1,4 @@
-# streamify-relay — P0 minimal CORS relay + P1 minting surface + P3b BotGuard egress (W0.4 / W1.0 / P3b)
+# streamify-relay — P0 minimal CORS relay + P1 minting surface + P3b BotGuard egress + G3b open-source stack (W0.4 / W1.0 / P3b / G3b)
 
 A single-file Cloudflare Worker that acts as a deliberately **dumb, CORS-open relay** so the
 Streamify web port (wasm Rust engine in the browser, deployed at
@@ -62,6 +62,24 @@ homepage): the **player** poToken is minted with `mintAsWebsafeString(VIDEO_ID)`
 **googlevideo** `&pot=` param uses VIDEO_ID while the homepage's
 `html5_generate_content_po_token` experiment flag is set (it is, 2026-11-12), else
 visitorData.
+
+## G3b — the open-source stack (YouTube.js + BgUtils)
+
+G3b moved the web app onto LuanRT's maintained stack (youtubei.js for the
+InnerTube session/clients/deciphering, bgutils-js for the PO-token mint —
+see `front-end/decisions/G3b-open-source-botguard.md`). **No functional
+relay change was required**: the whole stack rides the same `/r`
+passthrough + allowlist (`sw.js_data`, `/youtubei/*`, `/s/player/*`,
+`/api/jnn/*`, jnn-pa WAA, googlevideo incl. `manifest.googlevideo.com`),
+the same UA matrix (client 101), and the same envelope pinning. The `/`
+capability echo gained a `g3b-oss-stack` marker for deployment
+verification; `GET /` now reports `phase: "G3b — open-source stack
+(YouTube.js + BgUtils main-realm mint)"`.
+
+The binding rule that shapes the architecture (from the
+trusted-session-generator research): `visitor_data` + `po_token` are
+IP/ASN-bound — the mint leg and the use leg must egress from ONE IP, and
+the relay is that egress for the entire session.
 
 ## P3b — the BotGuard egress pivot (3-Tier surface)
 

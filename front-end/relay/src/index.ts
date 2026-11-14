@@ -535,14 +535,19 @@ async function route(request: Request): Promise<Response> {
       {
         service: "streamify-relay",
         usage: "/r?u=<urlencoded-target> · /bg-session",
-        phase: "P3b — BotGuard egress pivot (VisionOS fast path, envelope pinning)",
-        // P3b capability probe: the web app checks these to know whether the
-        // deployed worker has the 3-Tier surface (an old P0/W1.0 deployment
-        // answers this route without the field — capability = absent).
+        phase: "G3b — open-source stack (YouTube.js + BgUtils main-realm mint)",
+        // Capability probe: the web app checks these to know whether the
+        // deployed worker has the surface a milestone needs (an older
+        // deployment answers this route without the field — capability =
+        // absent). The G3b relay is functionally identical to P3b (the
+        // youtubei.js stack rides the SAME /r passthrough + envelope
+        // pinning + UA matrix); the marker exists for deployment
+        // verification.
         capabilities: [
-          "bg-session", // W1.0 — minting surface
+          "bg-session", // W1.0 — homepage challenge cache (dormant in G3b)
           "ua-override", // P3b — X-Relay-UA named overrides (WEB_SAFARI)
           "client-hints-passthrough", // P3b — sec-ch-ua* on WAA + WEB legs
+          "g3b-oss-stack", // G3b — YouTube.js + bgutils-js egress surface
         ],
       },
       200,

@@ -1,12 +1,13 @@
 /**
- * audio/botguard/potSession.ts — the session manager (W1.0 + P3b).
+ * audio/botguard/potSession.ts — the session manager (G3b).
  *
  * One mint session per integrity-token lifetime (~12 h): the session is a
  * module singleton with in-flight dedupe (five parts of the app asking for
- * a token simultaneously must trigger exactly ONE BotGuard run).
+ * a token simultaneously must trigger exactly ONE BotGuard run). The
+ * mint itself now lives in potMinter.ts (bgutils-js, main realm).
  *
- * Sources of tokens (the P3b ladder, strongest first):
- *   • 'live'             — the full iframe mint (mintCore.runMintSession):
+ * Sources of tokens (strongest first):
+ *   • 'live'             — the bgutils-js mint (potMinter.runMintSession):
  *                          dual tokens (player = videoId, session =
  *                          visitorData) from the real browser hardware.
  *   • 'cached'           — a restored localStorage session: replayed
@@ -15,16 +16,19 @@
  *                          BotGuard; a NEW video triggers a full live mint.
  *   • 'seeded'           — a dev override (pot-lab's provider-recipe Node
  *                          mint), video-scoped.
- *   • 'websafe-fallback' — the privacy-buffer fallback (Brave-class): the
- *                          server's websafeFallbackToken in place of mints.
+ *   • 'websafe-fallback' — the server's websafeFallbackToken in place of
+ *                          mints (Brave-class degradation).
  *   • 'coldstart'        — local XOR cold start tokens (sps=2 window).
  *
- * The seeded path is DEV-ONLY by construction: it is never consulted unless
- * seedPotSession() ran first (the SpineConsole seed box), and it reports
- * its kind through potSnapshot()/subscribe() so the UI always labels it.
+ * BINDING-DRIFT GUARD (G3b): a restored cache whose visitorData no longer
+ * matches the live YouTube.js session (ytSession.ts owns the visitorData)
+ * is DROPPED — tokens minted for another session's visitor are worse than
+ * no tokens (the split-brain class of failure). The check runs lazily on
+ * the first token access, once the session is bootable.
  */
 
-import { runMintSession } from './mintCore';
+import { runMintSession } from './potMinter';
+import { getYt } from '../../lib/ytSession';
 import type { MintStatus, PotSeed, PotSession, PotSessionCache } from './protocol';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +48,6 @@ let sessionHasMinter = false;
 let status: MintStatus = {
   phase: 'idle',
   detail: 'no mint yet',
-  relayTooOld: false,
   braveShieldsAdvice: false,
 };
 const listeners = new Set<(s: MintStatus) => void>();
@@ -55,7 +58,7 @@ function setStatus(next: Partial<MintStatus>): void {
 }
 
 // ---------------------------------------------------------------------------
-// The localStorage cache (P3b — replays skip BotGuard)
+// The localStorage cache (replays skip BotGuard)
 // ---------------------------------------------------------------------------
 
 const CACHE_KEY = 'streamify.pot.session.v1';
@@ -92,7 +95,7 @@ function writeCache(session: PotSession, playerTokens: Record<string, string>): 
   if (session.kind === 'seeded' || session.kind === 'coldstart') return; // never persist
   const ttlSecs = Math.min(
     Math.max(Math.round((session.expiresAtMs - Date.now()) / 1000), 60),
-    6 * 3600, // the architect's cache horizon: 6–12 h, clamped conservatively
+    6 * 3600, // conservative cache horizon: 6 of the measured ~12 h
   );
   const cache: PotSessionCache = {
     schema: 1,
@@ -164,6 +167,8 @@ function cachedSession(cache: PotSessionCache): PotSession {
 }
 
 // Restore at module load: a fresh cache instantly serves &pot= and replays.
+// The binding-drift guard (dropIfDrifted) re-validates against the live
+// YouTube.js session lazily, on first token access.
 (function restoreCache(): void {
   const cache = readCache();
   if (cache === null || !cacheFresh(cache)) return;
@@ -240,7 +245,6 @@ export function seedPotSession(raw: string): { videoId: string } {
   setStatus({
     phase: 'ready',
     detail: `SEEDED token for ${parsed.videoId} (expires ${new Date(expiresAtMs).toLocaleTimeString()})`,
-    relayTooOld: false,
     braveShieldsAdvice: false,
   });
   return { videoId: parsed.videoId };
@@ -254,7 +258,6 @@ export function clearSeed(): void {
   setStatus({
     phase: 'idle',
     detail: 'seed cleared',
-    relayTooOld: false,
     braveShieldsAdvice: false,
   });
 }
@@ -274,7 +277,6 @@ export function resetPotSession(): void {
   setStatus({
     phase: 'idle',
     detail: 'session + cache dropped',
-    relayTooOld: false,
     braveShieldsAdvice: false,
   });
 }
@@ -288,6 +290,40 @@ function sessionUsable(): boolean {
 }
 
 /**
+ * The binding-drift guard (G3b): the live YouTube.js session's
+ * visitorData is the envelope every token must bind against. A restored
+ * cache (or seed) minted for a DIFFERENT visitorData is dropped — its
+ * tokens would poison the player call (split-brain). Returns the current
+ * visitorData, or null when the session is not (yet) bootable — callers
+ * treat that as "no coherent token available".
+ */
+async function dropIfDrifted(): Promise<string | null> {
+  const cached = session;
+  if (cached === null || cached.kind === 'seeded') {
+    return cached?.visitorData ?? null;
+  }
+  try {
+    const current = await getYt();
+    const visitorData = current.session.context.client.visitorData ?? '';
+    if (visitorData.length === 0) return null;
+    if (cached.visitorData !== visitorData) {
+      setStatus({
+        phase: 'idle',
+        detail: `dropped ${cached.kind} cache — visitorData drifted (${cached.visitorData.slice(0, 8)}… → ${visitorData.slice(0, 8)}…)`,
+        braveShieldsAdvice: false,
+      });
+      session = null;
+      sessionHasMinter = false;
+    }
+    return visitorData;
+  } catch {
+    // The session layer is unreachable (relay down?) — the cached
+    // session is the only thing we have; let it serve (best-effort).
+    return cached.visitorData;
+  }
+}
+
+/**
  * Ensure a LIVE mint session exists (seeds and stale caches do not count).
  * Deduped: concurrent callers share one mint. Set force to re-mint (retry
  * button) — a fresh live mint replaces any seed/cache and rewrites the
@@ -297,6 +333,7 @@ export async function ensureLiveSession(
   relayBase: string,
   opts: { force?: boolean; signal?: AbortSignal | null } = {},
 ): Promise<PotSession> {
+  void relayBase; // the session layer resolves the relay (G3b)
   if (session !== null && session.kind === 'seeded') {
     // An explicit live request overrides a seed (user clicked "Mint").
     if (opts.force !== true) return session;
@@ -317,11 +354,11 @@ export async function ensureLiveSession(
     let brave = false;
     try {
       const { session: minted, braveShieldsAdvice } = await runMintSession({
-        relayBase,
+        relayBase: '',
         signal: opts.signal ?? null,
         onPhase: (phase, detail) => {
           lastDetail = detail;
-          setStatus({ phase, detail, relayTooOld: false });
+          setStatus({ phase, detail });
         },
       });
       brave = braveShieldsAdvice;
@@ -331,18 +368,15 @@ export async function ensureLiveSession(
       setStatus({
         phase: 'ready',
         detail: lastDetail,
-        relayTooOld: false,
         braveShieldsAdvice: brave,
       });
       return minted;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const code = (err as { code?: string }).code;
       setStatus({
         phase: 'idle',
         detail: `mint failed: ${message}`,
-        relayTooOld: code === 'relay-too-old',
-        braveShieldsAdvice: brave || code === 'vm-score',
+        braveShieldsAdvice: brave,
       });
       throw err;
     } finally {
@@ -379,6 +413,11 @@ export async function playerPoToken(
       if (seed !== null && seed.videoId !== videoId) {
         return null; // seeded token is video-scoped — no false positives
       }
+    } else {
+      // Binding-drift guard: a cache minted for another visitorData is
+      // worse than no cache (split-brain). Drops the session on drift.
+      const current = await dropIfDrifted();
+      if (current === null) return null;
     }
     try {
       const poToken = await s.mintPlayerToken(videoId);
