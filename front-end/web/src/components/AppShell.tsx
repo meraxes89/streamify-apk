@@ -29,7 +29,12 @@ import { ProfileSelectionScreen } from '../screens/ProfileSelectionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { UserProfileScreen } from '../screens/UserProfileScreen';
 import { UpdatesHubScreen } from '../screens/UpdatesHubScreen';
-import { LibraryNoticeScreen, DownloadsNoticeScreen } from '../screens/PortingNoticeScreen';
+// P2 (browse) screens:
+import { LibraryScreen } from '../screens/LibraryScreen';
+import { SearchScreen } from '../screens/SearchScreen';
+import { AlbumRoute } from '../screens/AlbumScreen';
+import { ArtistRoute } from '../screens/ArtistScreen';
+import { DownloadsNoticeScreen } from '../screens/PortingNoticeScreen';
 // P1 (listen loop) — kept as a compact, self-contained block so concurrent
 // PRs touching this file stay conflict-free.
 import { FullPlayerSheet } from '../screens/FullPlayerSheet';
@@ -161,7 +166,10 @@ export function AppShell(): JSX.Element {
             <Route path="/settings" element={<SettingsScreen />} />
             <Route path="/profile" element={<UserProfileScreen />} />
             <Route path="/updates" element={<UpdatesHubScreen />} />
-            <Route path="/library" element={<LibraryNoticeScreen />} />
+            <Route path="/search" element={<SearchScreen />} />
+            <Route path="/library" element={<LibraryScreen />} />
+            <Route path="/artist/:artistName" element={<ArtistRoute />} />
+            <Route path="/album/:albumName" element={<AlbumRoute />} />
             <Route path="/downloads" element={<DownloadsNoticeScreen />} />
             <Route path="/queue" element={<QueueScreen />} />
             <Route path="/lyrics" element={<LyricsScreen />} />

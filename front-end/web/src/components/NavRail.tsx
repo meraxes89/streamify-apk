@@ -20,8 +20,8 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { to: '/', label: 'Home', icon: 'homeOutline', activeIcon: 'home' },
-  // Explore/Search lands with the SearchScreen route port (P3b) — the
-  // Home surface carries search until then.
+  // P2 browse: Explore/Search rides the SearchScreen route (/search).
+  { to: '/search', label: 'Explore', icon: 'explore', activeIcon: 'search' },
   { to: '/library', label: 'Library', icon: 'libraryMusicOutline', activeIcon: 'libraryMusic' },
   { to: '/downloads', label: 'Downloads', icon: 'downloadOutline', activeIcon: 'download' },
   { to: '/settings', label: 'Settings', icon: 'settings', activeIcon: 'settings' },
