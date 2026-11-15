@@ -5,24 +5,25 @@
  * (BgSurfaceElevated), 48px art, title/artist column, like heart,
  * play/pause (spinner while buffering), skip-next, and the 2px
  * micro progress line flush at the bottom edge. Gestures (web lowering):
- * tap → the full player surface (Home); horizontal swipe-to-skip with
+ * tap → the FullPlayerSheet overlay (the Android mapping — P1);
+ * horizontal swipe-to-skip with
  * the Android's 80px arm threshold + 75% disarm hysteresis and the
  * parallax peek overlay showing the destination track. Binds to the
  * Zustand player store — one source of truth with PlayerBar/TrackRow.
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
 import { usePlayerStore } from '../lib/playerStore';
 import { useSessionStore } from '../lib/sessionStore';
+import { useUiStore } from '../lib/uiStore';
 
 /** Swipe arm threshold (Android: 80dp) and disarm hysteresis (75%). */
 const SWIPE_ARM_PX = 80;
 const SWIPE_DISARM_PX = SWIPE_ARM_PX * 0.75;
 
 export function MiniPlayerBar(): JSX.Element | null {
-  const navigate = useNavigate();
+  const openFullPlayer = useUiStore((s) => s.openFullPlayer);
   const snapshot = usePlayerStore((s) => s.snapshot);
   const queue = usePlayerStore((s) => s.queue);
   const send = usePlayerStore((s) => s.send);
@@ -110,7 +111,7 @@ export function MiniPlayerBar(): JSX.Element | null {
       <button
         type="button"
         className="miniplayer__body"
-        onClick={() => navigate('/')}
+        onClick={() => openFullPlayer()}
         aria-label={`Open player for ${track.title}`}
       >
         <span className="miniplayer__art">
