@@ -5842,3 +5842,130 @@ button:disabled {
     transition: none;
   }
 }
+
+/* ---- JoinPromptRail (WS-W engine facade breadth — the jam join prompt,
+       the invite-link lowering of JoinPromptSheet.kt; geometry verbatim
+       from the Kotlin sheet: 18dp surface, 38dp/12dp icon well, 14sp/11sp
+       type, 34dp dismiss, 20dp JOIN pill) ------------------------------- */
+.jpr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--sf-bg-surface-elevated);
+  margin: 0 0 4px;
+}
+
+.jpr--live {
+  background: color-mix(in srgb, var(--sf-primary) 8%, var(--sf-bg-surface-elevated));
+}
+
+.jpr__dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sf-primary) 15%, transparent);
+  color: var(--sf-primary);
+}
+
+.jpr__glyph--on {
+  color: var(--sf-primary);
+  animation: jpr-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes jpr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jpr__glyph--on { animation: none; }
+}
+
+.jpr__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.jpr__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sf-text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jpr__subtitle {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--sf-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jpr__meta {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--sf-text-tertiary);
+}
+
+.jpr__hash {
+  font-variant-numeric: tabular-nums;
+}
+
+.jpr__error {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--sf-primary-accent);
+}
+
+.jpr__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.jpr__dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sf-text-tertiary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.jpr__dismiss:hover {
+  background: var(--sf-bg-card-hover);
+}
+
+.jpr__pill {
+  border: 0;
+  border-radius: 20px;
+  padding: 8px 16px;
+  background: var(--sf-active-control);
+  color: var(--sf-text-on-active-chip);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+}
+
+.jpr__pill:hover {
+  background: var(--sf-bg-chip-active);
+  opacity: 0.92;
+}

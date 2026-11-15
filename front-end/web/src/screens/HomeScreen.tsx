@@ -24,6 +24,9 @@ import { QueueList, queueListStateOf } from '../components/QueueList';
 import { AuthPanel } from '../components/AuthPanel';
 import { SpineConsole } from '../components/SpineConsole';
 import { GsfLanePanel } from '../components/GsfLanePanel';
+// WS-W engine facade breadth (work item 1): the jam join prompt —
+// self-contained so concurrent PRs touching this file stay conflict-free.
+import { JoinPromptRail } from '../components/JoinPromptRail';
 import { UniversalHomeScreen } from './UniversalHomeScreen';
 import { isBotGateError } from '../audio/resolve';
 import { gsfConfigured } from '../lib/gsfLane';
@@ -159,6 +162,9 @@ export function HomeScreen(): JSX.Element {
 
   return (
     <div className="stack home-stack">
+      {/* WS-W engine facade breadth: the jam join prompt (the invite-link
+          lowering of JoinPromptSheet.kt — see components/JoinPromptRail.tsx). */}
+      <JoinPromptRail />
       {/* P2 browse: the YT-Music-style shelves feed (the UniversalHomeScreen
           port) — additive on top of the P3a engine surface below. */}
       <UniversalHomeScreen />

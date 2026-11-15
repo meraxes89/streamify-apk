@@ -519,6 +519,73 @@ export async function signOut(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// RPC lane (WS-W engine facade breadth — the jam transport's authed calls)
+// ---------------------------------------------------------------------------
+
+/**
+ * One PostgREST RPC call (authed, 401 → refresh → replay once — the same
+ * lane restCall uses). Returns the parsed JSON body, or throws with the
+ * server's verbatim error message. Used by lib/jam/transport.ts for
+ * jam_mutation / jam_touch_presence (jam_rpc.sql + jam_lease.sql, reused
+ * verbatim per plan §11).
+ */
+export async function restRpc(fn: string, body: unknown): Promise<unknown> {
+  const res = await restCall(`rpc/${fn}`, { method: 'POST', body });
+  const text = await res.text();
+  let parsed: unknown = null;
+  if (text !== '') {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+  if (!res.ok) {
+    const message =
+      typeof parsed === 'object' && parsed !== null && 'message' in parsed
+        ? String((parsed as { message?: unknown }).message)
+        : `${res.status} ${res.statusText}`;
+    throw new Error(`rpc ${fn} failed: ${message}`);
+  }
+  return parsed;
+}
+
+/**
+ * Look up a listening_sessions row by session_code (the jam room lease
+ * record — host, participants, lease expiry). RLS applies; returns null
+ * when unreadable (the caller surfaces that honestly).
+ */
+export async function fetchJamSessionRow(
+  sessionCode: string,
+): Promise<{
+  id: string;
+  hostUserId: string | null;
+  participantIds: string[];
+  leaseExpiresAt: string | null;
+} | null> {
+  const code = sessionCode.toUpperCase();
+  const res = await restCall(
+    `listening_sessions?session_code=eq.${encodeURIComponent(code)}&select=id,host_user_id,participant_ids,host_lease_expires_at`,
+    { method: 'GET' },
+  );
+  if (!res.ok) return null;
+  const rows = (await res.json()) as Array<{
+    id: string;
+    host_user_id: string | null;
+    participant_ids: string[] | null;
+    host_lease_expires_at: string | null;
+  }>;
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    hostUserId: row.host_user_id,
+    participantIds: row.participant_ids ?? [],
+    leaseExpiresAt: row.host_lease_expires_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // PostgREST helper (authed, 401 → refresh → replay once)
 // ---------------------------------------------------------------------------
 

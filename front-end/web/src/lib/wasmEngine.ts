@@ -287,6 +287,31 @@ export class WasmEnginePort {
     this.engine.report_track_ended();
   }
 
+  // -- jam session lane (WS-W engine facade breadth, work item 1) ----------
+  // The UDL's jam surface on the engine, typed for the store. JSON STRING
+  // payloads parse here; u64 fields cross as decimal strings (op ids live
+  // above 2^53 — lib/jamEngine.ts owns the BigInt discipline).
+
+  /** Create the active Jam session (throws the contract's verbatim errors). */
+  createJamSession(name: string): import('./jamEngine').JamSessionHandle {
+    return JSON.parse(this.engine.create_jam_session(name)) as import('./jamEngine').JamSessionHandle;
+  }
+
+  /** Apply one 48-byte-row delta batch; returns the sync verdict. */
+  applyJamDelta(delta: Uint8Array): import('./jamEngine').JamSyncResult {
+    return JSON.parse(this.engine.apply_jam_delta(delta)) as import('./jamEngine').JamSyncResult;
+  }
+
+  /** BLAKE3 state hash of the active session (the Merkle currency). */
+  getJamStateHash(): string {
+    return this.engine.get_jam_state_hash() as string;
+  }
+
+  /** The local replica's room state view. */
+  getJamRoomState(): import('./jamEngine').JamRoomState {
+    return JSON.parse(this.engine.get_jam_room_state()) as import('./jamEngine').JamRoomState;
+  }
+
   // -- sink binding --------------------------------------------------------------
 
   /** Bind the DIRECT-EGRESS element sink (W2.0 default). */
