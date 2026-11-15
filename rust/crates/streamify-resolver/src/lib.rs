@@ -21,7 +21,10 @@ pub mod json;
 pub mod lyrics;
 pub mod neuro_queue;
 pub mod playlist_parser;
-pub mod radio_scorer;
+// WS-W engine facade breadth (work item 3): the scorer moved to the
+// streamify-radio-scorer leaf (wasm32-safe); re-exported here at its
+// historical path so every existing consumer keeps resolving.
+pub use streamify_radio_scorer::radio_scorer;
 pub mod resolver;
 pub mod rustypipe_engine;
 pub mod search;

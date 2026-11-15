@@ -1,6 +1,22 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+/// Deterministic sentence join ("a, b, and c") — the SAME helper
+/// neuro_queue.rs uses for its daylist explanations (10 lines, verbatim;
+/// the resolver's closure is native-only so this leaf carries its own —
+/// pinned by the tests below to drift loudly if either side rewords).
+fn join_sentence(parts: &[String]) -> String {
+    match parts.len() {
+        0 => String::new(),
+        1 => parts[0].clone(),
+        2 => format!("{} and {}", parts[0], parts[1]),
+        _ => {
+            let head = parts[..parts.len() - 1].join(", ");
+            format!("{} and {}", head, parts[parts.len() - 1])
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoredCandidate {
     pub id: i32,
@@ -383,7 +399,7 @@ fn compose_blend_reason(
     if parts.is_empty() {
         return "Rounds out the group mix".to_string();
     }
-    crate::neuro_queue::join_sentence(&parts)
+    join_sentence(&parts)
 }
 
 /// Group taste overlap & blend scoring pipeline.
