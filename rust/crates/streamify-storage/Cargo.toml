@@ -17,6 +17,9 @@ crate-type = ["rlib"]
 
 [dependencies]
 streamify-core = { workspace = true }
+# The CAD-ID hasher lives in the jam-crdt leaf and is re-exported by this
+# crate (WS-W engine facade breadth) — public API unchanged.
+streamify-jam-crdt = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -18,7 +18,10 @@ crate-type = ["rlib"]
 
 [dependencies]
 streamify-core = { workspace = true }
-streamify-storage = { workspace = true }
+# The pure CRDT leaf this crate re-exports (WS-W engine facade breadth):
+# the CRDT must compile on wasm32, where this crate's transport surface
+# (tokio net / socket2 / rusqlite / ed25519 governance) cannot follow.
+streamify-jam-crdt = { workspace = true }
 tokio = { workspace = true }
 socket2 = { workspace = true }
 rand = { workspace = true }

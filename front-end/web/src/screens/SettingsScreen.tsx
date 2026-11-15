@@ -271,10 +271,23 @@ export function SettingsScreen(): JSX.Element {
             <button type="button" className="btn" onClick={() => navigate('/updates')}>
               Updates Hub
             </button>
-            <a className="btn settings__terminal" href="canary.html">
+            {/* W-W: the Diagnostic Terminal port — the canary.html link it
+                pointed at during P3a is replaced by the real screen
+                (AppNavGraph: admin_terminal). */}
+            <button type="button" className="btn settings__terminal" onClick={() => navigate('/admin-terminal')}>
               <Icon name="terminal" size={18} />
               Diagnostic Terminal
-            </a>
+            </button>
+          </div>
+          <div className="settings__row">
+            <button type="button" className="btn" onClick={() => navigate('/wrapped')}>
+              <Icon name="autoAwesome" size={18} />
+              Streamify Wrapped
+            </button>
+            <button type="button" className="btn" onClick={() => navigate('/admin')}>
+              <Icon name="adminPanel" size={18} />
+              Admin Portal
+            </button>
           </div>
         </Section>
 

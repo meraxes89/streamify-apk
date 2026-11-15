@@ -18,6 +18,8 @@ name = "streamify_resolver"
 crate-type = ["rlib"]
 
 [dependencies]
+# WS-W engine facade breadth (work item 3): the radio/blend scorer leaf.
+streamify-radio-scorer = { workspace = true }
 streamify-core = { workspace = true }
 streamify-storage = { workspace = true }
 tokio = { workspace = true }

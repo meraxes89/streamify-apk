@@ -15,6 +15,15 @@ export function ping(): string;
 export function resolve_stream(video_id: string): Promise<any>;
 
 /**
+ * The Start Radio scorer, mirrored from `rust_score_and_rank_radio_candidates`
+ * (WS-W engine facade breadth, work item 3): the anti-drift filter/ranker —
+ * signature dedupe, per-artist caps, junk-title filtering, BPM/key affinity —
+ * over the candidate pool, against the already-queued rows. JSON STRING in
+ * and out (the house bridge); throws on malformed candidate JSON.
+ */
+export function score_and_rank_radio_candidates(candidates_json: string, seed_bpm: number, seed_key: string, seed_duration_sec: number, seed_signature: string, queue_json: string): any;
+
+/**
  * W0.4 proof: search YouTube Music through the relay.
  *
  * Returns a JSON STRING (the JSON-string bridge — parse on the TS side;
@@ -37,11 +46,12 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly ping: () => [number, number];
     readonly resolve_stream: (a: number, b: number) => any;
+    readonly score_and_rank_radio_candidates: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
     readonly search_music: (a: number, b: number) => any;
     readonly set_relay_base_url: (a: number, b: number) => void;
-    readonly wasm_bindgen_10feaddee92b4bdd___convert__closures_____invoke___js_sys_daca4dbd301495d8___Function_fn_wasm_bindgen_10feaddee92b4bdd___JsValue_____wasm_bindgen_10feaddee92b4bdd___sys__Undefined___js_sys_daca4dbd301495d8___Function_fn_wasm_bindgen_10feaddee92b4bdd___JsValue_____wasm_bindgen_10feaddee92b4bdd___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen_10feaddee92b4bdd___convert__closures_____invoke___wasm_bindgen_10feaddee92b4bdd___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_10feaddee92b4bdd___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_10feaddee92b4bdd___convert__closures_____invoke_______true_: (a: number, b: number) => void;
+    readonly wasm_bindgen_9611549c714be130___convert__closures_____invoke___js_sys_baed2bde4b1d5235___Function_fn_wasm_bindgen_9611549c714be130___JsValue_____wasm_bindgen_9611549c714be130___sys__Undefined___js_sys_baed2bde4b1d5235___Function_fn_wasm_bindgen_9611549c714be130___JsValue_____wasm_bindgen_9611549c714be130___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen_9611549c714be130___convert__closures_____invoke___wasm_bindgen_9611549c714be130___JsValue__core_d941ad8722425d2e___result__Result_____wasm_bindgen_9611549c714be130___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_9611549c714be130___convert__closures_____invoke_______true_: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

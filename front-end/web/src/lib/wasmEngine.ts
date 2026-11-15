@@ -204,12 +204,20 @@ export class WasmEnginePort {
       this.sink?.unlock();
     }
     const applied = this.engine.on_media_command(JSON.stringify(command));
-    if (command.type === 'pause') {
+    if (command.type === 'pause' || command.type === 'toggle') {
       // The Rust command plane sets Paused WITHOUT emitting an intent
-      // (pause is a pure state transition). The element-side half of the
-      // handshake happens here: park it, or the audio keeps playing while
-      // every UI surface shows Paused (the P2 pause bug).
-      this.sink?.park();
+      // (pause is a pure state transition) — for BOTH literal 'pause' and
+      // the 'toggle' the app's surfaces actually send (the old code parked
+      // only on literal 'pause', which nothing in the UI ever emits: a
+      // toggle-pause left the element playing while every UI surface
+      // showed Paused, and the next Play reloaded the track from 0:00 —
+      // the reported "play/pause button does nothing" bug). The
+      // element-side half of the handshake parks exactly when the command
+      // plane is now Paused; a toggle that RESUMES (Paused→Playing) reads
+      // 'Playing' here and falls through to the play intent above.
+      if (this.engine.get_playback_state() === 'Paused') {
+        this.sink?.park();
+      }
     }
     return applied ? 'APPLIED' : 'DEBOUNCED';
   }
@@ -257,6 +265,17 @@ export class WasmEnginePort {
     return this.engine.enqueue_track(JSON.stringify(track), enqueuedBy);
   }
 
+  /**
+   * The Play Next op (WS-W engine facade breadth, work item 2): insert
+   * AFTER the cursor — the row lands at cursor+1 (the head when nothing is
+   * selected), silent mid-track (no lifecycle, no intent). Returns the new
+   * row's engine index, or null when refused (cap / bad row).
+   */
+  insertAfterCursor(track: TrackRow, enqueuedBy = 'web'): number | null {
+    const idx = this.engine.insert_after_cursor(JSON.stringify(track), enqueuedBy);
+    return idx === 4294967295 ? null : idx;
+  }
+
   getQueue(): QueueRead {
     return JSON.parse(this.engine.get_queue_json()) as QueueRead;
   }
@@ -277,6 +296,31 @@ export class WasmEnginePort {
 
   reportTrackEnded(): void {
     this.engine.report_track_ended();
+  }
+
+  // -- jam session lane (WS-W engine facade breadth, work item 1) ----------
+  // The UDL's jam surface on the engine, typed for the store. JSON STRING
+  // payloads parse here; u64 fields cross as decimal strings (op ids live
+  // above 2^53 — lib/jamEngine.ts owns the BigInt discipline).
+
+  /** Create the active Jam session (throws the contract's verbatim errors). */
+  createJamSession(name: string): import('./jamEngine').JamSessionHandle {
+    return JSON.parse(this.engine.create_jam_session(name)) as import('./jamEngine').JamSessionHandle;
+  }
+
+  /** Apply one 48-byte-row delta batch; returns the sync verdict. */
+  applyJamDelta(delta: Uint8Array): import('./jamEngine').JamSyncResult {
+    return JSON.parse(this.engine.apply_jam_delta(delta)) as import('./jamEngine').JamSyncResult;
+  }
+
+  /** BLAKE3 state hash of the active session (the Merkle currency). */
+  getJamStateHash(): string {
+    return this.engine.get_jam_state_hash() as string;
+  }
+
+  /** The local replica's room state view. */
+  getJamRoomState(): import('./jamEngine').JamRoomState {
+    return JSON.parse(this.engine.get_jam_room_state()) as import('./jamEngine').JamRoomState;
   }
 
   // -- sink binding --------------------------------------------------------------

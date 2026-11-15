@@ -3797,9 +3797,20 @@ dependencies = [
  "sha2 0.11.1",
  "socket2 0.5.10",
  "streamify-core",
- "streamify-storage",
+ "streamify-jam-crdt",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "streamify-jam-crdt"
+version = "1.0.0"
+dependencies = [
+ "blake3",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "streamify-storage",
 ]
 
 [[package]]
@@ -3811,6 +3822,14 @@ dependencies = [
  "streamify-core",
  "symphonia",
  "tracing",
+]
+
+[[package]]
+name = "streamify-radio-scorer"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3828,6 +3847,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "streamify-core",
+ "streamify-radio-scorer",
  "streamify-storage",
  "strsim",
  "tempfile",
@@ -3850,6 +3870,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "streamify-core",
+ "streamify-jam-crdt",
  "tempfile",
 ]
 

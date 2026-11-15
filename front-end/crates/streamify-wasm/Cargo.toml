@@ -35,6 +35,10 @@ serde_json = "1"
 # provides TLS), no QuickJS (rquickjs-sys does not compile to wasm — W0.1
 # landmine; the PO-free client ladder is the web strategy).
 rustypipe = { version = "0.11.4", default-features = false }
+# WS-W engine facade breadth (work item 3): the radio/blend scorer leaf
+# (rust/crates/streamify-radio-scorer — moved verbatim out of
+# streamify-resolver so it compiles on wasm32). Read-only path dep.
+streamify-radio-scorer = { path = "../../../rust/crates/streamify-radio-scorer" }
 
 [dev-dependencies]
 # NOTE: wasm-bindgen-test's version series diverged from wasm-bindgen's —

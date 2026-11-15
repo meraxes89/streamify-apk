@@ -84,6 +84,22 @@ export interface PlayerActions {
    * boundary. Returns false (no-op) when the move is out of scope.
    */
   reorderQueue(fromProjected: number, toProjected: number): boolean;
+  /**
+   * The Play Next op (WS-W engine facade breadth, work item 2): insert
+   * AFTER the cursor on the ENGINE (silent mid-track — no rebuild, no
+   * stop pipeline), then splice the pending up-next override so the row
+   * also projects at the head of up-next (the P1 projection contract:
+   * the override owns the up-next order the user sees). Returns false
+   * when the engine refused the row (cap / engine not ready).
+   */
+  playNext(track: {
+    videoId: string;
+    title: string;
+    artist: string;
+    album?: string | null;
+    durationSec?: number | null;
+    thumbnailUrl?: string | null;
+  }): boolean;
   /** Drops a pending order (engine order restored instantly). */
   clearQueueOrder(): void;
   /**
@@ -271,6 +287,37 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   clearQueueOrder() {
     const { baseQueue } = get();
     set({ queueOrderOverride: null, queue: baseQueue });
+  },
+
+  /** The Play Next op — engine insert + override splice (see the action doc). */
+  playNext(track) {
+    const { port, queueOrderOverride } = get();
+    if (port === null) return false;
+    if (track.videoId === '') return false;
+    const row = toTrackRow({
+      videoId: track.videoId,
+      title: track.title,
+      artist: track.artist,
+      album: track.album ?? undefined,
+      durationSec: track.durationSec ?? undefined,
+      thumbnailUrl: track.thumbnailUrl ?? undefined,
+    });
+    if (port.insertAfterCursor(row, 'web') === null) return false;
+    // Engine truth: the row is at cursor+1 in baseQueue. Projection: when
+    // an override is pending, splice the new id at the OVERRIDE's head so
+    // the projected up-next shows it immediately after now-playing (the
+    // store's subscribe push refreshes baseQueue on the length change).
+    const fresh = port.getQueue();
+    const override =
+      queueOrderOverride === null
+        ? null
+        : [row.id, ...queueOrderOverride.filter((id) => id !== row.id)];
+    set({
+      baseQueue: fresh,
+      queue: projectQueue(fresh, override),
+      queueOrderOverride: override,
+    });
+    return true;
   },
 
   /** The boundary application (wired as port.onTrackEndedHook in bind). */

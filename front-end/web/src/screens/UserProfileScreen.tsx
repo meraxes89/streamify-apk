@@ -90,7 +90,9 @@ export function UserProfileScreen(): JSX.Element {
             ))}
         </div>
 
-        {/* wrapped hero */}
+        {/* wrapped hero — the W-W StatsWrappedScreen port owns the full
+            card stack now; this stays as the profile's summary (the APK's
+            UserProfileScreen kept its own hero while routing to wrapped). */}
         <section className="userprofile__card" aria-label="Your soundtrack in numbers">
           <p className="userprofile__eyebrow">YOUR SOUNDTRACK IN NUMBERS</p>
           <p className="userprofile__bignum">{minutes} Minutes Listened</p>
@@ -108,7 +110,11 @@ export function UserProfileScreen(): JSX.Element {
               <span className="userprofile__wrappedstats-label">Top Rotations</span>
             </div>
           </div>
-          <p className="userprofile__stats-note">this device's local tally — the cloud stats RPC lands in P3b</p>
+          <p className="userprofile__stats-note">local tally summary — the full Wrapped lives one tap below</p>
+          <button type="button" className="btn button--primary userprofile__wrapped-cta" onClick={() => navigate('/wrapped')}>
+            <Icon name="autoAwesome" size={18} />
+            Open Streamify Wrapped
+          </button>
         </section>
 
         {/* musical chronotype */}
@@ -146,6 +152,19 @@ export function UserProfileScreen(): JSX.Element {
           <span className="userprofile__onward-titles">
             <span className="userprofile__onward-title">Settings &amp; Playback</span>
             <span className="userprofile__onward-sub">Audio quality, Equalizer &amp; Database Reset</span>
+          </span>
+          <Icon name="arrowBack" size={18} className="settings__fwd" />
+        </button>
+
+        {/* W-W: the APK's onNavigateToAdmin entry (the admin RPCs stay
+            server-fenced — non-admins see the honest refusal banner). */}
+        <button type="button" className="userprofile__onward" onClick={() => navigate('/admin')}>
+          <span className="userprofile__onward-icon">
+            <Icon name="adminPanel" size={20} />
+          </span>
+          <span className="userprofile__onward-titles">
+            <span className="userprofile__onward-title">Admin Portal</span>
+            <span className="userprofile__onward-sub">Telemetry · Users · Jam rooms · Broadcasts</span>
           </span>
           <Icon name="arrowBack" size={18} className="settings__fwd" />
         </button>

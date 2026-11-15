@@ -14,12 +14,30 @@ export class WasmEngine {
      * registration time on this single-threaded runtime).
      */
     add_event_listener(cb: Function): number;
+    /**
+     * Atomically apply one Jam CRDT delta batch. `delta` is a
+     * concatenation of 48-byte little-endian wire rows (the frozen
+     * `rust_48` image pinned by fixtures/jam_golden_vectors.json — the
+     * same rows the mesh gossips as MSG_CRDT_OP payloads). Rows merge in
+     * order; a row refused at the boundary (corrupt checksum, non-zero
+     * pads, NaN fraction, unknown op type, tombstone-suppressed Add replay)
+     * is counted in `opsRejected` and skipped — a partially corrupt batch
+     * still delivers its clean rows (the mesh ingress contract).
+     */
+    apply_jam_delta(delta: Uint8Array | number[]): any;
     clear_queue(): void;
     /**
      * Housekeeping hook for the JS wrapper (no-op here; the UDL has no
      * listener removal and the engine outlives the page — documented).
      */
     close(): void;
+    /**
+     * Create the engine's active Jam session. Mirrors
+     * `StreamifyEngine::create_jam_session` exactly: trim + blank/128-byte
+     * cap rejection, the strictly-monotonic id mint, the wall-clock stamp.
+     * Returns the handle JSON (u64s as strings) or throws.
+     */
+    create_jam_session(session_name: string): any;
     /**
      * Enqueue a track row; returns its queue index. Duplicated ids are
      * allowed (the UDL queue holds rows, not a set) up to MAX_QUEUE_ROWS;
@@ -30,6 +48,18 @@ export class WasmEngine {
      * One-shot cold-start read (the sanctioned one-shot snapshot).
      */
     get_engine_snapshot_json(): string;
+    /**
+     * Presentation state of the engine's active Jam room (the local
+     * replica view — the transport layer fills participants once the
+     * channel is live; `isHost` reflects the LOCAL engine, exactly like
+     * the contract).
+     */
+    get_jam_room_state(): any;
+    /**
+     * Deterministic state hash of the active Jam session (BLAKE3 over the
+     * canonical fold). Requires a live session; never mutates state.
+     */
+    get_jam_state_hash(): any;
     /**
      * One-shot diagnostics read of the lifecycle state name.
      */
@@ -42,6 +72,19 @@ export class WasmEngine {
      * One-way `Idle→Buffering`, idempotent (second call: no bump, no event).
      */
     initialize(): void;
+    /**
+     * Insert one track AFTER the transport cursor — the Play Next op
+     * (WS-W engine facade breadth, work item 2). Mirrors the UDL's
+     * `insert_after_cursor`: the row lands at cursor+1 (the queue head
+     * when nothing is selected), so the next advance plays it before
+     * anything already staged further back. The current row's playback
+     * is UNTOUCHED: no lifecycle transition, no play intent, the position
+     * target is preserved — the one queue mutation that is silent by
+     * construction mid-track. The by_id index is rebuilt (the insert
+     * shifts every row behind the cursor). Returns the new row's index,
+     * or u32::MAX when refused (bad JSON / blank id / the row cap).
+     */
+    insert_after_cursor(track_json: string, enqueued_by: string): number;
     constructor();
     /**
      * The debounced media-command entry (APPLIED=true / DEBOUNCED=false).
@@ -92,19 +135,119 @@ export class WasmEngine {
     take_play_intent_json(): string | undefined;
 }
 
+/**
+ * `canonical_cad_id(title, artist, duration_sec)` — the canonical track
+ * identity for op building, DECIMAL STRING.
+ */
+export function canonical_cad_id(title: string, artist: string, duration_sec: number): string;
+
+/**
+ * `rust_compute_fft_spectrum` mirrored: the spectrum bars for a
+ * visualization frame. `bar_count` is clamped to >= 1; silence yields a
+ * zero vector of the requested length.
+ */
+export function compute_fft_spectrum(pcm: Float32Array | number[], bar_count: number): Float32Array;
+
+/**
+ * `FractionalIndexEngine.after` → `{"value":f64,"needsRebalance":bool}`.
+ */
+export function frac_after(last?: number | null): string;
+
+/**
+ * `FractionalIndexEngine.before`.
+ */
+export function frac_before(first?: number | null): string;
+
+/**
+ * `FractionalIndexEngine.between`.
+ */
+export function frac_between(prev?: number | null, next?: number | null): string;
+
+/**
+ * `FractionalIndexEngine.collide(a, b)`.
+ */
+export function frac_collide(a: number, b: number): boolean;
+
+/**
+ * `FractionalIndexEngine.indexForInsertAt(position, orderedFracs)`.
+ */
+export function frac_index_for_insert_at(position: number, ordered_fracs: Float64Array | number[]): string;
+
+/**
+ * `JamOp.generate_op_id()` — the strictly-monotonic id mint, DECIMAL
+ * STRING (u64 > 2^53; the TS bridge parses BigInt).
+ */
+export function jam_generate_op_id(): string;
+
+/**
+ * Unpack one 48-byte wire row into the op JSON (u64s as decimal strings);
+ * returns `"null"` for a structurally corrupt row (non-zero pads, wrong
+ * length) — a malformed op must never enter the CRDT.
+ */
+export function jam_op_from_bytes(bytes: Uint8Array | number[]): string;
+
+/**
+ * Pack one op JSON into the frozen 48-byte little-endian wire row
+ * (`JamOp::new` semantics: pads zeroed, checksum sealed over [0..40)).
+ * The op JSON must carry `opId`/`senderNonce`(8 hex)/`opType`(1..=4)/
+ * `cadId`/`frac`; `policyFlags`/`target` default to 0. Throws on a
+ * malformed row (unknown op type, bad hex, non-numeric u64 string).
+ */
+export function jam_op_to_bytes(op_json: string): Uint8Array;
+
+/**
+ * `jamTrackFromJson(raw)` — decode one queue entry; returns the JSON
+ * string `"null"` when the title is missing/blank (a titleless row must
+ * never enter the jam queue).
+ */
+export function jam_track_from_json(raw: string): string;
+
+/**
+ * `jamTrackToJson(trackJson)` — normalize-encode one queue entry (blank
+ * optionals dropped, addedBy blank dropped). Throws on malformed JSON.
+ */
+export function jam_track_to_json(track_json: string): string;
+
+/**
+ * `rust_process_equalizer_frame` mirrored: apply the 10-band parametric EQ
+ * to one interleaved PCM buffer IN PLACE. `gains` is the 10-band curve in
+ * dB (applied before processing, exactly like the FFI's set_band_gain
+ * loop); `channels` preserves the interleaving. Errors: empty PCM, zero
+ * channels, or a gains curve that is not exactly 10 bands.
+ */
+export function process_equalizer_frame(pcm: Float32Array, channels: number, gains: Float32Array | number[]): void;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmengine_free: (a: number, b: number) => void;
+    readonly canonical_cad_id: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly compute_fft_spectrum: (a: number, b: number, c: number) => [number, number];
+    readonly frac_after: (a: number, b: number) => [number, number];
+    readonly frac_before: (a: number, b: number) => [number, number];
+    readonly frac_between: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly frac_collide: (a: number, b: number) => number;
+    readonly frac_index_for_insert_at: (a: number, b: number, c: number) => [number, number];
+    readonly jam_generate_op_id: () => [number, number];
+    readonly jam_op_from_bytes: (a: number, b: number) => [number, number];
+    readonly jam_op_to_bytes: (a: number, b: number) => [number, number, number, number];
+    readonly jam_track_from_json: (a: number, b: number) => [number, number];
+    readonly jam_track_to_json: (a: number, b: number) => [number, number, number, number];
+    readonly process_equalizer_frame: (a: number, b: number, c: any, d: number, e: number, f: number) => [number, number];
     readonly wasmengine_add_event_listener: (a: number, b: any) => number;
+    readonly wasmengine_apply_jam_delta: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_clear_queue: (a: number) => void;
     readonly wasmengine_close: (a: number) => void;
+    readonly wasmengine_create_jam_session: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_enqueue_track: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_get_engine_snapshot_json: (a: number) => [number, number];
+    readonly wasmengine_get_jam_room_state: (a: number) => [number, number, number];
+    readonly wasmengine_get_jam_state_hash: (a: number) => [number, number, number];
     readonly wasmengine_get_playback_state: (a: number) => [number, number];
     readonly wasmengine_get_queue_json: (a: number) => [number, number];
     readonly wasmengine_initialize: (a: number) => void;
+    readonly wasmengine_insert_after_cursor: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_new: () => number;
     readonly wasmengine_on_media_command: (a: number, b: number, c: number) => number;
     readonly wasmengine_play_track: (a: number, b: number, c: number) => number;
@@ -115,12 +258,22 @@ export interface InitOutput {
     readonly wasmengine_set_volume: (a: number, b: number) => void;
     readonly wasmengine_stage_stream_url: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_take_play_intent_json: (a: number) => [number, number];
+    readonly apply_normalization: (a: number, b: number, c: number) => number;
+    readonly consume_pending_seek: (a: bigint) => bigint;
+    readonly free_audio_dsp: (a: number) => void;
+    readonly free_normalizer: (a: number) => void;
+    readonly init_audio_dsp: () => number;
+    readonly init_normalizer: (a: number) => number;
+    readonly process_audio_dsp: (a: number, b: number, c: number, d: number) => number;
+    readonly reset_seek_guard: () => void;
+    readonly submit_seek_request: (a: bigint) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
+    readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }
 
