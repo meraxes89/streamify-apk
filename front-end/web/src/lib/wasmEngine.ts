@@ -204,12 +204,20 @@ export class WasmEnginePort {
       this.sink?.unlock();
     }
     const applied = this.engine.on_media_command(JSON.stringify(command));
-    if (command.type === 'pause') {
+    if (command.type === 'pause' || command.type === 'toggle') {
       // The Rust command plane sets Paused WITHOUT emitting an intent
-      // (pause is a pure state transition). The element-side half of the
-      // handshake happens here: park it, or the audio keeps playing while
-      // every UI surface shows Paused (the P2 pause bug).
-      this.sink?.park();
+      // (pause is a pure state transition) — for BOTH literal 'pause' and
+      // the 'toggle' the app's surfaces actually send (the old code parked
+      // only on literal 'pause', which nothing in the UI ever emits: a
+      // toggle-pause left the element playing while every UI surface
+      // showed Paused, and the next Play reloaded the track from 0:00 —
+      // the reported "play/pause button does nothing" bug). The
+      // element-side half of the handshake parks exactly when the command
+      // plane is now Paused; a toggle that RESUMES (Paused→Playing) reads
+      // 'Playing' here and falls through to the play intent above.
+      if (this.engine.get_playback_state() === 'Paused') {
+        this.sink?.park();
+      }
     }
     return applied ? 'APPLIED' : 'DEBOUNCED';
   }
