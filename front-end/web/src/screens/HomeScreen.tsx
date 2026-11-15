@@ -24,6 +24,7 @@ import { QueueList, queueListStateOf } from '../components/QueueList';
 import { AuthPanel } from '../components/AuthPanel';
 import { SpineConsole } from '../components/SpineConsole';
 import { GsfLanePanel } from '../components/GsfLanePanel';
+import { UniversalHomeScreen } from './UniversalHomeScreen';
 import { isBotGateError } from '../audio/resolve';
 import { gsfConfigured } from '../lib/gsfLane';
 import type { RowPlayback } from '../components/TrackRow';
@@ -158,6 +159,9 @@ export function HomeScreen(): JSX.Element {
 
   return (
     <div className="stack home-stack">
+      {/* P2 browse: the YT-Music-style shelves feed (the UniversalHomeScreen
+          port) — additive on top of the P3a engine surface below. */}
+      <UniversalHomeScreen />
       <PlayerBar egressMode={egressMode} onEgressModeChange={setEgressMode} />
       {resolveError !== null && <p className="home-resolve-error">{resolveError}</p>}
       <GsfLanePanel />
