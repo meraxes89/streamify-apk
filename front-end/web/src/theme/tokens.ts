@@ -98,3 +98,8 @@ export const animation = {
   springBouncy: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
   easeStandard: 'cubic-bezier(0.4, 0, 0.2, 1)',
 } as const;
+
+/** kotlin.math.roundToInt — the VolumeSlider readout rounding. */
+export function roundToInt(v: number): number {
+  return Math.round(v) | 0;
+}

@@ -29,11 +29,18 @@ import { ProfileSelectionScreen } from '../screens/ProfileSelectionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { UserProfileScreen } from '../screens/UserProfileScreen';
 import { UpdatesHubScreen } from '../screens/UpdatesHubScreen';
+// P2 (browse) screens:
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { AlbumRoute } from '../screens/AlbumScreen';
 import { ArtistRoute } from '../screens/ArtistScreen';
 import { DownloadsNoticeScreen } from '../screens/PortingNoticeScreen';
+// P1 (listen loop) — kept as a compact, self-contained block so concurrent
+// PRs touching this file stay conflict-free.
+import { FullPlayerSheet } from '../screens/FullPlayerSheet';
+import { QueueScreen } from '../screens/QueueScreen';
+import { LyricsScreen } from '../screens/LyricsScreen';
+import { useUiStore } from '../lib/uiStore';
 
 /** Android immersiveRoutes: chrome + mini-player hidden. */
 const IMMERSIVE = new Set(['/onboarding', '/profile-selection']);
@@ -41,6 +48,10 @@ const IMMERSIVE = new Set(['/onboarding', '/profile-selection']);
 export function AppShell(): JSX.Element {
   const location = useLocation();
   const immersive = IMMERSIVE.has(location.pathname);
+
+  // P1: the FullPlayerSheet overlay visibility (layer 3 above the shell).
+  const fullPlayerOpen = useUiStore((s) => s.fullPlayerOpen);
+  const closeFullPlayer = useUiStore((s) => s.closeFullPlayer);
 
   const bind = usePlayerStore((s) => s.bind);
   const setResolveError = usePlayerStore((s) => s.setResolveError);
@@ -160,6 +171,8 @@ export function AppShell(): JSX.Element {
             <Route path="/artist/:artistName" element={<ArtistRoute />} />
             <Route path="/album/:albumName" element={<AlbumRoute />} />
             <Route path="/downloads" element={<DownloadsNoticeScreen />} />
+            <Route path="/queue" element={<QueueScreen />} />
+            <Route path="/lyrics" element={<LyricsScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
@@ -178,6 +191,11 @@ export function AppShell(): JSX.Element {
 
       {!immersive && <MiniPlayerBar />}
       {!immersive && <NavRail />}
+      {/* P1: the full-player overlay — layer 3 above the shell chrome;
+          null until a track exists (the Kotlin `isPlayerExpanded && hasTrack`). */}
+      {!immersive && (
+        <FullPlayerSheet open={fullPlayerOpen} onCollapse={closeFullPlayer} />
+      )}
       <Toasts />
     </div>
   );
