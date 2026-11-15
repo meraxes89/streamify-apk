@@ -1183,6 +1183,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "streamify-radio-scorer"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "streamify-wasm"
 version = "0.1.0"
 dependencies = [
@@ -1190,6 +1198,7 @@ dependencies = [
  "rustypipe",
  "serde",
  "serde_json",
+ "streamify-radio-scorer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",

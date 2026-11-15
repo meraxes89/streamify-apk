@@ -3825,6 +3825,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "streamify-radio-scorer"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "streamify-resolver"
 version = "1.0.0"
 dependencies = [
@@ -3839,6 +3847,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "streamify-core",
+ "streamify-radio-scorer",
  "streamify-storage",
  "strsim",
  "tempfile",

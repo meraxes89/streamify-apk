@@ -21,6 +21,8 @@ import type { TrackRow } from './wasmEngine';
 import { toast } from './toastStore';
 import { isBotGateError } from '../audio/resolve';
 import { gsfConfigured } from './gsfLane';
+// WS-W engine facade breadth (work item 3): the Start Radio lane.
+import { searchMusic, scoreAndRankRadioCandidates, type Track } from './engine';
 
 /** The playable shape shared by engine Tracks and cloud library rows. */
 export interface PlayableTrack {
@@ -41,6 +43,14 @@ export interface TrackPlayer {
   playCollection(tracks: PlayableTrack[], shuffle?: boolean): Promise<void>;
   /** Per-row playback state from the ENGINE snapshot (one source of truth). */
   playbackFor(track: PlayableTrack): import('../components/TrackRow').RowPlayback | undefined;
+  /**
+   * Start Radio (WS-W engine facade breadth, work item 3): candidates via
+   * the yt session search over the seed, ranked through the ENGINE's
+   * anti-drift scorer (lib/engine.ts — the bridge contract), then either
+   * an up-next fill (when the seed is the now-playing row — no
+   * interruption, the P1 discipline) or a fresh collection play.
+   */
+  startRadio(seed: PlayableTrack): Promise<void>;
 }
 
 function shuffled<T>(list: T[]): T[] {
@@ -168,5 +178,95 @@ export function useTrackPlayer(): TrackPlayer {
     [snapshot],
   );
 
-  return { play, queue, playCollection, playbackFor };
+  // -- Start Radio (work item 3) --------------------------------------------
+  const startRadio = useCallback(
+    async (seed: PlayableTrack): Promise<void> => {
+      if (port === null) return;
+      if (seed.videoId === '') {
+        toast(`No stream source for "${seed.title}" (liked from another client)`, 'error');
+        return;
+      }
+      port.unlockSink();
+      try {
+        // 1. The candidate pool: the yt session search over the seed.
+        const pool = await searchMusic(`${seed.artist} ${seed.title}`.trim());
+        const candidates = pool.filter((t) => t.videoId !== seed.videoId);
+        if (candidates.length === 0) {
+          toast('The radio search found no candidates for this seed', 'error');
+          return;
+        }
+        // 2. Rank through the engine (anti-drift). id = pool index so the
+        //    ranked rows map back to playable tracks 1:1.
+        const activeQueue = port
+          .getQueue()
+          .rows.filter((r) => r.track.id !== seed.videoId)
+          .map(
+            (r): import('./engine').RadioCandidate => ({
+              id: 0,
+              title: r.track.title,
+              artist: r.track.artist,
+              album: '',
+              duration_sec: Math.round(r.track.durationMs / 1000),
+              filepath: '',
+              cover_art_path: r.track.thumbnailUrl ?? '',
+              bpm: 0,
+              key: '',
+            }),
+          );
+        const ranked = scoreAndRankRadioCandidates(
+          candidates.map((t, i): import('./engine').RadioCandidate => {
+            const dur = Math.round(t.durationSec ?? 0);
+            return {
+              id: i,
+              title: t.title,
+              artist: t.artist,
+              album: '',
+              duration_sec: dur,
+              filepath: '',
+              cover_art_path: t.thumbnailUrl ?? '',
+              bpm: 0,
+              key: '',
+            };
+          }),
+          {
+            bpm: 0,
+            key: '',
+            durationSec: seed.durationSec ?? 0,
+            signature: `${seed.title}|${seed.artist}|${Math.round(seed.durationSec ?? 0)}`,
+          },
+          activeQueue,
+        );
+        const playable = ranked
+          .map((rc) => pool[rc.id] as Track | undefined)
+          .filter((t): t is Track => t !== undefined && t.videoId !== '');
+        if (playable.length === 0) {
+          toast('The radio ladder filtered every candidate (junk/dedupe)', 'error');
+          return;
+        }
+        // 3. Land it. Seed already the now-playing row → up-next fill via
+        //    the Play Next op (reversed order; the projection contract is
+        //    playNext's). Otherwise a fresh collection play led by the seed.
+        const currentId = snapshot?.currentTrack?.id ?? null;
+        const status = snapshot?.status ?? 'Idle';
+        if (seed.videoId === currentId && (status === 'Playing' || status === 'Paused' || status === 'Buffering')) {
+          const store = usePlayerStore.getState();
+          let landed = 0;
+          for (const t of [...playable].reverse()) {
+            if (store.playNext(t)) landed += 1;
+          }
+          toast(
+            landed > 0 ? `Radio: ${landed} tracks up next` : 'Engine busy — try again',
+            landed > 0 ? 'success' : 'error',
+          );
+          return;
+        }
+        await playCollection([seed, ...playable], false);
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), 'error');
+      }
+    },
+    [port, snapshot, playCollection],
+  );
+
+  return { play, queue, playCollection, playbackFor, startRadio };
 }

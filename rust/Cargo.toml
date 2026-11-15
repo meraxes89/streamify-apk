@@ -53,6 +53,7 @@ resolver = "2"
 members = [
     "crates/streamify-core",
     "crates/streamify-jam-crdt",
+    "crates/streamify-radio-scorer",
     "crates/streamify-audio",
     "crates/streamify-playback",
     "crates/streamify-storage",
@@ -64,6 +65,7 @@ members = [
 default-members = [
     "crates/streamify-core",
     "crates/streamify-jam-crdt",
+    "crates/streamify-radio-scorer",
     "crates/streamify-audio",
     "crates/streamify-playback",
     "crates/streamify-playback",
@@ -87,6 +89,7 @@ license = "MIT"
 [workspace.dependencies]
 streamify-core = { path = "crates/streamify-core" }
 streamify-jam-crdt = { path = "crates/streamify-jam-crdt" }
+streamify-radio-scorer = { path = "crates/streamify-radio-scorer" }
 streamify-audio = { path = "crates/streamify-audio" }
 streamify-playback = { path = "crates/streamify-playback" }
 streamify-storage = { path = "crates/streamify-storage" }

@@ -13,13 +13,13 @@
  *   Share               → navigator.clipboard (the watch URL)
  *
  * NOT ported (engine/repository surfaces not exposed to JS yet — see the
- * PR description gap list; never faked): Start Radio / Jam (the radio
- * scorer; the Jam CRDT now rides lib/jamStore — its screens are the next
- * track), Download (OPFS phase), Edit Info (tagger), Exclude from Taste
- * Profile (taste graph).
+ * PR description gap list; never faked): Jam (the CRDT now rides
+ * lib/jamStore — its screens are the next track), Download (OPFS phase),
+ * Edit Info (tagger), Exclude from Taste Profile (taste graph).
  *
- * WS-W engine facade breadth, work item 2: Play Next IS ported now — the
- * engine grew insert_after_cursor (the UDL op), wired below.
+ * WS-W engine facade breadth: Play Next (work item 2) and Start Radio
+ * (work item 3) ARE ported now — the engine grew insert_after_cursor and
+ * the radio scorer rides the wasm facade (lib/engine.ts).
  *
  * The sheet itself is a MINIMAL local implementation (scrim + slide-up
  * panel + drag handle + Escape). TODO: consolidate onto Sheet.tsx when
@@ -286,6 +286,18 @@ export function ContextMenuSheet(props: ContextMenuSheetProps): JSX.Element {
             >
               <Icon name="playArrow" size={22} className="cmaction__icon" />
               <span>Play Next</span>
+            </button>
+
+            <button
+              type="button"
+              className="cmaction"
+              onClick={() => {
+                onDismissRequest();
+                void player.startRadio(track);
+              }}
+            >
+              <Icon name="radio" size={22} className="cmaction__icon" />
+              <span>Start Radio</span>
             </button>
 
             <button type="button" className="cmaction" onClick={handleLike}>
