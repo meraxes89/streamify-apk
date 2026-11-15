@@ -1,0 +1,97 @@
+# Web Deploy — GitHub Pages deployment for the Streamify web port (W0.3/W0.4).
+#
+# NOTE: branch deploys from `ws-w/*` are intentional during the proof
+# phase — the P0 gates (G0.2 ping / G0.3 search / G0.4 10s audio) must be
+# verifiable on the Pages URL while the proof work streams on one branch.
+#
+# G4.1 (2026-11-14): the ACTIVE iteration branch must be in this list —
+# `ws-w/g4-residential-direct` was missing, so every G4 push shipped
+# CI-green but NEVER deployed to Pages: the phone kept testing the stale
+# G3b bundle ("no rung resolved … LOGIN_REQUIRED") for a full day while
+# the PR looked complete. Keep this list = `main` + the active ws-w
+# branch; merged/dead branches are removed to prevent stale redeployments.
+name: Web Deploy
+
+on:
+  push:
+    branches: [main, 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop']
+    paths: ['front-end/**', '.github/workflows/web-deploy.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time; never cancel an in-flight deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    # WS-W live wiring (2026-11-12, W0.6): Vite bakes these into the Pages
+    # bundle at build time. The relay + Supabase URLs are public constants
+    # (same values as app/build.gradle.kts defaults); the anon key flows from
+    # the repo secret SUPABASE_ANON_KEY — it is JWT-shaped, so gitleaks flags
+    # it if committed. Runs without the secret (fork PRs / workflow_dispatch
+    # from forks) build in anon-degraded mode: the canary page falls back to
+    # its amber "not configured" note + copy-rows-JSON button, and the app
+    # itself is unaffected (the relay URL is a public constant).
+    env:
+      VITE_RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
+      VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      # G5 (optional): the owner's deployed tools/gsf Apps Script URL
+      # (repository VARIABLE, not a secret — it is meant to be public).
+      # Unset → empty → the GSF lane stays off and every visitor can still
+      # set their own script in the Engine Egress panel or via ?gsf=.
+      VITE_GSF_URL: ${{ vars.GSF_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # W0.4: build the Rust wasm engine (vendored web rustypipe →
+      # wasm32-unknown-unknown) and copy the wasm-pack pkg output into the
+      # web app before the vite build. --no-opt: the wasm-pack-bundled
+      # wasm-opt rejects rustc's bulk-memory ops (see the crate's
+      # Cargo.toml note).
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: npm i -g wasm-pack@0.15.1
+      - name: Build wasm facade + engine control plane
+        run: |
+          wasm-pack build crates/streamify-wasm --target web --out-dir pkg --no-opt
+          cp crates/streamify-wasm/pkg/streamify_wasm.js \
+             crates/streamify-wasm/pkg/streamify_wasm.d.ts \
+             crates/streamify-wasm/pkg/streamify_wasm_bg.wasm \
+             crates/streamify-wasm/pkg/streamify_wasm_bg.wasm.d.ts \
+             web/src/wasm/
+          wasm-pack build crates/streamify-engine-wasm --target web --out-dir pkg --no-opt
+          cp crates/streamify-engine-wasm/pkg/streamify_engine_wasm.js \
+             crates/streamify-engine-wasm/pkg/streamify_engine_wasm.d.ts \
+             crates/streamify-engine-wasm/pkg/streamify_engine_wasm_bg.wasm \
+             crates/streamify-engine-wasm/pkg/streamify_engine_wasm_bg.wasm.d.ts \
+             web/src/wasm-engine/
+        working-directory: front-end
+      - name: Install deps
+        run: npm install --no-fund --no-audit
+        working-directory: front-end
+      - name: Build web
+        run: npm run build -w web
+        working-directory: front-end
+      - uses: actions/configure-pages@v5
+        with:
+          # First deploy: create the Pages site if it is not enabled yet
+          # (the repo owner has already enabled it via the API — this keeps
+          # the workflow self-sufficient for fresh checkouts).
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: front-end/web/dist
+      - uses: actions/deploy-pages@v4

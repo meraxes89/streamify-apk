@@ -1,0 +1,36 @@
+/// <reference types="node" />
+import { resolve } from 'node:path';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+// wasm facade output (wasm-pack `pkg`) is copied into src/wasm/ by build
+// tooling; src/lib/engine.ts imports it dynamically, with the committed
+// stub in src/wasm/streamify_wasm.js as a fallback so the web build stays
+// green until the real facade lands (W0.4).
+export default defineConfig({
+  base: '/streamify-apk/',
+  plugins: [react()],
+  // AudioWorklet modules must be ES modules (audioWorklet.addModule);
+  // the sink worklet is imported via `?worker&url` (transport.ts).
+  worker: {
+    format: 'es',
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve('index.html'),
+        canary: resolve('canary.html'),
+        // G3b note: the P3b 'mint-harness' rollup input (the hidden
+        // srcdoc iframe's module) is GONE with the harness itself — the
+        // bgutils-js mint runs in the MAIN page realm now (see
+        // src/audio/botguard/potMinter.ts). The default hashed
+        // entryFileNames pattern is restored (the P3b config's fixed
+        // 'assets/mint-harness.js' name was harness-only).
+      },
+    },
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
+  },
+});

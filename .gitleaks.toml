@@ -1,5 +1,5 @@
-# gitleaks configuration — extends the full default rule set, with ONE
-# narrowly-scoped, documented exception.
+# gitleaks configuration — extends the full default rule set, with
+# narrowly-scoped, documented exceptions.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ALLOWLISTED: the YouTube Music PUBLIC InnerTube web-client key
@@ -17,9 +17,11 @@
 #     gcp-api-key rule only flagged the NEW Swift port because gitleaks
 #     scans the PR diff, not history.
 #
-# Scope (reconciled by SEC-07 — lead plan R1.6): this is the ONLY
-# InnerTube key string in the tree, referenced as documented constants in
-# exactly two places —
+# Scope (reconciled by SEC-07 — lead plan R1.6; amended by the lyrics
+# port below): the tree carries TWO documented public InnerTube client
+# constants — the WEB key here, and the ANDROID_MUSIC key (see the
+# allowlist entry below). The WEB key is referenced as a documented
+# constant in exactly two places —
 #   * the Kotlin fleet scrapers (CanvasScraperApi / ArtistClipsApi /
 #     ReleaseWatcherApi URL literals), and
 #   * the Rust resolver's fallback constant
@@ -30,15 +32,43 @@
 # different string this allowlist never matched, one PR away from breaking
 # preflight — was purged by SEC-07. Every other default rule stays fully
 # active.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ALLOWLISTED (WS-W lyrics v1): the YouTube Music PUBLIC ANDROID_MUSIC
+# client key
+#   AIzaSyC1xlRQImGslL28Q8HqTqD_o-w-r2Q_Z4
+#
+# Why this is not a secret: the same class as the two constants above —
+#   * It is the ANDROID_MUSIC client identifier every YouTube Music APK
+#     ships (youtubei.js's Constants.API_KEY for that client), required
+#     because YTM only serves ATV timedLyricsData to the ANDROID_MUSIC
+#     innertube client.
+#   * Not billable, grants no privileges, cannot be leaked — it ships in
+#     the client.
+#   * The IDENTICAL constant has been committed in Kotlin since the
+#     Android lyrics engine landed (app/…/data/network/LyricsResolver.kt,
+#     YTM_KEY); the generic-api-key entropy heuristic only flagged the
+#     NEW web port (front-end/web/src/lyrics/resolver.ts) because
+#     gitleaks scans the PR diff, not history.
 # ─────────────────────────────────────────────────────────────────────────────
 
 [extend]
 useDefault = true
 
 [allowlist]
-id = "public-innertube-web-client-key"
-description = "YouTube Music's public InnerTube web-client key (ships in every YTM web client; not a GCP credential — see header above)"
+# W1.0 addition — the bgutils WebPo PUBLIC WAA request key
+#   O43z0dpjhgX20SCx4KAo
+# Why this is not a secret: it is the first element of the
+# $rpc/google.internal.waa.v1.Waa/GenerateIT request body that the
+# bgutils-js npm package (MIT) hardcodes for EVERY consumer — a protocol
+# constant, not a credential (same class as the InnerTube client
+# identifier above). Referenced in exactly one place:
+# front-end/web/src/audio/botguard/protocol.ts (WAA_REQUEST_KEY).
+id = "public client-protocol constants (documented per-regex above)"
+description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key — public protocol constants, not credentials (see header)"
 regexTarget = "match"
 regexes = [
     '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
+    '''O43z0dpjhgX20SCx4KAo''',
+    '''AIzaSyC1xlRQImGslL28Q8HqTqD_o-w-r2Q_Z4''',
 ]

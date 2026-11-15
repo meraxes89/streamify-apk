@@ -1,0 +1,32 @@
+{
+  "name": "Streamify — Music, engineered",
+  "short_name": "Streamify",
+  "description": "The Streamify audio engine in your browser: wasm queue engine, direct-egress playback, cloud library.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "./icon192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

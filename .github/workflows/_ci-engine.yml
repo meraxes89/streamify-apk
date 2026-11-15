@@ -564,8 +564,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
+      # 2026-11-12 (rustc 1.100.0 stable roll): the runner's stable jumped
+      # 1.99.1 → 1.100.0 mid-day and the new rustc's longer argv overflows
+      # sccache's Windows spawn — "failed to spawn rustc … The filename or
+      # extension is too long. (os error 206)" on streamify-contract (main
+      # was green at 10:42 with 1.99.1; the tree was identical). Cargo's own
+      # @responsefile mitigation never reaches a RUSTC_WRAPPER, so sccache
+      # is OFF for THIS job until sccache learns response files; the Linux
+      # jobs keep it (fork/exec has no 32K argv limit). rust-cache (restored
+      # from main) still covers most of the build on PR runs; a cold build
+      # fits the 30-minute timeout.
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
@@ -582,9 +590,6 @@ jobs:
           shared-key: "native-windows-x86_64"
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Compile Windows engine cdylib (release, stripped)
         shell: bash

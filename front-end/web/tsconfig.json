@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": [
+    "src/audio/hls/ffmpeg-worker"
+  ]
+}

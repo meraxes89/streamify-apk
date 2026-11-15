@@ -1,0 +1,15 @@
+{
+  "name": "streamify-web-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "web",
+    "relay",
+    "canary"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w web",
+    "build:web": "npm run build -w web",
+    "typecheck:web": "npm run typecheck -w web"
+  }
+}

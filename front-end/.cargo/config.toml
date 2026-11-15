@@ -1,0 +1,9 @@
+# front-end/.cargo/config.toml — wasm-bindgen-test runner wiring (W0.2 AC).
+#
+# `cargo test --target wasm32-unknown-unknown` executes the compiled .wasm
+# test binary through this runner (without it, cargo execs the .wasm file
+# directly — "Exec format error"). The wasm-bindgen-test-runner binary must
+# be installed and version-matched to the crate's wasm-bindgen (CI: cargo
+# install wasm-bindgen-cli --version 0.2.130; see web-build.yml).
+[target.wasm32-unknown-unknown]
+runner = "wasm-bindgen-test-runner"

@@ -1,0 +1,46 @@
+[package]
+# streamify-engine-wasm — WS-W P2 / W2.1: the engine control-plane facade.
+#
+# Binds the frozen `streamify-core` vocabulary (std-only leaf, proven
+# wasm-clean by the W1.7 golden vectors) into a wasm-bindgen surface that
+# mirrors the Android EnginePort / UDL StreamifyEngine CONTROL semantics:
+# the playback state machine, the 100 ms media-command debounce, the
+# rev-monotonic snapshot push discipline and the typed queue lane.
+#
+# The DATA plane (producer thread + SPSC ring) cannot cross to wasm
+# (std::thread / mpsc / Instant do not exist on wasm32; no SharedArrayBuffer
+# on GitHub Pages). The web data plane keeps its TS mirrors — the AudioWorklet
+# ring (byte-exact SinkStats wire, statsWire.ts) and the P1 spine — which the
+# engine drives through PlayIntents. See front-end/decisions/W2.0-engine-egress.md.
+#
+# Built with (from front-end/):
+#   wasm-pack build crates/streamify-engine-wasm --target web --out-dir pkg --no-opt
+name = "streamify-engine-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Streamify web engine facade: wasm-bindgen control plane over streamify-core (state machine, debounce, snapshots, queue)"
+publish = false
+
+# Same wasm-opt story as streamify-wasm: the bundled binaryen rejects rustc's
+# bulk-memory ops — skip the post-opt pass.
+[package.metadata.wasm-pack.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Read-only path dep into the frozen tree, exactly like streamify-golden-wasm
+# (W1.7): the front-end workspace never modifies rust/ — the patch table only
+# exists for rustypipe. streamify-core is std-only, so this adds no wasm
+# dependencies beyond its own leaf types.
+streamify-core = { path = "../../../rust/crates/streamify-core" }
+
+[dev-dependencies]
+# MUST stay paired with the workspace's wasm-bindgen (0.2.130) — see the
+# pinned-version note in streamify-wasm's Cargo.toml.
+wasm-bindgen-test = "0.3"

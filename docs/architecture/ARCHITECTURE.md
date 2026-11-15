@@ -21,7 +21,7 @@ An Android music-streaming engine with a **triple-native core**:
 
 The repo also carries **three auxiliary systems**: a Supabase schema
 (`supabase/`), a fleet of probe/tooling scripts (`scripts/`, `tools/`),
-and a frozen archive of the pre-Supabase backend (`legacy/`).
+and the pre-Supabase backend archive (preserved on the `archive/legacy` branch; removed from `main` in #157).
 
 ## 2. Repository layout
 
@@ -43,8 +43,7 @@ streamify-apk/
 ├── rust/                 Rust I/O engine (libstreamify_core_rs.so)
 ├── supabase/             backend schema + migrations
 ├── scripts/ tools/       verification probes & fleet ops
-├── docs/                 engine deep-dives + this architecture series
-└── legacy/               archived code — NOT built, bit-frozen
+└── docs/                 engine deep-dives + this architecture series
 ```
 
 Every directory above has a `README.md` with its own file index.

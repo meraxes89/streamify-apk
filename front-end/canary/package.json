@@ -1,0 +1,12 @@
+{
+  "name": "@streamify/canary",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0"
+  }
+}

@@ -1,0 +1,143 @@
+# rustypipe 0.11.4 — VENDORED, wasm-patched copy for the Streamify web port
+# (WS-W P0 / task W0.2).
+#
+# This is a source copy of crates.io rustypipe 0.11.4 with a minimal, fully
+# documented set of wasm32-unknown-unknown patches — see PATCHES.md in this
+# directory for the ledger. The frozen engine (rust/ at the repo root) keeps
+# using the crates.io crate through rust/Cargo.lock; this copy is resolved
+# ONLY by the front-end workspace via the [patch.crates-io] table in
+# front-end/Cargo.toml, and supports wasm32-unknown-unknown builds. Native
+# builds of this copy are not supported (use the crates.io crate).
+#
+# Patch summary (details in PATCHES.md):
+#   * rquickjs (embedded QuickJS) is optional behind the `js` feature and OFF
+#     by default — rquickjs-sys does not compile to wasm32-unknown-unknown
+#     (no libc; no shipped bindings for the triple). The deobfuscation code
+#     paths cfg-gate out; the web build relies on the PO-free client ladder
+#     (ANDROID_VR / IOS / VISIONOS-style clients), exactly as the resolver
+#     already does on iOS.
+#   * tokio trimmed to sync + macros (no time driver, no process spawning on
+#     wasm); sleeps route through `util::sleep` (JS event loop on wasm).
+#   * reqwest trimmed to the `json` feature — on wasm the browser fetch
+#     layer provides TLS and (de)compression; rustypipe's innertube calls
+#     ride the streamify-relay worker via the URL-rewrite hook
+#     (`client::set_relay_base_url`).
+#   * dev-dependencies stripped (this copy is never tested directly; the
+#     upstream test-suite runs against the crates.io crate on CI).
+
+[package]
+edition = "2021"
+rust-version = "1.67.1"
+name = "rustypipe"
+version = "0.11.4"
+authors = ["ThetaDev <thetadev@magenta.de>"]
+description = "Client for the public YouTube / YouTube Music API (Innertube), inspired by NewPipe (vendored wasm-patched copy for Streamify WS-W)"
+license = "GPL-3.0"
+repository = "https://codeberg.org/ThetaDev/rustypipe"
+
+[lib]
+name = "rustypipe"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Embedded QuickJS (JS URL-signature / n-parameter deobfuscation). Requires
+# rquickjs-sys, which does not build for wasm32-unknown-unknown — the web
+# build leaves this OFF and uses the PO-free client ladder instead.
+js = ["dep:rquickjs"]
+
+[dependencies.data-encoding]
+version = "2.0.0"
+
+[dependencies.fancy-regex]
+version = "0.14.0"
+
+[dependencies.localzone]
+version = "0.3.1"
+
+[dependencies.once_cell]
+version = "1.12.0"
+
+[dependencies.phf]
+version = "0.11.0"
+
+[dependencies.rand]
+version = "0.9.0"
+
+[dependencies.regex]
+version = "1.6.0"
+
+[dependencies.reqwest]
+version = "0.12.0"
+features = ["json"]
+default-features = false
+
+[dependencies.ress]
+version = "0.11.0"
+
+[dependencies.rquickjs]
+version = "0.9.0"
+optional = true
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1.0.82"
+
+[dependencies.serde_plain]
+version = "1.0.0"
+
+[dependencies.serde_with]
+version = "3.0.0"
+features = [
+    "alloc",
+    "macros",
+]
+default-features = false
+
+[dependencies.sha1]
+version = "0.10.0"
+
+[dependencies.thiserror]
+version = "2.0.0"
+
+[dependencies.time]
+version = "0.3.37"
+features = [
+    "macros",
+    "serde-human-readable",
+    "serde-well-known",
+    "local-offset",
+]
+
+[dependencies.tokio]
+version = "1.20.4"
+default-features = false
+features = [
+    "sync",
+    "macros",
+]
+
+[dependencies.tracing]
+version = "0.1.0"
+features = ["log"]
+
+[dependencies.url]
+version = "2.2.0"
+
+[dependencies.urlencoding]
+version = "2.1.0"
+
+# WS-W patch: wasm-only dependencies — the JS clock (util::now_utc), the JS
+# event-loop sleep (util::sleep), and the JS getrandom backend that `rand`
+# needs on wasm32-unknown-unknown.
+[target.'cfg(target_family = "wasm")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+[target.'cfg(target_family = "wasm")'.dependencies.getrandom]
+version = "0.3"
+features = ["wasm_js"]
