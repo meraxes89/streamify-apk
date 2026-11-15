@@ -14,7 +14,7 @@ name: Web Deploy
 
 on:
   push:
-    branches: [main, 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop', 'ws-w/home-teardown']
+    branches: [main, 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop', 'ws-w/home-teardown', 'ws-w/admin-stats-wrapped']
     paths: ['front-end/**', '.github/workflows/web-deploy.yml']
   workflow_dispatch: {}
 
