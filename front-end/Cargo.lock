@@ -1157,6 +1157,7 @@ dependencies = [
  "js-sys",
  "serde",
  "serde_json",
+ "streamify-audio",
  "streamify-core",
  "streamify-jam-crdt",
  "wasm-bindgen",

@@ -142,6 +142,13 @@ export class WasmEngine {
 export function canonical_cad_id(title: string, artist: string, duration_sec: number): string;
 
 /**
+ * `rust_compute_fft_spectrum` mirrored: the spectrum bars for a
+ * visualization frame. `bar_count` is clamped to >= 1; silence yields a
+ * zero vector of the requested length.
+ */
+export function compute_fft_spectrum(pcm: Float32Array | number[], bar_count: number): Float32Array;
+
+/**
  * `FractionalIndexEngine.after` → `{"value":f64,"needsRebalance":bool}`.
  */
 export function frac_after(last?: number | null): string;
@@ -201,12 +208,22 @@ export function jam_track_from_json(raw: string): string;
  */
 export function jam_track_to_json(track_json: string): string;
 
+/**
+ * `rust_process_equalizer_frame` mirrored: apply the 10-band parametric EQ
+ * to one interleaved PCM buffer IN PLACE. `gains` is the 10-band curve in
+ * dB (applied before processing, exactly like the FFI's set_band_gain
+ * loop); `channels` preserves the interleaving. Errors: empty PCM, zero
+ * channels, or a gains curve that is not exactly 10 bands.
+ */
+export function process_equalizer_frame(pcm: Float32Array, channels: number, gains: Float32Array | number[]): void;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmengine_free: (a: number, b: number) => void;
     readonly canonical_cad_id: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly compute_fft_spectrum: (a: number, b: number, c: number) => [number, number];
     readonly frac_after: (a: number, b: number) => [number, number];
     readonly frac_before: (a: number, b: number) => [number, number];
     readonly frac_between: (a: number, b: number, c: number, d: number) => [number, number];
@@ -217,6 +234,7 @@ export interface InitOutput {
     readonly jam_op_to_bytes: (a: number, b: number) => [number, number, number, number];
     readonly jam_track_from_json: (a: number, b: number) => [number, number];
     readonly jam_track_to_json: (a: number, b: number) => [number, number, number, number];
+    readonly process_equalizer_frame: (a: number, b: number, c: any, d: number, e: number, f: number) => [number, number];
     readonly wasmengine_add_event_listener: (a: number, b: any) => number;
     readonly wasmengine_apply_jam_delta: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_clear_queue: (a: number) => void;
@@ -240,6 +258,15 @@ export interface InitOutput {
     readonly wasmengine_set_volume: (a: number, b: number) => void;
     readonly wasmengine_stage_stream_url: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_take_play_intent_json: (a: number) => [number, number];
+    readonly apply_normalization: (a: number, b: number, c: number) => number;
+    readonly consume_pending_seek: (a: bigint) => bigint;
+    readonly free_audio_dsp: (a: number) => void;
+    readonly free_normalizer: (a: number) => void;
+    readonly init_audio_dsp: () => number;
+    readonly init_normalizer: (a: number) => number;
+    readonly process_audio_dsp: (a: number, b: number, c: number, d: number) => number;
+    readonly reset_seek_guard: () => void;
+    readonly submit_seek_request: (a: bigint) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

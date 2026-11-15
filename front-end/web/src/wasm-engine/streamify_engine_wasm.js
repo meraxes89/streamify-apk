@@ -357,6 +357,24 @@ export function canonical_cad_id(title, artist, duration_sec) {
 }
 
 /**
+ * `rust_compute_fft_spectrum` mirrored: the spectrum bars for a
+ * visualization frame. `bar_count` is clamped to >= 1; silence yields a
+ * zero vector of the requested length.
+ * @param {Float32Array | number[]} pcm
+ * @param {number} bar_count
+ * @returns {Float32Array}
+ */
+export function compute_fft_spectrum(pcm, bar_count) {
+    const val2 = +bar_count;
+    const ptr0 = passArrayF32ToWasm0(pcm, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.compute_fft_spectrum(ptr0, len0, val2);
+    var v3 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v3;
+}
+
+/**
  * `FractionalIndexEngine.after` → `{"value":f64,"needsRebalance":bool}`.
  * @param {number | null} [last]
  * @returns {string}
@@ -553,9 +571,41 @@ export function jam_track_to_json(track_json) {
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
+
+/**
+ * `rust_process_equalizer_frame` mirrored: apply the 10-band parametric EQ
+ * to one interleaved PCM buffer IN PLACE. `gains` is the 10-band curve in
+ * dB (applied before processing, exactly like the FFI's set_band_gain
+ * loop); `channels` preserves the interleaving. Errors: empty PCM, zero
+ * channels, or a gains curve that is not exactly 10 bands.
+ * @param {Float32Array} pcm
+ * @param {number} channels
+ * @param {Float32Array | number[]} gains
+ */
+export function process_equalizer_frame(pcm, channels, gains) {
+    const val3 = +channels;
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArrayF32ToWasm0(pcm, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passArrayF32ToWasm0(gains, wasm.__wbindgen_malloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 4, 4); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 4, 4); }
+        throw e;
+    }
+    const ret = wasm.process_equalizer_frame(ptr0, len0, pcm, val3, ptr1, len1);
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
+        __wbg___wbindgen_copy_to_typed_array_680b191e71920dc1: function(arg0, arg1, arg2) {
+            new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
+        },
         __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
@@ -597,9 +647,22 @@ function addToExternrefTable0(obj) {
     return idx;
 }
 
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
 function getArrayU8FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+
+let cachedFloat32ArrayMemory0 = null;
+function getFloat32ArrayMemory0() {
+    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachedFloat32ArrayMemory0;
 }
 
 let cachedFloat64ArrayMemory0 = null;
@@ -639,6 +702,13 @@ function isLikeNone(x) {
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
     getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getFloat32ArrayMemory0().set(arg, ptr / 4);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
 }
@@ -727,6 +797,7 @@ function __wbg_finalize_init(instance, module) {
     wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
+    cachedFloat32ArrayMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();

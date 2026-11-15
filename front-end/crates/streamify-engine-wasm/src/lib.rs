@@ -50,10 +50,12 @@ use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
 
-// WS-W engine facade breadth (work item 1, the Jam CRDT cluster): the jam
-// session lane. The CRDT lives in the streamify-jam-crdt leaf (rust/),
-// path-depended read-only like streamify-core below; this module mirrors
-// the UniFFI contract's jam surface onto wasm-bindgen. See src/jam.rs.
+// WS-W engine facade breadth: the jam session lane (work item 1) and the
+// DSP frame lane (work item 4). The CRDT lives in the streamify-jam-crdt
+// leaf (rust/), path-depended read-only like streamify-core below; the EQ
+// rides streamify-audio (golden-vector-pinned, wasm-proven by
+// streamify-golden-wasm). See src/jam.rs and src/eq.rs.
+pub mod eq;
 pub mod jam;
 
 use streamify_core::{
