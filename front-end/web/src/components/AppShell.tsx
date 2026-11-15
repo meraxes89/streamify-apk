@@ -37,6 +37,11 @@ import { SearchScreen } from '../screens/SearchScreen';
 import { AlbumRoute } from '../screens/AlbumScreen';
 import { ArtistRoute } from '../screens/ArtistScreen';
 import { DownloadsNoticeScreen } from '../screens/PortingNoticeScreen';
+// W-W admin/stats port: AdminDashboard + AdminTerminal + StatsWrapped
+// (routes mirror AppNavGraph.kt: admin / admin_terminal / wrapped).
+import { AdminDashboardScreen } from '../screens/AdminDashboardScreen';
+import { AdminTerminalScreen } from '../screens/AdminTerminalScreen';
+import { StatsWrappedScreen } from '../screens/StatsWrappedScreen';
 // P1 (listen loop) — kept as a compact, self-contained block so concurrent
 // PRs touching this file stay conflict-free.
 import { FullPlayerSheet } from '../screens/FullPlayerSheet';
@@ -203,6 +208,12 @@ export function AppShell(): JSX.Element {
             <Route path="/downloads" element={<DownloadsNoticeScreen />} />
             <Route path="/queue" element={<QueueScreen />} />
             <Route path="/lyrics" element={<LyricsScreen />} />
+            {/* W-W admin/stats port — AppNavGraph: admin / admin_terminal /
+                wrapped. Entries live in Settings + Profile (activation is
+                part of the deliverable — the P1 lesson). */}
+            <Route path="/admin" element={<AdminDashboardScreen />} />
+            <Route path="/admin-terminal" element={<AdminTerminalScreen />} />
+            <Route path="/wrapped" element={<StatsWrappedScreen />} />
             {/* W-W home-teardown: the dev console route — build-time gated
                 (see DEBUG_ROUTE above); never emitted in production. */}
             {DebugScreen !== null && (
