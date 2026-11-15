@@ -218,7 +218,7 @@ mod tests {
         assert!(m.needs_rebalance);
         // Mantissa exhaustion: a run of ~50 mid-inserts between two
         // neighbours collapses to an endpoint — the documented ~50 wall.
-        let mut lo = 0.5f64;
+        let lo = 0.5f64;
         let mut hi = 0.5000000000000002f64; // two ulps above lo
         let mut tripped = false;
         for _ in 0..60 {

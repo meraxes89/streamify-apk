@@ -385,11 +385,11 @@ pub fn generate_cad_id(title: &str, artist: &str, duration_sec: u32) -> String {
     TrackRepository::generate_cad_id(title, artist, duration_sec)
 }
 
-/// Raw u64 CAD-ID — the value BEFORE hex formatting. Single source of truth
-/// for native consumers (Jam CRDT) that need the numeric identity without a
-/// string round-trip. Bit-identical to `generate_cad_id`'s parsed value.
-/// (Moved to streamify-jam-crdt/src/cad.rs — WS-W engine facade breadth;
-/// re-exported at the top of this file.)
+// Raw u64 CAD-ID — the value BEFORE hex formatting. Single source of truth
+// for native consumers (Jam CRDT) that need the numeric identity without a
+// string round-trip. Bit-identical to `generate_cad_id`'s parsed value.
+// (Moved to streamify-jam-crdt/src/cad.rs — WS-W engine facade breadth;
+// re-exported at the top of this file.)
 
 #[no_mangle]
 pub unsafe extern "C" fn batch_upsert_spotify_tracks(

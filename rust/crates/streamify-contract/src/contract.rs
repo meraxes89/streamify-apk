@@ -1723,10 +1723,10 @@ impl StreamifyEngine {
 /// the engine WEAKLY so engines are droppable while the thread parks.
 type WeakEngine = std::sync::Weak<EngineShared>;
 
-/// Canonical BLAKE3 state hash of a Jam CRDT replica (UFFI-03/04).
-/// (Moved to streamify-jam-crdt/src/state_hash.rs — WS-W engine facade
-/// breadth — so the wasm32 facade mirrors get_jam_state_hash from the
-/// SAME code; imported above through the streamify-jam re-export.)
+// Canonical BLAKE3 state hash of a Jam CRDT replica (UFFI-03/04).
+// (Moved to streamify-jam-crdt/src/state_hash.rs — WS-W engine facade
+// breadth — so the wasm32 facade mirrors get_jam_state_hash from the
+// SAME code; imported above through the streamify-jam re-export.)
 
 #[cfg(test)]
 mod tests {
