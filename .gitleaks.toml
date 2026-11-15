@@ -51,6 +51,18 @@
 #     NEW web port (front-end/web/src/lyrics/resolver.ts) because
 #     gitleaks scans the PR diff, not history.
 # ─────────────────────────────────────────────────────────────────────────────
+# ALLOWLISTED (feishin P0, PR #181): vendored upstream i18n locale files
+#   front-end/feishin/src/i18n/locales/*.json
+#
+# Why this is not a secret: the generic-api-key heuristic flags TRANSLATION
+# VALUES whose i18n KEY looks credential-ish — observed when vendoring the
+# feishin tree (upstream jeffvli/feishin tag v1.17.0):
+#   "passwordStore": "Passwortspeicher"   (de.json — German "password store")
+#   "passwordStore": "…sekretua…"          (eu.json — Basque)
+# These are UI translation strings from upstream's locale catalogs, not
+# credentials. Scope is limited to that vendored locale directory; every
+# other default rule stays fully active there and everywhere else.
+# ─────────────────────────────────────────────────────────────────────────────
 
 [extend]
 useDefault = true
@@ -64,11 +76,16 @@ useDefault = true
 # constant, not a credential (same class as the InnerTube client
 # identifier above). Referenced in exactly one place:
 # front-end/web/src/audio/botguard/protocol.ts (WAA_REQUEST_KEY).
-id = "public client-protocol constants (documented per-regex above)"
-description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key — public protocol constants, not credentials (see header)"
+#
+# Feishin P0 addition — see the header block above for the rationale.
+id = "public client-protocol constants (documented per-regex above) + vendored feishin i18n locales"
+description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key — public protocol constants, not credentials (see header); plus vendored feishin translation catalogs (UI copy, not secrets)"
 regexTarget = "match"
 regexes = [
     '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
     '''O43z0dpjhgX20SCx4KAo''',
     '''AIzaSyC1xlRQImGslL28Q8HqTqD_o-w-r2Q_Z4''',
+]
+paths = [
+    '''front-end/feishin/src/i18n/locales/.*\.json''',
 ]
