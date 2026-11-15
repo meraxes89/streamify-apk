@@ -8,6 +8,14 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use crate::db_pool::{self, Lane};
 
+// WS-W engine facade breadth: the CAD-ID hasher moved to the
+// streamify-jam-crdt leaf (the jam CRDT — its biggest consumer — compiles
+// on wasm32 where rusqlite-backed storage cannot follow). Re-exported
+// here so this module's public API surface is byte-identical; the
+// TrackRepository hex variant delegates to it (single source of truth,
+// the duplicated FNV math is gone).
+pub use streamify_jam_crdt::cad::generate_cad_id_u64;
+
 #[derive(serde::Deserialize)]
 pub struct RawSpotifyTrack {
     pub title: String,
@@ -101,35 +109,17 @@ impl TrackRepository {
     /// Generates a Duration-Aware Canonical Hash (CAD-ID).
     /// Prevents "Starboy (Kygo Remix)" from colliding with "Starboy (Original)".
     ///
-    /// SINGLE SOURCE OF TRUTH for cross-layer identity. This is a bit-exact port of
-    /// the C++ implementation (nativeGenerateCadId in jni_bridge.cc): FNV-1a 64-bit
-    /// over ASCII-byte-filtered lowercase title ('(' preserved), ASCII-filtered
-    /// artist, then the little-endian u32 duration bucket (seconds / 3).
-    /// Every layer (Kotlin fallback, Rust ingest, C++ JNI) must agree on this value.
+    /// SINGLE SOURCE OF TRUTH for cross-layer identity: a bit-exact port of
+    /// the C++ implementation (nativeGenerateCadId in jni_bridge.cc) — FNV-1a
+    /// 64-bit over ASCII-byte-filtered lowercase title ('(' preserved),
+    /// ASCII-filtered artist, then the little-endian u32 duration bucket
+    /// (seconds / 3), hex-formatted. Every layer (Kotlin fallback, Rust
+    /// ingest, C++ JNI) must agree on this value. The math lives in
+    /// `streamify-jam-crdt::cad` (moved out of this module, WS-W engine
+    /// facade breadth); this is the hex-string view of it.
     #[inline(always)]
     pub fn generate_cad_id(title: &str, artist: &str, duration_sec: u32) -> String {
-        const FNV_OFFSET: u64 = 14695981039346656037;
-        const FNV_PRIME: u64 = 1099511628211;
-
-        let mut hash: u64 = FNV_OFFSET;
-        for b in normalize_cad_field(title, true) {
-            hash ^= b as u64;
-            hash = hash.wrapping_mul(FNV_PRIME);
-        }
-        for b in normalize_cad_field(artist, false) {
-            hash ^= b as u64;
-            hash = hash.wrapping_mul(FNV_PRIME);
-        }
-        let bucket: u32 = if duration_sec > 0 {
-            duration_sec / 3
-        } else {
-            0
-        };
-        for i in 0..4 {
-            hash ^= ((bucket >> (i * 8)) & 0xFF) as u64;
-            hash = hash.wrapping_mul(FNV_PRIME);
-        }
-        format!("{:016x}", hash)
+        format!("{:016x}", generate_cad_id_u64(title, artist, duration_sec))
     }
 
     /// Batch upserts tracks in a single transaction.
@@ -290,19 +280,9 @@ impl TrackRepository {
     }
 }
 
-/// Byte-exact mirror of the C++ normalization in nativeGenerateCadId:
-/// iterates UTF-8 BYTES, keeps ASCII alphanumerics (plus '(' for titles when
-/// allow_paren), lowercases ASCII letters, drops everything else (all non-ASCII).
-fn normalize_cad_field(input: &str, allow_paren: bool) -> Vec<u8> {
-    let mut out = Vec::with_capacity(input.len());
-    for &b in input.as_bytes() {
-        let keep = b.is_ascii_alphanumeric() || (allow_paren && b == b'(');
-        if keep {
-            out.push(b.to_ascii_lowercase());
-        }
-    }
-    out
-}
+// (normalize_cad_field and generate_cad_id_u64 moved to
+// streamify-jam-crdt/src/cad.rs — WS-W engine facade breadth; see the
+// re-export at the top of this file.)
 
 /// One-time migration: re-keys universal_tracks rows that were written with the
 /// legacy Rust DefaultHasher CAD-ID scheme onto the canonical FNV-1a scheme.
@@ -408,31 +388,8 @@ pub fn generate_cad_id(title: &str, artist: &str, duration_sec: u32) -> String {
 /// Raw u64 CAD-ID — the value BEFORE hex formatting. Single source of truth
 /// for native consumers (Jam CRDT) that need the numeric identity without a
 /// string round-trip. Bit-identical to `generate_cad_id`'s parsed value.
-#[inline(always)]
-pub fn generate_cad_id_u64(title: &str, artist: &str, duration_sec: u32) -> u64 {
-    const FNV_OFFSET: u64 = 14695981039346656037;
-    const FNV_PRIME: u64 = 1099511628211;
-
-    let mut hash: u64 = FNV_OFFSET;
-    for b in normalize_cad_field(title, true) {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    for b in normalize_cad_field(artist, false) {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    let bucket: u32 = if duration_sec > 0 {
-        duration_sec / 3
-    } else {
-        0
-    };
-    for i in 0..4 {
-        hash ^= ((bucket >> (i * 8)) & 0xFF) as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
+/// (Moved to streamify-jam-crdt/src/cad.rs — WS-W engine facade breadth;
+/// re-exported at the top of this file.)
 
 #[no_mangle]
 pub unsafe extern "C" fn batch_upsert_spotify_tracks(

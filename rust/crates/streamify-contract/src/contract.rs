@@ -73,6 +73,7 @@ use std::thread;
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use streamify_jam::canonical_jam_state_hash;
 use streamify_jam::jam_crdt::{JamCrdtState, JamOp, JAM_OP_SIZE};
 
 use streamify_core::media_command_key;
@@ -1675,71 +1676,9 @@ impl StreamifyEngine {
 type WeakEngine = std::sync::Weak<EngineShared>;
 
 /// Canonical BLAKE3 state hash of a Jam CRDT replica (UFFI-03/04).
-///
-/// The hash covers exactly the replicated state — queue, tombstones,
-/// vote ledger — serialized in a canonical, order-free form:
-///
-///   * domain tag `streamify.jam.state.v1` (hash-input separation);
-///   * queue triples `(frac_bits, add_op_id, cad_id)` in BTreeMap
-///     composite-key order (the fold is already sorted);
-///   * tombstones sorted ascending (the fold's HashMap iteration order
-///     is NOT canonical — this is the one re-ordering the hash performs);
-///   * vote ledger by target ascending, each target's voters
-///     byte-ascending, each entry `(voter, up, op_id)` — the LWW
-///     register's standing value, so the hash reflects the FINAL ledger
-///     regardless of the order vote events arrived in.
-///
-/// Deliberately EXCLUDED from the image: `needs_rebalance` (a transient
-/// control signal, not replicated state), the derived `committed` set
-/// (a pure function of queue + ledger + local promotion policy — the
-/// policy is per-device configuration, not room state), and session
-/// identity fields (the hash must be comparable ACROSS replicas, so it
-/// can only cover content they share).
-///
-/// Convergence contract: for op sets the CRDT absorbs commutatively
-/// (Add / Remove / Vote — everything except Reorder-of-an-element-not-
-/// yet-added, which requires causal delivery by design), applying the
-/// same set in any order on any number of replicas yields the identical
-/// 64-hex-char string. That property is what the golden-vector
-/// determinism tests pin, and what makes this hash usable as a Merkle
-/// reconciliation root on the Kotlin side.
-fn canonical_jam_state_hash(crdt: &JamCrdtState) -> String {
-    let fold = crdt.fold_full();
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(b"streamify.jam.state.v1");
-
-    // Queue: fold order is BTreeMap composite-key order — canonical.
-    hasher.update(&(fold.queue.len() as u64).to_le_bytes());
-    for (frac, add_op_id, cad_id) in &fold.queue {
-        hasher.update(&frac.to_bits().to_le_bytes());
-        hasher.update(&add_op_id.to_le_bytes());
-        hasher.update(&cad_id.to_le_bytes());
-    }
-
-    // Tombstones: the fold collects them from a HashMap — re-sort before
-    // hashing, or two identical tombstone sets could hash differently.
-    let mut tombstones = fold.tombstones.clone();
-    tombstones.sort_unstable();
-    hasher.update(&(tombstones.len() as u64).to_le_bytes());
-    for tomb in &tombstones {
-        hasher.update(&tomb.to_le_bytes());
-    }
-
-    // Vote ledger: fold_full already orders targets ascending and each
-    // target's voter list byte-ascending.
-    hasher.update(&(fold.votes.len() as u64).to_le_bytes());
-    for (target, voters) in &fold.votes {
-        hasher.update(&target.to_le_bytes());
-        hasher.update(&(voters.len() as u64).to_le_bytes());
-        for (voter, up, op_id) in voters {
-            hasher.update(voter.as_bytes());
-            hasher.update(&[u8::from(*up)]);
-            hasher.update(&op_id.to_le_bytes());
-        }
-    }
-
-    hasher.finalize().to_hex().to_string()
-}
+/// (Moved to streamify-jam-crdt/src/state_hash.rs — WS-W engine facade
+/// breadth — so the wasm32 facade mirrors get_jam_state_hash from the
+/// SAME code; imported above through the streamify-jam re-export.)
 
 #[cfg(test)]
 mod tests {

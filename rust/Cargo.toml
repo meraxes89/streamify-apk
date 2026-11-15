@@ -8,6 +8,9 @@
 #
 #     streamify-core       pure leaf types, DacPresentationClock,
 #                          EngineError, atomic primitives, leaf compute
+#     streamify-jam-crdt   pure Jam CRDT leaf (ops, folds, fractional
+#                          indexing, CAD ids, state hash) — wasm32-safe,
+#                          re-exported by streamify-jam (WS-W efb)
 #     streamify-audio      hard real-time DSP — ZERO async / DB / network
 #                          dependencies (compile-time RT boundary)
 #     streamify-storage    SQLite pool, migrations, cache encryption
@@ -49,6 +52,7 @@
 resolver = "2"
 members = [
     "crates/streamify-core",
+    "crates/streamify-jam-crdt",
     "crates/streamify-audio",
     "crates/streamify-playback",
     "crates/streamify-storage",
@@ -59,6 +63,7 @@ members = [
 ]
 default-members = [
     "crates/streamify-core",
+    "crates/streamify-jam-crdt",
     "crates/streamify-audio",
     "crates/streamify-playback",
     "crates/streamify-playback",
@@ -81,6 +86,7 @@ license = "MIT"
 # `workspace = true` so Dependabot bumps land atomically across members).
 [workspace.dependencies]
 streamify-core = { path = "crates/streamify-core" }
+streamify-jam-crdt = { path = "crates/streamify-jam-crdt" }
 streamify-audio = { path = "crates/streamify-audio" }
 streamify-playback = { path = "crates/streamify-playback" }
 streamify-storage = { path = "crates/streamify-storage" }
