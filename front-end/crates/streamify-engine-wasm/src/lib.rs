@@ -50,6 +50,12 @@ use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
 
+// WS-W engine facade breadth (work item 1, the Jam CRDT cluster): the jam
+// session lane. The CRDT lives in the streamify-jam-crdt leaf (rust/),
+// path-depended read-only like streamify-core below; this module mirrors
+// the UniFFI contract's jam surface onto wasm-bindgen. See src/jam.rs.
+pub mod jam;
+
 use streamify_core::{
     media_command_key, MediaCommand, PlaybackState, DAC_CLOCK_MAX_SAMPLE_RATE,
     DAC_CLOCK_MIN_SAMPLE_RATE, MEDIA_COMMAND_DEBOUNCE_MS,
@@ -233,6 +239,9 @@ pub struct WasmEngine {
     last_cmd_at_ms: f64,
     // Listener registry (UDL: add-only, registration bumps rev).
     listeners: Vec<Option<js_sys::Function>>,
+    // WS-W engine facade breadth: the active Jam session (the contract's
+    // shared.jam lane). None until create_jam_session.
+    jam: Option<crate::jam::JamSessionState>,
 }
 
 #[wasm_bindgen]
@@ -254,6 +263,7 @@ impl WasmEngine {
             last_cmd_key: None,
             last_cmd_at_ms: 0.0,
             listeners: Vec::new(),
+            jam: None,
         }
     }
 

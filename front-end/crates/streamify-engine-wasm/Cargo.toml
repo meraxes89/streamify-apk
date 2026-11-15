@@ -34,13 +34,23 @@ wasm-bindgen = "0.2"
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Read-only path dep into the frozen tree, exactly like streamify-golden-wasm
-# (W1.7): the front-end workspace never modifies rust/ — the patch table only
-# exists for rustypipe. streamify-core is std-only, so this adds no wasm
-# dependencies beyond its own leaf types.
+# Read-only path deps into the frozen tree, exactly like
+# streamify-golden-wasm (W1.7): the front-end workspace never BUILDS the
+# rust/ workspace — cargo resolves only this crate's dependency closure.
+# (The jam-crdt split itself — where these fns live — went through the
+# rust/ workspace as an engine change: the golden-rule path, all four
+# runtimes benefit. See rust/crates/streamify-jam-crdt.)
+# streamify-core is std-only; streamify-jam-crdt adds blake3 + serde only
+# (both wasm-clean; js-sys rides target-gated inside the leaf for the
+# house wasm clock).
 streamify-core = { path = "../../../rust/crates/streamify-core" }
+streamify-jam-crdt = { path = "../../../rust/crates/streamify-jam-crdt" }
 
 [dev-dependencies]
 # MUST stay paired with the workspace's wasm-bindgen (0.2.130) — see the
 # pinned-version note in streamify-wasm's Cargo.toml.
 wasm-bindgen-test = "0.3"
+# The jam golden-vector suite verifies the BLAKE3 image of every golden op
+# against the native reference (cross-runtime hash parity) — the same
+# crate version the leaf resolves.
+blake3 = "1"

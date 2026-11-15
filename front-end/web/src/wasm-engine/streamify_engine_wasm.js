@@ -26,6 +26,27 @@ export class WasmEngine {
         const ret = wasm.wasmengine_add_event_listener(this.__wbg_ptr, cb);
         return ret >>> 0;
     }
+    /**
+     * Atomically apply one Jam CRDT delta batch. `delta` is a
+     * concatenation of 48-byte little-endian wire rows (the frozen
+     * `rust_48` image pinned by fixtures/jam_golden_vectors.json — the
+     * same rows the mesh gossips as MSG_CRDT_OP payloads). Rows merge in
+     * order; a row refused at the boundary (corrupt checksum, non-zero
+     * pads, NaN fraction, unknown op type, tombstone-suppressed Add replay)
+     * is counted in `opsRejected` and skipped — a partially corrupt batch
+     * still delivers its clean rows (the mesh ingress contract).
+     * @param {Uint8Array | number[]} delta
+     * @returns {any}
+     */
+    apply_jam_delta(delta) {
+        const ptr0 = passArray8ToWasm0(delta, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_apply_jam_delta(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
     clear_queue() {
         wasm.wasmengine_clear_queue(this.__wbg_ptr);
     }
@@ -35,6 +56,23 @@ export class WasmEngine {
      */
     close() {
         wasm.wasmengine_close(this.__wbg_ptr);
+    }
+    /**
+     * Create the engine's active Jam session. Mirrors
+     * `StreamifyEngine::create_jam_session` exactly: trim + blank/128-byte
+     * cap rejection, the strictly-monotonic id mint, the wall-clock stamp.
+     * Returns the handle JSON (u64s as strings) or throws.
+     * @param {string} session_name
+     * @returns {any}
+     */
+    create_jam_session(session_name) {
+        const ptr0 = passStringToWasm0(session_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_create_jam_session(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * Enqueue a track row; returns its queue index. Duplicated ids are
@@ -74,6 +112,32 @@ export class WasmEngine {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * Presentation state of the engine's active Jam room (the local
+     * replica view — the transport layer fills participants once the
+     * channel is live; `isHost` reflects the LOCAL engine, exactly like
+     * the contract).
+     * @returns {any}
+     */
+    get_jam_room_state() {
+        const ret = wasm.wasmengine_get_jam_room_state(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Deterministic state hash of the active Jam session (BLAKE3 over the
+     * canonical fold). Requires a live session; never mutates state.
+     * @returns {any}
+     */
+    get_jam_state_hash() {
+        const ret = wasm.wasmengine_get_jam_state_hash(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * One-shot diagnostics read of the lifecycle state name.
@@ -228,6 +292,237 @@ export class WasmEngine {
     }
 }
 if (Symbol.dispose) WasmEngine.prototype[Symbol.dispose] = WasmEngine.prototype.free;
+
+/**
+ * `canonical_cad_id(title, artist, duration_sec)` — the canonical track
+ * identity for op building, DECIMAL STRING.
+ * @param {string} title
+ * @param {string} artist
+ * @param {number} duration_sec
+ * @returns {string}
+ */
+export function canonical_cad_id(title, artist, duration_sec) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const val3 = +duration_sec;
+        let ptr0, len0, ptr1, len1;
+        try {
+            ptr0 = passStringToWasm0(title, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(artist, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
+        const ret = wasm.canonical_cad_id(ptr0, len0, ptr1, len1, val3);
+        deferred4_0 = ret[0];
+        deferred4_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * `FractionalIndexEngine.after` → `{"value":f64,"needsRebalance":bool}`.
+ * @param {number | null} [last]
+ * @returns {string}
+ */
+export function frac_after(last) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.frac_after(!isLikeNone(last), isLikeNone(last) ? 0 : last);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * `FractionalIndexEngine.before`.
+ * @param {number | null} [first]
+ * @returns {string}
+ */
+export function frac_before(first) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.frac_before(!isLikeNone(first), isLikeNone(first) ? 0 : first);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * `FractionalIndexEngine.between`.
+ * @param {number | null} [prev]
+ * @param {number | null} [next]
+ * @returns {string}
+ */
+export function frac_between(prev, next) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.frac_between(!isLikeNone(prev), isLikeNone(prev) ? 0 : prev, !isLikeNone(next), isLikeNone(next) ? 0 : next);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * `FractionalIndexEngine.collide(a, b)`.
+ * @param {number} a
+ * @param {number} b
+ * @returns {boolean}
+ */
+export function frac_collide(a, b) {
+    const ret = wasm.frac_collide(a, b);
+    return ret !== 0;
+}
+
+/**
+ * `FractionalIndexEngine.indexForInsertAt(position, orderedFracs)`.
+ * @param {number} position
+ * @param {Float64Array | number[]} ordered_fracs
+ * @returns {string}
+ */
+export function frac_index_for_insert_at(position, ordered_fracs) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const val2 = +position;
+        const ptr0 = passArrayF64ToWasm0(ordered_fracs, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.frac_index_for_insert_at(val2, ptr0, len0);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * `JamOp.generate_op_id()` — the strictly-monotonic id mint, DECIMAL
+ * STRING (u64 > 2^53; the TS bridge parses BigInt).
+ * @returns {string}
+ */
+export function jam_generate_op_id() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.jam_generate_op_id();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * Unpack one 48-byte wire row into the op JSON (u64s as decimal strings);
+ * returns `"null"` for a structurally corrupt row (non-zero pads, wrong
+ * length) — a malformed op must never enter the CRDT.
+ * @param {Uint8Array | number[]} bytes
+ * @returns {string}
+ */
+export function jam_op_from_bytes(bytes) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.jam_op_from_bytes(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Pack one op JSON into the frozen 48-byte little-endian wire row
+ * (`JamOp::new` semantics: pads zeroed, checksum sealed over [0..40)).
+ * The op JSON must carry `opId`/`senderNonce`(8 hex)/`opType`(1..=4)/
+ * `cadId`/`frac`; `policyFlags`/`target` default to 0. Throws on a
+ * malformed row (unknown op type, bad hex, non-numeric u64 string).
+ * @param {string} op_json
+ * @returns {Uint8Array}
+ */
+export function jam_op_to_bytes(op_json) {
+    const ptr0 = passStringToWasm0(op_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.jam_op_to_bytes(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * `jamTrackFromJson(raw)` — decode one queue entry; returns the JSON
+ * string `"null"` when the title is missing/blank (a titleless row must
+ * never enter the jam queue).
+ * @param {string} raw
+ * @returns {string}
+ */
+export function jam_track_from_json(raw) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(raw, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.jam_track_from_json(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * `jamTrackToJson(trackJson)` — normalize-encode one queue entry (blank
+ * optionals dropped, addedBy blank dropped). Throws on malformed JSON.
+ * @param {string} track_json
+ * @returns {string}
+ */
+export function jam_track_to_json(track_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(track_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.jam_track_to_json(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -272,6 +567,19 @@ function addToExternrefTable0(obj) {
     return idx;
 }
 
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+
+let cachedFloat64ArrayMemory0 = null;
+function getFloat64ArrayMemory0() {
+    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
+        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+    }
+    return cachedFloat64ArrayMemory0;
+}
+
 function getStringFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return decodeText(getUint8ArrayMemory0().subarray(ptr, ptr + len));
@@ -292,6 +600,24 @@ function handleError(f, args) {
         const idx = addToExternrefTable0(e);
         wasm.__wbindgen_exn_store(idx);
     }
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF64ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 8, 8) >>> 0;
+    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {
@@ -331,6 +657,12 @@ function passStringToWasm0(arg, malloc, realloc) {
     return ptr;
 }
 
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
@@ -365,6 +697,7 @@ function __wbg_finalize_init(instance, module) {
     wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
+    cachedFloat64ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;
