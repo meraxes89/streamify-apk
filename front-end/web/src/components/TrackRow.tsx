@@ -17,6 +17,16 @@ export interface TrackRowProps {
   liked?: boolean;
   /** Whether this row is the engine's current track. */
   isCurrent?: boolean;
+  /**
+   * P2 browse bridge: the context-menu gesture spread (right-click /
+   * long-press) until the mirrored TrackListItem lands with onMoreClick.
+   */
+  gestures?: {
+    onContextMenu: (event: React.MouseEvent) => void;
+    onTouchStart: (event: React.TouchEvent) => void;
+    onTouchEnd: () => void;
+    onTouchMove: () => void;
+  };
 }
 
 function formatDuration(durationSec: number | undefined): string {
@@ -29,7 +39,7 @@ function formatDuration(durationSec: number | undefined): string {
 }
 
 export function TrackRow(props: TrackRowProps): JSX.Element {
-  const { track, playback, onPlay, onQueue, onLike, liked, isCurrent } = props;
+  const { track, playback, onPlay, onQueue, onLike, liked, isCurrent, gestures } = props;
   const status = playback?.status ?? 'idle';
   // Only the transient states disable: the current PAUSED row stays
   // tappable (resume) and a failed row retries — the P2 bug left rows
@@ -50,7 +60,10 @@ export function TrackRow(props: TrackRowProps): JSX.Element {
   const metaText = metaParts.length > 0 ? metaParts.join(' • ') : '—';
 
   return (
-    <li className={`track-row ${isCurrent === true ? 'track-row--current' : ''}`}>
+    <li
+      className={`track-row ${isCurrent === true ? 'track-row--current' : ''}`}
+      {...(gestures ?? {})}
+    >
       <div className="track-media">
         {typeof track.thumbnailUrl === 'string' && track.thumbnailUrl.length > 0 ? (
           <img

@@ -603,21 +603,69 @@ export async function fetchLikes(signal?: AbortSignal): Promise<CloudTrack[]> {
   for (const like of likes) {
     const row = byId.get(like.track_id);
     if (row === undefined) continue;
-    out.push({
-      id: String(row.id),
-      title: String(row.title ?? ''),
-      artist: String(row.artist ?? ''),
-      album: row.album === null || row.album === undefined ? null : String(row.album),
-      durationSec:
-        row.duration_sec === null || row.duration_sec === undefined
-          ? null
-          : Number(row.duration_sec),
-      coverUrl: row.cover_url === null || row.cover_url === undefined ? null : String(row.cover_url),
-      streamUrl:
-        row.stream_url === null || row.stream_url === undefined ? null : String(row.stream_url),
-    });
+    out.push(toCloudTrack(row));
   }
   return out;
+}
+
+/** One tracks row → CloudTrack (shared by the likes + playlist lanes). */
+function toCloudTrack(row: Record<string, unknown>): CloudTrack {
+  return {
+    id: String(row.id),
+    title: String(row.title ?? ''),
+    artist: String(row.artist ?? ''),
+    album: row.album === null || row.album === undefined ? null : String(row.album),
+    durationSec:
+      row.duration_sec === null || row.duration_sec === undefined
+        ? null
+        : Number(row.duration_sec),
+    coverUrl: row.cover_url === null || row.cover_url === undefined ? null : String(row.cover_url),
+    streamUrl:
+      row.stream_url === null || row.stream_url === undefined ? null : String(row.stream_url),
+  };
+}
+
+/** Fetch track rows by id (the playlist membership resolution lane). */
+export async function fetchTracksByIds(
+  trackIds: string[],
+  signal?: AbortSignal,
+): Promise<CloudTrack[]> {
+  if (trackIds.length === 0) return [];
+  const ids = trackIds.join(',');
+  const res = await restCall(`tracks?id=in.(${ids})&select=*`, { method: 'GET', signal });
+  if (!res.ok) return [];
+  const rows = (await res.json()) as Array<Record<string, unknown>>;
+  return rows.map((row) => toCloudTrack(row));
+}
+
+export interface PlaylistTrackRow {
+  playlistId: string;
+  trackId: string;
+  position: number;
+}
+
+/** All playlist_tracks rows for a set of playlists (position ascending). */
+export async function fetchAllPlaylistTracks(
+  playlistIds: string[],
+  signal?: AbortSignal,
+): Promise<PlaylistTrackRow[]> {
+  if (playlistIds.length === 0) return [];
+  const ids = playlistIds.join(',');
+  const res = await restCall(
+    `playlist_tracks?playlist_id=in.(${ids})&order=position.asc&select=playlist_id,track_id,position`,
+    { method: 'GET', signal },
+  );
+  if (!res.ok) return [];
+  const rows = (await res.json()) as Array<{
+    playlist_id?: unknown;
+    track_id?: unknown;
+    position?: unknown;
+  }>;
+  return rows.map((row) => ({
+    playlistId: String(row.playlist_id ?? ''),
+    trackId: String(row.track_id ?? ''),
+    position: typeof row.position === 'number' ? row.position : 0,
+  }));
 }
 
 /** Like a track: upsert the tracks row (id-merge) + insert user_likes. */
@@ -691,6 +739,196 @@ export async function recordPlayEvent(event: {
       hour_of_day: new Date().getHours(),
     },
   }).catch(() => undefined);
+}
+
+// ---------------------------------------------------------------------------
+// Library — playlists (P2 browse: the public.playlists + playlist_tracks
+// tables from schema.sql, same raw-fetch house style; RLS is the fence)
+// ---------------------------------------------------------------------------
+
+export interface CloudPlaylist {
+  id: string;
+  name: string;
+  description: string | null;
+  coverUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Track count (grouped client-side from playlist_tracks). */
+  trackCount: number;
+}
+
+interface PlaylistRow {
+  id?: unknown;
+  name?: unknown;
+  description?: unknown;
+  cover_url?: unknown;
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+function toPlaylist(row: PlaylistRow, trackCount: number): CloudPlaylist {
+  return {
+    id: String(row.id ?? ''),
+    name: String(row.name ?? ''),
+    description: row.description == null ? null : String(row.description),
+    coverUrl: row.cover_url == null ? null : String(row.cover_url),
+    createdAt: String(row.created_at ?? ''),
+    updatedAt: String(row.updated_at ?? ''),
+    trackCount,
+  };
+}
+
+/**
+ * The signed-in user's playlists with track counts (playlists ⋈ a grouped
+ * playlist_tracks read — one round-trip pair, like-count preserved by
+ * client-side grouping).
+ */
+export async function fetchPlaylists(signal?: AbortSignal): Promise<CloudPlaylist[]> {
+  const session = await getSession();
+  if (session === null) return [];
+  const plsRes = await restCall(
+    `playlists?user_id=eq.${session.user.id}&order=created_at.desc&select=*`,
+    { method: 'GET', signal },
+  );
+  if (!plsRes.ok) return [];
+  const rows = (await plsRes.json()) as PlaylistRow[];
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => String(r.id ?? '')).filter((id) => id !== '').join(',');
+  const counts = new Map<string, number>();
+  if (ids !== '') {
+    const tracksRes = await restCall(
+      `playlist_tracks?playlist_id=in.(${ids})&select=playlist_id`,
+      { method: 'GET', signal },
+    );
+    if (tracksRes.ok) {
+      const trackRows = (await tracksRes.json()) as Array<{ playlist_id?: unknown }>;
+      for (const tr of trackRows) {
+        const pid = String(tr.playlist_id ?? '');
+        counts.set(pid, (counts.get(pid) ?? 0) + 1);
+      }
+    }
+  }
+  return rows.map((row) => toPlaylist(row, counts.get(String(row.id ?? '')) ?? 0));
+}
+
+/** Create a playlist (return=representation so the UI gets the id). */
+export async function createPlaylist(
+  name: string,
+  description: string | null,
+): Promise<CloudPlaylist | null> {
+  const session = await getSession();
+  if (session === null) return null;
+  const res = await restCall('playlists', {
+    method: 'POST',
+    prefer: 'return=representation',
+    body: {
+      user_id: session.user.id,
+      name,
+      description: description === '' ? null : description,
+      is_public: true,
+    },
+  });
+  if (!res.ok) return null;
+  const rows = (await res.json()) as PlaylistRow[];
+  const row = rows[0];
+  if (row === undefined) return null;
+  return toPlaylist(row, 0);
+}
+
+/** Rename a playlist. */
+export async function renamePlaylist(playlistId: string, name: string): Promise<boolean> {
+  const res = await restCall(`playlists?id=eq.${playlistId}`, {
+    method: 'PATCH',
+    body: { name },
+  });
+  return res.ok;
+}
+
+/** Delete a playlist (playlist_tracks cascade via FK). */
+export async function deletePlaylist(playlistId: string): Promise<boolean> {
+  const res = await restCall(`playlists?id=eq.${playlistId}`, { method: 'DELETE' });
+  return res.ok;
+}
+
+/** The ordered track ids of one playlist (position ascending). */
+export async function fetchPlaylistTrackIds(
+  playlistId: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const res = await restCall(
+    `playlist_tracks?playlist_id=eq.${playlistId}&order=position.asc&select=track_id`,
+    { method: 'GET', signal },
+  );
+  if (!res.ok) return [];
+  const rows = (await res.json()) as Array<{ track_id?: unknown }>;
+  return rows.map((r) => String(r.track_id ?? ''));
+}
+
+/** Add a track to a playlist: tracks upsert + ordered playlist_tracks row. */
+export async function addTrackToPlaylist(
+  playlistId: string,
+  track: {
+    title: string;
+    artist: string;
+    album?: string | null;
+    durationSec?: number | null;
+    coverUrl?: string | null;
+    videoId?: string | null;
+  },
+): Promise<boolean> {
+  const session = await getSession();
+  if (session === null) return false;
+  const id = cloudTrackId(track.title, track.artist);
+  // tracks upsert first (FK target must exist; merge-duplicates posture).
+  const upsert = await restCall('tracks', {
+    method: 'POST',
+    prefer: 'resolution=merge-duplicates',
+    body: {
+      id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album ?? null,
+      duration_sec: track.durationSec ?? null,
+      cover_url: track.coverUrl ?? null,
+      stream_url: track.videoId ?? null,
+    },
+  });
+  if (!upsert.ok && upsert.status !== 409) return false;
+  // Position = current max + 1 (read-then-write; RLS scopes the race to
+  // the owner/collaborators — the same posture as the Android client).
+  const maxRes = await restCall(
+    `playlist_tracks?playlist_id=eq.${playlistId}&order=position.desc&limit=1&select=position`,
+    { method: 'GET' },
+  );
+  let nextPos = 0;
+  if (maxRes.ok) {
+    const rows = (await maxRes.json()) as Array<{ position?: unknown }>;
+    const max = rows[0]?.position;
+    if (typeof max === 'number' && Number.isFinite(max)) nextPos = max + 1;
+  }
+  const insert = await restCall('playlist_tracks', {
+    method: 'POST',
+    prefer: 'resolution=ignore-duplicates',
+    body: {
+      playlist_id: playlistId,
+      track_id: id,
+      position: nextPos,
+      added_by: session.user.id,
+    },
+  });
+  return insert.ok || insert.status === 409;
+}
+
+/** Remove a track from a playlist (the tracks row stays in the catalog). */
+export async function removeTrackFromPlaylist(
+  playlistId: string,
+  trackId: string,
+): Promise<boolean> {
+  const res = await restCall(
+    `playlist_tracks?playlist_id=eq.${playlistId}&track_id=eq.${trackId}`,
+    { method: 'DELETE' },
+  );
+  return res.ok;
 }
 
 function errText(err: unknown): string {

@@ -29,7 +29,10 @@ import { ProfileSelectionScreen } from '../screens/ProfileSelectionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { UserProfileScreen } from '../screens/UserProfileScreen';
 import { UpdatesHubScreen } from '../screens/UpdatesHubScreen';
-import { LibraryNoticeScreen } from '../screens/PortingNoticeScreen';
+import { LibraryScreen } from '../screens/LibraryScreen';
+import { SearchScreen } from '../screens/SearchScreen';
+import { AlbumRoute } from '../screens/AlbumScreen';
+import { ArtistRoute } from '../screens/ArtistScreen';
 import { DownloadsNoticeScreen } from '../screens/PortingNoticeScreen';
 
 /** Android immersiveRoutes: chrome + mini-player hidden. */
@@ -152,7 +155,10 @@ export function AppShell(): JSX.Element {
             <Route path="/settings" element={<SettingsScreen />} />
             <Route path="/profile" element={<UserProfileScreen />} />
             <Route path="/updates" element={<UpdatesHubScreen />} />
-            <Route path="/library" element={<LibraryNoticeScreen />} />
+            <Route path="/search" element={<SearchScreen />} />
+            <Route path="/library" element={<LibraryScreen />} />
+            <Route path="/artist/:artistName" element={<ArtistRoute />} />
+            <Route path="/album/:albumName" element={<AlbumRoute />} />
             <Route path="/downloads" element={<DownloadsNoticeScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
