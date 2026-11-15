@@ -866,6 +866,8 @@ internal open class UniffiVTableCallbackInterfaceSecureStoreDelegate(
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -941,6 +943,8 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_streamify_contract_fn_method_streamifyengine_initialize(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    fun uniffi_streamify_contract_fn_method_streamifyengine_insert_after_cursor(`ptr`: Pointer,`track`: RustBuffer.ByValue,`enqueuedBy`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
     fun uniffi_streamify_contract_fn_method_streamifyengine_on_media_command(`ptr`: Pointer,`command`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
     fun uniffi_streamify_contract_fn_method_streamifyengine_play_track(`ptr`: Pointer,`trackId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1167,6 +1171,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_initialize(
     ): Short
+    fun uniffi_streamify_contract_checksum_method_streamifyengine_insert_after_cursor(
+    ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_on_media_command(
     ): Short
     fun uniffi_streamify_contract_checksum_method_streamifyengine_play_track(
@@ -1312,6 +1318,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_initialize() != 61599.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_insert_after_cursor() != 52948.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_streamify_contract_checksum_method_streamifyengine_on_media_command() != 1333.toShort()) {
@@ -2394,6 +2403,15 @@ public interface StreamifyEngineInterface {
     fun `initialize`()
     
     /**
+     * Insert one track AFTER the transport cursor — the Play Next op
+     * (WS-W engine facade breadth, work item 2). The row lands at
+     * cursor+1 (the queue head when nothing is selected), so the next
+     * advance plays it first. The current row's playback is untouched:
+     * no lifecycle transition, no play intent, position preserved.
+     */
+    fun `insertAfterCursor`(`track`: Track, `enqueuedBy`: kotlin.String): kotlin.UInt
+    
+    /**
      * Feed one reverse-plane media command (MP-C03). Applies the
      * mandated 50-150 ms hardware debounce: an IDENTICAL command
      * (same variant, same payload) arriving inside the window is
@@ -2828,6 +2846,26 @@ open class StreamifyEngine: Disposable, AutoCloseable, StreamifyEngineInterface 
 }
     }
     
+    
+
+    
+    /**
+     * Insert one track AFTER the transport cursor — the Play Next op
+     * (WS-W engine facade breadth, work item 2). The row lands at
+     * cursor+1 (the queue head when nothing is selected), so the next
+     * advance plays it first. The current row's playback is untouched:
+     * no lifecycle transition, no play intent, position preserved.
+     */
+    @Throws(EngineException::class)override fun `insertAfterCursor`(`track`: Track, `enqueuedBy`: kotlin.String): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EngineException) { _status ->
+    UniffiLib.INSTANCE.uniffi_streamify_contract_fn_method_streamifyengine_insert_after_cursor(
+        it, FfiConverterTypeTrack.lower(`track`),FfiConverterString.lower(`enqueuedBy`),_status)
+}
+    }
+    )
+    }
     
 
     
