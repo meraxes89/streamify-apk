@@ -51,18 +51,18 @@ dependencies {
 
     // Shell icon set (rail, transport, window-frame, tray-menu glyphs).
     // Same artifact line :shared pins for its components.
-    implementation("org.jetbrains.compose.material:material-icons-extended:1.6.1")
+    implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
 
     // MP-DEC-02: desktop JNA binding mode. Plain JVM artifact (the Android
     // module uses the @aar flavor for its bundled libjnidispatch ABI set).
     // Version-locked to the same 5.14.0 line as app/build.gradle.kts and
     // shared/build.gradle.kts.
-    implementation("net.java.dev.jna:jna:5.14.0")
+    implementation("net.java.dev.jna:jna:5.19.1")
 
     testImplementation("junit:junit:4.13.2")
     // Shell smoke suite: controller wiring over FakeEnginePort uses the
     // coroutine test scheduler (same 1.7.3 line as :shared/:app).
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 
 compose.desktop {

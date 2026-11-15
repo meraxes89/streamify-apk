@@ -60,11 +60,11 @@ kotlin {
             // VolumeOff live in the extended artifact). Pinned to the CMP
             // 1.6.1 line = the same androidx Compose 1.6.x artifacts the app
             // resolves through its BOM on the Android seam.
-            implementation("org.jetbrains.compose.material:material-icons-extended:1.6.1")
+            implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
 
             // Platform-independent state holders: coroutines-core is
             // multiplatform on the 1.7.3 line the app already ships.
-            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
 
         // NOTE: single-target KMP modules do NOT get generated per-target
@@ -79,13 +79,13 @@ kotlin {
                 // `uniffi.streamify` proxies dispatch through com.sun.jna. Plain
                 // JVM artifact, version-locked to the same 5.14.0 line as
                 // app/build.gradle.kts and desktop/build.gradle.kts.
-                implementation("net.java.dev.jna:jna:5.14.0")
+                implementation("net.java.dev.jna:jna:5.19.1")
             }
         }
 
         commonTest.dependencies {
             implementation(kotlin("test"))
-            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
         }
     }
 
