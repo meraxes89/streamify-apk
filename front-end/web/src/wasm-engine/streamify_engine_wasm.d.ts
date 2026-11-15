@@ -72,6 +72,19 @@ export class WasmEngine {
      * One-way `Idle→Buffering`, idempotent (second call: no bump, no event).
      */
     initialize(): void;
+    /**
+     * Insert one track AFTER the transport cursor — the Play Next op
+     * (WS-W engine facade breadth, work item 2). Mirrors the UDL's
+     * `insert_after_cursor`: the row lands at cursor+1 (the queue head
+     * when nothing is selected), so the next advance plays it before
+     * anything already staged further back. The current row's playback
+     * is UNTOUCHED: no lifecycle transition, no play intent, the position
+     * target is preserved — the one queue mutation that is silent by
+     * construction mid-track. The by_id index is rebuilt (the insert
+     * shifts every row behind the cursor). Returns the new row's index,
+     * or u32::MAX when refused (bad JSON / blank id / the row cap).
+     */
+    insert_after_cursor(track_json: string, enqueued_by: string): number;
     constructor();
     /**
      * The debounced media-command entry (APPLIED=true / DEBOUNCED=false).
@@ -216,6 +229,7 @@ export interface InitOutput {
     readonly wasmengine_get_playback_state: (a: number) => [number, number];
     readonly wasmengine_get_queue_json: (a: number) => [number, number];
     readonly wasmengine_initialize: (a: number) => void;
+    readonly wasmengine_insert_after_cursor: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_new: () => number;
     readonly wasmengine_on_media_command: (a: number, b: number, c: number) => number;
     readonly wasmengine_play_track: (a: number, b: number, c: number) => number;

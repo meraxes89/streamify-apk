@@ -265,6 +265,17 @@ export class WasmEnginePort {
     return this.engine.enqueue_track(JSON.stringify(track), enqueuedBy);
   }
 
+  /**
+   * The Play Next op (WS-W engine facade breadth, work item 2): insert
+   * AFTER the cursor — the row lands at cursor+1 (the head when nothing is
+   * selected), silent mid-track (no lifecycle, no intent). Returns the new
+   * row's engine index, or null when refused (cap / bad row).
+   */
+  insertAfterCursor(track: TrackRow, enqueuedBy = 'web'): number | null {
+    const idx = this.engine.insert_after_cursor(JSON.stringify(track), enqueuedBy);
+    return idx === 4294967295 ? null : idx;
+  }
+
   getQueue(): QueueRead {
     return JSON.parse(this.engine.get_queue_json()) as QueueRead;
   }

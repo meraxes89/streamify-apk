@@ -744,6 +744,14 @@ interface StreamifyEngine {
     [Throws=EngineError]
     u32 enqueue_track(Track track, string enqueued_by);
 
+    /// Insert one track AFTER the transport cursor — the Play Next op
+    /// (WS-W engine facade breadth, work item 2). The row lands at
+    /// cursor+1 (the queue head when nothing is selected), so the next
+    /// advance plays it first. The current row's playback is untouched:
+    /// no lifecycle transition, no play intent, position preserved.
+    [Throws=EngineError]
+    u32 insert_after_cursor(Track track, string enqueued_by);
+
     /// Read the whole queue as one consistent page.
     [Throws=EngineError]
     sequence<QueueItem> get_queue();

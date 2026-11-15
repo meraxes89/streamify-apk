@@ -1247,6 +1247,54 @@ impl StreamifyEngine {
         })
     }
 
+    /// Insert one track AFTER the transport cursor — the Play Next op
+    /// (WS-W engine facade breadth, work item 2).
+    ///
+    /// The row lands at `cursor + 1` (the queue head when nothing is
+    /// selected), so the next advance plays it before anything already
+    /// staged further back. The current row's playback is UNTOUCHED: no
+    /// lifecycle transition, no producer intent, the position target is
+    /// preserved — the one queue mutation that is silent by construction
+    /// mid-track. The transport cursor itself keeps pointing at the
+    /// current row (the insert shifts only the rows behind it).
+    /// Returns the new row's index. Same validation as `enqueue_track`:
+    /// a blank `enqueued_by` normalizes to "local"; a queue beyond the
+    /// hard cap is rejected as Internal BEFORE any state is touched.
+    pub fn insert_after_cursor(
+        &self,
+        track: Track,
+        enqueued_by: String,
+    ) -> Result<u32, EngineError> {
+        ffi_shield("StreamifyEngine::insert_after_cursor", move || {
+            let mut queue = self
+                .shared
+                .queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if queue.rows.len() >= MAX_QUEUE_ROWS {
+                return Err(EngineError::Internal {
+                    error_message: format!(
+                        "invalid state: playback queue at the {MAX_QUEUE_ROWS}-row cap"
+                    ),
+                    backtrace: None,
+                });
+            }
+            let by = if enqueued_by.trim().is_empty() {
+                "local".to_string()
+            } else {
+                enqueued_by
+            };
+            // cursor+1, or the head when nothing is selected; a cursor at
+            // the tail (or beyond, defensively) clamps to an append.
+            let index = queue
+                .cursor
+                .map(|c| (c + 1).min(queue.rows.len()))
+                .unwrap_or(0);
+            queue.rows.insert(index, QueuedTrack { track, enqueued_by: by });
+            Ok(index as u32)
+        })
+    }
+
     /// Read the whole staged queue as one consistent page.
     ///
     /// One lock acquisition covers the whole mapping, so the returned
@@ -2955,5 +3003,100 @@ mod tests {
             serial_hash,
             "concurrent shuffled application must converge to the serial fold"
         );
+    }
+
+    /// WS-W engine facade breadth, work item 2: the Play Next op
+    /// (insert_after_cursor) — the queue page, the transport's view and
+    /// the lifecycle are three INDEPENDENT surfaces and only the first
+    /// two change.
+    #[test]
+    fn insert_after_cursor_is_silent_mid_track() {
+        fn row(id: &str, url: Option<&str>) -> Track {
+            Track {
+                id: id.to_string(),
+                title: format!("Track {id}"),
+                artist: "Artist".to_string(),
+                album: "Album".to_string(),
+                duration_ms: 213_000,
+                thumbnail_url: None,
+                is_explicit: false,
+                resolved_stream_url: url.map(str::to_string),
+            }
+        }
+        let engine = StreamifyEngine::new();
+        engine.initialize().expect("healthy host");
+        engine.enqueue_track(row("a", Some("https://x/a")), "t".into()).unwrap();
+        engine.enqueue_track(row("b", Some("https://x/b")), "t".into()).unwrap();
+        engine.enqueue_track(row("c", Some("https://x/c")), "t".into()).unwrap();
+
+        // Select b (cursor=1), drive to Playing.
+        engine.play_track("b".to_string()).expect("b is staged+resolved");
+        engine.set_playback_state(PlaybackState::Playing);
+
+        // The op: insert x AFTER the cursor, mid-track.
+        let before = engine.get_engine_snapshot().unwrap();
+        let index = engine
+            .insert_after_cursor(row("x", Some("https://x/x")), "  ".to_string())
+            .expect("queue under the cap");
+        assert_eq!(index, 2, "the row lands at cursor+1");
+
+        // 1. The queue page: [a, b, x, c] — x ahead of everything staged
+        //    before it that sits behind the cursor.
+        let page = engine.get_queue().unwrap();
+        let ids: Vec<&str> = page.iter().map(|r| r.track.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "x", "c"]);
+        assert_eq!(page[2].enqueued_by, "local", "blank enqueued_by normalizes");
+
+        // 2. The lifecycle is untouched by the insert itself: the state
+        //    the snapshot carried BEFORE the op is still the state after
+        //    (the transport-cursor effect — Next landing on x — is the
+        //    wasm facade's test, whose snapshots carry currentTrack; the
+        //    native snapshot's public shape is rev/state/volume/buffer).
+        assert_eq!(
+            engine.get_playback_state().unwrap(),
+            before.state,
+            "the insert never touches the lifecycle"
+        );
+
+        // 3. The transport still selects x on the next advance: a Seek
+        //    applies to the SELECTED row, so the engine accepts it (the
+        //    cursor is live on the inserted row after one Next).
+        engine
+            .on_media_command(MediaCommand::Next)
+            .expect("next applies over the inserted row");
+        assert_eq!(
+            engine.get_playback_state().unwrap(),
+            before.state,
+            "transport never touches lifecycle either"
+        );
+    }
+
+    /// With nothing selected, insert_after_cursor is a HEAD insert.
+    #[test]
+    fn insert_after_cursor_head_when_nothing_selected() {
+        fn row(id: &str) -> Track {
+            Track {
+                id: id.to_string(),
+                title: id.to_string(),
+                artist: String::new(),
+                album: String::new(),
+                duration_ms: 0,
+                thumbnail_url: None,
+                is_explicit: false,
+                resolved_stream_url: None,
+            }
+        }
+        let engine = StreamifyEngine::new();
+        engine.enqueue_track(row("a"), "t".into()).unwrap();
+        engine.enqueue_track(row("b"), "t".into()).unwrap();
+        // No cursor: the insert lands at 0, ahead of the staged rows.
+        let index = engine.insert_after_cursor(row("z"), "web".into()).unwrap();
+        assert_eq!(index, 0);
+        let page = engine.get_queue().unwrap();
+        let ids: Vec<&str> = page.iter().map(|r| r.track.id.as_str()).collect();
+        assert_eq!(ids, vec!["z", "a", "b"]);
+        // And the first transport command still selects the head (z).
+        engine.on_media_command(MediaCommand::Next).unwrap();
+        assert_eq!(engine.get_playback_state().unwrap(), PlaybackState::Idle);
     }
 }

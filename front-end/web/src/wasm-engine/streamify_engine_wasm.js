@@ -177,6 +177,36 @@ export class WasmEngine {
     initialize() {
         wasm.wasmengine_initialize(this.__wbg_ptr);
     }
+    /**
+     * Insert one track AFTER the transport cursor — the Play Next op
+     * (WS-W engine facade breadth, work item 2). Mirrors the UDL's
+     * `insert_after_cursor`: the row lands at cursor+1 (the queue head
+     * when nothing is selected), so the next advance plays it before
+     * anything already staged further back. The current row's playback
+     * is UNTOUCHED: no lifecycle transition, no play intent, the position
+     * target is preserved — the one queue mutation that is silent by
+     * construction mid-track. The by_id index is rebuilt (the insert
+     * shifts every row behind the cursor). Returns the new row's index,
+     * or u32::MAX when refused (bad JSON / blank id / the row cap).
+     * @param {string} track_json
+     * @param {string} enqueued_by
+     * @returns {number}
+     */
+    insert_after_cursor(track_json, enqueued_by) {
+        let ptr0, len0, ptr1, len1;
+        try {
+            ptr0 = passStringToWasm0(track_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(enqueued_by, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
+        const ret = wasm.wasmengine_insert_after_cursor(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+        return ret >>> 0;
+    }
     constructor() {
         const ret = wasm.wasmengine_new();
         this.__wbg_ptr = ret;

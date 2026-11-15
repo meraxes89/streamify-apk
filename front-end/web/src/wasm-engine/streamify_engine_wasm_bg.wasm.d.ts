@@ -25,6 +25,7 @@ export const wasmengine_get_jam_state_hash: (a: number) => [number, number, numb
 export const wasmengine_get_playback_state: (a: number) => [number, number];
 export const wasmengine_get_queue_json: (a: number) => [number, number];
 export const wasmengine_initialize: (a: number) => void;
+export const wasmengine_insert_after_cursor: (a: number, b: number, c: number, d: number, e: number) => number;
 export const wasmengine_new: () => number;
 export const wasmengine_on_media_command: (a: number, b: number, c: number) => number;
 export const wasmengine_play_track: (a: number, b: number, c: number) => number;

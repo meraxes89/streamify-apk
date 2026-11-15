@@ -13,10 +13,13 @@
  *   Share               → navigator.clipboard (the watch URL)
  *
  * NOT ported (engine/repository surfaces not exposed to JS yet — see the
- * PR description gap list; never faked): Play Next (the engine port has
- * no insert-after-cursor queue op), Start Radio / Jam (radio scorer +
- * CRDT engine), Download (OPFS phase), Edit Info (tagger), Exclude from
- * Taste Profile (taste graph).
+ * PR description gap list; never faked): Start Radio / Jam (the radio
+ * scorer; the Jam CRDT now rides lib/jamStore — its screens are the next
+ * track), Download (OPFS phase), Edit Info (tagger), Exclude from Taste
+ * Profile (taste graph).
+ *
+ * WS-W engine facade breadth, work item 2: Play Next IS ported now — the
+ * engine grew insert_after_cursor (the UDL op), wired below.
  *
  * The sheet itself is a MINIMAL local implementation (scrim + slide-up
  * panel + drag handle + Escape). TODO: consolidate onto Sheet.tsx when
@@ -33,6 +36,7 @@ import { useSessionStore } from '../lib/sessionStore';
 import { useLibraryStore } from '../lib/libraryStore';
 import { cloudTrackId } from '../lib/supabase';
 import { useTrackPlayer, type PlayableTrack } from '../lib/trackPlayer';
+import { usePlayerStore } from '../lib/playerStore';
 
 // ---------------------------------------------------------------------------
 // MenuOrigin + the controller store (TrackContextMenuController lowering)
@@ -269,6 +273,19 @@ export function ContextMenuSheet(props: ContextMenuSheetProps): JSX.Element {
             <button type="button" className="cmaction" onClick={() => { onDismissRequest(); void player.queue(track); }}>
               <Icon name="libraryMusicOutline" size={22} className="cmaction__icon" />
               <span>Add to Queue</span>
+            </button>
+
+            <button
+              type="button"
+              className="cmaction"
+              onClick={() => {
+                onDismissRequest();
+                const ok = usePlayerStore.getState().playNext(track);
+                toast(ok ? `Playing next: ${track.title}` : 'Engine busy — try again', ok ? 'success' : 'error');
+              }}
+            >
+              <Icon name="playArrow" size={22} className="cmaction__icon" />
+              <span>Play Next</span>
             </button>
 
             <button type="button" className="cmaction" onClick={handleLike}>

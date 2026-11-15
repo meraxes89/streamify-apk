@@ -490,6 +490,49 @@ impl WasmEngine {
         index as u32
     }
 
+    /// Insert one track AFTER the transport cursor — the Play Next op
+    /// (WS-W engine facade breadth, work item 2). Mirrors the UDL's
+    /// `insert_after_cursor`: the row lands at cursor+1 (the queue head
+    /// when nothing is selected), so the next advance plays it before
+    /// anything already staged further back. The current row's playback
+    /// is UNTOUCHED: no lifecycle transition, no play intent, the position
+    /// target is preserved — the one queue mutation that is silent by
+    /// construction mid-track. The by_id index is rebuilt (the insert
+    /// shifts every row behind the cursor). Returns the new row's index,
+    /// or u32::MAX when refused (bad JSON / blank id / the row cap).
+    pub fn insert_after_cursor(&mut self, track_json: &str, enqueued_by: &str) -> u32 {
+        let Ok(track) = serde_json::from_str::<TrackDto>(track_json) else {
+            return u32::MAX;
+        };
+        if self.queue.len() >= MAX_QUEUE_ROWS || track.id.is_empty() {
+            return u32::MAX;
+        }
+        let by = if enqueued_by.trim().is_empty() {
+            "local"
+        } else {
+            enqueued_by
+        };
+        let index = self
+            .cursor
+            .map(|c| (c + 1).min(self.queue.len()))
+            .unwrap_or(0);
+        self.queue.insert(
+            index,
+            QueueRow {
+                track,
+                enqueued_by: by.to_string(),
+            },
+        );
+        // The insert shifted every row behind it: rebuild the id index
+        // (last-wins for duplicated ids, exactly as enqueue's order).
+        self.by_id.clear();
+        for (i, row) in self.queue.iter().enumerate() {
+            self.by_id.insert(row.track.id.clone(), i);
+        }
+        self.commit();
+        index as u32
+    }
+
     /// Attach the resolved stream URL to a staged row (the web landing of
     /// `resolve_stream_formats`). Returns false when the id is unknown.
     pub fn stage_stream_url(&mut self, track_id: &str, url: &str) -> bool {
@@ -1049,5 +1092,51 @@ mod tests {
         assert_eq!(e.enqueue_track(&t, "overflow"), u32::MAX); // refused
         let q: serde_json::Value = serde_json::from_str(&e.get_queue_json()).unwrap();
         assert_eq!(q["rows"].as_array().unwrap().len(), 10_000);
+    }
+
+    /// WS-W engine facade breadth, work item 2: the Play Next op. The
+    /// queue page, the transport's selection and the lifecycle are three
+    /// INDEPENDENT surfaces — only the first two change.
+    #[wasm_bindgen_test]
+    fn play_next_inserts_after_cursor_silently() {
+        let mut e = engine();
+        e.initialize();
+        e.enqueue_track(&track_json("a", Some("https://x/a")), "t");
+        e.enqueue_track(&track_json("b", Some("https://x/b")), "t");
+        e.enqueue_track(&track_json("c", Some("https://x/c")), "t");
+        e.play_track("b");
+        assert_eq!(e.get_playback_state(), "Playing");
+        let rev_before = e.rev;
+
+        // The op: insert x AFTER the cursor, mid-track.
+        let idx = e.insert_after_cursor(&track_json("x", Some("https://x/x")), "  ");
+        assert_ne!(idx, u32::MAX);
+        assert_eq!(idx, 2, "the row lands at cursor+1");
+
+        // 1. The queue page: [a, b, x, c]; blank enqueuedBy normalizes.
+        let q: serde_json::Value = serde_json::from_str(&e.get_queue_json()).unwrap();
+        assert_eq!(q["rows"][2]["track"]["id"], "x");
+        assert_eq!(q["rows"][2]["enqueuedBy"], "local");
+        assert_eq!(q["rows"][3]["track"]["id"], "c");
+
+        // 2. SILENT by construction: lifecycle untouched, no latched intent.
+        assert_eq!(e.get_playback_state(), "Playing");
+        assert!(e.rev > rev_before, "the queue read surface still bumps");
+        assert!(e.take_play_intent_json().is_none(), "no play intent mid-track");
+
+        // 3. The transport lands on x after one Next (its own semantics).
+        assert!(e.on_media_command(&cmd("next")));
+        let snap: serde_json::Value = serde_json::from_str(&e.get_engine_snapshot_json()).unwrap();
+        assert_eq!(snap["currentTrack"]["id"], "x");
+
+        // 4. With nothing selected, the op is a HEAD insert.
+        let mut e2 = engine();
+        e2.enqueue_track(&track_json("a", None), "t");
+        e2.enqueue_track(&track_json("b", None), "t");
+        let head = e2.insert_after_cursor(&track_json("z", None), "web");
+        assert_eq!(head, 0);
+        let q2: serde_json::Value = serde_json::from_str(&e2.get_queue_json()).unwrap();
+        assert_eq!(q2["rows"][0]["track"]["id"], "z");
+        assert_eq!(q2["rows"][0]["enqueuedBy"], "web");
     }
 }
