@@ -14,13 +14,16 @@
  */
 
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TrackCard } from '../components/TrackCard';
+import { EmptyStateView } from '../components/EmptyStateView';
 import { GlobalTrackContextMenuHost, trackMenuGestures } from '../components/ContextMenuSheet';
 import { useHomeStore, shelfTrackToPlayable } from '../lib/homeStore';
 import { useTrackPlayer } from '../lib/trackPlayer';
 import { usePlayerStore } from '../lib/playerStore';
 
 export function UniversalHomeScreen(): JSX.Element {
+  const navigate = useNavigate();
   const phase = useHomeStore((s) => s.phase);
   const shelves = useHomeStore((s) => s.shelves);
   const cloudLoading = useHomeStore((s) => s.cloudLoading);
@@ -36,8 +39,22 @@ export function UniversalHomeScreen(): JSX.Element {
   return (
     <section className="unifeed" aria-label="Home feed">
       {phase === 'loading' && shelves.length === 0 && (
-        <div className="unifeed__loading" role="status">
-          <span className="spinner" aria-hidden="true" />
+        // The YtHomeSkeleton port: shelf-shaped placeholders (title rail +
+        // card rail) shimmer while the feed loads — the APK's Loading state.
+        <div className="unifeed__skeleton" role="status" aria-label="Loading your feed">
+          {[0, 1, 2].map((i) => (
+            <div className="shelf" key={i} aria-hidden="true">
+              <header className="shelf__head">
+                <div className="sk sk--line" />
+                <div className="sk sk--line sk--line--sub" />
+              </header>
+              <div className="shelf__rail">
+                {Array.from({ length: 6 }, (_unused, j) => (
+                  <div className="sk sk--card" key={j} />
+                ))}
+              </div>
+            </div>
+          ))}
           <span className="sr-only">Loading your feed…</span>
         </div>
       )}
@@ -88,10 +105,13 @@ export function UniversalHomeScreen(): JSX.Element {
       )}
 
       {phase === 'ready' && shelves.length === 0 && (
-        <p className="unifeed__empty muted">
-          Nothing to feed yet — like a few tracks (Search → ♡) and the feed builds from your
-          library.
-        </p>
+        <EmptyStateView
+          className="unifeed__empty"
+          title="Nothing to feed yet"
+          subtitle="Like a few tracks and the feed builds from your library — everything stays honest and local until then."
+          actionText="Explore music"
+          onActionClick={() => navigate('/search')}
+        />
       )}
 
       <GlobalTrackContextMenuHost />
