@@ -2,8 +2,10 @@
 //!
 //! Audit fixes carried from the v2 review:
 //!   R3  Identity parity: CAD-IDs are minted ONLY through
-//!       `repository::generate_cad_id_u64` (canonical normalization +
-//!       duration bucketing). This module never forks the hasher.
+//!       `crate::cad::generate_cad_id_u64` (canonical normalization +
+//!       duration bucketing — the hasher moved from streamify-storage into
+//!       this crate; same bytes, see cad.rs). This module never forks the
+//!       hasher.
 //!   R1  Commutativity under equal fractions: concurrent inserts into the
 //!       same gap produce identical `frac_index` values. Ordering key is the
 //!       composite `(frac_bits, add_op_id)` so merge results are independent
@@ -50,7 +52,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 
-use streamify_storage::repository::generate_cad_id_u64;
+use crate::cad::generate_cad_id_u64;
+
+// WS-W engine facade breadth: this file moved verbatim from
+// streamify-jam/src/jam_crdt.rs. The ONLY behavioral edit: op-id minting
+// reads `crate::unix_ms_now()` instead of SystemTime directly — the house
+// wasm clock (js_sys::Date::now()) on wasm32, SystemTime elsewhere. Every
+// emitted byte image is unchanged (the golden-vector suite pins it).
 
 const FNV1A_32_OFFSET: u32 = 0x811c_9dc5;
 const FNV1A_32_PRIME: u32 = 0x0100_0193;
@@ -219,10 +227,7 @@ impl JamOp {
     /// prev+1 rather than a smaller id. Same-millisecond calls disambiguate
     /// through the 16-bit counter.
     pub fn generate_op_id() -> u64 {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        let now_ms = crate::unix_ms_now();
 
         let mut current_ms = now_ms;
         let prev = LAST_SEEN_MS.fetch_max(current_ms, Ordering::AcqRel);

@@ -66,6 +66,8 @@ export type IconName =
   | 'campaign'
   | 'contentCopy'
   | 'share'
+  // WS-W engine facade breadth (the jam join prompt's speaker well).
+  | 'speaker'
 
 const PATHS: Record<IconName, string> = {
   // -- W-W admin/stats port additions --------------------------------------
@@ -151,6 +153,7 @@ const PATHS: Record<IconName, string> = {
   musicNote: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
   thumbUp: 'M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z',
   thumbUpOutline: 'M9 21h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2zM9 9l4.34-4.34L12.23 9H9zm10 9h-9l1.8-6h7.1L19 18zM1 9h4v12H1z',
+  speaker: 'M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-5 18a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-4.75a.75.75 0 1 0 .001 1.501.75.75 0 0 0-.001-1.501z',
 };
 
 export interface IconProps {

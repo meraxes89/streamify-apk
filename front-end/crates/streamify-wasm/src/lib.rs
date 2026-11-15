@@ -36,6 +36,12 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+// WS-W engine facade breadth, work item 3: the radio/blend scorer leaf
+// (rust/crates/streamify-radio-scorer — moved verbatim out of
+// streamify-resolver so it compiles on wasm32). Read-only path dep, same
+// as streamify-core in streamify-engine-wasm.
+use streamify_radio_scorer::radio_scorer::{RadioAntiDriftEngine, ScoredCandidate};
+
 use rustypipe::client::{ClientType, RustyPipe, RustyPipeBuilder};
 use rustypipe::model::{AudioFormat, AudioStream, TrackItem, VideoFormat, VideoPlayer};
 
@@ -243,6 +249,40 @@ pub async fn search_music(query: &str) -> Result<JsValue, JsValue> {
     }
 }
 
+/// The Start Radio scorer, mirrored from `rust_score_and_rank_radio_candidates`
+/// (WS-W engine facade breadth, work item 3): the anti-drift filter/ranker —
+/// signature dedupe, per-artist caps, junk-title filtering, BPM/key affinity —
+/// over the candidate pool, against the already-queued rows. JSON STRING in
+/// and out (the house bridge); throws on malformed candidate JSON.
+#[wasm_bindgen]
+pub fn score_and_rank_radio_candidates(
+    candidates_json: &str,
+    seed_bpm: f32,
+    seed_key: &str,
+    seed_duration_sec: i32,
+    seed_signature: &str,
+    queue_json: &str,
+) -> Result<JsValue, JsValue> {
+    let candidates: Vec<ScoredCandidate> = serde_json::from_str(candidates_json)
+        .map_err(|e| JsValue::from_str(&format!("candidateJson: {e}")))?;
+    let active_queue: Vec<ScoredCandidate> = if queue_json.trim().is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(queue_json).unwrap_or_default()
+    };
+    let ranked = RadioAntiDriftEngine::filter_and_rank_candidates(
+        &candidates,
+        seed_bpm,
+        seed_key,
+        seed_duration_sec,
+        seed_signature,
+        &active_queue,
+    );
+    let json = serde_json::to_string(&ranked)
+        .map_err(|e| JsValue::from_str(&format!("serialize: {e}")))?;
+    Ok(JsValue::from_str(&json))
+}
+
 /// G0.4 / kill-criterion path: resolve the best audio stream for a video
 /// id. Returns a JSON STRING `{ streamUrl, itag, mimeType, isAudioOnly,
 /// durationSec? }`, or the JSON string `"null"` when the player response
@@ -312,5 +352,59 @@ mod tests {
     #[wasm_bindgen_test]
     fn ping_returns_pong() {
         assert_eq!(ping(), "pong");
+    }
+
+    /// WS-W engine facade breadth, work item 3: the anti-drift contract,
+    /// exercised in-browser — signature dedupe, per-artist caps, junk-title
+    /// filtering (the semantics the native blend-jam-mesh suite pins).
+    #[wasm_bindgen_test]
+    fn radio_scorer_anti_drift_contract_on_wasm() {
+        fn cand(id: i32, title: &str, artist: &str, dur: i32) -> ScoredCandidate {
+            ScoredCandidate {
+                id,
+                title: title.to_string(),
+                artist: artist.to_string(),
+                album: String::new(),
+                duration_sec: dur,
+                filepath: String::new(),
+                cover_art_path: String::new(),
+                bpm: 0.0,
+                key: String::new(),
+                score: 0.0,
+            }
+        }
+        let pool = vec![
+            cand(1, "Seed Song", "Seed Artist", 200),
+            cand(2, "Best of 2024 compilation", "Junk Corp", 300),
+            cand(3, "Dup A", "Real Artist", 210),
+            cand(4, "Dup A", "Real Artist", 210),
+            cand(5, "Other One", "Real Artist", 220),
+            cand(6, "Third Thing", "Real Artist", 240),
+            cand(7, "Clean Pick", "Other Artist", 205),
+        ];
+        let pool_json = serde_json::to_string(&pool).unwrap();
+        let out = score_and_rank_radio_candidates(
+            &pool_json,
+            0.0,
+            "",
+            200,
+            "Seed Song|Seed Artist|200",
+            "[]",
+        )
+        .expect("scoring applies");
+        let ranked: Vec<ScoredCandidate> =
+            serde_json::from_str(&out.as_string().expect("json out")).expect("parse ranked");
+        // Junk filtered.
+        assert!(!ranked.iter().any(|c| c.title.contains("compilation")));
+        // Signature dedupe: "Dup A|Real Artist|210" appears once.
+        let dup_a = ranked.iter().filter(|c| c.title == "Dup A").count();
+        assert_eq!(dup_a, 1);
+        // Per-artist cap: at most 2 rows from Real Artist survive.
+        let real = ranked.iter().filter(|c| c.artist == "Real Artist").count();
+        assert!(real <= 2, "artist cap is 2, got {real}");
+        // And the pool actually produced something.
+        assert!(!ranked.is_empty());
+        // Malformed JSON throws (never silently empty).
+        assert!(score_and_rank_radio_candidates("not json", 0.0, "", 0, "", "[]").is_err());
     }
 }

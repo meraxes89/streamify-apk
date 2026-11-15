@@ -1,9 +1,11 @@
 /**
- * screens/HomeScreen.tsx — W-W home-teardown: the production home.
+ * screens/HomeScreen.tsx — the production home.
  *
  * The P3a home was the engine dogfood surface (search + queue + account
- * + player bar + GSF panel + spine console stacked under the feed) — the
- * APK's embedded dev console pattern. It is now a clean product surface:
+ * + player bar + GSF panel + spine console stacked under the feed) —
+ * the APK's embedded dev console pattern. It is now a clean product surface:
+ * the jam join prompt rail (WS-W engine facade breadth — the invite-link
+ * lowering of JoinPromptSheet.kt, see components/JoinPromptRail.tsx) plus
  * the UniversalHomeScreen shelves feed (the UniversalHomeScreen.kt /
  * HomeScreen.kt port in lib/homeStore.ts) plus the honest resolve-error
  * banner. Everything diagnostic moved to the /debug route
@@ -15,6 +17,7 @@
  */
 
 import { usePlayerStore } from '../lib/playerStore';
+import { JoinPromptRail } from '../components/JoinPromptRail';
 import { UniversalHomeScreen } from './UniversalHomeScreen';
 
 export function HomeScreen(): JSX.Element {
@@ -22,6 +25,9 @@ export function HomeScreen(): JSX.Element {
 
   return (
     <div className="stack home-stack">
+      {/* WS-W engine facade breadth: the jam join prompt (the invite-link
+          lowering of JoinPromptSheet.kt — self-contained rail). */}
+      <JoinPromptRail />
       {/* P2 browse: the YT-Music-style shelves feed (the UniversalHomeScreen
           port) — the home's entire production surface. */}
       <UniversalHomeScreen />

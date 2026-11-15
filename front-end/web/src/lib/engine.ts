@@ -349,6 +349,47 @@ export async function resolveStream(videoId: string): Promise<StreamInfo | null>
   return parseStreamInfo(raw);
 }
 
+// ---------------------------------------------------------------------------
+// The Start Radio lane (WS-W engine facade breadth, work item 3)
+// ---------------------------------------------------------------------------
+
+/** One radio candidate — the engine's ScoredCandidate wire shape (snake_case). */
+export interface RadioCandidate {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  duration_sec: number;
+  filepath: string;
+  cover_art_path: string;
+  bpm?: number;
+  key?: string;
+  score?: number;
+}
+
+/** The anti-drift filter/ranker (`rust_score_and_rank_radio_candidates`
+ * mirrored onto wasm): signature dedupe, per-artist caps, junk-title
+ * filtering, BPM/key affinity. Sync (the wasm fn is sync); throws the
+ * engine's verbatim error on malformed candidate JSON. */
+export function scoreAndRankRadioCandidates(
+  candidates: RadioCandidate[],
+  seed: { bpm: number; key: string; durationSec: number; signature: string },
+  activeQueue: RadioCandidate[],
+): RadioCandidate[] {
+  if (wasmModule === null) {
+    throw new EngineNotReadyError('engine not loaded');
+  }
+  const raw = wasmModule.score_and_rank_radio_candidates(
+    JSON.stringify(candidates),
+    seed.bpm,
+    seed.key,
+    Math.round(seed.durationSec),
+    seed.signature,
+    JSON.stringify(activeQueue),
+  );
+  return JSON.parse(raw) as RadioCandidate[];
+}
+
 /**
  * Wrap a direct (googlevideo) URL for the CORS relay: `${relayBase}/r?u=<encoded>`.
  * Callers skip the wrap when the URL already starts with the relay base.
