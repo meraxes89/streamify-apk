@@ -507,7 +507,7 @@ mod tests {
         let c3 = cad("Track Three", "Artist", 240);
         let mk = |i: u64, c: u64, frac: f64| {
             jam_op_to_bytes(&serde_json::json!({
-                "opId": format!("{}", 1_700_000_000_000i64 * 1000 + i),
+                "opId": format!("{}", 1_700_000_000_000u64 * 1000 + i),
                 "senderNonce": "aabbccdd",
                 "opType": 1,
                 "policyFlags": 0,
@@ -616,7 +616,9 @@ mod tests {
     /// bridge (op ids live above 2^53 — the reason the bridge is strings).
     #[wasm_bindgen_test]
     fn jam_op_pack_unpack_preserves_u64_precision() {
-        let op_id: u64 = 0x0001_8e5c_d4a8_b000; // > 2^53 (a realistic unix_ms<<16)
+        // A realistic mint: unix_ms(1.77e12) << 16 ≈ 1.16e17 — comfortably
+        // above 2^53, where JS numbers round.
+        let op_id: u64 = 1_770_000_000_000u64 << 16;
         assert!(op_id > (1u64 << 53));
         let cad: u64 = 0xDEAD_BEEF_CAFE_F00d;
         let packed = jam_op_to_bytes(

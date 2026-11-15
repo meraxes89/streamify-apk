@@ -1108,6 +1108,9 @@ mod tests {
         e.enqueue_track(&track_json("c", Some("https://x/c")), "t");
         e.play_track("b");
         assert_eq!(e.get_playback_state(), "Playing");
+        // Consume the play intent play_track latched (the sink-ack pattern):
+        // the test below asserts the INSERT adds none, so start from empty.
+        assert!(e.take_play_intent_json().is_some(), "play_track latches an intent");
         let rev_before = e.rev;
 
         // The op: insert x AFTER the cursor, mid-track.
