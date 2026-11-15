@@ -321,7 +321,7 @@ jobs:
           echo "SANI_CXX=$SANI_CXX" >> "$GITHUB_ENV"
 
       - name: Setup CCache for native shards
-        uses: hendrikmuhs/ccache-action@v1.2.24
+        uses: hendrikmuhs/ccache-action@v1.2.25
         continue-on-error: true
         with:
           key: ${{ runner.os }}-ccache-native-asan
@@ -436,7 +436,7 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Setup CCache for the C++ DSP
-        uses: hendrikmuhs/ccache-action@v1.2.24
+        uses: hendrikmuhs/ccache-action@v1.2.25
         continue-on-error: true
         with:
           key: ${{ runner.os }}-ccache-native-abi-${{ matrix.abi }}
