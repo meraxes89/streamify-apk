@@ -1001,3 +1001,349 @@ export async function removeTrackFromPlaylist(
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+// ---------------------------------------------------------------------------
+// Admin — the AdminDashboardScreen data lane (SupabaseAdminClient port).
+// Same calls, same shapes as the APK: the read RPCs ride PostgREST; the
+// MUTATING calls route through the authenticated Edge Functions (SEC-02:
+// JWT-verified, admin-claimed server-side — never the anon key).
+// ---------------------------------------------------------------------------
+
+export interface AdminUserProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string;
+  bio: string;
+  favoriteGenre: string;
+  topTrack: string;
+  isAdmin: boolean;
+  totalPlays: number;
+  listeningSeconds: number;
+  createdAt: string;
+  lastActiveAt: string;
+}
+
+export interface AdminTelemetry {
+  totalUsers: number;
+  totalTracks: number;
+  totalPlaylists: number;
+  activeJamSessions: number;
+  totalComments: number;
+  totalLikes: number;
+  totalPlays: number;
+  dau24h: number;
+  userList: AdminUserProfile[];
+  serverStatus: string;
+  latencyMs: number;
+  engineMode: string;
+}
+
+export interface AdminJamSession {
+  id: string;
+  sessionCode: string;
+  hostName: string;
+  hostEmail: string;
+  currentTrackTitle: string;
+  currentTrackArtist: string;
+  participantCount: number;
+  isPlaying: boolean;
+  updatedAt: string;
+}
+
+export interface AdminCommentItem {
+  id: string;
+  trackId: string;
+  trackTitle: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  commentText: string;
+  timestampMs: number;
+  createdAt: string;
+}
+
+export interface AdminEdgeNode {
+  deviceId: string;
+  displayName: string;
+  userEmail: string;
+  status: string;
+  currentTrackTitle: string;
+  totalContributions: number;
+  bandwidthSavedMb: number;
+  lastActiveAt: string;
+}
+
+export interface AdminEdgeContributor {
+  userId: string;
+  displayName: string;
+  userEmail: string;
+  totalContributions: number;
+  bandwidthSavedMb: number;
+  lastActiveAt: string;
+}
+
+export interface AdminEdgeMeshStats {
+  totalTasksCount: number;
+  completedTasksCount: number;
+  activeNodesCount: number;
+  totalBandwidthSavedMb: number;
+  activeNodes: AdminEdgeNode[];
+  topContributors: AdminEdgeContributor[];
+}
+
+export interface AdminTopTrack {
+  trackSig: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  plays: number;
+  minutes: number;
+  listeners: number;
+}
+
+interface RawProfile {
+  id?: unknown;
+  email?: unknown;
+  display_name?: unknown;
+  avatar_url?: unknown;
+  bio?: unknown;
+  favorite_genre?: unknown;
+  top_track?: unknown;
+  is_admin?: unknown;
+  total_plays?: unknown;
+  listening_seconds?: unknown;
+  created_at?: unknown;
+  last_active_at?: unknown;
+}
+
+function toProfile(row: RawProfile): AdminUserProfile {
+  const str = (v: unknown, fb = ''): string => (v == null ? fb : String(v));
+  return {
+    id: str(row.id),
+    email: str(row.email),
+    displayName: str(row.display_name, 'User'),
+    avatarUrl: str(row.avatar_url),
+    bio: str(row.bio),
+    favoriteGenre: str(row.favorite_genre, 'All'),
+    topTrack: str(row.top_track),
+    isAdmin: row.is_admin === true,
+    totalPlays: Number(row.total_plays ?? 0) || 0,
+    listeningSeconds: Number(row.listening_seconds ?? 0) || 0,
+    createdAt: str(row.created_at),
+    lastActiveAt: str(row.last_active_at),
+  };
+}
+
+/** get_admin_dashboard_stats + the profiles list (SupabaseAdminClient.getAdminTelemetry). */
+export async function fetchAdminTelemetry(): Promise<AdminTelemetry> {
+  const startMs = Date.now();
+  const statsRes = await restCall('rpc/get_admin_dashboard_stats', { method: 'POST' }).catch(() => null);
+  let stats: Record<string, unknown> = {};
+  let rpcHealthy = false;
+  if (statsRes !== null && statsRes.status >= 200 && statsRes.status < 300) {
+    stats = (await statsRes.json().catch(() => ({}))) as Record<string, unknown>;
+    rpcHealthy = true;
+  }
+  const profilesRes = await restCall('profiles?select=*&order=created_at.desc&limit=100', {
+    method: 'GET',
+  }).catch(() => null);
+  let userList: AdminUserProfile[] = [];
+  if (profilesRes !== null && profilesRes.status >= 200 && profilesRes.status < 300) {
+    const rows = (await profilesRes.json().catch(() => [])) as RawProfile[];
+    userList = rows.map(toProfile);
+  }
+  return {
+    totalUsers: Number(stats.total_users ?? 0) || userList.length,
+    totalTracks: Number(stats.total_tracks ?? 0) || 0,
+    totalPlaylists: Number(stats.total_playlists ?? 0) || 0,
+    activeJamSessions: Number(stats.active_jam_sessions ?? 0) || 0,
+    totalComments: Number(stats.total_comments ?? 0) || 0,
+    totalLikes: Number(stats.total_likes ?? 0) || 0,
+    totalPlays: Number(stats.total_plays ?? 0) || 0,
+    dau24h: Number(stats.dau_24h ?? 0) || 0,
+    userList,
+    serverStatus: rpcHealthy
+      ? String(stats.server_status ?? 'Operational')
+      : 'RPC ERROR — check is_admin / migration',
+    latencyMs: Math.max(12, Date.now() - startMs),
+    engineMode: String(stats.engine_mode ?? 'PostgreSQL 15 + pgvector'),
+  };
+}
+
+export async function fetchAdminJamSessions(): Promise<AdminJamSession[]> {
+  const res = await restCall('rpc/get_admin_jam_sessions', { method: 'POST' }).catch(() => null);
+  if (res === null || res.status < 200 || res.status >= 300) return [];
+  const rows = (await res.json().catch(() => [])) as Array<Record<string, unknown>>;
+  return rows.map((o) => ({
+    id: String(o.id ?? ''),
+    sessionCode: String(o.session_code ?? ''),
+    hostName: String(o.host_name ?? 'Host'),
+    hostEmail: String(o.host_email ?? ''),
+    currentTrackTitle: String(o.current_track_title ?? 'None'),
+    currentTrackArtist: String(o.current_track_artist ?? ''),
+    participantCount: Number(o.participant_count ?? 1) || 1,
+    isPlaying: o.is_playing === true,
+    updatedAt: String(o.updated_at ?? ''),
+  }));
+}
+
+export async function fetchAdminRecentComments(limit = 50): Promise<AdminCommentItem[]> {
+  const res = await restCall('rpc/get_admin_recent_comments', {
+    method: 'POST',
+    body: { limit_count: limit },
+  }).catch(() => null);
+  if (res === null || res.status < 200 || res.status >= 300) return [];
+  const rows = (await res.json().catch(() => [])) as Array<Record<string, unknown>>;
+  return rows.map((o) => ({
+    id: String(o.id ?? ''),
+    trackId: String(o.track_id ?? ''),
+    trackTitle: String(o.track_title ?? 'Track'),
+    userId: String(o.user_id ?? ''),
+    userName: String(o.user_name ?? 'User'),
+    userAvatar: String(o.user_avatar ?? ''),
+    commentText: String(o.comment_text ?? ''),
+    timestampMs: Number(o.timestamp_ms ?? 0) || 0,
+    createdAt: String(o.created_at ?? ''),
+  }));
+}
+
+export async function fetchAdminEdgeStats(): Promise<AdminEdgeMeshStats | null> {
+  const res = await restCall('rpc/get_admin_edge_compute_stats', { method: 'POST' }).catch(() => null);
+  if (res === null || res.status < 200 || res.status >= 300) return null;
+  const root = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (root === null) return null;
+  const nodes = (Array.isArray(root.active_nodes) ? root.active_nodes : []) as Array<Record<string, unknown>>;
+  const contribs = (Array.isArray(root.top_contributors) ? root.top_contributors : []) as Array<Record<string, unknown>>;
+  return {
+    totalTasksCount: Number(root.total_tasks_count ?? 0) || 0,
+    completedTasksCount: Number(root.completed_tasks_count ?? 0) || 0,
+    activeNodesCount: Number(root.active_nodes_count ?? 0) || 0,
+    totalBandwidthSavedMb: Number(root.total_bandwidth_saved_mb ?? 0) || 0,
+    activeNodes: nodes.map((o) => ({
+      deviceId: String(o.device_id ?? ''),
+      displayName: String(o.display_name ?? 'Node'),
+      userEmail: String(o.user_email ?? ''),
+      status: String(o.status ?? 'IDLE'),
+      currentTrackTitle: String(o.current_track_title ?? ''),
+      totalContributions: Number(o.total_contributions ?? 0) || 0,
+      bandwidthSavedMb: Number(o.bandwidth_saved_mb ?? 0) || 0,
+      lastActiveAt: String(o.last_active_at ?? ''),
+    })),
+    topContributors: contribs.map((o) => ({
+      userId: String(o.user_id ?? ''),
+      displayName: String(o.display_name ?? 'Contributor'),
+      userEmail: String(o.user_email ?? ''),
+      totalContributions: Number(o.total_contributions ?? 0) || 0,
+      bandwidthSavedMb: Number(o.bandwidth_saved_mb ?? 0) || 0,
+      lastActiveAt: String(o.last_active_at ?? ''),
+    })),
+  };
+}
+
+/** get_admin_top_tracks — {tracks: [{track_sig, plays, seconds, listeners, snapshot:{title, artist, coverArtPath}}]}. */
+export async function fetchAdminTopTracks(limit = 20): Promise<AdminTopTrack[]> {
+  const res = await restCall('rpc/get_admin_top_tracks', {
+    method: 'POST',
+    body: { p_limit: limit },
+  }).catch(() => null);
+  if (res === null || res.status < 200 || res.status >= 300) {
+    throw new Error(`Top tracks RPC failed: ${res === null ? 'network' : res.status}`);
+  }
+  const root = (await res.json().catch(() => ({}))) as { tracks?: Array<Record<string, unknown>> };
+  const rows = Array.isArray(root.tracks) ? root.tracks : [];
+  return rows.map((o) => {
+    const snap = (o.snapshot ?? null) as Record<string, unknown> | null;
+    const sig = String(o.track_sig ?? '');
+    return {
+      trackSig: sig,
+      title: String(snap?.title ?? '') || sig.split('_')[0] || 'Unknown',
+      artist: String(snap?.artist ?? ''),
+      coverUrl: snap?.coverArtPath != null && String(snap.coverArtPath) !== '' ? String(snap.coverArtPath) : null,
+      plays: Number(o.plays ?? 0) || 0,
+      minutes: Math.floor((Number(o.seconds ?? 0) || 0) / 60),
+      listeners: Number(o.listeners ?? 0) || 0,
+    };
+  });
+}
+
+/** admin_broadcasts insert (return=minimal) — the Broadcasts tab. */
+export async function postAdminBroadcast(message: string): Promise<boolean> {
+  const session = await getSession();
+  const res = await restCall('admin_broadcasts', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: {
+      message,
+      author_email: session?.user.email ?? '',
+      is_active: true,
+    },
+  }).catch(() => null);
+  return res !== null && res.status >= 200 && res.status < 300;
+}
+
+// -- SEC-02: the mutating admin RPCs ride the authenticated Edge Functions --
+// (JWT-verified, admin claim checked server-side; the client guard refuses
+// dispatch with no session — never an anon-key fallback).
+
+async function adminEdgeFunction(name: string, payload: Record<string, unknown>): Promise<boolean> {
+  const env = supabaseEnv();
+  const session = await getSession();
+  if (env === null || session === null) return false;
+  const res = await fetch(`${env.url}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: env.anonKey,
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }).catch(() => null);
+  return res !== null && res.status >= 200 && res.status < 300;
+}
+
+export function adminSetUserRole(targetUserId: string, isAdmin: boolean): Promise<boolean> {
+  return adminEdgeFunction('set_user_admin_role', {
+    target_user_id: targetUserId,
+    new_admin_status: isAdmin,
+  });
+}
+
+export function adminTerminateJamSession(sessionId: string): Promise<boolean> {
+  return adminEdgeFunction('terminate_jam_session', { target_session_id: sessionId });
+}
+
+export function adminDeleteComment(commentId: string): Promise<boolean> {
+  return adminEdgeFunction('delete_comment_admin', { target_comment_id: commentId });
+}
+
+// ---------------------------------------------------------------------------
+// Own play events — the Wrapped read side (user_play_events, RLS own-rows)
+// ---------------------------------------------------------------------------
+
+export interface OwnPlayEventRow {
+  trackSig: string;
+  title: string;
+  artist: string;
+  durationPlayedSec: number;
+  hourOfDay: number;
+}
+
+/** The signed-in user's own play events (most recent first). */
+export async function fetchOwnPlayEvents(limit = 1000, signal?: AbortSignal): Promise<OwnPlayEventRow[]> {
+  const session = await getSession();
+  if (session === null) return [];
+  const res = await restCall(
+    `user_play_events?user_id=eq.${session.user.id}&select=track_sig,title,artist,duration_played_sec,hour_of_day&order=created_at.desc&limit=${limit}`,
+    { method: 'GET', signal },
+  ).catch(() => null);
+  if (res === null || res.status < 200 || res.status >= 300) return [];
+  const rows = (await res.json().catch(() => [])) as Array<Record<string, unknown>>;
+  return rows.map((o) => ({
+    trackSig: String(o.track_sig ?? ''),
+    title: String(o.title ?? ''),
+    artist: String(o.artist ?? ''),
+    durationPlayedSec: Number(o.duration_played_sec ?? 0) || 0,
+    hourOfDay: Number(o.hour_of_day ?? 0) || 0,
+  }));
+}
