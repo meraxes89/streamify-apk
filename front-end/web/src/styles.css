@@ -5842,3 +5842,229 @@ button:disabled {
     transition: none;
   }
 }
+
+/* ==========================================================================
+   W-W HOME-TEARDOWN — /debug dev console + the SLog tail
+   (Dev-only route: the chunk is build-time gated out of production —
+   these styles ride the same chunk via DebugScreen's module graph… no:
+   styles.css is global, so these bytes ship but the route does not.)
+   ========================================================================== */
+
+.shell__pageloading {
+  min-height: 40vh;
+}
+
+.debug {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.debug__badge {
+  margin-left: auto;
+  margin-right: var(--sf-space-lg);
+  padding: 3px 10px;
+  border: 1px solid var(--sf-terminal-green);
+  border-radius: var(--sf-radius-sm);
+  color: var(--sf-terminal-green);
+  font: var(--sf-type-caption);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.debug__scroll {
+  flex: 1;
+  padding: 0 var(--sf-space-lg) var(--sf-space-huge);
+  max-width: var(--sf-screen-max-width);
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-xl);
+}
+
+.debug__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-sm);
+}
+
+.debug__sectitle {
+  margin: 0;
+  font: var(--sf-type-title-small);
+  color: var(--sf-text-main);
+  letter-spacing: 0.3px;
+}
+
+.debug__sechint {
+  margin: 0 0 var(--sf-space-sm);
+  font: var(--sf-type-body-small);
+  color: var(--sf-text-secondary);
+}
+
+.debug__stats {
+  margin: 0;
+  border: 1px solid var(--sf-border-subtle);
+  border-radius: var(--sf-radius-lg);
+  background: var(--sf-bg-card);
+  overflow: hidden;
+}
+
+.debug__statrow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sf-space-lg);
+  padding: 10px var(--sf-space-md);
+}
+
+.debug__statrow + .debug__statrow {
+  border-top: 1px solid var(--sf-divider);
+}
+
+.debug__statrow dt {
+  font: var(--sf-type-caption);
+  color: var(--sf-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.debug__statrow dd {
+  margin: 0;
+  font: var(--sf-type-body-medium);
+  color: var(--sf-text-main);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.debug__resolve-error {
+  margin: var(--sf-space-sm) 0 0;
+  padding: 10px var(--sf-space-md);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-error-bg);
+  color: var(--sf-error-red);
+  font: var(--sf-type-body-small);
+}
+
+/* ---- the SLog tail (dev variant of the AdminTerminal shape) ------------- */
+
+.slogtail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-sm);
+}
+
+.slogtail__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sf-space-md);
+  min-height: 44px;
+}
+
+.slogtail__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sf-space-sm);
+  font: var(--sf-type-body-small);
+  color: var(--sf-text-secondary);
+  cursor: pointer;
+}
+
+.slogtail__switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--sf-terminal-green);
+}
+
+.slogtail__actions {
+  display: flex;
+  gap: var(--sf-space-sm);
+}
+
+.slogtail__act {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--sf-border-chip);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-bg-surface-elevated);
+  color: var(--sf-text-main);
+  font: var(--sf-type-chip-text);
+  cursor: pointer;
+  transition: border-color var(--sf-anim-fast) var(--sf-ease-standard);
+}
+
+.slogtail__act:hover {
+  border-color: var(--sf-terminal-green);
+}
+
+.slogtail__act--danger:hover {
+  border-color: var(--sf-error-red);
+  color: var(--sf-error-red);
+}
+
+.slogtail__filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.slogtail__lvl {
+  min-width: 36px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--sf-border-chip);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-bg-card);
+  color: var(--sf-text-tertiary);
+  font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+  transition: color var(--sf-anim-fast) var(--sf-ease-standard),
+    border-color var(--sf-anim-fast) var(--sf-ease-standard);
+}
+
+.slogtail__grep {
+  flex: 1 1 140px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--sf-border-chip);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-bg-card);
+  color: var(--sf-terminal-green);
+  font: 400 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.slogtail__grep::placeholder {
+  color: var(--sf-text-tertiary);
+}
+
+.slogtail__grep:focus-visible,
+.slogtail__lvl:focus-visible,
+.slogtail__act:focus-visible {
+  outline: 2px solid var(--sf-accent-blue);
+  outline-offset: 1px;
+}
+
+.slogtail__lines {
+  margin: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--sf-space-sm) var(--sf-space-md);
+  border: 1px solid var(--sf-border-subtle);
+  border-radius: var(--sf-radius-lg);
+  background: #0a0e0a; /* TermBg — the AdminTerminalScreen near-black */
+  color: #d7e8d7;
+  font: 400 11px/15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.slogtail__lines::-webkit-scrollbar {
+  width: 8px;
+}
+
+.slogtail__lines::-webkit-scrollbar-thumb {
+  background: var(--sf-border-chip);
+  border-radius: 4px;
+}

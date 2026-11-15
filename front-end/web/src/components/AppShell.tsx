@@ -9,7 +9,7 @@
  * the Android immersiveRoutes policy.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { loadEngine, relayBaseCandidate } from '../lib/engine';
 import { createEngineStack } from '../lib/wasmEngine';
@@ -19,6 +19,8 @@ import { useSessionStore } from '../lib/sessionStore';
 import { useToastStore } from '../lib/toastStore';
 import { cloudTrackId, recordPlayEvent } from '../lib/supabase';
 import { recordTally } from '../lib/playTally';
+import { initSlog, slog, slogThrow } from '../lib/slog';
+import { APP_BUILD, APP_VERSION } from '../version';
 import { NavRail } from './NavRail';
 import { MiniPlayerBar } from './MiniPlayerBar';
 import { Toasts } from './Toasts';
@@ -45,6 +47,23 @@ import { useUiStore } from '../lib/uiStore';
 /** Android immersiveRoutes: chrome + mini-player hidden. */
 const IMMERSIVE = new Set(['/onboarding', '/profile-selection']);
 
+/**
+ * W-W home-teardown: the /debug dev-console route is BUILD-TIME GATED.
+ * `import.meta.env.DEV` is statically replaced at build time, so in
+ * production builds the dynamic import below sits in dead code and Rollup
+ * never emits the debug chunk — the console cannot leak into shipped
+ * bundles. `VITE_DEBUG_ROUTE=1` is the opt-in for branch deploys that need
+ * the diagnostic surface on a Pages URL (soak drills; web-deploy.yml
+ * already ships per-branch).
+ */
+const DEBUG_ROUTE =
+  import.meta.env.DEV || (import.meta.env.VITE_DEBUG_ROUTE as string | undefined) === '1';
+
+const DebugScreen = DEBUG_ROUTE
+  ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- build-time constant
+    lazy(() => import('../screens/DebugScreen'))
+  : null;
+
 export function AppShell(): JSX.Element {
   const location = useLocation();
   const immersive = IMMERSIVE.has(location.pathname);
@@ -63,6 +82,10 @@ export function AppShell(): JSX.Element {
   // ---- boot: search engine + wasm control plane + session (once) -------
   useEffect(() => {
     aliveRef.current = true;
+    // The diagnostic ring boots with the shell: opt-in capture, crash hook,
+    // boot banner (see lib/slog.ts — the util/SLog.kt port).
+    initSlog(`web v${APP_VERSION} build ${APP_BUILD}`);
+    slog.i('shell', 'boot — loading search engine + wasm control plane');
     const relay = relayBaseCandidate();
     void loadEngine(relay);
     void createEngineStack({ relayBase: relay, egressMode: 'element' })
@@ -72,16 +95,19 @@ export function AppShell(): JSX.Element {
           return;
         }
         bind(stack.port);
+        slog.i('shell', 'engine ready — control plane bound');
         // Resolve failures surface on the store lane + a toast (the P2 bug
         // swallowed them — rows stuck on "playing…" with nothing honest).
         stack.port.onResolveError = (_videoId, message) => {
           setResolveError(message);
           pushToast(message, 'error');
+          slog.w('resolve', message);
         };
         (window as unknown as { __enginePort: WasmEnginePort }).__enginePort = stack.port;
       })
       .catch((err: unknown) => {
         console.error('[shell] engine boot failed', err);
+        slogThrow('shell', 'engine boot failed', err);
         if (aliveRef.current) setEngineFailed(true);
       });
     void initSession();
@@ -110,6 +136,10 @@ export function AppShell(): JSX.Element {
           completionRatio: row.durationMs > 0 ? Math.min(1, playedSec / (row.durationMs / 1000)) : 0,
         };
         recordTally(event);
+        slog.i(
+          'telemetry',
+          `play event — ${row.title} · ${row.artist} (${Math.round(playedSec)}s, ${event.completionRatio > 0 ? Math.round(event.completionRatio * 100) : 0}%)`,
+        );
         if (session !== null) {
           void recordPlayEvent(event);
         }
@@ -173,6 +203,18 @@ export function AppShell(): JSX.Element {
             <Route path="/downloads" element={<DownloadsNoticeScreen />} />
             <Route path="/queue" element={<QueueScreen />} />
             <Route path="/lyrics" element={<LyricsScreen />} />
+            {/* W-W home-teardown: the dev console route — build-time gated
+                (see DEBUG_ROUTE above); never emitted in production. */}
+            {DebugScreen !== null && (
+              <Route
+                path="/debug"
+                element={
+                  <Suspense fallback={<div className="shell__pageloading" role="status" />}>
+                    <DebugScreen />
+                  </Suspense>
+                }
+              />
+            )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
@@ -181,10 +223,19 @@ export function AppShell(): JSX.Element {
       {!immersive && (
         <footer className="site-footer">
           <p>
-            WS-W P3a — the UI port begins · G3a · canary:{' '}
+            Streamify Web · WS-W · canary:{' '}
             <a className="footer-link" href="canary.html">
               /canary.html
             </a>
+            {DebugScreen !== null && (
+              <>
+                {' '}
+                ·{' '}
+                <a className="footer-link" href="#/debug">
+                  /debug
+                </a>
+              </>
+            )}
           </p>
         </footer>
       )}
