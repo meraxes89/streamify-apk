@@ -267,8 +267,20 @@ export function SearchScreen(): JSX.Element {
           </section>
         </div>
       ) : phase === 'loading' ? (
+        // Result-row skeletons while the engine resolves (the shimmer
+        // keeps the layout stable — no spinner jump).
         <div className="searchscreen__loading" role="status" aria-live="polite">
-          <span className="spinner" aria-hidden="true" />
+          <ul className="searchscreen__sklist" aria-hidden="true">
+            {Array.from({ length: 6 }, (_unused, i) => (
+              <li className="searchscreen__skrow" key={i}>
+                <div className="sk sk--art" />
+                <div className="searchscreen__sktitles">
+                  <div className="sk sk--line" />
+                  <div className="sk sk--line sk--line--sub" />
+                </div>
+              </li>
+            ))}
+          </ul>
           <span className="sr-only">Searching…</span>
         </div>
       ) : phase === 'error' && error !== null ? (

@@ -686,6 +686,16 @@ button:disabled {
   margin-top: auto;
 }
 
+/* W-W polish: on phones the fixed NavRail dock (58px) covered the footer
+   once scrolled to the end — the footer needs its own clearance above the
+   dock (the shell__main 96px padding only clears content, not the footer
+   that renders after it). Desktop's left rail needs none. */
+@media (max-width: 1023px) {
+  .site-footer {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* ---- player bar --------------------------------------------------------- */
 
 .playerbar {
@@ -3260,6 +3270,9 @@ button:disabled {
   padding: 10px 22px;
   border-radius: var(--sf-radius-full);
   font: var(--sf-type-title-small);
+}
+
+/* ==========================================================================
    P1 (WS-W listen loop) — Sheet primitive, full player overlay, queue,
    lyrics karaoke, shared transport/seek/volume. All values from
    theme/tokens.css (the StreamifyTheme port); nothing hardcoded.
@@ -3901,6 +3914,12 @@ button:disabled {
 }
 
 .cmsheet__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .playercontrols__well:active {
   transform: scale(0.92); /* cardPressEffect */
   background: var(--sf-bg-card-hover);
@@ -4229,6 +4248,10 @@ button:disabled {
   height: 44px;
   border: none;
   background: none;
+  color: var(--sf-text-secondary);
+  cursor: pointer;
+}
+
 .tracklistitem__title {
   font: var(--sf-type-song-title);
   color: var(--sf-text-main);
@@ -4557,6 +4580,11 @@ button:disabled {
 /* ---- LibraryScreen ------------------------------------------------------------- */
 
 .libraryscreen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
 .lyricsheader__spacer {
   width: 12px;
   flex: 0 0 auto;
@@ -4955,6 +4983,14 @@ button:disabled {
 }
 
 .libraryscreen__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sf-space-md);
+  padding: 0 var(--sf-space-lg);
+  flex-wrap: wrap;
+}
+
 .queuescreen__head {
   display: flex;
   flex-wrap: wrap;
@@ -5840,5 +5876,151 @@ button:disabled {
   .fpsheet__topbar,
   .fpsheet__meta {
     transition: none;
+  }
+}
+
+/* ==========================================================================
+   W-W DESIGN-POLISH SWEEP — skeletons (YtHomeSkeleton port), card hover
+   affordance, rail scrollbars, global reduced-motion baseline.
+   ========================================================================== */
+
+/* ---- skeleton primitives (token-based; the legacy .skeleton stays for
+        SearchPanel on /debug) ---------------------------------------------- */
+
+.sk {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-bg-card);
+}
+
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  animation: sf-sk-shimmer 1.4s infinite;
+}
+
+@keyframes sf-sk-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.sk--line {
+  height: 14px;
+  width: 42%;
+  border-radius: var(--sf-radius-sm);
+}
+
+.sk--line--sub {
+  width: 26%;
+  height: 11px;
+  margin-top: 6px;
+}
+
+.sk--card {
+  flex: 0 0 140px;
+  height: 174px;
+  border-radius: var(--sf-radius-md);
+}
+
+.sk--art {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--sf-radius-md);
+}
+
+/* The home feed skeleton stacks like real shelves. */
+.unifeed__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-lg);
+  padding: var(--sf-space-sm) 0;
+}
+
+/* Search result-row skeletons (layout-stable loading). */
+.searchscreen__sklist {
+  margin: 0;
+  padding: 0 var(--sf-space-lg);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-sm);
+  max-width: 720px;
+}
+
+.searchscreen__skrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sf-space-md);
+  padding: var(--sf-space-sm) 0;
+}
+
+.searchscreen__sktitles {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- card hover affordance (the YT-Music brighten; :active stays) ------- */
+
+.trackcard:hover .coverart img,
+.categorycard:hover .categorycard__art,
+.artistcircle:hover .artistcircle__art img {
+  filter: brightness(1.12);
+}
+
+.trackcard .coverart img,
+.categorycard__art,
+.artistcircle__art img {
+  transition: filter var(--sf-anim-fast) var(--sf-ease-standard);
+}
+
+.trackcard:hover .trackcard__title,
+.categorycard:hover .categorycard__title,
+.artistcircle:hover .artistcircle__name {
+  color: var(--sf-active-control);
+}
+
+.trackcard:focus-visible,
+.categorycard:focus-visible,
+.artistcircle:focus-visible {
+  outline: 2px solid var(--sf-accent-blue);
+  outline-offset: 3px;
+  border-radius: var(--sf-radius-md);
+}
+
+/* The home feed's empty state inherits the shared component look. */
+.unifeed__empty {
+  padding: var(--sf-space-huge) var(--sf-space-lg);
+}
+
+/* ---- shelf rails: hide the scrollbar (the chipsrail pattern) ------------ */
+
+.shelf__rail {
+  scrollbar-width: none;
+}
+
+.shelf__rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- global reduced-motion baseline ---------------------------------------
+   The per-component blocks above handle choreography specifics; this
+   catch-all guarantees nothing animates for prefers-reduced-motion users
+   regardless of which component forgot its own rule. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
