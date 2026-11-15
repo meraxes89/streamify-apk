@@ -219,6 +219,28 @@ export class WasmEnginePort {
     this.sink?.unlock();
   }
 
+  /**
+   * P1 (listen loop): read access to the DIRECT-EGRESS element sink, or
+   * null in spine mode / before boot. The lyric clock reads
+   * `sink.currentPositionMs` (audio.currentTime × 1000) per frame for
+   * sub-second karaoke sync; the 4 Hz snapshot lane alone is too coarse
+   * for the PLL's tick contract. Read-only — the sink is never swapped.
+   */
+  get elementSink(): ElementPlayer | null {
+    return this.sink;
+  }
+
+  /**
+   * P1 (queue reorder): an optional interceptor AROUND the element's
+   * 'ended' event. Returning true swallows the default engine advance —
+   * the store uses this to apply a pending user queue order at the track
+   * boundary (the only moment the engine queue can be rebuilt without
+   * interrupting playback — the wasm engine has no move/remove verb, and
+   * the rust/ crates are read-only for UI PRs). Null/absent → the default
+   * reportTrackEnded() path, byte-for-byte unchanged.
+   */
+  onTrackEndedHook: (() => boolean) | null = null;
+
   /** One-shot cold-start read. */
   currentSnapshot(): EngineSnapshot {
     return this.parseSnapshot(this.engine.get_engine_snapshot_json());
@@ -640,7 +662,12 @@ export async function createEngineStack(
   port.attachMediaBridge(await ensureMediaBridge(options.relayBase));
 
   const sink = new ElementPlayer({
-    onEnded: () => port.reportTrackEnded(),
+    // P1: the store's onTrackEndedHook (queue-order application) runs
+    // first; true = it handled the boundary (default advance swallowed).
+    onEnded: () => {
+      if (port.onTrackEndedHook !== null && port.onTrackEndedHook()) return;
+      port.reportTrackEnded();
+    },
     onStats: (s) => port.reportElementStats(s),
     onSinkState: (state) => port.reportSinkState(state),
     onStaleUrl: async (videoId, positionMs) => {

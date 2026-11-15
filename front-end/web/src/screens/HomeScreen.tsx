@@ -20,7 +20,7 @@ import { toast } from '../lib/toastStore';
 import type { Track } from '../lib/engine';
 import { SearchPanel } from '../components/SearchPanel';
 import { PlayerBar } from '../components/PlayerBar';
-import { QueueList } from '../components/QueueList';
+import { QueueList, queueListStateOf } from '../components/QueueList';
 import { AuthPanel } from '../components/AuthPanel';
 import { SpineConsole } from '../components/SpineConsole';
 import { GsfLanePanel } from '../components/GsfLanePanel';
@@ -31,6 +31,7 @@ import type { RowPlayback } from '../components/TrackRow';
 export function HomeScreen(): JSX.Element {
   const port = usePlayerStore((s) => s.port);
   const snapshot = usePlayerStore((s) => s.snapshot);
+  const queue = usePlayerStore((s) => s.queue);
   const send = usePlayerStore((s) => s.send);
   const resolveError = usePlayerStore((s) => s.resolveError);
   const search = useSearchStore();
@@ -180,7 +181,23 @@ export function HomeScreen(): JSX.Element {
         likedIds={session !== null ? likedVideoIds : undefined}
         currentId={currentId}
       />
-      <QueueList port={port} />
+      {/* P1: the queue surface — the Kotlin QueueList shape over the
+          projected queue; taps take the QUEUE INDEX (lazy resolve+play). */}
+      <QueueList
+        state={queueListStateOf(queue, currentStatus === 'Playing')}
+        emptyStateText="Nothing queued — search a track and tap Play or Queue."
+        onTrackClick={(queueIndex) => {
+          if (port === null) return;
+          const row = port.getQueue().rows[queueIndex];
+          if (row === undefined) return;
+          port.unlockSink();
+          if (!port.playTrack(row.track.id)) {
+            void port.resolveAndStage(row.track.id).then((stream) => {
+              if (stream !== null) port.playTrack(row.track.id);
+            });
+          }
+        }}
+      />
       <AuthPanel port={port} />
 
       <details

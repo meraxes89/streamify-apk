@@ -1,95 +1,108 @@
 /**
- * components/QueueList.tsx — the engine queue surface (W2.1).
+ * components/QueueList.tsx — P1 port of
+ * shared/…/components/QueueList.kt (the platform-agnostic queue list),
+ * replacing the P0-era engine-queue surface per §9.3 ("bring them to the
+ * Kotlin shape").
  *
- * The queue lives IN THE WASM ENGINE (the QueueLane mirror); this is a
- * pure projection: rows from getQueue(), the cursor highlighted, tap to
- * play (resolve-on-demand when the row lacks a URL), clear all.
+ * DATA-SOURCE DISCIPLINE (the Kotlin one): the component is pure
+ * presentation — it renders exactly the state it is given (the store's
+ * PROJECTED queue rows lowered into QueueListState) and an honest empty
+ * state when there is nothing queued. Rows are the shared TrackListItem
+ * chrome; tapping a row reports the QUEUE INDEX, which the host lowers
+ * onto its own play-at-index surface.
+ *
+ * Sections: "Now playing" (the cursor row, the equalizer overlay) and
+ * "Up next" (strictly-after rows, queue-index badges) — the QueueList.kt
+ * derivations; history is the QueueScreen's surface (not this list's).
  */
 
-import { useCallback } from 'react';
-import { usePlayerStore } from '../lib/playerStore';
-import type { WasmEnginePort } from '../lib/wasmEngine';
+import { Icon } from './icons';
+import { TrackListItem } from './TrackListItem';
+import type { QueueRead } from '../lib/wasmEngine';
 
-function fmtMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '--:--';
-  const total = Math.floor(ms / 1000);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, '0')}`;
+/** QueueListState — the Kotlin data class, store-shaped. */
+export interface QueueListState {
+  /** Queue rows in play order (the projection). */
+  rows: QueueRead['rows'];
+  /** Index of the playing row; -1 when nothing is active. */
+  currentIndex: number;
+  /** Whether the current row is actively playing (drives the equalizer). */
+  isPlaying: boolean;
 }
 
-export function QueueList({ port }: { port: WasmEnginePort | null }): JSX.Element {
-  const queue = usePlayerStore((s) => s.queue);
-  const snapshot = usePlayerStore((s) => s.snapshot);
+export const QUEUE_LIST_EMPTY: QueueListState = { rows: [], currentIndex: -1, isPlaying: false };
 
-  const playRow = useCallback(
-    async (trackId: string) => {
-      if (port === null) return;
-      // Unlock inside the gesture (mobile autoplay policy), then
-      // playTrack — resolving on demand when the row lacks a URL.
-      port.unlockSink();
-      if (!port.playTrack(trackId)) {
-        await port.resolveAndStage(trackId);
-        port.playTrack(trackId);
-      }
-    },
-    [port],
-  );
+/** Builds the state from the store's queue read (the host lowering). */
+export function queueListStateOf(queue: QueueRead, isPlaying: boolean): QueueListState {
+  return {
+    rows: queue.rows,
+    currentIndex: queue.cursor ?? -1,
+    isPlaying,
+  };
+}
 
-  const cursor = queue.cursor ?? snapshot?.cursor ?? null;
+export interface QueueListProps {
+  state: QueueListState;
+  /** Tap → the QUEUE INDEX (never the track — the Kotlin contract). */
+  onTrackClick?: (queueIndex: number) => void;
+  emptyStateText?: string;
+}
+
+export function QueueList(props: QueueListProps): JSX.Element {
+  const { state, onTrackClick, emptyStateText } = props;
+
+  if (state.rows.length === 0) {
+    return (
+      <section className="queuelist" aria-label="Play queue">
+        <div className="queuelist__empty">
+          <Icon name="queueMusic" size={28} />
+          <p>{emptyStateText ?? 'Nothing queued — search a track and tap Play or Queue.'}</p>
+        </div>
+      </section>
+    );
+  }
+
+  const current = state.currentIndex >= 0 ? state.rows[state.currentIndex] : undefined;
+  const upNext = state.rows.filter((_r, i) => i > state.currentIndex);
 
   return (
-    <section className="card queue" aria-label="Play queue">
-      <div className="queue__head">
-        <h2 className="card-title">Queue</h2>
-        <span className="muted">{queue.rows.length} rows</span>
-        <button
-          type="button"
-          className="btn btn--small"
-          onClick={() => port?.clearQueue()}
-          disabled={queue.rows.length === 0}
-        >
-          Clear
-        </button>
-      </div>
-      {queue.rows.length === 0 ? (
-        <p className="muted queue__empty">
-          Nothing queued — search a track and tap <strong>Play</strong> or{' '}
-          <strong>Queue</strong>.
-        </p>
-      ) : (
-        <ol className="queue__list">
-          {queue.rows.map((row) => {
-            const isCurrent = row.index === cursor;
-            return (
-              <li key={`${row.index}-${row.track.id}`}>
-                <button
-                  type="button"
-                  className={`queue__row ${isCurrent ? 'queue__row--current' : ''}`}
-                  onClick={() => {
-                    void playRow(row.track.id);
-                  }}
-                >
-                  <span className="queue__row-index">
-                    {isCurrent ? '♪' : row.index + 1}
-                  </span>
-                  {row.track.thumbnailUrl !== null && (
-                    <img
-                      className="queue__row-art"
-                      src={row.track.thumbnailUrl}
-                      alt=""
-                      loading="lazy"
-                    />
-                  )}
-                  <span className="queue__row-titles">
-                    <span className="queue__row-title">{row.track.title}</span>
-                    <span className="queue__row-artist">{row.track.artist}</span>
-                  </span>
-                  <span className="queue__row-dur">{fmtMs(row.track.durationMs)}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
+    <section className="queuelist" aria-label="Play queue">
+      {current !== undefined && (
+        <>
+          <QueueSectionLabel text="Now playing" />
+          <ul className="queuelist__rows">
+            <TrackListItem
+              track={current.track}
+              isCurrentTrack
+              isActuallyPlaying={state.isPlaying}
+              onClick={() => onTrackClick?.(state.currentIndex)}
+            />
+          </ul>
+        </>
+      )}
+      {upNext.length > 0 && (
+        <>
+          <QueueSectionLabel text="Up next" />
+          <ul className="queuelist__rows">
+            {upNext.map((row) => (
+              <TrackListItem
+                key={`${row.index}-${row.track.id}`}
+                track={row.track}
+                onClick={() => onTrackClick?.(row.index)}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </section>
+  );
+}
+
+function QueueSectionLabel({ text }: { text: string }): JSX.Element {
+  return (
+    <div className="queuelist__label">
+      <Icon name="queueMusic" size={16} />
+      <span>{text}</span>
+    </div>
   );
 }
