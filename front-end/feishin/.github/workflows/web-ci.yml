@@ -1,0 +1,25 @@
+name: Web CI
+
+on: [push, pull_request]
+
+jobs:
+    web:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Check out Git repository
+              uses: actions/checkout@v6
+
+            - name: Install Node.js and PNPM
+              uses: pnpm/action-setup@v4
+
+            - name: Install dependencies
+              run: pnpm install
+              env:
+                  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+            - name: Lint (typecheck node+web, eslint, stylelint)
+              run: pnpm run lint
+
+            - name: Build web
+              run: pnpm run build:web
