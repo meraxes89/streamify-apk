@@ -2824,3 +2824,54 @@ button:disabled {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ---- G5: the Engine Egress panel (the GSF lane) ------------------------------------------------------- */
+
+.gsf-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.gsf-panel__head > div {
+  min-width: 0;
+}
+
+.gsf-panel__title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.gsf-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.gsf-panel__input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2a2a35);
+  background: var(--surface, #17171f);
+  color: inherit;
+  font-size: 13px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.gsf-panel__input:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.gsf-panel__status {
+  margin: 0;
+  font-size: 12px;
+}
+
+.gsf-panel__hint {
+  margin: 0;
+  font-size: 12px;
+}

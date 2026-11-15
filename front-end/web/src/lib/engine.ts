@@ -103,16 +103,119 @@ export async function loadEngine(base: string): Promise<EngineStatus> {
 }
 
 /**
- * Search YouTube Music through the engine. The engine returns a JSON STRING;
- * it is parsed defensively (missing fields tolerated, non-array → []).
- * Throws EngineNotReadyError when the engine has not been loaded.
+ * Search YouTube Music.
+ *
+ * G4: the PRIMARY lane is the YouTube.js session (youtubei.js
+ * `yt.search`) — its innertube calls ride the dual-lane fetch
+ * (lib/ytSession.ts), i.e. they egress DIRECT from the phone to
+ * youtubei.googleapis.com (the CORS-open API surface) instead of the
+ * relay's burned Cloudflare egress. This also puts search and playback on
+ * ONE session envelope (the G3b doc's "natural follow-up"), and kills the
+ * stale-results failure mode: a youtubei.js search either resolves fresh
+ * or throws honestly — it never replays a cached shelf for a new query.
+ *
+ * The Rust engine's `search_music` (rustypipe via the relay) stays as the
+ * FALLBACK lane for environments where the direct lane is unreachable —
+ * degraded (relay egress) but alive, same policy as the resolver.
  */
 export async function searchMusic(query: string): Promise<Track[]> {
-  if (wasmModule === null) {
-    throw new EngineNotReadyError('engine not loaded');
+  try {
+    return await ytSearchTracks(query);
+  } catch (err) {
+    if (wasmModule === null) {
+      throw err instanceof Error ? err : new EngineNotReadyError(String(err));
+    }
+    const raw = await wasmModule.search_music(query);
+    return parseTracks(raw);
   }
-  const raw = await wasmModule.search_music(query);
-  return parseTracks(raw);
+}
+
+// ---------------------------------------------------------------------------
+// G4: the YouTube.js search lane (direct egress)
+// ---------------------------------------------------------------------------
+
+/**
+ * Search via the app's YouTube.js session and map the result into Track[].
+ * Written defensively: youtubei.js's parsed nodes vary by revision, so
+ * every field read is shape-guarded — a partial row is dropped, never
+ * thrown. Video results only (music consumption), capped at 20.
+ */
+async function ytSearchTracks(query: string): Promise<Track[]> {
+  const { getYt } = await import('./ytSession');
+  const yt = await getYt();
+  const results = await yt.search(query);
+  const videos: unknown[] = Array.isArray(
+    (results as { videos?: unknown[] }).videos,
+  )
+    ? ((results as { videos: unknown[] }).videos ?? [])
+    : [];
+  const tracks: Track[] = [];
+  for (const raw of videos) {
+    if (tracks.length >= 20) break;
+    const track = mapYtVideoToTrack(raw);
+    if (track !== null) tracks.push(track);
+  }
+  if (tracks.length === 0) {
+    throw new Error(`youtubei.js search returned no video results for "${query}"`);
+  }
+  return tracks;
+}
+
+/** One youtubei.js search video node → Track (null when unusable). */
+function mapYtVideoToTrack(raw: unknown): Track | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const node = raw as Record<string, unknown>;
+  const videoId =
+    typeof node.id === 'string'
+      ? node.id
+      : typeof (node.video_id as unknown) === 'string'
+        ? (node.video_id as string)
+        : '';
+  if (videoId === '') return null;
+  const title = textOf(node.title);
+  const author = node.author;
+  const artist =
+    typeof author === 'object' && author !== null
+      ? textOf((author as Record<string, unknown>).name)
+      : textOf(node.author);
+  const duration = node.duration;
+  const durationSec =
+    typeof duration === 'object' && duration !== null
+      ? numOrUndefined((duration as Record<string, unknown>).seconds)
+      : numOrUndefined(node.duration);
+  const thumbs = node.thumbnails;
+  let thumbnailUrl: string | undefined;
+  if (Array.isArray(thumbs) && thumbs.length > 0) {
+    const first = thumbs[thumbs.length - 1] as Record<string, unknown>;
+    if (typeof first.url === 'string') thumbnailUrl = first.url;
+  }
+  return {
+    videoId,
+    title: title === '' ? videoId : title,
+    artist,
+    durationSec,
+    thumbnailUrl,
+    viewCount: numOrUndefined(node.view_count),
+  };
+}
+
+function textOf(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) {
+    const text = (value as Record<string, unknown>).text;
+    if (typeof text === 'string') return text;
+    const runs = (value as Record<string, unknown>).runs;
+    if (Array.isArray(runs)) {
+      return runs
+        .map((r) => textOf((r as Record<string, unknown>).text))
+        .join('');
+    }
+  }
+  return '';
+}
+
+function numOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 /**

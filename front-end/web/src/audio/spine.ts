@@ -97,7 +97,7 @@ export class Spine {
           startedAt: Date.now(),
         },
         'webcodecs',
-        stream.rung === 'web-pot'
+        stream.rung === 'web-pot-direct'
           ? `webcodecs:${stream.codec} (WEB+POT rung, ${stream.potKind} token)`
           : `webcodecs:${stream.codec} (${stream.rung} rung)`,
       );
@@ -154,11 +154,12 @@ export class Spine {
     // -- fetch loop (detached) ----------------------------------------------
     const fetcher = new ChunkFetcher({
       relayBase: this.relayBase,
-      // VISIONOS-rung URLs carry the app client — the relay swaps the
-      // matrix UA (X-YouTube-Client-Name 101). WEB+POT-rung URLs belong to
-      // the browser's web session: no client header, browser UA + client
-      // hints forwarded as-is (they match the &pot= binding).
-      clientName: stream.rung === 'visionos' ? '101' : null,
+      // G4: the spine path consumes progressive URLs only — those come
+      // from the VISIONOS family (app client → the relay swaps the matrix
+      // UA via X-YouTube-Client-Name 101) or the WEB+POT rung (browser
+      // session: no client header, browser UA + client hints as-is — they
+      // match the &pot= binding).
+      clientName: stream.rung.startsWith('visionos') ? '101' : null,
       // googlevideo expires/limits stream URLs; on 403/410 rotate via
       // a fresh resolve (same video, new URL token).
       onStaleUrl: async () => {

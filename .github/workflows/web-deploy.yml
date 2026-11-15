@@ -3,11 +3,18 @@
 # NOTE: branch deploys from `ws-w/*` are intentional during the proof
 # phase — the P0 gates (G0.2 ping / G0.3 search / G0.4 10s audio) must be
 # verifiable on the Pages URL while the proof work streams on one branch.
+#
+# G4.1 (2026-11-14): the ACTIVE iteration branch must be in this list —
+# `ws-w/g4-residential-direct` was missing, so every G4 push shipped
+# CI-green but NEVER deployed to Pages: the phone kept testing the stale
+# G3b bundle ("no rung resolved … LOGIN_REQUIRED") for a full day while
+# the PR looked complete. Keep this list = `main` + the active ws-w
+# branch; merged/dead branches are removed to prevent stale redeployments.
 name: Web Deploy
 
 on:
   push:
-    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine', 'ws-w/p2-engine-egress', 'ws-w/p3a-foundation', 'ws-w/p3b-botguard-egress', 'ws-w/p3b-open-source-botguard']
+    branches: [main, 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port']
     paths: ['front-end/**', '.github/workflows/web-deploy.yml']
   workflow_dispatch: {}
 
@@ -37,6 +44,11 @@ jobs:
       VITE_RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
       VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      # G5 (optional): the owner's deployed tools/gsf Apps Script URL
+      # (repository VARIABLE, not a secret — it is meant to be public).
+      # Unset → empty → the GSF lane stays off and every visitor can still
+      # set their own script in the Engine Egress panel or via ?gsf=.
+      VITE_GSF_URL: ${{ vars.GSF_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

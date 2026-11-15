@@ -31,6 +31,24 @@ export const WAA_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 export const PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player';
 
 /**
+ * G4 — the googleapis innertube surface (youtubei.googleapis.com, the API
+ * host youtubei.js can address). MEASURED 2026-11-14 (resolver-canary runs
+ * 43564752070/43566827760): datacenter IPs are hard-walled at this host
+ * (Google's "Sorry… automated queries" 403) and the foreign-origin CORS
+ * posture is measurable only from a residential phone (g3b-test row 1).
+ * In the browser the operative lane for these player POSTs is therefore
+ * the RELAY fallback (directPlayerPost: one direct attempt per page
+ * session, then the negative cache routes straight to the relay).
+ * The surface is still the RIGHT target host: the googleapis frontend
+ * (unlike the www one) answers IOS playability OK for licensed content
+ * even from the relay's burned Cloudflare egress — the G4 matrix.
+ *
+ * The key is youtubei.js's public API key (Constants.API_KEY).
+ */
+export const GAPI_PLAYER_ENDPOINT =
+  'https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false';
+
+/**
  * The WEB_SAFARI rung's relay UA override (P3b, still the deployed
  * mechanism): browsers cannot set a Safari User-Agent (fetch forbidden
  * header), so the relay applies the Safari-class matrix UA via this

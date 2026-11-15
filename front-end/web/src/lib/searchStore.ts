@@ -34,11 +34,18 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   async run() {
     const q = get().query.trim();
     if (q === '') return;
+    // G4: request epoch guard — a slow older query must never land its
+    // results over a newer one (the stale-shelf failure mode: search
+    // "blinding lights" while a slow earlier request is still in flight
+    // and the earlier query's tracks render under the new query's label).
+    const epoch = ++searchEpoch;
     set({ phase: 'loading', error: null });
     try {
       const tracks = await searchMusic(q);
+      if (epoch !== searchEpoch) return; // superseded — drop silently
       set({ results: tracks, phase: 'results' });
     } catch (err) {
+      if (epoch !== searchEpoch) return;
       set({
         phase: 'error',
         error: err instanceof Error ? err.message : String(err),
@@ -46,3 +53,6 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     }
   },
 }));
+
+/** Monotonic request epoch (module-level — survives store re-creation). */
+let searchEpoch = 0;

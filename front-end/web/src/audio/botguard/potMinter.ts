@@ -12,7 +12,7 @@
  * localhost:5173 unpenalized) is exactly that.
  *
  * THE FLOW (bgutils-js v4):
- *   1. getChallenge({ fetchFunction: ytFetch, requestKey }) → WAA
+ *   1. getChallenge({ fetchFunction: waaFetch, requestKey }) → WAA
  *      Create on jnn-pa.googleapis.com (through the relay: single-egress
  *      envelope; the relay pins the browser's real UA + sec-ch-ua* on
  *      this leg — the mint envelope must match the minting browser).
@@ -52,7 +52,9 @@ import type {
   IBotguardClientSideBgChallenge,
   WebPoSignalOutput,
 } from 'bgutils-js/shared-types';
-import { getYt, ytFetch } from '../../lib/ytSession';
+import { getYt } from '../../lib/ytSession';
+import { relayBaseCandidate } from '../../lib/engine';
+import { relayUrl } from './protocol';
 import {
   GVS_BINDS_TO_VIDEO_ID,
   WAA_REQUEST_KEY,
@@ -62,6 +64,36 @@ import type { PotSession, MintPhase } from './protocol';
 
 /** How long a non-live fallback session stays "usable" (ms). */
 const FALLBACK_SESSION_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * G4.2 — the WAA fetch (single-envelope rule, MEASURED 2026-11-14).
+ *
+ * The canary-measured browser posture: youtubei.googleapis.com serves NO
+ * ACAO to foreign origins, so EVERY player call and every SABR POST the
+ * app makes egresses from the RELAY's Cloudflare IP. A PO token minted on
+ * a DIFFERENT egress (jnn-pa direct from the phone) is a split-brain
+ * envelope — the exact class the G4 doc warned about, and the reason both
+ * reference stacks keep mint-IP == use-IP (bgutil-ytdlp-pot-provider runs
+ * its minting server on the consuming host; kira mints and SABRs from the
+ * same browser). The lab verified the coherent path end-to-end:
+ * relay-minted tokens → relay player calls → playability OK + licensed
+ * media flowing. The WAA legs (Create / GenerateIT) therefore ride the
+ * RELAY, ALWAYS — the relay pins the browser's real UA + sec-ch-ua* on
+ * jnn-pa hops, so the BotGuard telemetry envelope stays coherent with the
+ * minting browser while the egress matches every consumer of the token.
+ */
+async function waaFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const url =
+    input instanceof URL
+      ? input.toString()
+      : typeof input === 'string'
+        ? input
+        : input.url;
+  return fetch(relayUrl(relayBaseCandidate(), url), init);
+}
 
 export interface MintSessionResult {
   session: PotSession;
@@ -106,11 +138,11 @@ export async function runMintSession(
   }
 
   // -- 1. the challenge (WAA Create, inline interpreter) --------------------
-  phase('challenge', 'WAA Create → challenge (jnn-pa, via relay)');
+  phase('challenge', 'WAA Create → challenge (jnn-pa, single-envelope lane)');
   let challenge: IBotguardClientSideBgChallenge;
   try {
     challenge = await getChallenge({
-      fetchFunction: ytFetch,
+      fetchFunction: waaFetch,
       requestKey: WAA_REQUEST_KEY,
       // no interpreterHash → the interpreter arrives INLINE (no extra
       // asset fetch, no CORS question on /s/player/... at all).
@@ -146,24 +178,38 @@ export async function runMintSession(
   });
 
   // -- 4. snapshot (Brave privacy-buffer retry ladder) ------------------------
+  // G4.2 MEASURED (2026-11-14, agent-browser lab against the live relay):
+  // the CURRENT trayride program family reads the signal output from the
+  // GLOBAL scope — without `globalThis.webPoSignalOutput` the snapshot
+  // throws `ReferenceError: webPoSignalOutput is not defined` before any
+  // attestation runs (the args-based older family ignores the global, so
+  // setting it is safe across both). The primary snapshot also leaves
+  // `skipPrivacyBuffer` UNSPECIFIED (the VM's default path, kira's recipe);
+  // only the Brave-class retry passes `true` (the documented escape hatch).
+  // These two details were the whole broken-mint bug: every "live" mint
+  // since the trayride rotation died here and fell to fallbacks.
   phase('snapshot', 'snapshotting the VM');
   let snapshotAttempt: MintSessionResult['snapshotAttempt'] = 'primary';
   let signalOutput: WebPoSignalOutput = [];
   let botguardResponse: string;
+  // The global must point at the CURRENT attempt's output array.
+  const exposeSignalOutput = (): void => {
+    (globalThis as unknown as Record<string, unknown>).webPoSignalOutput =
+      signalOutput;
+  };
+  exposeSignalOutput();
   try {
-    botguardResponse = await snapshotWith(
-      botGuard,
-      (signalOutput = []),
-      false,
-      signal,
-    );
+    signalOutput = [];
+    exposeSignalOutput();
+    botguardResponse = await snapshotWith(botGuard, signalOutput, undefined, signal);
   } catch (err) {
     // Brave-class privacy buffering (measured in P3b): the primary
     // snapshot throws or leaves the signal output empty. One retry
-    // with skipPrivacyBuffer — the documented bgutils escape hatch.
+    // with skipPrivacyBuffer: true — the documented escape hatch.
     phase('snapshot', `primary snapshot failed (${describe(err)}) — retrying skipPrivacyBuffer`);
     snapshotAttempt = 'skip-privacy-buffer';
     signalOutput = [];
+    exposeSignalOutput();
     botguardResponse = await snapshotWith(botGuard, signalOutput, true, signal);
   }
   if (typeof botguardResponse !== 'string' || botguardResponse.length === 0) {
@@ -172,7 +218,7 @@ export async function runMintSession(
 
   // -- 5. GenerateIT (WAA, via the relay — same egress as the player legs) ----
   phase('generate-it', 'GenerateIT → integrity token');
-  const integrityRes = await ytFetch(buildURL('GenerateIT'), {
+  const integrityRes = await waaFetch(buildURL('GenerateIT'), {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify([WAA_REQUEST_KEY, botguardResponse]),
@@ -284,18 +330,25 @@ export async function runMintSession(
 // Internals
 // ---------------------------------------------------------------------------
 
-/** Snapshot with an optional abort signal (VM ops race their own timer). */
+/**
+ * Snapshot with an optional abort signal (VM ops race their own timer).
+ * `skipPrivacyBuffer` MUST stay undefined on the primary attempt — the
+ * current trayride VM throws on an explicit `false` (see the G4.2 note at
+ * the call site); only the Brave retry passes `true`.
+ */
 async function snapshotWith(
   botGuard: BotGuardClient,
   webPoSignalOutput: WebPoSignalOutput,
-  skipPrivacyBuffer: boolean,
+  skipPrivacyBuffer: true | undefined,
   signal?: AbortSignal | null,
 ): Promise<string> {
   if (signal?.aborted === true) {
     throw new MintError('snapshot', 'aborted before snapshot');
   }
   return botGuard.snapshot(
-    { webPoSignalOutput, skipPrivacyBuffer },
+    skipPrivacyBuffer === true
+      ? { webPoSignalOutput, skipPrivacyBuffer: true }
+      : { webPoSignalOutput },
     // Generous timeout: mobile devices run the VM slower than desktop.
     10_000,
   );

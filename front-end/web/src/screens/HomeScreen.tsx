@@ -23,6 +23,9 @@ import { PlayerBar } from '../components/PlayerBar';
 import { QueueList } from '../components/QueueList';
 import { AuthPanel } from '../components/AuthPanel';
 import { SpineConsole } from '../components/SpineConsole';
+import { GsfLanePanel } from '../components/GsfLanePanel';
+import { isBotGateError } from '../audio/resolve';
+import { gsfConfigured } from '../lib/gsfLane';
 import type { RowPlayback } from '../components/TrackRow';
 
 export function HomeScreen(): JSX.Element {
@@ -86,10 +89,27 @@ export function HomeScreen(): JSX.Element {
         // Success: the snapshot takes over this row (effect above clears
         // the local entry) — no optimistic "playing" flag to go stale.
       } catch (err) {
-        setRow(track.videoId, {
-          status: 'failed',
-          message: err instanceof Error ? err.message : String(err),
-        });
+        const message = err instanceof Error ? err.message : String(err);
+        if (isBotGateError(message)) {
+          // G5: the licensed bot-gate is an EGRESS-CLASS wall — the shared
+          // relay burned again. The fix is the unburnable GSF egress (the
+          // Engine Egress panel below: deploy tools/gsf once, play anything,
+          // unlimited); the official-embed lane is RETIRED (ads, whole-video
+          // playback — rejected by the product verdict).
+          setRow(track.videoId, {
+            status: 'failed',
+            message: gsfConfigured()
+              ? 'bot-gated — the GSF egress refused this track (see Engine Egress: Test)'
+              : 'bot-gated — the shared relay egress burned; deploy the GSF egress (Engine Egress panel below) for unlimited licensed plays',
+          });
+          toast(
+            gsfConfigured()
+              ? 'Bot-gated even on the GSF egress — run Engine Egress: Test'
+              : 'Bot-gated — the GSF egress (below) unlocks unlimited licensed plays',
+          );
+        } else {
+          setRow(track.videoId, { status: 'failed', message });
+        }
       }
     },
     [port, currentId, currentStatus, send, setRow],
@@ -139,6 +159,7 @@ export function HomeScreen(): JSX.Element {
     <div className="stack home-stack">
       <PlayerBar egressMode={egressMode} onEgressModeChange={setEgressMode} />
       {resolveError !== null && <p className="home-resolve-error">{resolveError}</p>}
+      <GsfLanePanel />
       <SearchPanel
         phase={search.phase}
         query={search.query}
