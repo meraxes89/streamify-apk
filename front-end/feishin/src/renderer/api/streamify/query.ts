@@ -272,7 +272,9 @@ export function sortAlbums(
                 sortOrder,
             );
         case AlbumListSort.RECENTLY_ADDED:
-            comparator = byNumber((row) => row.addedRank);
+            // Negated for DESC=newest-first parity with the song sort (the
+            // P3-B polarity fix — see sortSongs).
+            comparator = byNumber((row) => -row.addedRank);
             break;
         case AlbumListSort.RECENTLY_PLAYED:
             return isoSorted(list, (row) => row.lastPlayedAt, sortOrder);
@@ -322,7 +324,9 @@ export function sortArtists(
                 sortOrder,
             );
         case AlbumArtistListSort.RECENTLY_ADDED:
-            comparator = byNumber((row) => row.addedRank);
+            // Negated for DESC=newest-first parity with the song sort (the
+            // P3-B polarity fix — see sortSongs).
+            comparator = byNumber((row) => -row.addedRank);
             break;
         case AlbumArtistListSort.SONG_COUNT:
             comparator = byNumber((row) => row.songIds.length);
@@ -391,8 +395,15 @@ export function sortSongs(
             comparator = byNumber((row) => row.durationSec ?? 0);
             break;
         case SongListSort.FAVORITED:
+            // FAVORITED polarity (the P3-B fix): feishin's own list sort
+            // (shared/api/utils.ts) orders `userFavorite` with the requested
+            // direction and the sort dropdown's default for it is DESC —
+            // favorites FIRST. Match that: ASC = unliked first (boolean
+            // false-first, SQL parity), DESC (after the direction flip) =
+            // liked first. The old comparator had the polarity inverted,
+            // sinking favorites under their own default direction.
             comparator = (a, b) =>
-                Number(b.liked) - Number(a.liked) || a.title.localeCompare(b.title);
+                Number(a.liked) - Number(b.liked) || a.title.localeCompare(b.title);
             break;
         case SongListSort.ID:
             comparator = byString((row) => row.id);
@@ -406,7 +417,14 @@ export function sortSongs(
                 sortOrder,
             );
         case SongListSort.RECENTLY_ADDED:
-            comparator = byNumber((row) => row.addedRank);
+            // NEWEST polarity (the P3-B fix, caught by the curation lock):
+            // addedRank counts UP from 0 = most recent (likes arrive
+            // most-recent-first), so ascending-on-rank would put the
+            // NEWEST first under ASC — the exact inverse of every server's
+            // "recently added" semantics. Negate: DESC (the Home shelf's
+            // direction, Navidrome parity) = newest first, ASC = oldest
+            // first.
+            comparator = byNumber((row) => -row.addedRank);
             break;
         case SongListSort.RECENTLY_PLAYED:
             return isoSorted(list, (row) => row.lastPlayedAt, sortOrder);

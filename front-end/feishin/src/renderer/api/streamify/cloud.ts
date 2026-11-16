@@ -42,6 +42,17 @@ export interface CloudTrackRow {
     title: string;
 }
 
+/** The track facts a like needs (the tracks upsert payload). */
+export interface LikeTrackFacts {
+    album?: null | string;
+    artist: string;
+    coverUrl?: null | string;
+    durationSec?: null | number;
+    title: string;
+    /** The stream videoId, when known (the catalog row's stream_url). */
+    videoId?: null | string;
+}
+
 export interface PlayEventRow {
     artist: string;
     /** Included so lastPlayedAt is a real timestamp (see decisions/p1). */
@@ -52,21 +63,33 @@ export interface PlayEventRow {
     track_sig: string;
 }
 
+// ---------------------------------------------------------------------------
+// The fetch lane
+// ---------------------------------------------------------------------------
+
 export interface PlaylistTrackRow {
     playlist_id: string;
     position: number;
     track_id: string;
 }
 
-// ---------------------------------------------------------------------------
-// The fetch lane
-// ---------------------------------------------------------------------------
+export interface RestCallInit {
+    body?: unknown;
+    method: string;
+    /** PostgREST transaction/representation preference (e.g. return=minimal). */
+    prefer?: string;
+    signal?: AbortSignal;
+}
 
 interface AuthTokenResponse {
     access_token?: string;
     expires_in?: number;
     refresh_token?: string;
 }
+
+// ---------------------------------------------------------------------------
+// The library lanes (each one exists verbatim in the web app's load path)
+// ---------------------------------------------------------------------------
 
 /** playlist_tracks rows for a set of playlists (position ascending). */
 export async function fetchAllPlaylistTracks(
@@ -140,10 +163,6 @@ export async function fetchLikes(
     }
     return out;
 }
-
-// ---------------------------------------------------------------------------
-// The library lanes (each one exists verbatim in the web app's load path)
-// ---------------------------------------------------------------------------
 
 /** The user's own play events (most recent first) - the top/similar data. */
 export async function fetchPlayEvents(
@@ -225,6 +244,132 @@ export async function fetchTracksByIds(
     return rows.map((row) => toTrackRow(row));
 }
 
+/**
+ * Like a track: upsert the shared catalog row (merge-duplicates, same
+ * posture as the Android client) then insert the user_likes edge
+ * (ignore-duplicates — re-liking is idempotent). Returns true when the
+ * like stands server-side; 409 counts as success.
+ */
+export async function likeTrack(
+    session: StreamifySession,
+    trackId: string,
+    facts: LikeTrackFacts,
+): Promise<boolean> {
+    const upsert = await restCall(session, 'tracks', {
+        body: {
+            album: facts.album ?? null,
+            artist: facts.artist,
+            cover_url: facts.coverUrl ?? null,
+            duration_sec: facts.durationSec ?? null,
+            id: trackId,
+            stream_url: facts.videoId ?? null,
+            title: facts.title,
+        },
+        method: 'POST',
+        prefer: 'resolution=merge-duplicates',
+    });
+    if (!upsert.ok && upsert.status !== 409) return false;
+    const like = await restCall(session, 'user_likes', {
+        body: { track_id: trackId, user_id: session.userId },
+        method: 'POST',
+        prefer: 'resolution=ignore-duplicates',
+    });
+    return like.ok || like.status === 409;
+}
+
+// ---------------------------------------------------------------------------
+// The write lanes (P3-B: play events + likes — mirror front-end/web's
+// lib/supabase.ts call-for-call; each exists verbatim in the web app)
+// ---------------------------------------------------------------------------
+
+/**
+ * Record one play event (the scrobble outbox's send target). Mirrors the
+ * web app's recordPlayEventStrict: POST user_play_events with
+ * return=minimal; ANY failure (offline included) resolves false — the
+ * outbox owns retry policy, callers never block on it.
+ */
+export async function recordPlayEventStrict(
+    session: null | StreamifySession,
+    event: {
+        artist: string;
+        completionRatio: number;
+        durationPlayedSec: number;
+        title: string;
+        trackSig: string;
+    },
+): Promise<boolean> {
+    if (session === null || session.accessToken === '') return false;
+    try {
+        const res = await restCall(session, 'user_play_events', {
+            body: {
+                artist: event.artist,
+                completion_ratio: Math.min(1, Math.max(0, event.completionRatio)),
+                duration_played_sec: Math.round(event.durationPlayedSec),
+                hour_of_day: new Date().getHours(),
+                title: event.title,
+                track_sig: event.trackSig,
+                user_id: session.userId,
+            },
+            method: 'POST',
+            prefer: 'return=minimal',
+        });
+        return res.ok;
+    } catch {
+        return false; // offline / dead session — the outbox retries or drops
+    }
+}
+
+/**
+ * The shared PostgREST lane (401 → one refresh → replay; a dead session
+ * throws the 'unauthorized' message the auth seam pattern-matches).
+ * Exported for the P3-B write lanes (play events, likes) — same posture
+ * as the read lanes above: raw fetch, anon key public by design, RLS is
+ * the fence.
+ */
+export async function restCall(
+    session: StreamifySession,
+    path: string,
+    init: RestCallInit,
+): Promise<Response> {
+    const doFetch = (): Promise<Response> =>
+        fetch(`${session.supabaseUrl}/rest/v1/${path}`, {
+            body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+            headers: {
+                apikey: session.anonKey,
+                authorization: `Bearer ${session.accessToken}`,
+                'content-type': 'application/json',
+                ...(init.prefer !== undefined ? { prefer: init.prefer } : {}),
+            },
+            method: init.method,
+            signal: init.signal,
+        });
+    let res = await doFetch();
+    if (res.status === 401 && session.refreshToken !== '') {
+        const refreshed = await refreshSession(session);
+        if (refreshed !== null) {
+            session.accessToken = refreshed.accessToken;
+            session.expiresAt = refreshed.expiresAt;
+            res = await doFetch();
+        }
+    }
+    if (res.status === 401) {
+        // The message is what use-server-authenticated pattern-matches to
+        // decide a re-authentication is needed ("unauthorized").
+        throw new Error('Streamify session unauthorized (401)');
+    }
+    return res;
+}
+
+/** Remove a like (the catalog row stays — it is shared). */
+export async function unlikeTrack(session: StreamifySession, trackId: string): Promise<boolean> {
+    const res = await restCall(
+        session,
+        `user_likes?user_id=eq.${session.userId}&track_id=eq.${trackId}`,
+        { method: 'DELETE' },
+    );
+    return res.ok;
+}
+
 /** One refresh attempt via the Supabase auth surface (anon-allowed). */
 async function refreshSession(
     session: StreamifySession,
@@ -253,38 +398,6 @@ async function refreshSession(
     } catch {
         return null;
     }
-}
-
-async function restCall(
-    session: StreamifySession,
-    path: string,
-    init: { method: string; signal?: AbortSignal },
-): Promise<Response> {
-    const doFetch = (): Promise<Response> =>
-        fetch(`${session.supabaseUrl}/rest/v1/${path}`, {
-            headers: {
-                apikey: session.anonKey,
-                authorization: `Bearer ${session.accessToken}`,
-                'content-type': 'application/json',
-            },
-            method: init.method,
-            signal: init.signal,
-        });
-    let res = await doFetch();
-    if (res.status === 401 && session.refreshToken !== '') {
-        const refreshed = await refreshSession(session);
-        if (refreshed !== null) {
-            session.accessToken = refreshed.accessToken;
-            session.expiresAt = refreshed.expiresAt;
-            res = await doFetch();
-        }
-    }
-    if (res.status === 401) {
-        // The message is what use-server-authenticated pattern-matches to
-        // decide a re-authentication is needed ("unauthorized").
-        throw new Error('Streamify session unauthorized (401)');
-    }
-    return res;
 }
 
 function toTrackRow(row: Record<string, unknown>): CloudTrackRow {

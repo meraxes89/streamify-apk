@@ -1,3 +1,4 @@
+import { recordPlayEventStrict } from './cloud';
 import { coverCacheKey, coverUrlFor } from './covers';
 import { albumRadio, artistRadio, randomSongs, similarSongs, topSongs } from './derive';
 import {
@@ -5,6 +6,7 @@ import {
     getStreamifyLibrary,
     invalidateStreamifyLibraryMemo,
 } from './engine';
+import { getStreamifyFavoriteJournal, mutateFavorite } from './favorites';
 import {
     docToPlaylistRow,
     orderedElements,
@@ -17,7 +19,18 @@ import {
     normalizePlaylist,
     normalizeSong,
 } from './normalize';
-import { resolveStreamifyTrack, StreamifyNoVideoError } from './playback/stream-source';
+import {
+    createQueuePersistence,
+    idbLane,
+    localStorageLane,
+    type QueuePersistence,
+} from './playback/queue-persistence';
+import { getStreamifyScrobbleBridge, type ScrobbleReport } from './playback/scrobble-bridge';
+import {
+    lastRungForVideo,
+    resolveStreamifyTrack,
+    StreamifyNoVideoError,
+} from './playback/stream-source';
 import {
     addTracksToStreamifyPlaylist,
     createStreamifyPlaylist,
@@ -40,29 +53,33 @@ import {
     sortPlaylists,
     sortSongs,
 } from './query';
+import { resolveStreamifySessionAsync } from './session';
 import { StreamifyNotImplementedError } from './streamify-error';
 import { streamifyRequest } from './streamify-request';
 import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
 
 import { logger } from '/@/renderer/utils/logger';
-import { InternalControllerEndpoint } from '/@/shared/types/domain-types';
+import { InternalControllerEndpoint, LibraryItem } from '/@/shared/types/domain-types';
 
 /** Version reported by getServerInfo; bumped as endpoints become real. */
-const STREAMIFY_CONTROLLER_VERSION = '0.1.0';
+const STREAMIFY_CONTROLLER_VERSION = '0.2.0';
 
 /**
- * The Streamify controller (P1: library reads).
+ * The Streamify controller (P1 reads + the P3-B bridge).
  *
  * SPLIT WITH ENGINEER A: this file is shared - A owns the auth seam
- * (authenticate, the server entry, header injection); the read methods
- * below are P1's. The session contract both ends build against lives in
- * ./session.ts (credential payload codec + the settings.js dev fallback).
+ * (authenticate, the server entry, header injection) and all *Playlist*
+ * endpoints; the read methods are P1's. The session contract both ends
+ * build against lives in ./session.ts (credential payload codec + the
+ * settings.js dev fallback).
  *
  * Every read resolves against the in-memory library snapshot loaded by
- * ./engine.ts (the bridge): local-first, no per-call network. Endpoints
- * beyond the P1 read surface keep their StreamifyNotImplementedError
- * stubs - the UI's per-server-type gating hides those affordances until
- * their phase lands (P2 playback, P3 playlists/favorites mutations).
+ * ./engine.ts (the bridge): local-first, no per-call network. P3-B adds
+ * the #187 playback spine bridge (scrobble, play-queue persistence) and
+ * the favorites (likes) mutations - see decisions/p3/P3B-favorites-curation-bridge.md.
+ * Endpoints beyond the implemented surface keep their
+ * StreamifyNotImplementedError stubs - the UI's per-server-type gating
+ * hides those affordances until their phase lands.
  */
 
 /** The default page size when a caller omits the limit (feishin always sends one for lists). */
@@ -82,6 +99,51 @@ function livePlaylistRows(docs: Map<string, PlaylistCrdtDoc>): PlaylistRowView[]
 
 function toNumberOr(value: null | number | undefined, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+// ---------------------------------------------------------------------------
+// The P3-B bridge wiring (play-queue persistence + the scrobble bridge)
+// ---------------------------------------------------------------------------
+
+/** Per-server queue persistence (one lane pair per feishin server id). */
+const queuePersistenceByServer = new Map<string, QueuePersistence>();
+
+/** Online + signed-in gate for the cloud sends (offline waits, never drops). */
+function canSendCloud(session: null | { accessToken: string }): boolean {
+    if (session === null || session.accessToken === '') return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    return true;
+}
+
+/** Song-like library item types share the likes backend (feishin's own grouping). */
+function isSongLikeType(type: LibraryItem): boolean {
+    return (
+        type === LibraryItem.SONG ||
+        type === LibraryItem.PLAYLIST_SONG ||
+        type === LibraryItem.QUEUE_SONG
+    );
+}
+
+function queuePersistenceFor(serverId: string): QueuePersistence {
+    let persistence = queuePersistenceByServer.get(serverId);
+    if (persistence === undefined) {
+        persistence = createQueuePersistence({
+            local: localStorageLane(serverId),
+            // null in node/tests (the API is absent) — the small lane then
+            // carries everything up to its quota, degrading honestly past it.
+            remote: idbLane(serverId),
+        });
+        queuePersistenceByServer.set(serverId, persistence);
+    }
+    return persistence;
+}
+
+/** The scrobble bridge singleton, wired to the live snapshot + rungs. */
+function scrobbleBridge() {
+    return getStreamifyScrobbleBridge({
+        getSnapshot: () => currentStreamifyLibrary(),
+        resolveRung: lastRungForVideo,
+    });
 }
 
 export const StreamifyController: InternalControllerEndpoint = {
@@ -109,8 +171,23 @@ export const StreamifyController: InternalControllerEndpoint = {
             'Streamify sign-in happens on the /streamify-auth page (Google), not through the server form',
         );
     },
-    createFavorite: async () => {
-        throw new StreamifyNotImplementedError('createFavorite');
+    createFavorite: async (args) => {
+        // P3-B: a favorite IS a cloud like (user_likes ⋈ tracks). Song-like
+        // types share the backend (feishin's own mutation grouping); album /
+        // album-artist / artist favorites have no cloud model — the honest
+        // no-op (the lists stay honestly empty per decisions/p1).
+        const { apiClientProps, query } = args;
+        if (!isSongLikeType(query.type)) {
+            logger.debug(
+                `Streamify createFavorite: no cloud backing for ${query.type} — honest no-op`,
+                { action: 'streamify_favorite_noop', type: query.type },
+            );
+            return null;
+        }
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+        await mutateFavorite(session, snapshot, query.id, true, getStreamifyFavoriteJournal());
+        return null;
     },
     createInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('createInternetRadioStation');
@@ -131,8 +208,21 @@ export const StreamifyController: InternalControllerEndpoint = {
     deleteArtistImage: async () => {
         throw new StreamifyNotImplementedError('deleteArtistImage');
     },
-    deleteFavorite: async () => {
-        throw new StreamifyNotImplementedError('deleteFavorite');
+    deleteFavorite: async (args) => {
+        // The unlike: remove the user_likes edge (the shared catalog row
+        // stays). Offline failures journal — see favorites.ts.
+        const { apiClientProps, query } = args;
+        if (!isSongLikeType(query.type)) {
+            logger.debug(
+                `Streamify deleteFavorite: no cloud backing for ${query.type} — honest no-op`,
+                { action: 'streamify_favorite_noop', type: query.type },
+            );
+            return null;
+        }
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+        await mutateFavorite(session, snapshot, query.id, false, getStreamifyFavoriteJournal());
+        return null;
     },
     deleteInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('deleteInternetRadioStation');
@@ -307,6 +397,15 @@ export const StreamifyController: InternalControllerEndpoint = {
     getFavoriteSongs: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        // Opportunistic journal drain (offline likes ride out with the read).
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+        if (session !== null) {
+            try {
+                await getStreamifyFavoriteJournal().drain(session);
+            } catch {
+                /* offline / auth — the journal survives either way */
+            }
+        }
         if (query.type === 'rating') {
             // No rating data exists: honest empty (decisions/p1).
             return { items: [], startIndex: 0, totalRecordCount: 0 };
@@ -315,7 +414,7 @@ export const StreamifyController: InternalControllerEndpoint = {
             .map((id) => snapshot.songById.get(id))
             .filter((row) => row !== undefined);
         const artistKey =
-            query.artistId !== undefined
+            query.artistId !== undefined && query.artistId !== ''
                 ? snapshot.artistById.get(query.artistId)?.key.toLowerCase()
                 : undefined;
         const filtered =
@@ -429,8 +528,92 @@ export const StreamifyController: InternalControllerEndpoint = {
             .filter((song) => song !== undefined);
         return { items: songs, startIndex: 0, totalRecordCount: songs.length };
     },
-    getPlayQueue: async () => {
-        throw new StreamifyNotImplementedError('getPlayQueue');
+    getPlayQueue: async (args) => {
+        // P3-B: the #187 queue persistence, bridged. Canonical track ids,
+        // queue order, cursor, playhead offset — NEVER resolved stream URLs
+        // (they expire; restore resolves fresh through getStreamUrl). The
+        // in-flight scrobble session rides along so a restored play keeps
+        // accumulating instead of re-scrobbling.
+        const { apiClientProps } = args;
+        const persistence = queuePersistenceFor(apiClientProps.serverId);
+        const payload = await persistence.load();
+
+        // Opportunistic outbox drain (yesterday's offline scrobbles ride out
+        // with the restore).
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+        void scrobbleBridge()
+            .drain({
+                canSend: () => canSendCloud(session),
+                send: (event) =>
+                    recordPlayEventStrict(session, {
+                        artist: event.artist,
+                        completionRatio:
+                            event.durationMs > 0
+                                ? Math.min(1, event.playedMs / event.durationMs)
+                                : 0,
+                        durationPlayedSec: event.playedMs / 1000,
+                        title: event.title,
+                        trackSig: event.trackId,
+                    }),
+            })
+            .catch(() => undefined);
+
+        if (payload === null) {
+            // Nothing persisted (fresh install / cleared storage): the
+            // honest empty queue — same shape a Navidrome with no saved
+            // queue returns.
+            return {
+                changed: '',
+                changedBy: '',
+                currentIndex: 0,
+                entry: [],
+                positionMs: 0,
+                username: '',
+            };
+        }
+
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+
+        // Resolve the persisted ids against the CURRENT library — tracks
+        // that no longer exist drop out (never a crash, never a dead row);
+        // the cursor re-derives to the kept row that matches the saved
+        // index, so restore lands on the same song when it survived.
+        const entry = [] as ReturnType<typeof normalizeSong>[];
+        let currentIndex = 0;
+        let cursorSet = false;
+        for (let i = 0; i < payload.songIds.length; i += 1) {
+            const row = snapshot.songById.get(payload.songIds[i] as string);
+            if (row === undefined) continue;
+            if (!cursorSet && (i === payload.currentIndex || payload.currentIndex === null)) {
+                currentIndex = entry.length;
+                cursorSet = true;
+            }
+            entry.push(normalizeSong(row, snapshot, apiClientProps.serverId));
+        }
+        if (!cursorSet) {
+            // The saved cursor's row did not survive: land on the nearest
+            // surviving position (clamped), honest degradation.
+            currentIndex = Math.min(payload.currentIndex ?? 0, Math.max(entry.length - 1, 0));
+        }
+
+        // Continue the scrobble session across the restore (a fired
+        // session never re-fires; an in-flight one keeps its accrued time)
+        // — only when it belongs to the song the restore lands on.
+        const currentSongId = entry[currentIndex]?.id ?? null;
+        const sessionToContinue =
+            payload.session !== null && payload.session.trackId === currentSongId
+                ? payload.session
+                : null;
+        scrobbleBridge().continueSession(sessionToContinue, payload.positionMs);
+
+        return {
+            changed: new Date(payload.savedAt).toISOString(),
+            changedBy: 'feishin',
+            currentIndex,
+            entry,
+            positionMs: payload.positionMs,
+            username: session?.email ?? session?.userId ?? '',
+        };
     },
     getRandomSongList: async (args) => {
         const { apiClientProps, query } = args;
@@ -680,11 +863,95 @@ export const StreamifyController: InternalControllerEndpoint = {
         invalidateStreamifyLibraryMemo();
         return null;
     },
-    savePlayQueue: async () => {
-        throw new StreamifyNotImplementedError('savePlayQueue');
+    savePlayQueue: async (args) => {
+        // P3-B: persist the canonical track ids, queue order, cursor, and
+        // playhead offset (never resolved stream URLs). An empty songs list
+        // CLEARS the persisted state (the queue is gone — same semantics as
+        // the web spine's persistence.clear on an emptied machine).
+        const { apiClientProps, query } = args;
+        const persistence = queuePersistenceFor(apiClientProps.serverId);
+
+        if (query.songs.length === 0) {
+            await persistence.clear();
+            return;
+        }
+
+        // Deduplicate while preserving order (the serializer rejects
+        // duplicate ids as corrupt on the way back in — normalize here so a
+        // queue that legitimately contains the same song twice via different
+        // queue items still round-trips).
+        const songIds: string[] = [];
+        const seen = new Set<string>();
+        for (const id of query.songs) {
+            if (!seen.has(id)) {
+                seen.add(id);
+                songIds.push(id);
+            }
+        }
+
+        // Clamp the cursor into range (feishin sends undefined when the
+        // queue is empty-ish; a stale index clamps to the last row).
+        const rawIndex =
+            query.currentIndex === undefined || query.currentIndex === null
+                ? null
+                : query.currentIndex;
+        const currentIndex =
+            rawIndex === null ? null : Math.max(0, Math.min(rawIndex, songIds.length - 1));
+
+        await persistence.save({
+            currentIndex,
+            positionMs: Math.max(0, query.positionMs ?? 0),
+            savedAt: Date.now(),
+            // The in-flight scrobble session rides along — included only
+            // when it belongs to the song the cursor names current.
+            session: scrobbleBridge().sessionForQueue(
+                currentIndex !== null ? (songIds[currentIndex] ?? null) : null,
+            ),
+            songIds,
+            v: 3,
+        });
     },
-    scrobble: async () => {
-        throw new StreamifyNotImplementedError('scrobble');
+    scrobble: async (args) => {
+        // P3-B: Feishin's playback reporting → PlaySessionTracker (min(
+        // half-duration, 4 min) ACTUAL played time) → ScrobbleOutbox (200
+        // cap, 5-attempt poison drop, flap reset) → recordPlayEventStrict
+        // (with the resolved stream rung attached). The Jellyfin-gated
+        // progress/seek lanes never fire for a Streamify server
+        // (REPORT_PLAYBACK is not in our feature set) — what arrives here
+        // is the sparse start/stop/pause/unpause/submission stream the
+        // bridge reconstructs actual played time from.
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.songById.get(query.id);
+
+        const report: ScrobbleReport = {
+            event: query.event,
+            id: query.id,
+            position: query.position,
+            submission: query.submission,
+        };
+        const facts = {
+            album: row?.album ?? '',
+            artist: row?.artist ?? '',
+            durationMs: row?.durationSec != null ? Math.round(row.durationSec * 1000) : 0,
+            title: row?.title ?? '',
+            videoId: row?.streamUrl ?? null,
+        };
+
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+        scrobbleBridge().handleReport(report, facts, {
+            canSend: () => canSendCloud(session),
+            send: (event) =>
+                recordPlayEventStrict(session, {
+                    artist: event.artist,
+                    completionRatio:
+                        event.durationMs > 0 ? Math.min(1, event.playedMs / event.durationMs) : 0,
+                    durationPlayedSec: event.playedMs / 1000,
+                    title: event.title,
+                    trackSig: event.trackId,
+                }),
+        });
+        return null;
     },
     search: async (args) => {
         const { apiClientProps, query } = args;
