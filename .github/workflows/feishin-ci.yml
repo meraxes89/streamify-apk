@@ -26,7 +26,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      # The repo root has no package.json (F1: no root workspace) — the
+      # action cannot auto-derive the version from front-end/feishin, so
+      # pin it here to match `packageManager` (pnpm@11.5.2).
       - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
       - uses: actions/setup-node@v7
         with:
           node-version: 22
