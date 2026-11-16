@@ -284,14 +284,68 @@ These upstream files may be touched by later phases, and only for the stated pur
 - **Why:** the task's "download trigger hooks wired into Streamify's song/album/playlist action surfaces"; album/playlist selections expand to song rows through the live snapshot.
 - **Expected conflict surface:** low. Single lines at stable anchors.
 
-### 29. P4-A edits inside OUR `api/streamify/` + P3 files (additive seams)
+## Carried patches (P4B — Jam live-queue, EQ DSP, brand theming, settings)
+
+### 29. `src/renderer/router/routes.ts` — `AppRoute` enum (pre-approved category)
+
+- **What:** added `STREAMIFY_SETTINGS = '/streamify-settings'` to the `AppRoute` enum.
+- **Why:** route constant for the Streamify settings page (our module, patch 24).
+- **Expected conflict surface:** low — one additive enum member, same shape as the P1 `STREAMIFY_AUTH` member.
+
+### 30. `src/renderer/router/app-router.tsx` — route registration (not pre-approved; minimal)
+
+- **What:** one lazy import of `StreamifySettingsRoute` + one `<Route element={<StreamifySettingsRoute />} path={AppRoute.STREAMIFY_SETTINGS} />` next to `SETTINGS` inside the authenticated `ResponsiveLayout` group.
+- **Why:** a route cannot exist without registration; the page component itself is entirely ours (`src/renderer/features/streamify-settings/routes/streamify-settings-route.tsx`).
+- **Expected conflict surface:** low — two additive lines; conflicts only if upstream restructures the route tree wholesale.
+
+### 31. `src/renderer/features/player/components/right-controls.tsx` — player-bar suite trigger (not pre-approved; minimal)
+
+- **What:** one import + one `<StreamifyJamButton />` element at the head of the right-controls button row.
+- **Why:** the task's player-bar trigger for the Jam drawer / EQ panel. The component renders `null` on stock servers; all logic lives in `features/streamify-jam/` (the drawer, the Jam session controller mount, the EQ graph manager mount, and the brand-theme default hook all hang off this one element, so no other upstream file needs a hook).
+- **Expected conflict surface:** low — additive element in a stable row.
+
+### 32. `src/renderer/features/player/utils/get-visualizer-audio-nodes.ts` — post-DSP visualizer tap (not pre-approved; minimal)
+
+- **What:** for WEB playback, the tap now returns `[webAudio.dsp.compressor]` (the DSP chain output) when a chain is attached, falling back to `webAudio.gains` otherwise. The LOCAL (mpv loopback) path is untouched.
+- **Why:** the analysers must see the equalized/limited signal (the P4B requirement); both per-slot gains merge into the chain upstream of the tap, so the single post-DSP node covers the src1/src2 crossfade.
+- **Expected conflict surface:** low — additive branch before the stock return.
+
+### 33. `src/renderer/features/player/audio-player/web-player.tsx` — EQ attach seam (third thin seam; not pre-approved; minimal)
+
+- **What:** in `handlePlayer1Start` / `handlePlayer2Start`, `source.connect(gains[i])` became `connectStreamifySource(webAudio, source, i)` (one import + two call sites). Unclaimed behavior is byte-identical: the helper connects to `gains[i]` unless the EQ watchdog has a hard bypass latched, in which case new media-element sources route straight to `context.destination` (the CORS guardrail - a latched-unhealthy graph never receives new sources).
+- **Why:** the only way to keep a fresh track out of a graph we already declared unhealthy is the attach point; all logic lives in `features/streamify-eq/utils/attach-source.ts`.
+- **Expected conflict surface:** low — same file already carries the P2-A seams (patch 16); the two lines changed are inside those handlers.
+
+### 34. `src/renderer/api/streamify/playback/resolver/lib/relayBase.ts` — user relay override (fork-authored file, ours)
+
+- **What:** priority 0 read of the persisted user override (`streamify.settings.v1` blob, plain `localStorage` read - no store import in the resolver graph), plus an exported `resetRelayBaseCache()` the settings store calls when the override changes. Deployment knob, `?relay=`, build env, and dev default keep their relative order below it.
+- **Why:** the P4B Network & Relay panel (custom STREAMIFY_RELAY_BASE for self-hosted Cloudflare Worker relays).
+- **Expected conflict surface:** none — fork-authored, no upstream twin.
+
+### 35. New directories (ours, no upstream conflict)
+
+- `src/renderer/api/streamify/jam-live/` — the listening-room lane: thin re-exports of P3A's `streamify/jam/` codec + fractional index + cad hasher (the post-#190 consolidation - one frozen semantic, one implementation, pinned by the listening-room golden-vector tests), plus the listening-room additions: the `jam_ops` journal-row normalizer, the queue CRDT fold, the host/follower sync protocol (pure), the supabase-js transport, the session controller (the brain), and the player-store bridge.
+- `src/renderer/features/streamify-jam/` — the player-bar trigger + drawer (Jam room + equalizer tabs) and the controller mount hook.
+- `src/renderer/features/streamify-eq/` — the EQ math (RBJ peaking biquads + response curve + preset bank), the graph manager hook (chain rebuild downstream of the per-slot gains, zero-output watchdog, hard bypass + per-track retry), the attach-time guardrail helper, and the panel UI.
+- `src/renderer/features/streamify-settings/` — the settings route (audio & playback, network & relay, jam & privacy, theme, account & session) and the brand theme module.
+- `src/renderer/store/streamify-jam.store.ts` / `streamify-eq.store.ts` / `streamify-settings.store.ts` — dumb state holders + hand-rolled localStorage persistence (no store-barrel exports; node-testable).
+- `src/i18n/locales/en.json` — additive `streamify` top-level group (jam/eq/settings strings).
+- `front-end/decisions/p4/P4B-jam-eq-theming-settings.md` — the ADR.
+
+### 36. `src/renderer/api/streamify/streamify-controller.ts` — scrobble toggle gate (post-rebase; minimal)
+
+- **What:** one import of the Streamify settings store + the `scrobble` endpoint's cloud-send adapter `canSend` now also requires `settings.scrobbleEnabled` (the P4B Jam & Privacy toggle).
+- **Why:** the toggle persists user intent; the gate pauses only the cloud send lane - local session bookkeeping keeps running and queued outbox entries drain on re-enable (the same at-least-once posture the offline outbox already has). Landed post-#191-merge as planned in the ADR to keep the in-flight PR conflict-free.
+- **Expected conflict surface:** low - three lines inside the P3-B scrobble endpoint.
+
+### 37. P4-A edits inside OUR `api/streamify/` + P3 files (additive seams)
 
 - `api/streamify/playback/scrobble-bridge.ts` (P3-B, ours): added the optional `onCountedPlay` observer (called on the fire path, after `applyPlayToSnapshot` — throws contained) and the `lastFlushAt` getter (set whenever a drain completes). No behavior change for existing callers.
 - `api/streamify/streamify-controller.ts` (ours): the scrobble singleton wiring passes `onCountedPlay` → `wrapped/listening-ledger.ts` (`recordCountedPlay`).
 - `api/streamify/playlist-sync/{persistence,realtime}.ts` (P3-A, ours): two read-only introspection exports for the /debug panel — `playlistPersistTimestamp(userId)` (the persisted state's `savedAt`) and `playlistRealtimeStatus()` (bound/channelLive/userId). No lifecycle changes.
 - `api/streamify/playback/stream-source.ts` (ours): the P4-A offline bypass — `resolveStreamifyTrack` checks OPFS first (zero-egress blob serve, the resolver is never touched on a hit), and `recoverFromError` gained the offline branch (quarantine + forced online re-resolve). The existing stale/ladder logic is untouched.
 
-### 30. P4-A new files (ours, no upstream conflict)
+### 38. P4-A new files (ours, no upstream conflict)
 
 - `src/renderer/api/streamify/wasm/` — the vendored cipher artifact (streamify_cipher_bg.wasm + artifact.json manifest + the hand-written `cipher-loader.ts`; no wasm-pack glue is vendored, nothing linted but our loader).
 - `src/renderer/api/streamify/downloads/` — `cipher.ts` (typed surface), `format.ts` (STREAMIFY_DL_V1 container), `meta.ts` (sidecar codec), `opfs.ts` (OPFS + in-memory contract), `download-manager.ts` (orchestration), `instance.ts` (production binding + test seam).
