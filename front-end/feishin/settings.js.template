@@ -109,7 +109,7 @@ window.FS_FONT_SYSTEM = "${FS_FONT_SYSTEM}";
 
 // Streamify (fork addition — see PATCHES.md). Values arrive via deployment
 // configuration (Docker env / settings.js); they are never committed.
-// STREAMIFY_AUTH: 'false' explicitly disables the /streamify-auth gate.
 window.STREAMIFY_AUTH = "${STREAMIFY_AUTH}";
 window.STREAMIFY_SUPABASE_URL = "${STREAMIFY_SUPABASE_URL}";
 window.STREAMIFY_SUPABASE_ANON_KEY = "${STREAMIFY_SUPABASE_ANON_KEY}";
+window.STREAMIFY_DEV_ACCESS_TOKEN = "${STREAMIFY_DEV_ACCESS_TOKEN}";

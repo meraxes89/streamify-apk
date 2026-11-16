@@ -1,3 +1,24 @@
+import { coverCacheKey, coverUrlFor } from './covers';
+import { albumRadio, artistRadio, randomSongs, similarSongs, topSongs } from './derive';
+import { currentStreamifyLibrary, getStreamifyLibrary } from './engine';
+import {
+    normalizeAlbum,
+    normalizeAlbumArtist,
+    normalizePlaylist,
+    normalizeSong,
+} from './normalize';
+import {
+    filterAlbums,
+    filterArtists,
+    filterPlaylists,
+    filterSongs,
+    paginate,
+    searchSnapshot,
+    sortAlbums,
+    sortArtists,
+    sortPlaylists,
+    sortSongs,
+} from './query';
 import { StreamifyNotImplementedError } from './streamify-error';
 import { streamifyRequest } from './streamify-request';
 import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
@@ -9,22 +30,27 @@ import { InternalControllerEndpoint } from '/@/shared/types/domain-types';
 const STREAMIFY_CONTROLLER_VERSION = '0.1.0';
 
 /**
- * Controller for the Streamify server type.
+ * The Streamify controller (P1: library reads).
  *
- * P1: the auth trio is real (`authenticate`, `getUserInfo`, `getServerInfo`),
- * backed by the Supabase session (see streamify-supabase.ts) and the
- * 401-refresh-retry request lane (streamify-request.ts).
+ * SPLIT WITH ENGINEER A: this file is shared - A owns the auth seam
+ * (authenticate, the server entry, header injection); the read methods
+ * below are P1's. The session contract both ends build against lives in
+ * ./session.ts (credential payload codec + the settings.js dev fallback).
  *
- * Stub semantics for everything else (until implemented, one endpoint at a
- * time): Promise-typed endpoints reject asynchronously with a
- * `StreamifyNotImplementedError` (react-query / handler layers surface those
- * as honest error states); the three sync-typed URL builders
- * (`getImageUrl`, `getImageRequest`, `getDownloadUrl`) return empty values so
- * render paths that call them synchronously show the stock placeholders
- * instead of crashing.
- *
- * See PATCHES.md at the fork root for the registration rationale.
+ * Every read resolves against the in-memory library snapshot loaded by
+ * ./engine.ts (the bridge): local-first, no per-call network. Endpoints
+ * beyond the P1 read surface keep their StreamifyNotImplementedError
+ * stubs - the UI's per-server-type gating hides those affordances until
+ * their phase lands (P2 playback, P3 playlists/favorites mutations).
  */
+
+/** The default page size when a caller omits the limit (feishin always sends one for lists). */
+const DEFAULT_LIMIT = 100;
+
+function toNumberOr(value: null | number | undefined, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 export const StreamifyController: InternalControllerEndpoint = {
     addToPlaylist: async () => {
         throw new StreamifyNotImplementedError('addToPlaylist');
@@ -65,123 +91,379 @@ export const StreamifyController: InternalControllerEndpoint = {
     deletePlaylistImage: async () => {
         throw new StreamifyNotImplementedError('deletePlaylistImage');
     },
-    getAlbumArtistDetail: async () => {
-        throw new StreamifyNotImplementedError('getAlbumArtistDetail');
+    getAlbumArtistDetail: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.artistById.get(query.id);
+        if (row === undefined) {
+            throw new Error(`Album artist not found: ${query.id}`);
+        }
+        return normalizeAlbumArtist(row, apiClientProps.serverId);
     },
-    getAlbumArtistInfo: async () => {
-        throw new StreamifyNotImplementedError('getAlbumArtistInfo');
+    getAlbumArtistInfo: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.artistById.get(query.id);
+        if (row === undefined) {
+            return null;
+        }
+        // No biography / similar-artist data exists in the cloud library
+        // yet: honest empties (recorded in decisions/p1/data-mapping.md).
+        return {
+            biography: null,
+            imageUrl: row.coverUrl,
+            similarArtists: [],
+        };
     },
-    getAlbumArtistList: async () => {
-        throw new StreamifyNotImplementedError('getAlbumArtistList');
+    getAlbumArtistList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const filtered = filterArtists(snapshot.artists, {
+            favorite: query.favorite,
+            searchTerm: query.searchTerm,
+        });
+        const sorted = sortArtists(filtered, query.sortBy, query.sortOrder, snapshot);
+        const page = paginate(sorted, query.startIndex, query.limit);
+        return {
+            items: page.items.map((row) => normalizeAlbumArtist(row, apiClientProps.serverId)),
+            startIndex: page.startIndex,
+            totalRecordCount: page.totalRecordCount,
+        };
     },
-    getAlbumArtistListCount: async () => {
-        throw new StreamifyNotImplementedError('getAlbumArtistListCount');
+    getAlbumArtistListCount: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        return filterArtists(snapshot.artists, {
+            favorite: query.favorite,
+            searchTerm: query.searchTerm,
+        }).length;
     },
-    getAlbumDetail: async () => {
-        throw new StreamifyNotImplementedError('getAlbumDetail');
+    getAlbumDetail: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.albumById.get(query.id);
+        if (row === undefined) {
+            throw new Error(`Album not found: ${query.id}`);
+        }
+        const songs = row.songIds
+            .map((id) => snapshot.songById.get(id))
+            .filter((song) => song !== undefined)
+            .map((song) => normalizeSong(song, snapshot, apiClientProps.serverId));
+        return {
+            ...normalizeAlbum(row, snapshot, apiClientProps.serverId),
+            songs,
+        };
     },
-    getAlbumInfo: async () => {
-        throw new StreamifyNotImplementedError('getAlbumInfo');
+    getAlbumInfo: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.albumById.get(query.id);
+        // No album notes exist in the cloud library: honest empties.
+        return {
+            imageUrl: row?.coverUrl ?? null,
+            notes: null,
+        };
     },
-    getAlbumList: async () => {
-        throw new StreamifyNotImplementedError('getAlbumList');
+    getAlbumList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const filtered = filterAlbums(snapshot.albums, {
+            artistIds: query.artistIds,
+            compilation: query.compilation,
+            favorite: query.favorite,
+            genreIds: query.genreIds,
+            maxYear: query.maxYear,
+            minYear: query.minYear,
+            searchTerm: query.searchTerm,
+        });
+        const sorted = sortAlbums(filtered, query.sortBy, query.sortOrder, snapshot);
+        const page = paginate(sorted, query.startIndex, query.limit);
+        return {
+            items: page.items.map((row) => normalizeAlbum(row, snapshot, apiClientProps.serverId)),
+            startIndex: page.startIndex,
+            totalRecordCount: page.totalRecordCount,
+        };
     },
-    getAlbumListCount: async () => {
-        throw new StreamifyNotImplementedError('getAlbumListCount');
+    getAlbumListCount: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        return filterAlbums(snapshot.albums, {
+            artistIds: query.artistIds,
+            compilation: query.compilation,
+            favorite: query.favorite,
+            genreIds: query.genreIds,
+            maxYear: query.maxYear,
+            minYear: query.minYear,
+            searchTerm: query.searchTerm,
+        }).length;
     },
-    getAlbumRadio: async () => {
-        throw new StreamifyNotImplementedError('getAlbumRadio');
+    getAlbumRadio: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const count = toNumberOr(query.count, 20);
+        return albumRadio(snapshot, query.albumId, count).map((row) =>
+            normalizeSong(row, snapshot, apiClientProps.serverId),
+        );
     },
-    getArtistList: async () => {
-        throw new StreamifyNotImplementedError('getArtistList');
+    getArtistList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        // One artist string per track: the artist list IS the album artist
+        // derivation (no separate track-artist roles exist in the data).
+        const filtered = filterArtists(snapshot.artists, {
+            favorite: query.favorite,
+            searchTerm: query.searchTerm,
+        });
+        const sorted = sortArtists(filtered, query.sortBy, query.sortOrder, snapshot);
+        const page = paginate(sorted, query.startIndex, query.limit);
+        return {
+            items: page.items.map((row) => normalizeAlbumArtist(row, apiClientProps.serverId)),
+            startIndex: page.startIndex,
+            totalRecordCount: page.totalRecordCount,
+        };
     },
-    getArtistListCount: async () => {
-        throw new StreamifyNotImplementedError('getArtistListCount');
+    getArtistListCount: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        return filterArtists(snapshot.artists, {
+            favorite: query.favorite,
+            searchTerm: query.searchTerm,
+        }).length;
     },
-    getArtistRadio: async () => {
-        throw new StreamifyNotImplementedError('getArtistRadio');
+    getArtistRadio: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const count = toNumberOr(query.count, 20);
+        return artistRadio(snapshot, query.artistId, count).map((row) =>
+            normalizeSong(row, snapshot, apiClientProps.serverId),
+        );
     },
     getDownloadUrl: () => {
         // Sync-typed URL builder — empty string until P2 implements downloads.
         return '';
     },
-    getFavoriteSongs: async () => {
-        throw new StreamifyNotImplementedError('getFavoriteSongs');
+    getFavoriteSongs: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        if (query.type === 'rating') {
+            // No rating data exists: honest empty (decisions/p1).
+            return { items: [], startIndex: 0, totalRecordCount: 0 };
+        }
+        const liked = snapshot.likedIds
+            .map((id) => snapshot.songById.get(id))
+            .filter((row) => row !== undefined);
+        const artistKey =
+            query.artistId !== undefined
+                ? snapshot.artistById.get(query.artistId)?.key.toLowerCase()
+                : undefined;
+        const filtered =
+            artistKey !== undefined
+                ? liked.filter((row) => row.artist.trim().toLowerCase() === artistKey)
+                : liked;
+        const limit = toNumberOr(query.limit, DEFAULT_LIMIT);
+        return {
+            items: filtered
+                .slice(0, limit)
+                .map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
+            startIndex: 0,
+            totalRecordCount: filtered.length,
+        };
     },
     getFolder: async () => {
         throw new StreamifyNotImplementedError('getFolder');
     },
-    getGenreList: async () => {
-        throw new StreamifyNotImplementedError('getGenreList');
+    getGenreList: async (args) => {
+        const { apiClientProps, query } = args;
+        await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        // The cloud schema carries no genre column yet: the honest genre
+        // list is empty. When genre data lands, this fills in with zero
+        // controller changes (normalizeGenre is ready).
+        return { items: [], startIndex: query.startIndex, totalRecordCount: 0 };
     },
-    getImageRequest: () => {
-        // Sync-typed URL builder — null renders the stock image placeholder.
-        return null;
+    getImageRequest: ({ query }) => {
+        const url = coverUrlFor(currentStreamifyLibrary(), query.itemType, query.id);
+        if (url === null) {
+            return null;
+        }
+        return {
+            cacheKey: coverCacheKey(query.itemType, query.id, query.size),
+            url,
+        };
     },
-    getImageUrl: () => {
-        // Sync-typed URL builder — null renders the stock image placeholder
-        // (a throw here crashes render paths that call it synchronously).
-        return null;
+    getImageUrl: ({ query }) => {
+        return coverUrlFor(currentStreamifyLibrary(), query.itemType, query.id);
     },
     getInternetRadioStations: async () => {
-        throw new StreamifyNotImplementedError('getInternetRadioStations');
+        // No internet radio data exists in the cloud library: honest empty.
+        return [];
     },
     getLyrics: async () => {
         throw new StreamifyNotImplementedError('getLyrics');
     },
     getMusicFolderList: async () => {
-        throw new StreamifyNotImplementedError('getMusicFolderList');
+        // The cloud library is a single flat collection: no folders exist.
+        // The honest list is empty; folder-scoped affordances stay hidden.
+        return { items: [], startIndex: 0, totalRecordCount: 0 };
     },
-    getPlaylistDetail: async () => {
-        throw new StreamifyNotImplementedError('getPlaylistDetail');
+    getPlaylistDetail: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.playlistById.get(query.id);
+        if (row === undefined) {
+            throw new Error(`Playlist not found: ${query.id}`);
+        }
+        return normalizePlaylist(row, apiClientProps.serverId);
     },
-    getPlaylistList: async () => {
-        throw new StreamifyNotImplementedError('getPlaylistList');
+    getPlaylistList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const filtered = filterPlaylists(snapshot.playlists, query.searchTerm);
+        const sorted = sortPlaylists(filtered, query.sortBy, query.sortOrder);
+        const page = paginate(sorted, query.startIndex, query.limit);
+        return {
+            items: page.items.map((row) => normalizePlaylist(row, apiClientProps.serverId)),
+            startIndex: page.startIndex,
+            totalRecordCount: page.totalRecordCount,
+        };
     },
-    getPlaylistListCount: async () => {
-        throw new StreamifyNotImplementedError('getPlaylistListCount');
+    getPlaylistListCount: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        return filterPlaylists(snapshot.playlists, query.searchTerm).length;
     },
-    getPlaylistSongIds: async () => {
-        throw new StreamifyNotImplementedError('getPlaylistSongIds');
+    getPlaylistSongIds: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.playlistById.get(query.id);
+        if (row === undefined) {
+            throw new Error(`Playlist not found: ${query.id}`);
+        }
+        return { items: row.songIds, startIndex: 0, totalRecordCount: row.songIds.length };
     },
-    getPlaylistSongList: async () => {
-        throw new StreamifyNotImplementedError('getPlaylistSongList');
+    getPlaylistSongList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.playlistById.get(query.id);
+        if (row === undefined) {
+            throw new Error(`Playlist not found: ${query.id}`);
+        }
+        const songs = row.songIds
+            .map((id) => snapshot.songById.get(id))
+            .filter((song) => song !== undefined)
+            .map((song) => normalizeSong(song, snapshot, apiClientProps.serverId));
+        return { items: songs, startIndex: 0, totalRecordCount: songs.length };
     },
     getPlayQueue: async () => {
         throw new StreamifyNotImplementedError('getPlayQueue');
     },
-    getRandomSongList: async () => {
-        throw new StreamifyNotImplementedError('getRandomSongList');
+    getRandomSongList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const rows = randomSongs(snapshot, {
+            genre: query.genre,
+            limit: query.limit,
+            maxYear: query.maxYear,
+            minYear: query.minYear,
+            played: query.played,
+        });
+        return {
+            items: rows.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
+            startIndex: 0,
+            totalRecordCount: rows.length,
+        };
     },
     getRoles: async () => {
-        throw new StreamifyNotImplementedError('getRoles');
+        // One artist string per track: no role model exists.
+        return [];
     },
-    getScanStatus: async () => {
-        throw new StreamifyNotImplementedError('getScanStatus');
+    getScanStatus: async (args) => {
+        const snapshot = await getStreamifyLibrary(
+            args.apiClientProps.server,
+            args.apiClientProps.signal,
+        );
+        // The cloud library syncs via the snapshot load: "scanning" is the
+        // load itself, so the honest status is a completed scan of the
+        // loaded songs.
+        return {
+            count: snapshot.songs.length,
+            folderCount: 0,
+            lastScan: snapshot.loadedAt,
+            scanning: false,
+        };
     },
     getServerInfo: async (args) => {
         // Real request through the Streamify request lane: GoTrue's
         // /auth/v1/user validates the access token (and exercises the
-        // 401 → refresh → retry → clean-sign-out lane) on every boot.
+        // 401 -> refresh -> retry -> clean-sign-out lane) on every boot.
         await streamifyRequest('/auth/v1/user', { method: 'GET' });
 
+        // The honest capability surface for P1: browse-only, no optional
+        // server features (the UI gates tag/role/scan affordances on these).
         return {
             features: {},
-            id: args.apiClientProps.server?.id,
+            id: args.apiClientProps.serverId,
             version: STREAMIFY_CONTROLLER_VERSION,
         };
     },
-    getSimilarSongs: async () => {
-        throw new StreamifyNotImplementedError('getSimilarSongs');
+    getSimilarSongs: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const count = toNumberOr(query.count, 20);
+        return similarSongs(snapshot, query.songId, count).map((row) =>
+            normalizeSong(row, snapshot, apiClientProps.serverId),
+        );
     },
-    getSongDetail: async () => {
-        throw new StreamifyNotImplementedError('getSongDetail');
+    getSongDetail: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.songById.get(query.id);
+        if (row === undefined) {
+            throw new Error(`Song not found: ${query.id}`);
+        }
+        return normalizeSong(row, snapshot, apiClientProps.serverId);
     },
-    getSongList: async () => {
-        throw new StreamifyNotImplementedError('getSongList');
+    getSongList: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const filtered = filterSongs(
+            snapshot.songs,
+            {
+                albumArtistIds: query.albumArtistIds,
+                albumIds: query.albumIds,
+                artistIds: query.artistIds,
+                favorite: query.favorite,
+                genreIds: query.genreIds,
+                maxYear: query.maxYear,
+                minYear: query.minYear,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        );
+        const sorted = sortSongs(filtered, query.sortBy, query.sortOrder, snapshot);
+        const page = paginate(sorted, query.startIndex, query.limit);
+        return {
+            items: page.items.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
+            startIndex: page.startIndex,
+            totalRecordCount: page.totalRecordCount,
+        };
     },
-    getSongListCount: async () => {
-        throw new StreamifyNotImplementedError('getSongListCount');
+    getSongListCount: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        return filterSongs(
+            snapshot.songs,
+            {
+                albumArtistIds: query.albumArtistIds,
+                albumIds: query.albumIds,
+                artistIds: query.artistIds,
+                favorite: query.favorite,
+                genreIds: query.genreIds,
+                maxYear: query.maxYear,
+                minYear: query.minYear,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        ).length;
     },
     getStreamUrl: async () => {
         throw new StreamifyNotImplementedError('getStreamUrl');
@@ -192,8 +474,16 @@ export const StreamifyController: InternalControllerEndpoint = {
     getTagList: async () => {
         throw new StreamifyNotImplementedError('getTagList');
     },
-    getTopSongs: async () => {
-        throw new StreamifyNotImplementedError('getTopSongs');
+    getTopSongs: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const limit = toNumberOr(query.limit, 50);
+        const rows = topSongs(snapshot, query.artistId, query.artist, limit);
+        return {
+            items: rows.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
+            startIndex: 0,
+            totalRecordCount: rows.length,
+        };
     },
     getUserInfo: async () => {
         const supabase = getStreamifySupabase();
@@ -253,7 +543,9 @@ export const StreamifyController: InternalControllerEndpoint = {
         throw new StreamifyNotImplementedError('movePlaylistItem');
     },
     refreshItems: async () => {
-        throw new StreamifyNotImplementedError('refreshItems');
+        // Rows live in the in-memory snapshot; react-query refetches run
+        // the list endpoints again. Nothing to refresh remotely.
+        return null;
     },
     removeFromPlaylist: async () => {
         throw new StreamifyNotImplementedError('removeFromPlaylist');
@@ -267,8 +559,28 @@ export const StreamifyController: InternalControllerEndpoint = {
     scrobble: async () => {
         throw new StreamifyNotImplementedError('scrobble');
     },
-    search: async () => {
-        throw new StreamifyNotImplementedError('search');
+    search: async (args) => {
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const { albumArtistRows, albumRows, songRows } = searchSnapshot(
+            snapshot,
+            query.query ?? '',
+            {
+                albumArtistLimit: query.albumArtistLimit,
+                albumArtistStartIndex: query.albumArtistStartIndex,
+                albumLimit: query.albumLimit,
+                albumStartIndex: query.albumStartIndex,
+                songLimit: query.songLimit,
+                songStartIndex: query.songStartIndex,
+            },
+        );
+        return {
+            albumArtists: albumArtistRows.map((row) =>
+                normalizeAlbumArtist(row, apiClientProps.serverId),
+            ),
+            albums: albumRows.map((row) => normalizeAlbum(row, snapshot, apiClientProps.serverId)),
+            songs: songRows.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
+        };
     },
     setPlaylistSongs: async () => {
         throw new StreamifyNotImplementedError('setPlaylistSongs');
@@ -280,7 +592,9 @@ export const StreamifyController: InternalControllerEndpoint = {
         throw new StreamifyNotImplementedError('shareItem');
     },
     startLibraryScan: async () => {
-        throw new StreamifyNotImplementedError('startLibraryScan');
+        // The cloud library has no server-side scan; the snapshot load is
+        // the refresh. Honest no-op.
+        return null;
     },
     updateInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('updateInternetRadioStation');

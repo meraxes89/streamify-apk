@@ -27,9 +27,15 @@ This fork (`streamify-feishin`) tracks `jeffvli/feishin`. Upstream moves fast (~
 
 ### 3. `src/renderer/api/streamify/` — new directory (ours)
 
-- **What:** `streamify-controller.ts` implements `InternalControllerEndpoint` (all 53 required + 16 optional endpoints). Every method throws a single typed `StreamifyNotImplementedError` carrying the endpoint name. `streamify-error.ts` holds the error class. No logic.
-- **Why:** the UI's per-server-type gating hides affordances behind missing endpoints, so a registered stub controller is the established pattern for a server type that is selectable before it is functional. P1 replaces stubs with real implementations, one endpoint at a time.
-- **Expected conflict surface:** none — new directory upstream never touches.
+- **What:** `streamify-controller.ts` implements `InternalControllerEndpoint`. P0 shipped every method (53 required + 16 optional) throwing a typed `StreamifyNotImplementedError` carrying the endpoint name. P1 replaces the library read set with real implementations (song/album/artist/genre lists + counts, details, search, top/similar/radio/random, playlist reads, thumbnail URL lookups, getServerInfo/getUserInfo/getScanStatus/getRoles/getMusicFolderList/getInternetRadioStations/refreshItems) backed by the in-memory library snapshot; auth and mutations stay stubs. Sibling modules (all ours, all new files): `session.ts` (the credential codec + dev session seam shared with Engineer A), `cloud.ts` (the existing Supabase REST lanes), `engine.ts` (the bridge: snapshot load/memoize), `library.ts` (the snapshot model + derivations), `ids.ts` (the stable ID scheme), `normalize.ts` (feishin entity shaping), `query.ts` (local pagination/sorting/filter/search), `derive.ts` (top/similar/radio/random), `covers.ts` (the image URL lane). Decisions: `decisions/p1/`.
+- **Why:** the UI's per-server-type gating hides affordances behind missing endpoints, so a registered controller with real reads lights up the browse surface one endpoint set at a time. Reads are local-first against the snapshot; the load uses only the cloud lanes the shipping web app already issues (no new Supabase round-trips).
+- **Expected conflict surface:** none - new directory upstream never touches. The controller file is shared with A (auth seam); per-method edits keep conflicts small.
+
+### 3a. `settings.js.template` - Streamify deployment variables (pre-approved touch, F0 list)
+
+- **What:** appended `STREAMIFY_SUPABASE_URL`, `STREAMIFY_SUPABASE_ANON_KEY`, `STREAMIFY_DEV_ACCESS_TOKEN` (all default to the unsubstituted `${...}` placeholder, which the session seam reads as unset).
+- **Why:** the P1 session seam's dev fallback (the "mock session" the reads are built against until A's Google flow lands); documented in `decisions/p1/session-and-request-interface.md`. The Dockerfile is untouched: nginx envsubst substitutes what the environment defines, and unset placeholders read as unset (same behavior as upstream's `FS_*` variables).
+- **Expected conflict surface:** low - append-only at file end.
 
 ### 4. `src/shared/types/types.ts` — UI-side `ServerType` enum + `toServerType` (forced by typecheck/selection)
 
