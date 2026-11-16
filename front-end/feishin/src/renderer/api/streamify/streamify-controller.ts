@@ -1,6 +1,16 @@
 import { coverCacheKey, coverUrlFor } from './covers';
 import { albumRadio, artistRadio, randomSongs, similarSongs, topSongs } from './derive';
-import { currentStreamifyLibrary, getStreamifyLibrary } from './engine';
+import {
+    currentStreamifyLibrary,
+    getStreamifyLibrary,
+    invalidateStreamifyLibraryMemo,
+} from './engine';
+import {
+    docToPlaylistRow,
+    orderedElements,
+    type PlaylistCrdtDoc,
+    type PlaylistRowView,
+} from './jam/playlist-crdt';
 import {
     normalizeAlbum,
     normalizeAlbumArtist,
@@ -8,6 +18,16 @@ import {
     normalizeSong,
 } from './normalize';
 import { resolveStreamifyTrack, StreamifyNoVideoError } from './playback/stream-source';
+import {
+    addTracksToStreamifyPlaylist,
+    createStreamifyPlaylist,
+    deleteStreamifyPlaylist,
+    ensurePlaylistsSynced,
+    moveStreamifyPlaylistItem,
+    removeTracksFromStreamifyPlaylist,
+    replaceStreamifyPlaylistSongs,
+    updateStreamifyPlaylistMeta,
+} from './playlist-sync/sync';
 import {
     filterAlbums,
     filterArtists,
@@ -48,13 +68,37 @@ const STREAMIFY_CONTROLLER_VERSION = '0.1.0';
 /** The default page size when a caller omits the limit (feishin always sends one for lists). */
 const DEFAULT_LIMIT = 100;
 
+/** Live (non-deleted) CRDT docs as the P1B query-engine row shape. */
+function livePlaylistRows(docs: Map<string, PlaylistCrdtDoc>): PlaylistRowView[] {
+    const rows: PlaylistRowView[] = [];
+    for (const doc of docs.values()) {
+        if (doc.deletedAtOpId !== null) {
+            continue;
+        }
+        rows.push(docToPlaylistRow(doc));
+    }
+    return rows;
+}
+
 function toNumberOr(value: null | number | undefined, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 export const StreamifyController: InternalControllerEndpoint = {
-    addToPlaylist: async () => {
-        throw new StreamifyNotImplementedError('addToPlaylist');
+    addToPlaylist: async (args) => {
+        // P3A: the Jam CRDT lane - Add ops at tail fracs, applied locally
+        // first, materialized by the scheduled sync pass.
+        const { apiClientProps, body, query } = args;
+        await addTracksToStreamifyPlaylist(
+            apiClientProps.server,
+            query.id,
+            body.songId,
+            apiClientProps.serverId,
+        );
+        // New tracks must enter the snapshot's song index for the join in
+        // getPlaylistSongList; the reload is lazy.
+        invalidateStreamifyLibraryMemo();
+        return null;
     },
     authenticate: async () => {
         // Streamify sessions come from Supabase Google OAuth on the
@@ -71,8 +115,18 @@ export const StreamifyController: InternalControllerEndpoint = {
     createInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('createInternetRadioStation');
     },
-    createPlaylist: async () => {
-        throw new StreamifyNotImplementedError('createPlaylist');
+    createPlaylist: async (args) => {
+        // P3A: mint the CRDT doc (metadata LWW register at mint time);
+        // ownerId / queryBuilderRules / sync have no cloud-schema meaning
+        // (no smart-playlist engine, no sync target) and are ignored -
+        // documented in decisions/p3/P3A-jam-playlists.md.
+        const { apiClientProps, body } = args;
+        return createStreamifyPlaylist(apiClientProps.server, {
+            description: body.comment ?? null,
+            isPublic: body.public ?? true,
+            name: body.name,
+            serverId: apiClientProps.serverId,
+        });
     },
     deleteArtistImage: async () => {
         throw new StreamifyNotImplementedError('deleteArtistImage');
@@ -86,10 +140,17 @@ export const StreamifyController: InternalControllerEndpoint = {
     deleteInternetRadioStationImage: async () => {
         throw new StreamifyNotImplementedError('deleteInternetRadioStationImage');
     },
-    deletePlaylist: async () => {
-        throw new StreamifyNotImplementedError('deletePlaylist');
+    deletePlaylist: async (args) => {
+        // P3A: the absorbing delete tombstone. The durable row delete (and
+        // its cascade) lands with the sync pass; every other replica
+        // infers the delete from the row's absence.
+        const { apiClientProps, query } = args;
+        await deleteStreamifyPlaylist(apiClientProps.server, query.id, apiClientProps.serverId);
+        return null;
     },
     deletePlaylistImage: async () => {
+        // Optional endpoint. No storage bucket exists in the cloud schema
+        // (covers are track-derived urls); the honest surface stays a stub.
         throw new StreamifyNotImplementedError('deletePlaylistImage');
     },
     getAlbumArtistDetail: async (args) => {
@@ -308,17 +369,17 @@ export const StreamifyController: InternalControllerEndpoint = {
     },
     getPlaylistDetail: async (args) => {
         const { apiClientProps, query } = args;
-        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const row = snapshot.playlistById.get(query.id);
-        if (row === undefined) {
+        const docs = await ensurePlaylistsSynced(apiClientProps.server, apiClientProps.signal);
+        const doc = docs.get(query.id);
+        if (doc === undefined || doc.deletedAtOpId !== null) {
             throw new Error(`Playlist not found: ${query.id}`);
         }
-        return normalizePlaylist(row, apiClientProps.serverId);
+        return normalizePlaylist(docToPlaylistRow(doc), apiClientProps.serverId);
     },
     getPlaylistList: async (args) => {
         const { apiClientProps, query } = args;
-        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const filtered = filterPlaylists(snapshot.playlists, query.searchTerm);
+        const docs = await ensurePlaylistsSynced(apiClientProps.server, apiClientProps.signal);
+        const filtered = filterPlaylists(livePlaylistRows(docs), query.searchTerm);
         const sorted = sortPlaylists(filtered, query.sortBy, query.sortOrder);
         const page = paginate(sorted, query.startIndex, query.limit);
         return {
@@ -329,29 +390,43 @@ export const StreamifyController: InternalControllerEndpoint = {
     },
     getPlaylistListCount: async (args) => {
         const { apiClientProps, query } = args;
-        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        return filterPlaylists(snapshot.playlists, query.searchTerm).length;
+        const docs = await ensurePlaylistsSynced(apiClientProps.server, apiClientProps.signal);
+        return filterPlaylists(livePlaylistRows(docs), query.searchTerm).length;
     },
     getPlaylistSongIds: async (args) => {
         const { apiClientProps, query } = args;
-        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const row = snapshot.playlistById.get(query.id);
-        if (row === undefined) {
+        const docs = await ensurePlaylistsSynced(apiClientProps.server, apiClientProps.signal);
+        const doc = docs.get(query.id);
+        if (doc === undefined || doc.deletedAtOpId !== null) {
             throw new Error(`Playlist not found: ${query.id}`);
         }
-        return { items: row.songIds, startIndex: 0, totalRecordCount: row.songIds.length };
+        const songIds = docToPlaylistRow(doc).songIds;
+        return { items: songIds, startIndex: 0, totalRecordCount: songIds.length };
     },
     getPlaylistSongList: async (args) => {
         const { apiClientProps, query } = args;
-        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const row = snapshot.playlistById.get(query.id);
-        if (row === undefined) {
+        const [docs, snapshot] = await Promise.all([
+            ensurePlaylistsSynced(apiClientProps.server, apiClientProps.signal),
+            getStreamifyLibrary(apiClientProps.server, apiClientProps.signal),
+        ]);
+        const doc = docs.get(query.id);
+        if (doc === undefined || doc.deletedAtOpId !== null) {
             throw new Error(`Playlist not found: ${query.id}`);
         }
-        const songs = row.songIds
-            .map((id) => snapshot.songById.get(id))
-            .filter((song) => song !== undefined)
-            .map((song) => normalizeSong(song, snapshot, apiClientProps.serverId));
+        // The converged CRDT order, joined against the snapshot for track
+        // metadata; playlistItemId carries the element's add-op id (the
+        // per-item removal lane removeFromPlaylist accepts).
+        const songs = orderedElements(doc)
+            .map((entry) => {
+                const song = snapshot.songById.get(entry.element.trackId);
+                if (song === undefined) {
+                    return undefined;
+                }
+                const normalized = normalizeSong(song, snapshot, apiClientProps.serverId);
+                normalized.playlistItemId = entry.element.addOpId.toString(10);
+                return normalized;
+            })
+            .filter((song) => song !== undefined);
         return { items: songs, startIndex: 0, totalRecordCount: songs.length };
     },
     getPlayQueue: async () => {
@@ -558,19 +633,52 @@ export const StreamifyController: InternalControllerEndpoint = {
     jukeboxControl: async () => {
         throw new StreamifyNotImplementedError('jukeboxControl');
     },
-    movePlaylistItem: async () => {
-        throw new StreamifyNotImplementedError('movePlaylistItem');
+    movePlaylistItem: async (args) => {
+        // P3A: one Reorder op at the ending-index midpoint (the jam insert
+        // helper); convergence by the order-register LWW.
+        const { apiClientProps, query } = args;
+        await moveStreamifyPlaylistItem(
+            apiClientProps.server,
+            query.playlistId,
+            {
+                endingIndex: query.endingIndex,
+                startingIndex: query.startingIndex,
+                trackId: query.trackId,
+            },
+            apiClientProps.serverId,
+        );
     },
     refreshItems: async () => {
         // Rows live in the in-memory snapshot; react-query refetches run
         // the list endpoints again. Nothing to refresh remotely.
         return null;
     },
-    removeFromPlaylist: async () => {
-        throw new StreamifyNotImplementedError('removeFromPlaylist');
+    removeFromPlaylist: async (args) => {
+        // P3A: songIds resolve either as feishin song ids (every element
+        // holding that track) or as playlistItemIds (the element add-op
+        // id - the per-item lane the playlist detail screen feeds).
+        const { apiClientProps, query } = args;
+        await removeTracksFromStreamifyPlaylist(
+            apiClientProps.server,
+            query.id,
+            query.songId,
+            apiClientProps.serverId,
+        );
+        return null;
     },
-    replacePlaylist: async () => {
-        throw new StreamifyNotImplementedError('replacePlaylist');
+    replacePlaylist: async (args) => {
+        // P3A: converge the ordered view onto the given song list (the
+        // reorder-column persistence path): stable element matching,
+        // surplus Removes, missing Adds, one Reorder per moved element.
+        const { apiClientProps, body, query } = args;
+        await replaceStreamifyPlaylistSongs(
+            apiClientProps.server,
+            query.id,
+            body.songId,
+            apiClientProps.serverId,
+        );
+        invalidateStreamifyLibraryMemo();
+        return null;
     },
     savePlayQueue: async () => {
         throw new StreamifyNotImplementedError('savePlayQueue');
@@ -601,8 +709,18 @@ export const StreamifyController: InternalControllerEndpoint = {
             songs: songRows.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
         };
     },
-    setPlaylistSongs: async () => {
-        throw new StreamifyNotImplementedError('setPlaylistSongs');
+    setPlaylistSongs: async (args) => {
+        // P3A: setPlaylistSongs is replacePlaylist under the Navidrome
+        // verb (the reorder-column mutation hook calls this one).
+        const { apiClientProps, body } = args;
+        await replaceStreamifyPlaylistSongs(
+            apiClientProps.server,
+            body.id,
+            body.songIds,
+            apiClientProps.serverId,
+        );
+        invalidateStreamifyLibraryMemo();
+        return null;
     },
     setRating: async () => {
         throw new StreamifyNotImplementedError('setRating');
@@ -618,8 +736,27 @@ export const StreamifyController: InternalControllerEndpoint = {
     updateInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('updateInternetRadioStation');
     },
-    updatePlaylist: async () => {
-        throw new StreamifyNotImplementedError('updatePlaylist');
+    updatePlaylist: async (args) => {
+        // P3A: the metadata LWW register write (full snapshot per write;
+        // concurrent renames resolve by hybrid clock on every replica).
+        const { apiClientProps, body, query } = args;
+        const docs = await ensurePlaylistsSynced(apiClientProps.server, apiClientProps.signal);
+        const doc = docs.get(query.id);
+        if (doc === undefined || doc.deletedAtOpId !== null) {
+            throw new Error(`Playlist not found: ${query.id}`);
+        }
+        await updateStreamifyPlaylistMeta(
+            apiClientProps.server,
+            query.id,
+            {
+                coverUrl: doc.meta.coverUrl,
+                description: body.comment ?? doc.meta.description,
+                isPublic: body.public ?? doc.meta.isPublic,
+                name: body.name,
+            },
+            apiClientProps.serverId,
+        );
+        return null;
     },
     uploadArtistImage: async () => {
         throw new StreamifyNotImplementedError('uploadArtistImage');

@@ -24,7 +24,7 @@
  */
 
 import { LibrarySnapshot, loadLibrarySnapshot } from './library';
-import { resolveStreamifySession, streamifySessionKey } from './session';
+import { resolveStreamifySessionAsync, streamifySessionStableKey } from './session';
 
 import { ServerListItemWithCredential } from '/@/shared/types/domain-types';
 
@@ -53,7 +53,12 @@ export function currentStreamifyLibrary(): LibrarySnapshot | null {
 
 /**
  * Resolve the session and load (or reuse) the library snapshot for it.
- * Concurrent callers share one load; a credential change invalidates.
+ * Concurrent callers share one load; a session-identity change (account
+ * switch) invalidates. The key is REFRESH-STABLE (user identity, not the
+ * access token) since P3A: silent token refreshes no longer force full
+ * snapshot reloads, and the resolver now prefers the live supabase-js
+ * session for signed-in users (the P1A raw-token credential gap - see
+ * session.ts).
  */
 export async function getStreamifyLibrary(
     server: null | ServerListItemWithCredential,
@@ -65,14 +70,14 @@ export async function getStreamifyLibrary(
         // honest empty, same as the signed-out case.
         return emptySnapshot();
     }
-    const session = resolveStreamifySession(server.credential);
+    const session = await resolveStreamifySessionAsync(server.credential);
     if (session === null) {
-        // Signed out (no credential, no settings.js dev config): an honest,
-        // EMPTY, ready snapshot - the sign-in empty states render from the
-        // session, never from fake data.
+        // Signed out (no credential, no live session, no settings.js dev
+        // config): an honest, EMPTY, ready snapshot - the sign-in empty
+        // states render from the session, never from fake data.
         return emptySnapshot();
     }
-    const key = `${memoKey(server)}|${streamifySessionKey(session)}`;
+    const key = `${memoKey(server)}|${streamifySessionStableKey(session)}`;
     if (snapshotMemo !== null && snapshotMemo.key === key) {
         return snapshotMemo.promise;
     }
@@ -93,6 +98,13 @@ export async function getStreamifyLibrary(
 }
 
 let emptySnapshotCache: LibrarySnapshot | null = null;
+
+/** Drop the memoized snapshot so the next read reloads it (P3A: playlist
+ * mutations add/remove tracks the snapshot's song index must learn; the
+ * reload is lazy - only the next read pays for it). */
+export function invalidateStreamifyLibraryMemo(): void {
+    snapshotMemo = null;
+}
 
 function emptySnapshot(): LibrarySnapshot {
     if (emptySnapshotCache === null) {
