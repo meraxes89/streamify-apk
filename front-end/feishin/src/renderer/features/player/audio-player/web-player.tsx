@@ -20,6 +20,7 @@ import { useSongUrl } from '/@/renderer/features/player/audio-player/hooks/use-s
 import { PlayerOnProgressProps } from '/@/renderer/features/player/audio-player/types';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
 import { useWebAudio } from '/@/renderer/features/player/hooks/use-webaudio';
+import { connectStreamifySource } from '/@/renderer/features/streamify-eq/utils/attach-source';
 import {
     useMpvSettings,
     usePlaybackSettings,
@@ -575,9 +576,12 @@ export function WebPlayer() {
 
             const internal = reactPlayer.getInternalPlayer() as HTMLMediaElement | undefined;
             if (internal) {
-                const { context, gains } = webAudio;
+                const { context } = webAudio;
                 const source = context.createMediaElementSource(internal);
-                source.connect(gains[0]);
+                // P4B (Streamify, thin seam): routes through the gains unless
+                // the EQ watchdog latched a hard bypass (CORS guardrail - see
+                // features/streamify-eq/, PATCHES.md).
+                connectStreamifySource(webAudio, source, 0);
                 setPlayer1Source(source);
             }
         },
@@ -596,9 +600,9 @@ export function WebPlayer() {
 
             const internal = reactPlayer.getInternalPlayer() as HTMLMediaElement | undefined;
             if (internal) {
-                const { context, gains } = webAudio;
+                const { context } = webAudio;
                 const source = context.createMediaElementSource(internal);
-                source.connect(gains[1]);
+                connectStreamifySource(webAudio, source, 1);
                 setPlayer2Source(source);
             }
         },

@@ -50,6 +50,10 @@ const StreamifyDownloadsRoute = lazy(
     () => import('/@/renderer/features/streamify-downloads/routes/streamify-downloads-route'),
 );
 
+const StreamifySettingsRoute = lazy(
+    () => import('/@/renderer/features/streamify-settings/routes/streamify-settings-route'),
+);
+
 const StreamifyWrappedRoute = lazy(
     () => import('/@/renderer/features/streamify-wrapped/routes/streamify-wrapped-route'),
 );
@@ -261,6 +265,10 @@ export const AppRouter = () => {
                                         <Route
                                             element={<StreamifyWrappedRoute />}
                                             path={AppRoute.STREAMIFY_WRAPPED}
+                                        />
+                                        <Route
+                                            element={<StreamifySettingsRoute />}
+                                            path={AppRoute.STREAMIFY_SETTINGS}
                                         />
                                         <Route
                                             element={<StreamifyDebugRoute />}

@@ -17,6 +17,7 @@ import {
 import { useSetRating } from '/@/renderer/features/shared/hooks/use-set-rating';
 import { useCreateFavorite } from '/@/renderer/features/shared/mutations/create-favorite-mutation';
 import { useDeleteFavorite } from '/@/renderer/features/shared/mutations/delete-favorite-mutation';
+import { StreamifyJamButton } from '/@/renderer/features/streamify-jam/components/streamify-jam-button';
 import { useHotkeys } from '/@/renderer/hooks/use-hotkeys';
 import {
     AUTO_DJ_MODE,
@@ -96,6 +97,10 @@ export const RightControls = () => {
                 <AutoDJButton />
             </Group>
             <Group align="center" gap="xs" wrap="nowrap">
+                {/* P4B (Streamify, thin seam): the Jam/EQ/settings suite
+                    trigger. Renders null on stock servers; all logic lives in
+                    features/streamify-jam/ (see PATCHES.md). */}
+                <StreamifyJamButton />
                 <DlnaCastButton />
                 <SleepTimerButton />
                 <PlayerConfig />

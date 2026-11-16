@@ -59,6 +59,7 @@ import { streamifyRequest } from './streamify-request';
 import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
 import { recordCountedPlay } from './wrapped/listening-ledger';
 
+import { useStreamifySettingsStoreBase } from '/@/renderer/store/streamify-settings.store';
 import { logger } from '/@/renderer/utils/logger';
 import { InternalControllerEndpoint, LibraryItem } from '/@/shared/types/domain-types';
 
@@ -558,7 +559,12 @@ export const StreamifyController: InternalControllerEndpoint = {
         const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
         void scrobbleBridge()
             .drain({
-                canSend: () => canSendCloud(session),
+                // P4B: the Streamify scrobble tracking toggle (settings panel).
+                // Local session bookkeeping keeps running; only the cloud
+                // send lane pauses (queued outbox entries drain on re-enable).
+                canSend: () =>
+                    canSendCloud(session) &&
+                    useStreamifySettingsStoreBase.getState().settings.scrobbleEnabled,
                 send: (event) =>
                     recordPlayEventStrict(session, {
                         artist: event.artist,
