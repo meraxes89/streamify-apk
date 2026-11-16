@@ -16,15 +16,55 @@
 # CI — it is deliberately NOT invoked here.
 name: Web Build
 
+# Path gating (CI cost audit, 2026-11): the broad `front-end/**` glob is
+# replaced with explicit non-feishin paths — front-end/feishin/** PRs no
+# longer fire the wasm32 crate builds, the headless-Chrome wasm tests, or
+# the legacy Vite build (none of them read feishin sources; feishin is not
+# an npm workspace member of this root). TWO feishin-coupled exceptions
+# keep the #186 gates armed (see scripts/sync_feishin_resolver.py):
+#   * the vendored resolver MIRROR subtree — hand-editing the mirror
+#     instead of front-end/web must still red resolver-mirror-sync;
+#   * scripts/sync_feishin_resolver.py itself — the gate's own logic.
+# rust/crates/streamify-audio/** is watched because streamify-golden-wasm
+# embeds that crate's golden vectors via include_bytes! — a rust-only
+# golden-vector change must exercise the wasm32 parity suite too (the
+# pre-gating blind spot). The stale ws-w/* push branch globs are pruned
+# to [main] per web-deploy.yml's branch-list policy (all merged).
 on:
   pull_request:
     paths:
-      - 'front-end/**'
+      - 'front-end/web/**'
+      - 'front-end/crates/**'
+      - 'front-end/third_party/**'
+      - 'front-end/relay/**'
+      - 'front-end/canary/**'
+      - 'front-end/.cargo/**'
+      - 'front-end/package.json'
+      - 'front-end/package-lock.json'
+      - 'front-end/Cargo.toml'
+      - 'front-end/Cargo.lock'
+      - 'front-end/tsconfig.base.json'
+      - 'rust/crates/streamify-audio/**'
+      - 'front-end/feishin/src/renderer/api/streamify/playback/resolver/**'
+      - 'scripts/sync_feishin_resolver.py'
       - '.github/workflows/web-build.yml'
   push:
-    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine', 'ws-w/p2-engine-egress', 'ws-w/p3a-foundation', 'ws-w/p3b-botguard-egress', 'ws-w/p3b-open-source-botguard', 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop', 'ws-w/home-teardown', 'ws-w/admin-stats-wrapped', 'ws-w/engine-facade-breadth', 'ws-w/design-polish', 'ws-w/p2b-playback-spine']
+    branches: [main]
     paths:
-      - 'front-end/**'
+      - 'front-end/web/**'
+      - 'front-end/crates/**'
+      - 'front-end/third_party/**'
+      - 'front-end/relay/**'
+      - 'front-end/canary/**'
+      - 'front-end/.cargo/**'
+      - 'front-end/package.json'
+      - 'front-end/package-lock.json'
+      - 'front-end/Cargo.toml'
+      - 'front-end/Cargo.lock'
+      - 'front-end/tsconfig.base.json'
+      - 'rust/crates/streamify-audio/**'
+      - 'front-end/feishin/src/renderer/api/streamify/playback/resolver/**'
+      - 'scripts/sync_feishin_resolver.py'
       - '.github/workflows/web-build.yml'
 
 jobs:
@@ -178,7 +218,6 @@ jobs:
         # persistence, scrobbler, and gapless scheduler. All network-free;
         # the live SABR corpus runs in resolver-canary.yml instead.
         run: npm test -w web
-        working-directory: front-end
         working-directory: front-end
       - name: Build web (tsc --noEmit + vite build)
         run: npm run build -w web

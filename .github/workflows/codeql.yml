@@ -18,11 +18,30 @@
 # ============================================================================
 name: CodeQL
 
+# ============================================================================
+# Path gating (CI cost audit, 2026-11): front-end-only and docs-only PRs no
+# longer fire the traced java-kotlin lane (JDK + NDK + Gradle Android
+# compile) nor the c-cpp extraction — nothing those PRs change is in the
+# extracted languages. The nightly `schedule` stays UNFILTERED so the daily
+# scan still covers the full repo; `workflow_dispatch` keeps the manual
+# escape hatch. CodeQL is NOT a required status check (see header), so
+# paths-ignore here cannot deadlock Branch Protection.
+# ============================================================================
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'front-end/**'
+      - 'docs/**'
+      - '**/*.md'
+      - 'download/**'
   push:
     branches: [main]
+    paths-ignore:
+      - 'front-end/**'
+      - 'docs/**'
+      - '**/*.md'
+      - 'download/**'
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
