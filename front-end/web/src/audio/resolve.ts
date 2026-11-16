@@ -219,7 +219,66 @@ export interface ResolveContext {
    * matters; the WASM spine can demux neither HLS nor SABR).
    */
   elementCompat?: boolean;
+  /**
+   * P2-A (additive): called exactly once per resolve, at the winning rung,
+   * with that rung's raw winning materials (the response formats, the wire
+   * expiry, the protocol family). Consumers build ladders / expiry / range
+   * metadata from it (audio/get-stream-url.ts). Inert when absent: the
+   * link solver's behavior is unchanged and fixture-locked.
+   */
+  onLadderDigest?: LadderDigestSink;
 }
+
+// ---------------------------------------------------------------------------
+// P2-A — the winning-rung digest (additive consumer seam)
+// ---------------------------------------------------------------------------
+
+/**
+ * The digest of a resolve's WINNING rung, handed to
+ * `ResolveContext.onLadderDigest` exactly once per resolve (only a
+ * stream-yielding rung fires it). The variants:
+ *
+ *   • progressive — the rung answered pre-signed URLs. Raw rungs carry the
+ *     PlayerResponse (literal URLs); the WEB+POT rung carries the
+ *     youtubei.js info + the deciphering player (ciphered URLs — consumers
+ *     decipher the lower-rung formats themselves, locally, no network).
+ *   • hls — the rung won on the HLS manifest (no format ladder exists; a
+ *     manifest is a single rung by construction).
+ *   • sabr — the rung won on the SABR payload only. No element-consumable
+ *     URL exists at all (react-player cannot parse SABR; this is the
+ *     protocol marker the P2-A instrumentation counts as a SABR hit).
+ */
+export type LadderDigest =
+  | {
+      kind: 'progressive';
+      rung: LadderRung;
+      potKind: ResolvedStream['potKind'];
+      /** Raw wire response — present for the app/relay rungs (literal URLs). */
+      resp?: PlayerResponse;
+      /** youtubei.js basic info — present for the WEB+POT rung (ciphered URLs). */
+      info?: YtBasicInfo;
+      /** The deciphering player — present for the WEB+POT rung. */
+      player?: { decipher: (url: string) => Promise<string> };
+      /** The pipeline's own pick for this win (pre `&pot=` pinning). */
+      stream: ResolvedStream;
+    }
+  | {
+      kind: 'hls';
+      rung: LadderRung;
+      potKind: ResolvedStream['potKind'];
+      stream: ResolvedStream;
+    }
+  | {
+      kind: 'sabr';
+      rung: LadderRung;
+      potKind: ResolvedStream['potKind'];
+      /** Audio-only itags present in the SABR descriptors. */
+      sabrAudioItags: number[];
+      stream: ResolvedStream;
+    };
+
+/** The sink ResolveContext carries for the P2-A digest. */
+export type LadderDigestSink = (digest: LadderDigest) => void;
 
 // ---------------------------------------------------------------------------
 // Raw player-response shapes (the wire JSON — the direct/relay rungs)
@@ -287,6 +346,12 @@ interface YtBasicInfo {
     hls_manifest_url?: string;
     /** G4.2: WEB responses carry the ciphered SABR endpoint (kira recipe). */
     server_abr_streaming_url?: string;
+    /** P2-A (additive): muxed progressive formats (itag-18 class) when the
+     *  youtubei.js parser surfaces them — the element ladder's last rung. */
+    formats?: YtFormat[];
+    /** P2-A (additive): the wire expiry (progressive URL lifetime), when the
+     *  parser surfaces it (dropped today — read whenever present). */
+    expires_in_seconds?: number;
   } | null;
   player_config?: {
     media_common_config?: {
@@ -669,6 +734,7 @@ function evaluateRawResponse(
   rung: LadderRung,
   potKind: ResolvedStream['potKind'],
   elementCompat: boolean,
+  sink?: LadderDigestSink,
 ): RungOutcome {
   const status = resp.playabilityStatus?.status ?? 'UNKNOWN';
   if (status !== 'OK') {
@@ -684,8 +750,11 @@ function evaluateRawResponse(
   // 1. Progressive URLs — the cheapest playback (no lanes, plain src).
   const format = pickWireFormat(resp, elementCompat);
   if (format !== undefined) {
+    const stream = wireToStream(videoId, resp, format, rung, potKind);
+    // P2-A (additive): the winning rung's digest — inert when no sink.
+    sink?.({ kind: 'progressive', rung, potKind, resp, stream });
     return {
-      stream: wireToStream(videoId, resp, format, rung, potKind),
+      stream,
       verdict: 'OK (progressive)',
       definitive: false,
       status,
@@ -696,14 +765,17 @@ function evaluateRawResponse(
   // 2. HLS manifest — the remux lanes (elementCompat only).
   const hls = resp.streamingData?.hlsManifestUrl;
   if (hls !== undefined && hls.length > 0 && elementCompat) {
-    return {
-      stream: toHlsStream(
+    const stream = toHlsStream(
         videoId,
         { ...titleOf(resp), durationSec: durationSecOf(resp) },
         hls,
         rung,
         potKind,
-      ),
+      );
+    // P2-A (additive): HLS wins carry no format ladder (single manifest).
+    sink?.({ kind: 'hls', rung, potKind, stream });
+    return {
+      stream,
       verdict: 'OK (hls manifest)',
       definitive: false,
       status,
@@ -799,7 +871,7 @@ async function runRawRung(
   potKind: ResolvedStream['potKind'],
   elementCompat: boolean,
   call: () => Promise<RungCallResult>,
-  opts: { maxAttempts?: number } = {},
+  opts: { maxAttempts?: number; digest?: LadderDigestSink } = {},
 ): Promise<RungOutcome> {
   const maxAttempts = opts.maxAttempts ?? RUNG_ATTEMPTS;
   let outcome: RungOutcome = {
@@ -821,6 +893,7 @@ async function runRawRung(
         rung,
         potKind,
         elementCompat,
+        opts.digest,
       );
       outcome.laneUsed = lane ?? null;
       if (lane === 'relay') {
@@ -1013,7 +1086,7 @@ export async function resolveAudioStream(
         () => playerCallDirect(VISIONOS_SPEC, videoId, ctx, null, 'app'),
         // The attempt budget only matters on the DIRECT lane (relay
         // attempts are single-shot inside runRawRung — the G4.3 rule).
-        { maxAttempts: RUNG_ATTEMPTS },
+        { maxAttempts: RUNG_ATTEMPTS, digest: ctx.onLadderDigest },
       );
       if (outcome.stream !== null) return outcome.stream;
       countRung(outcome, true);
@@ -1107,7 +1180,25 @@ export async function resolveAudioStream(
                 player.po_token = gvs;
               }
               const url = await format.decipher(player);
-              return toStream(videoId, info, format, url, 'web-pot-direct', token.kind);
+              const stream = toStream(
+                videoId,
+                info,
+                format,
+                url,
+                'web-pot-direct',
+                token.kind,
+              );
+              // P2-A (additive): the yt-run win — the digest carries the raw
+              // formats + the deciphering player for the lower rungs.
+              ctx.onLadderDigest?.({
+                kind: 'progressive',
+                rung: 'web-pot-direct',
+                potKind: token.kind,
+                info,
+                player,
+                stream,
+              });
+              return stream;
             }
           } else {
             const audioItags = (info.streaming_data?.adaptive_formats ?? [])
@@ -1116,7 +1207,7 @@ export async function resolveAudioStream(
               .join(',');
             const hls = info.streaming_data?.hls_manifest_url;
             if (hls !== undefined && hls.length > 0 && elementCompat) {
-              return toHlsStream(
+              const stream = toHlsStream(
                 videoId,
                 {
                   title: info.basic_info?.title ?? videoId,
@@ -1130,6 +1221,13 @@ export async function resolveAudioStream(
                 'web-pot-direct',
                 token.kind,
               );
+              ctx.onLadderDigest?.({
+                kind: 'hls',
+                rung: 'web-pot-direct',
+                potKind: token.kind,
+                stream,
+              });
+              return stream;
             }
             // G4.2: the kira-recipe SABR payload — deciphered
             // serverAbrStreamingUrl + buildSabrFormat descriptors + the
@@ -1152,7 +1250,7 @@ export async function resolveAudioStream(
               try {
                 const sabrUrl = await player.decipher(sabrUrlRaw);
                 const duration = info.basic_info?.duration;
-                return {
+                const stream: ResolvedStream = {
                   videoId,
                   itag: 0,
                   codec: 'aac',
@@ -1185,6 +1283,20 @@ export async function resolveAudioStream(
                       typeof duration === 'number' ? Math.round(duration * 1000) : 0,
                   },
                 };
+                // P2-A (additive): SABR wins carry no element ladder — the
+                // digest marks the protocol so consumers log the SABR hit
+                // (react-player cannot parse SABR; the spine's audio/sabr
+                // lane is the playable path for it).
+                ctx.onLadderDigest?.({
+                  kind: 'sabr',
+                  rung: 'web-pot-direct',
+                  potKind: token.kind,
+                  sabrAudioItags: adaptive
+                    .filter((f) => f.has_video !== true)
+                    .map((f) => f.itag ?? 0),
+                  stream,
+                });
+                return stream;
               } catch (err) {
                 verdict = `OK but SABR decipher failed (${err instanceof Error ? err.message : String(err)})`;
               }
@@ -1224,7 +1336,7 @@ export async function resolveAudioStream(
       token.kind,
       elementCompat,
       () => playerCallDirect(IOS_SPEC, videoId, ctx, token.poToken, 'app'),
-      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS, digest: ctx.onLadderDigest },
     );
     if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
     countRung(outcome, true);
@@ -1251,7 +1363,7 @@ export async function resolveAudioStream(
       'none',
       elementCompat,
       () => playerCallDirect(IOS_SPEC, videoId, ctx, null, 'app'),
-      { maxAttempts: DIRECT_RUNG_ATTEMPTS },
+      { maxAttempts: DIRECT_RUNG_ATTEMPTS, digest: ctx.onLadderDigest },
     );
     if (outcome.stream !== null) return await pinGvsPot(outcome.stream, videoId);
     countRung(outcome, true);
@@ -1285,6 +1397,7 @@ export async function resolveAudioStream(
         ),
         lane: 'relay' as const,
       }),
+      { digest: ctx.onLadderDigest },
     );
     if (outcome.stream !== null) return outcome.stream;
     countRung(outcome, false);
@@ -1317,7 +1430,7 @@ export async function resolveAudioStream(
       const status = player.playabilityStatus?.status ?? 'UNKNOWN';
       const hls = player.streamingData?.hlsManifestUrl;
       if (status === 'OK' && hls !== undefined && hls.length > 0) {
-        return toHlsStream(
+        const stream = toHlsStream(
           videoId,
           {
             title: player.videoDetails?.title ?? videoId,
@@ -1331,6 +1444,13 @@ export async function resolveAudioStream(
           'web-safari-hls',
           token !== null ? token.kind : 'none',
         );
+        ctx.onLadderDigest?.({
+          kind: 'hls',
+          rung: 'web-safari-hls',
+          potKind: token !== null ? token.kind : 'none',
+          stream,
+        });
+        return stream;
       }
       safariVerdict =
         status === 'OK'

@@ -3,6 +3,42 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — P2-A: the playback spine (resolver stream) — getStreamUrl + the link-solver lock
+
+The long pole opened per the P2 kickoff: one entry point (`getStreamUrl`) wrapping the live
+resolve pipeline, contract-first seek/offset semantics, and a fixture lock so the link solver
+— live and serving today — cannot drift. The same-day flag the kickoff demanded: the pipeline
+carried NEITHER expiry NOR range metadata on its results; both are surfaced now (wire expiry
+via the new digest; range via a 1-byte probe). The SABR gate stays a measurement problem, not
+a build order: daily corpus instrumentation, one week of hit-rate data, then the checkpoint
+call. Contract: `front-end/decisions/p2/P2A-contract-getstream-url.md`.
+
+### Added
+- **`audio/get-stream-url.ts` — the single playback entry point**: wraps
+  `resolveAudioStream`; per-track cache + in-flight dedup (seeks/retries never hit the
+  pipeline); ranked element ladder (W1.2-derived: audio-only opus/webm → m4a → muxed video
+  itag, last resort); expiry from the wire (`expiresInSeconds`, ~6 h documented default);
+  durationMs; range probe (`ChunkFetcher.probe`, 1-byte, direct); resolve instrumentation
+  (protocol + format per resolve; SABR hits are the custom-engine decision data).
+- **`resolve.ts` — one additive seam**: `ResolveContext.onLadderDigest`. The winning rung
+  hands its raw materials to the caller's sink (response formats, wire expiry, protocol
+  family). Inert when absent — no existing export's signature or behavior changed.
+- **The first test lane for `front-end/web`** (vitest, network-free): the fixture lock in
+  `src/audio/__tests__/` — 22 tests covering every rung family's mapping, the G4.3 retry
+  discipline, ledger escalation, terminal bot-gate diagnosis, and the wrapper's
+  cache/expiry/probe/ranking/instrumentation behavior. Fixtures are append-only.
+- **CI**: the lock runs on every `front-end/**` PR (`web-build.yml`); the daily SABR corpus
+  job (`resolver-canary.yml → sabr-corpus`) reports the hit rate (report artifact + step
+  summary). A SABR-heavy day is data; only zero-resolves gates red.
+
+### Changed
+- `streamify-web` minor version bump `0.0.0 → 0.1.0` (getStreamUrl shipped from the
+  resolver repo).
+
+### Verified
+- `tsc --noEmit` green; `vitest run` 22/22 green (network-free); the corpus lane is
+  CI-only by design (live network).
+
 ## [Unreleased] — WS-W G5: the unburnable lane — the GSF egress (Google ASN via Apps Script), the official-embed lane retired (iterate-on-PR #167)
 
 The phone's post-G4.3 trace proved the ceiling of request discipline: 1–2 licensed plays, then every rung `LOGIN_REQUIRED` on the ONE shared Cloudflare egress — hygiene changes the slope, never the IP class. The product verdict that came with it: **any song, unlimited plays, and NO embed fallback** (the official player ran whole videos with ads). A fresh CORS probe of `youtubei.googleapis.com` then changed the architecture: its origin allowlist is youtube.com / music.youtube.com / **script.google.com** / docs.google.com / sites.google.com (foreign origins and the HtmlService sandbox get the "Sorry…" 403) — and an Apps Script web app deployed "Anyone" serves cross-origin JSON to any browser while its `UrlFetchApp` calls egress from **Google's own ASN 15169**, on the deployer's own 20k-calls/day free quota. Combined with W2.0's measurement (googlevideo authorizes cross-IP media fetches — the `<audio>` element streams from the user's own IP), that is the unburnable lane: control plane from Google, media from the phone, zero credentials, zero shared pools. Full theory + the probe table: `front-end/decisions/G5-gsf-unburnable-lane.md`.

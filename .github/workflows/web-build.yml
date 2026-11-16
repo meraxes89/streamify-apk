@@ -156,6 +156,12 @@ jobs:
       - name: Install deps
         run: npm install --no-fund --no-audit
         working-directory: front-end
+      - name: "Resolver tests (P2-A fixture lock — the link solver must not break)"
+        # Network-free by construction (see web/src/audio/__tests__/): the
+        # recorded wire fixtures lock the ladder's mapping behavior. Heavy
+        # and live lanes (the daily SABR corpus) run in resolver-canary.yml.
+        run: npm test -w web
+        working-directory: front-end
       - name: Build web (tsc --noEmit + vite build)
         run: npm run build -w web
         working-directory: front-end
