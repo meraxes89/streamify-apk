@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/icons';
 import { useSessionStore } from '../lib/sessionStore';
 import { usePlayerStore } from '../lib/playerStore';
+import { useQueueStore } from '../lib/playback/queueStore';
 import { toast } from '../lib/toastStore';
 import { APP_BUILD, APP_EDITION, APP_VERSION, RELEASES_URL, fetchGithubReleases } from '../version';
 
@@ -37,7 +38,9 @@ const DEFAULT_PREFS: Prefs = {
   loudness: true,
   lufs: -14,
   gapless: true,
-  crossfadeSec: 0,
+  // P2-B: crossfade default ~3 s (the playback spine's config value —
+  // the dual-engine seam consumes it when Engineer A lands it).
+  crossfadeSec: 3,
   mono: false,
   balance: 0,
   truePeak: true,
@@ -338,7 +341,12 @@ export function SettingsScreen(): JSX.Element {
             max={12}
             step={1}
             format={(v) => (v === 0 ? 'Off' : `${v}s`)}
-            onChange={(v) => setPref('crossfadeSec', v)}
+            onChange={(v) => {
+              setPref('crossfadeSec', v);
+              // P2-B: push the config to the gapless scheduler live (the
+              // arm window + the dual-engine seam read it per tick).
+              useQueueStore.getState().setCrossfadeSec(v);
+            }}
           />
           <ToggleRow label="Mono Audio" on={prefs.mono} onToggle={() => setPref('mono', !prefs.mono)} />
           <SliderRow

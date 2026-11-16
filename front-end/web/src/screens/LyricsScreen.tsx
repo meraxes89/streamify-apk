@@ -25,6 +25,7 @@ import { Icon } from '../components/icons';
 import { FluidSyllableText } from '../components/FluidSyllableText';
 import { YtLyricsHeader } from '../components/YtLyricsHeader';
 import { usePlayerStore } from '../lib/playerStore';
+import { nowPlaying as nowPlayingOf, useQueueStore } from '../lib/playback/queueStore';
 import { useDominantColor } from '../lib/useDominantColor';
 import { useLyrics, useLyricAutoScroll } from '../lib/useLyrics';
 import { sourceLabel } from './FullPlayerSheetPanes';
@@ -37,10 +38,10 @@ export function LyricsScreen(props: LyricsScreenProps): JSX.Element {
   const { onClose } = props;
   const navigate = useNavigate();
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const queue = usePlayerStore((s) => s.queue);
-  const seekTo = usePlayerStore((s) => s.seekTo);
+  const queueState = useQueueStore();
+  const seekTo = useQueueStore((s) => s.seekTo);
 
-  const track = snapshot?.currentTrack ?? queue.rows[queue.cursor ?? 0]?.track ?? null;
+  const track = nowPlayingOf(queueState) ?? snapshot?.currentTrack ?? null;
   const lyrics = useLyrics();
   const dominant = useDominantColor(track?.thumbnailUrl ?? null);
   const listRef = useRef<HTMLDivElement | null>(null);

@@ -6,8 +6,11 @@
 #      streamify-wasm compile to wasm32-unknown-unknown with NO rquickjs
 #      in the tree, and wasm-pack produces the web-target pkg.
 #   2. wasm-bindgen-test (headless Chrome): the W0.2 ping test.
-#   3. The web bundle builds (vite + strict tsc against the generated .d.ts).
-#   4. The relay worker bundles (wrangler dry-run — no Cloudflare creds).
+#   3. The web unit tests (vitest, headless): the P2-A resolver fixture
+#      lock (the link solver must not break) AND the P2-B playback spine
+#      suite (queue machine, persistence, scrobbler, gapless scheduler).
+#   4. The web bundle builds (vite + strict tsc against the generated .d.ts).
+#   5. The relay worker bundles (wrangler dry-run — no Cloudflare creds).
 #
 # The engine's own 429-test suite belongs to the frozen rust/ workspace's
 # CI — it is deliberately NOT invoked here.
@@ -19,7 +22,7 @@ on:
       - 'front-end/**'
       - '.github/workflows/web-build.yml'
   push:
-    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine', 'ws-w/p2-engine-egress', 'ws-w/p3a-foundation', 'ws-w/p3b-botguard-egress', 'ws-w/p3b-open-source-botguard', 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop', 'ws-w/home-teardown', 'ws-w/admin-stats-wrapped', 'ws-w/engine-facade-breadth', 'ws-w/design-polish']
+    branches: [main, 'ws-w/p0-proof', 'ws-w/p0-live-wiring', 'ws-w/p1-audio-spine', 'ws-w/p2-engine-egress', 'ws-w/p3a-foundation', 'ws-w/p3b-botguard-egress', 'ws-w/p3b-open-source-botguard', 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop', 'ws-w/home-teardown', 'ws-w/admin-stats-wrapped', 'ws-w/engine-facade-breadth', 'ws-w/design-polish', 'ws-w/p2b-playback-spine']
     paths:
       - 'front-end/**'
       - '.github/workflows/web-build.yml'
@@ -168,11 +171,14 @@ jobs:
       - name: Install deps
         run: npm install --no-fund --no-audit
         working-directory: front-end
-      - name: "Resolver tests (P2-A fixture lock — the link solver must not break)"
-        # Network-free by construction (see web/src/audio/__tests__/): the
-        # recorded wire fixtures lock the ladder's mapping behavior. Heavy
-        # and live lanes (the daily SABR corpus) run in resolver-canary.yml.
+      - name: "Web unit tests (vitest — P2-A resolver fixture lock + P2-B playback spine)"
+        # One lane, both suites: the recorded wire fixtures lock the link
+        # solver's mapping behavior (any drift in resolve.ts breaks a
+        # fixture), and the playback spine tests cover the queue machine,
+        # persistence, scrobbler, and gapless scheduler. All network-free;
+        # the live SABR corpus runs in resolver-canary.yml instead.
         run: npm test -w web
+        working-directory: front-end
         working-directory: front-end
       - name: Build web (tsc --noEmit + vite build)
         run: npm run build -w web

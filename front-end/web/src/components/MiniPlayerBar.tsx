@@ -15,6 +15,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { Icon } from './icons';
 import { usePlayerStore } from '../lib/playerStore';
+// P2-B: the queue machine's now-playing + transport verbs (the engine
+// snapshot stays the transport truth for status/position).
+import {
+  displayPositionMs,
+  displayStatus,
+  nowPlaying as nowPlayingOf,
+  useQueueStore,
+} from '../lib/playback/queueStore';
 import { useSessionStore } from '../lib/sessionStore';
 import { useUiStore } from '../lib/uiStore';
 
@@ -25,15 +33,17 @@ const SWIPE_DISARM_PX = SWIPE_ARM_PX * 0.75;
 export function MiniPlayerBar(): JSX.Element | null {
   const openFullPlayer = useUiStore((s) => s.openFullPlayer);
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const queue = usePlayerStore((s) => s.queue);
-  const send = usePlayerStore((s) => s.send);
-  const playOrToggle = usePlayerStore((s) => s.playOrToggle);
+  const queueState = useQueueStore();
+  const playOrToggle = useQueueStore((s) => s.playOrToggle);
+  const next = useQueueStore((s) => s.next);
+  const previous = useQueueStore((s) => s.previous);
   const session = useSessionStore((s) => s.session);
   const likedVideoIds = useSessionStore((s) => s.likedVideoIds);
   const toggleLike = useSessionStore((s) => s.toggleLike);
 
-  const track = snapshot?.currentTrack ?? queue.rows[queue.cursor ?? 0]?.track ?? null;
-  const status = snapshot?.status ?? 'Idle';
+  // The MACHINE's now-playing (the engine's may lag a paused advance).
+  const track = nowPlayingOf(queueState) ?? snapshot?.currentTrack ?? null;
+  const status = displayStatus(snapshot, queueState);
   const playing = status === 'Playing';
   const buffering = status === 'Buffering';
 
@@ -75,10 +85,11 @@ export function MiniPlayerBar(): JSX.Element | null {
     setDragX(0);
     if (armed && Math.abs(dx) >= SWIPE_DISARM_PX) {
       // Left swipe = next, right swipe = previous (the Android mapping).
-      send({ type: dx < 0 ? 'next' : 'previous' });
+      if (dx < 0) next();
+      else previous();
     }
     setArmed(false);
-  }, [armed, dragX, send]);
+  }, [armed, dragX, next, previous]);
 
   if (track === null) {
     // The Android bar returns immediately when track == null — the dock
@@ -86,15 +97,19 @@ export function MiniPlayerBar(): JSX.Element | null {
     return null;
   }
 
-  const cursor = queue.cursor ?? 0;
-  const nextTitle = queue.rows[cursor + 1]?.track.title ?? null;
-  const prevTitle = cursor > 0 ? queue.rows[cursor - 1]?.track.title : null;
+  // The peek rows: the machine's neighbors in play order (shuffle-aware).
+  const cursor = queueState.queue.cursor;
+  const rows = queueState.queue.rows;
+  const nextTitle = rows[cursor !== null ? cursor + 1 : 1]?.track.title ?? null;
+  const prevTitle =
+    cursor !== null && cursor > 0 ? (rows[cursor - 1]?.track.title ?? null) : null;
   const peekLeft = dragX > 0; // dragging right → previous track peek
   const peekTitle = peekLeft ? prevTitle : nextTitle;
   const peekAlpha = Math.min(1, Math.abs(dragX) / SWIPE_ARM_PX);
 
   const durationMs = track.durationMs > 0 ? track.durationMs : 0;
-  const progress = durationMs > 0 ? Math.min(1, (snapshot?.positionMs ?? 0) / durationMs) : 0;
+  const progress =
+    durationMs > 0 ? Math.min(1, displayPositionMs(snapshot, queueState) / durationMs) : 0;
   const liked = likedVideoIds.has(track.id);
 
   return (
@@ -165,7 +180,7 @@ export function MiniPlayerBar(): JSX.Element | null {
         type="button"
         className="miniplayer__next"
         aria-label="Next track"
-        onClick={() => send({ type: 'next' })}
+        onClick={() => next()}
       >
         <Icon name="skipNext" size={24} />
       </button>

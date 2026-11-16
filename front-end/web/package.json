@@ -7,9 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview",
     "test": "vitest run",
-    "test:corpus": "vitest run --config vitest.corpus.config.ts"
+    "test:corpus": "vitest run --config vitest.corpus.config.ts",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

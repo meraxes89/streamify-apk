@@ -36,7 +36,8 @@ import { useSessionStore } from '../lib/sessionStore';
 import { useLibraryStore } from '../lib/libraryStore';
 import { cloudTrackId } from '../lib/supabase';
 import { useTrackPlayer, type PlayableTrack } from '../lib/trackPlayer';
-import { usePlayerStore } from '../lib/playerStore';
+import { toTrackRow } from '../lib/playerStore';
+import { useQueueStore } from '../lib/playback/queueStore';
 
 // ---------------------------------------------------------------------------
 // MenuOrigin + the controller store (TrackContextMenuController lowering)
@@ -280,8 +281,20 @@ export function ContextMenuSheet(props: ContextMenuSheetProps): JSX.Element {
               className="cmaction"
               onClick={() => {
                 onDismissRequest();
-                const ok = usePlayerStore.getState().playNext(track);
-                toast(ok ? `Playing next: ${track.title}` : 'Engine busy — try again', ok ? 'success' : 'error');
+                const ok = useQueueStore.getState().insertNext(
+                  toTrackRow({
+                    videoId: track.videoId,
+                    title: track.title,
+                    artist: track.artist,
+                    album: track.album ?? undefined,
+                    durationSec: track.durationSec ?? undefined,
+                    thumbnailUrl: track.thumbnailUrl ?? undefined,
+                  }),
+                );
+                toast(
+                  ok ? `Playing next: ${track.title}` : `Already in the queue: ${track.title}`,
+                  ok ? 'success' : 'error',
+                );
               }}
             >
               <Icon name="playArrow" size={22} className="cmaction__icon" />

@@ -39,6 +39,14 @@ import { PlaybackSeekbar } from '../components/PlaybackSeekbar';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { Sheet } from '../components/Sheet';
 import { usePlayerStore } from '../lib/playerStore';
+// P2-B: the queue state machine — shuffle/repeat live, transport verbs
+// route through the machine.
+import {
+  displayPositionMs,
+  displayStatus,
+  nowPlaying as nowPlayingOf,
+  useQueueStore,
+} from '../lib/playback/queueStore';
 import { useSessionStore } from '../lib/sessionStore';
 import { useDominantColor } from '../lib/useDominantColor';
 import {
@@ -72,22 +80,28 @@ export function FullPlayerSheet(props: FullPlayerSheetProps): JSX.Element | null
   const { open, onCollapse } = props;
 
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const queue = usePlayerStore((s) => s.queue);
   const port = usePlayerStore((s) => s.port);
-  const playOrToggle = usePlayerStore((s) => s.playOrToggle);
-  const next = usePlayerStore((s) => s.next);
-  const previous = usePlayerStore((s) => s.previous);
-  const seekTo = usePlayerStore((s) => s.seekTo);
+  const queue = useQueueStore((s) => s.queue);
+  const shuffle = useQueueStore((s) => s.shuffle);
+  const repeat = useQueueStore((s) => s.repeat);
+  const playOrToggle = useQueueStore((s) => s.playOrToggle);
+  const next = useQueueStore((s) => s.next);
+  const previous = useQueueStore((s) => s.previous);
+  const toggleShuffle = useQueueStore((s) => s.toggleShuffle);
+  const cycleRepeat = useQueueStore((s) => s.cycleRepeat);
+  const seekTo = useQueueStore((s) => s.seekTo);
+  const jumpToRow = useQueueStore((s) => s.jumpToRow);
   const setVolume = usePlayerStore((s) => s.setVolume);
   const session = useSessionStore((s) => s.session);
   const likedVideoIds = useSessionStore((s) => s.likedVideoIds);
   const toggleLike = useSessionStore((s) => s.toggleLike);
 
-  // The display track (the MiniPlayerBar resolution: the cursor row when
-  // the engine has no current yet — a queued list must not read empty).
+  // The display track: the MACHINE's now-playing (the engine may lag a
+  // paused advance or a restore — the queue store is the truth).
+  const queueState = useQueueStore();
   const track = useMemo(
-    () => snapshot?.currentTrack ?? queue.rows[queue.cursor ?? 0]?.track ?? null,
-    [snapshot?.currentTrack, queue],
+    () => nowPlayingOf(queueState) ?? snapshot?.currentTrack ?? null,
+    [queueState, snapshot?.currentTrack],
   );
 
   // -- sub-sheets (the Kotlin modal stack) ----------------------------------
@@ -163,10 +177,10 @@ export function FullPlayerSheet(props: FullPlayerSheetProps): JSX.Element | null
   }, [chromeDimmed]);
 
   // -- transport state ----------------------------------------------------------
-  const status = snapshot?.status ?? 'Idle';
+  const status = displayStatus(snapshot, queueState);
   const isPlaying = status === 'Playing';
   const isBuffering = status === 'Buffering';
-  const positionMs = snapshot?.positionMs ?? 0;
+  const positionMs = displayPositionMs(snapshot, queueState);
   const durationMs = track?.durationMs ?? 0;
   const liked = track !== null && likedVideoIds.has(track.id);
 
@@ -365,15 +379,15 @@ export function FullPlayerSheet(props: FullPlayerSheetProps): JSX.Element | null
       <div className="fsheet__row">
         <PlayerControls
           isPlaying={statusPlaying}
-          isShuffleActive={false}
-          isRepeatActive={false}
+          isShuffleActive={shuffle}
+          isRepeatActive={repeat !== 'off'}
           isBuffering={isBuffering}
           onPlayPause={playOrToggle}
           onSkipNext={next}
           onSkipPrevious={previous}
-          onShuffleToggle={() => undefined}
-          onRepeatToggle={() => undefined}
-          hideShuffleRepeat
+          onShuffleToggle={toggleShuffle}
+          onRepeatToggle={cycleRepeat}
+          repeatOne={repeat === 'one'}
         />
       </div>
       <div className="fsheet__volume">
@@ -664,15 +678,9 @@ export function FullPlayerSheet(props: FullPlayerSheetProps): JSX.Element | null
     </div>
   );
 
-  /** Play-at-id: the lazy resolve + play pattern (the QueueScreen tap). */
+  /** Play-at-id: the machine's jump (the QueueScreen tap shape). */
   function playAt(id: string): void {
-    if (port === null) return;
-    port.unlockSink();
-    if (!port.playTrack(id)) {
-      void port.resolveAndStage(id).then((stream) => {
-        if (stream !== null) port.playTrack(id);
-      });
-    }
+    jumpToRow(id);
     setSubSheet('none');
   }
 }

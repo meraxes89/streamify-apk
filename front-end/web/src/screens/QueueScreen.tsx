@@ -25,7 +25,9 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/icons';
 import { TrackListItem } from '../components/TrackListItem';
-import { playedRows, upNextRows, usePlayerStore } from '../lib/playerStore';
+import { usePlayerStore } from '../lib/playerStore';
+// P2-B: the queue state machine is the truth — order, history, up next.
+import { playedRows, upNextRows, useQueueStore } from '../lib/playback/queueStore';
 import { toast } from '../lib/toastStore';
 
 /** The row height for drag-index math (Kotlin: 56.dp). */
@@ -40,10 +42,11 @@ export interface QueueScreenProps {
 export function QueueScreen(props: QueueScreenProps): JSX.Element {
   const { onClose } = props;
   const navigate = useNavigate();
-  const queue = usePlayerStore((s) => s.queue);
+  const queue = useQueueStore((s) => s.queue);
+  const jumpToRow = useQueueStore((s) => s.jumpToRow);
+  const reorderUpNext = useQueueStore((s) => s.reorderUpNext);
+  const clearQueue = useQueueStore((s) => s.clear);
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const port = usePlayerStore((s) => s.port);
-  const reorderQueue = usePlayerStore((s) => s.reorderQueue);
 
   const isPlaying = snapshot?.status === 'Playing';
   const cursor = queue.cursor;
@@ -82,7 +85,7 @@ export function QueueScreen(props: QueueScreenProps): JSX.Element {
     const from = index;
     const to = Math.min(upNext.length - 1, Math.max(0, index + rel));
     if (from === to) return;
-    if (reorderQueue(cursor !== null ? cursor + 1 + from : from, cursor !== null ? cursor + 1 + to : to)) {
+    if (reorderUpNext(cursor !== null ? cursor + 1 + from : from, cursor !== null ? cursor + 1 + to : to)) {
       dragOffsetRef.current = 0; // re-anchor: the row snaps into its new slot
       setDragOffset(0);
       setDragIndex(to);
@@ -101,15 +104,9 @@ export function QueueScreen(props: QueueScreenProps): JSX.Element {
     setDragMoved(false);
   };
 
-  /** Tap-to-play: the lazy resolve + play pattern. */
+  /** Tap-to-play: the machine's jump (the lazy resolve + play shape). */
   const playAt = (id: string): void => {
-    if (port === null) return;
-    port.unlockSink();
-    if (!port.playTrack(id)) {
-      void port.resolveAndStage(id).then((stream) => {
-        if (stream !== null) port.playTrack(id);
-      });
-    }
+    jumpToRow(id);
   };
 
   const close = (): void => {
@@ -135,7 +132,7 @@ export function QueueScreen(props: QueueScreenProps): JSX.Element {
               type="button"
               className="queuescreen__clear"
               aria-label="Clear queue"
-              onClick={() => port?.clearQueue()}
+              onClick={() => clearQueue()}
             >
               Clear
             </button>

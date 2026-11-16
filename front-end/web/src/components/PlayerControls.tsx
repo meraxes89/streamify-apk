@@ -23,6 +23,8 @@ export interface PlayerControlsProps {
   isPlaying: boolean;
   isShuffleActive: boolean;
   isRepeatActive: boolean;
+  /** Repeat-one mode: the repeat well shows the “1” badge (P2-B). */
+  repeatOne?: boolean;
   isBuffering?: boolean;
   onPlayPause: () => void;
   onSkipNext: () => void;
@@ -51,6 +53,7 @@ export function PlayerControls(props: PlayerControlsProps): JSX.Element {
     isPlaying,
     isShuffleActive,
     isRepeatActive,
+    repeatOne = false,
     isBuffering = false,
     onPlayPause,
     onSkipNext,
@@ -127,7 +130,7 @@ export function PlayerControls(props: PlayerControlsProps): JSX.Element {
         <button
           type="button"
           className="playercontrols__well"
-          aria-label="Repeat"
+          aria-label={repeatOne ? 'Repeat one' : 'Repeat all'}
           aria-pressed={isRepeatActive}
           onClick={() => {
             haptic();
@@ -139,6 +142,7 @@ export function PlayerControls(props: PlayerControlsProps): JSX.Element {
             size={24}
             className={`playercontrols__glyph ${isRepeatActive ? 'playercontrols__glyph--on' : ''}`}
           />
+          {repeatOne && <span className="playercontrols__one" aria-hidden="true">1</span>}
         </button>
       )}
     </div>

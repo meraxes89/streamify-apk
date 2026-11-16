@@ -20,7 +20,7 @@ import { EmptyStateView } from '../components/EmptyStateView';
 import { GlobalTrackContextMenuHost, trackMenuGestures } from '../components/ContextMenuSheet';
 import { useHomeStore, shelfTrackToPlayable } from '../lib/homeStore';
 import { useTrackPlayer } from '../lib/trackPlayer';
-import { usePlayerStore } from '../lib/playerStore';
+import { nowPlaying as nowPlayingOf, useQueueStore } from '../lib/playback/queueStore';
 
 export function UniversalHomeScreen(): JSX.Element {
   const navigate = useNavigate();
@@ -30,7 +30,7 @@ export function UniversalHomeScreen(): JSX.Element {
   const error = useHomeStore((s) => s.error);
   const load = useHomeStore((s) => s.load);
   const player = useTrackPlayer();
-  const currentId = usePlayerStore((s) => s.snapshot?.currentTrack?.id ?? null);
+  const currentId = nowPlayingOf(useQueueStore())?.id ?? null;
 
   useEffect(() => {
     void load();

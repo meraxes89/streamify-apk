@@ -33,6 +33,7 @@ import { PlayerBar } from '../components/PlayerBar';
 import { SpineConsole } from '../components/SpineConsole';
 import { GsfLanePanel } from '../components/GsfLanePanel';
 import { usePlayerStore } from '../lib/playerStore';
+import { useQueueStore } from '../lib/playback/queueStore';
 import {
   LEVEL_INDEX,
   captureState,
@@ -70,7 +71,7 @@ function levelColor(lvl: string): string {
 export default function DebugScreen(): JSX.Element {
   const navigate = useNavigate();
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const queueLen = usePlayerStore((s) => s.queue.rows.length);
+  const queueLen = useQueueStore((s) => s.queue.rows.length);
   const lastRung = usePlayerStore((s) => s.lastRung);
   const resolveError = usePlayerStore((s) => s.resolveError);
   const port = usePlayerStore((s) => s.port);

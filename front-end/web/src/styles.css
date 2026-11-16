@@ -3560,6 +3560,7 @@ button:disabled {
 }
 
 .playercontrols__well {
+  position: relative; /* P2-B: the repeat-one badge anchors to the well */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3931,6 +3932,20 @@ button:disabled {
 
 .playercontrols__glyph--on {
   color: var(--sf-active-control);
+}
+
+/* P2-B: the repeat-one "1" badge — a tiny superscript on the well. */
+.playercontrols__one {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: var(--sf-radius-full, 999px);
+  background: var(--sf-active-control);
+  color: var(--sf-text-on-active-chip);
 }
 
 .playercontrols__play {
