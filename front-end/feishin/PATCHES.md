@@ -76,10 +76,13 @@ P5-A (this PR).
 ### A3. `vitest.config.ts` (fork-added file, upstream has none)
 
 - **What:** the fork's network-free test lane (`environment: node`, include
-  `src/**/*.test.ts`, the `/@/` aliases). P5-A: added the
-  `@streamify/canary` alias + `resolve.dedupe ['react', 'react-dom']` (the
-  canary console source lives outside the feishin root — without dedupe,
-  vite resolves a phantom `<root>/react` module for those files).
+  `src/**/*.test.ts`, the `/@/` aliases). P5-A added the
+  `@streamify/canary` alias + `resolve.dedupe ['react', 'react-dom']`;
+  P5-C retargeted the alias to the vendored in-tree copy
+  (`src/renderer/features/streamify-canary/`) and retired the dedupe +
+  react pinning (in-tree sources resolve the ordinary way — the
+  outside-the-root machinery existed only for the retired
+  `front-end/canary` sibling).
 - **Conflict surface:** none — fork-owned file, but listed because its
   aliases must mirror `web.vite.config.ts` (A24).
 
@@ -267,20 +270,22 @@ P5-A (this PR).
 
 ### A24. `web.vite.config.ts` (P5-A)
 
-- **What:** `resolve.alias['@streamify/canary']` → `../canary/src` (the
-  residential canary console mounts inside the gated /debug route — source
-  resolved straight from the workspace, no package link, no legacy
-  canary.html) + `resolve.dedupe ['react', 'react-dom']` (the canary
-  sources sit outside the feishin root; see A3).
+- **What:** `resolve.alias['@streamify/canary']` → the vendored in-tree
+  copy `src/renderer/features/streamify-canary/` (P5-C; the P5-A wiring
+  pointed at the `../canary/src` workspace sibling, which broke the fork
+  repo and the Docker build context — both ship `front-end/feishin`
+  alone). The P5-A `resolve.dedupe` + per-subpath react pinning are
+  retired with the sibling (in-tree resolution needs neither).
 - **Conflict surface:** low — additive entries in the resolve block.
 
 ### A25. `tsconfig.web.json` (P5-A)
 
-- **What:** `paths` entries: `@streamify/canary/*` → `../canary/src/*`, and
-  `react` / `react/jsx-runtime` pinned to feishin's own `@types/react`
-  (the outside-the-root canary sources typecheck under the feishin program
-  without any front-end npm install in CI — feishin CI only runs pnpm
-  inside `front-end/feishin`).
+- **What:** `paths` entry: `@streamify/canary/*` →
+  `src/renderer/features/streamify-canary/*` (P5-C retarget; the P5-A
+  `../canary/src/*` mapping and the `react` / `react/jsx-runtime` @types
+  pinning existed only for the retired outside-the-root sibling — the
+  vendored tree sits under `src/renderer/**` and is covered by the stock
+  include set).
 - **Conflict surface:** low — additive paths entries.
 
 ---
@@ -356,9 +361,15 @@ can ignore them and audits can hold us to the directory-isolation rule.
 - `streamify-downloads/` / `streamify-wrapped/` / `streamify-debug/`
   (P4-A) — the downloads manager, the wrapped stats page, the gated /debug
   diagnostics console. P5-A added `streamify-debug/components/
-  canary-panel.tsx` — the residential canary console mount (the
-  front-end/canary workspace component, wired to the active Supabase
-  session + the resolver's relay knob).
+  canary-panel.tsx` — the residential canary console mount (wired to the
+  active Supabase session + the resolver's relay knob).
+- `streamify-canary/` (P5-C vendoring) — the W0.1b residential canary
+  console source, previously the `front-end/canary` workspace sibling and
+  now in-tree (`matrix.ts`, `probeMatrix.ts`, `postResults.ts`,
+  `relayFetch.ts`, `types.ts`, `ui/CanaryConsole.tsx` + `ui/canary.css`);
+  the monorepo workspace is retired. Brought to the fork's lint style
+  (eslint/stylelint `--fix` + apostrophe escapes); the SQL migration's
+  source of truth stays `supabase/migrations/`.
 - `streamify-jam/` / `streamify-eq/` / `streamify-settings/` (P4-B, #193) —
   the Jam live-queue drawer, the EQ DSP panel, the Streamify settings pages
   + brand theme.

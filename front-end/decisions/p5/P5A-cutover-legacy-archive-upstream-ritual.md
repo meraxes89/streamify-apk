@@ -111,16 +111,17 @@ unit-tested); the route keeps the canary mount on the far side of the
   network-free node test lane.
 
 **Resolution contract** (no `legacy/front-end-web/canary.html`, no package
-link): `@streamify/canary` aliases to `front-end/canary/src` in
-`web.vite.config.ts` + `vitest.config.ts` (+ `resolve.dedupe
-['react','react-dom']` — the source sits outside the feishin root, and
-without dedupe vite resolves a phantom `<root>/react` module for it), and
-in `tsconfig.web.json` paths (`@streamify/canary/*`, plus `react` /
-`react/jsx-runtime` pinned to feishin's `@types/react` so the
-outside-the-root sources typecheck under the feishin program with **no
-front-end npm install in CI** — Feishin CI only runs pnpm inside
-`front-end/feishin`). ESLint does not lint the canary tree (outside its
-cwd); the feishin web build bundles it with its own CSS.
+link): `@streamify/canary` aliases to the **vendored in-tree copy** at
+`front-end/feishin/src/renderer/features/streamify-canary/` (P5-C
+reconciliation: the P5-A wiring pointed at the `front-end/canary` workspace
+sibling, which exists only in the monorepo — the fork repo and the Docker
+build context both ship `front-end/feishin` alone, so the sibling alias
+broke the fork's typecheck and the image build). The alias lives in
+`web.vite.config.ts` + `vitest.config.ts` + `tsconfig.web.json` paths; the
+outside-the-root react pinning and `resolve.dedupe` are retired with the
+sibling (in-tree sources resolve react from feishin's own `node_modules`
+the ordinary way). ESLint and stylelint cover the vendored tree (it was
+brought to the fork's style with `--fix` plus apostrophe escapes).
 
 The canary package gained an optional host-injection seam
 (`CanaryConsoleProps` + the `postResults(report, override?)` param, with

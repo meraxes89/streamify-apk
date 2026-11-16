@@ -17,31 +17,15 @@ export default defineConfig({
             '/@/remote': path.resolve(__dirname, './src/remote'),
             '/@/renderer': path.resolve(__dirname, './src/renderer'),
             '/@/shared': path.resolve(__dirname, './src/shared'),
-            // P5-A: the canary console panel test — same aliases as
-            // web.vite.config.ts (@streamify/canary → front-end/canary/src;
-            // every react entry point pinned to feishin's own react copy —
-            // the canary source sits outside the feishin root). ORDER
-            // MATTERS: the subpaths must stay above the bare 'react'
-            // entry (prefix matching would rewrite them).
-            '@streamify/canary': path.resolve(__dirname, '../canary/src'),
-            'react/compiler-runtime': path.resolve(
+            // P5-C: the canary console is VENDORED in-tree
+            // (src/renderer/features/streamify-canary/) — same source the
+            // web build bundles; the outside-the-root react pinning is gone
+            // with the sibling dependency.
+            '@streamify/canary': path.resolve(
                 __dirname,
-                './node_modules/react/compiler-runtime.js',
+                './src/renderer/features/streamify-canary',
             ),
-            'react/jsx-dev-runtime': path.resolve(
-                __dirname,
-                './node_modules/react/jsx-dev-runtime.js',
-            ),
-            'react/jsx-runtime': path.resolve(__dirname, './node_modules/react/jsx-runtime.js'),
-            // eslint-disable-next-line perfectionist/sort-objects -- MUST stay last: prefix matching would rewrite the subpath specifiers above.
-            react: path.resolve(__dirname, './node_modules/react/index.js'),
         },
-        // P5-A: the canary console imports react from OUTSIDE the project
-        // root (front-end/canary/src) — without dedupe, vite resolves a
-        // phantom <root>/react module for those files and the externalized
-        // CJS require chain dies ("Cannot find module
-        // './cjs/react.development.js'"). One react, one react-dom.
-        dedupe: ['react', 'react-dom'],
     },
     test: {
         environment: 'node',
