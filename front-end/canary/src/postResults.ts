@@ -124,9 +124,17 @@ export interface PostResultsOutcome {
   error?: string;
 }
 
-/** POST the flattened rows to ${url}/rest/v1/canary_results (Prefer: return=minimal). */
-export async function postResults(report: ProbeReport): Promise<PostResultsOutcome> {
-  const env = supabaseEnv();
+/**
+ * Post a report to Supabase (`${url}/rest/v1/canary_results`,
+ * `Prefer: return=minimal`). `override` (P5-A: the feishin /debug mount)
+ * supplies the host app's live Supabase config — the active session's URL
+ * + anon key — and wins over the build-time env reads.
+ */
+export async function postResults(
+  report: ProbeReport,
+  override?: SupaEnv
+): Promise<PostResultsOutcome> {
+  const env = override ?? supabaseEnv();
   if (!env) {
     return {
       posted: false,
@@ -135,8 +143,11 @@ export async function postResults(report: ProbeReport): Promise<PostResultsOutco
     };
   }
   const rows = buildRows(report);
+  // Same trailing-slash normalization supabaseEnv() applies — the override
+  // comes from the host session and may carry one.
+  const url = env.url.replace(/\/+$/, '');
   try {
-    const res = await fetch(`${env.url}/rest/v1/canary_results`, {
+    const res = await fetch(`${url}/rest/v1/canary_results`, {
       method: 'POST',
       headers: {
         apikey: env.anonKey,

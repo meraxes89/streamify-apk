@@ -1712,6 +1712,7 @@
         "window_all": "All-time"
     },
     "streamifyDebug": {
+        "canaryHint": "Residential-IP probe evidence (10 innertube clients × 2 videos + the R-C conditions). Runs from this browser through the relay; results post to canary_results (anon insert).",
         "crdtLastPersist": "Last CRDT persist",
         "crdtLastSync": "Last CRDT sync",
         "crdtOutbox": "Playlist outbox depth",
@@ -1723,6 +1724,7 @@
         "flushOutbox": "Flush Outbox",
         "ledgerCloud": "Cloud-seeded rows",
         "ledgerLocal": "Local rows",
+        "panelCanary": "Residential canary console",
         "panelCrdt": "Playlist CRDT sync",
         "panelLedger": "Wrapped ledger",
         "panelResolver": "Resolver rungs & cache",

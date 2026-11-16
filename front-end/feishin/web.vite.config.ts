@@ -152,6 +152,10 @@ export default defineConfig({
             '/@/remote': path.resolve(__dirname, './src/remote'),
             '/@/renderer': path.resolve(__dirname, './src/renderer'),
             '/@/shared': path.resolve(__dirname, './src/shared'),
+            // P5-A: the residential canary console (front-end/canary) mounts
+            // inside the gated /debug route — resolve it straight from the
+            // workspace source (no package link, no legacy canary.html).
+            '@streamify/canary': path.resolve(__dirname, '../canary/src'),
             path: path.resolve(__dirname, './src/renderer/shims/path.ts'),
         },
     },
