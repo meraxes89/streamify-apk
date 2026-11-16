@@ -12,10 +12,31 @@
 # branch; merged/dead branches are removed to prevent stale redeployments.
 name: Web Deploy
 
+# Path gating (CI cost audit, 2026-11): push paths narrowed to the
+# non-feishin front-end surface + rust/crates/streamify-audio (the wasm
+# golden fixtures) — until the P5 cutover, front-end/feishin/** merges
+# redeployed the IDENTICAL legacy front-end/web bundle through the
+# serialized `pages` concurrency group (a full wasm-pack + Vite rebuild
+# per merge for zero artifact change). Branch list pruned to [main]:
+# every ws-w/* proof branch has merged (the header policy: merged/dead
+# branches are removed; re-add the ACTIVE iteration branch when a new
+# ws-w stream starts). workflow_dispatch stays as the manual escape hatch.
 on:
   push:
-    branches: [main, 'ws-w/g4-residential-direct', 'ws-w/lyrics-engine-port', 'ws-w/ui-p2-browse', 'ws-w/ui-p1-listen-loop', 'ws-w/home-teardown', 'ws-w/admin-stats-wrapped', 'ws-w/engine-facade-breadth', 'ws-w/design-polish', 'ws-w/p2b-playback-spine']
-    paths: ['front-end/**', '.github/workflows/web-deploy.yml']
+    branches: [main]
+    paths:
+      - 'front-end/web/**'
+      - 'front-end/crates/**'
+      - 'front-end/third_party/**'
+      - 'front-end/relay/**'
+      - 'front-end/.cargo/**'
+      - 'front-end/package.json'
+      - 'front-end/package-lock.json'
+      - 'front-end/Cargo.toml'
+      - 'front-end/Cargo.lock'
+      - 'front-end/tsconfig.base.json'
+      - 'rust/crates/streamify-audio/**'
+      - '.github/workflows/web-deploy.yml'
   workflow_dispatch: {}
 
 permissions:
