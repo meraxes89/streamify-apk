@@ -1792,7 +1792,8 @@
             "presetNamePlaceholder": "Preset name",
             "savePreset": "Save preset",
             "deletePreset": "Delete preset",
-            "builtinCount": "{{count}} built-in presets: Flat, Bass Boost, Vocal, Acoustic, Electronic, Late Night."
+            "builtinCount": "{{count}} built-in presets: Flat, Bass Boost, Vocal, Acoustic, Electronic, Late Night.",
+            "chartAriaLabel": "Equalizer frequency response curve"
         },
         "settings": {
             "title": "Streamify settings",

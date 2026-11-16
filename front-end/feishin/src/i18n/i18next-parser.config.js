@@ -36,7 +36,11 @@ module.exports = {
     lineEnding: 'auto',
     locales: ['en'],
     namespaceSeparator: false,
-    output: 'src/renderer/i18n/locales/$LOCALE.json',
+    // i18next-parser resolves config-relative paths against this file's
+    // directory (src/i18n/), so './locales/' is the live catalog directory
+    // src/i18n/locales/ — the vendored upstream pointed at the long-gone
+    // src/renderer/i18n/locales/ tree.
+    output: './locales/$LOCALE.json',
     pluralSeparator: '_',
     resetDefaultValueLocale: 'en',
     sort: true,
