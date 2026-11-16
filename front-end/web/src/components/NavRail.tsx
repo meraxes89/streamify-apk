@@ -10,6 +10,7 @@
 import { NavLink } from 'react-router-dom';
 import { Icon, type IconName } from './icons';
 import { usePlayerStore } from '../lib/playerStore';
+import { nowPlaying as nowPlayingOf, useQueueStore } from '../lib/playback/queueStore';
 
 interface NavItem {
   to: string;
@@ -33,8 +34,9 @@ export function NavRail(): JSX.Element {
   // NOTE: both selectors are UNCONDITIONAL — a `||` short-circuit here
   // would skip the second hook when the first is truthy and flip React's
   // hook order (the classic conditional-hooks crash).
-  const currentTrack = usePlayerStore((s) => s.snapshot?.currentTrack ?? null);
-  const queueLength = usePlayerStore((s) => s.queue.rows.length);
+  const queueState = useQueueStore();
+  const currentTrack = nowPlayingOf(queueState) ?? usePlayerStore.getState().snapshot?.currentTrack ?? null;
+  const queueLength = queueState.queue.rows.length;
   const hasTrack = currentTrack !== null || queueLength > 0;
 
   return (

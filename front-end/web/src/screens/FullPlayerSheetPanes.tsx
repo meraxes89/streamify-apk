@@ -23,7 +23,8 @@ import { useMemo, useRef } from 'react';
 import { FluidSyllableText } from '../components/FluidSyllableText';
 import { YtLyricsHeader } from '../components/YtLyricsHeader';
 import { Icon } from '../components/icons';
-import { playedRows, upNextRows, usePlayerStore } from '../lib/playerStore';
+import { playedRows, upNextRows, useQueueStore } from '../lib/playback/queueStore';
+import { usePlayerStore } from '../lib/playerStore';
 import { useLyrics, useLyricAutoScroll } from '../lib/useLyrics';
 import type { LyricsSource } from '../lyrics';
 
@@ -56,7 +57,7 @@ export interface LandscapeQueuePaneProps {
 
 export function LandscapeQueuePane(props: LandscapeQueuePaneProps): JSX.Element {
   const { onTrackClick } = props;
-  const queue = usePlayerStore((s) => s.queue);
+  const queue = useQueueStore((s) => s.queue);
   const snapshot = usePlayerStore((s) => s.snapshot);
   const isPlaying = snapshot?.status === 'Playing';
 

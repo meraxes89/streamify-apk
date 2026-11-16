@@ -10,6 +10,12 @@
 
 import { useCallback, useRef } from 'react';
 import { usePlayerStore } from '../lib/playerStore';
+import {
+  displayPositionMs,
+  displayStatus,
+  nowPlaying as nowPlayingOf,
+  useQueueStore,
+} from '../lib/playback/queueStore';
 import type { TrackRow } from '../lib/wasmEngine';
 
 function fmt(ms: number): string {
@@ -28,26 +34,27 @@ export function PlayerBar({
   onEgressModeChange: (mode: 'element' | 'spine') => void;
 }): JSX.Element {
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const queue = usePlayerStore((s) => s.queue);
+  const queueState = useQueueStore();
   const lastRung = usePlayerStore((s) => s.lastRung);
   const send = usePlayerStore((s) => s.send);
-  const playOrToggle = usePlayerStore((s) => s.playOrToggle);
+  const playOrToggle = useQueueStore((s) => s.playOrToggle);
+  const queueNext = useQueueStore((s) => s.next);
+  const queuePrev = useQueueStore((s) => s.previous);
   const seekRef = useRef<HTMLInputElement | null>(null);
 
-  // The honest display track: the cursor's row, falling back to the
-  // HEAD of the queue — a queued-but-not-playing list must not read
-  // "Nothing queued" (the P2 desync: the bar ignored the queue).
+  // The honest display track: the MACHINE's now-playing (the debug bar
+  // must show restores + paused advances, not just the engine cursor).
   const track: TrackRow | null =
-    snapshot?.currentTrack ?? queue.rows[queue.cursor ?? 0]?.track ?? null;
-  const status = snapshot?.status ?? 'Idle';
-  const positionMs = snapshot?.positionMs ?? 0;
+    nowPlayingOf(queueState) ?? snapshot?.currentTrack ?? null;
+  const status = displayStatus(snapshot, queueState);
+  const positionMs = displayPositionMs(snapshot, queueState);
   const durationMs = track?.durationMs ?? 0;
   const playing = status === 'Playing';
   const buffering = status === 'Buffering';
   // The engine boots into Buffering (initialize: Idle→Buffering, the UDL
   // contract) — with no track anywhere that's rest, not buffering.
   const statusLabel =
-    buffering && track === null && (queue.rows.length === 0 || queue.cursor === null) && snapshot?.clock === null
+    buffering && track === null && (queueState.queue.rows.length === 0 || queueState.queue.cursor === null) && snapshot?.clock === null
       ? 'idle'
       : status.toLowerCase();
 
@@ -114,7 +121,7 @@ export function PlayerBar({
         <button
           type="button"
           className="btn btn--transport"
-          onClick={() => send({ type: 'previous' })}
+          onClick={() => queuePrev()}
           disabled={track === null}
           aria-label="Previous track"
         >
@@ -132,7 +139,7 @@ export function PlayerBar({
         <button
           type="button"
           className="btn btn--transport"
-          onClick={() => send({ type: 'next' })}
+          onClick={() => queueNext()}
           disabled={track === null}
           aria-label="Next track"
         >

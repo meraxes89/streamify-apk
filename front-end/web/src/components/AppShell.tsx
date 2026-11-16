@@ -15,10 +15,11 @@ import { loadEngine, relayBaseCandidate } from '../lib/engine';
 import { createEngineStack } from '../lib/wasmEngine';
 import type { WasmEnginePort } from '../lib/wasmEngine';
 import { usePlayerStore } from '../lib/playerStore';
+// P2-B: the queue state machine — bound beside the transport mirror so
+// the machine owns boundaries, scrobble, gapless, and restore from boot.
+import { useQueueStore } from '../lib/playback/queueStore';
 import { useSessionStore } from '../lib/sessionStore';
 import { useToastStore } from '../lib/toastStore';
-import { cloudTrackId, recordPlayEvent } from '../lib/supabase';
-import { recordTally } from '../lib/playTally';
 import { initSlog, slog, slogThrow } from '../lib/slog';
 import { APP_BUILD, APP_VERSION } from '../version';
 import { NavRail } from './NavRail';
@@ -78,6 +79,7 @@ export function AppShell(): JSX.Element {
   const closeFullPlayer = useUiStore((s) => s.closeFullPlayer);
 
   const bind = usePlayerStore((s) => s.bind);
+  const bindQueue = useQueueStore((s) => s.bind);
   const setResolveError = usePlayerStore((s) => s.setResolveError);
   const pushToast = useToastStore((s) => s.push);
   const initSession = useSessionStore((s) => s.init);
@@ -100,7 +102,8 @@ export function AppShell(): JSX.Element {
           return;
         }
         bind(stack.port);
-        slog.i('shell', 'engine ready — control plane bound');
+        bindQueue(stack.port);
+        slog.i('shell', 'engine ready — control plane + queue machine bound');
         // Resolve failures surface on the store lane + a toast (the P2 bug
         // swallowed them — rows stuck on "playing…" with nothing honest).
         stack.port.onResolveError = (_videoId, message) => {
@@ -119,39 +122,15 @@ export function AppShell(): JSX.Element {
     return () => {
       aliveRef.current = false;
     };
-  }, [bind, initSession, setResolveError, pushToast]);
+  }, [bind, bindQueue, initSession, setResolveError, pushToast]);
 
-  // ---- play-event telemetry (cloud when signed in; local tally always) --
-  const session = useSessionStore((s) => s.session);
+  // P2-B: play-event telemetry lives in the queue store's session
+  // runtime now — the scrobbler (min(half, 4 min) of played time, fired
+  // once per session, offline outbox) replaced the old transition-
+  // based effect. Nothing to wire here; the snapshot subscription in
+  // queueStore.bind owns accrual + the local tally + the cloud lane.
   const snapshot = usePlayerStore((s) => s.snapshot);
   const port = usePlayerStore((s) => s.port);
-  const reportedRef = useRef<string | null>(null);
-  useEffect(() => {
-    const current = snapshot?.currentTrack?.id ?? null;
-    const prev = reportedRef.current;
-    if (prev !== null && prev !== current) {
-      const row = port?.getQueue().rows.find((r) => r.track.id === prev)?.track;
-      if (row !== undefined) {
-        const playedSec = (snapshot?.positionMs ?? 0) / 1000;
-        const event = {
-          trackSig: cloudTrackId(row.title, row.artist),
-          title: row.title,
-          artist: row.artist,
-          durationPlayedSec: playedSec,
-          completionRatio: row.durationMs > 0 ? Math.min(1, playedSec / (row.durationMs / 1000)) : 0,
-        };
-        recordTally(event);
-        slog.i(
-          'telemetry',
-          `play event — ${row.title} · ${row.artist} (${Math.round(playedSec)}s, ${event.completionRatio > 0 ? Math.round(event.completionRatio * 100) : 0}%)`,
-        );
-        if (session !== null) {
-          void recordPlayEvent(event);
-        }
-      }
-    }
-    reportedRef.current = current;
-  }, [snapshot?.currentTrack?.id, snapshot?.positionMs, session, port]);
 
   const enginePhase: 'pending' | 'loaded' | 'error' = engineFailed
     ? 'error'

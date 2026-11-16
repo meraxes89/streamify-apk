@@ -808,6 +808,41 @@ export async function recordPlayEvent(event: {
   }).catch(() => undefined);
 }
 
+/**
+ * P2-B (scrobble): the REPORTING variant the scrobble outbox drains
+ * through. Same wire shape as recordPlayEvent, but the verdict comes
+ * back: false when unsigned-in or the POST failed, so the retry queue
+ * can keep the event for the next drain instead of silently losing it.
+ */
+export async function recordPlayEventStrict(event: {
+  trackSig: string;
+  title: string;
+  artist: string;
+  durationPlayedSec: number;
+  completionRatio: number;
+}): Promise<boolean> {
+  const session = await getSession();
+  if (session === null) return false;
+  try {
+    const res = await restCall('user_play_events', {
+      method: 'POST',
+      prefer: 'return=minimal',
+      body: {
+        user_id: session.user.id,
+        track_sig: event.trackSig,
+        title: event.title,
+        artist: event.artist,
+        duration_played_sec: Math.round(event.durationPlayedSec),
+        completion_ratio: Math.min(1, Math.max(0, event.completionRatio)),
+        hour_of_day: new Date().getHours(),
+      },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Library — playlists (P2 browse: the public.playlists + playlist_tracks
 // tables from schema.sql, same raw-fetch house style; RLS is the fence)

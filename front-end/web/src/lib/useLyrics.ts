@@ -36,6 +36,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerStore } from './playerStore';
+import { nowPlaying as nowPlayingOf, useQueueStore } from './playback/queueStore';
 import type { TrackRow } from './wasmEngine';
 import {
   EMPTY_LYRICS,
@@ -78,8 +79,10 @@ export interface UseLyricsResult {
  */
 function useDisplayTrack(): TrackRow | null {
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const queue = usePlayerStore((s) => s.queue);
-  return snapshot?.currentTrack ?? queue.rows[queue.cursor ?? 0]?.track ?? null;
+  const queueState = useQueueStore();
+  // The MACHINE's now-playing first (paused advances / restores must not
+  // show stale lyrics), the engine's current as the fallback.
+  return nowPlayingOf(queueState) ?? snapshot?.currentTrack ?? null;
 }
 
 export function useLyrics(): UseLyricsResult {
