@@ -1,3 +1,6 @@
+import type { OfflineServeResult } from '../downloads/download-manager';
+
+import { quarantineOfflineTrack, tryServeOfflineTrack } from '../downloads/instance';
 import {
     getStreamUrl,
     invalidateStreamUrl,
@@ -89,6 +92,29 @@ export class StreamifySabrError extends Error {
 const sessions = new Map<string, PlaybackSession>();
 const urlIndex = new Map<string, string>();
 
+// ---------------------------------------------------------------------------
+// The zero-egress offline bypass (P4-A)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sessions whose live URL came from the downloads layer (an OPFS-backed,
+ * tag-verified Blob) rather than the resolver. Their error handling takes
+ * the dedicated offline branch in recoverFromError: quarantine the entry,
+ * then re-resolve ONLINE — a stale-URL probe makes no sense for a blob.
+ */
+const offlineServed = new Set<string>();
+
+/** The mirror's rung union (resolve.ts LadderRung) — used to validate a
+ * sidecar's recorded rung before it enters a resolution object. */
+const KNOWN_RUNGS: readonly string[] = [
+    'visionos-direct',
+    'ios-direct',
+    'ios-pot-direct',
+    'web-pot-direct',
+    'visionos-relay',
+    'web-safari-hls',
+];
+
 export interface SourceErrorShape {
     code?: number;
     label: string;
@@ -107,10 +133,6 @@ export function lastRungForVideo(videoId: string): LadderRung | null {
     }
     return null;
 }
-
-// ---------------------------------------------------------------------------
-// The controller seam's back end
-// ---------------------------------------------------------------------------
 
 /**
  * Claim a media-element error for the Streamify layer. SYNC decision, async
@@ -133,8 +155,24 @@ export function onStreamifySourceError(err: SourceErrorShape, audio: HTMLMediaEl
     return true;
 }
 
-/** Resolve a video and register its playback session (ladder + URL index). */
+// ---------------------------------------------------------------------------
+// The controller seam's back end
+// ---------------------------------------------------------------------------
+
+/** Resolve a video and register its playback session (ladder + URL index).
+ * The P4-A order: OPFS FIRST — a valid, tag-verified offline entry is served
+ * as a seekable local Blob and the resolver is never touched (zero relay
+ * egress). Only on a miss does the online ladder run. */
 export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlResolution> {
+    const offline = await tryServeOfflineTrack(videoId);
+    if (offline !== null) {
+        const resolution = offlineResolution(offline);
+        indexResolution(resolution);
+        offlineServed.add(videoId);
+        logger.debug(`streamify: serving ${videoId} from the offline copy (zero egress)`);
+        return resolution;
+    }
+    offlineServed.delete(videoId);
     const resolution = await getStreamUrl(videoId, { relayBase: relayBaseCandidate() });
     indexResolution(resolution);
     if (resolution.protocol === 'sabr') {
@@ -144,10 +182,6 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
     }
     return resolution;
 }
-
-// ---------------------------------------------------------------------------
-// The mid-crossfade guard (the contract: never re-resolve mid-crossfade)
-// ---------------------------------------------------------------------------
 
 function inCrossfadeWindow(session: PlaybackSession): boolean {
     try {
@@ -166,7 +200,7 @@ function inCrossfadeWindow(session: PlaybackSession): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Source swaps (element-level, position-preserving)
+// The mid-crossfade guard (the contract: never re-resolve mid-crossfade)
 // ---------------------------------------------------------------------------
 
 function indexResolution(resolution: StreamUrlResolution): void {
@@ -180,6 +214,40 @@ function indexResolution(resolution: StreamUrlResolution): void {
 }
 
 // ---------------------------------------------------------------------------
+// Source swaps (element-level, position-preserving)
+// ---------------------------------------------------------------------------
+
+/** Build the offline resolution (the StreamUrlResolution contract, with
+ * honest facts: seekable in place, no ladder to walk, rung = the rung that
+ * served the download). */
+function offlineResolution(off: OfflineServeResult): StreamUrlResolution {
+    const now = Date.now();
+    const rung = off.rung !== null && KNOWN_RUNGS.includes(off.rung) ? off.rung : 'visionos-relay';
+    if (off.rung !== null && !KNOWN_RUNGS.includes(off.rung)) {
+        logger.warn('streamify: offline sidecar carries an unknown rung — provenance degraded', {
+            rung: off.rung,
+        });
+    }
+    return {
+        artist: off.artist,
+        codecs: off.codecs,
+        contentLength: off.contentLength,
+        durationMs: off.durationMs,
+        expiresAt: now + 24 * 3600 * 1000, // blobs don't expire; contract-consistent
+        expirySource: 'default',
+        isSabr: false,
+        ladder: [],
+        protocol: 'progressive',
+        rangeSupport: true, // Blob URLs seek natively in place
+        resolvedAt: now,
+        rung: rung as StreamUrlResolution['rung'],
+        title: off.title,
+        trackId: off.videoId,
+        url: off.url,
+    };
+}
+
+// ---------------------------------------------------------------------------
 // The error claim hook (the thin upstream seam calls this)
 // ---------------------------------------------------------------------------
 
@@ -190,6 +258,37 @@ async function recoverFromError(
     err: SourceErrorShape,
 ): Promise<void> {
     const at = audio.currentTime;
+
+    // P4-A offline branch: the failing source is one of OUR blob URLs. A
+    // blob never goes stale and there is no ladder to walk — the honest
+    // recovery is quarantine + online re-resolve (forceRefresh), so the
+    // integrity failure never blocks playback.
+    if (offlineServed.has(session.videoId)) {
+        offlineServed.delete(session.videoId);
+        await quarantineOfflineTrack(
+            session.videoId,
+            `offline source errored in the element (${err.label})`,
+        );
+        try {
+            const fresh = await getStreamUrl(session.videoId, {
+                forceRefresh: true,
+                relayBase: relayBaseCandidate(),
+            });
+            indexResolution(fresh);
+            if (fresh.protocol === 'sabr') {
+                throw new StreamifySabrError(session.videoId);
+            }
+            swapSource(audio, fresh.url, at, session.videoId);
+            return;
+        } catch (resolveErr) {
+            logger.error('streamify: offline fallback re-resolve refused — honest failure', {
+                resolveErr,
+                videoId: session.videoId,
+            });
+            return;
+        }
+    }
+
     const probe = await probeStreamUrl(failedUrl);
     const stale = !probe.ok && (probe.status === 403 || probe.status === 410);
 

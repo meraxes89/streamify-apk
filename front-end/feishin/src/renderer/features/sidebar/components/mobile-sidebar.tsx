@@ -42,6 +42,7 @@ export const MobileSidebar = () => {
             Albums: t('page.sidebar.albums'),
             Artists: t('page.sidebar.albumArtists'),
             'Artists-all': t('page.sidebar.artists'),
+            Downloads: t('page.sidebar.downloads'),
             Favorites: t('page.sidebar.favorites'),
             Genres: t('page.sidebar.genres'),
             Home: t('page.sidebar.home'),
@@ -50,6 +51,7 @@ export const MobileSidebar = () => {
             Search: t('page.sidebar.search'),
             Settings: t('page.sidebar.settings'),
             Tracks: t('page.sidebar.tracks'),
+            Wrapped: t('page.sidebar.wrapped'),
         }),
         [t],
     );

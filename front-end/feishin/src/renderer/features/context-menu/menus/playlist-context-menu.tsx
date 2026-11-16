@@ -6,6 +6,7 @@ import { EditPlaylistAction } from '/@/renderer/features/context-menu/actions/ed
 import { GetInfoAction } from '/@/renderer/features/context-menu/actions/get-info-action';
 import { PlayAction } from '/@/renderer/features/context-menu/actions/play-action';
 import { ContextMenuPreview } from '/@/renderer/features/context-menu/components/context-menu-preview';
+import { StreamifyDownloadAction } from '/@/renderer/features/streamify-downloads/components/download-action';
 import { usePermissions } from '/@/renderer/store';
 import { ContextMenu } from '/@/shared/components/context-menu/context-menu';
 import { LibraryItem, Playlist } from '/@/shared/types/domain-types';
@@ -37,6 +38,7 @@ export const PlaylistContextMenu = ({ items, type }: PlaylistContextMenuProps) =
             <PlayAction ids={ids} itemType={LibraryItem.PLAYLIST} />
             <ContextMenu.Divider />
             <AddToPlaylistAction items={ids} itemType={LibraryItem.PLAYLIST} />
+            <StreamifyDownloadAction ids={ids} itemType={LibraryItem.PLAYLIST} />
             <ContextMenu.Divider />
             <EditPlaylistAction disabled={!canEditPlaylist} items={items} />
             <DeletePlaylistAction disabled={!canDeletePlaylist} items={items} />

@@ -118,6 +118,20 @@ export function loadPlaylistState(userId: string): HydratedPlaylistState {
     }
 }
 
+/** P4-A (/debug): the savedAt of the persisted state for a user — the
+ * playlist lane's last-flush-to-local timestamp. null when never saved.
+ * Read-only introspection; the write path stays untouched. */
+export function playlistPersistTimestamp(userId: string): null | string {
+    try {
+        const raw = playlistStorage().getItem(STATE_KEY_PREFIX + userId);
+        if (raw === null) return null;
+        const parsed = JSON.parse(raw) as { savedAt?: unknown };
+        return typeof parsed.savedAt === 'string' ? parsed.savedAt : null;
+    } catch {
+        return null;
+    }
+}
+
 /** The storage backend: the global localStorage when present, else memory. */
 export function playlistStorage(): PlaylistStorageBackend {
     if (backend !== null) {

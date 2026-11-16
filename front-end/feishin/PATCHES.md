@@ -251,3 +251,52 @@ These upstream files may be touched by later phases, and only for the stated pur
   `api/streamify/playback/stream-source.ts` (`lastRungForVideo` export),
   `features/streamify-auth/routes/streamify-auth-route.tsx` (i18n), and
   `src/i18n/locales/en.json` (`streamifyAuth.*` + `error.streamify*` keys).
+
+## Carried patches (P4-A — downloads, wrapped, /debug)
+
+### 24. `src/renderer/router/routes.ts` + `src/renderer/router/app-router.tsx` — three routes (pre-approved category: route registration)
+
+- **What:** added `STREAMIFY_DEBUG = '/debug'`, `STREAMIFY_DOWNLOADS = '/streamify-downloads'`, `STREAMIFY_WRAPPED = '/streamify-wrapped'` to the `AppRoute` enum, three lazy imports, and three `<Route>` elements inside the `AuthenticationOutlet → AppOutlet → ResponsiveLayout` group (next to `SettingsRoute`).
+- **Why:** the P4-A feature surfaces (downloads manager, wrapped stats, gated diagnostics). `/debug` carries NO sidebar entry — it is reachable only via the explicit gate (`use-debug-gate.ts`: DEV mode, the persisted developer-mode grant, or `?debug=1` + authenticated admin) and redirects to `/` otherwise.
+- **Expected conflict surface:** low. Append-only at stable anchors; conflicts only if upstream reorders the route block.
+
+### 25. `src/renderer/store/settings.store.ts` — sidebar entries + v35 migration (not pre-approved; minimal)
+
+- **What:** two entries in the default `sidebarItems` array (`Downloads`, `Wrapped`), a `version: 35` bump, and a `if (version < 35)` migration that pushes the same two entries into existing users' persisted sidebar.
+- **Why:** navigation for the two user-facing P4-A views (the task's sanctioned "route entries / sidebar navigation" touch). Fresh installs get them from the default array; existing installs via the migration (the fork's own v10 Favorites precedent, verbatim).
+- **Expected conflict surface:** low-medium. The migration ladder is append-at-end; upstream sidebar churn lands in the default array (trivial merges).
+
+### 26. `src/renderer/features/sidebar/components/{sidebar,collapsed-sidebar,mobile-sidebar}.tsx` + `sidebar-icon.tsx` — label maps + icons (not pre-approved; minimal)
+
+- **What:** `Downloads:` / `Wrapped:` keys in the three `translatedSidebarItemMap` copies (the established triplication, kept in sync), plus `RiDownload2*` / `RiSparkling*` icon imports and two `case AppRoute.STREAMIFY_*` entries in `sidebar-icon.tsx`.
+- **Why:** the label maps fall back to the persisted (possibly stale) `item.label` without them; the icon switch would fall back to the home icon.
+- **Expected conflict surface:** low. One line per map; icon cases append at a stable switch.
+
+### 27. `src/i18n/locales/en.json` — `streamifyDownloads` / `streamifyWrapped` / `streamifyDebug` sections + `page.sidebar.{downloads,wrapped}` (pre-approved category: i18n keys)
+
+- **What:** three new top-level sections (the `streamifyAuth` precedent from P3-B) plus two `page.sidebar` keys.
+- **Why:** every P4-A user-facing string; other locales fall back to `en` (the fork's i18n policy).
+- **Expected conflict surface:** none — append-only at file end (plus two keys inside the alphabetically-adjacent sidebar block).
+
+### 28. `src/renderer/features/context-menu/menus/{song,album,playlist-song,playlist}-context-menu.tsx` — the download action (not pre-approved; one line each)
+
+- **What:** one `<StreamifyDownloadAction ids={ids} itemType={…} />` line + one import per menu. The action component itself lives in OUR tree (`features/streamify-downloads/components/download-action.tsx`) and self-hides on non-Streamify servers (the `SetRatingAction` pattern, verbatim) — the stock `DownloadAction` is untouched.
+- **Why:** the task's "download trigger hooks wired into Streamify's song/album/playlist action surfaces"; album/playlist selections expand to song rows through the live snapshot.
+- **Expected conflict surface:** low. Single lines at stable anchors.
+
+### 29. P4-A edits inside OUR `api/streamify/` + P3 files (additive seams)
+
+- `api/streamify/playback/scrobble-bridge.ts` (P3-B, ours): added the optional `onCountedPlay` observer (called on the fire path, after `applyPlayToSnapshot` — throws contained) and the `lastFlushAt` getter (set whenever a drain completes). No behavior change for existing callers.
+- `api/streamify/streamify-controller.ts` (ours): the scrobble singleton wiring passes `onCountedPlay` → `wrapped/listening-ledger.ts` (`recordCountedPlay`).
+- `api/streamify/playlist-sync/{persistence,realtime}.ts` (P3-A, ours): two read-only introspection exports for the /debug panel — `playlistPersistTimestamp(userId)` (the persisted state's `savedAt`) and `playlistRealtimeStatus()` (bound/channelLive/userId). No lifecycle changes.
+- `api/streamify/playback/stream-source.ts` (ours): the P4-A offline bypass — `resolveStreamifyTrack` checks OPFS first (zero-egress blob serve, the resolver is never touched on a hit), and `recoverFromError` gained the offline branch (quarantine + forced online re-resolve). The existing stale/ladder logic is untouched.
+
+### 30. P4-A new files (ours, no upstream conflict)
+
+- `src/renderer/api/streamify/wasm/` — the vendored cipher artifact (streamify_cipher_bg.wasm + artifact.json manifest + the hand-written `cipher-loader.ts`; no wasm-pack glue is vendored, nothing linted but our loader).
+- `src/renderer/api/streamify/downloads/` — `cipher.ts` (typed surface), `format.ts` (STREAMIFY_DL_V1 container), `meta.ts` (sidecar codec), `opfs.ts` (OPFS + in-memory contract), `download-manager.ts` (orchestration), `instance.ts` (production binding + test seam).
+- `src/renderer/api/streamify/wrapped/` — `listening-ledger.ts` (the time-windowed ledger: local fire-path rows + cloud `user_play_events` backfill, the no-double-count merge) and `aggregates.ts` (pure windows/tops/discovery/hour-histogram).
+- `src/renderer/store/streamify-{downloads,debug}.store.ts` — the deliberately-dumb state slices (the `streamify-playlists.store.ts` pattern).
+- `src/renderer/features/streamify-{downloads,wrapped,debug}/` — routes + components + the debug gate (pure ruling split into `hooks/debug-gate-ruling.ts` for direct testing).
+- `src/renderer/api/streamify/__tests__/` — six network-free vitest suites: the artifact manifest + cipher contract (round-trip, tamper, position binding, container codec), the OPFS lifecycle (progress, cancel, quota, orphans, quarantine, offline serve), the stream-source zero-egress bypass, the wrapped aggregation + ledger merge, and the /debug gate.
+- `front-end/crates/streamify-wasm/` (monorepo side): the cipher feature split — `src/cipher.rs` (new), `src/engine.rs` (the historical lib.rs body, moved verbatim), `Cargo.toml` features (`default = ["engine"]`, `cipher`), `build-feishin-cipher.sh` (deterministic staging), `.gitignore` for pkg outputs.

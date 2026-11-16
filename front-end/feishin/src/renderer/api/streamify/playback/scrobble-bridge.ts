@@ -62,6 +62,10 @@ export interface ScrobbleBridgeOptions {
     clock?: () => number;
     /** The live snapshot (playCount bumps); null when not loaded. */
     getSnapshot?: () => LibrarySnapshot | null;
+    /** P4-A (Wrapped): fired-path observer — called once per counted play
+     * with the full fired event (timestamps, played time, rung). Feeds the
+     * listening ledger; a throwing observer never breaks the scrobble path. */
+    onCountedPlay?: (fired: ScrobbleEvent) => void;
     outboxKey?: string;
     /** Resolved-rung lookup (stream-source's lastRungForVideo in prod). */
     resolveRung?: (videoId: string) => null | string;
@@ -98,6 +102,10 @@ export interface ScrobbleTrackFacts {
 const OUTBOX_KEY = 'streamify.feishin.scrobble.v1';
 
 export class StreamifyScrobbleBridge {
+    /** P4-A: last completed drain (epoch ms; null before the first one). */
+    get lastFlushAt(): null | number {
+        return this.lastDrainAt;
+    }
     /** The live session (queue persistence reads this at save time). */
     get session(): null | ScrobbleSession {
         return this.tracker.current;
@@ -108,13 +116,17 @@ export class StreamifyScrobbleBridge {
     private baselineMs: null | number = null;
     private readonly clock: () => number;
     private readonly getSnapshot: () => LibrarySnapshot | null;
+
+    /** P4-A: last completed drain (epoch ms) — the /debug panel's flush timestamp. */
+    private lastDrainAt: null | number = null;
     /** Wall-clock of the previous report; null until the first sample. */
     private lastReportAt: null | number = null;
-
+    private readonly onCountedPlay: ((fired: ScrobbleEvent) => void) | null;
     private readonly outbox: ScrobbleOutbox;
     /** The transport was paused at the last report. */
     private paused = false;
     private readonly resolveRung: (videoId: string) => null | string;
+
     private readonly tallyStorage: TallyStorage;
 
     private readonly tracker = new PlaySessionTracker();
@@ -124,6 +136,7 @@ export class StreamifyScrobbleBridge {
         this.resolveRung = options.resolveRung ?? (() => null);
         this.getSnapshot = options.getSnapshot ?? (() => null);
         this.tallyStorage = options.tallyStorage ?? defaultTallyStorage();
+        this.onCountedPlay = options.onCountedPlay ?? null;
         this.outbox = new ScrobbleOutbox(createOutboxStore(options.outboxKey ?? OUTBOX_KEY));
     }
 
@@ -147,7 +160,9 @@ export class StreamifyScrobbleBridge {
         if (adapters !== undefined) this.adapters = adapters;
         const bound = this.adapters;
         if (bound === null) return 0;
-        return this.outbox.drain(bound.send, bound.canSend);
+        const sent = await this.outbox.drain(bound.send, bound.canSend);
+        this.lastDrainAt = this.clock();
+        return sent;
     }
 
     /**
@@ -310,6 +325,19 @@ export class StreamifyScrobbleBridge {
         const snapshot = this.getSnapshot();
         if (snapshot !== null) {
             applyPlayToSnapshot(snapshot, fired.trackId, new Date(this.clock()));
+        }
+
+        // P4-A (Wrapped): the time-windowed ledger rides the same crossing —
+        // never on starts, never on skips (the tally's ruling, verbatim).
+        if (this.onCountedPlay !== null) {
+            try {
+                this.onCountedPlay(fired);
+            } catch (err) {
+                // The ledger is an additive overlay: its failure must never
+                // break the scrobble/outbox path.
+
+                console.warn('streamify: wrapped ledger write failed', err);
+            }
         }
 
         this.outbox.push(fired);

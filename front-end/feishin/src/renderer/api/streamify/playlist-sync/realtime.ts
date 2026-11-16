@@ -135,6 +135,22 @@ export async function ensurePlaylistRealtime(session: StreamifySession): Promise
     }
 }
 
+/** P4-A (/debug): read-only introspection of the realtime binding —
+ * whether the broadcast channel is bound for a user. Read-only; the
+ * subscription lifecycle stays untouched. */
+export function playlistRealtimeStatus(): {
+    bound: boolean;
+    channelLive: boolean;
+    userId: null | string;
+} {
+    if (bound === null) return { bound: false, channelLive: false, userId: null };
+    return {
+        bound: true,
+        channelLive: bound.channel !== null,
+        userId: bound.userId,
+    };
+}
+
 /** Test-only: drop the bound channel + timers. */
 export function resetPlaylistRealtimeForTests(): void {
     teardownBound();

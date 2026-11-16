@@ -57,6 +57,7 @@ import { resolveStreamifySessionAsync } from './session';
 import { StreamifyNotImplementedError } from './streamify-error';
 import { streamifyRequest } from './streamify-request';
 import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
+import { recordCountedPlay } from './wrapped/listening-ledger';
 
 import { logger } from '/@/renderer/utils/logger';
 import { InternalControllerEndpoint, LibraryItem } from '/@/shared/types/domain-types';
@@ -142,6 +143,20 @@ function queuePersistenceFor(serverId: string): QueuePersistence {
 function scrobbleBridge() {
     return getStreamifyScrobbleBridge({
         getSnapshot: () => currentStreamifyLibrary(),
+        onCountedPlay: (fired) => {
+            // P4-A (Wrapped): the time-windowed listening ledger rides the
+            // same threshold crossing that bumps the tally (never starts,
+            // never skips). Throws are contained inside the bridge.
+            recordCountedPlay({
+                album: fired.album,
+                artist: fired.artist,
+                durationMs: fired.durationMs,
+                playedMs: fired.playedMs,
+                rung: fired.rung,
+                title: fired.title,
+                trackId: fired.trackId,
+            });
+        },
         resolveRung: lastRungForVideo,
     });
 }

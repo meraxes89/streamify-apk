@@ -12,6 +12,7 @@ import { SetRatingAction } from '/@/renderer/features/context-menu/actions/set-r
 import { ShareAction } from '/@/renderer/features/context-menu/actions/share-action';
 import { ShowInFileExplorerAction } from '/@/renderer/features/context-menu/actions/show-in-file-explorer-action';
 import { ContextMenuPreview } from '/@/renderer/features/context-menu/components/context-menu-preview';
+import { StreamifyDownloadAction } from '/@/renderer/features/streamify-downloads/components/download-action';
 import { ContextMenu } from '/@/shared/components/context-menu/context-menu';
 import { LibraryItem, Song } from '/@/shared/types/domain-types';
 
@@ -39,6 +40,7 @@ export const SongContextMenu = ({ items, type }: SongContextMenuProps) => {
             <SetRatingAction ids={ids} itemType={LibraryItem.SONG} />
             <ContextMenu.Divider />
             <DownloadAction ids={ids} />
+            <StreamifyDownloadAction ids={ids} itemType={LibraryItem.SONG} />
             <ShareAction ids={ids} itemType={LibraryItem.SONG} />
             <ContextMenu.Divider />
             <GoToAction items={items} />
