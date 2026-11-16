@@ -113,3 +113,7 @@ window.STREAMIFY_AUTH = "${STREAMIFY_AUTH}";
 window.STREAMIFY_SUPABASE_URL = "${STREAMIFY_SUPABASE_URL}";
 window.STREAMIFY_SUPABASE_ANON_KEY = "${STREAMIFY_SUPABASE_ANON_KEY}";
 window.STREAMIFY_DEV_ACCESS_TOKEN = "${STREAMIFY_DEV_ACCESS_TOKEN}";
+// P2-A: the resolver relay base (the Cloudflare worker the www-surface
+// rungs and the mint ride). Same priority shape as the web app’s
+// VITE_RELAY_BASE_URL; empty = relay off (direct-lane only).
+window.STREAMIFY_RELAY_BASE = "${STREAMIFY_RELAY_BASE}";

@@ -65,6 +65,7 @@
         "publish:win-arm64:alpha": "pnpm run build && electron-builder --config electron-builder-alpha.yml --publish always --win --arm64",
         "publish:win-arm64:beta": "pnpm run build && electron-builder --config electron-builder-beta.yml --publish always --win --arm64",
         "start": "electron-vite preview",
+        "test": "vitest run",
         "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
         "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
         "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
@@ -101,6 +102,7 @@
         "@xhayper/discord-rpc": "^1.3.4",
         "audiomotion-analyzer": "^4.5.4",
         "axios": "^1.17.0",
+        "bgutils-js": "^4.0.3",
         "butterchurn": "3.0.0-beta.5",
         "butterchurn-presets": "3.0.0-beta.4",
         "cheerio": "^1.2.0",
@@ -117,6 +119,7 @@
         "fast-xml-parser": "^5.8.0",
         "format-duration": "^3.0.2",
         "fuse.js": "^7.4.2",
+        "googlevideo": "^4.0.4",
         "i18next": "^25.10.10",
         "icecast-metadata-stats": "^0.1.12",
         "idb-keyval": "^6.2.5",
@@ -153,6 +156,7 @@
         "validate-color": "^2.2.4",
         "wavesurfer.js": "^7.12.7",
         "ws": "^8.21.0",
+        "youtubei.js": "18.3.0",
         "zod": "^3.25.76",
         "zustand": "^5.0.14"
     },
@@ -201,7 +205,8 @@
         "vite-plugin-conditional-import": "^0.1.7",
         "vite-plugin-dynamic-import": "^1.6.0",
         "vite-plugin-ejs": "^1.7.0",
-        "vite-plugin-pwa": "^1.3.0"
+        "vite-plugin-pwa": "^1.3.0",
+        "vitest": "^3.2.0"
     },
     "packageManager": "pnpm@11.5.2",
     "productName": "feishin"
