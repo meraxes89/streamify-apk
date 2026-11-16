@@ -23,7 +23,9 @@ describe('P5-A canary alias builds through the real web config', () => {
             { command: 'build', mode: 'production' },
             new URL('../../../../../web.vite.config.ts', import.meta.url).pathname,
         );
-        expect(loaded).not.toBeNull();
+        if (loaded === null) {
+            throw new Error('web.vite.config.ts failed to load');
+        }
         const config = loaded.config;
         config.build = {
             ...config.build,
