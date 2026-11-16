@@ -1,8 +1,8 @@
 # F2 — Feishin adoption phase plan
 
-Status: LIVING DOCUMENT — P0 complete, P1A (auth + session) complete, P1B (library browsing) next. P2–P5 are placeholders owned
-by their future drivers; P0 filled in what the kickoff specified and marked
-the rest TODO rather than inventing scope.
+Status: LIVING DOCUMENT — P0 complete, P1 complete (A: auth + session, B: library reads). P2 next.
+P2–P5 are placeholders owned by their future drivers; each driver fills in
+what the kickoff specifies and marks the rest TODO rather than inventing scope.
 Owner: web UI track lead.
 
 ## P0 — Fork base (COMPLETE, 2026-11-15)
@@ -49,19 +49,30 @@ Deliverables (all landed on `meraxes89/streamify-feishin@main`, vendored to
   `front-end/decisions/p1/P1A-auth-and-session.md`. Upstream diffs: the fork's
   `PATCHES.md` patches 8–14.
 
-## P1B — Library browsing (NEXT; consumes P1A's session + request lane)
+## P1B — Library browsing (COMPLETE, 2026-11-16; fork PR #2, vendored here)
 
-- Make the Streamify controller endpoints real, starting with the auth pair
-  (`authenticate`, `getUserInfo`, `getServerInfo`) and the library read set
-  (`getMusicFolderList`, `getAlbumList`/`getAlbumListCount`,
-  `getAlbumArtistList`/`Count`, `getSongList`/`getSongListCount`,
-  `getAlbumDetail`, `getSongDetail`, `getGenreList`, `getRandomSongList`,
-  `search`), backed by the Streamify engine facade
-  (`front-end/web/src/lib/engine.ts` bridge contract).
-- Auth gate: pre-approved touch of `app-outlet.tsx`/`routes.ts` to route
-  Streamify sessions through our auth flow.
-- Conventional commits; stub → real, one endpoint at a time; PATCHES.md
-  entries only change when upstream files change.
+- 24 library read endpoints real in the streamify controller, backed by a
+  local-first snapshot (`api/streamify/engine.ts` bridge, one load per
+  server+credential, zero new Supabase round-trips — `cloud.ts` mirrors the
+  web app's existing queries). Covers song/album/artist/playlist lists +
+  counts + details, search, top/similar/radio/random from play stats,
+  favorites, genres (honest empty), thumbnails via the `imageId` +
+  `getImageUrl`/`getImageRequest` dual lane.
+- IDs are byte-compatible with the Android/Web `trk_<|javaHashCode|>`
+  derivation, so favorites/stats stay consistent across platforms.
+- B delivered PR #2 to the **fork** instead of the monorepo; orchestrator
+  merged it into fork main (conflicts vs P1A resolved: A's auth seam kept,
+  B's reads kept, `getServerInfo` fused) and vendored the fork head here
+  per F1. Rule recorded in `front-end/decisions/p1/P1B-library-reads.md`:
+  phase PRs open against the **monorepo**; the fork only takes
+  fork-infrastructural changes.
+- Record + merge rulings + deferred gaps (wasm library-query surface, jam
+  queue projection, OPFS cover cache): `front-end/decisions/p1/P1B-library-reads.md`.
+
+## P2 — Playback (NEXT; the risk gate)
+
+- See the P2–P5 block below for the scope sketch; the P2 driver owns filling
+  it in from the phase kickoff.
 
 ## P2–P5 — TODO (owned by future drivers; do not invent scope here)
 
