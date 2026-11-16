@@ -27,6 +27,14 @@
 #            + hlsManifestUrl, dQw).
 # LOCAL DEV: `bunx wrangler dev --port 8787` — no account needed.
 #
+# W1A NOTE:  REDEPLOYED 2026-11-16 with the edge metadata cache — version
+#            08ee1805-21b1-49f5-a9f3-d9e1888678ab. The LIVE worker now
+#            serves /ytm/meta (the / capability list carries ytm-meta);
+#            the YTM_CACHE KV namespace (275cb7d17fe34ea59626c1ea4ba71dc9)
+#            is created and bound. Every endpoint class was verified
+#            end-to-end against the deployment (see the W1-A ADR §E2).
+#            CI still does NOT deploy — manual step by design.
+#
 # Deploy record + live verification matrix:
 #            2026-11-12 (P0):  front-end/decisions/W0.6-live-wiring.md
 #            2026-11-13 (W1.0): front-end/decisions/W1.0-minting-surface.md
@@ -35,3 +43,20 @@
 name = "streamify-relay"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
+
+# ---------------------------------------------------------------------------
+# W1-A — the edge metadata cache KV binding (/ytm/meta).
+#
+# The binding is OPTIONAL by design: local `wrangler dev`, `wrangler
+# deploy --dry-run` (CI) and any environment without the namespace run on
+# the per-isolate in-memory layer alone (the route detects absence per
+# request and bypasses KV cleanly — never a throw).
+#
+# The cache TTLs are enforced INSIDE the envelopes (never KV
+# expirationTtl alone — the stale-serve window needs the entry to outlive
+# freshness), so the binding may be deleted and recreated at any time: the
+# worst case is one refetch per hot key.
+# ---------------------------------------------------------------------------
+[[kv_namespaces]]
+binding = "YTM_CACHE"
+id = "275cb7d17fe34ea59626c1ea4ba71dc9"

@@ -56,7 +56,7 @@ discrepancies found by the P5 audit are corrected here, not papered over:
 Every edit to an upstream file is listed here — the exact conflict map for the
 next tag merge. Phase attributions: P0 (#181), P1 (#182), P1B (#184), P2-A
 (#185/#186), P2-B (#187), P3-A (#190), P3-B (#191), P4-A (#192), P4-B (#193),
-P5-A (this PR).
+P5-A (#195), W1-A (this PR — the post-cutover waves begin).
 
 ### A1. `package.json`
 
@@ -137,8 +137,10 @@ P5-A (this PR).
   the auth route); `streamifyDownloads.*` / `streamifyWrapped.*` /
   `streamifyDebug.*` + `page.sidebar.{downloads,wrapped}` (P4-A, #192);
   `streamifyDebug.{panelCanary,canaryHint}` (P5-A). P4-B (#193) adds the
-  `streamify` top-level group (jam/eq/settings strings). Other locales fall
-  back to `en` (the fork's i18n policy).
+  `streamify` top-level group (jam/eq/settings strings). W1-A adds the
+  `streamifyImport.*` group (the 1-Click YTM importer modal). Other
+  locales fall back to `en` (the fork's i18n policy — W1-A keeps it
+  en.json-only; check-i18n.mjs stays green by construction).
 - **Conflict surface:** none — append-only at file end (plus keys inside
   the alphabetically-adjacent `page.sidebar` block).
 
@@ -293,6 +295,18 @@ P5-A (this PR).
   include set).
 - **Conflict surface:** low — additive paths entries.
 
+### A26. `src/renderer/features/playlists/components/playlist-list-header.tsx` (W1-A)
+
+- **What:** the 1-Click YTM importer trigger — one import line
+  (`StreamifyYtmImportButton` from the fork's
+  `features/streamify/import/components/ytm-import-button.tsx`) + one
+  `<StreamifyYtmImportButton />` element inside the existing search-input
+  `Group`. The component self-hides on non-Streamify servers (the
+  StreamifyDownloadAction pattern, verbatim); the modal, progress state
+  and abort wiring all live in the fork-owned import tree.
+- **Conflict surface:** low — two additive lines at stable anchors;
+  upstream rarely edits this header.
+
 ---
 
 ## B. Fork-owned additions (no upstream conflict)
@@ -320,7 +334,10 @@ can ignore them and audits can hold us to the directory-isolation rule.
 - `cloud.ts` / `library.ts` / `engine.ts` / `query.ts` / `derive.ts` /
   `normalize.ts` / `covers.ts` / `favorites.ts` — the snapshot model,
   cloud lanes, local pagination/sorting/filter/search, derivations, the
-  favorites (cloud likes) flow with the offline journal.
+  favorites (cloud likes) flow with the offline journal. W1-A adds
+  `upsertCatalogTracks` to cloud.ts (the importer's catalog lane: the
+  shared `tracks` rows the CRDT sync pass's `playlist_tracks` inserts are
+  FK-bound to — merge-duplicates, NO like edge).
 - **`playback/` — the playback layer.** `stream-source.ts` (the consumption
   layer: cached-ladder walk, stale re-resolve, seek strategy, the P4-A
   zero-egress OPFS bypass), `scrobbler.ts` + `scrobble-bridge.ts` +
@@ -354,11 +371,32 @@ can ignore them and audits can hold us to the directory-isolation rule.
   `download-manager`/`instance`), the vendored cipher artifact
   (`streamify_cipher_bg.wasm` + `artifact.json` manifest + the hand-written
   `cipher-loader.ts`), and the wrapped-stats ledger + aggregates.
+- **`metadata/` (W1-A):** the provider seam — `types.ts` (the typed
+  payload family + `MetadataProvider` interface, mirrored from the relay
+  worker's schemas), `edge.ts` (the /ytm/meta client with abort-timeout
+  composition), `innertube-fallback.ts` (the client-side youtubei.js lane
+  riding `getYt()`; token-bridge continuation registry), `normalize.ts`
+  (the per-payload schema validators), `snapshot.ts` (the in-memory
+  last-known-good + 15-min negative cache), `provider.ts` (the pipeline:
+  snapshot → edge (backoff 250 ms doubling ×3, 60 s circuit) → fallback →
+  snapshot upsert; 404/429/parse-error typed separation),
+  `lyrics-text.ts` (the LRC-line parser, mirrored from the worker).
+- **`features/streamify/import/` (W1-A):** the 1-Click importer — the
+  nested-namespace rule honored (the first non-flat `features/streamify/`
+  entry): `url-parser.ts` (pure; PL… / OLAK5uy_… / RDCLAK5uy_… / VL… raw
+  ids + the youtube.com list=/browse forms), `ingest.ts` (batched
+  continuation ingestion: catalog upsert FIRST, then CRDT ADD ops, live
+  progress, AbortSignal between pages; landed batches stay on cancel),
+  `components/ytm-import-modal.tsx` + `ytm-import-button.tsx`,
+  `hooks/use-ytm-import.ts`.
 - `__tests__/` — the network-free vitest suites (queue round-trip, scrobble
   semantics, favorites, curation, playlist convergence, downloads
   cipher/lifecycle, offline bypass, wrapped aggregation, the /debug gate,
-  and the P5-A locks: relayBase placeholders, the corpus runner integrity,
-  the canary panel mount).
+  the P5-A locks: relayBase placeholders, the corpus runner integrity,
+  the canary panel mount; the W1-A locks: `metadata-provider.test.ts`
+  (404/429/parse separation, snapshot upsert, synced preservation) and
+  `ytm-importer.test.ts` (URL parser table, batched continuations, abort
+  semantics, CRDT materialization against the real sync engine).
 
 ### `src/renderer/features/streamify-*/` — the UI surfaces
 
@@ -414,6 +452,10 @@ can ignore them and audits can hold us to the directory-isolation rule.
 - `resolver-canary.yml` — the daily SABR corpus runs from the feishin fork
   (`pnpm run test:corpus` in `front-end/feishin`, P5-A) against the
   canonical resolver tree.
+- `web-build.yml` relay job (W1-A): runs the relay's network-free vitest
+  lane (`npm test` in `front-end/relay`) before the wrangler dry-run —
+  the ytm-meta cache lock (key encoding, TTL matrix, synced-flag
+  preservation, single-flight, KV-absent fallback).
 - **Retired with P5-A:** `web-deploy.yml` (GitHub Pages — production runs
   via Docker), `scripts/sync_feishin_resolver.py` + the
   `resolver-mirror-sync` job (the mirror became canonical), the `web` job

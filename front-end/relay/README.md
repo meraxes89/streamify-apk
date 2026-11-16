@@ -376,3 +376,44 @@ above and in `src/index.ts`.
   for the upstream fetch. Well-formed youtubei/googlevideo URLs round-trip unchanged; a
   hand-mangled target could get normalized (this is acceptable for P0 and fails safe with an
   upstream 400/403, not a relay misroute).
+
+## W1-A — the edge metadata cache (`/ytm/meta`)
+
+All *public* InnerTube browse/metadata traffic (lyrics, artist/album, explore/home,
+up-next/related, search, suggestions, playlist pages) routes through a cached, validated,
+single-flight endpoint on this Worker instead of the `/r` passthrough — the global metadata
+cache that replaces the rejected Supabase `ytm_cache` idea (only the worker writes the cache,
+and only after re-fetching the data from YouTube itself; a browser can at most probe it with
+different keys). Full architecture:
+[`front-end/decisions/waves/W1A-edge-kv-metadata-importer.md`][w1a].
+
+```
+GET /ytm/meta?endpoint=lyrics&id=<videoId>&gl=US&hl=en
+   → 200 { v: 1, cache: { state: fresh|stale|fill, … }, payload: { synced: boolean, lines: […] } }
+```
+
+- Cache keys encode `(endpoint, id_or_query, gl, hl)` — regional charts and localized titles
+  never bleed across countries/languages.
+- TTL matrix: lyrics/credits/chapters 7 d · artist/album 24 h · explore/home 6 h ·
+  up-next/related/playlist 12 h · search/suggestions 15 min. Stale entries are served
+  immediately (SWR) with policy-gated background revalidation — a fully-synced lyrics payload
+  is terminal and never revalidated; empty or unsynced ones are.
+- Network-free vitest lane: `npm test` (key encoding, TTL selection, synced-flag preservation,
+  single-flight coalescing, KV-absent fallback, SWR policy, failure separation — the same
+  fixtures CI runs in `web-build.yml`'s relay job).
+
+### Deploying the KV binding (optional, production)
+
+The route works with **no** KV binding (per-isolate memory layer only). To add the global
+cross-colo layer on the deploy machine:
+
+```bash
+wrangler kv namespace create YTM_CACHE
+# paste the printed id into the [[kv_namespaces]] block in wrangler.toml
+wrangler deploy
+```
+
+The binding may be deleted/recreated at any time — the TTLs are enforced inside the cached
+envelopes, so the worst case is one refetch per hot key.
+
+[w1a]: https://github.com/meraxes89/streamify-apk/blob/main/front-end/decisions/waves/W1A-edge-kv-metadata-importer.md

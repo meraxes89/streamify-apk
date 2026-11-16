@@ -370,6 +370,47 @@ export async function unlikeTrack(session: StreamifySession, trackId: string): P
     return res.ok;
 }
 
+/**
+ * Upsert shared catalog `tracks` rows WITHOUT a like edge (W1-A's
+ * importer lane). The CRDT sync pass inserts `playlist_tracks` rows whose
+ * FK references tracks.id — the catalog row must exist BEFORE the flush
+ * or the FK rejects the insert. Merge-duplicates, return=minimal, same
+ * posture as likeTrack's first half minus the user_likes edge (importing
+ * a playlist must not like 100 songs).
+ */
+export async function upsertCatalogTracks(
+    session: StreamifySession,
+    rows: Array<{
+        album: null | string;
+        artist: string;
+        coverUrl: null | string;
+        durationSec: null | number;
+        id: string;
+        title: string;
+        videoId: null | string;
+    }>,
+    signal?: AbortSignal,
+): Promise<boolean> {
+    if (rows.length === 0) {
+        return true;
+    }
+    const res = await restCall(session, 'tracks', {
+        body: rows.map((row) => ({
+            album: row.album,
+            artist: row.artist,
+            cover_url: row.coverUrl,
+            duration_sec: row.durationSec === null ? null : Math.round(row.durationSec),
+            id: row.id,
+            stream_url: row.videoId,
+            title: row.title,
+        })),
+        method: 'POST',
+        prefer: 'resolution=merge-duplicates,return=minimal',
+        signal,
+    });
+    return res.ok || res.status === 409;
+}
+
 /** One refresh attempt via the Supabase auth surface (anon-allowed). */
 async function refreshSession(
     session: StreamifySession,
