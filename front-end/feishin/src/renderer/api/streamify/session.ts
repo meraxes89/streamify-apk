@@ -140,9 +140,60 @@ export function resolveStreamifySession(
     return devSession();
 }
 
+/**
+ * Resolve the session a read/write should run under - the async form P3A
+ * adds (P1B's sync resolver stays untouched for compatibility).
+ *
+ * Resolution order:
+ *   1. The credential payload codec (the P1 contract lane - authenticate
+ *      outputs JSON.stringify(StreamifyCredentialPayload)).
+ *   2. The LIVE supabase-js session. P1A's synthetic server entry stores
+ *      the raw access token as the credential (not a JSON payload), so
+ *      signed-in users only resolve through the SDK client - without this
+ *      lane they silently fell to the anonymous dev session and every
+ *      authenticated read came back empty (the P1A/P1B integration gap;
+ *      see decisions/p3/P3A-jam-playlists.md).
+ *   3. The settings.js dev fallback (the P1 mock session).
+ *   4. null - fully unconfigured: honest empty results.
+ */
+export async function resolveStreamifySessionAsync(
+    credential: null | string | undefined,
+): Promise<null | StreamifySession> {
+    const payload = decodeStreamifyCredential(credential);
+    if (payload !== null) {
+        return {
+            accessToken: payload.accessToken,
+            anonKey: payload.anonKey,
+            email: payload.email,
+            expiresAt: payload.expiresAt,
+            isAdmin: payload.isAdmin,
+            refreshToken: payload.refreshToken,
+            source: 'credential',
+            supabaseUrl: payload.supabaseUrl.replace(/\/+$/, ''),
+            userId: payload.userId,
+        };
+    }
+    const live = await liveSupabaseSession();
+    if (live !== null) {
+        return live;
+    }
+    return devSession();
+}
+
 /** A stable fingerprint for snapshot memoization (session identity). */
 export function streamifySessionKey(session: StreamifySession): string {
     return `${session.supabaseUrl}|${session.userId}|${session.accessToken}`;
+}
+
+/**
+ * A REFRESH-STABLE fingerprint (identity, not token): the memo key for
+ * long-lived loads whose data depends on the user, not the access token.
+ * P1B's key included the raw token, so every silent token refresh (hourly)
+ * invalidated the snapshot memo and forced a full reload; the stable key
+ * keeps the memo warm across refreshes while still separating accounts.
+ */
+export function streamifySessionStableKey(session: StreamifySession): string {
+    return `${session.supabaseUrl}|${session.userId}`;
 }
 
 function devSession(): null | StreamifySession {
@@ -165,6 +216,41 @@ function devSession(): null | StreamifySession {
     };
 }
 
+/**
+ * The live supabase-js session as a StreamifySession. The import is
+ * dynamic so this module stays importable in the network-free test lane
+ * (node env, no window); any failure resolves null - the dev fallback (or
+ * null) answers honestly.
+ */
+async function liveSupabaseSession(): Promise<null | StreamifySession> {
+    try {
+        const supabaseModule = await import('./streamify-supabase');
+        const config = supabaseModule.getStreamifySupabaseConfig();
+        const supabase = supabaseModule.getStreamifySupabase();
+        if (!config || !supabase) {
+            return null;
+        }
+        const { data } = await supabase.auth.getSession();
+        const session = data.session;
+        if (!session || !session.user) {
+            return null;
+        }
+        return {
+            accessToken: session.access_token,
+            anonKey: config.anonKey,
+            email: session.user.email ?? null,
+            expiresAt: session.expires_at ?? 0,
+            isAdmin: false,
+            refreshToken: session.refresh_token ?? '',
+            source: 'credential',
+            supabaseUrl: config.url,
+            userId: session.user.id,
+        };
+    } catch {
+        return null;
+    }
+}
+
 function readWindow(
     name: 'STREAMIFY_DEV_ACCESS_TOKEN' | 'STREAMIFY_SUPABASE_ANON_KEY' | 'STREAMIFY_SUPABASE_URL',
 ): string {
@@ -172,8 +258,14 @@ function readWindow(
     // Deployments that never set a variable leave the literal `${...}`
     // placeholder behind (nginx envsubst only substitutes defined vars -
     // same reason upstream's env-settings parser filters them), so those
-    // read as unset here too.
-    const value = (window as Window)[name];
+    // read as unset here too. The try/catch keeps the network-free test
+    // lane (node env, no window) honest: unset, not fatal.
+    let value: unknown;
+    try {
+        value = (window as Window)[name];
+    } catch {
+        return '';
+    }
     if (typeof value !== 'string') {
         return '';
     }

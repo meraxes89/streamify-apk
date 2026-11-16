@@ -25,13 +25,17 @@ import type { Session } from '@supabase/supabase-js';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { STREAMIFY_SERVER_ID } from './streamify-server-id';
+
 import { AppRoute } from '/@/renderer/router/routes';
 import { useAuthStore } from '/@/renderer/store';
 import { logger } from '/@/renderer/utils/logger';
 import { ServerType } from '/@/shared/types/types';
 
-/** Stable id for the synthetic server entry (idempotent re-sign-ins). */
-export const STREAMIFY_SERVER_ID = 'streamify';
+// Re-exported for the existing import sites (P1/P2); the definition lives
+// in the lightweight module so dependency-light lanes can import the id
+// without the store/router/DOM-Purify chain.
+export { STREAMIFY_SERVER_ID };
 
 const STREAMIFY_SERVER_NAME = 'Streamify';
 
