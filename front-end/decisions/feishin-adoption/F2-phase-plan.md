@@ -77,9 +77,11 @@ schedule; everything else orbits it.
 
 - **P2-A · Playback spine (IN REVIEW — both streams)** — resolver:
   `p2a/resolver-getstreamurl` (getStreamUrl + the link-solver lock + the
-  daily SABR corpus); app: `p2a/feishin-dual-engine` (stacked on it — the
-  dual react-player engine wired through the vendored resolver mirror,
-  CI-enforced byte-identity). Contract (posted week one):
+  daily SABR corpus; merged as #185); app: `p2a/feishin-dual-engine`
+  (stacked on it — the dual react-player engine wired through the vendored
+  resolver mirror, CI-enforced byte-identity). Two streams, never
+  cross-wired: resolver fixes land in `front-end/web` only; engine wiring
+  lives in the fork's new directories only. Contract (posted week one):
   `front-end/decisions/p2/P2A-contract-getstream-url.md`. Records:
   `P2A-resolver-getstream-url.md`, `P2A-feishin-dual-engine.md`.
   - The same-day flag the kickoff demanded, answered: the pipeline carried
