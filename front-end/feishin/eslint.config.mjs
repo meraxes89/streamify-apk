@@ -12,9 +12,11 @@ export default tseslint.config(
             '**/dist',
             '**/out',
             'commitlint.config.mjs',
-            // P2-A: the vendored resolver mirror — synced byte-identically from
-            // front-end/web by scripts/sync_feishin_resolver.py (CI-enforced). Lint
-            // the fork's own code; typecheck still covers the mirror.
+            // P2-A → P5-A: the resolver tree is the CANONICAL source of
+            // truth since the front-end/web archive (integrity enforced by
+            // scripts/check_feishin_resolver.py in ci.yml). It keeps the
+            // web app's 2-space style; lint the fork's own code.
+            // Typecheck still covers the tree.
             'src/renderer/api/streamify/playback/resolver',
         ],
     },

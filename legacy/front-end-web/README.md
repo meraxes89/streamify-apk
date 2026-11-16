@@ -1,4 +1,21 @@
-# streamify-web
+# streamify-web — ARCHIVED (P5-A cutover)
+
+> **This tree is read-only history.** It moved to `legacy/front-end-web` in
+> the P5-A cutover (2026-11) when the feishin fork became the sole
+> production web front-end. Nothing here builds, lints, or deploys: the
+> tree is outside every active workspace, CI lane and code scanner, and it
+> must never be edited — archaeology only. The live application is
+> `front-end/feishin` (Docker: `front-end/feishin/Dockerfile` +
+> `docker-compose.yaml`); the resolver stack it vendored is now the
+> canonical source at
+> `front-end/feishin/src/renderer/api/streamify/playback/resolver/`, and the
+> residential canary console is mounted inside the gated `/debug` route.
+> See `front-end/decisions/p5/P5A-cutover-legacy-archive-upstream-ritual.md`
+> for the cutover record.
+
+---
+
+## Historical README (as of the archive)
 
 Vite + React 18 + TypeScript (strict) front-end for the Streamify web port
 **P0 proof phase**. This page proves the whole chain in a browser:
