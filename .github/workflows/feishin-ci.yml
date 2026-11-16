@@ -1,0 +1,48 @@
+# Feishin Web CI (monorepo side) — the F1 deferred item, landed with P2-A.
+#
+# F1 left a monorepo-side lint/typecheck gate for the vendored fork "to P1,
+# where the first monorepo-level feishin CI job becomes worth its minutes".
+# P2-A is that point: the app stream lands engine wiring in the fork tree,
+# and monorepo PRs must verify it without round-tripping through fork PRs.
+# Mirrors the fork's own Web CI (front-end/feishin/.github/workflows,
+# which runs in the streamify-feishin repo) plus the new test lane.
+name: Feishin Web CI
+
+on:
+  pull_request:
+    paths:
+      - 'front-end/feishin/**'
+      - '.github/workflows/feishin-ci.yml'
+  push:
+    branches: [main, 'feat/feishin-*']
+    paths:
+      - 'front-end/feishin/**'
+      - '.github/workflows/feishin-ci.yml'
+
+jobs:
+  web:
+    name: lint + typecheck + tests + web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: front-end/feishin/pnpm-lock.yaml
+      - name: Install dependencies (Electron binary download skipped)
+        run: pnpm install --frozen-lockfile
+        working-directory: front-end/feishin
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      - name: Lint (typecheck node+web, eslint --max-warnings=0, stylelint)
+        run: pnpm run lint
+        working-directory: front-end/feishin
+      - name: Tests (P2-A engine wiring lock — network-free)
+        run: pnpm run test
+        working-directory: front-end/feishin
+      - name: Build web
+        run: pnpm run build:web
+        working-directory: front-end/feishin

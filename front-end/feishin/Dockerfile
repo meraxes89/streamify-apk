@@ -25,7 +25,7 @@ ENV SERVER_LOCK=false SERVER_NAME="" SERVER_TYPE="" SERVER_URL="" REMOTE_URL=""
 ENV LEGACY_AUTHENTICATION="" ANALYTICS_DISABLED="" PUBLIC_PATH="/"
 # Fork addition (see PATCHES.md): defined so nginx envsubst substitutes the
 # Streamify settings.js knobs even when the deployment leaves them empty.
-ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY=""
+ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY=" STREAMIFY_RELAY_BASE=""
 
 EXPOSE 9180
 CMD ["nginx", "-g", "daemon off;"]

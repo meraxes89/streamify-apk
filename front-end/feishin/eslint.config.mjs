@@ -6,7 +6,18 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh';
 
 export default tseslint.config(
-    { ignores: ['**/node_modules', '**/dist', '**/out', 'commitlint.config.mjs'] },
+    {
+        ignores: [
+            '**/node_modules',
+            '**/dist',
+            '**/out',
+            'commitlint.config.mjs',
+            // P2-A: the vendored resolver mirror — synced byte-identically from
+            // front-end/web by scripts/sync_feishin_resolver.py (CI-enforced). Lint
+            // the fork's own code; typecheck still covers the mirror.
+            'src/renderer/api/streamify/playback/resolver',
+        ],
+    },
     tseslint.configs.recommended,
     perfectionist.configs['recommended-natural'],
     eslintPluginReact.configs.flat.recommended,

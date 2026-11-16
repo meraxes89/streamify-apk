@@ -7,6 +7,7 @@ import {
     normalizePlaylist,
     normalizeSong,
 } from './normalize';
+import { resolveStreamifyTrack, StreamifyNoVideoError } from './playback/stream-source';
 import {
     filterAlbums,
     filterArtists,
@@ -465,8 +466,26 @@ export const StreamifyController: InternalControllerEndpoint = {
             snapshot,
         ).length;
     },
-    getStreamUrl: async () => {
-        throw new StreamifyNotImplementedError('getStreamUrl');
+    getStreamUrl: async (args) => {
+        // P2-A: the playback spine. feishin song id → the snapshot row → the
+        // stream videoId (the tracks table's stream_url IS the videoId — see
+        // the web app's libraryStore mapping) → the resolver's entry point.
+        // Transcode settings are Navidrome/Jellyfin semantics — our source
+        // is fixed by the codec ladder; they are read but not honored.
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.songById.get(query.id);
+        const videoId = row?.streamUrl ?? '';
+        if (videoId === '' || videoId === null) {
+            // Honest empty: the ingestion has not mapped a stream video for
+            // this track. Surfaced as an error state (react-query) — never
+            // fake data.
+            throw new StreamifyNoVideoError(query.id);
+        }
+        // Throws StreamifySabrError on SABR-only resolves (react-player
+        // cannot parse SABR — the daily corpus instrumentation counts it).
+        const resolution = await resolveStreamifyTrack(videoId);
+        return resolution.url;
     },
     getStructuredLyrics: async () => {
         throw new StreamifyNotImplementedError('getStructuredLyrics');

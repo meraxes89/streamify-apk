@@ -9,6 +9,8 @@ declare global {
     interface Window {
         /** Explicit opt-out for the /streamify-auth gate ('false' disables). */
         STREAMIFY_AUTH?: boolean | string;
+        /** P2-A: the resolver relay base (empty = relay off). */
+        STREAMIFY_RELAY_BASE?: string;
         /** Public-by-design anon key of the Streamify Supabase project. */
         STREAMIFY_SUPABASE_ANON_KEY?: string;
         /** Base URL of the Streamify Supabase project. */

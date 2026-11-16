@@ -6,6 +6,10 @@ import { useTranslation } from 'react-i18next';
 
 import { playerHandoff } from './engine/player-handoff';
 
+import {
+    applyStreamifySeek,
+    onStreamifySourceError,
+} from '/@/renderer/api/streamify/playback/stream-source';
 import { eventEmitter } from '/@/renderer/events/event-emitter';
 import {
     WebPlayerEngine,
@@ -335,6 +339,19 @@ export function WebPlayer() {
                     type = 'seconds';
                 }
 
+                // P2-A (Streamify, thin seam): non-range URLs seek by
+                // reload-from-zero + silent fast-forward (the posted
+                // contract). Range-capable and HLS sources fall through to
+                // the stock in-place seek below.
+                const seekPlayer =
+                    num === 1
+                        ? playerRef.current?.player1()?.ref
+                        : playerRef.current?.player2()?.ref;
+                const seekAudio = seekPlayer?.getInternalPlayer() as HTMLMediaElement | undefined;
+                if (seekAudio && applyStreamifySeek(seekAudio, timestamp)) {
+                    return;
+                }
+
                 if (num === 1) {
                     playerRef.current?.player1()?.ref?.seekTo(timestamp, type);
                 } else {
@@ -595,6 +612,15 @@ export function WebPlayer() {
         });
     }, [mediaPause, t]);
 
+    // P2-A (Streamify, thin seam): the playback layer claims element errors
+    // on Streamify sources (ladder walk / stale re-resolve). All logic lives
+    // in api/streamify/playback/stream-source.ts; stock paths are unchanged.
+    const handleOnSourceError = useCallback(
+        (err: { code?: number; label: string }, audio: HTMLMediaElement) =>
+            onStreamifySourceError(err, audio),
+        [],
+    );
+
     const loopPlayer1 = repeat === PlayerRepeat.ONE && num === 1;
     const loopPlayer2 = repeat === PlayerRepeat.ONE && num === 2;
 
@@ -609,6 +635,7 @@ export function WebPlayer() {
             onErrorPause={handleOnErrorPause}
             onProgressPlayer1={onProgressPlayer1}
             onProgressPlayer2={onProgressPlayer2}
+            onSourceError={handleOnSourceError}
             onStartedPlayer1={handlePlayer1Start}
             onStartedPlayer2={handlePlayer2Start}
             playerNum={num}

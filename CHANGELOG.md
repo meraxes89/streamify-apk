@@ -3,6 +3,38 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — P2-A: the playback spine (app stream) — the dual react-player engine wired
+
+The fork half of the spine. Zero resolution logic: the fork imports `getStreamUrl` from a
+vendored mirror of the resolver stack (byte-identity CI-enforced — the two-stream rule made
+mechanical). What ships is engine wiring: the controller seam, the error-claim hook with the
+cached-ladder walk, and the seek strategy per the posted contract.
+
+### Added
+- **`api/streamify/playback/` (fork, new directory)**: `stream-source.ts` — the consumption
+  layer (controller seam back end, error claim, seek claim); `resolver/` — the vendored
+  mirror (10 files, synced by `scripts/sync_feishin_resolver.py`; the one fork-authored file
+  is `resolver/lib/relayBase.ts`, the relay knob); `__tests__/` — the fork's first test
+  lane, 8/8.
+- **`StreamifyController.getStreamUrl`** — the single seam, real: song id → snapshot row →
+  `streamUrl` (the videoId) → `getStreamUrl` → the dual slots via `useSongUrl`/react-query.
+  Preload and crossfade ride upstream's own machinery (idle-slot resolution ≥ the crossfade
+  window; `crossfadeHandler`/`gaplessHandler` once both slots have URLs).
+- **Two thin upstream seams** (PATCHES.md 16-17): error claim + non-range seek claim;
+  unclaimed paths byte-identical to upstream. Honest states: SABR-only resolves throw
+  (react-player cannot parse SABR); no-video tracks throw (ingestion hasn't mapped one).
+- **Fork deps/config**: `youtubei.js@18.3.0` + `googlevideo@^4.0.4` + `bgutils-js@^4.0.3`
+  (the mirror's npm twins), `vitest`, `test` script, `STREAMIFY_RELAY_BASE` knob
+  (settings.js.template + Dockerfile ENV + globals typing), eslint ignore for the mirror.
+- **Monorepo CI**: `feishin-ci.yml` (the F1-deferred monorepo-side gate: lint + typecheck +
+  tests + full web build on `front-end/feishin/**`) and the `resolver-mirror-sync` job in
+  `web-build.yml` — any drift between the mirror and `front-end/web` goes red.
+
+### Verified
+- Fork: `pnpm run lint` green; `pnpm run test` 8/8; `vite build` — 4,205 modules transformed
+  (final chunk render is CI's: ubuntu-latest, per F1's constrained-box note). Mirror
+  `--check` green. Record: `front-end/decisions/p2/P2A-feishin-dual-engine.md`.
+
 ## [Unreleased] — P2-A: the playback spine (resolver stream) — getStreamUrl + the link-solver lock
 
 The long pole opened per the P2 kickoff: one entry point (`getStreamUrl`) wrapping the live

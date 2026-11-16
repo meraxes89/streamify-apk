@@ -29,6 +29,13 @@ interface WebPlayerEngineProps {
     onErrorPause: () => void;
     onProgressPlayer1: (e: PlayerOnProgressProps) => void;
     onProgressPlayer2: (e: PlayerOnProgressProps) => void;
+    /**
+     * P2-A (Streamify, thin seam): first claim on a media-element error.
+     * Returns true when the failing source belongs to a Streamify session
+     * (handled — ladder walk / stale re-resolve); false → the stock
+     * retry/skip logic below runs, byte-identical to upstream.
+     */
+    onSourceError?: (err: { code?: number; label: string }, audio: HTMLMediaElement) => boolean;
     onStartedPlayer1: (player: ReactPlayer) => void;
     onStartedPlayer2: (player: ReactPlayer) => void;
     playerNum: number;
@@ -69,6 +76,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
         onErrorPause,
         onProgressPlayer1,
         onProgressPlayer2,
+        onSourceError,
         onStartedPlayer1,
         onStartedPlayer2,
         playerNum,
@@ -210,6 +218,14 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
             const { error } = target;
             const code = error?.code;
             const label = mediaErrorLabel(code);
+
+            // P2-A (Streamify, thin seam): the playback layer gets first
+            // claim on the error (ladder walk / stale re-resolve — all logic
+            // in api/streamify/playback/stream-source.ts). Unclaimed (false)
+            // → the stock path below, byte-identical behavior.
+            if (onSourceError?.({ code, label }, target) === true) {
+                return;
+            }
 
             const isNetworkError =
                 code === MediaError.MEDIA_ERR_NETWORK ||
