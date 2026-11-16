@@ -1,8 +1,9 @@
 # F2 — Feishin adoption phase plan
 
-Status: LIVING DOCUMENT — P0 complete, P1 complete (A: auth + session, B: library reads). P2 next.
-P2–P5 are placeholders owned by their future drivers; each driver fills in
-what the kickoff specifies and marks the rest TODO rather than inventing scope.
+Status: LIVING DOCUMENT — P0 complete, P1 complete (A: auth + session, B: library reads).
+P2 in flight (the risk gate; A driving). P3–P5 remain placeholders owned by their future
+drivers; each driver fills in what the kickoff specifies and marks the rest TODO rather than
+inventing scope.
 Owner: web UI track lead.
 
 ## P0 — Fork base (COMPLETE, 2026-11-15)
@@ -69,10 +70,27 @@ Deliverables (all landed on `meraxes89/streamify-feishin@main`, vendored to
 - Record + merge rulings + deferred gaps (wasm library-query surface, jam
   queue projection, OPFS cover cache): `front-end/decisions/p1/P1B-library-reads.md`.
 
-## P2 — Playback (NEXT; the risk gate)
+## P2 — Playback (IN FLIGHT; the risk gate — P2 driver: Engineer A)
 
-- See the P2–P5 block below for the scope sketch; the P2 driver owns filling
-  it in from the phase kickoff.
+Filled in from the phase kickoff (2026-11-17). The spine first — it sets the
+schedule; everything else orbits it.
+
+- **P2-A · Playback spine (IN REVIEW)** — `getStreamUrl` from the resolver
+  tree + the dual react-player engine wired in the fork. Two streams, never
+  cross-wired: resolver fixes land in `front-end/web` only; engine wiring
+  lives in the fork's new directories only (vendored resolver mirror,
+  CI-enforced byte-identity). Contract (posted week one):
+  `front-end/decisions/p2/P2A-contract-getstream-url.md`. Record:
+  `front-end/decisions/p2/P2A-resolver-getstream-url.md`.
+  - The same-day flag the kickoff demanded, answered: the pipeline carried
+    neither expiry nor range metadata — both surfaced additively (wire
+    expiry via the digest; range via a 1-byte probe).
+  - The SABR gate is a measurement, not a build order: daily corpus
+    instrumentation (`resolver-canary.yml → sabr-corpus`), one week of
+    hit-rate data, then the checkpoint call with the lead. No speculative
+    custom engine.
+- **P2-B · Queue semantics / scrobble / getDownloadUrl** — TODO after the
+  spine lands (owner: TBD by the lead).
 
 ## P2–P5 — TODO (owned by future drivers; do not invent scope here)
 

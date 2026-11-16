@@ -32,6 +32,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── P2-A: the daily SABR corpus (the custom-engine decision data) ─────
+  # Runs the de-facto W1.2 corpus (the canary/g3b canonical IDs) through
+  # getStreamUrl against the live pipeline. Every resolve is instrumented
+  # (protocol + format); the SABR hit rate is reported per run. A SABR-heavy
+  # day is DATA, not a failure — the only gating case is zero resolves
+  # (infra). One week of these reports is the custom-engine checkpoint
+  # input (a joint call, per the P2-A kickoff — never a solo decision).
+  sabr-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install deps
+        run: npm install --no-fund --no-audit
+        working-directory: front-end
+      - name: "Run the corpus (live; report + step summary)"
+        env:
+          RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
+          SABR_REPORT_PATH: /tmp/sabr-report.json
+        run: npm run test:corpus -w web
+        working-directory: front-end
+      - name: Upload the report
+        uses: actions/upload-artifact@v7
+        with:
+          name: sabr-report
+          path: /tmp/sabr-report.json
+          if-no-files-found: error
+          retention-days: 90
+
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 10

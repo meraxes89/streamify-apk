@@ -6,8 +6,9 @@
 #      streamify-wasm compile to wasm32-unknown-unknown with NO rquickjs
 #      in the tree, and wasm-pack produces the web-target pkg.
 #   2. wasm-bindgen-test (headless Chrome): the W0.2 ping test.
-#   3. The playback spine unit tests (P2-B: the queue state machine,
-#      persistence, scrobbler, gapless scheduler — vitest, headless).
+#   3. The web unit tests (vitest, headless): the P2-A resolver fixture
+#      lock (the link solver must not break) AND the P2-B playback spine
+#      suite (queue machine, persistence, scrobbler, gapless scheduler).
 #   4. The web bundle builds (vite + strict tsc against the generated .d.ts).
 #   5. The relay worker bundles (wrangler dry-run — no Cloudflare creds).
 #
@@ -158,8 +159,14 @@ jobs:
       - name: Install deps
         run: npm install --no-fund --no-audit
         working-directory: front-end
-      - name: "P2-B: playback spine unit tests (vitest — queue machine, persistence, scrobbler, gapless)"
-        run: npm run test -w web
+      - name: "Web unit tests (vitest — P2-A resolver fixture lock + P2-B playback spine)"
+        # One lane, both suites: the recorded wire fixtures lock the link
+        # solver's mapping behavior (any drift in resolve.ts breaks a
+        # fixture), and the playback spine tests cover the queue machine,
+        # persistence, scrobbler, and gapless scheduler. All network-free;
+        # the live SABR corpus runs in resolver-canary.yml instead.
+        run: npm test -w web
+        working-directory: front-end
         working-directory: front-end
       - name: Build web (tsc --noEmit + vite build)
         run: npm run build -w web

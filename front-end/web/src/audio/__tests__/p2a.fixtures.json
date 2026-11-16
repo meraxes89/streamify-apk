@@ -1,0 +1,273 @@
+{
+  "$comment": "P2-A resolver lock fixtures — recorded wire shapes (the canary/probe lineage: tools/probe-clients.sh, fleet-config.json). These lock the link solver's mapping behavior; they are append-only, never edited in place.",
+  "stdVisionos": {
+    "playabilityStatus": { "status": "OK" },
+    "videoDetails": {
+      "title": "Neon Cascade",
+      "author": "Fixture Artist",
+      "lengthSeconds": "213",
+      "videoId": "FIX_STD"
+    },
+    "streamingData": {
+      "expiresInSeconds": "21540",
+      "adaptiveFormats": [
+        {
+          "itag": 251,
+          "url": "https://rr3---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=251",
+          "mimeType": "audio/webm; codecs=\"opus\"",
+          "bitrate": 130000,
+          "contentLength": 3456789
+        },
+        {
+          "itag": 250,
+          "url": "https://rr3---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=250",
+          "mimeType": "audio/webm; codecs=\"opus\"",
+          "bitrate": 70000,
+          "contentLength": 1900000
+        },
+        {
+          "itag": 140,
+          "url": "https://rr3---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=140",
+          "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+          "bitrate": 128000,
+          "contentLength": 3400000
+        },
+        {
+          "itag": 249,
+          "url": "https://rr3---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=249",
+          "mimeType": "audio/webm; codecs=\"opus\"",
+          "bitrate": 60000,
+          "contentLength": 1600000
+        }
+      ],
+      "formats": [
+        {
+          "itag": 18,
+          "url": "https://rr3---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=18",
+          "mimeType": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+          "bitrate": 300000,
+          "contentLength": 8000000
+        }
+      ]
+    }
+  },
+  "licLoginRequired": {
+    "playabilityStatus": {
+      "status": "LOGIN_REQUIRED",
+      "reason": "Sign in to confirm you're not a bot"
+    },
+    "videoDetails": {
+      "title": "Licensed Track",
+      "author": "Fixture Artist",
+      "lengthSeconds": "200",
+      "videoId": "FIX_LIC"
+    },
+    "streamingData": {}
+  },
+  "sabrOnly": {
+    "playabilityStatus": { "status": "OK" },
+    "videoDetails": {
+      "title": "SABR Wall",
+      "author": "Fixture Artist",
+      "lengthSeconds": "190",
+      "videoId": "FIX_SABR"
+    },
+    "streamingData": {
+      "expiresInSeconds": "21540",
+      "serverAbrStreamingUrl": "https://rr3---sn-fix.googlevideo.com/videoplayback?sabr=1",
+      "adaptiveFormats": [
+        {
+          "itag": 140,
+          "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+          "bitrate": 128000,
+          "contentLength": 3200000
+        }
+      ],
+      "formats": []
+    }
+  },
+  "hlsVisionos": {
+    "playabilityStatus": { "status": "OK" },
+    "videoDetails": {
+      "title": "HLS Lane",
+      "author": "Fixture Artist",
+      "lengthSeconds": "213",
+      "videoId": "FIX_HLS"
+    },
+    "streamingData": {
+      "expiresInSeconds": "21540",
+      "adaptiveFormats": [
+        {
+          "itag": 244,
+          "url": "https://rr3---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=244",
+          "mimeType": "video/mp4; codecs=\"avc1.42E01E\"",
+          "bitrate": 300000
+        }
+      ],
+      "formats": [],
+      "hlsManifestUrl": "https://manifest.googlevideo.com/api/manifest/hls_variant/fixture"
+    }
+  },
+  "iosPotOk": {
+    "playabilityStatus": { "status": "OK" },
+    "videoDetails": {
+      "title": "IOS POT Lane",
+      "author": "Fixture Artist",
+      "lengthSeconds": "221",
+      "videoId": "FIX_IOSPOT"
+    },
+    "streamingData": {
+      "expiresInSeconds": "21540",
+      "adaptiveFormats": [
+        {
+          "itag": 140,
+          "url": "https://rr5---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=140",
+          "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+          "bitrate": 128000,
+          "contentLength": 3500000
+        },
+        {
+          "itag": 251,
+          "url": "https://rr5---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=251",
+          "mimeType": "audio/webm; codecs=\"opus\"",
+          "bitrate": 140000,
+          "contentLength": 3900000
+        }
+      ],
+      "formats": [
+        {
+          "itag": 18,
+          "url": "https://rr5---sn-fix.googlevideo.com/videoplayback?expire=1750000000&itag=18",
+          "mimeType": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+          "bitrate": 300000,
+          "contentLength": 8300000
+        }
+      ]
+    }
+  },
+  "relayVisionosOk": {
+    "playabilityStatus": { "status": "OK" },
+    "videoDetails": {
+      "title": "Relay Lane",
+      "author": "Fixture Artist",
+      "lengthSeconds": "204",
+      "videoId": "FIX_RELAY"
+    },
+    "streamingData": {
+      "expiresInSeconds": "21540",
+      "adaptiveFormats": [
+        {
+          "itag": 140,
+          "url": "https://rr7---sn-relay.googlevideo.com/videoplayback?expire=1750000000&itag=140",
+          "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+          "bitrate": 128000,
+          "contentLength": 3250000
+        }
+      ],
+      "formats": []
+    }
+  },
+  "safariHls": {
+    "playabilityStatus": { "status": "OK" },
+    "videoDetails": {
+      "title": "Safari HLS Lane",
+      "author": "Fixture Artist",
+      "lengthSeconds": "199",
+      "videoId": "FIX_SAFARI"
+    },
+    "streamingData": {
+      "expiresInSeconds": "21540",
+      "adaptiveFormats": [],
+      "formats": [],
+      "hlsManifestUrl": "https://manifest.googlevideo.com/api/manifest/hls_variant/safari-fixture"
+    }
+  },
+  "ytWebPot": {
+    "playability_status": { "status": "OK" },
+    "basic_info": { "title": "Kira Recipe", "author": "Fixture Artist", "duration": 213 },
+    "streaming_data": {
+      "expires_in_seconds": 21540,
+      "adaptive_formats": [
+        {
+          "itag": 251,
+          "signature_cipher": "SC.251",
+          "mime_type": "audio/webm; codecs=\"opus\"",
+          "bitrate": 130000,
+          "content_length": 3456789,
+          "has_audio": true,
+          "has_video": false
+        },
+        {
+          "itag": 140,
+          "signature_cipher": "SC.140",
+          "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"",
+          "bitrate": 128000,
+          "content_length": 3400000,
+          "has_audio": true,
+          "has_video": false
+        },
+        {
+          "itag": 244,
+          "signature_cipher": "SC.244",
+          "mime_type": "video/mp4; codecs=\"avc1.42E01E\"",
+          "bitrate": 300000,
+          "has_audio": false,
+          "has_video": true
+        }
+      ],
+      "formats": [
+        {
+          "itag": 18,
+          "signature_cipher": "SC.18",
+          "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+          "bitrate": 300000,
+          "content_length": 8000000,
+          "has_audio": true,
+          "has_video": true
+        }
+      ]
+    },
+    "player_config": {
+      "media_common_config": {
+        "media_ustreamer_request_config": {
+          "video_playback_ustreamer_config": "TEST_USTREAMER_B64"
+        }
+      }
+    }
+  },
+  "ytSabr": {
+    "playability_status": { "status": "OK" },
+    "basic_info": { "title": "SABR Only Lane", "author": "Fixture Artist", "duration": 213 },
+    "streaming_data": {
+      "expires_in_seconds": 21540,
+      "server_abr_streaming_url": "https://sabr.test/videoplayback?sabr=1&cipher=1",
+      "adaptive_formats": [
+        {
+          "itag": 244,
+          "signature_cipher": "SC.244",
+          "mime_type": "video/mp4; codecs=\"avc1.42E01E\"",
+          "bitrate": 300000,
+          "content_length": 6000000,
+          "has_audio": false,
+          "has_video": true,
+          "lastModified": 1750000000,
+          "height": 1080,
+          "width": 1920,
+          "fps": 30,
+          "quality": "hd1080",
+          "qualityLabel": "1080p",
+          "projectionType": "RECTANGULAR",
+          "averageBitrate": 280000,
+          "approxDurationMs": "213000"
+        }
+      ]
+    },
+    "player_config": {
+      "media_common_config": {
+        "media_ustreamer_request_config": {
+          "video_playback_ustreamer_config": "TEST_USTREAMER_B64"
+        }
+      }
+    }
+  }
+}
