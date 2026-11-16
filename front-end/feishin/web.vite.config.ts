@@ -158,16 +158,26 @@ export default defineConfig({
             '@streamify/canary': path.resolve(__dirname, '../canary/src'),
             path: path.resolve(__dirname, './src/renderer/shims/path.ts'),
             // The canary source sits OUTSIDE the feishin root; rollup's
-            // walk-up resolution cannot find react's subpath exports from
-            // there (CI has no front-end/node_modules — feishin's pnpm tree
-            // is the only one). Pin the JSX runtime subpaths to feishin's
-            // own react copy (plugin-react's babel emits these imports):
-            // the same single react the whole app bundles.
+            // walk-up resolution cannot find react (or its subpath exports)
+            // from there (CI has no front-end/node_modules — feishin's pnpm
+            // tree is the only one). Pin every react entry point to
+            // feishin's own copy: the exact files the package's exports map
+            // points at, so the whole app keeps bundling one single react
+            // (the same goal resolve.dedupe serves, but deterministic for
+            // outside-the-root importers). ORDER MATTERS: aliases match by
+            // exact-or-prefix, so the subpaths must stay above the bare
+            // 'react' entry (which would otherwise rewrite them).
+            'react/compiler-runtime': path.resolve(
+                __dirname,
+                './node_modules/react/compiler-runtime.js',
+            ),
             'react/jsx-dev-runtime': path.resolve(
                 __dirname,
                 './node_modules/react/jsx-dev-runtime.js',
             ),
             'react/jsx-runtime': path.resolve(__dirname, './node_modules/react/jsx-runtime.js'),
+            // eslint-disable-next-line perfectionist/sort-objects -- MUST stay last: prefix matching would rewrite the subpath specifiers above.
+            react: path.resolve(__dirname, './node_modules/react/index.js'),
         },
     },
     root: path.resolve(__dirname, './src/renderer'),
