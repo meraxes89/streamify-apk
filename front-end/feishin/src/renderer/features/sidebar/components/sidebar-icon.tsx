@@ -1,6 +1,8 @@
 import {
     RiAlbumFill,
     RiAlbumLine,
+    RiDownload2Fill,
+    RiDownload2Line,
     RiFlag2Fill,
     RiFlag2Line,
     RiFolder3Fill,
@@ -21,6 +23,8 @@ import {
     RiSearchLine,
     RiSettings2Fill,
     RiSettings2Line,
+    RiSparklingFill,
+    RiSparklingLine,
     RiUserVoiceFill,
     RiUserVoiceLine,
 } from 'react-icons/ri';
@@ -75,6 +79,12 @@ export const SidebarIcon = ({ active, route, size }: SidebarIconProps) => {
             case AppRoute.SETTINGS:
                 if (isActive) return <RiSettings2Fill size={size} />;
                 return <RiSettings2Line size={size} />;
+            case AppRoute.STREAMIFY_DOWNLOADS:
+                if (isActive) return <RiDownload2Fill size={size} />;
+                return <RiDownload2Line size={size} />;
+            case AppRoute.STREAMIFY_WRAPPED:
+                if (isActive) return <RiSparklingFill size={size} />;
+                return <RiSparklingLine size={size} />;
             case generatePath(AppRoute.SEARCH, { itemType: LibraryItem.SONG }):
                 if (isActive) return <RiSearchFill size={size} />;
                 return <RiSearchLine size={size} />;

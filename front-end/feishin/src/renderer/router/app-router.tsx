@@ -42,6 +42,18 @@ const StreamifyAuthRoute = lazy(
     () => import('/@/renderer/features/streamify-auth/routes/streamify-auth-route'),
 );
 
+const StreamifyDebugRoute = lazy(
+    () => import('/@/renderer/features/streamify-debug/routes/streamify-debug-route'),
+);
+
+const StreamifyDownloadsRoute = lazy(
+    () => import('/@/renderer/features/streamify-downloads/routes/streamify-downloads-route'),
+);
+
+const StreamifyWrappedRoute = lazy(
+    () => import('/@/renderer/features/streamify-wrapped/routes/streamify-wrapped-route'),
+);
+
 const NoNetworkRoute = lazy(
     () => import('/@/renderer/features/action-required/routes/no-network-route'),
 );
@@ -241,6 +253,18 @@ export const AppRouter = () => {
                                         <Route
                                             element={<SettingsRoute />}
                                             path={AppRoute.SETTINGS}
+                                        />
+                                        <Route
+                                            element={<StreamifyDownloadsRoute />}
+                                            path={AppRoute.STREAMIFY_DOWNLOADS}
+                                        />
+                                        <Route
+                                            element={<StreamifyWrappedRoute />}
+                                            path={AppRoute.STREAMIFY_WRAPPED}
+                                        />
+                                        <Route
+                                            element={<StreamifyDebugRoute />}
+                                            path={AppRoute.STREAMIFY_DEBUG}
                                         />
                                         <Route
                                             element={<NowPlayingRoute />}

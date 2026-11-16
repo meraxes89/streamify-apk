@@ -33,4 +33,7 @@ export enum AppRoute {
     SERVERS = '/servers',
     SETTINGS = '/settings',
     STREAMIFY_AUTH = '/streamify-auth',
+    STREAMIFY_DEBUG = '/debug',
+    STREAMIFY_DOWNLOADS = '/streamify-downloads',
+    STREAMIFY_WRAPPED = '/streamify-wrapped',
 }

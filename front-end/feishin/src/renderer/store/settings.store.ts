@@ -1242,6 +1242,18 @@ export const sidebarItems: SidebarItemType[] = [
         label: i18n.t('page.sidebar.settings'),
         route: AppRoute.SETTINGS,
     },
+    {
+        disabled: false,
+        id: 'Downloads',
+        label: i18n.t('page.sidebar.downloads'),
+        route: AppRoute.STREAMIFY_DOWNLOADS,
+    },
+    {
+        disabled: false,
+        id: 'Wrapped',
+        label: i18n.t('page.sidebar.wrapped'),
+        route: AppRoute.STREAMIFY_WRAPPED,
+    },
 ];
 
 const defaultHomeItemOrder: HomeItem[] = [
@@ -2931,10 +2943,30 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
                     });
                 }
 
+                if (version < 35) {
+                    // P4-A: the Downloads manager + Wrapped views join the
+                    // persisted sidebar for existing users (fresh installs
+                    // get them from the default array above).
+                    state.general.sidebarItems.push(
+                        {
+                            disabled: false,
+                            id: 'Downloads',
+                            label: i18n.t('page.sidebar.downloads'),
+                            route: AppRoute.STREAMIFY_DOWNLOADS,
+                        },
+                        {
+                            disabled: false,
+                            id: 'Wrapped',
+                            label: i18n.t('page.sidebar.wrapped'),
+                            route: AppRoute.STREAMIFY_WRAPPED,
+                        },
+                    );
+                }
+
                 return persistedState;
             },
             name: 'store_settings',
-            version: 34,
+            version: 35,
         },
     ),
 );
