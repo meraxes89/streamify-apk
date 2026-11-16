@@ -1,6 +1,6 @@
 # F2 — Feishin adoption phase plan
 
-Status: LIVING DOCUMENT — P0 complete, P1 next. P2–P5 are placeholders owned
+Status: LIVING DOCUMENT — P0 complete, P1A (auth + session) complete, P1B (library browsing) next. P2–P5 are placeholders owned
 by their future drivers; P0 filled in what the kickoff specified and marked
 the rest TODO rather than inventing scope.
 Owner: web UI track lead.
@@ -38,7 +38,18 @@ Deliverables (all landed on `meraxes89/streamify-feishin@main`, vendored to
 - `SERVER_TYPE=streamify` smoke test: app boots, selects Streamify, no crash.
 - Vendoring: git subtree `--squash` (F1).
 
-## P1 — Auth + library (NEXT; unblocks the moment P0 lands)
+## P1A — Auth + session (COMPLETE, 2026-11-16; fork PR #1, monorepo PR #182)
+
+- `/streamify-auth` route (our module) + thin app-outlet gate; Supabase Google
+  OAuth via the SDK; the synthetic `ServerType.STREAMIFY` entry persisted
+  through feishin's own server store; the auth endpoint trio real in the
+  streamify controller; the 401 refresh-and-retry request lane; runtime knobs
+  in settings.js.template + one Dockerfile ENV line.
+- Design, gate truth table, verification evidence, and the P1B handoff notes:
+  `front-end/decisions/p1/P1A-auth-and-session.md`. Upstream diffs: the fork's
+  `PATCHES.md` patches 8–14.
+
+## P1B — Library browsing (NEXT; consumes P1A's session + request lane)
 
 - Make the Streamify controller endpoints real, starting with the auth pair
   (`authenticate`, `getUserInfo`, `getServerInfo`) and the library read set
