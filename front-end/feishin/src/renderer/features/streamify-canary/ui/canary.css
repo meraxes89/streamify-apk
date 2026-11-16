@@ -5,16 +5,16 @@
  * emerald #34d399, amber #fbbf24, red #f87171. System-ui font stack, 44px buttons. */
 
 .canary-root {
-  min-height: 100vh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background: #0a0a0a;
-  color: #e4e4e7;
+  min-height: 100vh;
+  padding: 24px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  padding: 24px;
-  box-sizing: border-box;
+  color: #e4e4e7;
+  background: #0a0a0a;
 }
 
 .canary-root *,
@@ -37,46 +37,46 @@
   margin: 0 0 4px;
   font-size: 20px;
   font-weight: 650;
-  letter-spacing: 0.01em;
   color: #e4e4e7;
+  letter-spacing: 0.01em;
 }
 
 .canary-sub {
   margin: 0;
-  color: #a1a1aa;
   font-size: 13px;
+  color: #a1a1aa;
 }
 
 .canary-sub strong {
-  color: #e4e4e7;
   font-weight: 600;
+  color: #e4e4e7;
 }
 
 /* cards ------------------------------------------------------------------- */
 
 .canary-card {
+  padding: 16px;
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 12px;
-  padding: 16px;
 }
 
 .canary-card h2 {
   margin: 0 0 12px;
   font-size: 12px;
   font-weight: 600;
+  color: #a1a1aa;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #a1a1aa;
 }
 
 /* explainer ---------------------------------------------------------------- */
 
 .canary-explainer ul {
-  margin: 0;
   padding-left: 18px;
-  color: #a1a1aa;
+  margin: 0;
   font-size: 13px;
+  color: #a1a1aa;
 }
 
 .canary-explainer li + li {
@@ -84,8 +84,8 @@
 }
 
 .canary-explainer strong {
-  color: #e4e4e7;
   font-weight: 600;
+  color: #e4e4e7;
 }
 
 /* controls ------------------------------------------------------------------ */
@@ -98,8 +98,8 @@
 }
 
 .canary-controls label {
-  color: #a1a1aa;
   font-size: 12px;
+  color: #a1a1aa;
   text-transform: lowercase;
 }
 
@@ -107,13 +107,13 @@
   flex: 1 1 320px;
   min-width: 240px;
   min-height: 44px;
-  background: #0a0a0a;
-  color: #e4e4e7;
-  border: 1px solid #27272a;
-  border-radius: 8px;
   padding: 8px 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 13px;
+  color: #e4e4e7;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 8px;
 }
 
 .canary-controls input:focus {
@@ -130,14 +130,14 @@
 .canary-btn {
   min-height: 44px;
   padding: 8px 18px;
-  border-radius: 8px;
-  border: 1px solid #27272a;
-  background: #27272a;
-  color: #e4e4e7;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
+  color: #e4e4e7;
   cursor: pointer;
+  background: #27272a;
+  border: 1px solid #27272a;
+  border-radius: 8px;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -146,14 +146,14 @@
 }
 
 .canary-btn:disabled {
-  opacity: 0.45;
   cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .canary-btn-primary {
+  color: #0a0a0a;
   background: #34d399;
   border-color: #34d399;
-  color: #0a0a0a;
 }
 
 .canary-btn-primary:hover:not(:disabled) {
@@ -169,58 +169,58 @@
   justify-content: center;
   min-width: 34px;
   padding: 1px 8px;
-  border-radius: 999px;
-  border: 1px solid;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  border: 1px solid;
+  border-radius: 999px;
 }
 
 .canary-chip-ok {
   color: #34d399;
-  border-color: rgba(52, 211, 153, 0.45);
-  background: rgba(52, 211, 153, 0.1);
+  background: rgb(52 211 153 / 10%);
+  border-color: rgb(52 211 153 / 45%);
 }
 
 .canary-chip-bad {
   color: #f87171;
-  border-color: rgba(248, 113, 113, 0.45);
-  background: rgba(248, 113, 113, 0.1);
+  background: rgb(248 113 113 / 10%);
+  border-color: rgb(248 113 113 / 45%);
 }
 
 .canary-chip-warn {
   color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.45);
-  background: rgba(251, 191, 36, 0.1);
+  background: rgb(251 191 36 / 10%);
+  border-color: rgb(251 191 36 / 45%);
 }
 
 .canary-chip-zero {
   color: #a1a1aa;
-  border-color: rgba(161, 161, 170, 0.45);
-  background: rgba(161, 161, 170, 0.1);
+  background: rgb(161 161 170 / 10%);
+  border-color: rgb(161 161 170 / 45%);
 }
 
 /* progress + log ------------------------------------------------------------------ */
 
 .canary-progress {
+  margin-bottom: 8px;
   font-size: 13px;
   color: #e4e4e7;
-  margin-bottom: 8px;
 }
 
 .canary-log {
   max-height: 176px;
-  overflow-y: auto;
-  background: #0a0a0a;
-  border: 1px solid #27272a;
-  border-radius: 8px;
   padding: 10px 12px;
+  overflow-y: auto;
   font-size: 11.5px;
   line-height: 1.7;
   color: #a1a1aa;
-  scrollbar-width: thin;
   scrollbar-color: #3f3f46 transparent;
+  scrollbar-width: thin;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 8px;
 }
 
 .canary-log::-webkit-scrollbar {
@@ -245,8 +245,8 @@
 .canary-tablescroll {
   max-height: 384px;
   overflow-y: auto;
-  scrollbar-width: thin;
   scrollbar-color: #3f3f46 transparent;
+  scrollbar-width: thin;
 }
 
 .canary-tablescroll::-webkit-scrollbar {
@@ -266,33 +266,33 @@
 .canary-table {
   width: 100%;
   min-width: 720px;
-  border-collapse: collapse;
   font-size: 12.5px;
+  border-collapse: collapse;
 }
 
 .canary-table th,
 .canary-table td {
   padding: 7px 10px;
+  vertical-align: top;
   text-align: left;
   border-bottom: 1px solid #27272a;
-  vertical-align: top;
 }
 
 .canary-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #18181b;
-  color: #a1a1aa;
   font-size: 11px;
   font-weight: 600;
+  color: #a1a1aa;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  background: #18181b;
   border-bottom: 1px solid #3f3f46;
 }
 
 .canary-table tbody tr:hover {
-  background: rgba(63, 63, 70, 0.35);
+  background: rgb(63 63 70 / 35%);
 }
 
 .canary-play-ok {
@@ -304,29 +304,29 @@
 }
 
 .canary-251 {
-  color: #34d399;
   font-weight: 700;
+  color: #34d399;
 }
 
 .canary-reason {
-  color: #a1a1aa;
   max-width: 280px;
+  color: #a1a1aa;
   overflow-wrap: anywhere;
 }
 
 .canary-empty {
+  padding: 24px;
   color: #a1a1aa;
   text-align: center;
-  padding: 24px;
 }
 
 /* R-C cards ------------------------------------------------------------------------ */
 
 .canary-rcond {
+  padding: 12px 14px;
   background: #0a0a0a;
   border: 1px solid #27272a;
   border-radius: 10px;
-  padding: 12px 14px;
 }
 
 .canary-rcond + .canary-rcond {
@@ -336,27 +336,27 @@
 .canary-rcond-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 10px;
+  align-items: center;
 }
 
 .canary-rcond-id {
-  color: #e4e4e7;
-  font-weight: 700;
   font-size: 12px;
+  font-weight: 700;
+  color: #e4e4e7;
 }
 
 .canary-rcond-name {
   flex: 1 1 auto;
-  color: #e4e4e7;
-  font-weight: 600;
   font-size: 13.5px;
+  font-weight: 600;
+  color: #e4e4e7;
 }
 
 .canary-rcond-detail {
   margin-top: 6px;
-  color: #a1a1aa;
   font-size: 12.5px;
+  color: #a1a1aa;
   overflow-wrap: anywhere;
 }
 
@@ -364,41 +364,41 @@
 
 .canary-ok {
   margin: 10px 0 0;
-  color: #34d399;
   font-size: 13px;
+  color: #34d399;
   overflow-wrap: anywhere;
 }
 
 .canary-err {
   margin: 10px 0 0;
-  color: #f87171;
   font-size: 13px;
+  color: #f87171;
   overflow-wrap: anywhere;
 }
 
 .canary-muted {
   margin: 8px 0 0;
-  color: #a1a1aa;
   font-size: 12.5px;
+  color: #a1a1aa;
   overflow-wrap: anywhere;
 }
 
 .canary-warn {
   margin: 10px 0 0;
-  color: #fbbf24;
   font-size: 12.5px;
+  color: #fbbf24;
   overflow-wrap: anywhere;
 }
 
 .canary-warn-note {
-  margin: 0 0 12px;
   padding: 10px 12px;
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.08);
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  border-radius: 8px;
+  margin: 0 0 12px;
   font-size: 13px;
+  color: #fbbf24;
   overflow-wrap: anywhere;
+  background: rgb(251 191 36 / 8%);
+  border: 1px solid rgb(251 191 36 / 35%);
+  border-radius: 8px;
 }
 
 .canary-warn-note .canary-mono {
@@ -408,17 +408,17 @@
 /* sticky footer (root is min-height:100vh flex column; footer rides on margin-top:auto) */
 
 .canary-footer {
-  margin-top: auto;
-  padding-top: 20px;
-  border-top: 1px solid #27272a;
-  color: #71717a;
-  font-size: 11.5px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
+  padding-top: 20px;
+  margin-top: auto;
+  font-size: 11.5px;
+  color: #71717a;
+  border-top: 1px solid #27272a;
 }
 
-@media (max-width: 640px) {
+@media (width <= 640px) {
   .canary-root {
     padding: 14px;
   }
