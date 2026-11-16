@@ -1,0 +1,5 @@
+# wasm-pack build outputs (never committed — the feishin cipher copy is
+# staged by build-feishin-cipher.sh into the feishin tree; the web copy is
+# staged by web-build.yml from a fresh build)
+/pkg/
+/pkg-*/

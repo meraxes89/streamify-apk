@@ -31,311 +31,23 @@
 //!     vendored crate routes every clock read through
 //!     `js_sys::Date::now()`.
 
-use std::sync::OnceLock;
-
-use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-// WS-W engine facade breadth, work item 3: the radio/blend scorer leaf
-// (rust/crates/streamify-radio-scorer — moved verbatim out of
-// streamify-resolver so it compiles on wasm32). Read-only path dep, same
-// as streamify-core in streamify-engine-wasm.
-use streamify_radio_scorer::radio_scorer::{RadioAntiDriftEngine, ScoredCandidate};
+// P4-A feature split (see Cargo.toml [features] and decisions/p4/): the
+// engine facade (this file's historical body, now src/engine.rs) and the
+// cipher facade (src/cipher.rs — the feishin downloads chunk cipher) are
+// disjoint. A bare build keeps the historical default surface; a
+// `--no-default-features --features cipher` build compiles the compact
+// cipher-only artifact (no rustypipe, no serde, no js-sys).
+#[cfg(feature = "cipher")]
+pub mod cipher;
+#[cfg(feature = "engine")]
+mod engine;
 
-use rustypipe::client::{ClientType, RustyPipe, RustyPipeBuilder};
-use rustypipe::model::{AudioFormat, AudioStream, TrackItem, VideoFormat, VideoPlayer};
-
-/// W0.2 alive check.
+/// W0.2 alive check (both facades carry it).
 #[wasm_bindgen]
 pub fn ping() -> String {
     "pong".into()
-}
-
-/// Route all rustypipe HTTP traffic through the streamify-relay worker
-/// (e.g. `https://streamify-relay.<account>.workers.dev`, or
-/// `http://localhost:8787` against a local `wrangler dev`). No-op on
-/// non-wasm builds.
-#[wasm_bindgen]
-pub fn set_relay_base_url(u: &str) {
-    #[cfg(target_family = "wasm")]
-    rustypipe::client::set_relay_base_url(Some(u));
-    #[cfg(not(target_family = "wasm"))]
-    let _ = u;
-}
-
-// ---------------------------------------------------------------------------
-// Client singleton
-// ---------------------------------------------------------------------------
-
-/// Web player ladder (WS-W): the wasm build has no botguard, so rustypipe's
-/// default order is [Ios, Tv] — from datacenter IPs the Ios client draws the
-/// bot-wall first. The Android app client (no obfuscated URLs per
-/// rustypipe's own docs) resolves standard content from datacenter IPs
-/// (verified in the W0.4 curl matrix); licensed content stays bot-walled
-/// everywhere from datacenter — that is the canary's question, not this
-/// facade's.
-const PLAYER_LADDER: &[ClientType] = &[ClientType::Android, ClientType::Ios, ClientType::Tv];
-
-/// The wasm engine's Clone-cheap handle (the engine holds it in the
-/// same kind of process-wide singleton, see rustypipe_engine.rs::client).
-/// Built without cache storage — the browser sandbox has no writable cache
-/// lane for it in P0.
-fn client() -> Result<RustyPipe, String> {
-    static CLIENT: OnceLock<Result<RustyPipe, String>> = OnceLock::new();
-    CLIENT
-        .get_or_init(|| {
-            RustyPipeBuilder::new()
-                .no_storage()
-                .build()
-                .map_err(|e| format!("rustypipe init failed: {e}"))
-        })
-        .clone()
-}
-
-// ---------------------------------------------------------------------------
-// Track JSON (the JSON-string bridge payload)
-// ---------------------------------------------------------------------------
-
-/// Wire shape consumed by web/src/lib/engine.ts (`Track`).
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TrackJson {
-    video_id: String,
-    title: String,
-    artist: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    album: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    duration_sec: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thumbnail_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    track_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    view_count: Option<u64>,
-}
-
-/// Mirrors the engine's TrackItem mapping (map_tracks_to_search_candidates):
-/// first artist, album name, cover art (highest-res thumb last in the vec).
-fn map_track(item: &TrackItem) -> TrackJson {
-    TrackJson {
-        video_id: item.id.clone(),
-        title: item.name.clone(),
-        artist: item
-            .artists
-            .first()
-            .map(|a| a.name.clone())
-            .unwrap_or_default(),
-        album: item.album.as_ref().map(|a| a.name.clone()),
-        duration_sec: item.duration,
-        thumbnail_url: item.cover.last().map(|t| t.url.clone()),
-        track_type: Some(format!("{:?}", item.track_type)),
-        view_count: item.view_count,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Stream resolution (the G0.4 / kill-criterion audio path)
-// ---------------------------------------------------------------------------
-
-/// Wire shape consumed by web/src/lib/engine.ts (`StreamInfo`).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StreamInfoJson {
-    stream_url: String,
-    itag: u32,
-    mime_type: String,
-    is_audio_only: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    duration_sec: Option<u32>,
-}
-
-/// Audio container rank — mirrors the engine's `audio_rank` exactly:
-/// m4a (AAC in MP4) first, webm (Opus) second.
-fn audio_rank(format: &AudioFormat) -> u8 {
-    match format {
-        AudioFormat::M4a => 0,
-        AudioFormat::Webm => 1,
-        // `#[non_exhaustive]`: a future container ranks last.
-        _ => 2,
-    }
-}
-
-/// Muxed container rank — mirrors the engine's `muxed_rank` (the non-
-/// audio-only fallback tail; the `<audio>` element plays the audio track of
-/// a muxed MP4 just fine).
-fn muxed_rank(format: &VideoFormat) -> u8 {
-    match format {
-        VideoFormat::Mp4 => 0,
-        VideoFormat::Webm => 1,
-        VideoFormat::ThreeGp => 2,
-        _ => 3,
-    }
-}
-
-/// Best audio stream for the proof — the prefix of the engine's
-/// `map_player_to_formats` ordering contract: every audio-only format
-/// precedes every muxed format; inside each class container rank, then
-/// bitrate descending.
-fn best_audio_stream(player: &VideoPlayer) -> Option<&AudioStream> {
-    let mut candidates: Vec<&AudioStream> = player
-        .audio_streams
-        .iter()
-        .filter(|s| !s.url.is_empty())
-        .collect();
-    candidates.sort_by(|a, b| {
-        audio_rank(&a.format)
-            .cmp(&audio_rank(&b.format))
-            .then(b.average_bitrate.max(b.bitrate).cmp(&a.average_bitrate.max(a.bitrate)))
-    });
-    candidates.into_iter().next()
-}
-
-/// Best muxed stream (fallback when no audio-only format carries a direct
-/// URL — e.g. the Android client often answers with muxed formats only
-/// from datacenter IPs).
-fn best_muxed_stream(player: &VideoPlayer) -> Option<&rustypipe::model::VideoStream> {
-    let mut candidates: Vec<&rustypipe::model::VideoStream> = player
-        .video_streams
-        .iter()
-        .filter(|s| !s.url.is_empty())
-        .collect();
-    candidates.sort_by(|a, b| {
-        muxed_rank(&a.format)
-            .cmp(&muxed_rank(&b.format))
-            .then(b.average_bitrate.max(b.bitrate).cmp(&a.average_bitrate.max(a.bitrate)))
-    });
-    candidates.into_iter().next()
-}
-
-// ---------------------------------------------------------------------------
-// wasm-bindgen exports
-// ---------------------------------------------------------------------------
-
-/// Full error chain (reqwest wasm errors hide the JS exception in their
-/// top-level Display — the cause chain carries "TypeError: ..." etc.).
-fn fmt_err_chain(e: &dyn std::error::Error) -> String {
-    let mut s = e.to_string();
-    let mut cur = e.source();
-    while let Some(src) = cur {
-        s.push_str(" | cause: ");
-        s.push_str(&src.to_string());
-        cur = src.source();
-    }
-    s
-}
-
-/// W0.4 proof: search YouTube Music through the relay.
-///
-/// Returns a JSON STRING (the JSON-string bridge — parse on the TS side;
-/// see the module docs for why serde values never cross the boundary
-/// directly).
-#[wasm_bindgen]
-pub async fn search_music(query: &str) -> Result<JsValue, JsValue> {
-    let rp = match client() {
-        Ok(c) => c,
-        Err(e) => return Err(JsValue::from_str(&e)),
-    };
-    match rp.query().music_search_tracks(query).await {
-        Ok(result) => {
-            let tracks: Vec<TrackJson> = result.items.items.iter().map(map_track).collect();
-            let json = serde_json::to_string(&tracks).unwrap_or_else(|_| "[]".to_owned());
-            Ok(JsValue::from_str(&json))
-        }
-        Err(e) => Err(JsValue::from_str(&format!(
-            "search failed: {}",
-            fmt_err_chain(&e)
-        ))),
-    }
-}
-
-/// The Start Radio scorer, mirrored from `rust_score_and_rank_radio_candidates`
-/// (WS-W engine facade breadth, work item 3): the anti-drift filter/ranker —
-/// signature dedupe, per-artist caps, junk-title filtering, BPM/key affinity —
-/// over the candidate pool, against the already-queued rows. JSON STRING in
-/// and out (the house bridge); throws on malformed candidate JSON.
-#[wasm_bindgen]
-pub fn score_and_rank_radio_candidates(
-    candidates_json: &str,
-    seed_bpm: f32,
-    seed_key: &str,
-    seed_duration_sec: i32,
-    seed_signature: &str,
-    queue_json: &str,
-) -> Result<JsValue, JsValue> {
-    let candidates: Vec<ScoredCandidate> = serde_json::from_str(candidates_json)
-        .map_err(|e| JsValue::from_str(&format!("candidateJson: {e}")))?;
-    let active_queue: Vec<ScoredCandidate> = if queue_json.trim().is_empty() {
-        Vec::new()
-    } else {
-        serde_json::from_str(queue_json).unwrap_or_default()
-    };
-    let ranked = RadioAntiDriftEngine::filter_and_rank_candidates(
-        &candidates,
-        seed_bpm,
-        seed_key,
-        seed_duration_sec,
-        seed_signature,
-        &active_queue,
-    );
-    let json = serde_json::to_string(&ranked)
-        .map_err(|e| JsValue::from_str(&format!("serialize: {e}")))?;
-    Ok(JsValue::from_str(&json))
-}
-
-/// G0.4 / kill-criterion path: resolve the best audio stream for a video
-/// id. Returns a JSON STRING `{ streamUrl, itag, mimeType, isAudioOnly,
-/// durationSec? }`, or the JSON string `"null"` when the player response
-/// carries no direct audio URL (bot-walled / login-required / ciphered).
-#[wasm_bindgen]
-pub async fn resolve_stream(video_id: &str) -> Result<JsValue, JsValue> {
-    let rp = match client() {
-        Ok(c) => c,
-        Err(e) => return Err(JsValue::from_str(&e)),
-    };
-    match rp
-        .query()
-        // Web ladder (WS-W): the wasm build has no botguard, so rustypipe's
-        // default order is [Ios, Tv] — from datacenter IPs the Ios client
-        // draws the bot-wall and Tv often follows. The Android app client
-        // (no obfuscated URLs — rustypipe's own docs) resolves standard
-        // content from datacenter IPs (verified in the W0.4 curl matrix:
-        // Android + the yt-dlp ANDROID_VR/VISIONOS analogues return direct
-        // URLs; licensed content stays bot-walled everywhere — that is the
-        // canary's question, not this facade's).
-        .player_from_clients(video_id, PLAYER_LADDER)
-        .await
-    {
-        Ok(player) => {
-            let json = if let Some(s) = best_audio_stream(&player) {
-                let info = StreamInfoJson {
-                    stream_url: s.url.clone(),
-                    itag: s.itag,
-                    mime_type: s.mime.clone(),
-                    is_audio_only: true,
-                    duration_sec: s.duration_ms.map(|ms| ms / 1000),
-                };
-                serde_json::to_string(&info).unwrap_or_else(|_| "null".to_owned())
-            } else if let Some(s) = best_muxed_stream(&player) {
-                // Muxed fallback — the <audio> element plays the audio track
-                // of a muxed MP4 (G0.4 accepts "audio comes out of
-                // speakers"; the engine's own ordering chains muxed after
-                // audio-only).
-                let info = StreamInfoJson {
-                    stream_url: s.url.clone(),
-                    itag: s.itag,
-                    mime_type: s.mime.clone(),
-                    is_audio_only: false,
-                    duration_sec: s.duration_ms.map(|ms| ms / 1000),
-                };
-                serde_json::to_string(&info).unwrap_or_else(|_| "null".to_owned())
-            } else {
-                "null".to_owned()
-            };
-            Ok(JsValue::from_str(&json))
-        }
-        Err(e) => Err(JsValue::from_str(&format!("resolve failed: {}", fmt_err_chain(&e)))),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -354,57 +66,14 @@ mod tests {
         assert_eq!(ping(), "pong");
     }
 
-    /// WS-W engine facade breadth, work item 3: the anti-drift contract,
-    /// exercised in-browser — signature dedupe, per-artist caps, junk-title
-    /// filtering (the semantics the native blend-jam-mesh suite pins).
+    /// P4-A cipher facade health probe (runs with
+    /// `cargo test --no-default-features --features cipher`; the feishin
+    /// side additionally exercises the vendored artifact through vitest).
+    #[cfg(feature = "cipher")]
     #[wasm_bindgen_test]
-    fn radio_scorer_anti_drift_contract_on_wasm() {
-        fn cand(id: i32, title: &str, artist: &str, dur: i32) -> ScoredCandidate {
-            ScoredCandidate {
-                id,
-                title: title.to_string(),
-                artist: artist.to_string(),
-                album: String::new(),
-                duration_sec: dur,
-                filepath: String::new(),
-                cover_art_path: String::new(),
-                bpm: 0.0,
-                key: String::new(),
-                score: 0.0,
-            }
-        }
-        let pool = vec![
-            cand(1, "Seed Song", "Seed Artist", 200),
-            cand(2, "Best of 2024 compilation", "Junk Corp", 300),
-            cand(3, "Dup A", "Real Artist", 210),
-            cand(4, "Dup A", "Real Artist", 210),
-            cand(5, "Other One", "Real Artist", 220),
-            cand(6, "Third Thing", "Real Artist", 240),
-            cand(7, "Clean Pick", "Other Artist", 205),
-        ];
-        let pool_json = serde_json::to_string(&pool).unwrap();
-        let out = score_and_rank_radio_candidates(
-            &pool_json,
-            0.0,
-            "",
-            200,
-            "Seed Song|Seed Artist|200",
-            "[]",
-        )
-        .expect("scoring applies");
-        let ranked: Vec<ScoredCandidate> =
-            serde_json::from_str(&out.as_string().expect("json out")).expect("parse ranked");
-        // Junk filtered.
-        assert!(!ranked.iter().any(|c| c.title.contains("compilation")));
-        // Signature dedupe: "Dup A|Real Artist|210" appears once.
-        let dup_a = ranked.iter().filter(|c| c.title == "Dup A").count();
-        assert_eq!(dup_a, 1);
-        // Per-artist cap: at most 2 rows from Real Artist survive.
-        let real = ranked.iter().filter(|c| c.artist == "Real Artist").count();
-        assert!(real <= 2, "artist cap is 2, got {real}");
-        // And the pool actually produced something.
-        assert!(!ranked.is_empty());
-        // Malformed JSON throws (never silently empty).
-        assert!(score_and_rank_radio_candidates("not json", 0.0, "", 0, "", "[]").is_err());
+    fn cipher_self_test_passes() {
+        assert_eq!(cipher::dl_self_test(), 0);
+        assert_eq!(cipher::dl_format_version(), 1);
+        assert_eq!(cipher::dl_chunk_size(), 65536);
     }
 }
