@@ -62,10 +62,12 @@ jobs:
               with:
                   version: 11.5.2
 
+            # Node 22 matches feishin-ci.yml — pnpm 11.5.2 requires
+            # Node >= 22.13 (it uses the node:sqlite builtin, absent in 20).
             - name: Install Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
-                  node-version: 20
+                  node-version: 22
                   cache: pnpm
                   cache-dependency-path: front-end/feishin/pnpm-lock.yaml
 
