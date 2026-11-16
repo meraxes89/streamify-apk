@@ -157,6 +157,17 @@ export default defineConfig({
             // workspace source (no package link, no legacy canary.html).
             '@streamify/canary': path.resolve(__dirname, '../canary/src'),
             path: path.resolve(__dirname, './src/renderer/shims/path.ts'),
+            // The canary source sits OUTSIDE the feishin root; rollup's
+            // walk-up resolution cannot find react's subpath exports from
+            // there (CI has no front-end/node_modules — feishin's pnpm tree
+            // is the only one). Pin the JSX runtime subpaths to feishin's
+            // own react copy (plugin-react's babel emits these imports):
+            // the same single react the whole app bundles.
+            'react/jsx-dev-runtime': path.resolve(
+                __dirname,
+                './node_modules/react/jsx-dev-runtime.js',
+            ),
+            'react/jsx-runtime': path.resolve(__dirname, './node_modules/react/jsx-runtime.js'),
         },
     },
     root: path.resolve(__dirname, './src/renderer'),

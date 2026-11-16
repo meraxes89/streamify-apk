@@ -17,9 +17,16 @@ export default defineConfig({
             '/@/remote': path.resolve(__dirname, './src/remote'),
             '/@/renderer': path.resolve(__dirname, './src/renderer'),
             '/@/shared': path.resolve(__dirname, './src/shared'),
-            // P5-A: the canary console panel test — same alias as
-            // web.vite.config.ts (@streamify/canary → front-end/canary/src).
+            // P5-A: the canary console panel test — same aliases as
+            // web.vite.config.ts (@streamify/canary → front-end/canary/src;
+            // the JSX runtime subpaths pinned to feishin's own react copy
+            // because the canary source sits outside the feishin root).
             '@streamify/canary': path.resolve(__dirname, '../canary/src'),
+            'react/jsx-dev-runtime': path.resolve(
+                __dirname,
+                './node_modules/react/jsx-dev-runtime.js',
+            ),
+            'react/jsx-runtime': path.resolve(__dirname, './node_modules/react/jsx-runtime.js'),
         },
         // P5-A: the canary console imports react from OUTSIDE the project
         // root (front-end/canary/src) — without dedupe, vite resolves a
