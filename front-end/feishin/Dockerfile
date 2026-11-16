@@ -25,7 +25,13 @@ ENV SERVER_LOCK=false SERVER_NAME="" SERVER_TYPE="" SERVER_URL="" REMOTE_URL=""
 ENV LEGACY_AUTHENTICATION="" ANALYTICS_DISABLED="" PUBLIC_PATH="/"
 # Fork addition (see PATCHES.md): defined so nginx envsubst substitutes the
 # Streamify settings.js knobs even when the deployment leaves them empty.
-ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY=" STREAMIFY_RELAY_BASE=""
+# P5-A: the ANON_KEY closing quote has been missing since the #186 append
+# (the whole line collapsed into one envsubst token), and
+# STREAMIFY_DEV_ACCESS_TOKEN — referenced by settings.js.template since P1B
+# — was never defined. Both fixed here; relayBase.ts now also rejects any
+# unexpanded ${...} placeholder so a missing variable can never leak as a
+# live URL.
+ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY="" STREAMIFY_RELAY_BASE="" STREAMIFY_DEV_ACCESS_TOKEN=""
 
 EXPOSE 9180
 CMD ["nginx", "-g", "daemon off;"]

@@ -39,23 +39,41 @@ jobs:
   # day is DATA, not a failure — the only gating case is zero resolves
   # (infra). One week of these reports is the custom-engine checkpoint
   # input (a joint call, per the P2-A kickoff — never a solo decision).
+  #
+  # P5-A: the runner moved from front-end/web (archived to
+  # legacy/front-end-web) into the feishin fork — the corpus now exercises
+  # the CANONICAL resolver tree
+  # (front-end/feishin/src/renderer/api/streamify/playback/resolver/audio/
+  # get-stream-url.ts) via `pnpm run test:corpus` (vitest.corpus.config.ts,
+  # live-network lane by design, never part of `pnpm test`). Same corpus,
+  # same relay, same report shape — the daily cadence is uninterrupted.
   sabr-corpus:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      # pnpm pinned to match front-end/feishin packageManager (same pattern
+      # as feishin-ci.yml; the repo root has no package.json for the
+      # action to auto-derive it from).
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Install deps
-        run: npm install --no-fund --no-audit
-        working-directory: front-end
+          cache: pnpm
+          cache-dependency-path: front-end/feishin/pnpm-lock.yaml
+      - name: Install dependencies (Electron binary download skipped)
+        run: pnpm install --frozen-lockfile
+        working-directory: front-end/feishin
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - name: "Run the corpus (live; report + step summary)"
         env:
           RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
           SABR_REPORT_PATH: /tmp/sabr-report.json
-        run: npm run test:corpus -w web
-        working-directory: front-end
+        run: pnpm run test:corpus
+        working-directory: front-end/feishin
       - name: Upload the report
         uses: actions/upload-artifact@v7
         with:

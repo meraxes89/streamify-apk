@@ -1,356 +1,428 @@
-# PATCHES.md — upstream divergence ledger
+# PATCHES.md — the upstream divergence ledger (per-file conflict map)
 
-This fork (`streamify-feishin`) tracks `jeffvli/feishin`. Upstream moves fast (~180 commits/month); we track release **tags only** (monthly, stable) and **merge, never rebase**. This file is the complete, honest ledger of every change we carry on top of upstream, so future tag merges have a single place to look for expected conflict surfaces.
+This fork (`streamify-feishin`, vendored at `front-end/feishin/`) tracks
+`jeffvli/feishin`. Upstream moves fast (~180 commits/month); we track release
+**tags only** (monthly, stable) and **merge, never rebase**. This file is the
+complete, honest ledger of every change we carry on top of upstream, organized
+**per file** — one entry per upstream file we touch, plus the fork-owned
+directory inventory — so the next tag merge has a single authoritative map of
+the expected conflict surfaces.
+
+**P5-A consolidation note (2026-11):** this file was rewritten from the
+append-only per-patch history into the per-file map. Three historical
+discrepancies found by the P5 audit are corrected here, not papered over:
+
+1. **Patch 3a phasing** — the `settings.js.template` Streamify knobs were
+   attributed to P0; they actually landed in P1 (#182: `STREAMIFY_AUTH`,
+   `STREAMIFY_SUPABASE_URL`, `STREAMIFY_SUPABASE_ANON_KEY`) and P1B (#184:
+   `STREAMIFY_DEV_ACCESS_TOKEN`). P0 vendored the template untouched.
+2. **Patch 20 vs Dockerfile:28** — the ledger described the P2-A
+   `STREAMIFY_RELAY_BASE` append as a clean one-line extension. The actual
+   #186 edit dropped the closing quote on `STREAMIFY_SUPABASE_ANON_KEY`,
+   collapsing the whole ENV line into one envsubst token; the bug hid until
+   the P5 audit (the session seam's placeholder filter masked it as "unset").
+   Fixed in P5-A, together with the never-defined `STREAMIFY_DEV_ACCESS_TOKEN`
+   ENV the template has referenced since P1B.
+3. **Missing P3-A entries** — #190 (jam CRDT playlist backing) touched zero
+   upstream files and never appended its fork-owned additions to this ledger.
+   They are inventoried in section B below.
 
 ## Policy
 
-- New Streamify work goes in **new directories only** (e.g. `src/renderer/api/streamify/`). Features never re-open upstream files.
-- The only upstream files we carry changes in are listed in this ledger (plus the pre-approved future touch list below).
-- Never touch: `src/renderer/features/login/**`, `src/renderer/features/servers/**` (beyond the frozen registration lines recorded below), `src/renderer/components/**`, themes.
+- New Streamify work goes in **new directories only** (e.g.
+  `src/renderer/api/streamify/`, `src/renderer/features/streamify-*/`). New
+  features never re-open upstream files except through the minimal seams
+  recorded in section A.
+- Never touch: `src/renderer/features/login/**`,
+  `src/renderer/features/servers/**` (beyond the frozen registration lines
+  recorded below), `src/renderer/components/**`, themes.
 - The fork stays GPL-3.0 with source available.
 - Secrets live in deployment configuration, never in the tree.
-- Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `ci:`, …) are enforced by CI (commitlint) on PR commit ranges and pushes.
+- Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `ci:`, …) are
+  enforced by CI (commitlint) on PR commit ranges and pushes.
 
-## Carried patches (P0 — forked from tag `v1.17.0`)
+## Upstream baselines
 
-### 1. `src/shared/types/domain-types.ts` — `ServerType` enum
+| ref | SHA | note |
+| --- | --- | --- |
+| `v1.17.0` (tag) | `5c169aca8d55` | the P0 fork point |
+| `development` (branch) | `e36c5a95` | last observed upstream head |
+| `v1.18.0` | — | **not tagged yet** as of P5-A; the next merge target |
 
-- **What:** added `STREAMIFY = 'streamify'` to the `ServerType` enum.
-- **Why:** registers the Streamify server type in the shared domain model so the API controller map and the per-server-type UI gating can reference it.
-- **Expected conflict surface:** low. The enum is rarely edited upstream; a new upstream server type would conflict trivially.
+---
 
-### 2. `src/renderer/api/controller.ts` — controller registration
+## A. Upstream files we carry changes in
 
-- **What:** added `streamify: InternalControllerEndpoint` to the `ApiController` type and `streamify: StreamifyController` to the `endpoints` map (+ import).
-- **Why:** routes API calls for the `streamify` server type to our controller.
-- **Expected conflict surface:** low. Registration block is stable.
+Every edit to an upstream file is listed here — the exact conflict map for the
+next tag merge. Phase attributions: P0 (#181), P1 (#182), P1B (#184), P2-A
+(#185/#186), P2-B (#187), P3-A (#190), P3-B (#191), P4-A (#192), P4-B (#193),
+P5-A (this PR).
 
-### 3. `src/renderer/api/streamify/` — new directory (ours)
+### A1. `package.json`
 
-- **What:** `streamify-controller.ts` implements `InternalControllerEndpoint`. P0 shipped every method (53 required + 16 optional) throwing a typed `StreamifyNotImplementedError` carrying the endpoint name. P1 replaces the library read set with real implementations (song/album/artist/genre lists + counts, details, search, top/similar/radio/random, playlist reads, thumbnail URL lookups, getServerInfo/getUserInfo/getScanStatus/getRoles/getMusicFolderList/getInternetRadioStations/refreshItems) backed by the in-memory library snapshot; auth and mutations stay stubs. Sibling modules (all ours, all new files): `session.ts` (the credential codec + dev session seam shared with Engineer A), `cloud.ts` (the existing Supabase REST lanes), `engine.ts` (the bridge: snapshot load/memoize), `library.ts` (the snapshot model + derivations), `ids.ts` (the stable ID scheme), `normalize.ts` (feishin entity shaping), `query.ts` (local pagination/sorting/filter/search), `derive.ts` (top/similar/radio/random), `covers.ts` (the image URL lane). Decisions: `decisions/p1/`.
-- **Why:** the UI's per-server-type gating hides affordances behind missing endpoints, so a registered controller with real reads lights up the browse surface one endpoint set at a time. Reads are local-first against the snapshot; the load uses only the cloud lanes the shipping web app already issues (no new Supabase round-trips).
-- **Expected conflict surface:** none - new directory upstream never touches. The controller file is shared with A (auth seam); per-method edits keep conflicts small.
+- **What:** dependencies `@supabase/supabase-js ^2.119.0` (P1),
+  `youtubei.js 18.3.0` (exact pin — the resolver requires the same pin the
+  web app used), `googlevideo ^4.0.4`, `bgutils-js ^4.0.3` (P2-A);
+  devDependency `vitest ^3.2.0` (P2-A); scripts `test` (P2-A) and
+  `test:corpus` (P5-A — the daily SABR corpus lane, config
+  `vitest.corpus.config.ts`).
+- **Conflict surface:** low — dependency lines + two scripts.
 
-### 3a. `settings.js.template` - Streamify deployment variables (pre-approved touch, F0 list)
+### A2. `pnpm-lock.yaml`
 
-- **What:** appended `STREAMIFY_SUPABASE_URL`, `STREAMIFY_SUPABASE_ANON_KEY`, `STREAMIFY_DEV_ACCESS_TOKEN` (all default to the unsubstituted `${...}` placeholder, which the session seam reads as unset).
-- **Why:** the P1 session seam's dev fallback (the "mock session" the reads are built against until A's Google flow lands); documented in `decisions/p1/session-and-request-interface.md`. The Dockerfile is untouched: nginx envsubst substitutes what the environment defines, and unset placeholders read as unset (same behavior as upstream's `FS_*` variables).
-- **Expected conflict surface:** low - append-only at file end.
+- **What:** regenerated with every dependency change (P1, P2-A).
+- **Conflict surface:** mechanical — regenerate on merge, never hand-edit.
 
-### 4. `src/shared/types/types.ts` — UI-side `ServerType` enum + `toServerType` (forced by typecheck/selection)
+### A3. `vitest.config.ts` (fork-added file, upstream has none)
 
-- **What:** added `STREAMIFY = 'streamify'` to the second, UI-facing `ServerType` enum (this file declares its own copy, separate from `domain-types.ts`), and added `case ServerType.STREAMIFY: return ServerType.STREAMIFY;` to `toServerType`.
-- **Why:** the UI (add-server form, login route) imports `ServerType` from this file, so both enums must carry the member or `typecheck:web` fails on the exhaustive records. Without the `toServerType` case, `SERVER_TYPE=streamify` (via `settings.js`) resolves to `null` and the app silently falls back to the default server type instead of selecting Streamify.
-- **Expected conflict surface:** low. Purely additive.
+- **What:** the fork's network-free test lane (`environment: node`, include
+  `src/**/*.test.ts`, the `/@/` aliases). P5-A: added the
+  `@streamify/canary` alias + `resolve.dedupe ['react', 'react-dom']` (the
+  canary console source lives outside the feishin root — without dedupe,
+  vite resolves a phantom `<root>/react` module for those files).
+- **Conflict surface:** none — fork-owned file, but listed because its
+  aliases must mirror `web.vite.config.ts` (A24).
 
-### 5. `src/renderer/features/servers/components/add-server-form.tsx` — `SERVER_TYPES` record (forced by typecheck)
+### A4. `settings.js.template`
 
-- **What:** added the `[ServerType.STREAMIFY]` entry (`icon`, `name`) and the `streamify.png` asset import.
-- **Why:** `SERVER_TYPES` is typed `Record<ServerType, ServerDetails>`; a new enum member without a record entry fails `typecheck:web`. This line is **frozen** — it exists only to satisfy exhaustiveness and render the type in the add-server picker.
-- **Expected conflict surface:** low. Only conflicts if upstream adds another server type (never so far).
+- **What:** appended the Streamify runtime knobs —
+  `window.STREAMIFY_AUTH` / `STREAMIFY_SUPABASE_URL` /
+  `STREAMIFY_SUPABASE_ANON_KEY` (P1, #182), `STREAMIFY_DEV_ACCESS_TOKEN`
+  (P1B, #184), `STREAMIFY_RELAY_BASE` (P2-A, #186). Values arrive via
+  deployment configuration (Docker env → nginx envsubst); unsubstituted
+  `${...}` placeholders read as unset (session.ts + relayBase.ts filters).
+- **Conflict surface:** low — append-only block at file end.
 
-### 6. `src/renderer/features/login/routes/login-route.tsx` — `SERVER_ICONS` / `SERVER_NAMES` records (forced by typecheck)
+### A5. `Dockerfile`
 
-- **What:** added `[ServerType.STREAMIFY]` entries to both records and the `streamify.png` asset import.
-- **Why:** both records are exhaustive over `ServerType`; same typecheck forcing as (5). These lines are **frozen**.
-- **Expected conflict surface:** low.
+- **What:** one ENV line so nginx envsubst substitutes the Streamify
+  settings.js knobs even when the deployment leaves them empty. Added clean
+  in P1 (#182); **broken between #186 and P5-A** (the P2-A RELAY_BASE append
+  dropped the `STREAMIFY_SUPABASE_ANON_KEY` closing quote — see the P5-A
+  note at the top); P5-A repaired it and added the missing
+  `STREAMIFY_DEV_ACCESS_TOKEN=""`. Current line:
+  `ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY="" STREAMIFY_RELAY_BASE="" STREAMIFY_DEV_ACCESS_TOKEN=""`
+- **Conflict surface:** low — one additive ENV line under the stock ENV
+  block.
 
-### 7. `src/renderer/features/servers/assets/streamify.png` — new asset (ours)
+### A6. `docker-compose.yaml`
 
-- **What:** 256×256 Streamify logo (source: streamify monorepo `front-end/web/public/icon512.png`).
-- **Why:** icon for the registration records above.
-- **Expected conflict surface:** none — new file.
+- **What:** P5-A cut the compose over from stock
+  (`ghcr.io/jeffvli/feishin:latest`, zero Streamify env) to the fork:
+  builds the local Dockerfile as `streamify-feishin:latest`, locks
+  `SERVER_LOCK=true` / `SERVER_TYPE=streamify` / `SERVER_NAME=streamify`,
+  sets `ANALYTICS_DISABLED=true`, and passes the five `STREAMIFY_*` knobs
+  through from the host environment. Production runs via Docker since the
+  Pages deployment was retired (P5-A).
+- **Conflict surface:** low-medium — upstream rarely edits compose; ours is
+  a full rewrite of the `environment:` block.
 
-## Pre-approved future touch list (from F0)
-
-These upstream files may be touched by later phases, and only for the stated purpose. Anything else goes in new directories:
-
-- `src/renderer/router/app-outlet.tsx` / `src/renderer/router/routes.ts` — P1 auth gate (redirect Streamify sessions to our auth flow). **Exercised in P1** (see carried patches 8–9).
-- `package.json` — adding our dependencies. **Exercised in P1** (`@supabase/supabase-js`, patch 11).
-- `settings.js.template` — Streamify deployment variables. **Exercised in P1** (patch 12).
-
-## Carried patches (P1 — auth + session)
-
-### 8. `src/renderer/router/routes.ts` — `AppRoute` enum (pre-approved)
-
-- **What:** added `STREAMIFY_AUTH = '/streamify-auth'` to the `AppRoute` enum.
-- **Why:** route constant for the Streamify auth page (our module, patch 10).
-- **Expected conflict surface:** low — one additive enum member.
-
-### 9. `src/renderer/router/app-outlet.tsx` — thin auth gate (pre-approved)
-
-- **What:** one import of our `useStreamifyAuthGate` hook + two early-return branches (REDIRECT → `Navigate` to `/streamify-auth`, CHECKING → spinner) placed before the stock `isActionsRequired` check.
-- **Why:** unauthenticated Streamify visitors are redirected to the auth route; authenticated ones pass straight into the app. All logic lives in the hook's own module (`src/renderer/features/streamify-auth/hooks/use-streamify-auth-gate.ts`); stock deployments short-circuit to PASS with no side effects, so upstream changes to the outlet body merge against an untouched stock path.
-- **Expected conflict surface:** low — the stock body below the gate is byte-identical to upstream.
-
-### 10. `src/renderer/router/app-router.tsx` — route registration (not pre-approved; minimal)
-
-- **What:** one lazy import + one `<Route element={<StreamifyAuthRoute />} path={AppRoute.STREAMIFY_AUTH} />` mounted next to `LOGIN` in the shell group (outside `AppOutlet`, so the gate never blocks the auth page itself).
-- **Why:** a route cannot exist without registration; the page component itself is entirely ours (`src/renderer/features/streamify-auth/routes/streamify-auth-route.tsx`).
-- **Expected conflict surface:** low — two additive lines; conflicts only if upstream restructures the route tree wholesale.
-
-### 11. `package.json` — `@supabase/supabase-js` (pre-approved)
-
-- **What:** added `"@supabase/supabase-js": "^2.119.0"` to dependencies (lockfile regenerated).
-- **Why:** the Supabase JS SDK backs the Streamify session (Google OAuth, token refresh, persisted sessions).
-- **Expected conflict surface:** low — one dependency line.
-
-### 12. `settings.js.template` — Streamify runtime knobs (pre-approved)
-
-- **What:** appended `window.STREAMIFY_AUTH`, `window.STREAMIFY_SUPABASE_URL`, `window.STREAMIFY_SUPABASE_ANON_KEY` assignments.
-- **Why:** runtime configuration for the auth flow — values live in deployment configuration (Docker env → nginx envsubst), never in the tree. `STREAMIFY_AUTH=false` is the explicit opt-out for hybrid deployments.
-- **Expected conflict surface:** low — appended block at end of file.
-
-### 13. `Dockerfile` — ENV defaults for the new knobs (not pre-approved; minimal)
-
-- **What:** one additive `ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY=""` line.
-- **Why:** nginx's envsubst only substitutes variables that are defined in the container environment; without the defaults, unsubstituted `${STREAMIFY_…}` literals would leak into settings.js as garbage strings.
-- **Expected conflict surface:** low — one additive ENV line.
-
-### 14. New directories (ours, no upstream conflict)
-
-- `src/renderer/api/streamify/streamify-supabase.ts` — SDK client singleton (PKCE, persisted sessions, auto-refresh), the synthetic server entry upsert into feishin's auth store, clean sign-out.
-- `src/renderer/api/streamify/streamify-request.ts` — authenticated request lane: Bearer + apikey headers, one refresh-and-retry on 401, then clean sign-out back to `/streamify-auth`.
-- `src/renderer/api/streamify/streamify-globals.d.ts` — window typings for the runtime knobs.
-- `src/renderer/api/streamify/streamify-controller.ts` — the P0 stub, now with a real auth trio (`getUserInfo` via the SDK, `getServerInfo` through the request lane, `authenticate` pointing stock form attempts at the auth page). The remaining stubs follow crash-proof semantics: Promise-typed endpoints reject asynchronously with `StreamifyNotImplementedError` (react-query surfaces honest error states), and the three sync-typed URL builders (`getImageUrl`, `getImageRequest`, `getDownloadUrl`) return empty values — render paths call those synchronously (e.g. the player-bar artwork while a queue from another server is active), and a synchronous throw there blanks the app (found in P1 verification).
-- `src/renderer/features/streamify-auth/` — the auth route (Google sign-in, session restore, own-server escape hatch into the stock flow) and the gate hook.
-
-## CI additions (ours)
-
-- `.github/workflows/web-ci.yml` — web-scoped pipeline: `pnpm install` (Electron binary download skipped), `pnpm run lint` (typecheck node + web, eslint `--max-warnings=0`, stylelint), `pnpm run build:web`. Runs on push and pull_request. Upstream's own `test.yml` is left untouched and keeps running (it also commitlints our commit ranges).
-
-## Upstream sync procedure (tags only, merge never rebase)
-
-1. `git fetch upstream --tags`
-2. `git merge v<next-tag>` on `main` (no rebase, no cherry-pick trains).
-3. Resolve conflicts using this ledger as the map of our divergence.
-4. `pnpm install && pnpm run lint && pnpm run build:web` must be green before the merge lands.
-5. Vendored copy in the streamify monorepo is updated from this fork only (see `front-end/decisions/feishin-adoption/F1-vendoring-strategy.md`).
-
-## Carried patches (P2-A — playback spine, app stream)
-
-### 15. `src/renderer/api/streamify/playback/` — new directory (ours)
-
-- **What:** the engine-side playback layer. `stream-source.ts` (the consumption
-  layer: the controller seam's back end, the error-claim hook with the
-  cached-ladder walk + stale re-resolve, the seek-strategy hook — all engine
-  wiring, ZERO resolution logic), `resolver/` (the vendored resolver mirror:
-  10 files synced byte-identically from `front-end/web` by the monorepo's
-  `scripts/sync_feishin_resolver.py` — CI-enforced on every `front-end/**` PR;
-  the one fork-authored file inside it is `resolver/lib/relayBase.ts`, the
-  relay knob that replaces the web app's wasm-bridge import), and
-  `__tests__/stream-source.test.ts` (the fork's first test lane — the P2-A
-  DoD walk/seek lock). Full record:
-  `front-end/decisions/p2/P2A-feishin-dual-engine.md`.
-- **Why:** the P2-A two-stream rule — resolution fixes land in the resolver
-  tree only; the fork imports `getStreamUrl` from the mirror like any other
-  consumer. The mirror gate makes that mechanical: drift fails CI.
-- **Expected conflict surface:** none — new directory upstream never touches.
-
-### 16. `src/renderer/features/player/audio-player/web-player.tsx` — two thin seams (not pre-approved; minimal)
-
-- **What:** (a) one `handleOnSourceError` callback + one `onSourceError` prop
-  pass-through to the engine (the error claim); (b) one block inside the stock
-  `onPlayerSeekToTimestamp` that lets the playback layer claim non-range
-  seeks (reload-from-zero + silent fast-forward, per the posted P2-A
-  contract). Unclaimed paths are byte-identical to upstream.
-- **Why:** the dual engine's element errors and non-range seeks need a
-  claim hook; all logic lives in `api/streamify/playback/stream-source.ts`.
-- **Expected conflict surface:** low — additive lines inside two handlers;
-  conflicts only if upstream restructures the player wholesale.
-
-### 17. `src/renderer/features/player/audio-player/engine/web-player-engine.tsx` — one thin seam (not pre-approved; minimal)
-
-- **What:** one optional `onSourceError?: (err, audio) => boolean` prop and
-  one claim block at the head of `handleOnError`'s inner handler. Claimed
-  errors return early; unclaimed errors run the stock retry/skip logic,
-  byte-identical to upstream.
-- **Expected conflict surface:** low.
-
-### 18. `package.json` — resolver dependencies + test script (pre-approved category)
-
-- **What:** dependencies `youtubei.js` (exact `18.3.0` — the mirror requires
-  the same pin as the web app), `googlevideo` `^4.0.4`, `bgutils-js`
-  `^4.0.3`; devDependency `vitest` `^3.2.0`; script `test`. Lockfile
-  regenerated.
-- **Expected conflict surface:** low — dependency lines.
-
-### 19. `settings.js.template` — `STREAMIFY_RELAY_BASE` (pre-approved category)
-
-- **What:** appended the relay-base runtime knob (the resolver's relay;
-  empty = relay off). Same envsubst semantics as the P1 knobs.
-- **Expected conflict surface:** low — append-only at file end.
-
-### 20. `Dockerfile` — ENV extension
-
-- **What:** `STREAMIFY_RELAY_BASE=""` appended to the existing Streamify ENV
-  line (nginx envsubst only substitutes defined variables).
-- **Expected conflict surface:** low — one line.
-
-### 21. `eslint.config.mjs` — vendored-mirror ignore
+### A7. `eslint.config.mjs`
 
 - **What:** added `src/renderer/api/streamify/playback/resolver` to the
-  global ignores. The mirror is synced code (2-space, web-app style) — lint
-  the fork's own code; typecheck still covers the mirror.
-- **Expected conflict surface:** low.
+  global ignores (P2-A). The resolver tree keeps the web app's 2-space
+  style — lint the fork's own code; typecheck still covers it. P5-A:
+  comment updated (the tree is canonical since the archive; integrity is
+  enforced by `scripts/check_feishin_resolver.py` in ci.yml, replacing the
+  retired mirror-sync gate).
+- **Conflict surface:** low — one ignore entry.
 
-## CI additions (ours — P2)
+### A8. `src/i18n/locales/en.json`
 
-- Fork: script `test` (`vitest run`) — the P2-A engine wiring lock, wired
-  into the fork's own `Web CI` via the monorepo `feishin-ci.yml` below.
-- Monorepo `.github/workflows/feishin-ci.yml` — the F1-deferred monorepo-side
-  gate for the vendored fork tree: install (Electron binary skipped) → lint
-  (typecheck node+web, eslint `--max-warnings=0`, stylelint) → tests →
-  `build:web`. Runs on `front-end/feishin/**` PRs and pushes.
-- Monorepo `web-build.yml`: job `resolver-mirror-sync` — runs
-  `scripts/sync_feishin_resolver.py --check` on every `front-end/**` PR so
-  the vendored resolver mirror can never drift from `front-end/web`.
+- **What:** additive sections: `error.streamify*` keys (P3-B, #191);
+  `streamifyAuth.*` (P3-B — the auth route i18n landed with #191's edit of
+  the auth route); `streamifyDownloads.*` / `streamifyWrapped.*` /
+  `streamifyDebug.*` + `page.sidebar.{downloads,wrapped}` (P4-A, #192);
+  `streamifyDebug.{panelCanary,canaryHint}` (P5-A). P4-B (#193) adds the
+  `streamify` top-level group (jam/eq/settings strings). Other locales fall
+  back to `en` (the fork's i18n policy).
+- **Conflict surface:** none — append-only at file end (plus keys inside
+  the alphabetically-adjacent `page.sidebar` block).
 
-## Carried patches (P3-B — favorites, curation & the playback bridge)
+### A9. `src/renderer/router/routes.ts`
 
-### 22. `src/renderer/features/shared/mutations/favorite-optimistic-updates.ts` — favorite cache fixes (not pre-approved; minimal, scoped)
+- **What:** `AppRoute` enum members: `STREAMIFY_AUTH` (P1),
+  `STREAMIFY_DOWNLOADS` / `STREAMIFY_WRAPPED` / `STREAMIFY_DEBUG` (P4-A),
+  `STREAMIFY_SETTINGS` (P4-B, #193).
+- **Conflict surface:** low — additive enum members.
 
-- **What:** three fixes to the favorite optimistic-update helpers: (1) the
-  SONG-case immediate path now also updates the `albumArtists.favoriteSongs`
-  cache — an unfavorite REMOVES the song from the favorites list instantly
-  (items + totalRecordCount) instead of waiting for the invalidation refetch
-  (a favorite only flips in place; the post-success refetch adds newcomers
-  with full data since `FavoriteArgs` carries ids only); (2) fixed the
-  pre-existing `homeQueries.concat(homeQueries)` double-registration bug in
-  the same path; (3) the deferred variant (`applyFavoriteOptimisticUpdatesDeferred`)
-  gains `favorite-songs` and `home-songs` collection lanes so both paths have
-  parity. Driven by P3-B (`decisions/p3/P3B-favorites-curation-bridge.md`):
-  the Streamify favorites endpoints update the library snapshot live, and
-  these cache layers make the UI reflect an unfavorite the moment it happens.
-- **Why:** the file is feishin's own favorite mutation cache layer; the
-  Streamify controller cannot reach into TanStack Query from `api/`, so the
-  minimal correct seam is the existing optimistic-update helper both stock
-  servers already share. Behavior for other server types is strictly
-  additive (a cache key they were already leaving stale until refetch).
-- **Expected conflict surface:** low — additive blocks inside the existing
-  SONG-case switch arms; upstream rarely edits this file.
+### A10. `src/renderer/router/app-router.tsx`
 
-### 23. P3-B new files (ours, no upstream conflict)
+- **What:** route registrations: one lazy import + one `<Route>` for the
+  auth page (P1, mounted in the shell group outside `AppOutlet` so the gate
+  never blocks it); three lazy imports + `<Route>`s for downloads / wrapped
+  / debug inside the authenticated `ResponsiveLayout` group (P4-A); one for
+  the Streamify settings page (P4-B).
+- **Conflict surface:** low — additive lines at stable anchors; conflicts
+  only if upstream restructures the route tree wholesale.
 
-- `src/renderer/api/streamify/playback/{scrobbler,queue-persistence,play-tally,scrobble-bridge}.ts`
-  — the #187 playback-spine domain modules ported from `front-end/web`
-  (PlaySessionTracker, ScrobbleOutbox, the tiered URL-free queue serializer,
-  the local play tally + snapshot hydration) plus the feishin bridge wiring
-  (sparse playback reports → actual played time → threshold → outbox →
-  `recordPlayEventStrict` with the resolved rung attached). See
-  `decisions/p3/P3B-favorites-curation-bridge.md`.
-- `src/renderer/api/streamify/favorites.ts` — the favorites (cloud likes)
-  flow: live snapshot updates, the offline journal (200 cap, 5-attempt
-  poison drop, flap reset, like/undo coalescing).
-- `src/renderer/api/streamify/__tests__/` — six network-free vitest suites
-  locking the queue round-trip (zero persisted URLs, corruption discard),
-  the scrobble threshold/outbox semantics, the favorites flow, and the
-  curation/sort-filter predicates.
-- Edited (ours): `api/streamify/{cloud,query,streamify-controller}.ts`
-  (write lanes, the FAVORITED polarity fix, the bridged endpoints),
-  `api/streamify/playback/stream-source.ts` (`lastRungForVideo` export),
-  `features/streamify-auth/routes/streamify-auth-route.tsx` (i18n), and
-  `src/i18n/locales/en.json` (`streamifyAuth.*` + `error.streamify*` keys).
+### A11. `src/renderer/router/app-outlet.tsx`
 
-## Carried patches (P4-A — downloads, wrapped, /debug)
+- **What:** the thin auth gate (P1): one import of our
+  `useStreamifyAuthGate` hook + two early-return branches (REDIRECT →
+  `Navigate` to `/streamify-auth`, CHECKING → spinner) placed before the
+  stock `isActionsRequired` check. Stock deployments short-circuit to PASS.
+- **Conflict surface:** low — the stock body below the gate is
+  byte-identical to upstream.
 
-### 24. `src/renderer/router/routes.ts` + `src/renderer/router/app-router.tsx` — three routes (pre-approved category: route registration)
+### A12. `src/renderer/features/player/audio-player/web-player.tsx`
 
-- **What:** added `STREAMIFY_DEBUG = '/debug'`, `STREAMIFY_DOWNLOADS = '/streamify-downloads'`, `STREAMIFY_WRAPPED = '/streamify-wrapped'` to the `AppRoute` enum, three lazy imports, and three `<Route>` elements inside the `AuthenticationOutlet → AppOutlet → ResponsiveLayout` group (next to `SettingsRoute`).
-- **Why:** the P4-A feature surfaces (downloads manager, wrapped stats, gated diagnostics). `/debug` carries NO sidebar entry — it is reachable only via the explicit gate (`use-debug-gate.ts`: DEV mode, the persisted developer-mode grant, or `?debug=1` + authenticated admin) and redirects to `/` otherwise.
-- **Expected conflict surface:** low. Append-only at stable anchors; conflicts only if upstream reorders the route block.
+- **What:** three thin seams. (P2-A) the error claim — one
+  `handleOnSourceError` callback + `onSourceError` prop pass-through, and
+  one block inside `onPlayerSeekToTimestamp` letting the playback layer
+  claim non-range seeks; (P4-B, #193) the EQ attach seam —
+  `source.connect(gains[i])` became `connectStreamifySource(webAudio,
+  source, i)` in both player-start handlers (the EQ watchdog's hard-bypass
+  guardrail). Unclaimed paths stay byte-identical.
+- **Conflict surface:** low — additive lines inside three handlers.
 
-### 25. `src/renderer/store/settings.store.ts` — sidebar entries + v35 migration (not pre-approved; minimal)
+### A13. `src/renderer/features/player/audio-player/engine/web-player-engine.tsx`
 
-- **What:** two entries in the default `sidebarItems` array (`Downloads`, `Wrapped`), a `version: 35` bump, and a `if (version < 35)` migration that pushes the same two entries into existing users' persisted sidebar.
-- **Why:** navigation for the two user-facing P4-A views (the task's sanctioned "route entries / sidebar navigation" touch). Fresh installs get them from the default array; existing installs via the migration (the fork's own v10 Favorites precedent, verbatim).
-- **Expected conflict surface:** low-medium. The migration ladder is append-at-end; upstream sidebar churn lands in the default array (trivial merges).
+- **What:** (P2-A) one optional `onSourceError?: (err, audio) => boolean`
+  prop and one claim block at the head of `handleOnError`'s inner handler;
+  claimed errors return early, unclaimed run the stock retry/skip logic.
+- **Conflict surface:** low.
 
-### 26. `src/renderer/features/sidebar/components/{sidebar,collapsed-sidebar,mobile-sidebar}.tsx` + `sidebar-icon.tsx` — label maps + icons (not pre-approved; minimal)
+### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193)
 
-- **What:** `Downloads:` / `Wrapped:` keys in the three `translatedSidebarItemMap` copies (the established triplication, kept in sync), plus `RiDownload2*` / `RiSparkling*` icon imports and two `case AppRoute.STREAMIFY_*` entries in `sidebar-icon.tsx`.
-- **Why:** the label maps fall back to the persisted (possibly stale) `item.label` without them; the icon switch would fall back to the home icon.
-- **Expected conflict surface:** low. One line per map; icon cases append at a stable switch.
+- **What:** one import + one `<StreamifyJamButton />` element at the head of
+  the right-controls button row (the Jam drawer / EQ panel trigger;
+  renders `null` on stock servers).
+- **Conflict surface:** low — additive element in a stable row.
 
-### 27. `src/i18n/locales/en.json` — `streamifyDownloads` / `streamifyWrapped` / `streamifyDebug` sections + `page.sidebar.{downloads,wrapped}` (pre-approved category: i18n keys)
+### A15. `src/renderer/features/player/utils/get-visualizer-audio-nodes.ts` (P4-B, #193)
 
-- **What:** three new top-level sections (the `streamifyAuth` precedent from P3-B) plus two `page.sidebar` keys.
-- **Why:** every P4-A user-facing string; other locales fall back to `en` (the fork's i18n policy).
-- **Expected conflict surface:** none — append-only at file end (plus two keys inside the alphabetically-adjacent sidebar block).
+- **What:** for WEB playback the tap returns `[webAudio.dsp.compressor]`
+  (the EQ DSP chain output) when a chain is attached, falling back to
+  `webAudio.gains` otherwise; the LOCAL (mpv loopback) path is untouched.
+- **Conflict surface:** low — additive branch before the stock return.
 
-### 28. `src/renderer/features/context-menu/menus/{song,album,playlist-song,playlist}-context-menu.tsx` — the download action (not pre-approved; one line each)
+### A16. `src/renderer/features/shared/mutations/favorite-optimistic-updates.ts`
 
-- **What:** one `<StreamifyDownloadAction ids={ids} itemType={…} />` line + one import per menu. The action component itself lives in OUR tree (`features/streamify-downloads/components/download-action.tsx`) and self-hides on non-Streamify servers (the `SetRatingAction` pattern, verbatim) — the stock `DownloadAction` is untouched.
-- **Why:** the task's "download trigger hooks wired into Streamify's song/album/playlist action surfaces"; album/playlist selections expand to song rows through the live snapshot.
-- **Expected conflict surface:** low. Single lines at stable anchors.
+- **What:** (P3-B, #191) three fixes to the favorite optimistic-update
+  helpers: the SONG-case immediate path also updates the
+  `albumArtists.favoriteSongs` cache (an unfavorite removes the song
+  instantly instead of waiting for the refetch); fixed the pre-existing
+  `homeQueries.concat(homeQueries)` double-registration bug; the deferred
+  variant gains `favorite-songs` and `home-songs` collection lanes for
+  parity. Behavior for other server types is strictly additive.
+- **Conflict surface:** low — additive blocks inside the existing SONG-case
+  switch arms; upstream rarely edits this file.
 
-## Carried patches (P4B — Jam live-queue, EQ DSP, brand theming, settings)
+### A17. `src/renderer/store/settings.store.ts` (P4-A, #192)
 
-### 29. `src/renderer/router/routes.ts` — `AppRoute` enum (pre-approved category)
+- **What:** two entries in the default `sidebarItems` array (`Downloads`,
+  `Wrapped`), a `version: 35` bump, and an `if (version < 35)` migration
+  pushing the same two entries into existing users' persisted sidebar (the
+  fork's own v10 Favorites precedent, verbatim).
+- **Conflict surface:** low-medium — migration ladder is append-at-end;
+  upstream sidebar churn lands in the default array.
 
-- **What:** added `STREAMIFY_SETTINGS = '/streamify-settings'` to the `AppRoute` enum.
-- **Why:** route constant for the Streamify settings page (our module, patch 24).
-- **Expected conflict surface:** low — one additive enum member, same shape as the P1 `STREAMIFY_AUTH` member.
+### A18. `src/renderer/features/sidebar/components/{sidebar,collapsed-sidebar,mobile-sidebar}.tsx` + `sidebar-icon.tsx` (P4-A, #192)
 
-### 30. `src/renderer/router/app-router.tsx` — route registration (not pre-approved; minimal)
+- **What:** `Downloads:` / `Wrapped:` keys in the three
+  `translatedSidebarItemMap` copies (the established triplication), plus
+  `RiDownload2*` / `RiSparkling*` icon imports and two
+  `case AppRoute.STREAMIFY_*` entries in `sidebar-icon.tsx`.
+- **Conflict surface:** low — one line per map; icon cases append at a
+  stable switch.
 
-- **What:** one lazy import of `StreamifySettingsRoute` + one `<Route element={<StreamifySettingsRoute />} path={AppRoute.STREAMIFY_SETTINGS} />` next to `SETTINGS` inside the authenticated `ResponsiveLayout` group.
-- **Why:** a route cannot exist without registration; the page component itself is entirely ours (`src/renderer/features/streamify-settings/routes/streamify-settings-route.tsx`).
-- **Expected conflict surface:** low — two additive lines; conflicts only if upstream restructures the route tree wholesale.
+### A19. `src/renderer/features/context-menu/menus/{song,album,playlist-song,playlist}-context-menu.tsx` (P4-A, #192)
 
-### 31. `src/renderer/features/player/components/right-controls.tsx` — player-bar suite trigger (not pre-approved; minimal)
+- **What:** one `<StreamifyDownloadAction ids={ids} itemType={…} />` line +
+  one import per menu. The action component lives in our tree
+  (`features/streamify-downloads/components/download-action.tsx`) and
+  self-hides on non-Streamify servers — the stock `DownloadAction` is
+  untouched.
+- **Conflict surface:** low — single lines at stable anchors.
 
-- **What:** one import + one `<StreamifyJamButton />` element at the head of the right-controls button row.
-- **Why:** the task's player-bar trigger for the Jam drawer / EQ panel. The component renders `null` on stock servers; all logic lives in `features/streamify-jam/` (the drawer, the Jam session controller mount, the EQ graph manager mount, and the brand-theme default hook all hang off this one element, so no other upstream file needs a hook).
-- **Expected conflict surface:** low — additive element in a stable row.
+### A20. `src/shared/types/domain-types.ts`
 
-### 32. `src/renderer/features/player/utils/get-visualizer-audio-nodes.ts` — post-DSP visualizer tap (not pre-approved; minimal)
+- **What:** (P0) added `STREAMIFY = 'streamify'` to the `ServerType` enum.
+- **Conflict surface:** low.
 
-- **What:** for WEB playback, the tap now returns `[webAudio.dsp.compressor]` (the DSP chain output) when a chain is attached, falling back to `webAudio.gains` otherwise. The LOCAL (mpv loopback) path is untouched.
-- **Why:** the analysers must see the equalized/limited signal (the P4B requirement); both per-slot gains merge into the chain upstream of the tap, so the single post-DSP node covers the src1/src2 crossfade.
-- **Expected conflict surface:** low — additive branch before the stock return.
+### A21. `src/shared/types/types.ts`
 
-### 33. `src/renderer/features/player/audio-player/web-player.tsx` — EQ attach seam (third thin seam; not pre-approved; minimal)
+- **What:** (P0) added `STREAMIFY = 'streamify'` to the UI-facing
+  `ServerType` enum (this file declares its own copy) and the
+  `case ServerType.STREAMIFY: return ServerType.STREAMIFY;` arm in
+  `toServerType` — without it `SERVER_TYPE=streamify` resolves to `null`.
+- **Conflict surface:** low — purely additive.
 
-- **What:** in `handlePlayer1Start` / `handlePlayer2Start`, `source.connect(gains[i])` became `connectStreamifySource(webAudio, source, i)` (one import + two call sites). Unclaimed behavior is byte-identical: the helper connects to `gains[i]` unless the EQ watchdog has a hard bypass latched, in which case new media-element sources route straight to `context.destination` (the CORS guardrail - a latched-unhealthy graph never receives new sources).
-- **Why:** the only way to keep a fresh track out of a graph we already declared unhealthy is the attach point; all logic lives in `features/streamify-eq/utils/attach-source.ts`.
-- **Expected conflict surface:** low — same file already carries the P2-A seams (patch 16); the two lines changed are inside those handlers.
+### A22. `src/renderer/api/controller.ts`
 
-### 34. `src/renderer/api/streamify/playback/resolver/lib/relayBase.ts` — user relay override (fork-authored file, ours)
+- **What:** (P0) `streamify: InternalControllerEndpoint` on the
+  `ApiController` type + `streamify: StreamifyController` in the
+  `endpoints` map (+ import).
+- **Conflict surface:** low — registration block is stable.
 
-- **What:** priority 0 read of the persisted user override (`streamify.settings.v1` blob, plain `localStorage` read - no store import in the resolver graph), plus an exported `resetRelayBaseCache()` the settings store calls when the override changes. Deployment knob, `?relay=`, build env, and dev default keep their relative order below it.
-- **Why:** the P4B Network & Relay panel (custom STREAMIFY_RELAY_BASE for self-hosted Cloudflare Worker relays).
-- **Expected conflict surface:** none — fork-authored, no upstream twin.
+### A23. `src/renderer/features/servers/components/add-server-form.tsx` + `src/renderer/features/login/routes/login-route.tsx`
 
-### 35. New directories (ours, no upstream conflict)
+- **What:** (P0) the `[ServerType.STREAMIFY]` entries in the exhaustive
+  records (`SERVER_TYPES` in the form; `SERVER_ICONS` / `SERVER_NAMES` in
+  the login route) + the `streamify.png` asset import. These lines are
+  **frozen** — they exist only to satisfy typecheck exhaustiveness and
+  render the type in the pickers.
+- **Conflict surface:** low.
 
-- `src/renderer/api/streamify/jam-live/` — the listening-room lane: thin re-exports of P3A's `streamify/jam/` codec + fractional index + cad hasher (the post-#190 consolidation - one frozen semantic, one implementation, pinned by the listening-room golden-vector tests), plus the listening-room additions: the `jam_ops` journal-row normalizer, the queue CRDT fold, the host/follower sync protocol (pure), the supabase-js transport, the session controller (the brain), and the player-store bridge.
-- `src/renderer/features/streamify-jam/` — the player-bar trigger + drawer (Jam room + equalizer tabs) and the controller mount hook.
-- `src/renderer/features/streamify-eq/` — the EQ math (RBJ peaking biquads + response curve + preset bank), the graph manager hook (chain rebuild downstream of the per-slot gains, zero-output watchdog, hard bypass + per-track retry), the attach-time guardrail helper, and the panel UI.
-- `src/renderer/features/streamify-settings/` — the settings route (audio & playback, network & relay, jam & privacy, theme, account & session) and the brand theme module.
-- `src/renderer/store/streamify-jam.store.ts` / `streamify-eq.store.ts` / `streamify-settings.store.ts` — dumb state holders + hand-rolled localStorage persistence (no store-barrel exports; node-testable).
-- `src/i18n/locales/en.json` — additive `streamify` top-level group (jam/eq/settings strings).
-- `front-end/decisions/p4/P4B-jam-eq-theming-settings.md` — the ADR.
+### A24. `web.vite.config.ts` (P5-A)
 
-### 36. `src/renderer/api/streamify/streamify-controller.ts` — scrobble toggle gate (post-rebase; minimal)
+- **What:** `resolve.alias['@streamify/canary']` → `../canary/src` (the
+  residential canary console mounts inside the gated /debug route — source
+  resolved straight from the workspace, no package link, no legacy
+  canary.html) + `resolve.dedupe ['react', 'react-dom']` (the canary
+  sources sit outside the feishin root; see A3).
+- **Conflict surface:** low — additive entries in the resolve block.
 
-- **What:** one import of the Streamify settings store + the `scrobble` endpoint's cloud-send adapter `canSend` now also requires `settings.scrobbleEnabled` (the P4B Jam & Privacy toggle).
-- **Why:** the toggle persists user intent; the gate pauses only the cloud send lane - local session bookkeeping keeps running and queued outbox entries drain on re-enable (the same at-least-once posture the offline outbox already has). Landed post-#191-merge as planned in the ADR to keep the in-flight PR conflict-free.
-- **Expected conflict surface:** low - three lines inside the P3-B scrobble endpoint.
+### A25. `tsconfig.web.json` (P5-A)
 
-### 37. P4-A edits inside OUR `api/streamify/` + P3 files (additive seams)
+- **What:** `paths` entries: `@streamify/canary/*` → `../canary/src/*`, and
+  `react` / `react/jsx-runtime` pinned to feishin's own `@types/react`
+  (the outside-the-root canary sources typecheck under the feishin program
+  without any front-end npm install in CI — feishin CI only runs pnpm
+  inside `front-end/feishin`).
+- **Conflict surface:** low — additive paths entries.
 
-- `api/streamify/playback/scrobble-bridge.ts` (P3-B, ours): added the optional `onCountedPlay` observer (called on the fire path, after `applyPlayToSnapshot` — throws contained) and the `lastFlushAt` getter (set whenever a drain completes). No behavior change for existing callers.
-- `api/streamify/streamify-controller.ts` (ours): the scrobble singleton wiring passes `onCountedPlay` → `wrapped/listening-ledger.ts` (`recordCountedPlay`).
-- `api/streamify/playlist-sync/{persistence,realtime}.ts` (P3-A, ours): two read-only introspection exports for the /debug panel — `playlistPersistTimestamp(userId)` (the persisted state's `savedAt`) and `playlistRealtimeStatus()` (bound/channelLive/userId). No lifecycle changes.
-- `api/streamify/playback/stream-source.ts` (ours): the P4-A offline bypass — `resolveStreamifyTrack` checks OPFS first (zero-egress blob serve, the resolver is never touched on a hit), and `recoverFromError` gained the offline branch (quarantine + forced online re-resolve). The existing stale/ladder logic is untouched.
+---
 
-### 38. P4-A new files (ours, no upstream conflict)
+## B. Fork-owned additions (no upstream conflict)
 
-- `src/renderer/api/streamify/wasm/` — the vendored cipher artifact (streamify_cipher_bg.wasm + artifact.json manifest + the hand-written `cipher-loader.ts`; no wasm-pack glue is vendored, nothing linted but our loader).
-- `src/renderer/api/streamify/downloads/` — `cipher.ts` (typed surface), `format.ts` (STREAMIFY_DL_V1 container), `meta.ts` (sidecar codec), `opfs.ts` (OPFS + in-memory contract), `download-manager.ts` (orchestration), `instance.ts` (production binding + test seam).
-- `src/renderer/api/streamify/wrapped/` — `listening-ledger.ts` (the time-windowed ledger: local fire-path rows + cloud `user_play_events` backfill, the no-double-count merge) and `aggregates.ts` (pure windows/tops/discovery/hour-histogram).
-- `src/renderer/store/streamify-{downloads,debug}.store.ts` — the deliberately-dumb state slices (the `streamify-playlists.store.ts` pattern).
-- `src/renderer/features/streamify-{downloads,wrapped,debug}/` — routes + components + the debug gate (pure ruling split into `hooks/debug-gate-ruling.ts` for direct testing).
-- `src/renderer/api/streamify/__tests__/` — six network-free vitest suites: the artifact manifest + cipher contract (round-trip, tamper, position binding, container codec), the OPFS lifecycle (progress, cancel, quota, orphans, quarantine, offline serve), the stream-source zero-egress bypass, the wrapped aggregation + ledger merge, and the /debug gate.
-- `front-end/crates/streamify-wasm/` (monorepo side): the cipher feature split — `src/cipher.rs` (new), `src/engine.rs` (the historical lib.rs body, moved verbatim), `Cargo.toml` features (`default = ["engine"]`, `cipher`), `build-feishin-cipher.sh` (deterministic staging), `.gitignore` for pkg outputs.
+Upstream never touches these; they are inventoried here so the merge ritual
+can ignore them and audits can hold us to the directory-isolation rule.
+
+### `src/renderer/api/streamify/` — the controller + domain layer
+
+- `streamify-controller.ts` — `InternalControllerEndpoint` implementation.
+  P0 stub (every method throwing `StreamifyNotImplementedError`) → P1
+  library reads (24 endpoints, local-first snapshot bridge) → P1 auth trio
+  → P2-B/P3-B write lanes + bridged endpoints (favorites drain, play-queue
+  drain, scrobble with `resolveStreamifySessionAsync` — the OAuth glue
+  commit) → P4-A download endpoints → P4-B (#193) the scrobble toggle gate
+  (the cloud-send adapter's `canSend` also requires the persisted
+  `scrobbleEnabled` setting; local bookkeeping keeps running and the
+  outbox drains on re-enable).
+- `session.ts` — the credential codec + dev session seam + the
+  placeholder-filtering window reads. `streamify-supabase.ts` — the SDK
+  client singleton (PKCE, persisted sessions, synthetic server entry).
+  `streamify-request.ts` — the authenticated request lane (Bearer + apikey,
+  refresh-and-retry on 401). `streamify-globals.d.ts`, `ids.ts`,
+  `streamify-server-id.ts`.
+- `cloud.ts` / `library.ts` / `engine.ts` / `query.ts` / `derive.ts` /
+  `normalize.ts` / `covers.ts` / `favorites.ts` — the snapshot model,
+  cloud lanes, local pagination/sorting/filter/search, derivations, the
+  favorites (cloud likes) flow with the offline journal.
+- **`playback/` — the playback layer.** `stream-source.ts` (the consumption
+  layer: cached-ladder walk, stale re-resolve, seek strategy, the P4-A
+  zero-egress OPFS bypass), `scrobbler.ts` + `scrobble-bridge.ts` +
+  `play-tally.ts` + `queue-persistence.ts` (the #187 playback-spine ports).
+  **`playback/resolver/` — THE CANONICAL RESOLVER TREE since P5-A** (10
+  files originally vendored byte-identically from front-end/web + the
+  fork-authored `lib/relayBase.ts`). relayBase carries the P4-B priority-0
+  user override (`streamify.settings.v1` localStorage read + the exported
+  `resetRelayBaseCache()` the settings panel calls) and the P5-A
+  unexpanded-placeholder guard on every source. The sync script and mirror
+  gate are retired; integrity is enforced by
+  `scripts/check_feishin_resolver.py` (ci.yml preflight) and the tree is
+  exercised live by the daily SABR corpus
+  (`scripts/sabr-corpus.test.ts`).
+- **`jam/` + `playlist-sync/` (P3-A, #190 — the entries the old ledger
+  missed):** `jam/{jam-op,playlist-crdt,fractional-index,cad}.ts` — the
+  CRDT codec (UUID v4/variant-masked packed row ids), the fractional-index
+  ordering, the conflict-aware cadence hasher; `playlist-sync/{sync,wire,
+  postgrest,realtime,persistence,outbox,element-id,invalidate}.ts` — the
+  dual-replica convergence engine, the PostgREST/realtime transports, the
+  synchronous-persistence ordering, the offline op-log. Store:
+  `store/streamify-playlists.store.ts`.
+- **`jam-live/` (P4-B, #193):** the listening-room lane — thin re-exports
+  of P3-A's `jam/` codec + fractional index + cad hasher (one frozen
+  semantic, one implementation, pinned by golden-vector tests) plus the
+  listening-room additions: the `jam_ops` journal-row normalizer, the queue
+  CRDT fold, the host/follower sync protocol (pure), the supabase-js
+  transport, the session controller, the player-store bridge.
+- **`downloads/` + `wasm/` + `wrapped/` (P4-A, #192):** the OPFS chunk-
+  cipher download pipeline (`cipher`/`format`/`meta`/`opfs`/
+  `download-manager`/`instance`), the vendored cipher artifact
+  (`streamify_cipher_bg.wasm` + `artifact.json` manifest + the hand-written
+  `cipher-loader.ts`), and the wrapped-stats ledger + aggregates.
+- `__tests__/` — the network-free vitest suites (queue round-trip, scrobble
+  semantics, favorites, curation, playlist convergence, downloads
+  cipher/lifecycle, offline bypass, wrapped aggregation, the /debug gate,
+  and the P5-A locks: relayBase placeholders, the corpus runner integrity,
+  the canary panel mount).
+
+### `src/renderer/features/streamify-*/` — the UI surfaces
+
+- `streamify-auth/` (P1) — the Google OAuth route + the auth gate hook.
+- `streamify-downloads/` / `streamify-wrapped/` / `streamify-debug/`
+  (P4-A) — the downloads manager, the wrapped stats page, the gated /debug
+  diagnostics console. P5-A added `streamify-debug/components/
+  canary-panel.tsx` — the residential canary console mount (the
+  front-end/canary workspace component, wired to the active Supabase
+  session + the resolver's relay knob).
+- `streamify-jam/` / `streamify-eq/` / `streamify-settings/` (P4-B, #193) —
+  the Jam live-queue drawer, the EQ DSP panel, the Streamify settings pages
+  + brand theme.
+
+### `src/renderer/store/streamify-*.store.ts`
+
+- `streamify-playlists.store.ts` (P3-A), `streamify-downloads.store.ts` /
+  `streamify-debug.store.ts` (P4-A), `streamify-jam.store.ts` /
+  `streamify-eq.store.ts` / `streamify-settings.store.ts` (P4-B) — the
+  deliberately-dumb state slices with hand-rolled localStorage lanes (no
+  store-barrel exports; node-testable).
+
+### Other fork-owned files
+
+- `src/renderer/features/servers/assets/streamify.png` (P0 — the
+  registration icon).
+- `vitest.corpus.config.ts` + `scripts/sabr-corpus.test.ts` (P5-A — the
+  live corpus lane, CI-only via `pnpm run test:corpus`).
+- `decisions/` (in the fork tree: `decisions/p1/`; in the monorepo:
+  `front-end/decisions/p2..p5/`) — the ADRs.
+
+---
+
+## C. CI (monorepo side, ours)
+
+- `feishin-ci.yml` — the F1-deferred monorepo gate for the vendored fork
+  tree: pnpm install (Electron binary skipped) → lint (typecheck node+web,
+  eslint `--max-warnings=0`, stylelint) → tests → `build:web`. Runs on
+  `front-end/feishin/**` PRs and pushes.
+- `ci.yml` preflight — `scripts/check_feishin_resolver.py` (P5-A): the
+  canonical resolver integrity check (existence, provenance headers,
+  self-contained imports, the getStreamUrl/recentResolveLog contract).
+  Replaces the retired `resolver-mirror-sync` job.
+- `web-build.yml` — wasm / wasm-tests (headless Chrome wasm-bindgen-test) /
+  relay jobs only (P5-A): the legacy web Vite build job and the
+  `front-end/web/**` triggers are retired with the archive.
+- `resolver-canary.yml` — the daily SABR corpus runs from the feishin fork
+  (`pnpm run test:corpus` in `front-end/feishin`, P5-A) against the
+  canonical resolver tree.
+- **Retired with P5-A:** `web-deploy.yml` (GitHub Pages — production runs
+  via Docker), `scripts/sync_feishin_resolver.py` + the
+  `resolver-mirror-sync` job (the mirror became canonical), the `web` job
+  in `web-build.yml`, and the `web` member of `front-end/package.json`
+  workspaces (archived to `legacy/front-end-web`, excluded from linters,
+  TS projects and codeql paths).
+
+---
+
+## D. Upstream merge ritual (two-level, fork-first)
+
+The vendored tree is updated from the fork repo only; summary here, full
+procedure in
+`front-end/decisions/p5/P5A-cutover-legacy-archive-upstream-ritual.md`:
+
+1. **Level 1 — the fork repo (`meraxes89/streamify-feishin`):** three-way
+   `git merge v<next-tag>` on the fork's `main` (merge, never rebase);
+   resolve conflicts using section A of this file as the map; the fork's
+   own CI (lint + tests + `build:web`) must be green before the merge
+   lands.
+2. **Level 2 — this monorepo (`streamify-apk`):** a single-commit vendor
+   replace — `git read-tree --prefix=front-end/feishin/ -u <fork-merge-
+   commit>` (or the equivalent subtree pull), so the vendored tree advances
+   one squash commit per upstream tag with no interleaved history. Update
+   this ledger in the same commit.
+
+Upstream `v1.18.0` is not tagged yet (baselines above); when it lands, run
+the ritual against it.

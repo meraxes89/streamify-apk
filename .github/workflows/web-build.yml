@@ -1,39 +1,45 @@
-# Web Build — CI gate for the Streamify web port (WS-W P0).
+# Web Build — CI gate for the wasm/relay crates the production app rides.
 #
-# Per the P0 testing protocol: heavy suites run HERE, not in the dev
-# sandbox. This workflow proves, per push/PR:
+# P5-A cutover note: the legacy web app (front-end/web) is archived to
+# legacy/front-end-web — read-only history, outside every active lane. The
+# GitHub Pages deployment (web-deploy.yml) is retired with it: production
+# runs the feishin fork via Docker (front-end/feishin/Dockerfile +
+# docker-compose.yaml). What this workflow still proves, per push/PR:
 #   1. wasm32 compile gate (W0.2): the vendored web rustypipe +
 #      streamify-wasm compile to wasm32-unknown-unknown with NO rquickjs
-#      in the tree, and wasm-pack produces the web-target pkg.
-#   2. wasm-bindgen-test (headless Chrome): the W0.2 ping test.
-#   3. The web unit tests (vitest, headless): the P2-A resolver fixture
-#      lock (the link solver must not break) AND the P2-B playback spine
-#      suite (queue machine, persistence, scrobbler, gapless scheduler).
-#   4. The web bundle builds (vite + strict tsc against the generated .d.ts).
-#   5. The relay worker bundles (wrangler dry-run — no Cloudflare creds).
+#      in the tree, and wasm-pack produces the web-target pkg (the feishin
+#      P4-A cipher artifact is staged deterministically from this lane's
+#      output shape).
+#   2. wasm-bindgen-test (headless Chrome): the W0.2 ping test, the
+#      W2.1 engine control-plane semantics and the W1.7 golden-vector
+#      DSP parity.
+#   3. The relay worker bundles (wrangler dry-run — no Cloudflare creds).
+#
+# The retired jobs, for the Branch Protection record (see the P5-A PR):
+#   * resolver-mirror-sync — the feishin resolver tree is now the CANONICAL
+#     source (front-end/web archived); its integrity is enforced by
+#     scripts/check_feishin_resolver.py in ci.yml's preflight instead.
+#   * web (vite + tsc + unit tests) — the legacy web app build; the unit
+#     suites that still matter run inside front-end/feishin (feishin-ci.yml)
+#     and the live SABR corpus runs from the feishin resolver tree in
+#     resolver-canary.yml.
 #
 # The engine's own 429-test suite belongs to the frozen rust/ workspace's
 # CI — it is deliberately NOT invoked here.
 name: Web Build
 
-# Path gating (CI cost audit, 2026-11): the broad `front-end/**` glob is
-# replaced with explicit non-feishin paths — front-end/feishin/** PRs no
-# longer fire the wasm32 crate builds, the headless-Chrome wasm tests, or
-# the legacy Vite build (none of them read feishin sources; feishin is not
-# an npm workspace member of this root). TWO feishin-coupled exceptions
-# keep the #186 gates armed (see scripts/sync_feishin_resolver.py):
-#   * the vendored resolver MIRROR subtree — hand-editing the mirror
-#     instead of front-end/web must still red resolver-mirror-sync;
-#   * scripts/sync_feishin_resolver.py itself — the gate's own logic.
+# Path gating (CI cost audit, 2026-11, updated P5-A): the retired
+# front-end/web/** glob is gone with the archive; the feishin resolver
+# mirror path + scripts/sync_feishin_resolver.py triggers are gone with
+# the mirror-sync gate (the resolver is now covered by feishin-ci.yml on
+# every front-end/feishin/** PR and by the preflight integrity check on
+# every event). What remains watches exactly the inputs of the jobs below.
 # rust/crates/streamify-audio/** is watched because streamify-golden-wasm
 # embeds that crate's golden vectors via include_bytes! — a rust-only
-# golden-vector change must exercise the wasm32 parity suite too (the
-# pre-gating blind spot). The stale ws-w/* push branch globs are pruned
-# to [main] per web-deploy.yml's branch-list policy (all merged).
+# golden-vector change must exercise the wasm32 parity suite too.
 on:
   pull_request:
     paths:
-      - 'front-end/web/**'
       - 'front-end/crates/**'
       - 'front-end/third_party/**'
       - 'front-end/relay/**'
@@ -45,13 +51,10 @@ on:
       - 'front-end/Cargo.lock'
       - 'front-end/tsconfig.base.json'
       - 'rust/crates/streamify-audio/**'
-      - 'front-end/feishin/src/renderer/api/streamify/playback/resolver/**'
-      - 'scripts/sync_feishin_resolver.py'
       - '.github/workflows/web-build.yml'
   push:
     branches: [main]
     paths:
-      - 'front-end/web/**'
       - 'front-end/crates/**'
       - 'front-end/third_party/**'
       - 'front-end/relay/**'
@@ -63,23 +66,9 @@ on:
       - 'front-end/Cargo.lock'
       - 'front-end/tsconfig.base.json'
       - 'rust/crates/streamify-audio/**'
-      - 'front-end/feishin/src/renderer/api/streamify/playback/resolver/**'
-      - 'scripts/sync_feishin_resolver.py'
       - '.github/workflows/web-build.yml'
 
 jobs:
-  # ── P2-A: the vendored resolver mirror gate ────────────────────────────
-  # The feishin fork carries a byte-identical mirror of the resolver stack.
-  # Resolution fixes land in front-end/web ONLY (the two-stream rule); this
-  # gate makes the rule mechanical — the mirror can never drift silently.
-  resolver-mirror-sync:
-    name: vendored resolver mirror sync (P2-A)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: "Verify the mirror is byte-identical to front-end/web"
-        run: python3 scripts/sync_feishin_resolver.py --check
-
   wasm:
     name: wasm32 compile gate (W0.2)
     runs-on: ubuntu-latest
@@ -169,58 +158,6 @@ jobs:
         # path-depends READ-ONLY into the frozen tree; the fixture is
         # embedded via include_bytes! from the frozen path.
         run: cargo test -p streamify-golden-wasm --target wasm32-unknown-unknown
-        working-directory: front-end
-
-  web:
-    name: web build (vite + strict tsc)
-    runs-on: ubuntu-latest
-    needs: [wasm]
-    # Same env the Pages deploy builds with (WS-W live wiring, 2026-11-12 —
-    # see web-deploy.yml): the CI gate must run against the exact wired env,
-    # not a bare one. Fork PRs see an empty anon key and build anon-degraded
-    # (the canary env vars are all optional; the build stays green).
-    env:
-      VITE_RELAY_BASE_URL: https://streamify-relay.zephyr4289.workers.dev
-      VITE_SUPABASE_URL: https://dbgtvzgwixerhnwvhtil.supabase.co
-      VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - uses: actions/download-artifact@v8
-        with:
-          name: streamify-wasm-pkg
-          # download-artifact paths are relative to the JOB workspace (repo
-          # root), not the step's working-directory — land it inside
-          # front-end so the staging find below sees it.
-          path: front-end/pkg
-      - name: "Stage wasm pkgs into web/src/wasm + web/src/wasm-engine"
-        run: |
-          mkdir -p web/src/wasm web/src/wasm-engine
-          find pkg -type f \
-            \( -name 'streamify_wasm.js' -o -name 'streamify_wasm.d.ts' \
-               -o -name 'streamify_wasm_bg.wasm' -o -name 'streamify_wasm_bg.wasm.d.ts' \) \
-            -exec cp {} web/src/wasm/ \;
-          find pkg -type f \
-            \( -name 'streamify_engine_wasm.js' -o -name 'streamify_engine_wasm.d.ts' \
-               -o -name 'streamify_engine_wasm_bg.wasm' -o -name 'streamify_engine_wasm_bg.wasm.d.ts' \) \
-            -exec cp {} web/src/wasm-engine/ \;
-          ls -la web/src/wasm/ web/src/wasm-engine/
-        working-directory: front-end
-      - name: Install deps
-        run: npm install --no-fund --no-audit
-        working-directory: front-end
-      - name: "Web unit tests (vitest — P2-A resolver fixture lock + P2-B playback spine)"
-        # One lane, both suites: the recorded wire fixtures lock the link
-        # solver's mapping behavior (any drift in resolve.ts breaks a
-        # fixture), and the playback spine tests cover the queue machine,
-        # persistence, scrobbler, and gapless scheduler. All network-free;
-        # the live SABR corpus runs in resolver-canary.yml instead.
-        run: npm test -w web
-        working-directory: front-end
-      - name: Build web (tsc --noEmit + vite build)
-        run: npm run build -w web
         working-directory: front-end
 
   relay:

@@ -15,12 +15,16 @@
  *   4. Playlist CRDT sync — outbox depth, last sync/persist timestamps,
  *      in-flight flag, realtime binding status.
  *   5. Wrapped ledger — local vs cloud row counts.
+ *   6. Residential canary console (P5-A) — the front-end/canary probe
+ *      matrix + R-C conditions, wired to the active Supabase session and
+ *      the resolver's relay knob (posts to canary_results, anon INSERT).
  */
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router';
 
+import { StreamifyCanaryPanel } from '../components/canary-panel';
 import { DebugPanel } from '../components/debug-panel';
 import { useDebugGate } from '../hooks/use-debug-gate';
 
@@ -267,6 +271,13 @@ const StreamifyDebugRoute = () => {
                                 {ledger.cloud}
                             </Text>
                         </Group>
+                    </DebugPanel>
+
+                    <DebugPanel title={t('streamifyDebug.panelCanary')}>
+                        <Text c="dimmed" mb="xs" size="sm">
+                            {t('streamifyDebug.canaryHint')}
+                        </Text>
+                        <StreamifyCanaryPanel />
                     </DebugPanel>
                 </Stack>
             </PageErrorBoundary>

@@ -1,12 +1,16 @@
 // CanaryConsole.tsx — the W0.1b residential canary page component (front-end/canary).
 //
-// Plain Vite-consumed React; no 'use client' needed. Mounted by the web app (the lead
-// wires web/canary.html). Runs the probe matrix translated from tools/probe-clients.sh
-// plus the R-C conditions translated from tools/probe-search-resolver.sh, then posts
-// the flattened rows to Supabase canary_results (anon INSERT only) for the W0.5
-// spend decision.
+// Plain Vite-consumed React; no 'use client' needed. Originally mounted by
+// the web app (web/canary.html — archived to legacy/front-end-web in P5-A);
+// since the cutover its live consumer is the feishin fork's gated /debug
+// console (features/streamify-debug). It runs the probe matrix translated
+// from tools/probe-clients.sh plus the R-C conditions translated from
+// tools/probe-search-resolver.sh, then posts the flattened rows to Supabase
+// canary_results (anon INSERT only) for the W0.5 spend decision.
 //
-// Relay base resolution order:
+// Relay base resolution order (P5-A: the optional props let the host app
+// inject its live values ahead of every default):
+//   0. defaultRelayBase prop (the host app's deployment/session knob)
 //   1. ?relay=<base> query param (per-tester override)
 //   2. import.meta.env.VITE_RELAY_BASE_URL
 //   3. '' in production / 'http://localhost:8787' only when import.meta.env.DEV
@@ -21,7 +25,17 @@ import './canary.css';
 
 type Phase = 'idle' | 'running' | 'done' | 'posted';
 
-function resolveRelayBase(): string {
+/** P5-A: the host-app injection seam (the feishin /debug mount). */
+export interface CanaryConsoleProps {
+  /** Live Supabase config (the host's active session); wins over build env. */
+  supabase?: { url: string; anonKey: string };
+  /** Default relay base (the host's deployment knob); wins over ?relay=/env. */
+  defaultRelayBase?: string;
+}
+
+function resolveRelayBase(props: CanaryConsoleProps): string {
+  const injected = props.defaultRelayBase?.trim();
+  if (injected) return injected;
   try {
     const q = new URLSearchParams(window.location.search).get('relay');
     if (q && q.trim()) return q.trim();
@@ -132,9 +146,14 @@ function RCondCard({ c }: { c: RCondition }): React.ReactElement {
   );
 }
 
-export default function CanaryConsole(): React.ReactElement {
+export default function CanaryConsole({
+  defaultRelayBase,
+  supabase
+}: CanaryConsoleProps = {}): React.ReactElement {
   const [phase, setPhase] = useState<Phase>('idle');
-  const [relayBase, setRelayBase] = useState<string>(() => resolveRelayBase());
+  const [relayBase, setRelayBase] = useState<string>(() =>
+    resolveRelayBase({ defaultRelayBase })
+  );
   const [rows, setRows] = useState<ProbeRow[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 20 });
   const [report, setReport] = useState<ProbeReport | null>(null);
@@ -205,7 +224,8 @@ export default function CanaryConsole(): React.ReactElement {
     if (!report || postBusy) return;
     setPostBusy(true);
     setPostMessage('');
-    const res = await postResults(report);
+    // P5-A: the host app's live Supabase config wins over build env.
+    const res = await postResults(report, supabase);
     setPostBusy(false);
     if (res.posted) {
       setPostOk(true);
@@ -216,7 +236,7 @@ export default function CanaryConsole(): React.ReactElement {
       setPostOk(false);
       setPostMessage(res.error ?? 'unknown error');
     }
-  }, [report, postBusy, pushLog]);
+  }, [report, postBusy, pushLog, supabase]);
 
   const onCopy = useCallback(async () => {
     if (!report) return;
@@ -236,7 +256,9 @@ export default function CanaryConsole(): React.ReactElement {
 
   const running = phase === 'running';
   const finished = phase === 'done' || phase === 'posted';
-  const supa = supabaseEnv();
+  const supa = supabase
+    ? { url: supabase.url.replace(/\/+$/, ''), anonKey: supabase.anonKey }
+    : supabaseEnv();
   const tableRows = report ? report.rows : rows;
 
   return (

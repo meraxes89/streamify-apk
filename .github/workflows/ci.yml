@@ -135,6 +135,19 @@ jobs:
       - name: Preview-catalog production-path guard (WS-B B2)
         run: python3 scripts/preview_catalog_guard.py
 
+      # P5-A: the canonical resolver integrity check. The feishin resolver
+      # tree (front-end/feishin/.../playback/resolver/) became the single
+      # source of truth when front-end/web was archived to
+      # legacy/front-end-web — the old resolver-mirror-sync gate (web-build.yml
+      # + scripts/sync_feishin_resolver.py) is retired with it. This keeps
+      # the canonical tree honest instead: existence, provenance headers,
+      # self-contained imports (no '/@/' aliases, no lib/engine revival,
+      # bare deps limited to youtubei.js/googlevideo/bgutils-js) and the
+      # getStreamUrl/recentResolveLog contract the engine + daily SABR
+      # corpus runner consume. Pure source check, ~1 s, every event.
+      - name: Canonical resolver integrity check (P5-A)
+        run: python3 scripts/check_feishin_resolver.py
+
   # =========================================================================
   # TIER 2: Modular Domain Shards (Reusable Workflows, parallel dispatch)
   # =========================================================================

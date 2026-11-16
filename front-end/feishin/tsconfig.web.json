@@ -16,6 +16,15 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
+      "@streamify/canary/*": [
+        "../canary/src/*"
+      ],
+      "react": [
+        "node_modules/@types/react"
+      ],
+      "react/jsx-runtime": [
+        "node_modules/@types/react/jsx-runtime"
+      ],
       "/@/renderer/*": [
         "src/renderer/*"
       ],

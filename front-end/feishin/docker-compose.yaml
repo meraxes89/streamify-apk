@@ -1,16 +1,40 @@
+# docker-compose.yaml — the Streamify production cutover (P5-A).
+#
+# Production runs THIS fork via Docker: the image builds from the local
+# Dockerfile (the checked-out tree — never the stock ghcr.io/jeffvli/feishin
+# upstream image), and the legacy front-end/web GitHub Pages deployment is
+# retired (web-deploy.yml). See front-end/decisions/p5/P5A-cutover-legacy-
+# archive-upstream-ritual.md for the full runtime contract.
+#
+# The STREAMIFY_* values pass through from the host environment
+# (`STREAMIFY_SUPABASE_URL=... STREAMIFY_SUPABASE_ANON_KEY=... docker
+# compose up --build`); the empty defaults match the Dockerfile ENV line
+# (nginx envsubst leaves the ${...} placeholder, which the session seam and
+# relayBase.ts filter as unset). Secrets live in deployment configuration,
+# never in the tree (house rule).
 services:
     feishin:
         container_name: feishin
-        image: "ghcr.io/jeffvli/feishin:latest"
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: "streamify-feishin:latest"
         restart: unless-stopped
         environment:
-            - SERVER_NAME=jellyfin # pre-defined server name
-            - SERVER_LOCK=false # When true AND name/type/url are set, only username/password can be toggled
-            - SERVER_TYPE=jellyfin # the allowed types are: jellyfin, navidrome, subsonic. These values are case insensitive
-            - SERVER_URL=http://localhost:8096 # http://address:port or https://address:port
-            # - REMOTE_URL=http://share.localhost # Used for compatibility with external functionality, such as custom sharing URLs on Navidrome
-            - LEGACY_AUTHENTICATION=false # When SERVER_LOCK is true, sets the legacyauth flag for server authentication (true or false)
-            - ANALYTICS_DISABLED=false # Set to true to disable Umami analytics tracking
+            - SERVER_NAME=streamify # pre-defined server name (the synthetic Streamify entry)
+            - SERVER_LOCK=true # locked to the Streamify server type — username/password are the only toggles
+            - SERVER_TYPE=streamify # the fork's own registration (case insensitive)
+            # SERVER_URL/REMOTE_URL stay empty: the Streamify flow reads its
+            # Supabase endpoint from STREAMIFY_SUPABASE_URL (settings.js), not
+            # the stock server URL knob.
+            - LEGACY_AUTHENTICATION=false # only meaningful for stock locked servers; kept explicit
+            - ANALYTICS_DISABLED=true # disable Umami analytics tracking
+            # Streamify runtime knobs (settings.js via nginx envsubst):
+            - STREAMIFY_AUTH=${STREAMIFY_AUTH:-true} # 'false' explicitly disables the /streamify-auth gate
+            - STREAMIFY_SUPABASE_URL=${STREAMIFY_SUPABASE_URL:-}
+            - STREAMIFY_SUPABASE_ANON_KEY=${STREAMIFY_SUPABASE_ANON_KEY:-}
+            - STREAMIFY_RELAY_BASE=${STREAMIFY_RELAY_BASE:-} # the Cloudflare worker relay; empty = direct-lane only
+            - STREAMIFY_DEV_ACCESS_TOKEN=${STREAMIFY_DEV_ACCESS_TOKEN:-} # dev-only; empty in real deployments
         ports:
             - 9180:9180
-            # Alternatively, to restrict to only localhost, - 127.0.0.1:9180:8190
+            # Alternatively, to restrict to only localhost, - 127.0.0.1:9180:9180

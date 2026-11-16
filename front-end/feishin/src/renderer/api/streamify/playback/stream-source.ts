@@ -17,11 +17,10 @@ import { relayBaseCandidate } from './resolver/lib/relayBase';
  *
  * House rule (the P2-A kickoff): ZERO resolution logic here. This module
  * imports `getStreamUrl` from the vendored resolver mirror like any other
- * consumer — resolution behavior is owned by the canonical resolver mirror
- * at `playback/resolver/` (kept in lockstep with the resolver stream by
- * `scripts/sync_feishin_resolver.py`; CI runs its `--check` mode on every
- * `front-end/**` PR so the mirror can never drift). What lives HERE is
- * engine wiring:
+ * consumer — resolution behavior is owned by the canonical resolver tree
+ * at `playback/resolver/` (integrity enforced by
+ * `scripts/check_feishin_resolver.py`; CI runs it on every `front-end/**`
+ * PR so the tree can never drift). What lives HERE is engine wiring:
  *
  *   - resolveStreamifyTrack: the controller seam's back end (feishin song id
  *     → snapshot row → videoId → getStreamUrl)
