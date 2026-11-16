@@ -53,7 +53,7 @@ import {
     sortPlaylists,
     sortSongs,
 } from './query';
-import { resolveStreamifySession } from './session';
+import { resolveStreamifySessionAsync } from './session';
 import { StreamifyNotImplementedError } from './streamify-error';
 import { streamifyRequest } from './streamify-request';
 import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
@@ -185,7 +185,7 @@ export const StreamifyController: InternalControllerEndpoint = {
             return null;
         }
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const session = resolveStreamifySession(apiClientProps.server?.credential);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
         await mutateFavorite(session, snapshot, query.id, true, getStreamifyFavoriteJournal());
         return null;
     },
@@ -220,7 +220,7 @@ export const StreamifyController: InternalControllerEndpoint = {
             return null;
         }
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const session = resolveStreamifySession(apiClientProps.server?.credential);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
         await mutateFavorite(session, snapshot, query.id, false, getStreamifyFavoriteJournal());
         return null;
     },
@@ -398,7 +398,7 @@ export const StreamifyController: InternalControllerEndpoint = {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         // Opportunistic journal drain (offline likes ride out with the read).
-        const session = resolveStreamifySession(apiClientProps.server?.credential);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
         if (session !== null) {
             try {
                 await getStreamifyFavoriteJournal().drain(session);
@@ -540,7 +540,7 @@ export const StreamifyController: InternalControllerEndpoint = {
 
         // Opportunistic outbox drain (yesterday's offline scrobbles ride out
         // with the restore).
-        const session = resolveStreamifySession(apiClientProps.server?.credential);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
         void scrobbleBridge()
             .drain({
                 canSend: () => canSendCloud(session),
@@ -938,7 +938,7 @@ export const StreamifyController: InternalControllerEndpoint = {
             videoId: row?.streamUrl ?? null,
         };
 
-        const session = resolveStreamifySession(apiClientProps.server?.credential);
+        const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
         scrobbleBridge().handleReport(report, facts, {
             canSend: () => canSendCloud(session),
             send: (event) =>
