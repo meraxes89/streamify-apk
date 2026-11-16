@@ -105,15 +105,20 @@ jobs:
                   STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
               run: |
                   set -euo pipefail
-                  # envsubst only the variables the template references
-                  # (others in the runner env must pass through untouched);
-                  # the FS_* set stays empty exactly like a fresh Docker boot.
+                  # envsubst's SHELL_FORMAT must name variables WITH the $
+                  # prefix ($NAME tokens); a bare-name list matches nothing
+                  # and the placeholders survive verbatim (run-3 failure).
+                  # Build it from the template's own ${NAME} references:
+                  # every referenced var, $NAME form, newline-separated.
+                  VARS="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | sed -e 's/^\${/\$/' -e 's/}$//')"
+                  # Only the deployment knobs are exported; unset FS_* and
+                  # any not-exported name expand to empty string, exactly
+                  # like a fresh Docker boot's settings.js.
                   export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
                   export STREAMIFY_RELAY_BASE STREAMIFY_DEV_ACCESS_TOKEN
                   export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
-                  envsubst "$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | tr -d '{}$')" \
-                      < settings.js.template > out/web/settings.js
+                  envsubst "$VARS" < settings.js.template > out/web/settings.js
 
             # HashRouter keeps routes in location.hash, so subroutes never
             # hit the server — this copy only guards direct hits on
