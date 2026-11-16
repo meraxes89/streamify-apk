@@ -38,6 +38,10 @@ const InvalidRoute = lazy(
 
 const LoginRoute = lazy(() => import('/@/renderer/features/login/routes/login-route'));
 
+const StreamifyAuthRoute = lazy(
+    () => import('/@/renderer/features/streamify-auth/routes/streamify-auth-route'),
+);
+
 const NoNetworkRoute = lazy(
     () => import('/@/renderer/features/action-required/routes/no-network-route'),
 );
@@ -349,6 +353,10 @@ export const AppRouter = () => {
                                     path={AppRoute.ACTION_REQUIRED}
                                 />
                                 <Route element={<LoginRoute />} path={AppRoute.LOGIN} />
+                                <Route
+                                    element={<StreamifyAuthRoute />}
+                                    path={AppRoute.STREAMIFY_AUTH}
+                                />
                             </Route>
                             <Route element={<ResponsiveLayout />}>
                                 <Route element={<NoNetworkRoute />} path={AppRoute.NO_NETWORK} />

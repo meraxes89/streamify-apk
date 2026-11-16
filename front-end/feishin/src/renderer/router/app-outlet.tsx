@@ -4,11 +4,21 @@ import { shallow } from 'zustand/shallow';
 
 import { normalizeServerUrl } from '/@/renderer/features/action-required/utils/server-lock';
 import { isServerLock } from '/@/renderer/features/action-required/utils/window-properties';
+import {
+    StreamifyGateState,
+    useStreamifyAuthGate,
+} from '/@/renderer/features/streamify-auth/hooks/use-streamify-auth-gate';
 import { AppRoute } from '/@/renderer/router/routes';
 import { useAuthStore, useAuthStoreActions } from '/@/renderer/store';
+import { Center } from '/@/shared/components/center/center';
+import { Spinner } from '/@/shared/components/spinner/spinner';
 import { ServerType } from '/@/shared/types/domain-types';
 
 export const AppOutlet = () => {
+    // Streamify auth gate (thin wrapper — all logic lives in the hook's own
+    // module; stock deployments short-circuit to PASS without side effects).
+    const streamifyGate = useStreamifyAuthGate();
+
     const currentServer = useAuthStore(
         (state) =>
             state.currentServer
@@ -58,6 +68,18 @@ export const AppOutlet = () => {
     }, [currentServer?.id, currentServer?.type, hasMissingCredentials, setCurrentServer]);
 
     const isActionsRequired = !currentServer || hasServerLockMismatch || hasMissingCredentials;
+
+    if (streamifyGate === StreamifyGateState.REDIRECT) {
+        return <Navigate replace to={AppRoute.STREAMIFY_AUTH} />;
+    }
+
+    if (streamifyGate === StreamifyGateState.CHECKING) {
+        return (
+            <Center h="100vh" w="100%">
+                <Spinner container />
+            </Center>
+        );
+    }
 
     if (isActionsRequired) {
         return <Navigate replace to={AppRoute.ACTION_REQUIRED} />;

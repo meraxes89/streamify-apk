@@ -1,224 +1,300 @@
 import { StreamifyNotImplementedError } from './streamify-error';
+import { streamifyRequest } from './streamify-request';
+import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
 
+import { logger } from '/@/renderer/utils/logger';
 import { InternalControllerEndpoint } from '/@/shared/types/domain-types';
 
+/** Version reported by getServerInfo; bumped as endpoints become real. */
+const STREAMIFY_CONTROLLER_VERSION = '0.1.0';
+
 /**
- * Stub controller for the Streamify server type.
+ * Controller for the Streamify server type.
  *
- * Every endpoint required by `InternalControllerEndpoint` (plus every optional
- * one) throws a `StreamifyNotImplementedError` carrying the endpoint name.
- * There is intentionally no logic here: the UI already gates its affordances
- * per server type, so a registered-but-stubbed controller hides Streamify-only
- * surfaces until the endpoints are implemented for real.
+ * P1: the auth trio is real (`authenticate`, `getUserInfo`, `getServerInfo`),
+ * backed by the Supabase session (see streamify-supabase.ts) and the
+ * 401-refresh-retry request lane (streamify-request.ts).
+ *
+ * Stub semantics for everything else (until implemented, one endpoint at a
+ * time): Promise-typed endpoints reject asynchronously with a
+ * `StreamifyNotImplementedError` (react-query / handler layers surface those
+ * as honest error states); the three sync-typed URL builders
+ * (`getImageUrl`, `getImageRequest`, `getDownloadUrl`) return empty values so
+ * render paths that call them synchronously show the stock placeholders
+ * instead of crashing.
  *
  * See PATCHES.md at the fork root for the registration rationale.
  */
 export const StreamifyController: InternalControllerEndpoint = {
-    addToPlaylist: () => {
+    addToPlaylist: async () => {
         throw new StreamifyNotImplementedError('addToPlaylist');
     },
-    authenticate: () => {
-        throw new StreamifyNotImplementedError('authenticate');
+    authenticate: async () => {
+        // Streamify sessions come from Supabase Google OAuth on the
+        // /streamify-auth page, never from a username/password server form.
+        // Point stock add-server attempts at the real entry point instead of
+        // pretending to authenticate.
+        throw new Error(
+            'Streamify sign-in happens on the /streamify-auth page (Google), not through the server form',
+        );
     },
-    createFavorite: () => {
+    createFavorite: async () => {
         throw new StreamifyNotImplementedError('createFavorite');
     },
-    createInternetRadioStation: () => {
+    createInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('createInternetRadioStation');
     },
-    createPlaylist: () => {
+    createPlaylist: async () => {
         throw new StreamifyNotImplementedError('createPlaylist');
     },
-    deleteArtistImage: () => {
+    deleteArtistImage: async () => {
         throw new StreamifyNotImplementedError('deleteArtistImage');
     },
-    deleteFavorite: () => {
+    deleteFavorite: async () => {
         throw new StreamifyNotImplementedError('deleteFavorite');
     },
-    deleteInternetRadioStation: () => {
+    deleteInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('deleteInternetRadioStation');
     },
-    deleteInternetRadioStationImage: () => {
+    deleteInternetRadioStationImage: async () => {
         throw new StreamifyNotImplementedError('deleteInternetRadioStationImage');
     },
-    deletePlaylist: () => {
+    deletePlaylist: async () => {
         throw new StreamifyNotImplementedError('deletePlaylist');
     },
-    deletePlaylistImage: () => {
+    deletePlaylistImage: async () => {
         throw new StreamifyNotImplementedError('deletePlaylistImage');
     },
-    getAlbumArtistDetail: () => {
+    getAlbumArtistDetail: async () => {
         throw new StreamifyNotImplementedError('getAlbumArtistDetail');
     },
-    getAlbumArtistInfo: () => {
+    getAlbumArtistInfo: async () => {
         throw new StreamifyNotImplementedError('getAlbumArtistInfo');
     },
-    getAlbumArtistList: () => {
+    getAlbumArtistList: async () => {
         throw new StreamifyNotImplementedError('getAlbumArtistList');
     },
-    getAlbumArtistListCount: () => {
+    getAlbumArtistListCount: async () => {
         throw new StreamifyNotImplementedError('getAlbumArtistListCount');
     },
-    getAlbumDetail: () => {
+    getAlbumDetail: async () => {
         throw new StreamifyNotImplementedError('getAlbumDetail');
     },
-    getAlbumInfo: () => {
+    getAlbumInfo: async () => {
         throw new StreamifyNotImplementedError('getAlbumInfo');
     },
-    getAlbumList: () => {
+    getAlbumList: async () => {
         throw new StreamifyNotImplementedError('getAlbumList');
     },
-    getAlbumListCount: () => {
+    getAlbumListCount: async () => {
         throw new StreamifyNotImplementedError('getAlbumListCount');
     },
-    getAlbumRadio: () => {
+    getAlbumRadio: async () => {
         throw new StreamifyNotImplementedError('getAlbumRadio');
     },
-    getArtistList: () => {
+    getArtistList: async () => {
         throw new StreamifyNotImplementedError('getArtistList');
     },
-    getArtistListCount: () => {
+    getArtistListCount: async () => {
         throw new StreamifyNotImplementedError('getArtistListCount');
     },
-    getArtistRadio: () => {
+    getArtistRadio: async () => {
         throw new StreamifyNotImplementedError('getArtistRadio');
     },
     getDownloadUrl: () => {
-        throw new StreamifyNotImplementedError('getDownloadUrl');
+        // Sync-typed URL builder — empty string until P2 implements downloads.
+        return '';
     },
-    getFavoriteSongs: () => {
+    getFavoriteSongs: async () => {
         throw new StreamifyNotImplementedError('getFavoriteSongs');
     },
-    getFolder: () => {
+    getFolder: async () => {
         throw new StreamifyNotImplementedError('getFolder');
     },
-    getGenreList: () => {
+    getGenreList: async () => {
         throw new StreamifyNotImplementedError('getGenreList');
     },
     getImageRequest: () => {
-        throw new StreamifyNotImplementedError('getImageRequest');
+        // Sync-typed URL builder — null renders the stock image placeholder.
+        return null;
     },
     getImageUrl: () => {
-        throw new StreamifyNotImplementedError('getImageUrl');
+        // Sync-typed URL builder — null renders the stock image placeholder
+        // (a throw here crashes render paths that call it synchronously).
+        return null;
     },
-    getInternetRadioStations: () => {
+    getInternetRadioStations: async () => {
         throw new StreamifyNotImplementedError('getInternetRadioStations');
     },
-    getLyrics: () => {
+    getLyrics: async () => {
         throw new StreamifyNotImplementedError('getLyrics');
     },
-    getMusicFolderList: () => {
+    getMusicFolderList: async () => {
         throw new StreamifyNotImplementedError('getMusicFolderList');
     },
-    getPlaylistDetail: () => {
+    getPlaylistDetail: async () => {
         throw new StreamifyNotImplementedError('getPlaylistDetail');
     },
-    getPlaylistList: () => {
+    getPlaylistList: async () => {
         throw new StreamifyNotImplementedError('getPlaylistList');
     },
-    getPlaylistListCount: () => {
+    getPlaylistListCount: async () => {
         throw new StreamifyNotImplementedError('getPlaylistListCount');
     },
-    getPlaylistSongIds: () => {
+    getPlaylistSongIds: async () => {
         throw new StreamifyNotImplementedError('getPlaylistSongIds');
     },
-    getPlaylistSongList: () => {
+    getPlaylistSongList: async () => {
         throw new StreamifyNotImplementedError('getPlaylistSongList');
     },
-    getPlayQueue: () => {
+    getPlayQueue: async () => {
         throw new StreamifyNotImplementedError('getPlayQueue');
     },
-    getRandomSongList: () => {
+    getRandomSongList: async () => {
         throw new StreamifyNotImplementedError('getRandomSongList');
     },
-    getRoles: () => {
+    getRoles: async () => {
         throw new StreamifyNotImplementedError('getRoles');
     },
-    getScanStatus: () => {
+    getScanStatus: async () => {
         throw new StreamifyNotImplementedError('getScanStatus');
     },
-    getServerInfo: () => {
-        throw new StreamifyNotImplementedError('getServerInfo');
+    getServerInfo: async (args) => {
+        // Real request through the Streamify request lane: GoTrue's
+        // /auth/v1/user validates the access token (and exercises the
+        // 401 → refresh → retry → clean-sign-out lane) on every boot.
+        await streamifyRequest('/auth/v1/user', { method: 'GET' });
+
+        return {
+            features: {},
+            id: args.apiClientProps.server?.id,
+            version: STREAMIFY_CONTROLLER_VERSION,
+        };
     },
-    getSimilarSongs: () => {
+    getSimilarSongs: async () => {
         throw new StreamifyNotImplementedError('getSimilarSongs');
     },
-    getSongDetail: () => {
+    getSongDetail: async () => {
         throw new StreamifyNotImplementedError('getSongDetail');
     },
-    getSongList: () => {
+    getSongList: async () => {
         throw new StreamifyNotImplementedError('getSongList');
     },
-    getSongListCount: () => {
+    getSongListCount: async () => {
         throw new StreamifyNotImplementedError('getSongListCount');
     },
-    getStreamUrl: () => {
+    getStreamUrl: async () => {
         throw new StreamifyNotImplementedError('getStreamUrl');
     },
-    getStructuredLyrics: () => {
+    getStructuredLyrics: async () => {
         throw new StreamifyNotImplementedError('getStructuredLyrics');
     },
-    getTagList: () => {
+    getTagList: async () => {
         throw new StreamifyNotImplementedError('getTagList');
     },
-    getTopSongs: () => {
+    getTopSongs: async () => {
         throw new StreamifyNotImplementedError('getTopSongs');
     },
-    getUserInfo: () => {
-        throw new StreamifyNotImplementedError('getUserInfo');
+    getUserInfo: async () => {
+        const supabase = getStreamifySupabase();
+
+        if (!supabase) {
+            throw new Error(
+                'Streamify is not configured for this deployment (missing STREAMIFY_SUPABASE_URL / STREAMIFY_SUPABASE_ANON_KEY in settings.js)',
+            );
+        }
+
+        const { data, error } = await supabase.auth.getUser();
+
+        if (error || !data.user) {
+            // A clear auth rejection (revoked/expired session) triggers the
+            // clean sign-out bounce; transient network failures are rethrown
+            // untouched so the stock auth hook can route them to the
+            // no-network page instead of signing the user out.
+            const message = error?.message ?? '';
+            const status = (error as undefined | { status?: number })?.status;
+            const isAuthRejection =
+                status === 401 ||
+                status === 403 ||
+                /invalid.*jwt|jwt.*invalid|session.*(missing|expired)|refresh_token_not_found|bad_jwt/i.test(
+                    message,
+                );
+
+            if (isAuthRejection) {
+                logger.warn('Streamify session rejected by getUserInfo — signing out', {
+                    action: 'streamify_getuserinfo_rejected',
+                    reason: message,
+                });
+
+                await signOutStreamify();
+            }
+
+            throw new Error('Your Streamify session is no longer active — please sign in again');
+        }
+
+        const name =
+            (data.user.user_metadata?.full_name as string | undefined) ||
+            data.user.email ||
+            data.user.id;
+
+        return {
+            id: data.user.id,
+            isAdmin: false,
+            name,
+        };
     },
-    getUserList: () => {
+    getUserList: async () => {
         throw new StreamifyNotImplementedError('getUserList');
     },
-    jukeboxControl: () => {
+    jukeboxControl: async () => {
         throw new StreamifyNotImplementedError('jukeboxControl');
     },
-    movePlaylistItem: () => {
+    movePlaylistItem: async () => {
         throw new StreamifyNotImplementedError('movePlaylistItem');
     },
-    refreshItems: () => {
+    refreshItems: async () => {
         throw new StreamifyNotImplementedError('refreshItems');
     },
-    removeFromPlaylist: () => {
+    removeFromPlaylist: async () => {
         throw new StreamifyNotImplementedError('removeFromPlaylist');
     },
-    replacePlaylist: () => {
+    replacePlaylist: async () => {
         throw new StreamifyNotImplementedError('replacePlaylist');
     },
-    savePlayQueue: () => {
+    savePlayQueue: async () => {
         throw new StreamifyNotImplementedError('savePlayQueue');
     },
-    scrobble: () => {
+    scrobble: async () => {
         throw new StreamifyNotImplementedError('scrobble');
     },
-    search: () => {
+    search: async () => {
         throw new StreamifyNotImplementedError('search');
     },
-    setPlaylistSongs: () => {
+    setPlaylistSongs: async () => {
         throw new StreamifyNotImplementedError('setPlaylistSongs');
     },
-    setRating: () => {
+    setRating: async () => {
         throw new StreamifyNotImplementedError('setRating');
     },
-    shareItem: () => {
+    shareItem: async () => {
         throw new StreamifyNotImplementedError('shareItem');
     },
-    startLibraryScan: () => {
+    startLibraryScan: async () => {
         throw new StreamifyNotImplementedError('startLibraryScan');
     },
-    updateInternetRadioStation: () => {
+    updateInternetRadioStation: async () => {
         throw new StreamifyNotImplementedError('updateInternetRadioStation');
     },
-    updatePlaylist: () => {
+    updatePlaylist: async () => {
         throw new StreamifyNotImplementedError('updatePlaylist');
     },
-    uploadArtistImage: () => {
+    uploadArtistImage: async () => {
         throw new StreamifyNotImplementedError('uploadArtistImage');
     },
-    uploadInternetRadioStationImage: () => {
+    uploadInternetRadioStationImage: async () => {
         throw new StreamifyNotImplementedError('uploadInternetRadioStationImage');
     },
-    uploadPlaylistImage: () => {
+    uploadPlaylistImage: async () => {
         throw new StreamifyNotImplementedError('uploadPlaylistImage');
     },
 };
