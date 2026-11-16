@@ -582,12 +582,58 @@ export const applyFavoriteOptimisticUpdates = (
                 }
             });
 
+            // P3-B (Streamify): the favorites list itself. An unfavorite
+            // leaves the favorites list immediately (the item flips AND
+            // drops, with totalRecordCount following); a favorite only
+            // flips in place (the list refetch after success adds newcomers
+            // with full data — FavoriteArgs carries ids only).
+            const favoriteSongsQueryKey = queryKeys.albumArtists.favoriteSongs(
+                variables.apiClientProps.serverId,
+            );
+            const favoriteSongsQueries = queryClient.getQueriesData({
+                exact: false,
+                queryKey: favoriteSongsQueryKey,
+            });
+
+            favoriteSongsQueries.forEach(([queryKey, data]) => {
+                if (data) {
+                    pendingUpdates.push({
+                        previousData: data,
+                        queryKey,
+                        updater: (prev: SongListResponse | undefined) => {
+                            if (!prev || !Array.isArray(prev.items)) return prev;
+                            if (isFavorite) {
+                                const updatedItems = updateItemInArray(
+                                    prev.items,
+                                    itemIdSet,
+                                    (item) => createFavoriteUpdater<Song>(item),
+                                );
+                                return updatedItems ? { ...prev, items: updatedItems } : prev;
+                            }
+                            const remaining = prev.items.filter(
+                                (item) =>
+                                    item !== null && item !== undefined && !itemIdSet.has(item.id),
+                            );
+                            return {
+                                ...prev,
+                                items: remaining,
+                                totalRecordCount: Math.max(
+                                    0,
+                                    (prev.totalRecordCount ?? prev.items.length) -
+                                        (prev.items.length - remaining.length),
+                                ),
+                            };
+                        },
+                    });
+                }
+            });
+
             const homeQueries = queryClient.getQueriesData({
                 exact: false,
                 queryKey: ['home', 'song'],
             });
 
-            homeQueries.concat(homeQueries).forEach(([queryKey, data]) => {
+            homeQueries.forEach(([queryKey, data]) => {
                 if (data) {
                     pendingUpdates.push({
                         previousData: data,
@@ -726,6 +772,14 @@ export const applyFavoriteOptimisticUpdatesDeferred = (
                 queryKeys.albumArtists.topSongs(variables.apiClientProps.serverId),
                 'top-songs',
             );
+            // P3-B (Streamify): the deferred path now covers the favorites
+            // list and the home song carousels too (parity with the
+            // immediate path above).
+            collectQueries(
+                queryKeys.albumArtists.favoriteSongs(variables.apiClientProps.serverId),
+                'favorite-songs',
+            );
+            collectQueries(['home', 'song'], 'home-songs');
             break;
         }
     }
@@ -793,6 +847,41 @@ export const applyFavoriteOptimisticUpdatesDeferred = (
                             (item) => ({ ...item, userFavorite: isFavorite }),
                         );
                         return updatedItems ? { ...prev, items: updatedItems } : prev;
+                    }
+                    case 'favorite-songs': {
+                        if (!Array.isArray(prev.items)) return prev;
+                        if (isFavorite) {
+                            const updatedItems = updateItemInArray(
+                                prev.items,
+                                itemIdSet,
+                                (item) => ({
+                                    ...item,
+                                    userFavorite: isFavorite,
+                                }),
+                            );
+                            return updatedItems ? { ...prev, items: updatedItems } : prev;
+                        }
+                        const remaining = prev.items.filter(
+                            (item: { id: string }) =>
+                                item !== null && item !== undefined && !itemIdSet.has(item.id),
+                        );
+                        return {
+                            ...prev,
+                            items: remaining,
+                            totalRecordCount: Math.max(
+                                0,
+                                (prev.totalRecordCount ?? prev.items.length) -
+                                    (prev.items.length - remaining.length),
+                            ),
+                        };
+                    }
+                    case 'home-songs': {
+                        const updatedPages = updateItemsInPages(
+                            prev.pages || [],
+                            itemIdSet,
+                            (item) => ({ ...item, userFavorite: isFavorite }),
+                        );
+                        return updatedPages ? { ...prev, pages: updatedPages } : prev;
                     }
                     default:
                         return prev;

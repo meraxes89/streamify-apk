@@ -1,7 +1,9 @@
 import {
     getStreamUrl,
     invalidateStreamUrl,
+    type LadderRung,
     probeStreamUrl,
+    recentResolveLog,
     type StreamUrlResolution,
 } from './resolver/audio/get-stream-url';
 import { relayBaseCandidate } from './resolver/lib/relayBase';
@@ -93,6 +95,24 @@ export interface SourceErrorShape {
 }
 
 /**
+ * The rung that last resolved a video (the scrobble bridge attaches this
+ * to play events — "which lane served the listen"). Reads the resolver's
+ * bounded log ring backwards; null when this video has no resolve record
+ * in the ring (never played, or rotated out past 50 resolves).
+ */
+export function lastRungForVideo(videoId: string): LadderRung | null {
+    const log = recentResolveLog();
+    for (let i = log.length - 1; i >= 0; i -= 1) {
+        if (log[i].trackId === videoId) return log[i].rung;
+    }
+    return null;
+}
+
+// ---------------------------------------------------------------------------
+// The controller seam's back end
+// ---------------------------------------------------------------------------
+
+/**
  * Claim a media-element error for the Streamify layer. SYNC decision, async
  * recovery: returns true when the failing source belongs to a Streamify
  * session (the stock retry/skip logic stands down); false lets the stock
@@ -112,10 +132,6 @@ export function onStreamifySourceError(err: SourceErrorShape, audio: HTMLMediaEl
     void recoverFromError(session, url, audio, err);
     return true;
 }
-
-// ---------------------------------------------------------------------------
-// The controller seam's back end
-// ---------------------------------------------------------------------------
 
 /** Resolve a video and register its playback session (ladder + URL index). */
 export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlResolution> {

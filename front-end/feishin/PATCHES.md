@@ -205,3 +205,49 @@ These upstream files may be touched by later phases, and only for the stated pur
 - Monorepo `web-build.yml`: job `resolver-mirror-sync` — runs
   `scripts/sync_feishin_resolver.py --check` on every `front-end/**` PR so
   the vendored resolver mirror can never drift from `front-end/web`.
+
+## Carried patches (P3-B — favorites, curation & the playback bridge)
+
+### 22. `src/renderer/features/shared/mutations/favorite-optimistic-updates.ts` — favorite cache fixes (not pre-approved; minimal, scoped)
+
+- **What:** three fixes to the favorite optimistic-update helpers: (1) the
+  SONG-case immediate path now also updates the `albumArtists.favoriteSongs`
+  cache — an unfavorite REMOVES the song from the favorites list instantly
+  (items + totalRecordCount) instead of waiting for the invalidation refetch
+  (a favorite only flips in place; the post-success refetch adds newcomers
+  with full data since `FavoriteArgs` carries ids only); (2) fixed the
+  pre-existing `homeQueries.concat(homeQueries)` double-registration bug in
+  the same path; (3) the deferred variant (`applyFavoriteOptimisticUpdatesDeferred`)
+  gains `favorite-songs` and `home-songs` collection lanes so both paths have
+  parity. Driven by P3-B (`decisions/p3/P3B-favorites-curation-bridge.md`):
+  the Streamify favorites endpoints update the library snapshot live, and
+  these cache layers make the UI reflect an unfavorite the moment it happens.
+- **Why:** the file is feishin's own favorite mutation cache layer; the
+  Streamify controller cannot reach into TanStack Query from `api/`, so the
+  minimal correct seam is the existing optimistic-update helper both stock
+  servers already share. Behavior for other server types is strictly
+  additive (a cache key they were already leaving stale until refetch).
+- **Expected conflict surface:** low — additive blocks inside the existing
+  SONG-case switch arms; upstream rarely edits this file.
+
+### 23. P3-B new files (ours, no upstream conflict)
+
+- `src/renderer/api/streamify/playback/{scrobbler,queue-persistence,play-tally,scrobble-bridge}.ts`
+  — the #187 playback-spine domain modules ported from `front-end/web`
+  (PlaySessionTracker, ScrobbleOutbox, the tiered URL-free queue serializer,
+  the local play tally + snapshot hydration) plus the feishin bridge wiring
+  (sparse playback reports → actual played time → threshold → outbox →
+  `recordPlayEventStrict` with the resolved rung attached). See
+  `decisions/p3/P3B-favorites-curation-bridge.md`.
+- `src/renderer/api/streamify/favorites.ts` — the favorites (cloud likes)
+  flow: live snapshot updates, the offline journal (200 cap, 5-attempt
+  poison drop, flap reset, like/undo coalescing).
+- `src/renderer/api/streamify/__tests__/` — six network-free vitest suites
+  locking the queue round-trip (zero persisted URLs, corruption discard),
+  the scrobble threshold/outbox semantics, the favorites flow, and the
+  curation/sort-filter predicates.
+- Edited (ours): `api/streamify/{cloud,query,streamify-controller}.ts`
+  (write lanes, the FAVORITED polarity fix, the bridged endpoints),
+  `api/streamify/playback/stream-source.ts` (`lastRungForVideo` export),
+  `features/streamify-auth/routes/streamify-auth-route.tsx` (i18n), and
+  `src/i18n/locales/en.json` (`streamifyAuth.*` + `error.streamify*` keys).

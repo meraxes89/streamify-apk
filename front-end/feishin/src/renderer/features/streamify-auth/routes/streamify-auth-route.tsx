@@ -11,6 +11,7 @@
  * code — "use your own server" below walks into that exact flow.
  */
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, useNavigate } from 'react-router';
 
 import {
@@ -43,6 +44,7 @@ type StreamifyAuthStatus = 'checking' | 'error' | 'ready' | 'signed-in' | 'uncon
 
 const StreamifyAuthRoute = () => {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const { setCurrentServer } = useAuthStoreActions();
     const [status, setStatus] = useState<StreamifyAuthStatus>(() =>
         isStreamifyAuthEnabled() ? 'checking' : 'unconfigured',
@@ -101,7 +103,7 @@ const StreamifyAuthRoute = () => {
         const supabase = getStreamifySupabase();
 
         if (!supabase) {
-            toast.error({ message: 'Streamify is not configured for this deployment' });
+            toast.error({ message: t('error.streamifyNotConfigured') as string });
             return;
         }
 
@@ -156,14 +158,11 @@ const StreamifyAuthRoute = () => {
                                 </TextTitle>
                                 {status === 'unconfigured' ? (
                                     <Text c="dimmed" size="sm" ta="center">
-                                        This deployment has no Supabase configuration. Set
-                                        STREAMIFY_SUPABASE_URL and STREAMIFY_SUPABASE_ANON_KEY in
-                                        settings.js to enable Streamify sign-in.
+                                        {t('streamifyAuth.unconfigured')}
                                     </Text>
                                 ) : (
                                     <Text c="dimmed" size="sm" ta="center">
-                                        Sign in with your Google account to access your Streamify
-                                        library.
+                                        {t('streamifyAuth.signInDescription')}
                                     </Text>
                                 )}
                             </Stack>
@@ -181,20 +180,20 @@ const StreamifyAuthRoute = () => {
                                     onClick={handleGoogleSignIn}
                                     size="md"
                                 >
-                                    Continue with Google
+                                    {t('streamifyAuth.continueWithGoogle')}
                                 </Button>
                             )}
 
                             {status === 'signed-in' && (
                                 <Stack gap="md" w="100%">
                                     <Text size="sm" ta="center">
-                                        Signed in as{' '}
+                                        {t('streamifyAuth.signedInAs')}{' '}
                                         <Text fw={600} span>
-                                            {sessionEmail ?? 'Streamify user'}
+                                            {sessionEmail ?? t('streamifyAuth.defaultUser')}
                                         </Text>
                                     </Text>
                                     <Button fullWidth onClick={handleOpenStreamify} size="md">
-                                        Open Streamify
+                                        {t('streamifyAuth.openStreamify')}
                                     </Button>
                                     <Button
                                         color="gray"
@@ -203,20 +202,19 @@ const StreamifyAuthRoute = () => {
                                         size="md"
                                         variant="subtle"
                                     >
-                                        Sign out
+                                        {t('streamifyAuth.signOut')}
                                     </Button>
                                 </Stack>
                             )}
 
                             {status === 'error' && (
                                 <Text c="red" size="sm" ta="center">
-                                    Could not restore your Streamify session. Reload the page to try
-                                    again.
+                                    {t('streamifyAuth.restoreFailed')}
                                 </Text>
                             )}
 
                             <Divider
-                                label="Have your own music server?"
+                                label={t('streamifyAuth.ownServerDivider')}
                                 labelPosition="center"
                                 w="100%"
                             />
@@ -228,7 +226,7 @@ const StreamifyAuthRoute = () => {
                                 size="md"
                                 variant="light"
                             >
-                                Use your own Navidrome, Jellyfin, or OpenSubsonic server
+                                {t('streamifyAuth.useOwnServer')}
                             </Button>
                         </Stack>
                     </PageErrorBoundary>

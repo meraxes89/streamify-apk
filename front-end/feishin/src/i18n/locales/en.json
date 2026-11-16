@@ -252,6 +252,9 @@
         "serverNotSelectedError": "No server selected",
         "serverRequired": "Server required",
         "sessionExpiredError": "Your session has expired",
+        "streamifyNoVideo": "This track has no stream video mapping in the library — it cannot be played yet",
+        "streamifyNotConfigured": "Streamify is not configured for this deployment",
+        "streamifySabr": "This track only resolved a SABR stream, which the web player cannot play",
         "systemFontError": "An error occurred when trying to get system fonts",
         "settingsSyncError": "Discrepancies were found between the settings in the renderer and the main process. Restart the application to apply the changes"
     },
@@ -1648,5 +1651,17 @@
                 "z": "Z"
             }
         }
+    },
+    "streamifyAuth": {
+        "continueWithGoogle": "Continue with Google",
+        "defaultUser": "Streamify user",
+        "openStreamify": "Open Streamify",
+        "ownServerDivider": "Have your own music server?",
+        "restoreFailed": "Could not restore your Streamify session. Reload the page to try again.",
+        "signInDescription": "Sign in with your Google account to access your Streamify library.",
+        "signOut": "Sign out",
+        "signedInAs": "Signed in as",
+        "unconfigured": "This deployment has no Supabase configuration. Set STREAMIFY_SUPABASE_URL and STREAMIFY_SUPABASE_ANON_KEY in settings.js to enable Streamify sign-in.",
+        "useOwnServer": "Use your own Navidrome, Jellyfin, or OpenSubsonic server"
     }
 }
