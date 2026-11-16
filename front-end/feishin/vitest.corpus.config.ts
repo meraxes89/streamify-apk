@@ -24,8 +24,8 @@ export default defineConfig({
     },
     test: {
         environment: 'node',
+        hookTimeout: 120_000,
         include: ['scripts/sabr-corpus.test.ts'],
         testTimeout: 240_000,
-        hookTimeout: 120_000,
     },
 });

@@ -59,12 +59,10 @@ describe('P5-A sabr-corpus runner (canonical resolver)', () => {
         const config = readFileSync(CORPUS_CONFIG, 'utf-8');
         expect(config).toContain("include: ['scripts/sabr-corpus.test.ts']");
 
-        const pkg = JSON.parse(
-            readFileSync(path.join(FEISHIN_ROOT, 'package.json'), 'utf-8'),
-        ) as { scripts?: Record<string, string> };
-        expect(pkg.scripts?.['test:corpus']).toBe(
-            'vitest run --config vitest.corpus.config.ts',
-        );
+        const pkg = JSON.parse(readFileSync(path.join(FEISHIN_ROOT, 'package.json'), 'utf-8')) as {
+            scripts?: Record<string, string>;
+        };
+        expect(pkg.scripts?.['test:corpus']).toBe('vitest run --config vitest.corpus.config.ts');
         // The default lane must NOT reach into scripts/ (live network).
         expect(pkg.scripts?.test).toBe('vitest run');
     });

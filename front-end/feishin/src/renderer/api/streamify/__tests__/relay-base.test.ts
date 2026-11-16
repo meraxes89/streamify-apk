@@ -11,9 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-    isUnexpandedPlaceholder,
-} from '../playback/resolver/lib/relayBase';
+import { isUnexpandedPlaceholder } from '../playback/resolver/lib/relayBase';
 
 const KEY = 'STREAMIFY_RELAY_BASE' as const;
 

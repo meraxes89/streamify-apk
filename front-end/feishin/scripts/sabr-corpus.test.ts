@@ -39,14 +39,13 @@ const CORPUS: ReadonlyArray<{ id: string; label: string }> = [
 ];
 
 /** Same relay the production app rides (resolver-canary.yml RELAY_BASE_URL). */
-const RELAY =
-    process.env.RELAY_BASE_URL ?? 'https://streamify-relay.zephyr4289.workers.dev';
+const RELAY = process.env.RELAY_BASE_URL ?? 'https://streamify-relay.zephyr4289.workers.dev';
 
 interface TrackOutcome {
+    error?: string;
     id: string;
     label: string;
     ok: boolean;
-    error?: string;
     record?: ResolveLogRecord;
 }
 
@@ -71,7 +70,7 @@ describe('SABR corpus (live — feishin canonical resolver)', () => {
             } catch (err) {
                 // An honest per-track failure is data, not a test failure.
                 const message = err instanceof Error ? err.message : String(err);
-                outcomes.push({ id: track.id, label: track.label, ok: false, error: message });
+                outcomes.push({ error: message, id: track.id, label: track.label, ok: false });
                 console.warn(`[corpus] ${track.id} (${track.label}): FAILED — ${message}`);
             }
         }
@@ -87,18 +86,18 @@ describe('SABR corpus (live — feishin canonical resolver)', () => {
 
         const report = {
             at: new Date().toISOString(),
-            relay: RELAY,
-            resolver: 'front-end/feishin (canonical, P5-A)',
             corpus: CORPUS,
             outcomes,
+            relay: RELAY,
+            resolver: 'front-end/feishin (canonical, P5-A)',
             summary: {
-                total: outcomes.length,
-                resolved: resolved.length,
                 failed: outcomes.length - resolved.length,
-                progressive,
                 hls,
+                progressive,
+                resolved: resolved.length,
                 sabr,
                 sabrRate: Number(sabrRate.toFixed(4)),
+                total: outcomes.length,
             },
         };
         const reportPath = process.env.SABR_REPORT_PATH ?? 'sabr-report.json';
