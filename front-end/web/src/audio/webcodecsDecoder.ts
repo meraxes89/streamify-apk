@@ -169,7 +169,10 @@ export class WebCodecsAudioDecoder implements AudioDecoderLike {
         type: packet.keyframe === false ? 'delta' : 'key',
         timestamp: packet.timestampUs,
         duration: packet.durationUs,
-        data: packet.data,
+        // Byte-copy through the typed-array constructor: TS 5.9's
+        // BufferSource requires Uint8Array<ArrayBuffer>; the copy
+        // satisfies both it and TS 5.6 (behavior-preserving).
+        data: new Uint8Array(packet.data),
       });
       this.pending.push({ resolve, reject });
       this.decoder?.decode(chunk);
