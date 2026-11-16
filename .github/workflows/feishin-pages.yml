@@ -1,0 +1,148 @@
+# Feishin GitHub Pages — build the web bundle and deploy it as the project
+# site at https://meraxes89.github.io/streamify-apk/.
+#
+# Why this exists (W1): P5-A retired web-deploy.yml together with the
+# legacy front-end/web GitHub Pages build, leaving the live project site
+# serving the stale pre-P5 bundle. This workflow re-enables it for the
+# fork's own web build (front-end/feishin) WITHOUT touching the Docker
+# production path:
+#
+#   - Docker stamps settings.js at container boot (nginx envsubst over
+#     settings.js.template). Pages has no runtime, so this workflow stamps
+#     it at BUILD time with the same variable set (see the envsubst step).
+#   - Docker serves at /; Pages serves under /streamify-apk/. The build
+#     passes --base=/streamify-apk/ (and VITE_BASE_PATH for the config's
+#     base hook); Docker builds keep the relative default (PATCHES.md A24).
+#   - Triggered by push to main only (path-filtered) + manual dispatch —
+#     never on pull_request, so Wave 1 PRs see zero unexpected checks.
+#
+# Runtime configuration story: STREAMIFY_* values come from repo secrets
+# when present, else repo variables, else empty strings — settings.js must
+# always render valid JavaScript. Empty knobs degrade the same way they do
+# in Docker: the /streamify-auth gate stays up (STREAMIFY_AUTH defaults
+# true below), the app runs unconfigured until the operator sets
+# STREAMIFY_SUPABASE_URL / STREAMIFY_SUPABASE_ANON_KEY, and the relay can
+# be pointed at runtime via /streamify-settings or ?relay=.
+
+name: Feishin GitHub Pages
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - 'front-end/feishin/**'
+            - '.github/workflows/feishin-pages.yml'
+    workflow_dispatch: {}
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+# One deployment at a time; never cancel an in-flight deploy mid-upload.
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: front-end/feishin
+        steps:
+            - name: Check out Git repository
+              uses: actions/checkout@v4
+
+            # pnpm version matches packageManager in front-end/feishin/package.json
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+
+            - name: Install Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+                  cache-dependency-path: front-end/feishin/pnpm-lock.yaml
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+              env:
+                  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+            # The subpath is opt-in: --base wins over the config value, and
+            # VITE_BASE_PATH feeds the config's own base hook (PATCHES.md
+            # A24). Docker builds pass neither and stay rooted at ./.
+            - name: Build web bundle (project-site subpath)
+              run: VITE_BASE_PATH=/streamify-apk/ pnpm run build:web -- --base=/streamify-apk/
+
+            # Same contract as the Dockerfile's nginx envsubst over
+            # settings.js.template (docker-compose.yaml): locked to the
+            # Streamify server, Umami off, URL knobs empty. STREAMIFY_*
+            # fall back through secrets → vars → '' so the file always
+            # renders valid JavaScript (relayBase.ts/session.ts filter
+            # empties as unset — same as Docker).
+            - name: Stamp settings.js at build time
+              working-directory: front-end/feishin
+              env:
+                  SERVER_LOCK: 'true'
+                  SERVER_TYPE: streamify
+                  SERVER_URL: ''
+                  REMOTE_URL: ''
+                  SERVER_NAME: streamify
+                  LEGACY_AUTHENTICATION: 'false'
+                  ANALYTICS_DISABLED: 'true'
+                  STREAMIFY_AUTH: ${{ secrets.STREAMIFY_AUTH || vars.STREAMIFY_AUTH || 'true' }}
+                  STREAMIFY_SUPABASE_URL: ${{ secrets.STREAMIFY_SUPABASE_URL || vars.STREAMIFY_SUPABASE_URL || '' }}
+                  STREAMIFY_SUPABASE_ANON_KEY: ${{ secrets.STREAMIFY_SUPABASE_ANON_KEY || vars.STREAMIFY_SUPABASE_ANON_KEY || '' }}
+                  STREAMIFY_RELAY_BASE: ${{ secrets.STREAMIFY_RELAY_BASE || vars.STREAMIFY_RELAY_BASE || '' }}
+                  STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
+              run: |
+                  set -euo pipefail
+                  # envsubst only the variables the template references
+                  # (others in the runner env must pass through untouched);
+                  # the FS_* set stays empty exactly like a fresh Docker boot.
+                  export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
+                  export STREAMIFY_RELAY_BASE STREAMIFY_DEV_ACCESS_TOKEN
+                  export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
+                  export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
+                  envsubst "$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | tr -d '{}$')" \
+                      < settings.js.template > out/web/settings.js
+
+            # HashRouter keeps routes in location.hash, so subroutes never
+            # hit the server — this copy only guards direct hits on
+            # nonexistent paths (e.g. a stray /streamify-apk/whatever).
+            - name: Provide SPA fallback page
+              working-directory: front-end/feishin
+              run: |
+                  set -euo pipefail
+                  if [ ! -f out/web/404.html ]; then
+                      cp out/web/index.html out/web/404.html
+                  fi
+
+            - name: Verify build outputs
+              working-directory: front-end/feishin
+              run: |
+                  set -euo pipefail
+                  test -s out/web/index.html || { echo 'index.html missing or empty'; exit 1; }
+                  test -s out/web/settings.js || { echo 'settings.js missing or empty'; exit 1; }
+                  if grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' out/web/settings.js; then
+                      echo 'settings.js contains unexpanded placeholders'; exit 1
+                  fi
+                  echo 'index.html and settings.js present, settings.js fully substituted.'
+
+            - name: Upload Pages artifact
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: front-end/feishin/out/web
+
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4

@@ -7,7 +7,10 @@ import { kuromojiDictionaryPlugin } from './vite.kuromoji-plugin';
 import { createReactPlugin } from './vite.react-plugin';
 
 export default defineConfig({
-    base: './',
+    // GitHub Pages serves the fork under /streamify-apk/ (project site);
+    // Docker serves it at /. The CLI --base flag wins over this value in
+    // CI, so the default stays relative for Docker/electron parity.
+    base: process.env.VITE_BASE_PATH || './',
     build: {
         emptyOutDir: true,
         outDir: path.resolve(__dirname, './out/web'),

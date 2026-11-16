@@ -276,7 +276,12 @@ P5-A (this PR).
   repo and the Docker build context — both ship `front-end/feishin`
   alone). The P5-A `resolve.dedupe` + per-subpath react pinning are
   retired with the sibling (in-tree resolution needs neither).
-- **Conflict surface:** low — additive entries in the resolve block.
+  W1: `base: process.env.VITE_BASE_PATH || './'` — the GitHub Pages
+  workflow (feishin-pages.yml) sets `VITE_BASE_PATH=/streamify-apk/`
+  (plus the `--base` CLI flag) for the project-site subpath; every other
+  consumer (Docker at `/`, electron) keeps the relative default.
+- **Conflict surface:** low — additive entries in the resolve block; the
+  base line swaps a literal for an env-conditional with the same default.
 
 ### A25. `tsconfig.web.json` (P5-A)
 
