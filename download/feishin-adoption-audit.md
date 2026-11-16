@@ -124,4 +124,29 @@ carrying the registration diff — stock behavior intact.
 - Fork `Web CI` (ours: install → lint → build:web): **success** on `d12f99f6`.
 - Monorepo `web-build.yml` triggers on `front-end/**` PRs; the vendored tree
   does not alter its inputs (gates compile `front-end/crates` + build
-  `front-end/web`, both untouched).
+  `front-end/web`, both untouched). *(P5 note: `front-end/web` has since been
+  archived to `legacy/front-end-web` and `front-end/feishin` is the canonical
+  front-end — the workflow's path-gating and the resolver-mirror sync
+  (`scripts/sync_feishin_resolver.py`) now guard that posture; see §6.)*
+
+## 6. P5 cutover addendum (2026-11)
+
+The audit above is the P0 record, kept verbatim. What changed by P5:
+
+- **`front-end/feishin` is the canonical web front-end.** The vendored
+  fork grew the full Streamify surface across P1–P4 (Google/Supabase auth
+  + library snapshot, playback persistence/scrobble, favorites/curation,
+  downloads + wrapped + `/debug`, jam live-queue + EQ + brand theming +
+  settings). Feishin Web CI (`.github/workflows/feishin-ci.yml`) gates it:
+  lint → i18n check → tests → `build:web`.
+- **`front-end/web` is archived at `legacy/front-end-web`** (P5-A). Its
+  resolver stream (`src/lib/`, `src/audio/`) remains the byte-identity
+  source for the fork's `playback/resolver/` mirror — enforced on every
+  `front-end/**` PR by `scripts/sync_feishin_resolver.py --check` in
+  `web-build.yml`.
+- **Localization policy**: 39 Weblate catalogs are carried untouched;
+  Streamify keys live only in `src/i18n/locales/en.json` (English
+  fallback). The `scripts/check-i18n.mjs` CI gate enforces it.
+- The full cutover record — architecture, capabilities, endpoint
+  coverage, verification results across P0–P5 — lives in
+  `front-end/decisions/p5/P5B-i18n-hardening-release-notes.md`.

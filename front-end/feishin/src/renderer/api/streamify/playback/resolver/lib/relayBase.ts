@@ -2,7 +2,7 @@
  * playback/resolver/lib/relayBase.ts — the fork-side relay knob.
  *
  * FORK-AUTHORED — the one non-vendored file inside the resolver mirror
- * (the sync check enforces byte-identity for the other nine; this one has
+ * (the sync check enforces byte-identity for the other ten; this one has
  * no upstream twin). It replaces the web app's
  * `lib/engine.ts#relayBaseCandidate` — the wasm bridge module must not
  * vendor (it drags `src/wasm/*` into the graph). Same priority shape as

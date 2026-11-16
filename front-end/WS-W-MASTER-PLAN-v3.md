@@ -11,6 +11,20 @@
 | Predecessors | v1 (Shivam, VPS-gateway architecture — superseded) · v2 (zero-cost GH Pages rewrite — superseded) |
 | Status | **Evidence-backed**: every architecture-defining claim in this document was measured against the live YouTube/Innertube stack from this repo's tooling (Appendix A) |
 
+> **P5 cutover notice (supersedes the UI strategy in §9.3).** The greenfield
+> `front-end/web` app this plan specified was superseded during execution by
+> the **Feishin adoption**: `front-end/feishin` (the vendored
+> `jeffvli/feishin` v1.17.0 fork) is the canonical web front-end, carrying
+> the full Streamify surface (auth, library, playback, jam, EQ, downloads,
+> wrapped, settings) on the vendored resolver mirror and the Supabase
+> session stack. The original greenfield tree is archived untouched at
+> `legacy/front-end-web` (P5-A); its resolver stream remains the source of
+> truth for the byte-identical mirror via `scripts/sync_feishin_resolver.py`.
+> Everything else in this plan — the wasm engine facade, the relay contract,
+> the no-SAB audio path, the Supabase reuse, the legal gate — carried into
+> the adopted app unchanged. The cutover record lives in
+> `front-end/decisions/p5/P5B-i18n-hardening-release-notes.md`.
+
 ---
 
 ## 0. Mandate and Hard Constraints
@@ -127,14 +141,16 @@ front-end/
 │   │   └── src/audio_glue.rs        ←   ring/stats wire → JS chunk protocol (§10)
 │   ├── streamify-dsp-cpp/           ← C++ DSP cores via cc crate (§9.2)
 │   └── streamify-web-cache/         ← OPFS/IndexedDB cache (deobf layer + format-TTL layer)
-├── web/                             ← the TypeScript app (Vite + React)
-│   ├── src/engine/                  ← WasmEnginePort (EnginePort parity, §9.3)
-│   ├── src/audio/                   ← AudioWorklet sink, chunk fetcher, MediaSource-free pipeline
-│   ├── src/state/                   ← Zustand stores (ViewModel parity)
-│   ├── src/screens/                 ← 23 screens, filename-mirrored (§9.3)
-│   ├── src/components/              ← shared components 1:1 (§9.3)
-│   ├── src/data/                    ← Supabase client, repositories
-│   └── src/relay/                   ← CF relay client
+├── feishin/                          ← the canonical web front-end (P5 cutover:
+│   │                                   vendored jeffvli/feishin fork carrying
+│   │                                   the full Streamify surface — see the
+│   │                                   P5 cutover notice above)
+│   └── src/renderer/api/streamify/…  ←   playback/resolver/ is the byte-identical
+│                                         resolver mirror (sync script below)
+├── web/ → legacy/front-end-web       ← ARCHIVED in P5-A (was: the greenfield
+│                                         TypeScript app; its resolver stream
+│                                         still feeds the feishin mirror via
+│                                         scripts/sync_feishin_resolver.py)
 ├── relay/                           ← Cloudflare Worker source (~150 LOC, §8)
 ├── canary/                          ← W0.1b residential probe page (deployed with the site)
 └── .github/  (in repo root workflows) deploy + canary spokes (§12)
@@ -295,9 +311,9 @@ A 3.5-minute track at itag 140 (≈130 kbps) ≈ **3.4 MB** (E4 measured `clen=3
 
 ### 9.3 Kotlin UI (23 screens + 5 shared components) → React
 
-**Filename mirroring** — every screen keeps its name so diffs stay reviewable across runtimes:
+**Filename mirroring** — every screen keeps its name so diffs stay reviewable across runtimes (as planned; after the P5 cutover the same mirroring discipline lives on in the Feishin fork's feature-scoped `streamify-*` modules — see the cutover notice):
 
-| Android (`app/…/screens/`) | Web (`front-end/web/src/screens/`) |
+| Android (`app/…/screens/`) | Web (originally `front-end/web/src/screens/`, archived at `legacy/front-end-web`) |
 |---|---|
 | `HomeScreen.kt`, `UniversalHomeScreen.kt` | `HomeScreen.tsx`, `UniversalHomeScreen.tsx` |
 | `SearchScreen.kt` | `SearchScreen.tsx` |

@@ -8,6 +8,7 @@
  */
 
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { type EqBand, eqFrequencyResponse } from '/@/renderer/features/streamify-eq/utils/eq-math';
 
@@ -30,6 +31,7 @@ export const EqCurve = ({
     preamp: number;
     sampleRate?: number;
 }) => {
+    const { t } = useTranslation();
     const { areaPath, linePath } = useMemo(() => {
         const response = eqFrequencyResponse(bands, preamp, {
             fMax: F_MAX,
@@ -53,7 +55,7 @@ export const EqCurve = ({
 
     return (
         <svg
-            aria-label="EQ frequency response"
+            aria-label={t('streamify.eq.chartAriaLabel')}
             preserveAspectRatio="none"
             role="img"
             viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}

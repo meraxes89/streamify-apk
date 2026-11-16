@@ -45,6 +45,14 @@ jobs:
       - name: Lint (typecheck node+web, eslint --max-warnings=0, stylelint)
         run: pnpm run lint
         working-directory: front-end/feishin
+      # P5-B i18n integrity gate: 39-catalog parse check, en.json-only
+      # Streamify key policy, and t() reference resolution for every
+      # streamify surface (features/streamify-* + api/streamify/). Fails
+      # the build on missing keys or empty Streamify values; the 38
+      # Weblate catalogs are reported non-destructively (parity stats).
+      - name: i18n check (39-catalog integrity + streamify key gate)
+        run: node scripts/check-i18n.mjs
+        working-directory: front-end/feishin
       - name: Tests (P2-A engine wiring lock — network-free)
         run: pnpm run test
         working-directory: front-end/feishin
