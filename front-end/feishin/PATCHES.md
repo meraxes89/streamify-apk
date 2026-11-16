@@ -126,3 +126,82 @@ These upstream files may be touched by later phases, and only for the stated pur
 3. Resolve conflicts using this ledger as the map of our divergence.
 4. `pnpm install && pnpm run lint && pnpm run build:web` must be green before the merge lands.
 5. Vendored copy in the streamify monorepo is updated from this fork only (see `front-end/decisions/feishin-adoption/F1-vendoring-strategy.md`).
+
+## Carried patches (P2-A — playback spine, app stream)
+
+### 15. `src/renderer/api/streamify/playback/` — new directory (ours)
+
+- **What:** the engine-side playback layer. `stream-source.ts` (the consumption
+  layer: the controller seam's back end, the error-claim hook with the
+  cached-ladder walk + stale re-resolve, the seek-strategy hook — all engine
+  wiring, ZERO resolution logic), `resolver/` (the vendored resolver mirror:
+  10 files synced byte-identically from `front-end/web` by the monorepo's
+  `scripts/sync_feishin_resolver.py` — CI-enforced on every `front-end/**` PR;
+  the one fork-authored file inside it is `resolver/lib/relayBase.ts`, the
+  relay knob that replaces the web app's wasm-bridge import), and
+  `__tests__/stream-source.test.ts` (the fork's first test lane — the P2-A
+  DoD walk/seek lock). Full record:
+  `front-end/decisions/p2/P2A-feishin-dual-engine.md`.
+- **Why:** the P2-A two-stream rule — resolution fixes land in the resolver
+  tree only; the fork imports `getStreamUrl` from the mirror like any other
+  consumer. The mirror gate makes that mechanical: drift fails CI.
+- **Expected conflict surface:** none — new directory upstream never touches.
+
+### 16. `src/renderer/features/player/audio-player/web-player.tsx` — two thin seams (not pre-approved; minimal)
+
+- **What:** (a) one `handleOnSourceError` callback + one `onSourceError` prop
+  pass-through to the engine (the error claim); (b) one block inside the stock
+  `onPlayerSeekToTimestamp` that lets the playback layer claim non-range
+  seeks (reload-from-zero + silent fast-forward, per the posted P2-A
+  contract). Unclaimed paths are byte-identical to upstream.
+- **Why:** the dual engine's element errors and non-range seeks need a
+  claim hook; all logic lives in `api/streamify/playback/stream-source.ts`.
+- **Expected conflict surface:** low — additive lines inside two handlers;
+  conflicts only if upstream restructures the player wholesale.
+
+### 17. `src/renderer/features/player/audio-player/engine/web-player-engine.tsx` — one thin seam (not pre-approved; minimal)
+
+- **What:** one optional `onSourceError?: (err, audio) => boolean` prop and
+  one claim block at the head of `handleOnError`'s inner handler. Claimed
+  errors return early; unclaimed errors run the stock retry/skip logic,
+  byte-identical to upstream.
+- **Expected conflict surface:** low.
+
+### 18. `package.json` — resolver dependencies + test script (pre-approved category)
+
+- **What:** dependencies `youtubei.js` (exact `18.3.0` — the mirror requires
+  the same pin as the web app), `googlevideo` `^4.0.4`, `bgutils-js`
+  `^4.0.3`; devDependency `vitest` `^3.2.0`; script `test`. Lockfile
+  regenerated.
+- **Expected conflict surface:** low — dependency lines.
+
+### 19. `settings.js.template` — `STREAMIFY_RELAY_BASE` (pre-approved category)
+
+- **What:** appended the relay-base runtime knob (the resolver's relay;
+  empty = relay off). Same envsubst semantics as the P1 knobs.
+- **Expected conflict surface:** low — append-only at file end.
+
+### 20. `Dockerfile` — ENV extension
+
+- **What:** `STREAMIFY_RELAY_BASE=""` appended to the existing Streamify ENV
+  line (nginx envsubst only substitutes defined variables).
+- **Expected conflict surface:** low — one line.
+
+### 21. `eslint.config.mjs` — vendored-mirror ignore
+
+- **What:** added `src/renderer/api/streamify/playback/resolver` to the
+  global ignores. The mirror is synced code (2-space, web-app style) — lint
+  the fork's own code; typecheck still covers the mirror.
+- **Expected conflict surface:** low.
+
+## CI additions (ours — P2)
+
+- Fork: script `test` (`vitest run`) — the P2-A engine wiring lock, wired
+  into the fork's own `Web CI` via the monorepo `feishin-ci.yml` below.
+- Monorepo `.github/workflows/feishin-ci.yml` — the F1-deferred monorepo-side
+  gate for the vendored fork tree: install (Electron binary skipped) → lint
+  (typecheck node+web, eslint `--max-warnings=0`, stylelint) → tests →
+  `build:web`. Runs on `front-end/feishin/**` PRs and pushes.
+- Monorepo `web-build.yml`: job `resolver-mirror-sync` — runs
+  `scripts/sync_feishin_resolver.py --check` on every `front-end/**` PR so
+  the vendored resolver mirror can never drift from `front-end/web`.

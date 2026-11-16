@@ -28,6 +28,18 @@ on:
       - '.github/workflows/web-build.yml'
 
 jobs:
+  # ── P2-A: the vendored resolver mirror gate ────────────────────────────
+  # The feishin fork carries a byte-identical mirror of the resolver stack.
+  # Resolution fixes land in front-end/web ONLY (the two-stream rule); this
+  # gate makes the rule mechanical — the mirror can never drift silently.
+  resolver-mirror-sync:
+    name: vendored resolver mirror sync (P2-A)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: "Verify the mirror is byte-identical to front-end/web"
+        run: python3 scripts/sync_feishin_resolver.py --check
+
   wasm:
     name: wasm32 compile gate (W0.2)
     runs-on: ubuntu-latest

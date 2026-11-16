@@ -75,13 +75,15 @@ Deliverables (all landed on `meraxes89/streamify-feishin@main`, vendored to
 Filled in from the phase kickoff (2026-11-17). The spine first — it sets the
 schedule; everything else orbits it.
 
-- **P2-A · Playback spine (IN REVIEW)** — `getStreamUrl` from the resolver
-  tree + the dual react-player engine wired in the fork. Two streams, never
+- **P2-A · Playback spine (IN REVIEW — both streams)** — resolver:
+  `p2a/resolver-getstreamurl` (getStreamUrl + the link-solver lock + the
+  daily SABR corpus; merged as #185); app: `p2a/feishin-dual-engine`
+  (stacked on it — the dual react-player engine wired through the vendored
+  resolver mirror, CI-enforced byte-identity). Two streams, never
   cross-wired: resolver fixes land in `front-end/web` only; engine wiring
-  lives in the fork's new directories only (vendored resolver mirror,
-  CI-enforced byte-identity). Contract (posted week one):
-  `front-end/decisions/p2/P2A-contract-getstream-url.md`. Record:
-  `front-end/decisions/p2/P2A-resolver-getstream-url.md`.
+  lives in the fork's new directories only. Contract (posted week one):
+  `front-end/decisions/p2/P2A-contract-getstream-url.md`. Records:
+  `P2A-resolver-getstream-url.md`, `P2A-feishin-dual-engine.md`.
   - The same-day flag the kickoff demanded, answered: the pipeline carried
     neither expiry nor range metadata — both surfaced additively (wire
     expiry via the digest; range via a 1-byte probe).
