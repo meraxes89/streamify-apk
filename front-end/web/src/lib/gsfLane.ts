@@ -308,7 +308,13 @@ export async function gsfFetch(
       /* exotic header names are dropped, not fatal */
     }
   }
-  return new Response(bodyBytes, { status: wire.s, headers });
+  return new Response(
+    // Byte-copy through the typed-array constructor: TS 5.9's BodyInit
+    // requires Uint8Array<ArrayBuffer>; the copy satisfies both it and
+    // TS 5.6 (behavior-preserving).
+    typeof bodyBytes === 'string' ? bodyBytes : new Uint8Array(bodyBytes),
+    { status: wire.s, headers },
+  );
 }
 
 // ---------------------------------------------------------------------------
