@@ -89,7 +89,7 @@ describe('eq-math: clamps and presets', () => {
         expect(clampPreamp(-3)).toBe(-3);
     });
 
-    it('ships the six required built-ins with 10 ISO bands each', () => {
+    it('ships the seven curated built-ins (W3-B adds Spatial Air) with 10 ISO bands each', () => {
         expect(BUILTIN_EQ_PRESETS.map((preset) => preset.id)).toEqual([
             'flat',
             'bass-boost',
@@ -97,6 +97,7 @@ describe('eq-math: clamps and presets', () => {
             'acoustic',
             'electronic',
             'late-night',
+            'spatial-air',
         ]);
         for (const preset of BUILTIN_EQ_PRESETS) {
             expect(preset.bands).toHaveLength(10);
@@ -107,6 +108,7 @@ describe('eq-math: clamps and presets', () => {
                 expect(Math.abs(band.gain)).toBeLessThanOrEqual(12);
             }
             expect(Math.abs(preset.preamp)).toBeLessThanOrEqual(12);
+            expect(preset.name).not.toBe(preset.id); // W3-B: display names
         }
         expect(getBuiltinEqPreset('vocal')?.bands[4].gain).toBe(4);
         expect(getBuiltinEqPreset('nope')).toBeNull();
@@ -266,8 +268,8 @@ describe('streamify-eq store', () => {
         useStreamifyEqStoreBase.getState().load();
         expect(useStreamifyEqStoreBase.getState().customPresets).toHaveLength(1);
 
-        // Listed with built-ins; deletable.
-        expect(selectAllEqPresets(useStreamifyEqStoreBase.getState())).toHaveLength(7);
+        // Listed with built-ins (7 since W3-B); deletable.
+        expect(selectAllEqPresets(useStreamifyEqStoreBase.getState())).toHaveLength(8);
         useStreamifyEqStoreBase.getState().deleteCustomPreset('custom:my-tone');
         expect(useStreamifyEqStoreBase.getState().customPresets).toHaveLength(0);
         expect(useStreamifyEqStoreBase.getState().selectedPresetId).toBeNull();

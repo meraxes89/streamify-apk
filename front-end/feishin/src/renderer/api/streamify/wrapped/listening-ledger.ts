@@ -30,6 +30,13 @@
  * see library.ts's honest-empty genre index). The ledger carries the
  * field, the aggregation is live and tested, and the Wrapped UI renders
  * an honest empty state until the schema grows one.
+ *
+ * ORIGIN (W3-B): every local row carries the track's discovery origin at
+ * the moment of the crossing — the recommendation lane (automix /
+ * discover-mix) that first queued it, resolved through the origin-hint
+ * registry by the controller's onCountedPlay wiring. null = organic
+ * (library / search / manual). Cloud backfill rows carry an honest null
+ * (the wire has no such column) and pre-W3-B rows parse to null.
  */
 
 import type { LibrarySnapshot } from '../library';
@@ -40,6 +47,8 @@ export interface LedgerEvent {
     durationMs: number;
     /** Hour provenance for the chronotype histogram. */
     genres: string[];
+    /** W3-B: the recommendation lane that first queued the track (null = organic). */
+    origin: null | string;
     /** Actual played seconds at the threshold crossing. */
     playedSec: number;
     /** The serving lane (resolver rung; 'offline' rows carry the download's rung). */
@@ -101,6 +110,8 @@ export function recordCountedPlay(fired: {
     album: string;
     artist: string;
     durationMs: number;
+    /** W3-B: the discovery origin resolved by the caller (null = organic). */
+    origin?: null | string;
     playedMs: number;
     rung: null | string;
     title: string;
@@ -112,6 +123,7 @@ export function recordCountedPlay(fired: {
         artist: fired.artist,
         durationMs: fired.durationMs,
         genres: [], // the cloud schema has no genre column yet (see the header)
+        origin: typeof fired.origin === 'string' && fired.origin !== '' ? fired.origin : null,
         playedSec: fired.playedMs / 1000,
         rung: fired.rung,
         source: 'local',
@@ -151,6 +163,7 @@ export function seedFromSnapshot(snapshot: LibrarySnapshot): void {
             artist: row.artist,
             durationMs: 0, // the wire carries no duration (honest zero, ADR'd)
             genres: [],
+            origin: null, // the wire carries no origin (honest null, W3-B)
             playedSec: row.duration_played_sec,
             rung: null,
             source: 'cloud',
@@ -178,12 +191,18 @@ function parseRows(raw: null | string): LedgerEvent[] {
     try {
         const parsed = JSON.parse(raw) as LedgerEvent[];
         if (!Array.isArray(parsed)) return [];
-        return parsed.filter(
-            (r) =>
-                typeof r?.ts === 'number' &&
-                typeof r?.trackId === 'string' &&
-                typeof r?.title === 'string',
-        );
+        return parsed
+            .filter(
+                (r) =>
+                    typeof r?.ts === 'number' &&
+                    typeof r?.trackId === 'string' &&
+                    typeof r?.title === 'string',
+            )
+            .map((r) => ({
+                ...r,
+                genres: Array.isArray(r.genres) ? r.genres : [],
+                origin: typeof r.origin === 'string' && r.origin !== '' ? r.origin : null,
+            }));
     } catch {
         return []; // torn write — honest empty, never a crash
     }

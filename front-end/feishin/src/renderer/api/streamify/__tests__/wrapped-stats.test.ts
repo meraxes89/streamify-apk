@@ -35,6 +35,7 @@ function event(trackId: string, daysAgo: number, over: Partial<LedgerEvent> = {}
         artist: `Artist ${trackId.split('-')[0]}`,
         durationMs: 200000,
         genres: [],
+        origin: null,
         playedSec: 120,
         rung: 'visionos-relay',
         source: 'local',

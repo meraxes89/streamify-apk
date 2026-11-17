@@ -25,6 +25,7 @@ import type { LibrarySnapshot } from '../library';
 import type { MetadataProvider, YtmSongRef } from '../metadata/provider';
 
 import { readTally, type TallyStorage } from '../playback/play-tally';
+import { ORIGIN_AUTOMIX, rememberOrigins } from '../wrapped/origin-hints';
 import { songSig } from './ytm-mappers';
 
 export const AUTOMIX_MAX_PAGES = 5;
@@ -77,6 +78,16 @@ export async function automixRadio(
         }
         continuation = upNext.continuation ?? undefined;
         if (continuation === undefined) break;
+    }
+    // W3-B: the Automix lane claims the discovery origin for every track it
+    // surfaced (first-writer-wins) — the Wrapped "Top Discovery" stat reads
+    // it back off the listening ledger when these tracks cross the play
+    // threshold. Mood radio rides the same claim (it calls automixRadio).
+    if (out.length > 0) {
+        rememberOrigins(
+            out.map((song) => song.videoId),
+            ORIGIN_AUTOMIX,
+        );
     }
     return out;
 }

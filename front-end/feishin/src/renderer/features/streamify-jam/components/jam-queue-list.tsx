@@ -34,7 +34,10 @@ export const JamQueueList = ({
 }) => {
     const { t } = useTranslation();
     const queue = useStreamifyJamStore((state) => state.queue);
+    const status = useStreamifyJamStore((state) => state.status);
     const currentSong = usePlayerSong();
+
+    const live = status === 'live' && controller !== null;
 
     const canAddCurrent = useMemo(
         () => currentSong?._serverType === ServerType.STREAMIFY,
@@ -53,21 +56,26 @@ export const JamQueueList = ({
                 <Text isMuted size="sm">
                     {t('streamify.jam.queueCount', { count: queue.length })}
                 </Text>
-                <ActionIcon
-                    disabled={!canAddCurrent || !controller}
-                    icon="plus"
-                    onClick={() => {
-                        if (currentSong) {
-                            const { _contextPlaylistId, _uniqueId, ...payload } = currentSong;
-                            void _contextPlaylistId;
-                            void _uniqueId;
-                            controller?.addTrack(payload);
-                        }
-                    }}
-                    size="sm"
-                    tooltip={{ label: t('streamify.jam.addCurrent'), openDelay: 0 }}
-                    variant="subtle"
-                />
+                <Group gap={4} wrap="nowrap">
+                    <Text isMuted size="xs" span>
+                        {t('streamify.jam.votingHint')}
+                    </Text>
+                    <ActionIcon
+                        disabled={!canAddCurrent || !controller}
+                        icon="plus"
+                        onClick={() => {
+                            if (currentSong) {
+                                const { _contextPlaylistId, _uniqueId, ...payload } = currentSong;
+                                void _contextPlaylistId;
+                                void _uniqueId;
+                                controller?.addTrack(payload);
+                            }
+                        }}
+                        size="sm"
+                        tooltip={{ label: t('streamify.jam.addCurrent'), openDelay: 0 }}
+                        variant="subtle"
+                    />
+                </Group>
             </Group>
             <ScrollArea style={{ height: 280 }}>
                 <Stack gap={0}>
@@ -114,11 +122,17 @@ export const JamQueueList = ({
                                             : t('streamify.jam.noUpvotes')}
                                     </Badge>
                                     <ActionIcon
+                                        disabled={!live}
                                         icon="arrowUp"
                                         onClick={() => controller?.upvoteTrack(item.addOpId)}
                                         size="compact-md"
-                                        tooltip={{ label: t('streamify.jam.upvote'), openDelay: 0 }}
-                                        variant="subtle"
+                                        tooltip={{
+                                            label: item.voted
+                                                ? t('streamify.jam.upvoted')
+                                                : t('streamify.jam.upvote'),
+                                            openDelay: 0,
+                                        }}
+                                        variant={item.voted ? 'filled' : 'subtle'}
                                     />
                                     <ActionIcon
                                         disabled={index === 0}

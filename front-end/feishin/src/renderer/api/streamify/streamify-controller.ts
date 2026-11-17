@@ -82,6 +82,7 @@ import { StreamifyNotImplementedError } from './streamify-error';
 import { streamifyRequest } from './streamify-request';
 import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
 import { recordCountedPlay } from './wrapped/listening-ledger';
+import { discoveryOriginOf } from './wrapped/origin-hints';
 
 import { useStreamifySettingsStoreBase } from '/@/renderer/store/streamify-settings.store';
 import { logger } from '/@/renderer/utils/logger';
@@ -188,10 +189,14 @@ function scrobbleBridge() {
             // P4-A (Wrapped): the time-windowed listening ledger rides the
             // same threshold crossing that bumps the tally (never starts,
             // never skips). Throws are contained inside the bridge.
+            // W3-B: the discovery origin (automix / discover-mix claim) is
+            // resolved against the live snapshot here — the only place both
+            // the track id and the videoId lane are in scope.
             recordCountedPlay({
                 album: fired.album,
                 artist: fired.artist,
                 durationMs: fired.durationMs,
+                origin: discoveryOriginOf(fired.trackId, currentStreamifyLibrary()),
                 playedMs: fired.playedMs,
                 rung: fired.rung,
                 title: fired.title,

@@ -173,10 +173,32 @@ export const JAM_META_EVENT = 'jam_meta';
 export const JAM_CONTROL_EVENT = 'jam_control';
 
 // ---------------------------------------------------------------------------
-// Drift math (pure, testable)
+// Ephemeral live reactions (W3-B — broadcast-only, never journaled)
 // ---------------------------------------------------------------------------
 
+/** The ephemeral reaction broadcast event (display-only, no persistence). */
+export const JAM_REACTION_EVENT = 'jam_reaction';
+
+/** The whitelisted reaction glyphs — the decoder rejects everything else. */
+export const JAM_REACTION_EMOJIS: readonly string[] = ['🔥', '❤️', '🎧', '⚡', '👏'];
+
 export type DriftAction = { action: 'none' } | { action: 'seek'; seekToMs: number };
+
+/** One floating reaction as it crosses the wire. */
+export interface JamReactionMessage {
+    /** A JAM_REACTION_EMOJIS member (validated on decode). */
+    emoji: string;
+    kind: 'reaction';
+    /** Sender nonce hex — display-only attribution, never authoritative. */
+    senderNonce: string;
+    /** Sender wall-clock ms at emit (stale badges age out client-side). */
+    ts: number;
+    v: 1;
+}
+
+// ---------------------------------------------------------------------------
+// Drift math (pure, testable)
+// ---------------------------------------------------------------------------
 
 /**
  * Drift decision for one tick/seek observation. `softOffences` is the
@@ -197,6 +219,27 @@ export function computeDriftCorrection(
         return { action: 'seek', seekToMs: hostPositionMs };
     }
     return { action: 'none' };
+}
+
+/** Validate a `jam_reaction` payload (null when malformed). */
+export function decodeJamReactionMessage(raw: unknown): JamReactionMessage | null {
+    if (typeof raw !== 'object' || raw === null) {
+        return null;
+    }
+    const msg = raw as Partial<JamReactionMessage>;
+    if (msg.v !== 1 || msg.kind !== 'reaction') {
+        return null;
+    }
+    if (typeof msg.emoji !== 'string' || !JAM_REACTION_EMOJIS.includes(msg.emoji)) {
+        return null;
+    }
+    if (typeof msg.ts !== 'number' || !Number.isFinite(msg.ts) || msg.ts < 0) {
+        return null;
+    }
+    if (typeof msg.senderNonce !== 'string' || msg.senderNonce === '') {
+        return null;
+    }
+    return { emoji: msg.emoji, kind: 'reaction', senderNonce: msg.senderNonce, ts: msg.ts, v: 1 };
 }
 
 /**

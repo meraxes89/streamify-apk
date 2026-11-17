@@ -11,8 +11,10 @@
  *   - gain clamping (band +/-12 dB, preamp +/-12 dB) - the write-through
  *     into settings.playback.equalizer is clamped BEFORE persistence so a
  *     stale/hand-edited localStorage blob can never blow up the DSP chain;
- *   - the built-in preset bank (Flat / Bass Boost / Vocal / Acoustic /
- *     Electronic / Late Night) + custom-preset normalization.
+ *   - the built-in preset bank (Flat / Bass Boost / Vocal Clarity /
+ *     Acoustic / Electronic / Late Night / Spatial Air — W3-B adds the
+ *     seventh and gives the bank display names) + custom-preset
+ *     normalization.
  */
 
 export const EQ_MAX_GAIN_DB = 12;
@@ -45,21 +47,22 @@ export const clampBandGain = (gain: number): number =>
 export const clampPreamp = (preamp: number): number =>
     Math.min(EQ_MAX_PREAMP_DB, Math.max(-EQ_MAX_PREAMP_DB, preamp));
 
-const preset = (id: string, gains: readonly number[], preamp: number): EqPreset => ({
+const preset = (id: string, name: string, gains: readonly number[], preamp: number): EqPreset => ({
     bands: EQ_BAND_FREQS.map((freq, i) => ({ freq, gain: clampBandGain(gains[i] ?? 0) })),
     id,
-    name: id,
+    name,
     preamp: clampPreamp(preamp),
 });
 
 /** The built-in preset bank (ids are stable - settings reference them). */
 export const BUILTIN_EQ_PRESETS: readonly EqPreset[] = [
-    preset('flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0),
-    preset('bass-boost', [6, 5.5, 4.5, 2.5, 0, 0, 0, 0, 0, 0], -2),
-    preset('vocal', [-2, -1.5, 0, 2, 4, 4.5, 3.5, 1.5, 0, -1], -1),
-    preset('acoustic', [2.5, 2, 1, 0.5, 1.5, 1.5, 2.5, 3, 2, 1.5], -1),
-    preset('electronic', [4.5, 4, 1.5, 0, -1.5, -2, 1, 2.5, 4, 4.5], -1.5),
-    preset('late-night', [-4, -3, -1, 1.5, 3, 3.5, 3, 1.5, -0.5, -3], -1.5),
+    preset('flat', 'Flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0),
+    preset('bass-boost', 'Bass Boost', [6, 5.5, 4.5, 2.5, 0, 0, 0, 0, 0, 0], -2),
+    preset('vocal', 'Vocal Clarity', [-2, -1.5, 0, 2, 4, 4.5, 3.5, 1.5, 0, -1], -1),
+    preset('acoustic', 'Acoustic', [2.5, 2, 1, 0.5, 1.5, 1.5, 2.5, 3, 2, 1.5], -1),
+    preset('electronic', 'Electronic', [4.5, 4, 1.5, 0, -1.5, -2, 1, 2.5, 4, 4.5], -1.5),
+    preset('late-night', 'Late Night', [-4, -3, -1, 1.5, 3, 3.5, 3, 1.5, -0.5, -3], -1.5),
+    preset('spatial-air', 'Spatial Air', [-2, -1.5, -1, 0, 0, 0.5, 1, 2, 3.5, 4.5], -1),
 ];
 
 export const getBuiltinEqPreset = (id: string): EqPreset | null =>

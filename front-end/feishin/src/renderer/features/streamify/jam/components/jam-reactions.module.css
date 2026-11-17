@@ -1,0 +1,31 @@
+.stage {
+    position: relative;
+    height: 44px;
+    overflow: hidden;
+}
+
+.float {
+    position: absolute;
+    left: 8px;
+    font-size: 20px;
+    line-height: 44px;
+    pointer-events: none;
+    user-select: none;
+    animation: jam-reaction-float 2400ms ease-out forwards;
+}
+
+@keyframes jam-reaction-float {
+    0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.7);
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-34px) scale(1.2);
+    }
+}

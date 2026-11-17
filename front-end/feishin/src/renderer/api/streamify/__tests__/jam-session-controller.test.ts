@@ -19,6 +19,7 @@ import type { JamJournalRow } from '../jam-live/jam-live-wire';
 import {
     JAM_CONTROL_EVENT,
     JAM_META_EVENT,
+    JAM_REACTION_EVENT,
     JAM_SYNC_EVENT,
     type JamTrackPayload,
 } from '../jam-live/jam-live-protocol';
@@ -134,6 +135,11 @@ class FakeTransport implements JamTransportLike {
 
     broadcastMeta(message: unknown): void {
         this.broadcastLog.push([JAM_META_EVENT, message]);
+    }
+
+    // W3-B: the ephemeral reaction lane (recorded, never journaled).
+    broadcastReaction(message: unknown): void {
+        this.broadcastLog.push([JAM_REACTION_EVENT, message]);
     }
 
     broadcastSync(message: unknown): void {
