@@ -94,9 +94,12 @@ export function useSmartSync(): void {
         };
 
         const unsubscribe = usePlayerStoreBase.subscribe((state, previous) => {
-            // Stamp the track that just became current (the LRU input).
+            // Stamp the track that just became current (the LRU input) and
+            // re-arm the clean-play window — song changes fire this even
+            // while the transport stays PLAYING (gapless transitions).
             const uniqueId = state.getCurrentSong()?._uniqueId ?? null;
-            if (uniqueId !== lastSongRef.current && uniqueId !== null) {
+            const songChanged = uniqueId !== lastSongRef.current;
+            if (songChanged && uniqueId !== null) {
                 lastSongRef.current = uniqueId;
                 const song = state.getCurrentSong();
                 if (song !== undefined) {
@@ -106,10 +109,7 @@ export function useSmartSync(): void {
                     }
                 }
             }
-            if (
-                state.player.status !== previous.player.status ||
-                uniqueId !== lastSongRef.current
-            ) {
+            if (state.player.status !== previous.player.status || songChanged) {
                 scheduleCleanPlay();
             }
         });

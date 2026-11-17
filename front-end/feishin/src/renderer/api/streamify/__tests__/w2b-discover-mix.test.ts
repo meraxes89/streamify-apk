@@ -68,6 +68,8 @@ function snapshot(over: {
         albums: [],
         artistById: new Map(),
         artists: [],
+        likedAlbumIds: new Set<string>(),
+        likedArtistIds: new Set<string>(),
         likedIds: [],
         loadedAt: '2026-11-17T00:00:00.000Z',
         playEvents: (over.playEvents ?? []).map((e) => ({

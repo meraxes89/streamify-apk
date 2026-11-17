@@ -215,7 +215,16 @@ export function createSmartSyncEngine(deps: SmartSyncDeps): SmartSyncEngine {
         syncing = true;
         const prefetched: string[] = [];
         try {
+            // Already-cached tracks (ANY source — smart-sync or manual)
+            // are skipped up front: no re-download, no pointless LRU
+            // eviction to make budget room for bytes that exist.
+            const cached = new Set(
+                (await manager.listEntries())
+                    .filter((meta) => meta.status === 'complete')
+                    .map((meta) => meta.videoId),
+            );
             for (const spec of look.upcoming.slice(0, SMART_SYNC_LOOKAHEAD)) {
+                if (cached.has(spec.videoId)) continue;
                 // Budget BEFORE the bytes hit OPFS: evict LRU smart-sync
                 // entries until the estimate fits under the cap.
                 await evictForBudget(estimateIncomingBytes(spec));

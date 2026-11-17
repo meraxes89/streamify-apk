@@ -215,6 +215,29 @@ describe('w2b smart-sync — the N+1/N+2 pass', () => {
         expect(calls).toHaveLength(0);
     });
 
+    it('skips already-cached upcoming tracks (no re-download, no eviction on their behalf)', async () => {
+        // N+1 is ALREADY cached (a manual download, plenty of budget
+        // headroom): the pass must not re-download it, must not evict
+        // anything to "make room" for it — only N+2 (uncached) runs, and
+        // the manual entry is untouched.
+        const entries: FakeEntry[] = [
+            { bytes: 5 * 1024 * 1024, lastPlayedAt: null, source: 'manual', videoId: 'n1' },
+        ];
+        const {
+            calls,
+            engine: e,
+            removed,
+        } = engine({
+            entries,
+            outcomes: [okOutcome(1024 * 1024)],
+            upcoming: [SPEC('n1'), SPEC('n2')],
+        });
+        const pass = await e.sync();
+        expect(calls.map((c) => c.spec.videoId)).toEqual(['n2']); // n1 skipped
+        expect(pass.prefetched).toEqual(['n2']); // never claimed as prefetched
+        expect(removed).toEqual([]); // no eviction was needed or attempted
+    });
+
     it('is a no-op when disabled, save-data, not playing, or under storage pressure', async () => {
         const cases: Array<[string, ReturnType<typeof engine>['engine']]> = [
             [
