@@ -311,6 +311,33 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
 - **Conflict surface:** low — two additive lines at stable anchors;
   upstream rarely edits this header.
 
+### A27. `src/renderer/features/action-required/routes/action-required-route.tsx` (#202)
+
+- **What:** the Streamify splash-gate branch — when `SERVER_LOCK` is
+  active AND the deployment is Streamify (`SERVER_TYPE=streamify`,
+  case-insensitive, via the `isStreamifyLockedDeployment()` window
+  helper) OR the Supabase auth gate is enabled, the login-required
+  branch renders `<StreamifySplashGate />` (the fork's
+  `features/streamify-auth/components/streamify-splash-gate.tsx`) instead
+  of upstream's `LoginRoute`: the ported PrismaticSplashScreen canvas
+  choreography (16 prismatic ribbons, STREAMIFY wordmark genesis +
+  shimmer + neon underline, DEVELOPED BY SIREEN, "120 FPS · SPATIAL DSP
+  · NEURAL RADIO"), a Google OAuth 2.0 PKCE CTA
+  (`supabase.auth.signInWithOAuth({ provider: 'google' })`, subpath-safe
+  `origin + pathname` redirectTo — the same construction as
+  streamify-auth-route), the red circular Play CTA for LOCAL-MODE entry
+  (a synthetic anonymous server entry whose v:1 credential decodes
+  through the session codec — honest-empty reads, no dial-out; shown
+  when `STREAMIFY_AUTH=false` or Supabase is unconfigured), and a subtle
+  `/streamify-settings` link for self-hosters. Username/Password inputs
+  never render for the STREAMIFY lock. rAF is cancelled on unmount;
+  `prefers-reduced-motion` renders the static lockup (no canvas).
+  `window-properties.tsx` gains the `isStreamifyLockedDeployment()`
+  helper. Every other locked server type keeps the stock `LoginRoute`.
+- **Conflict surface:** low — one guarded branch inside the existing
+  `isLoginRequired` early return; upstream's action-required checks
+  table is untouched.
+
 ---
 
 ## B. Fork-owned additions (no upstream conflict)
