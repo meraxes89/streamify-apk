@@ -131,25 +131,43 @@ export async function loadLibrarySnapshot(
     signal?: AbortSignal,
 ): Promise<LibrarySnapshot> {
     // Step 1: the playlist shells (membership needs their ids).
-    const playlistRows = await fetchPlaylists(session, signal);
+    const playlistRows = await fetchPlaylists(session, signal).catch((err) => {
+        console.warn('[Streamify] fetchPlaylists failed:', err);
+        return [];
+    });
 
-    // Step 2: the three independent lanes in parallel.
+    // Step 2: the independent lanes in parallel (each safely catches so missing optional tables do not hang Suspense).
     const [likes, membershipRows, playEvents, itemFavorites] = await Promise.all([
-        fetchLikes(session, signal),
+        fetchLikes(session, signal).catch((err) => {
+            console.warn('[Streamify] fetchLikes failed:', err);
+            return [];
+        }),
         fetchAllPlaylistTracks(
             session,
             playlistRows.map((playlist) => playlist.id),
             signal,
-        ),
-        fetchPlayEvents(session, 1000, signal),
-        fetchItemFavorites(session, signal),
+        ).catch((err) => {
+            console.warn('[Streamify] fetchAllPlaylistTracks failed:', err);
+            return [];
+        }),
+        fetchPlayEvents(session, 1000, signal).catch((err) => {
+            console.warn('[Streamify] fetchPlayEvents failed:', err);
+            return [];
+        }),
+        fetchItemFavorites(session, signal).catch((err) => {
+            console.warn('[Streamify] fetchItemFavorites failed:', err);
+            return [];
+        }),
     ]);
 
     // Step 3: resolve membership track rows (tracks by id - the existing lane).
     const membershipTrackIds = Array.from(new Set(membershipRows.map((row) => row.track_id)));
     const membershipTracks =
         membershipTrackIds.length > 0
-            ? await fetchTracksByIds(session, membershipTrackIds, signal)
+            ? await fetchTracksByIds(session, membershipTrackIds, signal).catch((err) => {
+                  console.warn('[Streamify] fetchTracksByIds failed:', err);
+                  return [];
+              })
             : [];
 
     const loadedAt = new Date().toISOString();

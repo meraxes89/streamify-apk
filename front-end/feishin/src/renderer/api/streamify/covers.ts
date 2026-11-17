@@ -37,6 +37,10 @@ export function coverUrlFor(
     itemType: LibraryItem,
     id: string,
 ): null | string {
+    if (id.startsWith('ytm:')) {
+        const videoId = id.slice(4);
+        return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    }
     if (snapshot === null || snapshot === undefined) {
         return null;
     }
