@@ -66,6 +66,15 @@ export function cloudTrackIdOfSong(song: Song): string {
     return cloudTrackIdOf(song.name, song.artistName);
 }
 
+/** Extract a YouTube video ID from a videoId, watch URL, or youtu.be link. */
+export function extractVideoId(raw: null | string | undefined): null | string {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    const match = trimmed.match(/(?:v=|youtu\.be\/|embed\/|\/v\/|\/vi\/)([A-Za-z0-9_-]{11})/);
+    if (match) return match[1] ?? null;
+    return trimmed;
+}
+
 /** The snapshot's (sig → row) index for cross-tier dedup. */
 export function songBySig(snapshot: LibrarySnapshot): Map<string, SongRow> {
     const map = new Map<string, SongRow>();

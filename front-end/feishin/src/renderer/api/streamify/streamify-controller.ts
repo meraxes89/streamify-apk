@@ -11,6 +11,7 @@ import { scopedSearch } from './catalog/search-suggest';
 import {
     browseIdOfYtmAlbum,
     browseIdOfYtmArtist,
+    extractVideoId,
     songBySig,
     songByVideoId,
     videoIdOfYtmSong,
@@ -1062,14 +1063,14 @@ export const StreamifyController: InternalControllerEndpoint = {
         const ytmVideoId = videoIdOfYtmSong(query.id);
         let videoId: null | string;
         if (ytmVideoId !== null) {
-            videoId = ytmVideoId;
+            videoId = extractVideoId(ytmVideoId);
         } else {
             const snapshot = await getStreamifyLibrary(
                 apiClientProps.server,
                 apiClientProps.signal,
             );
             const row = snapshot.songById.get(query.id);
-            videoId = row?.streamUrl ?? '';
+            videoId = extractVideoId(row?.streamUrl);
         }
         if (videoId === '' || videoId === null) {
             // Honest empty: the ingestion has not mapped a stream video for
