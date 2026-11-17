@@ -192,10 +192,27 @@ both shapes: it lazily imports the provider module (specifier behind a
 variable + `@vite-ignore`, so the pre-rebase tree still typechecks),
 resolves whichever export shape exists, unwraps the result forms, and
 normalizes into the flat DTOs the features consume. Before the provider
-exists (this branch pre-rebase, stock deployments) it resolves null and
-every consumer renders its honest empty — the W1-B stub doctrine.
-**The `getCredits` provider exposure lands as the post-rebase commit**
-against the merged `provider.ts`, when its final shape is observable.
+exists (stock deployments predating W1) it resolves null and every
+consumer renders its honest empty — the W1-B stub doctrine.
+
+**Post-rebase (landed):** L2 unified the seam — the W1-B `null | Ytm*`
+contract as the public surface, W1-A's typed engine underneath, an
+adapter between them. W2-B rebased onto that unification and exposed
+`getCredits` on it (the post-rebase commit):
+
+- `types.ts` / `provider.ts` (typed engine): the credits pipeline —
+  snapshot → Edge KV (`endpoint=credits`, the 7-day TTL class) → the
+  documented-null client fallback → `validateCreditsPayload` → upsert;
+  the `getLyrics` pattern, failure separation intact.
+- `provider.ts` (W1-B contract): the adapter arm shapes
+  `CreditsPayload.roleGroups` into `YtmCredits`; the method is OPTIONAL
+  on the interface so pre-W2B providers and test fakes keep satisfying
+  it (consumers duck-type via the bridge; the stub serves the honest
+  null).
+- `innertube-fallback.ts`: `fallbackCredits` resolves null — youtubei.js
+  18.3 has no structured-description parser (the same honest-degradation
+  class as the music search suggestions); the Edge KV lane serves
+  credits.
 
 ## Tests (network-free)
 

@@ -17,6 +17,7 @@ import type {
     ArtistPayload,
     ChaptersPayload,
     CounterpartPayload,
+    CreditsPayload,
     ExploreHomePayload,
     LyricsPayload,
     PlaylistPayload,
@@ -117,6 +118,27 @@ export function validateCounterpartPayload(
         return { ok: false, reason: 'counterpart: videoId must be non-empty when present' };
     }
     return { ok: true, payload: payload as unknown as CounterpartPayload };
+}
+
+export function validateCreditsPayload(payload: unknown): ValidationOutcome<CreditsPayload> {
+    if (!isKind(payload, 'credits')) return { ok: false, reason: 'credits: wrong kind' };
+    if (!Array.isArray(payload.roleGroups)) {
+        return { ok: false, reason: 'credits: roleGroups must be an array' };
+    }
+    for (const group of payload.roleGroups) {
+        if (!isObject(group) || typeof group.title !== 'string') {
+            return { ok: false, reason: 'credits: a role group lacks a title' };
+        }
+        if (!Array.isArray(group.credits) || group.credits.length === 0) {
+            return { ok: false, reason: 'credits: a role group has no credits' };
+        }
+        for (const credit of group.credits) {
+            if (!isObject(credit) || typeof credit.name !== 'string' || credit.name === '') {
+                return { ok: false, reason: 'credits: a credit lacks a name' };
+            }
+        }
+    }
+    return { ok: true, payload: payload as unknown as CreditsPayload };
 }
 
 export function validateLyricsPayload(payload: unknown): ValidationOutcome<LyricsPayload> {
