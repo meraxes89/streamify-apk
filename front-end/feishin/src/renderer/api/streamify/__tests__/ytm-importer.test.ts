@@ -130,6 +130,7 @@ function scriptedProvider(
     return {
         getAlbum: vi.fn(async () => ({ kind: 'not-found' as const })),
         getArtist: vi.fn(async () => ({ kind: 'not-found' as const })),
+        getChapters: vi.fn(async () => ({ kind: 'not-found' as const })),
         getExplore: vi.fn(async () => ({ kind: 'not-found' as const })),
         getHomeFeed: vi.fn(async () => ({ kind: 'not-found' as const })),
         getLyrics: vi.fn(async () => ({ kind: 'not-found' as const })),
@@ -148,6 +149,7 @@ function scriptedProvider(
         getRelated: vi.fn(async () => ({ kind: 'not-found' as const })),
         getSearchSuggestions: vi.fn(async () => ({ kind: 'not-found' as const })),
         getUpNext: vi.fn(async () => ({ kind: 'not-found' as const })),
+        getVideoCounterpart: vi.fn(async () => ({ kind: 'not-found' as const })),
         search: vi.fn(async () => ({ kind: 'not-found' as const })),
     };
 }

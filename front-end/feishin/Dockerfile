@@ -37,6 +37,10 @@ ENV LEGACY_AUTHENTICATION="" ANALYTICS_DISABLED="" PUBLIC_PATH="/"
 # unexpanded ${...} placeholder so a missing variable can never leak as a
 # live URL.
 ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY="" STREAMIFY_RELAY_BASE="" STREAMIFY_DEV_ACCESS_TOKEN=""
+# W2-A: the metadata base (the /ytm/meta Edge KV worker) — defined so
+# envsubst substitutes it even when the deployment leaves it empty; the
+# metaBase.ts placeholder guard treats '' as edge-off.
+ENV STREAMIFY_META_BASE=""
 
 EXPOSE 9180
 CMD ["nginx", "-g", "daemon off;"]

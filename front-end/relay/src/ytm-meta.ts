@@ -39,7 +39,8 @@
  *   lyrics / credits / chapters ..... 7 days (serve stale; background
  *                                     revalidate ONLY if payload empty or
  *                                     (lyrics) synced === false)
- *   artist / album ................. 24 h   (SWR)
+ *   artist / album / counterpart .... 24 h   (SWR; counterpart = the W2-A
+ *                                     official-music-video resolution)
  *   explore / home .................. 6 h   (SWR)
  *   up-next / related .............. 12 h   (SWR)
  *   search / search-suggest ....... 15 min  (SWR)
@@ -73,6 +74,7 @@ export type YtmEndpoint =
   | 'lyrics'
   | 'credits'
   | 'chapters'
+  | 'counterpart'
   | 'artist'
   | 'album'
   | 'explore'
@@ -87,6 +89,7 @@ const ALL_ENDPOINTS: readonly YtmEndpoint[] = [
   'lyrics',
   'credits',
   'chapters',
+  'counterpart',
   'artist',
   'album',
   'explore',
@@ -136,10 +139,40 @@ export interface CreditsPayload {
 }
 
 export interface ChaptersPayload {
-  chapters: Array<{ atMs: number; title: string }>;
+  /** W2-A contract: the normalized chapter row — startSeconds required,
+   * endSeconds derived from the next marker (null on the last), thumbnail
+   * from the marker's own thumbnail set (null when the wire carried none).
+   * atMs is kept (== startSeconds * 1000) so entries cached by a W1-A-era
+   * worker stay readable — the v1 envelope predates the richer shape. */
+  chapters: Array<{
+    atMs: number;
+    endSeconds: null | number;
+    startSeconds: number;
+    thumbnailUrl: null | string;
+    title: string;
+  }>;
   hl: string;
   kind: 'chapters';
   videoId: string;
+}
+
+/**
+ * W2-A: the official-music-video counterpart of an audio track.
+ * videoId null = no distinct official video found (the toggle hides);
+ * confidence 'strong' = normalized title match + artist line + duration
+ * proximity all held, 'weak' = title matched on weaker evidence.
+ */
+export interface CounterpartPayload {
+  artistText: null | string;
+  confidence: null | 'strong' | 'weak';
+  durationMs: null | number;
+  kind: 'counterpart';
+  /** The matched video's title (null when videoId is null). */
+  title: null | string;
+  /** The audio track's videoId the resolution ran for. */
+  sourceVideoId: string;
+  /** The official music video's videoId, or null when none matched. */
+  videoId: null | string;
 }
 
 export interface ArtistPayload {
@@ -243,6 +276,7 @@ export type YtmPayload =
   | AlbumPayload
   | ArtistPayload
   | ChaptersPayload
+  | CounterpartPayload
   | CreditsPayload
   | ExploreHomePayload
   | LyricsPayload
@@ -294,6 +328,7 @@ export function ttlForEndpoint(endpoint: YtmEndpoint): number {
       return 7 * DAY_MS;
     case 'artist':
     case 'album':
+    case 'counterpart':
       return DAY_MS;
     case 'explore':
     case 'home':
@@ -338,6 +373,7 @@ const ID_ENDPOINTS = new Set<YtmEndpoint>([
   'lyrics',
   'credits',
   'chapters',
+  'counterpart',
   'artist',
   'album',
   'up-next',
@@ -571,6 +607,12 @@ function planLegs(params: YtmMetaParams): UpstreamLeg[] {
       // WEB /next — the structured description (credits) and the chapter
       // bar markers live on the watch page's response.
       return [{ body: { ...webContext(params.gl, params.hl), videoId: params.id }, client: 'WEB', path: 'next' }];
+    case 'counterpart':
+      // W2-A: leg 1 = YTMUSIC /next(videoId) — the queue panel's first
+      // matching entry carries the seed track's title/artist/duration. Leg
+      // 2 (conditional, below) = the videos-filtered search that matching
+      // runs against.
+      return [{ body: { ...musicContext(params.gl, params.hl), videoId: params.id }, client: 'YTMUSIC', path: 'next' }];
     case 'artist':
       return [{ body: { ...musicContext(params.gl, params.hl), browseId: params.id }, client: 'YTMUSIC', path: 'browse' }];
     case 'album':
@@ -650,6 +692,25 @@ async function performUpstream(
           body: { ...musicContext(params.gl, params.hl), browseId: tab },
           client: 'YTMUSIC',
           path: 'browse',
+        }),
+      );
+    }
+  }
+  // W2-A conditional leg 2: the counterpart search needs the seed track's
+  // title/artist off leg 1's queue panel (no title → no search, the
+  // normalizer emits the honest videoId:null miss).
+  if (params.endpoint === 'counterpart') {
+    const seed = counterpartSeedOf(params.id ?? '', legResults[0]?.json);
+    if (seed !== null) {
+      legResults.push(
+        await fetchLeg({
+          body: {
+            ...musicContext(params.gl, params.hl),
+            params: SEARCH_FILTER_PARAMS.videos,
+            query: `${seed.title} ${seed.artistText ?? ''}`.trim(),
+          },
+          client: 'YTMUSIC',
+          path: 'search',
         }),
       );
     }
@@ -1182,17 +1243,153 @@ function normalizeChapters(params: YtmMetaParams, webNextJson: unknown): Chapter
     ?.decoratedPlayerBarRenderer?.decoratedPlayerBarRenderer?.multiMarkersPlayerBarRenderer
     ?.markersMap as Json[] | undefined;
   const entry = markers?.find((m) => m.key === 'DESCRIPTION_CHAPTERS' || m.key === 'AUTO_CHAPTERS');
-  const out: ChaptersPayload['chapters'] = [];
+  const rows: Array<{ atMs: number; title: string; thumb: null | string }> = [];
   for (const ch of ((entry?.value?.chapters ?? []) as Json[])) {
     const r = ch.chapterRenderer as Json | undefined;
     if (r === undefined) continue;
     const title = runsText(r.title);
     const at = typeof r.timeRangeStartMillis === 'number' ? r.timeRangeStartMillis : null;
     if (title === '' || at === null) continue;
-    out.push({ atMs: at, title });
+    // The marker's own thumbnail set — the LAST entry is the largest
+    // (YouTube thumbnail arrays ascend by size; same convention the
+    // importer's cover picker uses).
+    const thumbs = (r.thumbnail?.thumbnails ?? []) as Array<{ url?: unknown }>;
+    const thumb =
+      thumbs.length > 0 && typeof thumbs[thumbs.length - 1]?.url === 'string'
+        ? (thumbs[thumbs.length - 1].url as string)
+        : null;
+    rows.push({ atMs: at, title, thumb });
   }
-  if (out.length === 0) return null;
-  return { chapters: out, hl: params.hl, kind: 'chapters', videoId: params.id ?? '' };
+  if (rows.length === 0) return null;
+  // W2-A: derive the seconds-space boundaries (endSeconds = next marker's
+  // start; the LAST chapter runs to the video's end — null, the client
+  // closes it with the element's duration).
+  const chapters: ChaptersPayload['chapters'] = rows.map((row, i) => ({
+    atMs: row.atMs,
+    endSeconds: i + 1 < rows.length ? Math.round(rows[i + 1].atMs / 1000) : null,
+    startSeconds: Math.round(row.atMs / 1000),
+    thumbnailUrl: row.thumb,
+    title: row.title,
+  }));
+  return { chapters, hl: params.hl, kind: 'chapters', videoId: params.id ?? '' };
+}
+
+// ---------------------------------------------------------------------------
+// W2-A — the official-music-video counterpart resolution
+// ---------------------------------------------------------------------------
+
+interface CounterpartSeed {
+  artistText: null | string;
+  durationMs: null | number;
+  title: string;
+}
+
+/**
+ * The seed track's own identity off the /next queue panel: the entry whose
+ * videoId matches the seed (the panel lists the current track first, but
+ * the position is not contractual — match on videoId, fall back to the
+ * first entry, never guess further).
+ */
+export function counterpartSeedOf(seedVideoId: string, nextJson: unknown): CounterpartSeed | null {
+  const panel = (nextJson as Json)?.contents?.singleColumnMusicWatchNextResultsRenderer
+    ?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.[0]?.tabRenderer?.content
+    ?.musicQueueRenderer?.content?.playlistPanelRenderer as Json | null | undefined;
+  if (panel === null || panel === undefined) return null;
+  const entries = (panel.contents ?? []) as Json[];
+  let chosen: Json | undefined = undefined;
+  for (const entry of entries) {
+    const v = entry.playlistPanelVideoRenderer as Json | undefined;
+    if (v === undefined) continue;
+    if (typeof v.videoId === 'string' && v.videoId === seedVideoId) {
+      chosen = v;
+      break;
+    }
+    chosen = chosen ?? v;
+  }
+  if (chosen === undefined) return null;
+  const title = runsText(chosen.title);
+  if (title === '') return null;
+  const info = splitSongColumns((chosen.longBylineText?.runs ?? []) as Array<{ text?: unknown }>);
+  return {
+    artistText: info.artist,
+    durationMs: parseDurationText(runsText(chosen.lengthText)) ?? null,
+    title,
+  };
+}
+
+/** Decorations that carry no identity — stripped before title comparison. */
+const TITLE_NOISE =
+  /[(\[](?:official\s+)?(?:music\s+)?(?:video|audio|lyric[s]?\s+video|visualizer|hd|4k|hq|remaster(?:ed)?(?:\s+\d{4})?)[^)\]]*[)\]]/gi;
+
+function normalizeTitleForMatch(title: string): string {
+  return title
+    .replace(TITLE_NOISE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/** Duration tolerance: official videos often add a beat of intro/outro —
+ * 15 s absolute OR 12% relative, whichever is larger. */
+function durationClose(a: null | number, b: null | number): boolean {
+  if (a === null || b === null) return false;
+  return Math.abs(a - b) <= Math.max(15_000, Math.max(a, b) * 0.12);
+}
+
+/** The counterpart matcher — deterministic, server-side, from server-derived
+ * data only (the cache key stays (counterpart, id, gl, hl)). */
+export function matchCounterpart(
+  seed: CounterpartSeed,
+  seedVideoId: string,
+  searchResults: Array<{ durationMs: null | number; subtitle: null | string; title: string; videoId: null | string }>,
+): CounterpartPayload {
+  const seedTitle = normalizeTitleForMatch(seed.title);
+  const artist = (seed.artistText ?? '').toLowerCase();
+  let best: { confidence: 'strong' | 'weak'; result: { durationMs: null | number; subtitle: null | string; title: string; videoId: null | string } } | null =
+    null;
+  for (const result of searchResults) {
+    if (result.videoId === null || result.videoId === '') continue;
+    // The counterpart must be DISTINCT from the audio source — a song whose
+    // only "video" is itself has no counterpart (hide the toggle).
+    if (result.videoId === seedVideoId) continue;
+    const resultTitle = normalizeTitleForMatch(result.title);
+    if (resultTitle === '' || resultTitle !== seedTitle) continue;
+    const subtitle = (result.subtitle ?? '').toLowerCase();
+    const subtitleHasArtist = artist !== '' && subtitle.includes(artist);
+    const durationOk = durationClose(seed.durationMs, result.durationMs);
+    const strong = subtitleHasArtist && (durationOk || seed.durationMs === null || result.durationMs === null);
+    if (best === null || (strong && best.confidence !== 'strong')) {
+      best = { confidence: strong ? 'strong' : 'weak', result };
+    }
+    if (strong) break;
+  }
+  if (best === null) {
+    return {
+      artistText: seed.artistText,
+      confidence: null,
+      durationMs: null,
+      kind: 'counterpart',
+      title: null,
+      sourceVideoId: seedVideoId,
+      videoId: null,
+    };
+  }
+  return {
+    artistText: seed.artistText,
+    confidence: best.confidence,
+    durationMs: best.result.durationMs,
+    kind: 'counterpart',
+    title: best.result.title,
+    sourceVideoId: seedVideoId,
+    videoId: best.result.videoId,
+  };
+}
+
+function normalizeCounterpart(params: YtmMetaParams, legs: unknown[]): CounterpartPayload | null {
+  const seed = counterpartSeedOf(params.id ?? '', legs[0]);
+  if (seed === null) return null;
+  const search = normalizeSearch({ ...params, filter: 'videos', query: 'counterpart' }, legs[1] ?? null);
+  return matchCounterpart(seed, params.id ?? '', search?.results ?? []);
 }
 
 /** The endpoint dispatch — legs arrive in the order performUpstream ran. */
@@ -1221,6 +1418,8 @@ export function normalizeYtmResponse(params: YtmMetaParams, legs: unknown[]): Yt
       return normalizeCredits(params, legs[0]);
     case 'chapters':
       return normalizeChapters(params, legs[0]);
+    case 'counterpart':
+      return normalizeCounterpart(params, legs);
   }
 }
 
@@ -1252,6 +1451,26 @@ export function validateYtmPayload(endpoint: YtmEndpoint, payload: YtmPayload): 
       const p = payload as ChaptersPayload;
       if (p.kind !== 'chapters' || !Array.isArray(p.chapters)) {
         return { ok: false, reason: 'chapters: bad shape' };
+      }
+      for (const ch of p.chapters) {
+        if (typeof ch.title !== 'string' || ch.title === '') {
+          return { ok: false, reason: 'chapters: a chapter lacks title' };
+        }
+        // W2-A rows carry startSeconds; W1-A-era cached rows may carry only
+        // atMs (both are valid — the client normalizes atMs → startSeconds).
+        if (typeof ch.startSeconds !== 'number' && typeof ch.atMs !== 'number') {
+          return { ok: false, reason: 'chapters: a chapter lacks startSeconds/atMs' };
+        }
+      }
+      return { ok: true };
+    }
+    case 'counterpart': {
+      const p = payload as CounterpartPayload;
+      if (p.kind !== 'counterpart' || typeof p.sourceVideoId !== 'string') {
+        return { ok: false, reason: 'counterpart: bad shape' };
+      }
+      if (p.videoId !== null && typeof p.videoId !== 'string') {
+        return { ok: false, reason: 'counterpart: videoId must be string or null' };
       }
       return { ok: true };
     }

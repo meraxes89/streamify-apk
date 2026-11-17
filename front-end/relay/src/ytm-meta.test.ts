@@ -21,7 +21,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  appsScriptSolverUrl,
+  isControlPlaneTarget,
+} from './index';
+import {
   buildYtmCacheKey,
+  counterpartSeedOf,
+  matchCounterpart,
   normalizeYtmResponse,
   fnv1a64,
   parseDurationText,
@@ -379,6 +385,7 @@ describe('ytm-meta TTL matrix', () => {
     expect(ttlForEndpoint('lyrics')).toBe(7 * DAY);
     expect(ttlForEndpoint('credits')).toBe(7 * DAY);
     expect(ttlForEndpoint('chapters')).toBe(7 * DAY);
+    expect(ttlForEndpoint('counterpart')).toBe(DAY); // W2-A — the 24 h artist/album class
     expect(ttlForEndpoint('artist')).toBe(DAY);
     expect(ttlForEndpoint('album')).toBe(DAY);
     expect(ttlForEndpoint('explore')).toBe(6 * 60 * 60 * 1000);
@@ -946,3 +953,480 @@ describe('normalizeYtmResponse shapes', () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// W2-A — chapters (the enriched shape) + counterpart + the Apps Script lane
+// ---------------------------------------------------------------------------
+
+const WEB_NEXT_WITH_CHAPTERS = {
+  playerOverlays: {
+    playerOverlayRenderer: {
+      decoratedPlayerBarRenderer: {
+        decoratedPlayerBarRenderer: {
+          multiMarkersPlayerBarRenderer: {
+            markersMap: [
+              {
+                key: 'DESCRIPTION_CHAPTERS',
+                value: {
+                  chapters: [
+                    {
+                      chapterRenderer: {
+                        title: { runs: [{ text: 'Intro' }] },
+                        timeRangeStartMillis: 0,
+                        thumbnail: {
+                          thumbnails: [
+                            { url: 'https://i.ytimg.com/vi/x/hq72.jpg' },
+                            { url: 'https://i.ytimg.com/vi/x/hqdefault.jpg' },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      chapterRenderer: {
+                        title: { simpleText: 'The Drop' },
+                        timeRangeStartMillis: 42000,
+                      },
+                    },
+                    {
+                      chapterRenderer: {
+                        title: { runs: [{ text: 'Outro' }] },
+                        timeRangeStartMillis: 180000,
+                      },
+                    },
+                  ],
+                },
+              },
+              { key: 'IRRELEVANT_MARKER', value: { chapters: [] } },
+            ],
+          },
+        },
+      },
+    },
+  },
+};
+
+const COUNTERPART_SEARCH_RESPONSE = {
+  contents: {
+    tabbedSearchResultsRenderer: {
+      tabs: [
+        {
+          tabRenderer: {
+            content: {
+              sectionListRenderer: {
+                contents: [
+                  {
+                    musicShelfRenderer: {
+                      contents: [
+                        {
+                          musicResponsiveListItemRenderer: {
+                            flexColumns: [
+                              {
+                                musicResponsiveListItemFlexColumnRenderer: {
+                                  text: { runs: [{ text: 'Never Gonna Give You Up (Official Music Video)' }] },
+                                },
+                              },
+                              {
+                                musicResponsiveListItemFlexColumnRenderer: {
+                                  text: {
+                                    runs: [
+                                      { text: 'Rick Astley' },
+                                      { text: ' • ' },
+                                      { text: '3:33' },
+                                    ],
+                                  },
+                                },
+                              },
+                            ],
+                            overlay: {
+                              musicItemThumbnailOverlayRenderer: {
+                                content: {
+                                  musicPlayButtonRenderer: {
+                                    playNavigationEndpoint: { watchEndpoint: { videoId: 'vidOfficialMV' } },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                        {
+                          // Same videoId as the seed — must be skipped
+                          // (a song whose only "video" is itself has no
+                          // counterpart).
+                          musicResponsiveListItemRenderer: {
+                            flexColumns: [
+                              {
+                                musicResponsiveListItemFlexColumnRenderer: {
+                                  text: { runs: [{ text: 'Never Gonna Give You Up' }] },
+                                },
+                              },
+                              {
+                                musicResponsiveListItemFlexColumnRenderer: {
+                                  text: {
+                                    runs: [
+                                      { text: 'Rick Astley' },
+                                      { text: ' • ' },
+                                      { text: '3:33' },
+                                    ],
+                                  },
+                                },
+                              },
+                            ],
+                            overlay: {
+                              musicItemThumbnailOverlayRenderer: {
+                                content: {
+                                  musicPlayButtonRenderer: {
+                                    playNavigationEndpoint: { watchEndpoint: { videoId: 'lYBUbBu4W08' } },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                        {
+                          // Different title — never matches.
+                          musicResponsiveListItemRenderer: {
+                            flexColumns: [
+                              {
+                                musicResponsiveListItemFlexColumnRenderer: {
+                                  text: { runs: [{ text: 'Together Forever' }] },
+                                },
+                              },
+                            ],
+                            overlay: {
+                              musicItemThumbnailOverlayRenderer: {
+                                content: {
+                                  musicPlayButtonRenderer: {
+                                    playNavigationEndpoint: { watchEndpoint: { videoId: 'vidOther' } },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+describe('W2-A chapters (the enriched normalized shape)', () => {
+  it('normalizes startSeconds/endSeconds/thumbnailUrl and keeps atMs for v1 back-compat', () => {
+    const params = { endpoint: 'chapters' as YtmEndpoint, gl: 'US', hl: 'en', id: 'lYBUbBu4W08' };
+    const payload = normalizeYtmResponse(params, [WEB_NEXT_WITH_CHAPTERS]);
+    if (payload?.kind !== 'chapters') throw new Error('wrong kind');
+    expect(payload.chapters).toEqual([
+      {
+        atMs: 0,
+        endSeconds: 42,
+        startSeconds: 0,
+        thumbnailUrl: 'https://i.ytimg.com/vi/x/hqdefault.jpg', // the LAST (largest) thumb
+        title: 'Intro',
+      },
+      {
+        atMs: 42000,
+        endSeconds: 180,
+        startSeconds: 42,
+        thumbnailUrl: null,
+        title: 'The Drop',
+      },
+      {
+        atMs: 180000,
+        endSeconds: null, // the last chapter runs to the video's end
+        startSeconds: 180,
+        thumbnailUrl: null,
+        title: 'Outro',
+      },
+    ]);
+    // Validation gates both the new shape and the W1-A-era legacy rows.
+    expect(validateYtmPayload('chapters', payload).ok).toBe(true);
+    expect(
+      validateYtmPayload('chapters', {
+        kind: 'chapters',
+        chapters: [{ atMs: 1000, title: 'Legacy' }],
+        hl: 'en',
+        videoId: 'x',
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateYtmPayload('chapters', {
+        kind: 'chapters',
+        chapters: [{ title: 'No Time At All' }],
+        hl: 'en',
+        videoId: 'x',
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('an empty marker map normalizes to the honest missing form', () => {
+    const params = { endpoint: 'chapters' as YtmEndpoint, gl: 'US', hl: 'en', id: 'lYBUbBu4W08' };
+    expect(normalizeYtmResponse(params, [{}])).toBeNull();
+  });
+});
+
+describe('W2-A counterpart (the official-music-video resolution)', () => {
+  it('the seed extraction reads the seed videoId entry off the queue panel', () => {
+    // counterpartSeedOf is exercised through the route below; here the
+    // direct contract: the panel entry matching the seed id wins.
+    const seed = counterpartSeedOf('lYBUbBu4W08', NEXT_RESPONSE);
+    expect(seed).not.toBeNull();
+    expect(seed?.title).toBe('Never Gonna Give You Up');
+    expect(seed?.artistText).toBe('Rick Astley');
+    expect(seed?.durationMs).toBe(214000);
+  });
+
+  it('the matcher: distinct videoId, normalized title, strong confidence', () => {
+    const payload = matchCounterpart(
+      { artistText: 'Rick Astley', durationMs: 214000, title: 'Never Gonna Give You Up' },
+      'lYBUbBu4W08',
+      [
+        {
+          durationMs: 213000,
+          subtitle: 'Rick Astley • 3:33',
+          title: 'Never Gonna Give You Up (Official Music Video)',
+          videoId: 'vidOfficialMV',
+        },
+        {
+          durationMs: 213000,
+          subtitle: 'Rick Astley • 3:33',
+          title: 'Never Gonna Give You Up',
+          videoId: 'lYBUbBu4W08', // the seed itself — skipped
+        },
+        {
+          durationMs: 213000,
+          subtitle: 'Rick Astley',
+          title: 'Together Forever (Official Music Video)',
+          videoId: 'vidOther', // different song — never matches
+        },
+      ],
+    );
+    expect(payload.kind).toBe('counterpart');
+    expect(payload.videoId).toBe('vidOfficialMV');
+    expect(payload.confidence).toBe('strong');
+    expect(payload.sourceVideoId).toBe('lYBUbBu4W08');
+  });
+
+  it('the matcher: duration drift within 12% stays strong; far drift demotes to weak', () => {
+    const seed = { artistText: 'Rick Astley', durationMs: 214000, title: 'Never Gonna Give You Up' };
+    const close = matchCounterpart(seed, 'seed', [
+      {
+        durationMs: 214000 + 20_000, // 9.3% — inside the tolerance
+        subtitle: 'Rick Astley',
+        title: 'Never Gonna Give You Up (Official Video)',
+        videoId: 'vidClose',
+      },
+    ]);
+    expect(close.confidence).toBe('strong');
+    const far = matchCounterpart(seed, 'seed', [
+      {
+        durationMs: 214000 + 90_000, // 42% — a different cut
+        subtitle: 'Rick Astley',
+        title: 'Never Gonna Give You Up',
+        videoId: 'vidFar',
+      },
+    ]);
+    expect(far.confidence).toBe('weak');
+    expect(far.videoId).toBe('vidFar');
+  });
+
+  it('the matcher: no distinct match → videoId null (the cached positive)', () => {
+    const payload = matchCounterpart(
+      { artistText: 'Rick Astley', durationMs: 214000, title: 'Never Gonna Give You Up' },
+      'lYBUbBu4W08',
+      [
+        {
+          durationMs: 213000,
+          subtitle: 'Rick Astley',
+          title: 'Never Gonna Give You Up',
+          videoId: 'lYBUbBu4W08', // only itself
+        },
+      ],
+    );
+    expect(payload.videoId).toBeNull();
+    expect(payload.confidence).toBeNull();
+    expect(validateYtmPayload('counterpart', payload).ok).toBe(true);
+  });
+
+  it('the route: two-leg flow, 24 h TTL, cached as a positive (missing on a seedless panel)', async () => {
+    resetYtmMetaForTests();
+    const calls: string[] = [];
+    const legs = legFetcherWith(
+      { next: NEXT_RESPONSE, search: COUNTERPART_SEARCH_RESPONSE },
+      { onCall: (path) => calls.push(path) },
+    );
+
+    const res = await ytmMetaRoute(
+      requestFor({ endpoint: 'counterpart', id: 'lYBUbBu4W08', gl: 'US', hl: 'en' }),
+      fakeEnv(),
+      fakeCtx(),
+      { fetchLeg: legs },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cache: { ttlMs: number }; payload: YtmPayload };
+    expect(calls).toEqual(['next', 'search']); // the conditional leg-2 ran
+    expect(body.cache.ttlMs).toBe(24 * 60 * 60 * 1000);
+    if (body.payload?.kind !== 'counterpart') throw new Error('wrong kind');
+    expect(body.payload.videoId).toBe('vidOfficialMV');
+    expect(body.payload.confidence).toBe('strong');
+
+    // A seedless panel (no queue panel on leg 1) → the honest missing form.
+    resetYtmMetaForTests();
+    const missing = await ytmMetaRoute(
+      requestFor({ endpoint: 'counterpart', id: 'unknownVideo', gl: 'US', hl: 'en' }),
+      fakeEnv(),
+      fakeCtx(),
+      { fetchLeg: legFetcherWith({ next: {} }) },
+    );
+    const missingBody = (await missing.json()) as { missing?: boolean };
+    expect(missingBody.missing).toBe(true);
+  });
+});
+
+describe('W2-A the Apps Script solver lane (APPS_SCRIPT_SOLVER_URL)', () => {
+  it('validates the configured URL shape (and rejects placeholders/other hosts)', () => {
+    const good = 'https://script.google.com/macros/s/AKfycbX/exec';
+    expect(appsScriptSolverUrl({ APPS_SCRIPT_SOLVER_URL: good })).toBe(good);
+    expect(appsScriptSolverUrl({})).toBeNull();
+    expect(appsScriptSolverUrl({ APPS_SCRIPT_SOLVER_URL: '' })).toBeNull();
+    expect(appsScriptSolverUrl({ APPS_SCRIPT_SOLVER_URL: '${APPS_SCRIPT_SOLVER_URL}' })).toBeNull();
+    expect(
+      appsScriptSolverUrl({ APPS_SCRIPT_SOLVER_URL: 'https://evil.example.com/macros/s/x/exec' }),
+    ).toBeNull();
+    expect(
+      appsScriptSolverUrl({ APPS_SCRIPT_SOLVER_URL: 'http://script.google.com/macros/s/x/exec' }),
+    ).toBeNull();
+  });
+
+  it('gates the lane to CONTROL-PLANE targets (googlevideo media never rides it)', () => {
+    expect(isControlPlaneTarget(new URL('https://www.youtube.com/youtubei/v1/player'))).toBe(true);
+    expect(isControlPlaneTarget(new URL('https://music.youtube.com/youtubei/v1/browse'))).toBe(true);
+    expect(isControlPlaneTarget(new URL('https://youtubei.googleapis.com/youtubei/v1/player'))).toBe(true);
+    expect(isControlPlaneTarget(new URL('https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT'))).toBe(true);
+    expect(isControlPlaneTarget(new URL('https://www.google.com/js/th/foobar.js'))).toBe(true);
+    expect(isControlPlaneTarget(new URL('https://rr4---sn-x0.googlevideo.com/videoplayback?itag=18'))).toBe(false);
+    expect(isControlPlaneTarget(new URL('https://www.google.com/other/path'))).toBe(false);
+  });
+
+  it('forwards a control-plane /r POST through the solver envelope and unwraps the answer', async () => {
+    const solverUrl = 'https://script.google.com/macros/s/AKfycbW2A/exec';
+    const seen: Array<{ body: unknown; url: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const target = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+      seen.push({ body: init?.body, url: target });
+      // The solver lane: one GET against the exec URL with the ?q= envelope.
+      if (target.startsWith(solverUrl)) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            s: 200,
+            h: { 'content-type': 'application/json' },
+            b: JSON.stringify({ playabilityStatus: { status: 'OK' } }),
+            e: 't',
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected direct fetch: ${target}`);
+    }) as typeof fetch;
+    try {
+      const worker = (await import('./index')).default;
+      const request = new Request(
+        `https://relay.test/r?u=${encodeURIComponent('https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSy')}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-youtube-client-name': '5' },
+          body: JSON.stringify({ videoId: 'w2aTest', context: { client: { clientName: 'IOS' } } }),
+        },
+      );
+      const res = await worker.fetch(request, { APPS_SCRIPT_SOLVER_URL: solverUrl }, fakeCtx() as never);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ playabilityStatus: { status: 'OK' } });
+      // The envelope went to the solver — the direct fetch never ran.
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.url.startsWith(`${solverUrl}?q=`)).toBe(true);
+      const envelope = JSON.parse(
+        new URL(seen[0]!.url).searchParams.get('q') as string,
+      ) as { h: Record<string, string>; m: string; u: string };
+      expect(envelope.u).toContain('youtubei.googleapis.com/youtubei/v1/player');
+      expect(envelope.m).toBe('post');
+      expect(envelope.h['content-type']).toBe('application/json');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('a solver-lane failure degrades to the direct worker fetch (additive, never worse)', async () => {
+    const solverUrl = 'https://script.google.com/macros/s/AKfycbW2Afails/exec';
+    const originalFetch = globalThis.fetch;
+    const order: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const target = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+      if (target.startsWith(solverUrl)) {
+        order.push('solver');
+        return new Response(JSON.stringify({ ok: false, error: 'quota' }), { status: 200 });
+      }
+      order.push('direct');
+      return new Response('{"status":"direct-ok"}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    try {
+      const worker = (await import('./index')).default;
+      const request = new Request(
+        `https://relay.test/r?u=${encodeURIComponent('https://www.youtube.com/youtubei/v1/next')}`,
+        { method: 'GET' },
+      );
+      const res = await worker.fetch(request, { APPS_SCRIPT_SOLVER_URL: solverUrl }, fakeCtx() as never);
+      expect(res.status).toBe(200);
+      expect(order).toEqual(['solver', 'direct']); // the degrade path ran
+      expect(await res.text()).toContain('direct-ok');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('googlevideo media and /ytm/meta stay OFF the solver lane', async () => {
+    const solverUrl = 'https://script.google.com/macros/s/AKfycbW2Anever/exec';
+    const originalFetch = globalThis.fetch;
+    const targets: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const target = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+      targets.push(target);
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      const worker = (await import('./index')).default;
+      // A media fetch: the direct googlevideo URL is fetched — the solver
+      // URL never appears.
+      await worker.fetch(
+        new Request(
+          `https://relay.test/r?u=${encodeURIComponent('https://rr4---sn-x0.googlevideo.com/videoplayback?itag=251')}`,
+          { method: 'GET' },
+        ),
+        { APPS_SCRIPT_SOLVER_URL: solverUrl },
+        fakeCtx() as never,
+      );
+      expect(targets).toHaveLength(1);
+      expect(targets[0]).toContain('googlevideo.com');
+      // /ytm/meta answers through the KV route (a 400 for the missing
+      // endpoint param — NOT a solver call).
+      const meta = await worker.fetch(
+        new Request('https://relay.test/ytm/meta'),
+        { APPS_SCRIPT_SOLVER_URL: solverUrl },
+        fakeCtx() as never,
+      );
+      expect(meta.status).toBe(400);
+      expect(targets).toHaveLength(1); // still only the media fetch
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

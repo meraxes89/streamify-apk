@@ -15,6 +15,8 @@
 import type {
     AlbumPayload,
     ArtistPayload,
+    ChaptersPayload,
+    CounterpartPayload,
     ExploreHomePayload,
     LyricsPayload,
     PlaylistPayload,
@@ -46,6 +48,75 @@ export function validateArtistPayload(payload: unknown): ValidationOutcome<Artis
         return { ok: false, reason: 'artist: topSongs/albums must be arrays' };
     }
     return { ok: true, payload: payload as unknown as ArtistPayload };
+}
+
+/**
+ * W2-A: chapters validation + legacy coercion. W2-A rows carry
+ * startSeconds/endSeconds/thumbnailUrl; rows cached by a W1-A-era worker
+ * may carry only { atMs, title } — both are valid, the coercion maps
+ * atMs → startSeconds and derives endSeconds from the next row's start.
+ */
+export function validateChaptersPayload(payload: unknown): ValidationOutcome<ChaptersPayload> {
+    if (!isKind(payload, 'chapters')) return { ok: false, reason: 'chapters: wrong kind' };
+    if (!Array.isArray(payload.chapters) || payload.chapters.length === 0) {
+        return { ok: false, reason: 'chapters: chapters must be a non-empty array' };
+    }
+    const coerced: ChaptersPayload['chapters'] = [];
+    for (const chapter of payload.chapters) {
+        if (!isObject(chapter) || typeof chapter.title !== 'string' || chapter.title === '') {
+            return { ok: false, reason: 'chapters: a chapter lacks title' };
+        }
+        const startSeconds =
+            typeof chapter.startSeconds === 'number'
+                ? chapter.startSeconds
+                : typeof chapter.atMs === 'number'
+                  ? Math.round(chapter.atMs / 1000)
+                  : null;
+        if (startSeconds === null || !Number.isFinite(startSeconds) || startSeconds < 0) {
+            return { ok: false, reason: 'chapters: a chapter lacks startSeconds/atMs' };
+        }
+        coerced.push({
+            endSeconds: typeof chapter.endSeconds === 'number' ? chapter.endSeconds : null,
+            startSeconds,
+            thumbnailUrl: typeof chapter.thumbnailUrl === 'string' ? chapter.thumbnailUrl : null,
+            title: chapter.title,
+        });
+    }
+    // Close the boundaries the wire left open: each chapter's endSeconds
+    // defaults to the next chapter's startSeconds (the last stays null —
+    // the UI closes it with the element's duration).
+    for (let i = 0; i < coerced.length; i += 1) {
+        if (coerced[i].endSeconds === null && i + 1 < coerced.length) {
+            coerced[i].endSeconds = coerced[i + 1].startSeconds;
+        }
+    }
+    return {
+        ok: true,
+        payload: {
+            chapters: coerced,
+            hl: typeof payload.hl === 'string' ? payload.hl : 'en',
+            kind: 'chapters',
+            videoId: typeof payload.videoId === 'string' ? payload.videoId : '',
+        },
+    };
+}
+
+/** W2-A: the counterpart payload validator (videoId null is a VALID answer —
+ * "no distinct official video" — not a failure). */
+export function validateCounterpartPayload(
+    payload: unknown,
+): ValidationOutcome<CounterpartPayload> {
+    if (!isKind(payload, 'counterpart')) return { ok: false, reason: 'counterpart: wrong kind' };
+    if (typeof payload.sourceVideoId !== 'string' || payload.sourceVideoId === '') {
+        return { ok: false, reason: 'counterpart: sourceVideoId must be a non-empty string' };
+    }
+    if (payload.videoId !== null && typeof payload.videoId !== 'string') {
+        return { ok: false, reason: 'counterpart: videoId must be string or null' };
+    }
+    if (payload.videoId === '') {
+        return { ok: false, reason: 'counterpart: videoId must be non-empty when present' };
+    }
+    return { ok: true, payload: payload as unknown as CounterpartPayload };
 }
 
 export function validateLyricsPayload(payload: unknown): ValidationOutcome<LyricsPayload> {

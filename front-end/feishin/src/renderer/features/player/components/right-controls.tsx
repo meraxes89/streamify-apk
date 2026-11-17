@@ -19,6 +19,7 @@ import { useCreateFavorite } from '/@/renderer/features/shared/mutations/create-
 import { useDeleteFavorite } from '/@/renderer/features/shared/mutations/delete-favorite-mutation';
 import { StreamifyQualityBadges } from '/@/renderer/features/streamify-badges/components/quality-badges';
 import { StreamifyJamButton } from '/@/renderer/features/streamify-jam/components/streamify-jam-button';
+import { StreamifyVideoButton } from '/@/renderer/features/streamify/video/components/streamify-video-button';
 import { useHotkeys } from '/@/renderer/hooks/use-hotkeys';
 import {
     AUTO_DJ_MODE,
@@ -107,6 +108,10 @@ export const RightControls = () => {
                     RPCs, reads the active StreamUrlResolution). Renders null
                     on stock servers; see PATCHES.md A14. */}
                 <StreamifyQualityBadges />
+                {/* W2-A (Streamify, thin seam): the Audio ↔ Official Music
+                    Video toggle. Renders null on stock servers; all logic
+                    lives in features/streamify/video/ (see PATCHES.md). */}
+                <StreamifyVideoButton />
                 <DlnaCastButton />
                 <SleepTimerButton />
                 <PlayerConfig />

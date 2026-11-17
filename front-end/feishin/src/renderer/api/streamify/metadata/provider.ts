@@ -58,6 +58,8 @@
 import type {
     AlbumPayload,
     ArtistPayload,
+    ChaptersPayload,
+    CounterpartPayload,
     ExploreHomePayload,
     LyricsPayload,
     MetadataPayload,
@@ -74,6 +76,8 @@ import { type EdgeFetch, edgeMetaCall } from './edge';
 import {
     fallbackAlbum,
     fallbackArtist,
+    fallbackChapters,
+    fallbackCounterpart,
     fallbackExplore,
     fallbackHomeFeed,
     fallbackLyrics,
@@ -86,6 +90,8 @@ import {
 import {
     validateAlbumPayload,
     validateArtistPayload,
+    validateChaptersPayload,
+    validateCounterpartPayload,
     validateLyricsPayload,
     validatePlaylistPayload,
     validateRelatedPayload,
@@ -298,6 +304,8 @@ interface RunOptions<TPayload> {
 interface TypedMetadataProvider {
     getAlbum(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<AlbumPayload>>;
     getArtist(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<ArtistPayload>>;
+    /** W2-A: the timestamped chapters (7 d-TTL endpoint, seconds-space rows). */
+    getChapters(videoId: string, hl?: string): Promise<MetadataResult<ChaptersPayload>>;
     getExplore(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
     getHomeFeed(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
     getLyrics(videoId: string, hl?: string): Promise<MetadataResult<LyricsPayload>>;
@@ -313,6 +321,16 @@ interface TypedMetadataProvider {
         hl?: string,
     ): Promise<MetadataResult<SearchSuggestPayload>>;
     getUpNext(seedVideoId: string, continuation?: string): Promise<MetadataResult<UpNextPayload>>;
+    /**
+     * W2-A: the official-music-video counterpart of an audio track (the
+     * 24 h-TTL endpoint). videoId null in the payload = no distinct
+     * official video (the toggle hides — never an error).
+     */
+    getVideoCounterpart(
+        videoId: string,
+        gl?: string,
+        hl?: string,
+    ): Promise<MetadataResult<CounterpartPayload>>;
     search(
         query: string,
         filter?: YtmSearchFilter,
@@ -514,6 +532,20 @@ function createProvider(deps: ProviderDeps = {}): TypedMetadataProvider {
                 d,
             );
         },
+        async getChapters(videoId, hl) {
+            const d = resolve(undefined, hl);
+            return run<ChaptersPayload>(
+                {
+                    endpoint: 'chapters',
+                    fallback: () => fallbackChapters(videoId, d.hl),
+                    id: videoId,
+                    validateEdge: validateChaptersPayload,
+                    validateFallback: (payload) => payload.chapters.length > 0,
+                },
+                deps,
+                d,
+            );
+        },
         async getExplore(gl, hl) {
             const d = resolve(gl, hl);
             return run(
@@ -606,6 +638,22 @@ function createProvider(deps: ProviderDeps = {}): TypedMetadataProvider {
                     fallback: () => fallbackUpNext(seedVideoId),
                     id: seedVideoId,
                     validateEdge: validateUpNextPayload,
+                },
+                deps,
+                d,
+            );
+        },
+        async getVideoCounterpart(videoId, gl, hl) {
+            const d = resolve(gl, hl);
+            return run<CounterpartPayload>(
+                {
+                    endpoint: 'counterpart',
+                    fallback: () => fallbackCounterpart(videoId, d.gl, d.hl),
+                    id: videoId,
+                    validateEdge: validateCounterpartPayload,
+                    validateFallback: (payload) =>
+                        typeof payload.sourceVideoId === 'string' &&
+                        (payload.videoId === null || payload.videoId !== ''),
                 },
                 deps,
                 d,
@@ -945,6 +993,18 @@ export function createMetadataProviderForTests(deps: ProviderDeps): TypedMetadat
 }
 
 /**
+ * W2-A: the typed chapters read — the video overlay / chapter strip's
+ * seam (same typed-result separation the importer's playlist read keeps;
+ * the W1-B DTO contract has no chapters method by design).
+ */
+export function getChaptersTyped(
+    videoId: string,
+    hl?: string,
+): Promise<MetadataResult<ChaptersPayload>> {
+    return typedMetadataProvider.getChapters(videoId, hl);
+}
+
+/**
  * The importer's typed playlist read: keeps the not-found / rate-limited
  * / parse-error separation #198's ingest.ts reports on. The W1-B
  * contract has no playlist method (mood tiles drive the radio instead).
@@ -955,6 +1015,19 @@ export function getPlaylistTyped(
     signal?: AbortSignal,
 ): Promise<MetadataResult<PlaylistPayload>> {
     return typedMetadataProvider.getPlaylist(browseId, continuation, signal);
+}
+
+/**
+ * W2-A: the typed counterpart read — the Audio ↔ Video toggle's seam
+ * (videoId null in the payload is the honest "no distinct official
+ * video", NOT a failure).
+ */
+export function getVideoCounterpartTyped(
+    videoId: string,
+    gl?: string,
+    hl?: string,
+): Promise<MetadataResult<CounterpartPayload>> {
+    return typedMetadataProvider.getVideoCounterpart(videoId, gl, hl);
 }
 
 /** Test seam: reset the circuit + snapshot state between cases. */

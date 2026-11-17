@@ -34,6 +34,8 @@
 import type {
     AlbumPayload,
     ArtistPayload,
+    ChaptersPayload,
+    CounterpartPayload,
     ExploreHomePayload,
     HomePayload,
     LyricsPayload,
@@ -197,21 +199,129 @@ export async function fallbackArtist(
     };
 }
 
-export async function fallbackExplore(gl: string, hl: string): Promise<ExploreHomePayload | null> {
+/**
+ * W2-A: chapters off the client-side InnerTube lane (best-effort — the
+ * structural read documents exactly what this module consumes; on shape
+ * drift it degrades to null, the honest "no chapters" form the provider
+ * maps to not-found; the edge path serves chapters fine).
+ */
+export async function fallbackChapters(
+    videoId: string,
+    hl: string,
+): Promise<ChaptersPayload | null> {
     const session = await yt();
-    const explore = (await session.music.getExplore()) as undefined | { sections?: Array<unknown> };
-    return shelvesFromSections(explore?.sections, 'explore', gl, hl);
+    const info = (await session.music.getInfo(videoId)) as
+        | null
+        | undefined
+        | {
+              chapters?: Array<{
+                  start_seconds?: unknown;
+                  time_start_ms?: unknown;
+                  title?: unknown;
+              }>;
+          };
+    const rows: number[] = [];
+    const titles: string[] = [];
+    for (const chapter of info?.chapters ?? []) {
+        const title = textOf(chapter?.title);
+        const startMs =
+            typeof chapter?.time_start_ms === 'number'
+                ? chapter.time_start_ms
+                : typeof chapter?.start_seconds === 'number'
+                  ? chapter.start_seconds * 1000
+                  : null;
+        if (title === '' || startMs === null) continue;
+        rows.push(startMs);
+        titles.push(title);
+    }
+    if (rows.length === 0) return null;
+    const chapters: ChaptersPayload['chapters'] = rows.map((startMs, i) => ({
+        endSeconds: i + 1 < rows.length ? Math.round(rows[i + 1] / 1000) : null,
+        startSeconds: Math.round(startMs / 1000),
+        thumbnailUrl: null,
+        title: titles[i] as string,
+    }));
+    return { chapters, hl, kind: 'chapters', videoId };
 }
 
 // ---------------------------------------------------------------------------
 // Shared field readers (the bullet-split convention, same as the worker)
 // ---------------------------------------------------------------------------
 
+/**
+ * W2-A: the counterpart resolution off the client-side InnerTube lane —
+ * seed identity from getInfo, candidates from the videos-filtered search,
+ * then the same matcher the worker runs (mirrored client-side; the SCHEMA
+ * is the shared contract, not the code).
+ */
+export async function fallbackCounterpart(
+    videoId: string,
+    _gl: string,
+    _hl: string,
+): Promise<CounterpartPayload | null> {
+    void _gl; // uniform fallback signature — the client session owns its locale
+    void _hl;
+    const session = await yt();
+    const info = (await session.music.getInfo(videoId)) as
+        | null
+        | undefined
+        | {
+              basic_info?: {
+                  author?: unknown;
+                  duration?: unknown;
+                  title?: unknown;
+              };
+          };
+    const seedTitle = textOf(info?.basic_info?.title);
+    if (seedTitle === '') return null;
+    const seedArtist = textOf(info?.basic_info?.author) || null;
+    const durationSec = info?.basic_info?.duration;
+    const seedDurationMs =
+        typeof durationSec === 'number' && durationSec > 0 ? Math.round(durationSec * 1000) : null;
+
+    const search = (await session.music.search(`${seedTitle} ${seedArtist ?? ''}`.trim(), {
+        type: 'videos',
+    })) as null | undefined | { contents?: Array<{ contents?: Array<unknown> }> };
+    const shelf = (search?.contents ?? []).find((entry) => (entry.contents?.length ?? 0) > 0);
+    if (shelf === undefined) return null;
+    const results: Array<{
+        durationMs: null | number;
+        subtitle: null | string;
+        title: string;
+        videoId: null | string;
+    }> = [];
+    for (const raw of shelf.contents ?? []) {
+        const item = asListLike(raw);
+        if (item === null || item.title === undefined) continue;
+        results.push({
+            durationMs: durationMsOf(item),
+            subtitle: item.artists?.map((a) => a.name).join(', ') || item.album?.name || null,
+            title: item.title,
+            videoId: item.id ?? null,
+        });
+    }
+    return matchCounterpartClient(
+        { artistText: seedArtist, durationMs: seedDurationMs, title: seedTitle },
+        videoId,
+        results,
+    );
+}
+
+export async function fallbackExplore(gl: string, hl: string): Promise<ExploreHomePayload | null> {
+    const session = await yt();
+    const explore = (await session.music.getExplore()) as undefined | { sections?: Array<unknown> };
+    return shelvesFromSections(explore?.sections, 'explore', gl, hl);
+}
+
 export async function fallbackHomeFeed(gl: string, hl: string): Promise<HomePayload | null> {
     const session = await yt();
     const feed = (await session.music.getHomeFeed()) as undefined | { sections?: Array<unknown> };
     return shelvesFromSections(feed?.sections, 'home', gl, hl);
 }
+
+// ---------------------------------------------------------------------------
+// The fallback surface (one function per provider method)
+// ---------------------------------------------------------------------------
 
 export async function fallbackLyrics(videoId: string, hl: string): Promise<LyricsPayload | null> {
     const session = await yt();
@@ -272,10 +382,6 @@ export async function fallbackPlaylist(
         tracks: tracks.filter((t) => t.title !== ''),
     };
 }
-
-// ---------------------------------------------------------------------------
-// The fallback surface (one function per provider method)
-// ---------------------------------------------------------------------------
 
 export async function fallbackRelated(seedVideoId: string): Promise<null | RelatedPayload> {
     const session = await yt();
@@ -396,6 +502,59 @@ export async function fallbackUpNext(seedVideoId: string): Promise<null | UpNext
     return { kind: 'up-next', seedVideoId, tracks };
 }
 
+/** The client mirror of the worker's matchCounterpart (same rules: distinct
+ * videoId, normalized title equality, artist-in-subtitle + duration
+ * proximity for strong confidence). */
+function matchCounterpartClient(
+    seed: { artistText: null | string; durationMs: null | number; title: string },
+    seedVideoId: string,
+    results: Array<{
+        durationMs: null | number;
+        subtitle: null | string;
+        title: string;
+        videoId: null | string;
+    }>,
+): CounterpartPayload {
+    const seedTitle = normalizeTitleForMatchClient(seed.title);
+    const artist = (seed.artistText ?? '').toLowerCase();
+    let best: null | {
+        confidence: 'strong' | 'weak';
+        result: { durationMs: null | number; title: string; videoId: null | string };
+    } = null;
+    for (const result of results) {
+        if (result.videoId === null || result.videoId === '' || result.videoId === seedVideoId) {
+            continue;
+        }
+        if (normalizeTitleForMatchClient(result.title) !== seedTitle) continue;
+        const subtitle = (result.subtitle ?? '').toLowerCase();
+        const subtitleHasArtist = artist !== '' && subtitle.includes(artist);
+        const durationOk =
+            seed.durationMs !== null &&
+            result.durationMs !== null &&
+            Math.abs(seed.durationMs - result.durationMs) <=
+                Math.max(15_000, Math.max(seed.durationMs, result.durationMs) * 0.12);
+        const strong =
+            subtitleHasArtist &&
+            (durationOk || seed.durationMs === null || result.durationMs === null);
+        if (best === null || (strong && best.confidence !== 'strong')) {
+            best = { confidence: strong ? 'strong' : 'weak', result };
+        }
+        if (strong) break;
+    }
+    return {
+        artistText: seed.artistText,
+        confidence: best?.confidence ?? null,
+        durationMs: best?.result.durationMs ?? null,
+        kind: 'counterpart',
+        sourceVideoId: seedVideoId,
+        title: best?.result.title ?? null,
+        videoId: best?.result.videoId ?? null,
+    };
+}
+
+const TITLE_NOISE_CLIENT =
+    /[([](?:official\s+)?(?:music\s+)?(?:video|audio|lyric[s]?\s+video|visualizer|hd|4k|hq|remaster(?:ed)?(?:\s+\d{4})?)[^)\]]*[)\]]/gi;
+
 /** "4:21" / "1:02:33" → ms (mirrors the worker's parser). */
 export function parseColonDuration(text: string): null | number {
     const parts = text
@@ -428,6 +587,10 @@ function asListLike(entry: unknown): ListLike | null {
 function durationMsOf(item: ListLike): null | number {
     const secs = item.duration?.seconds;
     return typeof secs === 'number' && secs > 0 ? Math.round(secs * 1000) : null;
+}
+
+function normalizeTitleForMatchClient(title: string): string {
+    return title.replace(TITLE_NOISE_CLIENT, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 function parkContinuation(obj: Continuable): string {
@@ -498,6 +661,7 @@ async function yt(): Promise<{
         getArtist(id: string): Promise<unknown>;
         getExplore(): Promise<unknown>;
         getHomeFeed(): Promise<unknown>;
+        getInfo(videoId: string): Promise<unknown>;
         getLyrics(videoId: string): Promise<unknown>;
         getPlaylist(id: string): Promise<unknown>;
         getRelated(videoId: string): Promise<unknown>;
