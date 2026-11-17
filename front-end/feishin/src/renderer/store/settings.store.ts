@@ -1170,7 +1170,7 @@ export const sidebarItems: SidebarItemType[] = [
         route: AppRoute.NOW_PLAYING,
     },
     {
-        disabled: true,
+        disabled: false,
         id: 'Search',
         label: i18n.t('page.sidebar.search'),
         route: generatePath(AppRoute.SEARCH, { itemType: LibraryItem.SONG }),

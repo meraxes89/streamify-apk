@@ -448,18 +448,36 @@ export async function fallbackSearch(
               has_continuation: boolean;
           };
     if (search === undefined || search === null) return null;
-    const shelf = (search.contents ?? []).find((entry) => (entry.contents?.length ?? 0) > 0);
-    if (shelf === undefined) return null;
     const results: SearchPayload['results'] = [];
-    for (const raw of shelf.contents ?? []) {
-        const item = asListLike(raw);
-        if (item === null || item.title === undefined) continue;
-        results.push({
-            durationMs: durationMsOf(item),
-            subtitle: item.artists?.map((a) => a.name).join(', ') || item.album?.name || null,
-            title: item.title,
-            videoId: item.id ?? null,
-        });
+    for (const shelf of search.contents ?? []) {
+        const cardTitle = textOf((shelf as { title?: unknown }).title);
+        const cardEndpoint = (shelf as { on_tap?: { payload?: { videoId?: string } } }).on_tap?.payload?.videoId;
+        if (cardTitle !== '' && typeof cardEndpoint === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(cardEndpoint)) {
+            const cardSubtitle = textOf((shelf as { subtitle?: unknown }).subtitle);
+            results.push({
+                durationMs: null,
+                subtitle: cardSubtitle || null,
+                title: cardTitle,
+                videoId: cardEndpoint,
+            });
+        }
+        for (const raw of shelf.contents ?? []) {
+            const item = asListLike(raw);
+            if (item === null || item.title === undefined) continue;
+            const artist =
+                item.artists?.map((a) => a.name).join(', ') ||
+                (raw as { authors?: Array<{ name: string }> }).authors?.map((a) => a.name).join(', ') ||
+                null;
+            const album = item.album?.name || null;
+            const subtitle = [artist, album].filter(Boolean).join(' • ') || null;
+            const isVideoId = typeof item.id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(item.id);
+            results.push({
+                durationMs: durationMsOf(item),
+                subtitle,
+                title: item.title,
+                videoId: isVideoId ? item.id : null,
+            });
+        }
     }
     const realResults = results.filter((r) => r.title !== '');
     if (realResults.length === 0) return null;

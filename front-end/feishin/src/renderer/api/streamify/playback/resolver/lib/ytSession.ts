@@ -100,7 +100,8 @@ export function isDirectEgressHost(url: URL): boolean {
     host === 'youtubei.googleapis.com' ||
     host === 'jnn-pa.googleapis.com' ||
     host === 'googlevideo.com' ||
-    host.endsWith('.googlevideo.com')
+    host.endsWith('.googlevideo.com') ||
+    host === 'music.youtube.com'
   );
 }
 
@@ -650,6 +651,7 @@ export async function ytFetch(
   }
 
   const relayTarget = relayUrl(relayBaseCandidate(), target.toString());
+  const method = (input instanceof Request ? input.method : init?.method) || 'GET';
   const request = new Request(
     relayTarget,
     input instanceof Request ? (input as unknown as RequestInit) : undefined,
@@ -657,6 +659,7 @@ export async function ytFetch(
   lastEgressLane.set(target.hostname.toLowerCase(), 'relay');
   return fetch(request, {
     ...init,
+    method,
     headers,
     credentials: 'omit',
   });

@@ -32,8 +32,19 @@
     backdrop-filter: blur(10px);
 }
 
+.search-button {
+    position: absolute;
+    bottom: calc(90px + 0.75rem);
+    left: calc(0.75rem + 44px);
+    z-index: 100;
+    background: color-mix(in srgb, var(--theme-colors-background) 90%, transparent);
+    border: 1px solid var(--theme-colors-border);
+    backdrop-filter: blur(10px);
+}
+
 @media (height < 192px) {
-    .drawer-button {
+    .drawer-button,
+    .search-button {
         display: none;
     }
 }

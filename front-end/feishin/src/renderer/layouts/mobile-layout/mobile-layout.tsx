@@ -11,7 +11,7 @@ import { MobileFullscreenPlayer } from '/@/renderer/features/player/components/m
 import { MobileSidebar } from '/@/renderer/features/sidebar/components/mobile-sidebar';
 import { PlayerBar } from '/@/renderer/layouts/default-layout/player-bar';
 import { WindowBar } from '/@/renderer/layouts/window-bar';
-import { useFullScreenPlayerOverlayState, useWindowBarStyle } from '/@/renderer/store';
+import { useFullScreenPlayerOverlayState, useWindowBarStyle, useCommandPalette } from '/@/renderer/store';
 import { ActionIcon } from '/@/shared/components/action-icon/action-icon';
 import { Drawer } from '/@/shared/components/drawer/drawer';
 import { Spinner } from '/@/shared/components/spinner/spinner';
@@ -29,6 +29,7 @@ export const MobileLayout = ({ shell }: MobileLayoutProps) => {
         visualizerExpanded: isFullScreenVisualizerExpanded,
     } = useFullScreenPlayerOverlayState();
     const windowBarStyle = useWindowBarStyle();
+    const { open: openSearch } = useCommandPalette();
 
     return (
         <>
@@ -41,14 +42,24 @@ export const MobileLayout = ({ shell }: MobileLayoutProps) => {
             >
                 {!shell && <WindowBar />}
                 {!shell && (
-                    <ActionIcon
-                        className={styles.drawerButton}
-                        icon="menu"
-                        onClick={openSidebar}
-                        size="lg"
-                        tooltip={{ label: 'Menu' }}
-                        variant="subtle"
-                    />
+                    <>
+                        <ActionIcon
+                            className={styles.drawerButton}
+                            icon="menu"
+                            onClick={openSidebar}
+                            size="lg"
+                            tooltip={{ label: 'Menu' }}
+                            variant="subtle"
+                        />
+                        <ActionIcon
+                            className={styles.searchButton}
+                            icon="search"
+                            onClick={openSearch}
+                            size="lg"
+                            tooltip={{ label: 'Search' }}
+                            variant="subtle"
+                        />
+                    </>
                 )}
                 <main className={styles.mainContent}>
                     <Suspense fallback={<Spinner container />}>

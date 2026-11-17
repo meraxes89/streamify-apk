@@ -49,7 +49,8 @@
 var ALLOWED_HOSTS = [
   'youtubei.googleapis.com',
   'jnn-pa.googleapis.com',
-  'www.youtube.com'
+  'www.youtube.com',
+  'music.youtube.com'
 ];
 
 /** Apps Script V8 has no WHATWG `URL` — parse the envelope target with a
@@ -216,8 +217,8 @@ function hostAllowed_(parsed) {
   var host = parsed.host;
   for (var i = 0; i < ALLOWED_HOSTS.length; i++) {
     if (host === ALLOWED_HOSTS[i]) {
-      // www.youtube.com is allowed for the /youtubei/* API surface only.
-      if (host === 'www.youtube.com') {
+      // www.youtube.com and music.youtube.com are allowed for the /youtubei/* API surface only.
+      if (host === 'www.youtube.com' || host === 'music.youtube.com') {
         return parsed.path.indexOf('/youtubei/') === 0;
       }
       return true;
