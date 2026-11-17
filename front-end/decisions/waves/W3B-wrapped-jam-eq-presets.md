@@ -68,7 +68,10 @@ ruling: **the recommendation surface that first queues a track claims it**,
   `id → origin`, keyed by videoId (what catalog surfaces hold).
 - `automixRadio()` (W1-B) claims `ORIGIN_AUTOMIX` for every track it
   surfaces — mood radio rides the same claim. W2-B's Discover Mix claims
-  `ORIGIN_DISCOVER_MIX` at its enqueue point (the post-rebase hook).
+  `ORIGIN_DISCOVER_MIX` at its mix-generation point
+  (`use-discover-mix.ts`), keyed by BOTH id lanes — the videoId the
+  catalog knows and the resolved song id the ledger will key the counted
+  play by (cloud track id or `ytm:<videoId>`).
 - `recordCountedPlay` gains an optional `origin` on its fire-path payload,
   resolved by the controller's `onCountedPlay` wiring via
   `discoveryOriginOf(trackId, snapshot)` (trackId → direct hint, else
