@@ -9,30 +9,32 @@
  * a same-origin `blob:` URL for <audio> / ReactPlayer.
  */
 
-import { SabrStream } from 'googlevideo/sabr-stream';
 import type { SabrFormat } from 'googlevideo/shared-types';
+
+import { SabrStream } from 'googlevideo/sabr-stream';
 import { EnabledTrackTypes } from 'googlevideo/utils';
 
-import { relayUrl } from '../resolver/audio/botguard/protocol';
 import type { SabrPayload } from '../resolver/audio/resolve';
-import { gsfAlive, gsfFetch } from '../resolver/lib/gsfLane';
 
-async function sabrBodyFor(
-    body: BodyInit | null | undefined,
-): Promise<string | Uint8Array | ArrayBuffer | undefined> {
-    if (body === undefined || body === null) return undefined;
-    if (typeof body === 'string') return body;
-    if (body instanceof Uint8Array) return body;
-    if (body instanceof ArrayBuffer) return body;
-    if (body instanceof Blob) return await body.arrayBuffer();
-    return String(body);
-}
+import { relayUrl } from '../resolver/audio/botguard/protocol';
+import { gsfAlive, gsfFetch } from '../resolver/lib/gsfLane';
 
 export interface SabrSessionHandle {
     abort: () => void;
     done: Promise<'finished'>;
     objectUrl: string;
     onFail: (callback: (message: string) => void) => void;
+}
+
+async function sabrBodyFor(
+    body: BodyInit | null | undefined,
+): Promise<ArrayBuffer | string | Uint8Array | undefined> {
+    if (body === undefined || body === null) return undefined;
+    if (typeof body === 'string') return body;
+    if (body instanceof Uint8Array) return body;
+    if (body instanceof ArrayBuffer) return body;
+    if (body instanceof Blob) return await body.arrayBuffer();
+    return String(body);
 }
 
 const AAC_MIME = 'audio/mp4; codecs="mp4a.40.2"';
@@ -45,24 +47,6 @@ export function mseAudioAvailable(): boolean {
         typeof window.MediaSource !== 'undefined' &&
         MediaSource.isTypeSupported(AAC_MIME)
     );
-}
-
-function pickAudioFormat(
-    formats: SabrFormat[],
-    preferAac: boolean,
-): SabrFormat | undefined {
-    const isAudio = (f: SabrFormat): boolean =>
-        typeof f.mimeType === 'string' && f.mimeType.startsWith('audio/');
-    const audio = formats.filter(isAudio);
-    if (audio.length === 0) return undefined;
-    const byMime = (prefix: string): SabrFormat | undefined =>
-        audio.find(
-            (f) => typeof f.mimeType === 'string' && f.mimeType.startsWith(prefix),
-        );
-    const aac = byMime('audio/mp4');
-    const opus = byMime('audio/webm');
-    if (preferAac) return aac ?? opus;
-    return opus ?? aac;
 }
 
 export async function startSabrAudio(
@@ -90,12 +74,12 @@ export async function startSabrAudio(
 
     let failListeners: Array<(message: string) => void> = [];
     let failed = false;
-    let sabr: SabrStream | null = null;
+    let sabr: null | SabrStream = null;
 
     let mediaBytesSeen = 0;
     let bytesAtLastProtectionEvent = -1;
     let noMediaStreak = 0;
-    let firstMediaTimer: ReturnType<typeof setTimeout> | null = null;
+    let firstMediaTimer: null | ReturnType<typeof setTimeout> = null;
 
     const fail = (message: string): void => {
         if (failed) return;
@@ -119,7 +103,7 @@ export async function startSabrAudio(
     };
 
     const done = new Promise<'finished'>((resolve, reject) => {
-        let sourceBuffer: SourceBuffer | null = null;
+        let sourceBuffer: null | SourceBuffer = null;
         const queue: Uint8Array[] = [];
         let appending = false;
         let downloadFinished = false;
@@ -158,9 +142,7 @@ export async function startSabrAudio(
             } catch (err) {
                 appending = false;
                 queue.length = 0;
-                fail(
-                    `MSE append failed: ${err instanceof Error ? err.message : String(err)}`,
-                );
+                fail(`MSE append failed: ${err instanceof Error ? err.message : String(err)}`);
                 reject(new Error('MSE append failed'));
             }
         };
@@ -169,9 +151,7 @@ export async function startSabrAudio(
             try {
                 sourceBuffer = mediaSource.addSourceBuffer(mimeType);
             } catch (err) {
-                fail(
-                    `addSourceBuffer failed: ${err instanceof Error ? err.message : String(err)}`,
-                );
+                fail(`addSourceBuffer failed: ${err instanceof Error ? err.message : String(err)}`);
                 reject(err instanceof Error ? err : new Error('addSourceBuffer failed'));
                 return;
             }
@@ -241,9 +221,7 @@ export async function startSabrAudio(
                                 fail(
                                     `SABR protection wall — ${noMediaStreak} consecutive responses with zero media (status ${s}, ${mediaBytesSeen} B total)`,
                                 );
-                                reject(
-                                    new Error(`SABR protection wall (status ${s}, no media)`),
-                                );
+                                reject(new Error(`SABR protection wall (status ${s}, no media)`));
                                 return;
                             }
                         } else {
@@ -310,4 +288,17 @@ export async function startSabrAudio(
             failListeners.push(callback);
         },
     };
+}
+
+function pickAudioFormat(formats: SabrFormat[], preferAac: boolean): SabrFormat | undefined {
+    const isAudio = (f: SabrFormat): boolean =>
+        typeof f.mimeType === 'string' && f.mimeType.startsWith('audio/');
+    const audio = formats.filter(isAudio);
+    if (audio.length === 0) return undefined;
+    const byMime = (prefix: string): SabrFormat | undefined =>
+        audio.find((f) => typeof f.mimeType === 'string' && f.mimeType.startsWith(prefix));
+    const aac = byMime('audio/mp4');
+    const opus = byMime('audio/webm');
+    if (preferAac) return aac ?? opus;
+    return opus ?? aac;
 }

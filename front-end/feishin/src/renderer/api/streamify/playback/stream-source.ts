@@ -10,11 +10,7 @@ import {
     type StreamUrlResolution,
 } from './resolver/audio/get-stream-url';
 import { relayBaseCandidate } from './resolver/lib/relayBase';
-import {
-    mseAudioAvailable,
-    startSabrAudio,
-    type SabrSessionHandle,
-} from './sabr/sabrStreamPlayer';
+import { mseAudioAvailable, type SabrSessionHandle, startSabrAudio } from './sabr/sabrStreamPlayer';
 
 /**
  * api/streamify/playback/stream-source.ts — the engine-side consumption
@@ -97,7 +93,7 @@ export class StreamifySabrError extends Error {
 
 const sessions = new Map<string, PlaybackSession>();
 const urlIndex = new Map<string, string>();
-let activeSabrSession: SabrSessionHandle | null = null;
+let activeSabrSession: null | SabrSessionHandle = null;
 
 // ---------------------------------------------------------------------------
 // The zero-egress offline bypass (P4-A)
