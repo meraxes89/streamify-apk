@@ -203,6 +203,8 @@ const REQUEST_DROP: ReadonlySet<string> = new Set([
   // G4.3: the negative-cache bypass is a RELAY CONTROL header (canary /
   // diagnostics), never meaningful upstream.
   "x-relay-negcache",
+  // Option 3: custom user cookie / session control header
+  "x-relay-cookie",
 ]);
 
 /**
@@ -390,12 +392,238 @@ function extractBgSession(html: string): BgSession | { error: string } {
 // /play & /api/search — Direct Serverless Streaming & Search Endpoints
 // ---------------------------------------------------------------------------
 
+function extractSapisid(cookie: string): string | null {
+  const match = cookie.match(/(?:^|;\s*)(?:__Secure-3PAPISID|SAPISID)=([^;]+)/);
+  return match ? match[1].trim() : null;
+}
+
+async function computeSapisidHash(sapisid: string, origin: string): Promise<string> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const data = new TextEncoder().encode(`${timestamp} ${sapisid} ${origin}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
+  const hashHex = Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `SAPISIDHASH ${timestamp}_${hashHex}`;
+}
+
 async function resolveDirectAudioStream(
   videoId: string,
   env: RelayEnv,
   pot?: string | null,
   visitorData?: string | null,
+  userCookie?: string | null,
 ): Promise<{ url: string; mimeType: string; status?: string } | null> {
+  // --- Tier 1: Authenticated User Session (Option 3 — bypasses datacenter bot-gates) ---
+  if (userCookie && userCookie.trim().length > 0) {
+    const cleanCookie = userCookie.trim();
+    const ytmBody: Record<string, unknown> = {
+      videoId,
+      playbackContext: {
+        contentPlaybackContext: {
+          signatureTimestamp: 20768,
+        },
+      },
+      context: {
+        client: {
+          clientName: "WEB_REMIX",
+          clientVersion: "1.20250219.01.00",
+          hl: "en",
+          gl: "US",
+          ...(visitorData ? { visitorData } : {}),
+        },
+      },
+      ...(pot ? { serviceIntegrityDimensions: { poToken: pot } } : {}),
+    };
+
+    const ytmHeaders = new Headers({
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+      "Origin": "https://music.youtube.com",
+      "Referer": "https://music.youtube.com/",
+      "Cookie": cleanCookie,
+    });
+
+    const sapisid = extractSapisid(cleanCookie);
+    if (sapisid) {
+      ytmHeaders.set("Authorization", await computeSapisidHash(sapisid, "https://music.youtube.com"));
+    }
+
+    try {
+      const ytmRes = await fetch("https://music.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        headers: ytmHeaders,
+        body: JSON.stringify(ytmBody),
+      });
+
+      if (ytmRes.ok) {
+        const ytmData = (await ytmRes.json()) as {
+          playabilityStatus?: { status?: string; reason?: string };
+          streamingData?: {
+            formats?: Array<{ itag?: number; mimeType?: string; url?: string; cipher?: string; signatureCipher?: string }>;
+            adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string; cipher?: string; signatureCipher?: string }>;
+          };
+        };
+
+        if (ytmData.playabilityStatus?.status === "OK") {
+          const fmts = [
+            ...(ytmData.streamingData?.formats || []),
+            ...(ytmData.streamingData?.adaptiveFormats || []),
+          ];
+          const audioFmts = fmts.filter(
+            (f) => (f.mimeType && f.mimeType.startsWith("audio/")) || f.itag === 140,
+          );
+          const chosen =
+            audioFmts.find((f) => f.itag === 140 && f.url) ||
+            audioFmts.find((f) => f.url) ||
+            audioFmts[0] ||
+            fmts[0];
+
+          if (chosen) {
+            let finalUrl = chosen.url;
+            if (!finalUrl && (chosen.signatureCipher || chosen.cipher)) {
+              const cipherStr = chosen.signatureCipher || chosen.cipher || "";
+              const params = new URLSearchParams(cipherStr);
+              finalUrl = params.get("url") || undefined;
+            }
+            if (finalUrl) {
+              let mimeType = "audio/mp4";
+              if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
+              return { url: finalUrl, mimeType, status: "OK" };
+            }
+          }
+        }
+      }
+    } catch {
+      // Continue to IOS auth check
+    }
+
+    // 1b: Try IOS with cookie (IOS always gives pre-signed direct audio URLs, no cipher!)
+    try {
+      const iosHeaders = new Headers({
+        "Content-Type": "application/json",
+        "User-Agent": "com.google.ios.youtube/20.11.6 (iPhone10,4; U; CPU iOS 16_7_7 like Mac OS X;)",
+        "Cookie": cleanCookie,
+      });
+      if (sapisid) {
+        iosHeaders.set("Authorization", await computeSapisidHash(sapisid, "https://www.youtube.com"));
+      }
+      const iosRes = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        headers: iosHeaders,
+        body: JSON.stringify({
+          videoId,
+          context: {
+            client: {
+              clientName: "IOS",
+              clientVersion: "20.11.6",
+              deviceMake: "Apple",
+              deviceModel: "iPhone10,4",
+              hl: "en",
+              gl: "US",
+              osName: "iOS",
+              osVersion: "16.7.7.20H357",
+              ...(visitorData ? { visitorData } : {}),
+            },
+          },
+        }),
+      });
+      if (iosRes.ok) {
+        const iosData = (await iosRes.json()) as {
+          playabilityStatus?: { status?: string };
+          streamingData?: {
+            formats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
+            adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
+          };
+        };
+        if (iosData.playabilityStatus?.status === "OK") {
+          const fmts = [
+            ...(iosData.streamingData?.formats || []),
+            ...(iosData.streamingData?.adaptiveFormats || []),
+          ];
+          const audioFmts = fmts.filter((f) => f.mimeType && f.mimeType.startsWith("audio/"));
+          const chosen =
+            audioFmts.find((f) => f.itag === 140 && f.url) ||
+            audioFmts.find((f) => f.url) ||
+            fmts.find((f) => f.url);
+          if (chosen && chosen.url) {
+            let mimeType = "audio/mp4";
+            if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
+            return { url: chosen.url, mimeType, status: "OK" };
+          }
+        }
+      }
+    } catch {
+      // Continue to unauthenticated rungs
+    }
+  }
+
+  // --- Tier 2: VISIONOS Pre-Signed Direct Rung (zero cipher, standard & unpartitioned tracks) ---
+  const visionosBody = {
+    context: {
+      client: {
+        clientName: "VISIONOS",
+        clientVersion: "1.02",
+        hl: "en",
+        gl: "US",
+        deviceMake: "Apple",
+        deviceModel: "RealityDevice17,1",
+        osName: "visionOS",
+        osVersion: "26.5.23O471",
+        ...(visitorData ? { visitorData } : {}),
+      },
+    },
+    videoId,
+    contentCheckOk: true,
+    racyCheckOk: true,
+  };
+
+  try {
+    const visionRes = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false&alt=json", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-youtube-client-name": "101",
+        "x-youtube-client-version": "1.02",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+      },
+      body: JSON.stringify(visionosBody),
+    });
+
+    if (visionRes.ok) {
+      const visionData = (await visionRes.json()) as {
+        playabilityStatus?: { status?: string; reason?: string };
+        streamingData?: {
+          formats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
+          adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
+        };
+      };
+
+      if (visionData.playabilityStatus?.status === "OK") {
+        const fmts = [
+          ...(visionData.streamingData?.formats || []),
+          ...(visionData.streamingData?.adaptiveFormats || []),
+        ];
+        const audioFmts = fmts.filter(
+          (f) => (f.mimeType && f.mimeType.startsWith("audio/")) || f.itag === 140,
+        );
+        const chosen =
+          audioFmts.find((f) => f.itag === 140 && f.url) ||
+          audioFmts.find((f) => f.url) ||
+          fmts.find((f) => f.url);
+
+        if (chosen && chosen.url) {
+          let mimeType = "audio/mp4";
+          if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
+          return { url: chosen.url, mimeType, status: "OK" };
+        }
+      }
+    }
+  } catch {
+    // Continue to Tier 3
+  }
+
+  // --- Tier 3: iOS Client (Apps Script Solver + Direct Worker) ---
   const playerBody: Record<string, unknown> = {
     videoId,
     playbackContext: {
@@ -575,10 +803,11 @@ async function handlePlay(request: Request, url: URL, env: RelayEnv): Promise<Re
 
   const pot = url.searchParams.get("pot");
   const visitorData = url.searchParams.get("visitorData");
+  const userCookie = url.searchParams.get("cookie") || request.headers.get("x-relay-cookie");
   const clientRange = request.headers.get("range");
 
   // Step 1: Attempt direct resolve
-  let resolved = await resolveDirectAudioStream(videoId, env, pot, visitorData);
+  let resolved = await resolveDirectAudioStream(videoId, env, pot, visitorData, userCookie);
   let effectiveVideoId = videoId;
   let isSubstituted = false;
 
@@ -604,7 +833,7 @@ async function handlePlay(request: Request, url: URL, env: RelayEnv): Promise<Re
 
     for (const cand of candidates.slice(0, 3)) {
       if (cand.videoId === videoId) continue;
-      const subResolved = await resolveDirectAudioStream(cand.videoId, env, pot, visitorData);
+      const subResolved = await resolveDirectAudioStream(cand.videoId, env, pot, visitorData, userCookie);
       if (subResolved && subResolved.url) {
         resolved = subResolved;
         effectiveVideoId = cand.videoId;
@@ -1356,11 +1585,15 @@ async function relay(request: Request, url: URL, env: RelayEnv): Promise<Respons
     return jsonResponse({ error: "host not allowed", host }, 403);
   }
 
+  const customCookie = request.headers.get("x-relay-cookie") || url.searchParams.get("cookie");
+  const hasCustomCookie = typeof customCookie === "string" && customCookie.trim().length > 0;
+
   // ---- G4.3: the edge negative cache (player POSTs only) ------------------
   // Lookup BEFORE the upstream fetch: a gated track fails closed in <1 ms
   // and the shared egress never sees the repeat. `X-Relay-NegCache: off`
   // bypasses (canary/diagnostics); the header is dropped upstream.
-  const negKey = isInnertubePlayerPost(target, method)
+  // Authenticated user sessions bypass the negative cache.
+  const negKey = (!hasCustomCookie && isInnertubePlayerPost(target, method))
     ? await playerNegCacheKey(request)
     : null;
   if (
@@ -1429,6 +1662,20 @@ async function relay(request: Request, url: URL, env: RelayEnv): Promise<Respons
   });
   if (uaOverride !== null) {
     outgoing.set("user-agent", uaOverride);
+  }
+
+  // Option 3: Authenticated user session forwarding
+  if (hasCustomCookie) {
+    const cleanCookie = customCookie.trim();
+    outgoing.set("cookie", cleanCookie);
+    const host = target.hostname.toLowerCase();
+    const origin = host === "music.youtube.com" ? "https://music.youtube.com" : "https://www.youtube.com";
+    if (!outgoing.has("origin")) outgoing.set("origin", origin);
+    if (!outgoing.has("referer")) outgoing.set("referer", `${origin}/`);
+    const sapisid = extractSapisid(cleanCookie);
+    if (sapisid && !outgoing.has("authorization")) {
+      outgoing.set("authorization", await computeSapisidHash(sapisid, origin));
+    }
   }
 
   // ---- Body -----------------------------------------------------------------

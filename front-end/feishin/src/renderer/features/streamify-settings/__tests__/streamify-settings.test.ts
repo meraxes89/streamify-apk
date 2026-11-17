@@ -49,6 +49,7 @@ describe('streamify-settings: validation', () => {
             // ONLY ever set by an explicit user toggle.
             smartSyncEnabled: true,
             smartSyncSaveDataOverride: false,
+            userCookie: '',
         });
     });
 

@@ -71,7 +71,7 @@
  */
 
 import { Innertube, Platform, UniversalCache } from 'youtubei.js/web';
-import { relayBaseCandidate } from './relayBase';
+import { relayBaseCandidate, userCookieCandidate } from './relayBase';
 import { relayUrl } from '../audio/botguard/protocol';
 import { gsfAlive, gsfFetch } from './gsfLane';
 
@@ -657,6 +657,10 @@ export async function ytFetch(
     input instanceof Request ? (input as unknown as RequestInit) : undefined,
   );
   lastEgressLane.set(target.hostname.toLowerCase(), 'relay');
+  const cookie = userCookieCandidate();
+  if (cookie && !headers.has('x-relay-cookie')) {
+    headers.set('x-relay-cookie', cookie);
+  }
   return fetch(request, {
     ...init,
     method,
@@ -812,6 +816,10 @@ export async function directPlayerPost(
   }
   // 4. The relay — the verdict (if any) belongs to the relay egress.
   const relayTarget = relayUrl(relayBaseCandidate(), endpoint);
+  const cookie = userCookieCandidate();
+  if (cookie && !merged.has('x-relay-cookie')) {
+    merged.set('x-relay-cookie', cookie);
+  }
   const response = await fetch(relayTarget, {
     method: 'POST',
     headers: merged,

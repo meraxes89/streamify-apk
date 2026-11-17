@@ -42,6 +42,8 @@ export interface StreamifySettings {
     /** W2-B: the user EXPLICITLY re-enabled Smart Sync — pre-fetch even on
      * metered/save-data connections (the task's opt-in escape hatch). */
     smartSyncSaveDataOverride: boolean;
+    /** Option 3: Optional YouTube session cookie to unlock licensed music streams. */
+    userCookie: string;
 }
 
 export const DEFAULT_STREAMIFY_SETTINGS: StreamifySettings = {
@@ -55,6 +57,7 @@ export const DEFAULT_STREAMIFY_SETTINGS: StreamifySettings = {
     scrobbleEnabled: true,
     smartSyncEnabled: true,
     smartSyncSaveDataOverride: false,
+    userCookie: '',
 };
 
 export const MAX_CROSSFADE_SEC = 12;
@@ -143,6 +146,10 @@ export function validateStreamifySettings(raw: unknown): StreamifySettings {
         scrobbleEnabled: source.scrobbleEnabled !== false,
         smartSyncEnabled: source.smartSyncEnabled !== false,
         smartSyncSaveDataOverride: source.smartSyncSaveDataOverride === true,
+        userCookie:
+            typeof source.userCookie === 'string'
+                ? source.userCookie.trim()
+                : DEFAULT_STREAMIFY_SETTINGS.userCookie,
     };
 }
 
@@ -167,6 +174,16 @@ const writeStorage = (settings: StreamifySettings): void => {
     }
 };
 
+export function getUserCookie(): string {
+    const fromStore = readPersistedUserCookie();
+    if (fromStore) return fromStore;
+    try {
+        return window.localStorage.getItem('streamify.user_cookie')?.trim() || '';
+    } catch {
+        return '';
+    }
+}
+
 /**
  * The relay override as relayBase.ts reads it: from the persisted blob only,
  * never from live store state (the resolver module must not import stores).
@@ -176,6 +193,16 @@ export function readPersistedRelayOverride(): string {
     const persisted = readStorage();
     const value = persisted?.settings.relayBaseOverride ?? '';
     return validateRelayBaseUrl(value).ok ? value.trim() : '';
+}
+
+/**
+ * Option 3: Read user session cookie for stream authentication.
+ * Checks both settings blob and direct localStorage key.
+ */
+export function readPersistedUserCookie(): string {
+    const persisted = readStorage();
+    const value = persisted?.settings.userCookie ?? '';
+    return typeof value === 'string' ? value.trim() : '';
 }
 
 // ---------------------------------------------------------------------------
