@@ -1,4 +1,4 @@
-# Preview GitHub Pages — deploy the site at /streamify-apk/preview/ from
+# Preview GitHub Pages — deploy the site at /streamify-apk/preview-gsf/ from
 # the feature branch, WITHOUT touching what production serves.
 #
 # The GitHub Pages project site serves ONE artifact, so we cannot swap in a
@@ -8,7 +8,7 @@
 #   root     (/streamify-apk/)        <- built from origin/main (fresh, identical
 #                                        to what feishin-pages.yml ships — the
 #                                        prod path stays green and live)
-#   preview/ (/streamify-apk/preview/) ← built from ws-w/device-solver-arch
+#   preview-gsf/ (/streamify-apk/preview-gsf/) <- built from ws-w/device-solver-arch
 #
 # Triggered only by pushes to the feature branch (and manual dispatch).
 # main is never deployed from this workflow's branch state; both builds are
@@ -113,7 +113,7 @@ jobs:
 
             - name: Build web bundle (preview subpath)
               working-directory: preview/front-end/feishin
-              run: VITE_BASE_PATH=/streamify-apk/preview/ VITE_GSF_URL="${{ vars.GSF_URL }}" pnpm run build:web -- --base=/streamify-apk/preview/
+              run: VITE_BASE_PATH=/streamify-apk/preview-gsf/ VITE_GSF_URL="${{ vars.GSF_URL }}" pnpm run build:web -- --base=/streamify-apk/preview-gsf/
 
             - name: Stamp settings.js (preview)
               working-directory: preview/front-end/feishin
@@ -155,27 +155,27 @@ jobs:
                   rm -rf site
                   mkdir -p site
                   cp -a prod/front-end/feishin/out/web/. site/
-                  mkdir -p site/preview
-                  cp -a preview/front-end/feishin/out/web/. site/preview/
+                  mkdir -p site/preview-gsf/
+                  cp -a preview/front-end/feishin/out/web/. site/preview-gsf/
                   echo 'site layout:'
                   ls site
-                  ls site/preview
+                  ls site/preview-gsf
 
             - name: Verify fused outputs
               run: |
                   set -euo pipefail
-                  for f in site/index.html site/settings.js site/preview/index.html site/preview/settings.js; do
+                  for f in site/index.html site/settings.js site/preview-gsf/index.html site/preview-gsf/settings.js; do
                       test -s "$f" || { echo "$f missing or empty"; exit 1; }
                   done
-                  for f in site/settings.js site/preview/settings.js; do
+                  for f in site/settings.js site/preview-gsf/settings.js; do
                       if grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$f"; then
                           echo "$f contains unexpanded placeholders"; exit 1
                       fi
                   done
-                  if grep -qE '/assets/' site/preview/index.html && ! grep -qE '/streamify-apk/preview/assets/' site/preview/index.html; then
+                  if grep -qE '/assets/' site/preview-gsf/index.html && ! grep -qE '/streamify-apk/preview-gsf/assets/' site/preview-gsf/index.html; then
                       echo 'preview index.html references an unexpected asset base'; exit 1
                   fi
-                  echo 'Fused site verified: prod root + /preview/ subpath.'
+                  echo 'Fused site verified: prod root + /preview-gsf/ subpath.'
 
             - name: Upload Pages artifact
               uses: actions/upload-pages-artifact@v3
