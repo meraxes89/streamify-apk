@@ -1664,7 +1664,10 @@
         "signOut": "Sign out",
         "signedInAs": "Signed in as",
         "unconfigured": "This deployment has no Supabase configuration. Set STREAMIFY_SUPABASE_URL and STREAMIFY_SUPABASE_ANON_KEY in settings.js to enable Streamify sign-in.",
-        "useOwnServer": "Use your own Navidrome, Jellyfin, or OpenSubsonic server"
+        "useOwnServer": "Use your own Navidrome, Jellyfin, or OpenSubsonic server",
+        "splashAriaLabel": "Streamify sign-in",
+        "enterLocally": "Enter Streamify locally",
+        "configureDeployment": "Configure this deployment"
     },
     "streamifyDownloads": {
         "actionCancel": "Cancel download",

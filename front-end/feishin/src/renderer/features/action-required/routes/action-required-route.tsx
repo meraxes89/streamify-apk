@@ -2,16 +2,21 @@ import { openModal } from '@mantine/modals';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router';
 
+import { isStreamifyAuthEnabled } from '/@/renderer/api/streamify/streamify-supabase';
 import { PageHeader } from '/@/renderer/components/page-header/page-header';
 import { ActionRequiredContainer } from '/@/renderer/features/action-required/components/action-required-container';
 import { ServerCredentialRequired } from '/@/renderer/features/action-required/components/server-credential-required';
 import { ServerRequired } from '/@/renderer/features/action-required/components/server-required';
 import styles from '/@/renderer/features/action-required/routes/action-required-route.module.css';
-import { isServerLock } from '/@/renderer/features/action-required/utils/window-properties';
+import {
+    isServerLock,
+    isStreamifyLockedDeployment,
+} from '/@/renderer/features/action-required/utils/window-properties';
 import LoginRoute from '/@/renderer/features/login/routes/login-route';
 import { ServerList } from '/@/renderer/features/servers/components/server-list';
 import { AnimatedPage } from '/@/renderer/features/shared/components/animated-page';
 import { PageErrorBoundary } from '/@/renderer/features/shared/components/page-error-boundary';
+import { StreamifySplashGate } from '/@/renderer/features/streamify-auth/components/streamify-splash-gate';
 import { AppRoute } from '/@/renderer/router/routes';
 import { useCurrentServerWithCredential } from '/@/renderer/store';
 import { Button } from '/@/shared/components/button/button';
@@ -52,6 +57,14 @@ const ActionRequiredRoute = () => {
     };
 
     if (isLoginRequired) {
+        // #202: a locked STREAMIFY deployment renders the ported wave
+        // splash + Google OAuth 2.0 PKCE gate (never upstream's
+        // Username / Password form). STREAMIFY_AUTH=false or an
+        // unconfigured Supabase project keeps the local-mode red Play
+        // CTA; every other locked server type keeps the stock flow.
+        if (isStreamifyAuthEnabled() || isStreamifyLockedDeployment()) {
+            return <StreamifySplashGate />;
+        }
         return <LoginRoute />;
     }
 
