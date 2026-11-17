@@ -7,7 +7,7 @@
  * fire-path recording shape.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LibrarySnapshot } from '../library';
 import type { LedgerEvent } from '../wrapped/listening-ledger';
@@ -168,44 +168,49 @@ describe('P4-A listening ledger (merge + persistence)', () => {
     });
 
     it('seeds cloud events older than the oldest local row (no double-count)', () => {
-        recordCountedPlay({
-            album: '',
-            artist: 'Recent',
-            durationMs: 1,
-            playedMs: 60000,
-            rung: null,
-            title: 'Recent',
-            trackId: 'trk_new',
-        });
-        const snapshot = {
-            loadedAt: '2026-11-16T00:00:00.000Z',
-            playEvents: [
-                {
-                    artist: 'Old',
-                    created_at: new Date(NOW - 10 * DAY).toISOString(),
-                    duration_played_sec: 100,
-                    hour_of_day: 10,
-                    title: 'Old',
-                    track_sig: 'trk_old',
-                },
-                {
-                    // Created (drained) AFTER the local fire → beyond the
-                    // oldest-local boundary → excluded (already a local row).
-                    artist: 'DrainedLater',
-                    created_at: new Date(NOW + 1 * DAY).toISOString(),
-                    duration_played_sec: 100,
-                    hour_of_day: 11,
-                    title: 'Drained',
-                    track_sig: 'trk_drained',
-                },
-            ],
-            sessionKey: 'test',
-        } as unknown as LibrarySnapshot;
-        seedFromSnapshot(snapshot);
-        const merged = getLedger();
-        expect(merged).toHaveLength(2);
-        expect(merged.map((r) => r.trackId).sort()).toEqual(['trk_new', 'trk_old']);
-        expect(merged[0]?.source).toBe('cloud'); // sorted by ts: cloud first
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(NOW);
+        try {
+            recordCountedPlay({
+                album: '',
+                artist: 'Recent',
+                durationMs: 1,
+                playedMs: 60000,
+                rung: null,
+                title: 'Recent',
+                trackId: 'trk_new',
+            });
+            const snapshot = {
+                loadedAt: '2026-11-16T00:00:00.000Z',
+                playEvents: [
+                    {
+                        artist: 'Old',
+                        created_at: new Date(NOW - 10 * DAY).toISOString(),
+                        duration_played_sec: 100,
+                        hour_of_day: 10,
+                        title: 'Old',
+                        track_sig: 'trk_old',
+                    },
+                    {
+                        // Created (drained) AFTER the local fire → beyond the
+                        // oldest-local boundary → excluded (already a local row).
+                        artist: 'DrainedLater',
+                        created_at: new Date(NOW + 1 * DAY).toISOString(),
+                        duration_played_sec: 100,
+                        hour_of_day: 11,
+                        title: 'Drained',
+                        track_sig: 'trk_drained',
+                    },
+                ],
+                sessionKey: 'test',
+            } as unknown as LibrarySnapshot;
+            seedFromSnapshot(snapshot);
+            const merged = getLedger();
+            expect(merged).toHaveLength(2);
+            expect(merged.map((r) => r.trackId).sort()).toEqual(['trk_new', 'trk_old']);
+            expect(merged[0]?.source).toBe('cloud'); // sorted by ts: cloud first
+        } finally {
+            nowSpy.mockRestore();
+        }
     });
 
     it('an empty local ledger backfills the full cloud history', () => {
