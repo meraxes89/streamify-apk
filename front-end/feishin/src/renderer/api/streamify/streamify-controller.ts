@@ -1108,9 +1108,14 @@ export const StreamifyController: InternalControllerEndpoint = {
             // Recommendation §4: Automated catalog substitution fallback
             // When an official music release hits a gate (LOGIN_REQUIRED, UNPLAYABLE, etc.),
             // perform fallback search for the lyric / alternate audio video:
-            const trackName = candidateRow ? `${candidateRow.title} ${candidateRow.artist}` : query.id;
-            console.warn(`[Streamify] Resolution failed for ${videoId} (${trackName}), attempting substitution fallback...`, initialErr);
-            
+            const trackName = candidateRow
+                ? `${candidateRow.title} ${candidateRow.artist}`
+                : query.id;
+            console.warn(
+                `[Streamify] Resolution failed for ${videoId} (${trackName}), attempting substitution fallback...`,
+                initialErr,
+            );
+
             let fallbackQuery = '';
             if (candidateRow) {
                 fallbackQuery = `${candidateRow.title} ${candidateRow.artist} lyric video`.trim();
@@ -1127,7 +1132,9 @@ export const StreamifyController: InternalControllerEndpoint = {
                             const altId = extractVideoId(alt.videoId);
                             if (altId && altId !== videoId) {
                                 try {
-                                    console.info(`[Streamify] Attempting fallback alternate videoId: ${altId} (${alt.title})`);
+                                    console.info(
+                                        `[Streamify] Attempting fallback alternate videoId: ${altId} (${alt.title})`,
+                                    );
                                     const altRes = await resolveStreamifyTrack(altId);
                                     if (altRes?.url) {
                                         return altRes.url;
@@ -1139,7 +1146,10 @@ export const StreamifyController: InternalControllerEndpoint = {
                         }
                     }
                 } catch (fallbackSearchErr) {
-                    console.warn('[Streamify] Fallback substitution search error:', fallbackSearchErr);
+                    console.warn(
+                        '[Streamify] Fallback substitution search error:',
+                        fallbackSearchErr,
+                    );
                 }
             }
 

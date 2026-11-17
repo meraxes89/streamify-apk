@@ -76,7 +76,12 @@ export function extractVideoId(raw: null | string | undefined): null | string {
     if (match) return match[1] ?? null;
 
     // If it's a URL (e.g. expired googlevideo link), or contains path separators / query params, it's not a video ID:
-    if (/^https?:\/\//i.test(trimmed) || trimmed.includes('/') || trimmed.includes('?') || trimmed.length > 32) {
+    if (
+        /^https?:\/\//i.test(trimmed) ||
+        trimmed.includes('/') ||
+        trimmed.includes('?') ||
+        trimmed.length > 32
+    ) {
         return null;
     }
 

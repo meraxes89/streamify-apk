@@ -451,8 +451,13 @@ export async function fallbackSearch(
     const results: SearchPayload['results'] = [];
     for (const shelf of search.contents ?? []) {
         const cardTitle = textOf((shelf as { title?: unknown }).title);
-        const cardEndpoint = (shelf as { on_tap?: { payload?: { videoId?: string } } }).on_tap?.payload?.videoId;
-        if (cardTitle !== '' && typeof cardEndpoint === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(cardEndpoint)) {
+        const cardEndpoint = (shelf as { on_tap?: { payload?: { videoId?: string } } }).on_tap
+            ?.payload?.videoId;
+        if (
+            cardTitle !== '' &&
+            typeof cardEndpoint === 'string' &&
+            /^[a-zA-Z0-9_-]{11}$/.test(cardEndpoint)
+        ) {
             const cardSubtitle = textOf((shelf as { subtitle?: unknown }).subtitle);
             results.push({
                 durationMs: null,
@@ -466,14 +471,18 @@ export async function fallbackSearch(
             if (item === null || item.title === undefined) continue;
             const artist =
                 item.artists?.map((a) => a.name).join(', ') ||
-                (raw as { authors?: Array<{ name: string }> }).authors?.map((a) => a.name).join(', ') ||
+                (raw as { authors?: Array<{ name: string }> }).authors
+                    ?.map((a) => a.name)
+                    .join(', ') ||
                 null;
             const album = item.album?.name || null;
             const subtitle = [artist, album].filter(Boolean).join(' • ') || null;
             const candidateId =
                 item.id ||
-                (raw as { endpoint?: { payload?: { videoId?: string } } }).endpoint?.payload?.videoId;
-            const isVideoId = typeof candidateId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(candidateId);
+                (raw as { endpoint?: { payload?: { videoId?: string } } }).endpoint?.payload
+                    ?.videoId;
+            const isVideoId =
+                typeof candidateId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(candidateId);
             results.push({
                 durationMs: durationMsOf(item),
                 subtitle,

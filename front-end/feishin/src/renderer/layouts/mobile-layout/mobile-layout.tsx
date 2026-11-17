@@ -11,7 +11,11 @@ import { MobileFullscreenPlayer } from '/@/renderer/features/player/components/m
 import { MobileSidebar } from '/@/renderer/features/sidebar/components/mobile-sidebar';
 import { PlayerBar } from '/@/renderer/layouts/default-layout/player-bar';
 import { WindowBar } from '/@/renderer/layouts/window-bar';
-import { useFullScreenPlayerOverlayState, useWindowBarStyle, useCommandPalette } from '/@/renderer/store';
+import {
+    useCommandPalette,
+    useFullScreenPlayerOverlayState,
+    useWindowBarStyle,
+} from '/@/renderer/store';
 import { ActionIcon } from '/@/shared/components/action-icon/action-icon';
 import { Drawer } from '/@/shared/components/drawer/drawer';
 import { Spinner } from '/@/shared/components/spinner/spinner';
