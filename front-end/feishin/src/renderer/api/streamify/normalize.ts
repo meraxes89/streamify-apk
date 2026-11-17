@@ -75,13 +75,18 @@ export function normalizeAlbum(
         thumbHash: null,
         trackYearRange: null,
         updatedAt: snapshot.loadedAt,
-        userFavorite: false,
+        // W1-B: the item-favorites ledger (user_item_favorites).
+        userFavorite: snapshot.likedAlbumIds.has(row.id),
         userRating: null,
         version: null,
     };
 }
 
-export function normalizeAlbumArtist(row: ArtistRow, serverId: ServerId): AlbumArtist {
+export function normalizeAlbumArtist(
+    row: ArtistRow,
+    snapshot: LibrarySnapshot,
+    serverId: ServerId,
+): AlbumArtist {
     return {
         _itemType: LibraryItem.ALBUM_ARTIST,
         _serverId: serverId,
@@ -105,7 +110,8 @@ export function normalizeAlbumArtist(row: ArtistRow, serverId: ServerId): AlbumA
         songCount: row.songIds.length,
         starredAt: null,
         thumbHash: null,
-        userFavorite: false,
+        // W1-B: the item-favorites ledger (user_item_favorites).
+        userFavorite: snapshot.likedArtistIds.has(row.id),
         userRating: null,
     };
 }

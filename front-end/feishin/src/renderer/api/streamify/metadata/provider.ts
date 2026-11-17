@@ -1,9 +1,35 @@
 /**
- * streamify/metadata/provider.ts — the W1-A seam (typed MetadataProvider
- * + the default singleton).
+ * streamify/metadata/provider.ts — the UNIFIED W1-A/W1-B seam.
  *
- * THE PIPELINE per call (the W1-A contract —
- * front-end/decisions/waves/W1A-edge-kv-metadata-importer.md):
+ * One module, three layers (the #200 rebase unification):
+ *
+ *   1. The W1-B contract (frozen first, this file's public surface):
+ *      the `MetadataProvider` interface resolving `null | Ytm*` DTOs —
+ *      every method resolves null on miss/error (NEVER a throw for a
+ *      not-found, NEVER fabricated data — the fork's honest-empty
+ *      doctrine), plus `installMetadataProvider` /
+ *      `setMetadataProviderForTests` for injection.
+ *   2. The W1-A engine (`createProvider` below, unchanged from #198):
+ *      snapshot lookup → Edge KV (/ytm/meta on the relay) → [on edge
+ *      miss/unavailable/invalid] client-side InnerTube (youtubei.js via
+ *      the resolver's getYt) → validate → Snapshot Upsert, with the
+ *      three-mode failure separation and the 429 circuit guard.
+ *   3. The adapter (`unwrap` + the per-endpoint shapers): re-exposes the
+ *      engine's typed `MetadataResult<T>` results as the W1-B `Ytm*`
+ *      DTOs — not-found / parse-error / rate-limited all map to null
+ *      (the honest miss), `ok` payloads map field-by-field. The
+ *      catalog/lyrics call sites and the two-tier YTM lyrics fallback
+ *      therefore hit Edge KV + InnerTube IMMEDIATELY (the stub stepped
+ *      down — the default `getMetadataProvider()` serves the live
+ *      pipeline).
+ *
+ *   `getPlaylistTyped` keeps the TYPED result contract (#198's importer
+ *   depends on the not-found / rate-limited / parse-error separation to
+ *   report honestly; the W1-B contract has no playlist method — mood
+ *   tiles drive the radio instead).
+ *
+ * THE W1-A PIPELINE per call (front-end/decisions/waves/
+ * W1A-edge-kv-metadata-importer.md):
  *
  *   snapshot lookup → Edge KV (/ytm/meta on the relay) → [on edge
  *   miss/unavailable/invalid] client-side InnerTube (youtubei.js via the
@@ -23,21 +49,25 @@
  *     The diagnostic is logged, a clean fallback runs; only a second
  *     failure surfaces the typed result.
  *
- * StreamifyController stays strictly snapshot-backed (Engineer B wires
- * W1-B against this interface; the controller never parses an innertube
- * node). Nothing in this module touches Supabase — the P1 boundary rule
- * now names the Cloudflare edge cache as THE global metadata cache.
+ * StreamifyController stays strictly snapshot-backed (it never parses an
+ * innertube node). Nothing in this module touches Supabase — the P1
+ * boundary rule names the Cloudflare edge cache as THE global metadata
+ * cache.
  */
 
 import type {
+    AlbumPayload,
+    ArtistPayload,
+    ExploreHomePayload,
     LyricsPayload,
     MetadataPayload,
-    MetadataProvider,
     MetadataResult,
-    MetadataSearchFilter,
     PlaylistPayload,
+    RelatedPayload,
     SearchPayload,
     SearchSuggestPayload,
+    ShelfItemPayload,
+    UpNextPayload,
 } from './types';
 
 import { type EdgeFetch, edgeMetaCall } from './edge';
@@ -68,6 +98,148 @@ import {
 import { snapshotKey, snapshotLookup, snapshotUpsert } from './snapshot';
 
 import { logger } from '/@/renderer/utils/logger';
+
+// ---------------------------------------------------------------------------
+// The W1-B normalized DTOs (the shared seam — W1-A normalizes INTO these)
+// ---------------------------------------------------------------------------
+
+export interface MetadataProvider {
+    getAlbum(browseId: string, gl?: string, hl?: string): Promise<null | YtmAlbumDetail>;
+    getArtist(browseId: string, gl?: string, hl?: string): Promise<null | YtmArtistDetail>;
+    getExplore(gl?: string, hl?: string): Promise<null | YtmExplore>;
+    getHomeFeed(gl?: string, hl?: string): Promise<null | YtmHomeFeed>;
+    getLyrics(videoId: string, hl?: string): Promise<null | YtmLyrics>;
+    getRelated(seedVideoId: string): Promise<null | YtmRelated>;
+    getSearchSuggestions(input: string, gl?: string, hl?: string): Promise<null | string[]>;
+    getUpNext(seedVideoId: string, continuation?: string): Promise<null | YtmUpNext>;
+    search(
+        query: string,
+        filter?: YtmSearchFilter,
+        continuation?: string,
+        gl?: string,
+        hl?: string,
+    ): Promise<null | YtmSearchResults>;
+}
+
+/** The album page — tracks included (getAlbumDetail resolves it). */
+export interface YtmAlbumDetail {
+    artist: string;
+    browseId: string;
+    thumbnailUrl?: null | string;
+    title: string;
+    tracks: YtmSongRef[];
+    year?: null | number;
+}
+
+/** One album-shaped release. kind splits the artist discography honestly. */
+export interface YtmAlbumRef {
+    artist: string;
+    browseId: string;
+    kind: 'album' | 'ep' | 'live' | 'single';
+    thumbnailUrl?: null | string;
+    title: string;
+    trackCount?: null | number;
+    year?: null | number;
+}
+
+/** The structured artist page — the discography split, pre-normalized. */
+export interface YtmArtistDetail {
+    albums: YtmAlbumRef[];
+    /** Albums the artist appears ON but does not own (Featured On). */
+    appearsOn: YtmAlbumRef[];
+    browseId: string;
+    description?: null | string;
+    liveAlbums: YtmAlbumRef[];
+    name: string;
+    /** Fans-also-like (the artist page's related shelf). */
+    relatedArtists: YtmArtistRef[];
+    /** Singles & EPs (kind carries the split inside the buckets too). */
+    singles: YtmAlbumRef[];
+    subscribers?: null | number;
+    thumbnailUrl?: null | string;
+    topSongs: YtmSongRef[];
+}
+
+export interface YtmArtistRef {
+    browseId: string;
+    name: string;
+    thumbnailUrl?: null | string;
+}
+
+export interface YtmExplore {
+    genres: YtmTaxonomy[];
+    moods: YtmTaxonomy[];
+}
+
+export interface YtmHomeFeed {
+    sections: Array<{
+        albums?: YtmAlbumRef[];
+        songs?: YtmSongRef[];
+        title: string;
+    }>;
+}
+
+/**
+ * Lyrics for one video. `lyrics` is LRC-formatted text ([mm:ss.SSS] lines)
+ * when synced is true, plain text otherwise — the synced flag ALWAYS tells
+ * the truth (W1-B's two-tier rule: timestamped lines beat plain text).
+ */
+export interface YtmLyrics {
+    lang?: string;
+    lyrics: string;
+    synced: boolean;
+}
+
+export interface YtmPlaylistRef {
+    channelName?: null | string;
+    name: string;
+    playlistId: string;
+    thumbnailUrl?: null | string;
+}
+
+/** Related tracks for a seed song — alternate versions, covers, remixes. */
+export interface YtmRelated {
+    songs: YtmSongRef[];
+}
+
+export type YtmSearchFilter = 'albums' | 'artists' | 'playlists' | 'songs';
+
+export interface YtmSearchResults {
+    albums: YtmAlbumRef[];
+    artists: YtmArtistRef[];
+    continuation?: null | string;
+    playlists: YtmPlaylistRef[];
+    songs: YtmSongRef[];
+}
+
+/** One playable YTM track (a video in music context). */
+export interface YtmSongRef {
+    album?: null | string;
+    artist: string;
+    durationSec?: null | number;
+    thumbnailUrl?: null | string;
+    title: string;
+    videoId: string;
+}
+
+/** One Explore taxonomy tile (a mood or a genre chip). */
+export interface YtmTaxonomy {
+    name: string;
+    /** The mood/genre param (the id-stable token YTM addresses it by). */
+    params: string;
+    playlistId?: null | string;
+}
+
+// ---------------------------------------------------------------------------
+// The contract (W1-B surface; the #200 unification keeps it stable —
+// every W1-B call site compiles unchanged against this interface)
+// ---------------------------------------------------------------------------
+
+/** One Up Next page (Radio / Automix). continuation pages the radio. */
+export interface YtmUpNext {
+    continuation?: null | string;
+    songs: YtmSongRef[];
+}
 
 // ---------------------------------------------------------------------------
 // The circuit guard (edge tier only)
@@ -112,7 +284,7 @@ interface RunOptions<TPayload> {
     endpoint: string;
     /** The fallback runner (client-side InnerTube lane). */
     fallback: () => Promise<null | TPayload>;
-    filter?: MetadataSearchFilter;
+    filter?: YtmSearchFilter;
     /** The id half of the key identity (absent on query endpoints). */
     id?: string;
     query?: string;
@@ -122,7 +294,194 @@ interface RunOptions<TPayload> {
     validateFallback?: (payload: TPayload) => boolean;
 }
 
-function createProvider(deps: ProviderDeps = {}): MetadataProvider {
+/** The typed engine provider (#198's `createProvider` return type). */
+interface TypedMetadataProvider {
+    getAlbum(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<AlbumPayload>>;
+    getArtist(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<ArtistPayload>>;
+    getExplore(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
+    getHomeFeed(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
+    getLyrics(videoId: string, hl?: string): Promise<MetadataResult<LyricsPayload>>;
+    getPlaylist(
+        browseId: string,
+        continuation?: string,
+        signal?: AbortSignal,
+    ): Promise<MetadataResult<PlaylistPayload>>;
+    getRelated(seedVideoId: string): Promise<MetadataResult<RelatedPayload>>;
+    getSearchSuggestions(
+        input: string,
+        gl?: string,
+        hl?: string,
+    ): Promise<MetadataResult<SearchSuggestPayload>>;
+    getUpNext(seedVideoId: string, continuation?: string): Promise<MetadataResult<UpNextPayload>>;
+    search(
+        query: string,
+        filter?: YtmSearchFilter,
+        continuation?: string,
+        gl?: string,
+        hl?: string,
+    ): Promise<MetadataResult<SearchPayload>>;
+}
+
+/**
+ * Wrap the typed engine in the W1-B contract. Every method unwraps to
+ * the honest miss; the mapping is pure field-shaping (no fabricated
+ * data — absent facts resolve to their honest empties).
+ */
+function adaptProvider(engine: TypedMetadataProvider): MetadataProvider {
+    return {
+        async getAlbum(browseId, gl, hl) {
+            const payload = unwrap(await engine.getAlbum(browseId, gl, hl));
+            return payload === null ? null : albumPayloadToDetail(payload);
+        },
+        async getArtist(browseId, gl, hl) {
+            const payload = unwrap(await engine.getArtist(browseId, gl, hl));
+            return payload === null ? null : artistPayloadToDetail(payload);
+        },
+        async getExplore(gl, hl) {
+            const payload = unwrap(await engine.getExplore(gl, hl));
+            if (payload === null) return null;
+            return { genres: taxonomiesOf(payload, 'genre'), moods: taxonomiesOf(payload, 'mood') };
+        },
+        async getHomeFeed(gl, hl) {
+            const payload = unwrap(await engine.getHomeFeed(gl, hl));
+            if (payload === null) return null;
+            return {
+                sections: payload.shelves.map((shelf) => {
+                    const split = shelvesToSections([shelf]);
+                    return {
+                        albums: split.albums.length > 0 ? split.albums : undefined,
+                        songs: split.songs.length > 0 ? split.songs : undefined,
+                        title: shelf.title,
+                    };
+                }),
+            };
+        },
+        async getLyrics(videoId, hl) {
+            const payload = unwrap(await engine.getLyrics(videoId, hl));
+            if (payload === null) return null;
+            return {
+                lang: payload.hl,
+                lyrics: payload.lines.map((l) => l.text).join('\n'),
+                synced: payload.synced,
+            };
+        },
+        async getRelated(seedVideoId) {
+            const payload = unwrap(await engine.getRelated(seedVideoId));
+            if (payload === null) return null;
+            return { songs: payload.shelves.flatMap((s) => s.items.map(itemToSongRef)) };
+        },
+        async getSearchSuggestions(input, gl, hl) {
+            const payload = unwrap(await engine.getSearchSuggestions(input, gl, hl));
+            return payload === null ? null : payload.suggestions;
+        },
+        async getUpNext(seedVideoId, continuation) {
+            const payload = unwrap(await engine.getUpNext(seedVideoId, continuation));
+            if (payload === null) return null;
+            return {
+                continuation: null,
+                songs: payload.tracks.map((t) => ({
+                    artist: t.artistText ?? '',
+                    durationSec: t.durationMs === null ? null : Math.round(t.durationMs / 1000),
+                    title: t.title,
+                    videoId: t.videoId,
+                })),
+            };
+        },
+        async search(query, filter, continuation, gl, hl) {
+            const payload = unwrap(await engine.search(query, filter, continuation, gl, hl));
+            if (payload === null) return null;
+            const songs: YtmSongRef[] = [];
+            const albums: YtmAlbumRef[] = [];
+            for (const r of payload.results) {
+                const parts = subtitleParts(r.subtitle);
+                if (r.videoId !== null) {
+                    songs.push({
+                        album: parts.extra,
+                        artist: parts.artist ?? '',
+                        durationSec: r.durationMs === null ? null : Math.round(r.durationMs / 1000),
+                        title: r.title,
+                        videoId: r.videoId,
+                    });
+                } else {
+                    albums.push({
+                        artist: parts.artist ?? '',
+                        browseId: '',
+                        kind: 'album',
+                        thumbnailUrl: null,
+                        title: r.title,
+                        trackCount: null,
+                        year: parseYearText(parts.extra),
+                    });
+                }
+            }
+            return {
+                albums,
+                artists: [],
+                continuation: payload.continuation,
+                playlists: [],
+                songs,
+            };
+        },
+    };
+}
+
+// ---------------------------------------------------------------------------
+// The edge call with backoff + circuit
+// ---------------------------------------------------------------------------
+
+function albumPayloadToDetail(payload: AlbumPayload): YtmAlbumDetail {
+    return {
+        artist: payload.artistText ?? '',
+        browseId: payload.browseId,
+        thumbnailUrl: null,
+        title: payload.title,
+        tracks: payload.tracks.map((t) => ({
+            album: payload.title,
+            artist: payload.artistText ?? '',
+            durationSec: t.durationMs === null ? null : Math.round(t.durationMs / 1000),
+            title: t.title,
+            videoId: t.videoId ?? '',
+        })),
+        year: parseYearText(payload.year),
+    };
+}
+
+function artistPayloadToDetail(payload: ArtistPayload): YtmArtistDetail {
+    const albums = payload.albums.map((a) => ({
+        artist: payload.name,
+        browseId: a.browseId,
+        kind: 'album' as const,
+        thumbnailUrl: null,
+        title: a.title,
+        trackCount: parseCountText(a.subtitle),
+        year: parseYearText(a.subtitle),
+    }));
+    const topSongs = payload.topSongs.map((s) => ({
+        artist: s.artistText ?? payload.name,
+        durationSec: null,
+        title: s.title,
+        videoId: s.videoId,
+    }));
+    return {
+        albums,
+        appearsOn: [],
+        browseId: payload.browseId,
+        description: payload.description,
+        liveAlbums: [],
+        name: payload.name,
+        relatedArtists: [],
+        singles: [],
+        subscribers: parseCountText(payload.listenersText),
+        thumbnailUrl: null,
+        topSongs,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// The generic pipeline runner
+// ---------------------------------------------------------------------------
+
+function createProvider(deps: ProviderDeps = {}): TypedMetadataProvider {
     const resolve = (gl?: string, hl?: string) => ({
         gl: (gl ?? 'US').trim() || 'US',
         hl: (hl ?? 'en').trim() || 'en',
@@ -271,10 +630,6 @@ function createProvider(deps: ProviderDeps = {}): MetadataProvider {
     };
 }
 
-// ---------------------------------------------------------------------------
-// The edge call with backoff + circuit
-// ---------------------------------------------------------------------------
-
 async function edgeWithBackoff(
     call: Parameters<typeof edgeMetaCall>[0],
     deps: ProviderDeps,
@@ -315,13 +670,38 @@ async function edgeWithBackoff(
     return { kind: 'edge-rate-limited' };
 }
 
+// ---------------------------------------------------------------------------
+// The adapter — W1-A typed results → W1-B DTOs (the #200 unification)
+// ---------------------------------------------------------------------------
+
+/** Shelf item → song ref (search/up-next/home-feed song shelves). */
+function itemToSongRef(item: ShelfItemPayload): YtmSongRef {
+    const parts = subtitleParts(item.subtitle);
+    return {
+        album: parts.extra,
+        artist: parts.artist ?? '',
+        durationSec: null,
+        thumbnailUrl: item.thumbnail,
+        title: item.title,
+        videoId: item.videoId ?? '',
+    };
+}
+
 function logDiagnostic(deps: ProviderDeps, message: string): void {
     (deps.log ?? defaultDeps.log)?.(message);
 }
 
-// ---------------------------------------------------------------------------
-// The generic pipeline runner
-// ---------------------------------------------------------------------------
+function parseCountText(text: null | string | undefined): null | number {
+    if (text === null || text === undefined) return null;
+    const m = /(\d[\d,.]*)/.exec(text);
+    return m === null ? null : Number(m[1].replace(/,/g, ''));
+}
+
+function parseYearText(text: null | string | undefined): null | number {
+    if (text === null || text === undefined) return null;
+    const m = /(\d{4})/.exec(text);
+    return m === null ? null : Number(m[1]);
+}
 
 async function run<TPayload>(
     options: RunOptions<TPayload>,
@@ -428,6 +808,36 @@ async function run<TPayload>(
     return { kind: 'not-found' };
 }
 
+/** Explore/home shelves → the section split (albums vs songs per item). */
+function shelvesToSections(shelves: Array<{ items: ShelfItemPayload[]; title: string }>): {
+    albums: YtmAlbumRef[];
+    songs: YtmSongRef[];
+} {
+    const albums: YtmAlbumRef[] = [];
+    const songs: YtmSongRef[] = [];
+    for (const shelf of shelves) {
+        for (const item of shelf.items) {
+            // The item's own navigation decides its shape: a browseId with
+            // no videoId is an album/artist tile; a videoId is playable.
+            if (item.videoId !== null) {
+                songs.push(itemToSongRef(item));
+            } else if (item.browseId !== null) {
+                const parts = subtitleParts(item.subtitle);
+                albums.push({
+                    artist: parts.artist ?? '',
+                    browseId: item.browseId,
+                    kind: 'album',
+                    thumbnailUrl: item.thumbnail,
+                    title: item.title,
+                    trackCount: parseCountText(parts.extra),
+                    year: parseYearText(parts.extra),
+                });
+            }
+        }
+    }
+    return { albums, songs };
+}
+
 /** Fresh abort read — a function boundary per call: the signal can fire
  * mid-await, so a narrowed `aborted === false` from an earlier check must
  * never suppress a later one. */
@@ -435,23 +845,123 @@ function signalAborted(signal: AbortSignal | undefined): boolean {
     return signal?.aborted === true;
 }
 
-// ---------------------------------------------------------------------------
-// The default singleton (the seam W1-B wires against)
-// ---------------------------------------------------------------------------
-
-async function sleep(deps: ProviderDeps, ms: number): Promise<void> {
-    await (deps.sleep ?? defaultDeps.sleep)?.(ms);
+/** "Artist • 2023" / "Artist • Album • 3:45" subtitle splits. */
+function subtitleParts(subtitle: null | string): { artist: null | string; extra: null | string } {
+    if (subtitle === null) return { artist: null, extra: null };
+    const segments = subtitle
+        .split(' • ')
+        .map((s) => s.trim())
+        .filter((s) => s !== '');
+    return { artist: segments[0] ?? null, extra: segments[1] ?? null };
 }
 
-/** The default singleton — the seam W1-B's controller wiring consumes. */
-export const metadataProvider: MetadataProvider = createProvider();
+/** Shelf taxonomy extraction: the Explore page's named sections carry the
+ * mood/genre chips; the browseId is the id-stable token per tile. */
+function taxonomiesOf(payload: ExploreHomePayload, kind: 'genre' | 'mood'): YtmTaxonomy[] {
+    const out: YtmTaxonomy[] = [];
+    for (const shelf of payload.shelves) {
+        const title = shelf.title.toLowerCase();
+        const isMoodShelf = kind === 'mood' && /moods?/.test(title);
+        const isGenreShelf = kind === 'genre' && /genres?/.test(title) && !/moods?/.test(title);
+        if (!isMoodShelf && !isGenreShelf) continue;
+        for (const item of shelf.items) {
+            if (item.browseId === null) continue;
+            out.push({
+                name: item.title,
+                params: item.browseId,
+                playlistId: null,
+            });
+        }
+    }
+    return out;
+}
 
-/** Test seam: build an isolated provider with injected deps. */
-export function createMetadataProviderForTests(deps: ProviderDeps): MetadataProvider {
+/**
+ * The honest-miss unwrap: not-found / parse-error / rate-limited all map
+ * to null. The typed forms stay available through `getPlaylistTyped`
+ * (the importer's failure separation) — the W1-B catalog/lyrics callers
+ * only ever need the payload or its honest absence.
+ */
+function unwrap<TPayload>(result: MetadataResult<TPayload>): null | TPayload {
+    return result.kind === 'ok' ? result.payload : null;
+}
+
+// ---------------------------------------------------------------------------
+// The stub + the installers (W1-B seam, unchanged)
+// ---------------------------------------------------------------------------
+
+/**
+ * The pre-W1-A stub: every method resolves an honest miss. Kept for
+ * tests and for snapshot-only deployments — the DEFAULT installer below
+ * stopped serving it the moment #198's engine landed (the #200
+ * unification).
+ */
+export const stubMetadataProvider: MetadataProvider = {
+    getAlbum: async () => null,
+    getArtist: async () => null,
+    getExplore: async () => null,
+    getHomeFeed: async () => null,
+    getLyrics: async () => null,
+    getRelated: async () => null,
+    getSearchSuggestions: async () => null,
+    getUpNext: async () => null,
+    search: async () => null,
+};
+
+/** The W1-A engine singleton behind the W1-B DTO contract. */
+export const metadataProvider: MetadataProvider = adaptProvider(createProvider());
+
+let installed: MetadataProvider = metadataProvider;
+
+/** The provider every W1-B consumer resolves through. */
+export function getMetadataProvider(): MetadataProvider {
+    return installed;
+}
+
+/**
+ * W1-A's registration entry point: install an Edge KV-backed
+ * implementation (idempotent, last write wins). Call sites in
+ * api/streamify/{catalog,lyrics}/ never change when this flips.
+ */
+export function installMetadataProvider(provider: MetadataProvider): void {
+    installed = provider;
+}
+
+/** Test seam: inject a fake provider (vitest isolation). */
+export function setMetadataProviderForTests(provider: MetadataProvider | null): void {
+    installed = provider ?? stubMetadataProvider;
+}
+
+// ---------------------------------------------------------------------------
+// The typed-engine seams (#198's importer lane)
+// ---------------------------------------------------------------------------
+
+/** The typed engine singleton (the importer's provider). */
+export const typedMetadataProvider: TypedMetadataProvider = createProvider();
+
+/** Test seam: build an isolated typed provider with injected deps. */
+export function createMetadataProviderForTests(deps: ProviderDeps): TypedMetadataProvider {
     return createProvider(deps);
+}
+
+/**
+ * The importer's typed playlist read: keeps the not-found / rate-limited
+ * / parse-error separation #198's ingest.ts reports on. The W1-B
+ * contract has no playlist method (mood tiles drive the radio instead).
+ */
+export function getPlaylistTyped(
+    browseId: string,
+    continuation?: string,
+    signal?: AbortSignal,
+): Promise<MetadataResult<PlaylistPayload>> {
+    return typedMetadataProvider.getPlaylist(browseId, continuation, signal);
 }
 
 /** Test seam: reset the circuit + snapshot state between cases. */
 export function resetMetadataProviderForTests(): void {
     circuit.openUntilMs = 0;
+}
+
+async function sleep(deps: ProviderDeps, ms: number): Promise<void> {
+    await (deps.sleep ?? defaultDeps.sleep)?.(ms);
 }

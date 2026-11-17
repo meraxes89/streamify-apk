@@ -31,7 +31,7 @@
 import type { LibrarySnapshot, SongRow } from './library';
 import type { StreamifySession } from './session';
 
-import { likeTrack, restCall, unlikeTrack } from './cloud';
+import { likeItem, likeTrack, restCall, unlikeItem, unlikeTrack } from './cloud';
 
 import { logger } from '/@/renderer/utils/logger';
 
@@ -50,8 +50,10 @@ export interface FavoriteOp {
         title: string;
         videoId: null | string;
     };
+    /** W1-B: album/artist favorites ride the same journal (undefined = track). */
+    itemType?: 'album' | 'artist';
     op: 'like' | 'unlike';
-    /** The cloud track id (feishin song id). */
+    /** The cloud track id (feishin song id) — or the alb_/art_ item id. */
     trackId: string;
 }
 
@@ -166,12 +168,14 @@ export class FavoriteJournal {
         // Coalesce: a like and its undo cancel; a repeat of the same op
         // stays a single entry (idempotent server-side anyway).
         const opposite: FavoriteOp['op'] = op.op === 'like' ? 'unlike' : 'like';
+        const sameItem = (entry: FavoriteOp): boolean =>
+            entry.trackId === op.trackId && entry.itemType === op.itemType;
         const flippedIndex = this.ops.findIndex(
-            (entry) => entry.trackId === op.trackId && entry.op === opposite,
+            (entry) => sameItem(entry) && entry.op === opposite,
         );
         if (flippedIndex >= 0) {
             this.ops.splice(flippedIndex, 1);
-        } else if (!this.ops.some((entry) => entry.trackId === op.trackId && entry.op === op.op)) {
+        } else if (!this.ops.some((entry) => sameItem(entry) && entry.op === op.op)) {
             this.ops.push({ ...op, attempts: 0 });
             if (this.ops.length > JOURNAL_CAP) {
                 this.ops = this.ops.slice(this.ops.length - JOURNAL_CAP);
@@ -182,6 +186,24 @@ export class FavoriteJournal {
 
     private persist(): void {
         this.store.save(this.ops);
+    }
+}
+
+/**
+ * Flip the liked state of an album/artist on the live snapshot: the
+ * likedAlbumIds / likedArtistIds sets are the single source the list
+ * filters and normalizeAlbum/normalizeAlbumArtist read.
+ */
+export function applyItemFavoriteToSnapshot(
+    snapshot: LibrarySnapshot,
+    type: 'album' | 'artist',
+    itemIds: string[],
+    favorite: boolean,
+): void {
+    const set = type === 'album' ? snapshot.likedAlbumIds : snapshot.likedArtistIds;
+    for (const id of itemIds) {
+        if (favorite) set.add(id);
+        else set.delete(id);
     }
 }
 
@@ -253,7 +275,68 @@ export async function mutateFavorite(
     return { journaled: !synced, synced };
 }
 
+// ---------------------------------------------------------------------------
+// The controller-facing flow
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply an album/artist favorite mutation: live snapshot update ALWAYS,
+ * cloud write (user_item_favorites) best-effort, journal on network
+ * failure — the same contract as mutateFavorite for tracks. A dead
+ * session rethrows (unauthorized) so the stock error path keeps its
+ * upstream behavior.
+ */
+export async function mutateItemFavorite(
+    session: null | StreamifySession,
+    snapshot: LibrarySnapshot,
+    type: 'album' | 'artist',
+    itemIds: string[],
+    favorite: boolean,
+    journal: FavoriteJournal,
+): Promise<FavoriteOutcome> {
+    applyItemFavoriteToSnapshot(snapshot, type, itemIds, favorite);
+
+    if (session === null || session.accessToken === '' || itemIds.length === 0) {
+        for (const itemId of itemIds) {
+            journal.push({ itemType: type, op: favorite ? 'like' : 'unlike', trackId: itemId });
+        }
+        return { journaled: true, synced: false };
+    }
+
+    // Opportunistic drain first (yesterday's offline opinion goes out
+    // before today's rides in behind it).
+    try {
+        await journal.drain(session);
+    } catch (err) {
+        if (isAuthRejection(err)) throw err;
+        /* offline — today's op joins the journal below */
+    }
+
+    let synced = true;
+    for (const itemId of itemIds) {
+        try {
+            const ok = favorite
+                ? await likeItem(session, type, itemId)
+                : await unlikeItem(session, type, itemId);
+            if (!ok) {
+                synced = false;
+                journal.push({ itemType: type, op: favorite ? 'like' : 'unlike', trackId: itemId });
+            }
+        } catch (err) {
+            if (isAuthRejection(err)) throw err;
+            synced = false;
+            journal.push({ itemType: type, op: favorite ? 'like' : 'unlike', trackId: itemId });
+        }
+    }
+    return { journaled: !synced, synced };
+}
+
 async function applyOp(session: StreamifySession, op: FavoriteOp): Promise<boolean> {
+    if (op.itemType === 'album' || op.itemType === 'artist') {
+        return op.op === 'like'
+            ? likeItem(session, op.itemType, op.trackId)
+            : unlikeItem(session, op.itemType, op.trackId);
+    }
     if (op.op === 'unlike') return unlikeTrack(session, op.trackId);
     if (op.facts === undefined) {
         // Unknown row (liked while the snapshot could not resolve it): the
@@ -269,13 +352,13 @@ async function applyOp(session: StreamifySession, op: FavoriteOp): Promise<boole
     return likeTrack(session, op.trackId, op.facts);
 }
 
-// ---------------------------------------------------------------------------
-// The controller-facing flow
-// ---------------------------------------------------------------------------
-
 function isAuthRejection(err: unknown): boolean {
     return err instanceof Error && err.message.includes('unauthorized');
 }
+
+// ---------------------------------------------------------------------------
+// W1-B: the album/artist item-favorite flow (same shape as the track flow)
+// ---------------------------------------------------------------------------
 
 function localStorageJournalStore(): FavoriteJournalStore {
     return {

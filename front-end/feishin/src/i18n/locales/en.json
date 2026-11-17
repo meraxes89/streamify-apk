@@ -1846,6 +1846,10 @@
                 "checking": "Checking",
                 "unreachable": "Unreachable"
             }
+        },
+        "badges": {
+            "title": "Playback quality",
+            "offline": "Offline"
         }
     },
     "streamifyImport": {

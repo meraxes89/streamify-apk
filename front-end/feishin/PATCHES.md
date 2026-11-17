@@ -188,12 +188,16 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
   claimed errors return early, unclaimed run the stock retry/skip logic.
 - **Conflict surface:** low.
 
-### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193)
+### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193; W1-B)
 
 - **What:** one import + one `<StreamifyJamButton />` element at the head of
   the right-controls button row (the Jam drawer / EQ panel trigger;
-  renders `null` on stock servers).
-- **Conflict surface:** low — additive element in a stable row.
+  renders `null` on stock servers). W1-B adds the second — and only other —
+  seam: one import + one `<StreamifyQualityBadges />` element (the honest
+  codec/bitrate/OPFS/HLS/5.1 badges; reads the active StreamUrlResolution,
+  zero extra RPCs; renders `null` on stock servers — see
+  `front-end/decisions/waves/W1B-catalog-wiring-quality-badges.md`).
+- **Conflict surface:** low — additive elements in a stable row.
 
 ### A15. `src/renderer/features/player/utils/get-visualizer-audio-nodes.ts` (P4-B, #193)
 
@@ -337,7 +341,33 @@ can ignore them and audits can hold us to the directory-isolation rule.
   favorites (cloud likes) flow with the offline journal. W1-A adds
   `upsertCatalogTracks` to cloud.ts (the importer's catalog lane: the
   shared `tracks` rows the CRDT sync pass's `playlist_tracks` inserts are
-  FK-bound to — merge-duplicates, NO like edge).
+  FK-bound to — merge-duplicates, NO like edge). W1-B (see
+  `decisions/waves/W1B-catalog-wiring-quality-badges.md`) extends the
+  ledger: `user_item_favorites` lanes in cloud.ts, `likedAlbumIds` /
+  `likedArtistIds` on the snapshot, item-favorite mutations + journal
+  `itemType` in favorites.ts, favorite-backed album/artist filters in
+  query.ts, `userFavorite` flags in normalize.ts, and the
+  `StreamUrlRung`/`StreamUrlResolution` `audioChannels` plumb in the
+  canonical resolver's `get-stream-url.ts` (wire-sourced, null =
+  unknown).
+- **`metadata/` + `lyrics/` + `catalog/` (W1-B):** the agreed
+  MetadataProvider contract + pre-W1-A stub + installer
+  (`metadata/provider.ts` — Engineer A owns the live Edge KV/InnerTube
+  implementation; the contract, stub and `installMetadataProvider` seam
+  are the merge-in-either-order boundary), the locale hint helper, the
+  web-side LRCLIB client (`getLyricsBySongId` naming parity with the
+  Electron lane), the two-tier lyrics pipeline (LRCLIB → YTM,
+  synced-over-plain), the Automix engine (Up Next continuations + the
+  playTally exclusion set), the explore/new-releases/mood-radio module,
+  the artist discography & related graph, the debounced search suggester
+  + scoped search merge, the YTM→feishin DTO mappers (the `ytm:` /
+  `ytm-album:` / `ytm-artist:` id namespaces), and the fork-side
+  getFavoriteAlbums/getFavoriteArtists reads. Post-merge unification
+  (#200): the stub stepped down — `metadataProvider` (W1-A's live Edge
+  KV → InnerTube → Snapshot pipeline) is installed as the default
+  `getMetadataProvider()` serves; the W1-B DTO seam (`Ytm*` shapes +
+  `installMetadataProvider` / `setMetadataProviderForTests`) rides the
+  same module (A26 / A28 below).
 - **`playback/` — the playback layer.** `stream-source.ts` (the consumption
   layer: cached-ladder walk, stale re-resolve, seek strategy, the P4-A
   zero-egress OPFS bypass), `scrobbler.ts` + `scrobble-bridge.ts` +
@@ -416,6 +446,10 @@ can ignore them and audits can hold us to the directory-isolation rule.
 - `streamify-jam/` / `streamify-eq/` / `streamify-settings/` (P4-B, #193) —
   the Jam live-queue drawer, the EQ DSP panel, the Streamify settings pages
   + brand theme.
+- `streamify-badges/` (W1-B) — the player-bar honest quality badges:
+  the pure badge model (`quality-badge-model.ts` — the strict
+  audioChannels > 2 Spatial rule, zero-RPC facts) and the component
+  (`components/quality-badges.tsx` — resolver-cache reads only).
 
 ### `src/renderer/store/streamify-*.store.ts`
 

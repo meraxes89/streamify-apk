@@ -63,6 +63,20 @@ CREATE TABLE IF NOT EXISTS public.user_likes (
     PRIMARY KEY (user_id, track_id)
 );
 
+-- 4b. User Item Favorites (W1-B: album & artist favorites — the #191
+-- likes ledger extended beyond tracks; feishin entity ids, no catalog FK
+-- because albums/artists are client-side derivations)
+CREATE TABLE IF NOT EXISTS public.user_item_favorites (
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    item_type TEXT NOT NULL CHECK (item_type IN ('album', 'artist')),
+    item_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, item_type, item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_item_favorites_user
+ON public.user_item_favorites (user_id, created_at DESC);
+
 -- 5. Playlists (Collaborative & Social)
 CREATE TABLE IF NOT EXISTS public.playlists (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -343,6 +357,12 @@ DROP POLICY IF EXISTS "Users manage own likes" ON public.user_likes;
 CREATE POLICY "Users manage own likes" ON public.user_likes FOR ALL USING (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Anyone can view likes" ON public.user_likes;
 CREATE POLICY "Anyone can view likes" ON public.user_likes FOR SELECT USING (TRUE);
+
+-- Item favorites (W1-B): same posture as likes
+DROP POLICY IF EXISTS "Users manage own item favorites" ON public.user_item_favorites;
+CREATE POLICY "Users manage own item favorites" ON public.user_item_favorites FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Anyone can view item favorites" ON public.user_item_favorites;
+CREATE POLICY "Anyone can view item favorites" ON public.user_item_favorites FOR SELECT USING (TRUE);
 
 -- Playlists: Public/collaborative access
 DROP POLICY IF EXISTS "View public playlists" ON public.playlists;

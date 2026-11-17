@@ -27,6 +27,7 @@
 import {
     CloudPlaylistRow,
     fetchAllPlaylistTracks,
+    fetchItemFavorites,
     fetchLikes,
     fetchPlayEvents,
     fetchPlaylists,
@@ -78,6 +79,10 @@ export interface LibrarySnapshot {
     albums: AlbumRow[];
     artistById: Map<string, ArtistRow>;
     artists: ArtistRow[];
+    /** W1-B: favorited album ids (the user_item_favorites ledger). */
+    likedAlbumIds: Set<string>;
+    /** W1-B: favorited artist ids (the user_item_favorites ledger). */
+    likedArtistIds: Set<string>;
     /** Liked song ids, most recent first. */
     likedIds: string[];
     /** ISO timestamp of the load (the replica arrival time). */
@@ -129,7 +134,7 @@ export async function loadLibrarySnapshot(
     const playlistRows = await fetchPlaylists(session, signal);
 
     // Step 2: the three independent lanes in parallel.
-    const [likes, membershipRows, playEvents] = await Promise.all([
+    const [likes, membershipRows, playEvents, itemFavorites] = await Promise.all([
         fetchLikes(session, signal),
         fetchAllPlaylistTracks(
             session,
@@ -137,6 +142,7 @@ export async function loadLibrarySnapshot(
             signal,
         ),
         fetchPlayEvents(session, 1000, signal),
+        fetchItemFavorites(session, signal),
     ]);
 
     // Step 3: resolve membership track rows (tracks by id - the existing lane).
@@ -260,6 +266,12 @@ export async function loadLibrarySnapshot(
         albums,
         artistById: new Map(artists.map((artist) => [artist.id, artist])),
         artists,
+        likedAlbumIds: new Set(
+            itemFavorites.filter((row) => row.item_type === 'album').map((row) => row.item_id),
+        ),
+        likedArtistIds: new Set(
+            itemFavorites.filter((row) => row.item_type === 'artist').map((row) => row.item_id),
+        ),
         likedIds: likes.map((track) => track.id),
         loadedAt,
         playEvents,

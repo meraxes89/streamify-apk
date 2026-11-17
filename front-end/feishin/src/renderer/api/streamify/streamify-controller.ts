@@ -1,3 +1,25 @@
+import { automixRadio, automixSeed, recentExclusions } from './catalog/automix';
+import { artistAlbumGrid, artistDiscography } from './catalog/discography';
+import {
+    exploreGenreTiles,
+    hasYtmTileIds,
+    moodRadioSongs,
+    NEW_RELEASES_TILE_ID,
+    newReleaseAlbums,
+} from './catalog/explore';
+import { scopedSearch } from './catalog/search-suggest';
+import {
+    browseIdOfYtmAlbum,
+    browseIdOfYtmArtist,
+    songBySig,
+    songByVideoId,
+    videoIdOfYtmSong,
+    ytmAlbumDetailToAlbum,
+    ytmArtistDetailToAlbumArtist,
+    ytmArtistIdOf,
+    ytmToAlbum,
+    ytmToSong,
+} from './catalog/ytm-mappers';
 import { recordPlayEventStrict } from './cloud';
 import { coverCacheKey, coverUrlFor } from './covers';
 import { albumRadio, artistRadio, randomSongs, similarSongs, topSongs } from './derive';
@@ -6,13 +28,16 @@ import {
     getStreamifyLibrary,
     invalidateStreamifyLibraryMemo,
 } from './engine';
-import { getStreamifyFavoriteJournal, mutateFavorite } from './favorites';
+import { getStreamifyFavoriteJournal, mutateFavorite, mutateItemFavorite } from './favorites';
 import {
     docToPlaylistRow,
     orderedElements,
     type PlaylistCrdtDoc,
     type PlaylistRowView,
 } from './jam/playlist-crdt';
+import { fetchLyricsText, fetchStructuredLyrics } from './lyrics/lyrics-pipeline';
+import { currentHl } from './metadata/locale';
+import { getMetadataProvider } from './metadata/provider';
 import {
     normalizeAlbum,
     normalizeAlbumArtist,
@@ -47,7 +72,6 @@ import {
     filterPlaylists,
     filterSongs,
     paginate,
-    searchSnapshot,
     sortAlbums,
     sortArtists,
     sortPlaylists,
@@ -62,6 +86,7 @@ import { recordCountedPlay } from './wrapped/listening-ledger';
 import { useStreamifySettingsStoreBase } from '/@/renderer/store/streamify-settings.store';
 import { logger } from '/@/renderer/utils/logger';
 import { InternalControllerEndpoint, LibraryItem } from '/@/shared/types/domain-types';
+import { ServerFeature } from '/@/shared/types/features-types';
 
 /** Version reported by getServerInfo; bumped as endpoints become real. */
 const STREAMIFY_CONTROLLER_VERSION = '0.2.0';
@@ -87,6 +112,16 @@ const STREAMIFY_CONTROLLER_VERSION = '0.2.0';
 /** The default page size when a caller omits the limit (feishin always sends one for lists). */
 const DEFAULT_LIMIT = 100;
 
+/** The Automix count default (the radio's fill when a caller omits it). */
+const DEFAULT_RADIO_COUNT = 20;
+
+/** Is a favorite mutation an album/artist (the W1-B item ledger)? */
+function itemTypeOfFavorite(type: LibraryItem): 'album' | 'artist' | null {
+    if (type === LibraryItem.ALBUM) return 'album';
+    if (type === LibraryItem.ALBUM_ARTIST || type === LibraryItem.ARTIST) return 'artist';
+    return null;
+}
+
 /** Live (non-deleted) CRDT docs as the P1B query-engine row shape. */
 function livePlaylistRows(docs: Map<string, PlaylistCrdtDoc>): PlaylistRowView[] {
     const rows: PlaylistRowView[] = [];
@@ -97,6 +132,11 @@ function livePlaylistRows(docs: Map<string, PlaylistCrdtDoc>): PlaylistRowView[]
         rows.push(docToPlaylistRow(doc));
     }
     return rows;
+}
+
+/** The (title, artist) signature of a snapshot row (seed exclusion key). */
+function songSigOfRow(row: { artist: string; title: string }): string {
+    return `${row.title.trim().toLowerCase()}|${row.artist.trim().toLowerCase()}`;
 }
 
 function toNumberOr(value: null | number | undefined, fallback: number): number {
@@ -189,10 +229,27 @@ export const StreamifyController: InternalControllerEndpoint = {
     },
     createFavorite: async (args) => {
         // P3-B: a favorite IS a cloud like (user_likes ⋈ tracks). Song-like
-        // types share the backend (feishin's own mutation grouping); album /
-        // album-artist / artist favorites have no cloud model — the honest
-        // no-op (the lists stay honestly empty per decisions/p1).
+        // types share the backend (feishin's own mutation grouping). W1-B:
+        // album / artist favorites persist too — the user_item_favorites
+        // ledger (see catalog/favorite-items.ts + the W1-B ADR).
         const { apiClientProps, query } = args;
+        const itemType = itemTypeOfFavorite(query.type);
+        if (itemType !== null) {
+            const snapshot = await getStreamifyLibrary(
+                apiClientProps.server,
+                apiClientProps.signal,
+            );
+            const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+            await mutateItemFavorite(
+                session,
+                snapshot,
+                itemType,
+                query.id,
+                true,
+                getStreamifyFavoriteJournal(),
+            );
+            return null;
+        }
         if (!isSongLikeType(query.type)) {
             logger.debug(
                 `Streamify createFavorite: no cloud backing for ${query.type} — honest no-op`,
@@ -226,8 +283,26 @@ export const StreamifyController: InternalControllerEndpoint = {
     },
     deleteFavorite: async (args) => {
         // The unlike: remove the user_likes edge (the shared catalog row
-        // stays). Offline failures journal — see favorites.ts.
+        // stays), or the user_item_favorites row for albums/artists (W1-B).
+        // Offline failures journal — see favorites.ts.
         const { apiClientProps, query } = args;
+        const itemType = itemTypeOfFavorite(query.type);
+        if (itemType !== null) {
+            const snapshot = await getStreamifyLibrary(
+                apiClientProps.server,
+                apiClientProps.signal,
+            );
+            const session = await resolveStreamifySessionAsync(apiClientProps.server?.credential);
+            await mutateItemFavorite(
+                session,
+                snapshot,
+                itemType,
+                query.id,
+                false,
+                getStreamifyFavoriteJournal(),
+            );
+            return null;
+        }
         if (!isSongLikeType(query.type)) {
             logger.debug(
                 `Streamify deleteFavorite: no cloud backing for ${query.type} — honest no-op`,
@@ -261,15 +336,47 @@ export const StreamifyController: InternalControllerEndpoint = {
     },
     getAlbumArtistDetail: async (args) => {
         const { apiClientProps, query } = args;
+        // W1-B: ytm-artist: ids (YTM search / explore navigation) resolve
+        // through the provider's structured discography; snapshot ids keep
+        // the P1 path.
+        const browseId = browseIdOfYtmArtist(query.id);
+        if (browseId !== null) {
+            const disco = await artistDiscography(query.id, { hl: currentHl() });
+            if (disco !== null) {
+                return ytmArtistDetailToAlbumArtist(disco.detail, apiClientProps.serverId);
+            }
+            throw new Error(`Album artist not found: ${query.id}`);
+        }
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         const row = snapshot.artistById.get(query.id);
         if (row === undefined) {
             throw new Error(`Album artist not found: ${query.id}`);
         }
-        return normalizeAlbumArtist(row, apiClientProps.serverId);
+        return normalizeAlbumArtist(row, snapshot, apiClientProps.serverId);
     },
     getAlbumArtistInfo: async (args) => {
         const { apiClientProps, query } = args;
+        // W1-B: ytm-artist: ids carry a real biography + the related
+        // shelf from the provider's structured artist page.
+        const ytmBrowseId = browseIdOfYtmArtist(query.id);
+        if (ytmBrowseId !== null) {
+            const disco = await artistDiscography(query.id, { hl: currentHl() });
+            if (disco !== null) {
+                return {
+                    biography: disco.detail.description ?? null,
+                    imageUrl: disco.detail.thumbnailUrl ?? null,
+                    similarArtists: disco.relatedArtists.map((a) => ({
+                        id: ytmArtistIdOf(a.browseId),
+                        imageId: null,
+                        imageUrl: a.thumbnailUrl ?? null,
+                        name: a.name,
+                        userFavorite: false,
+                        userRating: null,
+                    })),
+                };
+            }
+            return null;
+        }
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         const row = snapshot.artistById.get(query.id);
         if (row === undefined) {
@@ -286,14 +393,20 @@ export const StreamifyController: InternalControllerEndpoint = {
     getAlbumArtistList: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const filtered = filterArtists(snapshot.artists, {
-            favorite: query.favorite,
-            searchTerm: query.searchTerm,
-        });
+        const filtered = filterArtists(
+            snapshot.artists,
+            {
+                favorite: query.favorite,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        );
         const sorted = sortArtists(filtered, query.sortBy, query.sortOrder, snapshot);
         const page = paginate(sorted, query.startIndex, query.limit);
         return {
-            items: page.items.map((row) => normalizeAlbumArtist(row, apiClientProps.serverId)),
+            items: page.items.map((row) =>
+                normalizeAlbumArtist(row, snapshot, apiClientProps.serverId),
+            ),
             startIndex: page.startIndex,
             totalRecordCount: page.totalRecordCount,
         };
@@ -301,13 +414,36 @@ export const StreamifyController: InternalControllerEndpoint = {
     getAlbumArtistListCount: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        return filterArtists(snapshot.artists, {
-            favorite: query.favorite,
-            searchTerm: query.searchTerm,
-        }).length;
+        return filterArtists(
+            snapshot.artists,
+            {
+                favorite: query.favorite,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        ).length;
     },
     getAlbumDetail: async (args) => {
         const { apiClientProps, query } = args;
+        // W1-B: ytm-album: ids (YTM search / new releases / discography
+        // navigation) resolve through the provider; snapshot ids keep the
+        // P1 path.
+        const albumBrowseId = browseIdOfYtmAlbum(query.id);
+        if (albumBrowseId !== null) {
+            const snapshot = await getStreamifyLibrary(
+                apiClientProps.server,
+                apiClientProps.signal,
+            );
+            const detail = await getMetadataProvider().getAlbum(
+                albumBrowseId,
+                undefined,
+                currentHl(),
+            );
+            if (detail === null) {
+                throw new Error(`Album not found: ${query.id}`);
+            }
+            return ytmAlbumDetailToAlbum(detail, snapshot, apiClientProps.serverId);
+        }
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         const row = snapshot.albumById.get(query.id);
         if (row === undefined) {
@@ -335,15 +471,56 @@ export const StreamifyController: InternalControllerEndpoint = {
     getAlbumList: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const filtered = filterAlbums(snapshot.albums, {
-            artistIds: query.artistIds,
-            compilation: query.compilation,
-            favorite: query.favorite,
-            genreIds: query.genreIds,
-            maxYear: query.maxYear,
-            minYear: query.minYear,
-            searchTerm: query.searchTerm,
-        });
+
+        // W1-B branch 1: a ytm-artist: id filters the provider's
+        // discography grid (albums + singles + live), paginated honestly.
+        const artistIds = query.artistIds ?? [];
+        const ytmArtistId = artistIds.find((id) => browseIdOfYtmArtist(id) !== null);
+        if (ytmArtistId !== undefined) {
+            const grid = await artistAlbumGrid(ytmArtistId, { hl: currentHl() });
+            const page = paginate(grid, query.startIndex, query.limit);
+            return {
+                items: page.items.map((ref) => ytmToAlbum(ref, apiClientProps.serverId)),
+                startIndex: page.startIndex,
+                totalRecordCount: page.totalRecordCount,
+            };
+        }
+
+        // W1-B branch 2: the New Releases tile (getHomeFeed) and mood
+        // tiles — genre filtering against the provider's regional feeds.
+        if (hasYtmTileIds(query.genreIds)) {
+            const genreIds = query.genreIds ?? [];
+            if (genreIds.includes(NEW_RELEASES_TILE_ID)) {
+                const releases = await newReleaseAlbums({ hl: currentHl() });
+                const page = paginate(releases, query.startIndex, query.limit);
+                return {
+                    items: page.items.map((ref) => ytmToAlbum(ref, apiClientProps.serverId)),
+                    startIndex: page.startIndex,
+                    totalRecordCount: page.totalRecordCount,
+                };
+            }
+            // Mood/genre tiles carry no album listing (no getPlaylist in
+            // the W1-A contract) — the honest empty, documented in the ADR.
+            return {
+                items: [],
+                startIndex: query.startIndex ?? 0,
+                totalRecordCount: 0,
+            };
+        }
+
+        const filtered = filterAlbums(
+            snapshot.albums,
+            {
+                artistIds: query.artistIds,
+                compilation: query.compilation,
+                favorite: query.favorite,
+                genreIds: query.genreIds,
+                maxYear: query.maxYear,
+                minYear: query.minYear,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        );
         const sorted = sortAlbums(filtered, query.sortBy, query.sortOrder, snapshot);
         const page = paginate(sorted, query.startIndex, query.limit);
         return {
@@ -355,15 +532,19 @@ export const StreamifyController: InternalControllerEndpoint = {
     getAlbumListCount: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        return filterAlbums(snapshot.albums, {
-            artistIds: query.artistIds,
-            compilation: query.compilation,
-            favorite: query.favorite,
-            genreIds: query.genreIds,
-            maxYear: query.maxYear,
-            minYear: query.minYear,
-            searchTerm: query.searchTerm,
-        }).length;
+        return filterAlbums(
+            snapshot.albums,
+            {
+                artistIds: query.artistIds,
+                compilation: query.compilation,
+                favorite: query.favorite,
+                genreIds: query.genreIds,
+                maxYear: query.maxYear,
+                minYear: query.minYear,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        ).length;
     },
     getAlbumRadio: async (args) => {
         const { apiClientProps, query } = args;
@@ -378,14 +559,20 @@ export const StreamifyController: InternalControllerEndpoint = {
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         // One artist string per track: the artist list IS the album artist
         // derivation (no separate track-artist roles exist in the data).
-        const filtered = filterArtists(snapshot.artists, {
-            favorite: query.favorite,
-            searchTerm: query.searchTerm,
-        });
+        const filtered = filterArtists(
+            snapshot.artists,
+            {
+                favorite: query.favorite,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        );
         const sorted = sortArtists(filtered, query.sortBy, query.sortOrder, snapshot);
         const page = paginate(sorted, query.startIndex, query.limit);
         return {
-            items: page.items.map((row) => normalizeAlbumArtist(row, apiClientProps.serverId)),
+            items: page.items.map((row) =>
+                normalizeAlbumArtist(row, snapshot, apiClientProps.serverId),
+            ),
             startIndex: page.startIndex,
             totalRecordCount: page.totalRecordCount,
         };
@@ -393,10 +580,14 @@ export const StreamifyController: InternalControllerEndpoint = {
     getArtistListCount: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        return filterArtists(snapshot.artists, {
-            favorite: query.favorite,
-            searchTerm: query.searchTerm,
-        }).length;
+        return filterArtists(
+            snapshot.artists,
+            {
+                favorite: query.favorite,
+                searchTerm: query.searchTerm,
+            },
+            snapshot,
+        ).length;
     },
     getArtistRadio: async (args) => {
         const { apiClientProps, query } = args;
@@ -451,11 +642,20 @@ export const StreamifyController: InternalControllerEndpoint = {
     },
     getGenreList: async (args) => {
         const { apiClientProps, query } = args;
-        await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        // The cloud schema carries no genre column yet: the honest genre
-        // list is empty. When genre data lands, this fills in with zero
-        // controller changes (normalizeGenre is ready).
-        return { items: [], startIndex: query.startIndex, totalRecordCount: 0 };
+        // W1-B: the regional Explore taxonomy (mood/genre tiles, gl/hl
+        // aware) + the New Releases pseudo-tile. A provider miss (the
+        // pre-W1-A stub included) keeps the honest empty the genre page
+        // has rendered since P1.
+        const tiles = await exploreGenreTiles(apiClientProps.serverId, {
+            hl: currentHl(),
+            signal: apiClientProps.signal,
+        });
+        const page = paginate(tiles, query.startIndex, query.limit);
+        return {
+            items: page.items,
+            startIndex: page.startIndex,
+            totalRecordCount: page.totalRecordCount,
+        };
     },
     getImageRequest: ({ query }) => {
         const url = coverUrlFor(currentStreamifyLibrary(), query.itemType, query.id);
@@ -474,8 +674,20 @@ export const StreamifyController: InternalControllerEndpoint = {
         // No internet radio data exists in the cloud library: honest empty.
         return [];
     },
-    getLyrics: async () => {
-        throw new StreamifyNotImplementedError('getLyrics');
+    getLyrics: async (args) => {
+        // W1-B tier-1/tier-2: LRCLIB primary → YTM InnerTube fallback,
+        // synced lines over plain text (the single-structured shape the
+        // LYRICS_SINGLE_STRUCTURED gate would consume; the structured
+        // endpoint below is the one Streamify advertises).
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.songById.get(query.songId);
+        if (row === undefined) {
+            return '';
+        }
+        return (
+            (await fetchLyricsText(row, { hl: currentHl(), signal: apiClientProps.signal })) ?? ''
+        );
     },
     getMusicFolderList: async () => {
         // The cloud library is a single flat collection: no folders exist.
@@ -639,6 +851,63 @@ export const StreamifyController: InternalControllerEndpoint = {
     getRandomSongList: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+
+        // W1-B: a genre/mood tile seeds the Automix radio (scoped search →
+        // Up Next chain), vibe-matched and filtered against the recently
+        // played ledger. Year filters stay the honest empty (no year data).
+        if (query.genre !== undefined && query.genre !== '') {
+            if (query.minYear !== undefined || query.maxYear !== undefined) {
+                return { items: [], startIndex: 0, totalRecordCount: 0 };
+            }
+            const songs = await moodRadioSongs(snapshot, query.genre, {
+                count: toNumberOr(query.limit, DEFAULT_RADIO_COUNT),
+                hl: currentHl(),
+                serverId: apiClientProps.serverId,
+                signal: apiClientProps.signal,
+            });
+            return {
+                items: songs,
+                startIndex: 0,
+                totalRecordCount: songs.length,
+            };
+        }
+        if (query.minYear !== undefined || query.maxYear !== undefined) {
+            return { items: [], startIndex: 0, totalRecordCount: 0 };
+        }
+
+        // W1-B: unfiltered random runs the Automix engine off the user's
+        // strongest taste signal (the playTally seed); a provider miss
+        // keeps the P1 seeded library shuffle — same shape, honest fill.
+        if (query.played === 'all' || query.played === undefined) {
+            const seed = automixSeed(snapshot);
+            if (seed !== null) {
+                const exclusions = recentExclusions(snapshot);
+                const refs = await automixRadio(
+                    getMetadataProvider(),
+                    seed,
+                    toNumberOr(query.limit, DEFAULT_RADIO_COUNT),
+                    {
+                        extra: exclusions,
+                        signal: apiClientProps.signal,
+                    },
+                );
+                if (refs.length > 0) {
+                    const byVideoId = songByVideoId(snapshot);
+                    const bySig = songBySig(snapshot);
+                    return {
+                        items: refs.map((ref) =>
+                            ytmToSong(ref, snapshot, apiClientProps.serverId, {
+                                bySig,
+                                byVideoId,
+                            }),
+                        ),
+                        startIndex: 0,
+                        totalRecordCount: refs.length,
+                    };
+                }
+            }
+        }
+
         const rows = randomSongs(snapshot, {
             genre: query.genre,
             limit: query.limit,
@@ -677,10 +946,15 @@ export const StreamifyController: InternalControllerEndpoint = {
         // 401 -> refresh -> retry -> clean-sign-out lane) on every boot.
         await streamifyRequest('/auth/v1/user', { method: 'GET' });
 
-        // The honest capability surface for P1: browse-only, no optional
-        // server features (the UI gates tag/role/scan affordances on these).
+        // The capability surface: W1-B advertises structured lyrics — the
+        // two-tier LRCLIB → YTM pipeline behind getStructuredLyrics (the
+        // stock lyrics feature gates on this flag to call the endpoint).
+        // Browse-only otherwise (the UI gates tag/role/scan affordances on
+        // the rest).
         return {
-            features: {},
+            features: {
+                [ServerFeature.LYRICS_MULTIPLE_STRUCTURED]: [1],
+            },
             id: args.apiClientProps.serverId,
             version: STREAMIFY_CONTROLLER_VERSION,
         };
@@ -689,6 +963,31 @@ export const StreamifyController: InternalControllerEndpoint = {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         const count = toNumberOr(query.count, 20);
+
+        // W1-B: the endless Automix radio — getUpNext continuation pages
+        // via the MetadataProvider, filtered against the recently played
+        // ledger (playTally + the 3h play-event window). A provider miss
+        // (or an empty feed) keeps the P1 play-stats derivation.
+        const seed = snapshot.songById.get(query.songId);
+        const seedVideoId = seed?.streamUrl ?? '';
+        if (seedVideoId !== '') {
+            const exclusions = recentExclusions(snapshot);
+            const refs = await automixRadio(getMetadataProvider(), seedVideoId, count, {
+                extra: {
+                    sigs: new Set(seed === undefined ? [] : [songSigOfRow(seed)]),
+                    videoIds: new Set([seedVideoId, ...exclusions.videoIds]),
+                },
+                signal: apiClientProps.signal,
+            });
+            if (refs.length > 0) {
+                const byVideoId = songByVideoId(snapshot);
+                const bySig = songBySig(snapshot);
+                return refs.map((ref) =>
+                    ytmToSong(ref, snapshot, apiClientProps.serverId, { bySig, byVideoId }),
+                );
+            }
+        }
+
         return similarSongs(snapshot, query.songId, count).map((row) =>
             normalizeSong(row, snapshot, apiClientProps.serverId),
         );
@@ -749,12 +1048,24 @@ export const StreamifyController: InternalControllerEndpoint = {
         // P2-A: the playback spine. feishin song id → the snapshot row → the
         // stream videoId (the tracks table's stream_url IS the videoId — see
         // the web app's libraryStore mapping) → the resolver's entry point.
+        // W1-B: `ytm:` ids (Automix / scoped-search songs outside the
+        // snapshot) decode straight to the videoId — playback never
+        // requires snapshot membership.
         // Transcode settings are Navidrome/Jellyfin semantics — our source
         // is fixed by the codec ladder; they are read but not honored.
         const { apiClientProps, query } = args;
-        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const row = snapshot.songById.get(query.id);
-        const videoId = row?.streamUrl ?? '';
+        const ytmVideoId = videoIdOfYtmSong(query.id);
+        let videoId: null | string;
+        if (ytmVideoId !== null) {
+            videoId = ytmVideoId;
+        } else {
+            const snapshot = await getStreamifyLibrary(
+                apiClientProps.server,
+                apiClientProps.signal,
+            );
+            const row = snapshot.songById.get(query.id);
+            videoId = row?.streamUrl ?? '';
+        }
         if (videoId === '' || videoId === null) {
             // Honest empty: the ingestion has not mapped a stream video for
             // this track. Surfaced as an error state (react-query) — never
@@ -766,8 +1077,21 @@ export const StreamifyController: InternalControllerEndpoint = {
         const resolution = await resolveStreamifyTrack(videoId);
         return resolution.url;
     },
-    getStructuredLyrics: async () => {
-        throw new StreamifyNotImplementedError('getStructuredLyrics');
+    getStructuredLyrics: async (args) => {
+        // W1-B: the two-tier structured lyrics — LRCLIB primary (timestamped
+        // LRC first choice) → YTM InnerTube fallback on a miss, synced
+        // lines always beating plain text. Advertised via the
+        // LYRICS_MULTIPLE_STRUCTURED feature flag in getServerInfo.
+        const { apiClientProps, query } = args;
+        const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
+        const row = snapshot.songById.get(query.songId);
+        if (row === undefined) {
+            return [];
+        }
+        return fetchStructuredLyrics(row, {
+            hl: currentHl(),
+            signal: apiClientProps.signal,
+        });
     },
     getTagList: async () => {
         throw new StreamifyNotImplementedError('getTagList');
@@ -776,6 +1100,62 @@ export const StreamifyController: InternalControllerEndpoint = {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
         const limit = toNumberOr(query.limit, 50);
+
+        // W1-B: the artist's real top songs from YTM (the provider's
+        // structured artist page), merged ahead of the user's own
+        // play-ranked rows; a provider miss keeps the P1 derivation.
+        const artistName =
+            query.artist ??
+            (query.artistId !== undefined
+                ? snapshot.artistById.get(query.artistId)?.name
+                : undefined) ??
+            null;
+        if (artistName !== null && artistName.trim() !== '') {
+            const remote = await getMetadataProvider().search(
+                artistName,
+                'artists',
+                undefined,
+                undefined,
+                currentHl(),
+            );
+            const best = remote?.artists.find(
+                (a) => a.name.trim().toLowerCase() === artistName.trim().toLowerCase(),
+            );
+            if (best !== undefined) {
+                const detail = await getMetadataProvider().getArtist(
+                    best.browseId,
+                    undefined,
+                    currentHl(),
+                );
+                if (detail !== null && detail.topSongs.length > 0) {
+                    const byVideoId = songByVideoId(snapshot);
+                    const bySig = songBySig(snapshot);
+                    const ytmSongs = detail.topSongs.slice(0, limit).map((ref) =>
+                        ytmToSong(ref, snapshot, apiClientProps.serverId, {
+                            bySig,
+                            byVideoId,
+                        }),
+                    );
+                    const seen = new Set(
+                        ytmSongs.map(
+                            (s) => `${s.name.toLowerCase()}|${s.artistName.toLowerCase()}`,
+                        ),
+                    );
+                    const localFill = topSongs(snapshot, query.artistId, query.artist, limit)
+                        .map((row) => normalizeSong(row, snapshot, apiClientProps.serverId))
+                        .filter(
+                            (s) =>
+                                !seen.has(`${s.name.toLowerCase()}|${s.artistName.toLowerCase()}`),
+                        );
+                    return {
+                        items: [...ytmSongs, ...localFill].slice(0, limit),
+                        startIndex: 0,
+                        totalRecordCount: Math.min(limit, ytmSongs.length + localFill.length),
+                    };
+                }
+            }
+        }
+
         const rows = topSongs(snapshot, query.artistId, query.artist, limit);
         return {
             items: rows.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
@@ -977,7 +1357,11 @@ export const StreamifyController: InternalControllerEndpoint = {
     search: async (args) => {
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const { albumArtistRows, albumRows, songRows } = searchSnapshot(
+        // W1-B: the scoped search merge — snapshot matches first, then the
+        // provider's entity-scoped results (songs/albums/artists/playlists;
+        // playlists ride the fork DTO, feishin's SearchResponse has no slot
+        // for them — dropped here, documented in the ADR).
+        const merged = await scopedSearch(
             snapshot,
             query.query ?? '',
             {
@@ -988,13 +1372,12 @@ export const StreamifyController: InternalControllerEndpoint = {
                 songLimit: query.songLimit,
                 songStartIndex: query.songStartIndex,
             },
+            { serverId: apiClientProps.serverId, signal: apiClientProps.signal },
         );
         return {
-            albumArtists: albumArtistRows.map((row) =>
-                normalizeAlbumArtist(row, apiClientProps.serverId),
-            ),
-            albums: albumRows.map((row) => normalizeAlbum(row, snapshot, apiClientProps.serverId)),
-            songs: songRows.map((row) => normalizeSong(row, snapshot, apiClientProps.serverId)),
+            albumArtists: merged.albumArtists,
+            albums: merged.albums,
+            songs: merged.songs,
         };
     },
     setPlaylistSongs: async (args) => {

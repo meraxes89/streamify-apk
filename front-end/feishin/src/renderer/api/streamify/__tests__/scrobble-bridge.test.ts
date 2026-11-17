@@ -27,6 +27,8 @@ function snapshotOf(songs: SongRow[]): LibrarySnapshot {
         albums: [],
         artistById: new Map(),
         artists: [],
+        likedAlbumIds: new Set<string>(),
+        likedArtistIds: new Set<string>(),
         likedIds: [],
         loadedAt: '2026-01-01T00:00:00.000Z',
         playEvents: [],
