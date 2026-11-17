@@ -58,10 +58,37 @@ export interface ArtistPayload {
 }
 
 export interface ChaptersPayload {
-    chapters: Array<{ atMs: number; title: string }>;
+    /** W2-A: the normalized chapter row — startSeconds required,
+     * endSeconds null on the last chapter (the UI closes it with the
+     * element's duration). Rows cached by a W1-A-era worker that carry only
+     * atMs are coerced by validateChaptersPayload (startSeconds = atMs/1000). */
+    chapters: Array<{
+        endSeconds: null | number;
+        startSeconds: number;
+        thumbnailUrl: null | string;
+        title: string;
+    }>;
     hl: string;
     kind: 'chapters';
     videoId: string;
+}
+
+/**
+ * W2-A: the official-music-video counterpart of an audio track (the
+ * 24 h-TTL endpoint — mirrors the worker's CounterpartPayload).
+ * videoId null = no distinct official video (the toggle hides).
+ */
+export interface CounterpartPayload {
+    artistText: null | string;
+    confidence: 'strong' | 'weak' | null;
+    durationMs: null | number;
+    kind: 'counterpart';
+    /** The audio track's videoId the resolution ran for. */
+    sourceVideoId: string;
+    /** The matched video's title (null when videoId is null). */
+    title: null | string;
+    /** The official music video's videoId, or null when none matched. */
+    videoId: null | string;
 }
 
 export interface CreditsPayload {
@@ -117,6 +144,7 @@ export type MetadataPayload =
     | AlbumPayload
     | ArtistPayload
     | ChaptersPayload
+    | CounterpartPayload
     | CreditsPayload
     | ExploreHomePayload
     | LyricsPayload
@@ -130,6 +158,13 @@ export type MetadataPayload =
 export interface MetadataProvider {
     getAlbum(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<AlbumPayload>>;
     getArtist(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<ArtistPayload>>;
+    /**
+     * W2-A: the timestamped chapters of a video (the 7 d-TTL endpoint —
+     * DESCRIPTION_CHAPTERS / AUTO_CHAPTERS markers, normalized to
+     * seconds-space boundaries). An empty/not-found result is the honest
+     * "this video has no chapters" form.
+     */
+    getChapters(videoId: string, hl?: string): Promise<MetadataResult<ChaptersPayload>>;
     getExplore(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
     getHomeFeed(gl?: string, hl?: string): Promise<MetadataResult<HomePayload>>;
     getLyrics(videoId: string, hl?: string): Promise<MetadataResult<LyricsPayload>>;
@@ -149,6 +184,16 @@ export interface MetadataProvider {
         hl?: string,
     ): Promise<MetadataResult<SearchSuggestPayload>>;
     getUpNext(seedVideoId: string, continuation?: string): Promise<MetadataResult<UpNextPayload>>;
+    /**
+     * W2-A: resolve the official-music-video counterpart of an audio track
+     * (the 24 h-TTL endpoint). videoId null in the payload = no distinct
+     * official video exists (the toggle hides — never an error).
+     */
+    getVideoCounterpart(
+        videoId: string,
+        gl?: string,
+        hl?: string,
+    ): Promise<MetadataResult<CounterpartPayload>>;
     search(
         query: string,
         filter?: MetadataSearchFilter,

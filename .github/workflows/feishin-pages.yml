@@ -109,6 +109,7 @@ jobs:
                   STREAMIFY_SUPABASE_URL: ${{ secrets.STREAMIFY_SUPABASE_URL || vars.STREAMIFY_SUPABASE_URL || secrets.SUPABASE_URL || '' }}
                   STREAMIFY_SUPABASE_ANON_KEY: ${{ secrets.STREAMIFY_SUPABASE_ANON_KEY || vars.STREAMIFY_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY || '' }}
                   STREAMIFY_RELAY_BASE: ${{ secrets.STREAMIFY_RELAY_BASE || vars.STREAMIFY_RELAY_BASE || '' }}
+                  STREAMIFY_META_BASE: ${{ secrets.STREAMIFY_META_BASE || vars.STREAMIFY_META_BASE || '' }}
                   STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
               run: |
                   set -euo pipefail
@@ -122,7 +123,7 @@ jobs:
                   # any not-exported name expand to empty string, exactly
                   # like a fresh Docker boot's settings.js.
                   export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
-                  export STREAMIFY_RELAY_BASE STREAMIFY_DEV_ACCESS_TOKEN
+                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN
                   export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
                   envsubst "$VARS" < settings.js.template > out/web/settings.js

@@ -24,6 +24,7 @@ import {
     useIsRadioActive,
     useRadioPlayer,
 } from '/@/renderer/features/radio/hooks/use-radio-player';
+import { StreamifyChapterStrip } from '/@/renderer/features/streamify/video/components/streamify-chapter-strip';
 import { useFastAverageColor } from '/@/renderer/hooks';
 import {
     useFullScreenPlayerStore,
@@ -369,6 +370,10 @@ export const FullScreenPlayer = () => {
                 </div>
                 <FullScreenPlayerQueue />
             </div>
+            {/* W2-A (Streamify, thin seam): the chapter chips row — renders
+                null when the active media has no chapters; all logic lives
+                in features/streamify/video/ (see PATCHES.md). */}
+            <StreamifyChapterStrip />
             <FullScreenPlayerControls />
         </PlayerContainer>
     );

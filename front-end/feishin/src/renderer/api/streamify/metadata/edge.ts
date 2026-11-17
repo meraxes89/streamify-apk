@@ -2,21 +2,26 @@
  * streamify/metadata/edge.ts — the Edge KV client (the "Edge KV Cache"
  * stage of the W1-A pipeline).
  *
- * One GET /ytm/meta call against the resolver's own relay knob
- * (relayBaseCandidate() — the relay production playback rides, so the
- * metadata seam and the playback seam share ONE deployment knob), with:
+ * One GET /ytm/meta call against the metadata base — W2-A: resolved
+ * EXCLUSIVELY through metaBaseCandidate() (metaBase.ts), never
+ * relayBaseCandidate() directly. The relay knob may legally point at a
+ * script.google.com Apps Script solver (the stream-link solver); such a
+ * base must never get /ytm/meta appended (metaBase.ts priority 3).
+ *
+ * With:
  *   • an 10 s abort timeout per attempt;
  *   • typed outcomes: ok / not-found (200 + missing) / rate-limited (429,
  *     Retry-After honored) / unavailable (network, 5xx, absent relay —
  *     the caller falls back to the client-side InnerTube lane).
  *
- * The relay being absent ('' — local dev, stock deployments) is NOT an
+ * The metadata base being absent ('' — local dev, stock deployments, or an
+ * Apps-Script-shaped relay with STREAMIFY_META_BASE unset) is NOT an
  * error: it maps to 'unavailable' and the provider falls back.
  */
 
 import type { MetadataSearchFilter } from './types';
 
-import { relayBaseCandidate } from '../playback/resolver/lib/relayBase';
+import { metaBaseCandidate } from './metaBase';
 
 export type EdgeCall = {
     continuation?: string;
@@ -59,7 +64,7 @@ export const defaultEdgeFetch: EdgeFetch = async (url, init) => {
 };
 
 export function edgeBaseUrl(): string {
-    return relayBaseCandidate();
+    return metaBaseCandidate();
 }
 
 export async function edgeMetaCall(

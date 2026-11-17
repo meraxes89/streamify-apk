@@ -14,6 +14,7 @@
 
 import { create } from 'zustand';
 
+import { resetMetaBaseCache } from '/@/renderer/api/streamify/metadata/metaBase';
 import { resetRelayBaseCache } from '/@/renderer/api/streamify/playback/resolver/lib/relayBase';
 
 export const STREAMIFY_SETTINGS_STORAGE_KEY = 'streamify.settings.v1';
@@ -240,8 +241,11 @@ export const useStreamifySettingsStoreBase = create<
         writeStorage(next);
         if (previous !== next.relayBaseOverride) {
             // Bust the resolver's memoized relay candidate so the new
-            // override applies to the next resolution.
+            // override applies to the next resolution. W2-A: the metadata
+            // base memoizes ON TOP of the relay candidate (metaBase.ts
+            // priority 2), so it busts with it.
             resetRelayBaseCache();
+            resetMetaBaseCache();
         }
     },
     setRelayHealth: (relayHealth) => set({ relayHealth }),

@@ -1853,6 +1853,15 @@
         "badges": {
             "title": "Playback quality",
             "offline": "Offline"
+        },
+        "video": {
+            "buttonTooltip": "Audio / official music video toggle",
+            "chapters": "Chapters",
+            "noVideoAvailable": "No official music video available for this track",
+            "seekBar": "Seek",
+            "switchToAudio": "Switch back to audio",
+            "switchToVideo": "Switch to the official music video",
+            "toggleFailed": "Could not switch to video mode"
         }
     },
     "streamifyImport": {

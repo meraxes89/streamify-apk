@@ -31,6 +31,18 @@
  *
  * ADDITIVE: this module wraps `resolveAudioStream` and never edits it. The
  * digest seam (`ResolveContext.onLadderDigest`) is the only coupling.
+ *
+ * W2-A — THE OPT-IN VIDEO MODE ({ mode: 'video' }): a strictly additive
+ * branch. `mode` defaults to 'audio', and the audio execution path below
+ * is byte-identical to the pre-W2-A module (the dispatch happens at the
+ * top of getStreamUrl, before a single audio line runs). Video mode runs
+ * the SAME resolveAudioStream pipeline (zero rung/timeout/header/order
+ * changes — the 6-rung ladder is untouched) and only re-ranks the winning
+ * rung's digest into a VIDEO ladder: muxed mp4/webm formats (video+audio
+ * codecs in one URL — the element-playable class) ranked by quality. A
+ * digest with no muxed format (or an hls/sabr win) throws the typed
+ * StreamifyVideoModeMissError — the caller degrades cleanly (the toggle
+ * hides; audio keeps playing).
  */
 import { gvsPoToken } from './botguard/potSession';
 import { ChunkFetcher } from './chunkFetcher';
@@ -134,6 +146,29 @@ export interface GetStreamUrlOptions {
   probeImpl?: typeof fetch;
   /** Telemetry sink — one record per resolve. */
   onLog?: (record: ResolveLogRecord) => void;
+  /**
+   *  W2-A (additive, default 'audio'): 'video' resolves the official
+   *  music-video counterpart's playable stream — muxed mp4/webm
+   *  (video+audio in one URL) or an adaptive format carrying both codec
+   *  families. The default audio rungs, timeouts, headers, and fallback
+   *  orders are 100% unchanged; this flag only re-ranks the SAME winning
+   *  rung's formats into a video-first ladder.
+   */
+  mode?: 'audio' | 'video';
+}
+
+/**
+ * W2-A: the video mode found nothing element-playable — no muxed
+ * (video+audio) format on the winning rung, or the rung won on a protocol
+ * the element engine cannot parse for video (hls/sabr). Typed so callers
+ * degrade cleanly (hide the toggle, keep audio playing) instead of
+ * guessing at error strings.
+ */
+export class StreamifyVideoModeMissError extends Error {
+  constructor(videoId: string, detail: string) {
+    super(`streamify: video mode miss for ${videoId} (${detail})`);
+    this.name = 'StreamifyVideoModeMissError';
+  }
 }
 
 /** The outcome of a URL health probe (the walk/stale classifier). */
@@ -370,6 +405,11 @@ export async function getStreamUrl(
   trackId: string,
   opts: GetStreamUrlOptions,
 ): Promise<StreamUrlResolution> {
+  // W2-A: the opt-in video branch — dispatched BEFORE the audio path runs;
+  // the audio execution below this guard is byte-identical to pre-W2-A.
+  if (opts.mode === 'video') {
+    return getVideoStreamUrl(trackId, opts);
+  }
   const forceRefresh = opts.forceRefresh === true;
   const now = Date.now();
 
@@ -523,6 +563,196 @@ export async function getStreamUrl(
   } finally {
     if (!forceRefresh) inflight.delete(trackId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// W2-A — the opt-in video branch (additive; every line above is untouched)
+// ---------------------------------------------------------------------------
+
+/**
+ * The video cache namespace: the SAME Map, a distinct key — the audio and
+ * the video resolution for one videoId are two different answers and must
+ * never alias (a video toggle that served the audio ladder would be a
+ * silent wrong-track bug). '\u0000' cannot appear in a videoId.
+ */
+function videoCacheKey(trackId: string): string {
+  return `${trackId}\u0000video`;
+}
+
+/**
+ * W2-A: resolve the element-playable VIDEO stream for a videoId (the
+ * official-music-video counterpart). Runs the SAME resolveAudioStream
+ * pipeline — the 6-rung ladder, its timeouts, headers, and fallback orders
+ * are exactly the audio path's (the digest seam hands us every format the
+ * winning rung saw) — then re-ranks into a video-first ladder: muxed
+ * mp4/webm formats (video+audio codecs in ONE URL — the only class a
+ * single <video> element plays without MSE), highest quality first.
+ *
+ * Misses are typed (StreamifyVideoModeMissError): no muxed format, or the
+ * rung won on hls/sabr (no element-consumable video URL exists) — the
+ * caller degrades cleanly and audio keeps playing.
+ */
+async function getVideoStreamUrl(
+  trackId: string,
+  opts: GetStreamUrlOptions,
+): Promise<StreamUrlResolution> {
+  const key = videoCacheKey(trackId);
+  const forceRefresh = opts.forceRefresh === true;
+  const now = Date.now();
+
+  const cached = resolutionCache.get(key);
+  if (!forceRefresh && cached !== undefined && now < cached.expiresAt) {
+    return cached;
+  }
+  if (cached !== undefined && now >= cached.expiresAt) {
+    resolutionCache.delete(key);
+  }
+  if (!forceRefresh && inflight.has(key)) {
+    return inflight.get(key) as Promise<StreamUrlResolution>;
+  }
+
+  const run = (async (): Promise<StreamUrlResolution> => {
+    // One pipeline pass — identical posture to the audio resolve; the
+    // digest captures the winning rung's raw formats.
+    let digest: LadderDigest | undefined;
+    const stream = await resolveAudioStream(trackId, {
+      relayBase: opts.relayBase,
+      signal: opts.signal ?? null,
+      autoMint: opts.autoMint,
+      elementCompat: true,
+      onLadderDigest: (d) => {
+        digest = d;
+      },
+    });
+
+    const protocol: StreamUrlResolution['protocol'] = stream.isSabr
+      ? 'sabr'
+      : stream.isHls
+        ? 'hls'
+        : 'progressive';
+
+    if (protocol !== 'progressive' || digest?.kind !== 'progressive') {
+      // hls/sabr carry no element-consumable single video URL — honest miss.
+      throw new StreamifyVideoModeMissError(trackId, `${protocol} rung has no element-playable video formats`);
+    }
+
+    const raw =
+      digest.resp !== undefined
+        ? candidatesFromResp(digest)
+        : await candidatesFromInfo(digest);
+    // The VIDEO ladder: muxed formats only (tier 2 — classifyMime already
+    // demanded an audio codec inside the video container), quality first.
+    const muxed = raw
+      .filter((c) => c.tier === 2 && !c.audioOnly)
+      .sort((a, b) => b.bitrate - a.bitrate);
+    if (muxed.length === 0) {
+      throw new StreamifyVideoModeMissError(
+        trackId,
+        'no muxed video+audio format on the winning rung',
+      );
+    }
+
+    // Best-effort &pot= pin on every rung (G4.2, uniform with the audio path).
+    const pinned = await Promise.all(muxed.map((c) => pinUrl(c.url, trackId)));
+    const ranked = muxed.map((c, i) => ({ ...c, url: pinned[i] as string }));
+    const top = ranked[0];
+    const url = top.url;
+
+    const expiresInSeconds = wireExpiresInSeconds(digest);
+    const resolvedAt = Date.now();
+    const ttlMs = expiresInSeconds !== null ? expiresInSeconds * 1000 : DEFAULT_TTL_MS;
+    const expiresAt = resolvedAt + ttlMs;
+    const expirySource: 'wire' | 'default' = expiresInSeconds !== null ? 'wire' : 'default';
+
+    // Range probe on the live video URL (same classifier as the audio top).
+    let rangeSupport: boolean | null = null;
+    let probeLength: null | number = top.contentLength;
+    const probe = await probeStreamUrl(url, opts.probeImpl);
+    if (probe.ok) {
+      rangeSupport = probe.acceptsRanges;
+      if (probe.contentLength > 0) probeLength = probe.contentLength;
+    }
+
+    const durationMs =
+      stream.durationSec !== null && stream.durationSec !== undefined
+        ? Math.round(stream.durationSec * 1000)
+        : (stream.sabr?.durationMs ?? null);
+
+    const resolution: StreamUrlResolution = {
+      trackId,
+      url,
+      protocol,
+      ladder: ranked.map((c, i) => ({
+        rank: i,
+        itag: c.itag,
+        url: c.url,
+        mimeType: c.mimeType,
+        audioOnly: false, // every video rung carries its own audio track
+        codec: c.codec,
+        bitrate: c.bitrate,
+        contentLength: c.contentLength,
+        // W1-B's honest channel count rides the video rungs too (a muxed
+        // format's audioChannels is the wire's own claim, null = unknown).
+        audioChannels: c.audioChannels,
+      })),
+      codecs: top.codec,
+      resolvedAt,
+      expiresAt,
+      expirySource,
+      durationMs,
+      rangeSupport,
+      contentLength: probeLength,
+      title: stream.title,
+      artist: stream.artist,
+      rung: stream.rung,
+      isSabr: false,
+      audioChannels: top.audioChannels,
+    };
+
+    // Instrumentation — one record per video resolve, video-marked.
+    const record: ResolveLogRecord = {
+      trackId,
+      at: new Date().toISOString(),
+      protocol,
+      rung: stream.rung,
+      itag: top.itag,
+      codec: top.codec,
+      audioOnly: false,
+      ladderDepth: resolution.ladder.length,
+      rangeSupport,
+      durationMs,
+      expiresInSeconds,
+      expirySource,
+      sabr: false,
+      title: stream.title,
+    };
+    logRing.push(record);
+    if (logRing.length > LOG_RING_MAX) logRing.splice(0, logRing.length - LOG_RING_MAX);
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[getStreamUrl] ${trackId} VIDEO ${protocol} rung=${stream.rung} itag=${top.itag} ` +
+        `codec=${top.codec} ladder=${resolution.ladder.length} range=${String(rangeSupport)}`,
+    );
+    opts.onLog?.(record);
+
+    resolutionCache.set(key, resolution);
+    return resolution;
+  })();
+
+  if (!forceRefresh) inflight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    if (!forceRefresh) inflight.delete(key);
+  }
+}
+
+/**
+ * W2-A: the cached VIDEO resolution, if any (the toggle's expiry check —
+ * separate from the audio peek by the video namespace key).
+ */
+export function peekVideoStreamUrl(trackId: string): StreamUrlResolution | null {
+  return resolutionCache.get(videoCacheKey(trackId)) ?? null;
 }
 
 /** The cached resolution, if any — no resolving (the consumer's expiry check). */

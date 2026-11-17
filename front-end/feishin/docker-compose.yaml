@@ -37,6 +37,7 @@ services:
             - STREAMIFY_SUPABASE_URL=${STREAMIFY_SUPABASE_URL:-}
             - STREAMIFY_SUPABASE_ANON_KEY=${STREAMIFY_SUPABASE_ANON_KEY:-}
             - STREAMIFY_RELAY_BASE=${STREAMIFY_RELAY_BASE:-} # the Cloudflare worker relay; empty = direct-lane only
+            - STREAMIFY_META_BASE=${STREAMIFY_META_BASE:-} # W2-A: the /ytm/meta Edge KV worker; empty = follow a worker-shaped relay, else edge-off
             - STREAMIFY_DEV_ACCESS_TOKEN=${STREAMIFY_DEV_ACCESS_TOKEN:-} # dev-only; empty in real deployments
         ports:
             - 9180:9180

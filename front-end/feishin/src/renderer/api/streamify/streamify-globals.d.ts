@@ -9,6 +9,13 @@ declare global {
     interface Window {
         /** Explicit opt-out for the /streamify-auth gate ('false' disables). */
         STREAMIFY_AUTH?: boolean | string;
+        /**
+         * W2-A: the metadata base — the Cloudflare Worker carrying /ytm/meta
+         * (the Edge KV cache). Hard-isolated from STREAMIFY_RELAY_BASE: when
+         * the relay knob points at a script.google.com Apps Script solver and
+         * this is unset, the metadata seam stays off (metaBase.ts priority 3).
+         */
+        STREAMIFY_META_BASE?: string;
         /** P2-A: the resolver relay base (empty = relay off). */
         STREAMIFY_RELAY_BASE?: string;
         /** Public-by-design anon key of the Streamify Supabase project. */

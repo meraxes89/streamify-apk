@@ -56,7 +56,7 @@ discrepancies found by the P5 audit are corrected here, not papered over:
 Every edit to an upstream file is listed here — the exact conflict map for the
 next tag merge. Phase attributions: P0 (#181), P1 (#182), P1B (#184), P2-A
 (#185/#186), P2-B (#187), P3-A (#190), P3-B (#191), P4-A (#192), P4-B (#193),
-P5-A (#195), W1-A (this PR — the post-cutover waves begin).
+P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
 
 ### A1. `package.json`
 
@@ -91,9 +91,13 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
 - **What:** appended the Streamify runtime knobs —
   `window.STREAMIFY_AUTH` / `STREAMIFY_SUPABASE_URL` /
   `STREAMIFY_SUPABASE_ANON_KEY` (P1, #182), `STREAMIFY_DEV_ACCESS_TOKEN`
-  (P1B, #184), `STREAMIFY_RELAY_BASE` (P2-A, #186). Values arrive via
+  (P1B, #184), `STREAMIFY_RELAY_BASE` (P2-A, #186), and
+  `STREAMIFY_META_BASE` (W2-A — the /ytm/meta Edge KV worker base,
+  hard-isolated from the Apps-Script-shaped relay knob by
+  `api/streamify/metadata/metaBase.ts`). Values arrive via
   deployment configuration (Docker env → nginx envsubst); unsubstituted
-  `${...}` placeholders read as unset (session.ts + relayBase.ts filters).
+  `${...}` placeholders read as unset (session.ts + relayBase.ts +
+  metaBase.ts filters).
 - **Conflict surface:** low — append-only block at file end.
 
 ### A5. `Dockerfile`
@@ -105,6 +109,8 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
   note at the top); P5-A repaired it and added the missing
   `STREAMIFY_DEV_ACCESS_TOKEN=""`. Current line:
   `ENV STREAMIFY_AUTH="" STREAMIFY_SUPABASE_URL="" STREAMIFY_SUPABASE_ANON_KEY="" STREAMIFY_RELAY_BASE="" STREAMIFY_DEV_ACCESS_TOKEN=""`
+  W2-A appends its own `ENV STREAMIFY_META_BASE=""` line (kept separate
+  from the P5-A-repaired line so the repair stays legible).
 - **Conflict surface:** low — one additive ENV line under the stock ENV
   block.
 
@@ -114,8 +120,9 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
   (`ghcr.io/jeffvli/feishin:latest`, zero Streamify env) to the fork:
   builds the local Dockerfile as `streamify-feishin:latest`, locks
   `SERVER_LOCK=true` / `SERVER_TYPE=streamify` / `SERVER_NAME=streamify`,
-  sets `ANALYTICS_DISABLED=true`, and passes the five `STREAMIFY_*` knobs
-  through from the host environment. Production runs via Docker since the
+  sets `ANALYTICS_DISABLED=true`, and passes the `STREAMIFY_*` knobs
+  through from the host environment (W2-A adds the `STREAMIFY_META_BASE`
+  pass-through). Production runs via Docker since the
   Pages deployment was retired (P5-A).
 - **Conflict surface:** low-medium — upstream rarely edits compose; ours is
   a full rewrite of the `environment:` block.
@@ -188,15 +195,19 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
   claimed errors return early, unclaimed run the stock retry/skip logic.
 - **Conflict surface:** low.
 
-### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193; W1-B)
+### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193; W1-B; W2-A)
 
 - **What:** one import + one `<StreamifyJamButton />` element at the head of
   the right-controls button row (the Jam drawer / EQ panel trigger;
-  renders `null` on stock servers). W1-B adds the second — and only other —
+  renders `null` on stock servers). W1-B adds the honest quality badges
   seam: one import + one `<StreamifyQualityBadges />` element (the honest
   codec/bitrate/OPFS/HLS/5.1 badges; reads the active StreamUrlResolution,
   zero extra RPCs; renders `null` on stock servers — see
   `front-end/decisions/waves/W1B-catalog-wiring-quality-badges.md`).
+  W2-A adds the sibling seam in the same shape: one import + one
+  `<StreamifyVideoButton />` element (the Audio ↔ Official Music Video
+  toggle + the stable video overlay mount; renders `null` on stock
+  servers — all logic in `features/streamify/video/`).
 - **Conflict surface:** low — additive elements in a stable row.
 
 ### A15. `src/renderer/features/player/utils/get-visualizer-audio-nodes.ts` (P4-B, #193)
@@ -338,6 +349,17 @@ P5-A (#195), W1-A (this PR — the post-cutover waves begin).
   `isLoginRequired` early return; upstream's action-required checks
   table is untouched.
 
+### A28. `src/renderer/features/player/components/full-screen-player.tsx` (W2-A)
+
+- **What:** the timestamped-chapter chips row — one import line
+  (`StreamifyChapterStrip` from the fork's
+  `features/streamify/video/components/streamify-chapter-strip.tsx`) + one
+  `<StreamifyChapterStrip />` element between the responsive container and
+  `<FullScreenPlayerControls />`. Renders `null` when the active media has
+  no chapters AND on non-Streamify servers; all fetching, highlighting and
+  seeking live in the fork-owned video tree.
+- **Conflict surface:** low — two additive lines at stable anchors.
+
 ---
 
 ## B. Fork-owned additions (no upstream conflict)
@@ -428,16 +450,25 @@ can ignore them and audits can hold us to the directory-isolation rule.
   `download-manager`/`instance`), the vendored cipher artifact
   (`streamify_cipher_bg.wasm` + `artifact.json` manifest + the hand-written
   `cipher-loader.ts`), and the wrapped-stats ledger + aggregates.
-- **`metadata/` (W1-A):** the provider seam — `types.ts` (the typed
+- **`metadata/` (W1-A; extended W2-A):** the provider seam — `types.ts` (the typed
   payload family + `MetadataProvider` interface, mirrored from the relay
   worker's schemas), `edge.ts` (the /ytm/meta client with abort-timeout
-  composition), `innertube-fallback.ts` (the client-side youtubei.js lane
-  riding `getYt()`; token-bridge continuation registry), `normalize.ts`
-  (the per-payload schema validators), `snapshot.ts` (the in-memory
-  last-known-good + 15-min negative cache), `provider.ts` (the pipeline:
-  snapshot → edge (backoff 250 ms doubling ×3, 60 s circuit) → fallback →
-  snapshot upsert; 404/429/parse-error typed separation),
-  `lyrics-text.ts` (the LRC-line parser, mirrored from the worker).
+  composition; W2-A resolves its base through `metaBase.ts`, never
+  relayBase directly), `metaBase.ts` (W2-A — the metadata-base knob:
+  explicit `STREAMIFY_META_BASE` → worker-shaped relay → null on
+  script.google.com; memo busts with the relay cache), `innertube-fallback.ts`
+  (the client-side youtubei.js lane riding `getYt()`; token-bridge
+  continuation registry; W2-A adds the chapters + counterpart fallbacks),
+  `normalize.ts` (the per-payload schema validators; W2-A adds chapters —
+  with the legacy atMs coercion — and counterpart), `snapshot.ts` (the
+  in-memory last-known-good + 15-min negative cache), `provider.ts` (the
+  post-#200 unification: the W1-B DTO contract + `adaptProvider` + the
+  typed engine — snapshot → edge (backoff 250 ms doubling ×3, 60 s
+  circuit) → fallback → snapshot upsert, 404/429/parse-error typed
+  separation; W2-A adds `getChapters`/`getVideoCounterpart` to the typed
+  engine + the `getChaptersTyped`/`getVideoCounterpartTyped` accessors
+  beside the importer's `getPlaylistTyped`), `lyrics-text.ts` (the
+  LRC-line parser, mirrored from the worker).
 - **`features/streamify/import/` (W1-A):** the 1-Click importer — the
   nested-namespace rule honored (the first non-flat `features/streamify/`
   entry): `url-parser.ts` (pure; PL… / OLAK5uy_… / RDCLAK5uy_… / VL… raw
@@ -446,6 +477,21 @@ can ignore them and audits can hold us to the directory-isolation rule.
   progress, AbortSignal between pages; landed batches stay on cancel),
   `components/ytm-import-modal.tsx` + `ytm-import-button.tsx`,
   `hooks/use-ytm-import.ts`.
+- **`features/streamify/video/` (W2-A):** the Audio ↔ Official Music
+  Video toggle + the timestamped chapters UI — the nested-namespace rule
+  honored: `streamify-video.store.ts` (the dumb mode/surface state),
+  `chapter-utils.ts` (the pure chapter math — boundary selection, tick
+  fractions, timecode capture), `hooks/use-video-mode.ts` (the
+  timecode-synced toggle controller: counterpart → muxed stream →
+  capture/pause → overlay; exit-to-audio + the track-change guard),
+  `hooks/use-video-chapters.ts` (the 7 d-TTL chapter fetch),
+  `components/streamify-video-button.tsx` (the player-bar seam),
+  `components/streamify-video-overlay.tsx` (the ONE stable `<video>`
+  element — dock/fullscreen surfaces, the WebAudio attach/detach
+  discipline, the chapter-tick scrubber + chips),
+  `components/streamify-chapter-strip.tsx` (the full-player chips row).
+  Store addition: `store/streamify-settings.store.ts` busts
+  `resetMetaBaseCache()` beside `resetRelayBaseCache()` (W2-A).
 - `__tests__/` — the network-free vitest suites (queue round-trip, scrobble
   semantics, favorites, curation, playlist convergence, downloads
   cipher/lifecycle, offline bypass, wrapped aggregation, the /debug gate,
@@ -453,7 +499,13 @@ can ignore them and audits can hold us to the directory-isolation rule.
   the canary panel mount; the W1-A locks: `metadata-provider.test.ts`
   (404/429/parse separation, snapshot upsert, synced preservation) and
   `ytm-importer.test.ts` (URL parser table, batched continuations, abort
-  semantics, CRDT materialization against the real sync engine).
+  semantics, CRDT materialization against the real sync engine); the W2-A
+  locks: `meta-base.test.ts` (the Apps-Script isolation priority shape),
+  `resolver-video-mode.test.ts` (audio rungs byte-identical; the additive
+  video branch + typed misses) and `video-chapters.test.ts` (chapter
+  extraction/coercion, boundary selection, tick fractions, timecode
+  capture/restore — plus the relay-side chapters/counterpart/solver lanes
+  in `front-end/relay/src/ytm-meta.test.ts`).
 
 ### `src/renderer/features/streamify-*/` — the UI surfaces
 

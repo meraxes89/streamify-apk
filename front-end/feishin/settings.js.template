@@ -117,3 +117,9 @@ window.STREAMIFY_DEV_ACCESS_TOKEN = "${STREAMIFY_DEV_ACCESS_TOKEN}";
 // rungs and the mint ride). Same priority shape as the web app’s
 // VITE_RELAY_BASE_URL; empty = relay off (direct-lane only).
 window.STREAMIFY_RELAY_BASE = "${STREAMIFY_RELAY_BASE}";
+// W2-A: the metadata base (the Cloudflare Worker that carries /ytm/meta —
+// the Edge KV cache). HARD-ISOLATED from STREAMIFY_RELAY_BASE: when the
+// relay knob points at a script.google.com Apps Script solver and this
+// knob is unset, the metadata seam stays OFF (metaBase.ts priority 3);
+// empty = follow a worker-shaped relay, else edge-off (fallback lane).
+window.STREAMIFY_META_BASE = "${STREAMIFY_META_BASE}";

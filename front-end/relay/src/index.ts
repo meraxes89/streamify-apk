@@ -109,10 +109,28 @@
  * KV binding (absent in local dev/test → bypassed cleanly), ctx keeps SWR
  * background revalidations alive past the response.
  *
+ * W2-A — THE OPTIONAL APPS SCRIPT SOLVER FORWARDING: when a deployment
+ * points STREAMIFY_RELAY_BASE at THIS worker and sets the optional
+ * APPS_SCRIPT_SOLVER_URL env var (a script.google.com/macros/s/…/exec
+ * deployment), the /r CONTROL-PLANE legs (innertube / WAA / BotGuard
+ * script hosts — never googlevideo media bytes, the GSF lane's own rule)
+ * forward through the Apps Script envelope so the stream-solve egress
+ * rides Google's ASN 15169 instead of the shared Cloudflare edge — the
+ * same bet gsfLane.ts makes client-side. /ytm/meta and /bg-session stay
+ * worker-local (the KV cache and the homepage challenge cache ARE this
+ * worker's duties). A solver-lane failure (network/not-ok envelope)
+ * degrades to the direct worker fetch — strictly additive, never worse.
+ *
  * Pure Workers runtime — no external dependencies. ES-module default export.
  */
 
 import { ytmMetaRoute, type YtmEnv } from "./ytm-meta";
+
+/** W2-A: the extended env — the Apps Script solver URL is optional and
+ * read per-request (wrangler vars change between deployments). */
+export interface RelayEnv extends YtmEnv {
+  APPS_SCRIPT_SOLVER_URL?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -640,11 +658,173 @@ function playabilityStatusOf(body: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// W2-A — the Apps Script solver lane (optional /r forwarding)
+// ---------------------------------------------------------------------------
+
+/** The envelope URL rides as ?q= — stay under Apps Script's GET URL limit
+ * (the same 7 500-char cap gsfLane.ts carries client-side). */
+const SOLVER_ENVELOPE_URL_MAX = 7_500;
+/** Control-plane POST bodies are small JSON; anything bigger (a stray
+ * media-ish payload) stays on the direct worker fetch. */
+const SOLVER_BODY_MAX_BYTES = 256 * 1024;
+
+/**
+ * Validate + return the configured Apps Script solver URL, or null. Same
+ * shape gsfLane.ts's normalizeGsfUrl accepts: https + script.google.com +
+ * /macros/s/ prefix — a malformed/placeholder value reads as unconfigured
+ * (the additive rule: a bad knob can never break the direct lane).
+ */
+export function appsScriptSolverUrl(env: RelayEnv): null | string {
+  const raw = env.APPS_SCRIPT_SOLVER_URL;
+  if (typeof raw !== "string" || raw === "") return null;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("${") && trimmed.endsWith("}")) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:") return null;
+    if (url.hostname !== "script.google.com") return null;
+    if (!url.pathname.startsWith("/macros/s/")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The solver lane serves CONTROL-PLANE legs only — the innertube hosts, the
+ * WAA mint, and the BotGuard interpreter script. googlevideo media bytes
+ * never ride it (the GSF lane's own rule: UrlFetchApp quota + latency are
+ * for tiny JSON verdicts, not megabyte range fetches; the media CDN is
+ * CORS-open and cross-IP by design — the W2.0 measurement).
+ */
+export function isControlPlaneTarget(target: URL): boolean {
+  const host = target.hostname.toLowerCase();
+  return (
+    host === "www.youtube.com" ||
+    host === "music.youtube.com" ||
+    host === "youtubei.googleapis.com" ||
+    host === "jnn-pa.googleapis.com" ||
+    (host === "www.google.com" && target.pathname.startsWith("/js/th/"))
+  );
+}
+
+/** The Apps Script envelope response (the GSF wire — gsfLane.ts's mirror). */
+interface SolverEnvelope {
+  ok?: boolean;
+  s?: number;
+  h?: Record<string, string>;
+  b?: string;
+  e?: "b64" | "t";
+  eip?: string;
+  error?: string;
+}
+
+/**
+ * Forward one /r request through the Apps Script envelope. Returns the
+ * unwrapped Response on success, or NULL when the lane failed (network,
+ * not-ok envelope, oversized body/URL) — the caller then runs the direct
+ * worker fetch (the additive degradation rule).
+ */
+async function forwardThroughAppsScript(
+  solverUrl: string,
+  target: URL,
+  method: string,
+  outgoing: Headers,
+  body: ReadableStream<Uint8Array> | null,
+): Promise<null | Response> {
+  try {
+    let bodyText: string | undefined;
+    let enc: "b64" | "t" = "t";
+    if (body !== null) {
+      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+      if (bytes.byteLength > SOLVER_BODY_MAX_BYTES) return null;
+      const isText = looksLikeText(outgoing.get("content-type"));
+      if (isText) {
+        bodyText = new TextDecoder().decode(bytes);
+      } else {
+        // Binary (protobuf-JSON is text, but the WAA legs can carry real
+        // bytes) — base64 envelope, same as the client-side lane.
+        let binary = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+        }
+        bodyText = btoa(binary);
+        enc = "b64";
+      }
+    }
+    const headers: Record<string, string> = {};
+    outgoing.forEach((value, name) => {
+      headers[name] = value;
+    });
+    const envelope = JSON.stringify({
+      u: target.toString(),
+      m: method.toLowerCase() === "post" ? "post" : "get",
+      h: headers,
+      ...(bodyText !== undefined ? { b: bodyText, e: enc } : {}),
+    });
+    const url = `${solverUrl}${solverUrl.includes("?") ? "&" : "?"}q=${encodeURIComponent(envelope)}`;
+    if (url.length > SOLVER_ENVELOPE_URL_MAX) return null;
+
+    const res = await fetch(url, { method: "GET", redirect: "follow" });
+    const wire = (await res.json()) as SolverEnvelope;
+    if (wire.ok !== true || typeof wire.s !== "number") {
+      return null; // the script's own error — lane-level, not a verdict
+    }
+    const responseHeaders = new Headers();
+    for (const [name, value] of Object.entries(wire.h ?? {})) {
+      try {
+        responseHeaders.set(name, value);
+      } catch {
+        /* exotic header names are dropped, not fatal */
+      }
+    }
+    const responseBody =
+      wire.e === "b64" && typeof wire.b === "string"
+        ? base64ToBytes(wire.b)
+        : (wire.b ?? "");
+    return new Response(
+      typeof responseBody === "string" ? responseBody : new Uint8Array(responseBody),
+      {
+        status: wire.s,
+        headers: {
+          // The relay's CORS posture — the envelope answer must cross origins
+          // exactly like a direct passthrough would.
+          ...corsHeaders(),
+          ...Object.fromEntries(responseHeaders.entries()),
+        },
+      },
+    );
+  } catch {
+    return null; // lane down — the direct fetch below answers
+  }
+}
+
+/** JSON/text-ish content types ride the envelope as text. */
+function looksLikeText(contentType: null | string): boolean {
+  if (contentType === null) return true;
+  const lower = contentType.toLowerCase();
+  return (
+    lower.includes("json") ||
+    lower.includes("text") ||
+    lower.includes("x-www-form-urlencoded") ||
+    lower === ""
+  );
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Worker entry
 // ---------------------------------------------------------------------------
 
 export default {
-  async fetch(request: Request, env: YtmEnv, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: RelayEnv, ctx: ExecutionContext): Promise<Response> {
     try {
       return await route(request, env, ctx);
     } catch (err) {
@@ -663,7 +843,7 @@ export default {
 
 /** Route table: OPTIONS anywhere → preflight; /health; /; /bg-session;
  * /ytm/meta (W1-A); /r; else 404. */
-async function route(request: Request, env: YtmEnv, ctx: ExecutionContext): Promise<Response> {
+async function route(request: Request, env: RelayEnv, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
   const path = url.pathname;
@@ -719,6 +899,7 @@ async function route(request: Request, env: YtmEnv, ctx: ExecutionContext): Prom
           "g3b-oss-stack", // G3b — YouTube.js + bgutils-js egress surface
           "neg-cache", // G4.3 — edge negative cache (LOGIN_REQUIRED, 30 min)
           "ytm-meta", // W1-A — edge KV metadata cache (/ytm/meta)
+          "apps-script-solver", // W2-A — optional /r forwarding via APPS_SCRIPT_SOLVER_URL
         ],
       },
       200,
@@ -744,7 +925,7 @@ async function route(request: Request, env: YtmEnv, ctx: ExecutionContext): Prom
     if (!FORWARDED_METHODS.has(method)) {
       return jsonResponse({ error: "method not allowed", method }, 405);
     }
-    return relay(request, url);
+    return relay(request, url, env);
   }
 
   return jsonResponse({ error: "not found" }, 404);
@@ -754,7 +935,7 @@ async function route(request: Request, env: YtmEnv, ctx: ExecutionContext): Prom
 // /r — the relay proper
 // ---------------------------------------------------------------------------
 
-async function relay(request: Request, url: URL): Promise<Response> {
+async function relay(request: Request, url: URL, env: RelayEnv): Promise<Response> {
   const started = Date.now();
   const method = request.method.toUpperCase();
 
@@ -863,6 +1044,27 @@ async function relay(request: Request, url: URL): Promise<Response> {
   // untouched. GET/HEAD must be bodyless — fetch() throws otherwise.
   const body: ReadableStream<Uint8Array> | null =
     method === "POST" ? request.body : null;
+
+  // ---- W2-A: the optional Apps Script solver lane --------------------------
+  // When APPS_SCRIPT_SOLVER_URL is configured (a script.google.com/macros/s/
+  // …/exec deployment), CONTROL-PLANE legs forward through the Apps Script
+  // envelope (Google-ASN egress — the GSF bet, server-side). Media bytes
+  // (googlevideo) and manual-redirect hops never ride it: UrlFetchApp
+  // follows redirects itself and cannot surface the hop protocol. A lane
+  // failure degrades to the direct worker fetch below — never worse.
+  const solverUrl = appsScriptSolverUrl(env);
+  if (solverUrl !== null && !manualRedirect && isControlPlaneTarget(target)) {
+    const forwarded = await forwardThroughAppsScript(
+      solverUrl,
+      target,
+      method,
+      outgoing,
+      body,
+    );
+    if (forwarded !== null) {
+      return forwarded;
+    }
+  }
 
   // ---- Upstream fetch --------------------------------------------------------
   let upstream: Response;
