@@ -128,6 +128,17 @@ export default defineConfig({
                         type: 'image/webp',
                     },
                 ],
+                // W3-A: the PWA share target — shared YouTube/YTM links land on
+                // the app root as ?text=<url>, the media-session deep-link
+                // entry routes them into the YTM importer (see
+                // features/streamify/media-session/deep-link.ts).
+                share_target: {
+                    action: '/',
+                    method: 'GET',
+                    params: {
+                        text: 'text',
+                    },
+                },
                 short_name: 'Feishin',
                 start_url: '/',
                 theme_color: '#1E003D',

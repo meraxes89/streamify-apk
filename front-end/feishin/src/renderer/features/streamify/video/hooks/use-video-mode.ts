@@ -24,8 +24,8 @@
  *   owns cross-track transitions; the overlay never races the queue).
  */
 
+import { t as ti18n } from 'i18next';
 import { useCallback, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { getVideoCounterpartTyped } from '/@/renderer/api/streamify/metadata/provider';
 import {
@@ -72,8 +72,20 @@ export function registerVideoElement(element: HTMLVideoElement | null): void {
     videoElementSlot.current = element;
 }
 
+/**
+ * W3-A (the Connect handoff seam): enter video mode landing on an exact
+ * preserved timecode. Audio must ALREADY be playing at that position
+ * (the handoff loader seeks before calling this) — the pipeline pauses it
+ * and the overlay resumes at `positionSec`.
+ */
+export async function requestVideoModeAtPosition(positionSec: number): Promise<boolean> {
+    return enterVideoMode({
+        resumeAtSec: Math.max(0, positionSec),
+        toast: (key) => ti18n(key),
+    });
+}
+
 export function useStreamifyVideoMode(): { toggle: () => void } {
-    const { t } = useTranslation();
     const mode = useStreamifyVideoStore((state) => state.mode);
     const switching = useStreamifyVideoStore((state) => state.switching);
     const modeRef = useRef(mode);
@@ -95,70 +107,11 @@ export function useStreamifyVideoMode(): { toggle: () => void } {
     }, []);
 
     const toggleToVideo = useCallback(async () => {
-        const store = streamifyVideoStoreBase.getState();
-        const sourceVideoId = currentSongVideoId();
-        if (sourceVideoId === null) return;
-
-        store.actions.setSwitching(true);
-        try {
-            // 1. The counterpart (Edge KV, 24 h TTL) — videoId null and the
-            //    failure results alike are the honest "no official video"
-            //    form: disable the toggle, keep audio playing. The typed
-            //    seam: the post-#200 unified provider keeps the W1-B DTO
-            //    contract chapters/counterpart-free — the typed accessors
-            //    are the video feature's surface (getPlaylistTyped's shape).
-            const counterpart = await getVideoCounterpartTyped(sourceVideoId);
-            if (counterpart.kind !== 'ok' || counterpart.payload.videoId === null) {
-                store.actions.setSwitching(false);
-                store.actions.setUnavailable(true);
-                toast.info({ message: t('streamify.video.noVideoAvailable') });
-                return;
-            }
-            const counterpartVideoId = counterpart.payload.videoId;
-
-            // 2. The muxed video stream (the additive resolver branch — the
-            //    audio rungs are untouched; a miss degrades cleanly).
-            let videoUrl: string;
-            try {
-                const resolution = await getStreamUrl(counterpartVideoId, {
-                    mode: 'video',
-                    relayBase: relayBaseCandidate(),
-                });
-                videoUrl = resolution.url;
-            } catch (err) {
-                if (err instanceof StreamifyVideoModeMissError) {
-                    store.actions.setSwitching(false);
-                    store.actions.setUnavailable(true);
-                    toast.info({ message: t('streamify.video.noVideoAvailable') });
-                    return;
-                }
-                throw err;
-            }
-
-            // 3. Capture the timecode + play state, then pause the audio
-            //    element through the store's own status pipeline.
-            const player = usePlayerStoreBase.getState().player;
-            const wasPlaying = player.status === PlayerStatus.PLAYING;
-            const resumeAtSec = captureTimecode(useTimestampStoreBase.getState().timestamp, null);
-            store.actions.setCounterpart(counterpartVideoId);
-            store.actions.setSourceVideoId(sourceVideoId);
-            store.actions.setVideoUrl(videoUrl);
-            store.actions.setResume(resumeAtSec, wasPlaying);
-            store.actions.setUnavailable(false);
-            if (wasPlaying) {
-                usePlayerStoreBase.getState().mediaPause();
-            }
-            store.actions.setMode('video');
-        } catch (err) {
-            logger.warn('streamify: video toggle failed', {
-                error: err instanceof Error ? err.message : String(err),
-            });
-            streamifyVideoStoreBase.getState().actions.setSwitching(false);
-            toast.error({ message: t('streamify.video.toggleFailed') });
-        } finally {
-            streamifyVideoStoreBase.getState().actions.setSwitching(false);
-        }
-    }, [t]);
+        await enterVideoMode({
+            resumeAtSec: null,
+            toast: (key) => ti18n(key),
+        });
+    }, []);
 
     const toggle = useCallback(() => {
         if (switchingRef.current) return;
@@ -211,4 +164,92 @@ function currentSongVideoId(): null | string {
     const serverType = useAuthStore.getState().currentServer?.type;
     if (serverType !== ServerType.STREAMIFY) return null;
     return song.id;
+}
+
+/**
+ * The core video-mode entry (module level — the hook's toggle AND the W3-A
+ * handoff share one pipeline):
+ *   counterpart (24 h Edge KV) → muxed stream ({ mode: 'video' }) →
+ *   store session (resumeAtSec = the explicit position when given, the
+ *   live timestamp otherwise) → pause audio through the store pipeline →
+ *   mode 'video' (the overlay seeks to resumeAtSec and resumes).
+ *
+ * Misses degrade cleanly (toggle hidden, audio uninterrupted) — the W2-A
+ * contract; a resumeAtSec handoff landing on a miss keeps the audio path
+ * playing at the exact preserved timecode.
+ */
+async function enterVideoMode(opts: {
+    /** An explicit landing position (the W3-A handoff); null = the live one. */
+    resumeAtSec: null | number;
+    toast: (key: string) => string;
+}): Promise<boolean> {
+    const store = streamifyVideoStoreBase.getState();
+    const sourceVideoId = currentSongVideoId();
+    if (sourceVideoId === null) return false;
+
+    store.actions.setSwitching(true);
+    try {
+        // 1. The counterpart (Edge KV, 24 h TTL) — videoId null and the
+        //    failure results alike are the honest "no official video"
+        //    form: disable the toggle, keep audio playing. The typed
+        //    seam: the post-#200 unified provider keeps the W1-B DTO
+        //    contract chapters/counterpart-free — the typed accessors
+        //    are the video feature's surface (getPlaylistTyped's shape).
+        const counterpart = await getVideoCounterpartTyped(sourceVideoId);
+        if (counterpart.kind !== 'ok' || counterpart.payload.videoId === null) {
+            store.actions.setSwitching(false);
+            store.actions.setUnavailable(true);
+            toast.info({ message: opts.toast('streamify.video.noVideoAvailable') });
+            return false;
+        }
+        const counterpartVideoId = counterpart.payload.videoId;
+
+        // 2. The muxed video stream (the additive resolver branch — the
+        //    audio rungs are untouched; a miss degrades cleanly).
+        let videoUrl: string;
+        try {
+            const resolution = await getStreamUrl(counterpartVideoId, {
+                mode: 'video',
+                relayBase: relayBaseCandidate(),
+            });
+            videoUrl = resolution.url;
+        } catch (err) {
+            if (err instanceof StreamifyVideoModeMissError) {
+                store.actions.setSwitching(false);
+                store.actions.setUnavailable(true);
+                toast.info({ message: opts.toast('streamify.video.noVideoAvailable') });
+                return false;
+            }
+            throw err;
+        }
+
+        // 3. The session: the explicit handoff position or the captured
+        //    live one; pause the audio element through the store's own
+        //    status pipeline.
+        const player = usePlayerStoreBase.getState().player;
+        const wasPlaying = player.status === PlayerStatus.PLAYING || opts.resumeAtSec !== null;
+        const resumeAtSec =
+            opts.resumeAtSec !== null
+                ? opts.resumeAtSec
+                : captureTimecode(useTimestampStoreBase.getState().timestamp, null);
+        store.actions.setCounterpart(counterpartVideoId);
+        store.actions.setSourceVideoId(sourceVideoId);
+        store.actions.setVideoUrl(videoUrl);
+        store.actions.setResume(resumeAtSec, wasPlaying);
+        store.actions.setUnavailable(false);
+        if (player.status === PlayerStatus.PLAYING) {
+            usePlayerStoreBase.getState().mediaPause();
+        }
+        store.actions.setMode('video');
+        return true;
+    } catch (err) {
+        logger.warn('streamify: video toggle failed', {
+            error: err instanceof Error ? err.message : String(err),
+        });
+        streamifyVideoStoreBase.getState().actions.setSwitching(false);
+        toast.error({ message: opts.toast('streamify.video.toggleFailed') });
+        return false;
+    } finally {
+        streamifyVideoStoreBase.getState().actions.setSwitching(false);
+    }
 }

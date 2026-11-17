@@ -19,6 +19,8 @@ import { useCreateFavorite } from '/@/renderer/features/shared/mutations/create-
 import { useDeleteFavorite } from '/@/renderer/features/shared/mutations/delete-favorite-mutation';
 import { StreamifyQualityBadges } from '/@/renderer/features/streamify-badges/components/quality-badges';
 import { StreamifyJamButton } from '/@/renderer/features/streamify-jam/components/streamify-jam-button';
+import { StreamifyConnectButton } from '/@/renderer/features/streamify/connect/components/streamify-connect-button';
+import { StreamifyMediaSessionBridge } from '/@/renderer/features/streamify/media-session/components/streamify-media-session-bridge';
 import { StreamifyVideoButton } from '/@/renderer/features/streamify/video/components/streamify-video-button';
 import { useHotkeys } from '/@/renderer/hooks/use-hotkeys';
 import {
@@ -112,6 +114,13 @@ export const RightControls = () => {
                     Video toggle. Renders null on stock servers; all logic
                     lives in features/streamify/video/ (see PATCHES.md). */}
                 <StreamifyVideoButton />
+                {/* W3-A (Streamify, thin seams): the Connect Devices popover
+                    (cross-device presence + handoff) and the OS media-session
+                    bridge (lock-screen position state + deep links) — all
+                    logic lives in features/streamify/{connect,media-session}/
+                    (see PATCHES.md). */}
+                <StreamifyConnectButton />
+                <StreamifyMediaSessionBridge />
                 <DlnaCastButton />
                 <SleepTimerButton />
                 <PlayerConfig />

@@ -41,7 +41,17 @@ export const openYtmImportModal = () => {
 const YtmImportModal = () => {
     const { t } = useTranslation();
     const server = useCurrentServer() as null | ServerListItemWithCredential;
-    const [input, setInput] = useState('');
+    // W3-A: a deep-link / share-target entry seeds the input (the media
+    // session bridge writes the session key before opening this modal).
+    const [input, setInput] = useState(() => {
+        try {
+            const prefill = window.sessionStorage.getItem('streamify.import.prefill');
+            if (prefill !== null) window.sessionStorage.removeItem('streamify.import.prefill');
+            return prefill ?? '';
+        } catch {
+            return '';
+        }
+    });
     const importer = useYtmImport();
 
     const parsed = useMemo(() => parseYtmInput(input), [input]);
