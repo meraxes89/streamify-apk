@@ -93,7 +93,11 @@ jobs:
               env:
                   SERVER_LOCK: 'true'
                   SERVER_TYPE: streamify
-                  SERVER_URL: ''
+                  # Non-empty identity key for the locked synthetic server
+                  # entry (login-route.tsx treats '' as isValid:false —
+                  # "No server selected"). Streamify auth goes through
+                  # /streamify-auth (Google OAuth); this URL is never dialed.
+                  SERVER_URL: 'https://streamify.local'
                   REMOTE_URL: ''
                   SERVER_NAME: streamify
                   LEGACY_AUTHENTICATION: 'false'

@@ -24,9 +24,12 @@ services:
             - SERVER_NAME=streamify # pre-defined server name (the synthetic Streamify entry)
             - SERVER_LOCK=true # locked to the Streamify server type — username/password are the only toggles
             - SERVER_TYPE=streamify # the fork's own registration (case insensitive)
-            # SERVER_URL/REMOTE_URL stay empty: the Streamify flow reads its
-            # Supabase endpoint from STREAMIFY_SUPABASE_URL (settings.js), not
-            # the stock server URL knob.
+            # SERVER_URL is a non-empty identity key for the locked synthetic
+            # entry — login-route.tsx treats '' as isValid:false ("No server
+            # selected"). Never dialed: the Streamify flow reads its Supabase
+            # endpoint from STREAMIFY_SUPABASE_URL (settings.js). REMOTE_URL
+            # stays empty.
+            - SERVER_URL=https://streamify.local
             - LEGACY_AUTHENTICATION=false # only meaningful for stock locked servers; kept explicit
             - ANALYTICS_DISABLED=true # disable Umami analytics tracking
             # Streamify runtime knobs (settings.js via nginx envsubst):

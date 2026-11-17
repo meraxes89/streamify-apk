@@ -21,7 +21,12 @@ COPY --chown=nginx:nginx --from=builder /app/out/web /usr/share/nginx/html
 COPY --chown=nginx:nginx ./settings.js.template /etc/nginx/templates/settings.js.template
 COPY --chown=nginx:nginx ng.conf.template /etc/nginx/templates/default.conf.template
 
-ENV SERVER_LOCK=false SERVER_NAME="" SERVER_TYPE="" SERVER_URL="" REMOTE_URL=""
+# SERVER_URL default is a non-empty identity key (never dialed — Streamify
+# auth goes through /streamify-auth): login-route.tsx marks an empty
+# SERVER_URL as isValid:false ("No server selected") when SERVER_LOCK=true,
+# so the locked image must ship a valid placeholder URL. Deployments that
+# lock to a real stock server override it at runtime as before.
+ENV SERVER_LOCK=false SERVER_NAME="" SERVER_TYPE="" SERVER_URL="https://streamify.local" REMOTE_URL=""
 ENV LEGACY_AUTHENTICATION="" ANALYTICS_DISABLED="" PUBLIC_PATH="/"
 # Fork addition (see PATCHES.md): defined so nginx envsubst substitutes the
 # Streamify settings.js knobs even when the deployment leaves them empty.
