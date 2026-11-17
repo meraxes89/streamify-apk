@@ -21,6 +21,7 @@ import {
     getBuiltinEqPreset,
     normalizeEqPreset,
 } from '/@/renderer/features/streamify-eq/utils/eq-math';
+import { eqPresetSlugId } from '/@/renderer/features/streamify/eq-presets/preset-codec';
 import { useSettingsStore } from '/@/renderer/store/settings.store';
 
 export const EQ_STORAGE_KEY = 'streamify.eq.v1';
@@ -29,6 +30,8 @@ export interface StreamifyEqActions {
     /** Apply a preset: write-through to settings.playback.equalizer. */
     applyPreset: (id: string) => void;
     deleteCustomPreset: (id: string) => void;
+    /** W3-B: add a decoded share-code preset (id-deduped) and apply it. */
+    importCustomPreset: (preset: EqPreset) => EqPreset;
     load: () => void;
     renameCustomPreset: (id: string, name: string) => void;
     /** Capture the current bands/preamp as a named custom preset. */
@@ -102,12 +105,7 @@ const loadPersisted = (): Pick<StreamifyEqState, 'customPresets' | 'selectedPres
     }
 };
 
-const slugify = (name: string): string =>
-    `custom:${name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40)}`;
+const slugify = (name: string): string => eqPresetSlugId(name);
 
 export const useStreamifyEqStoreBase = create<StreamifyEqActions & StreamifyEqState>()(
     (set, get) => ({
@@ -132,6 +130,40 @@ export const useStreamifyEqStoreBase = create<StreamifyEqActions & StreamifyEqSt
             persist(get());
         },
         graphActive: false,
+        importCustomPreset: (preset) => {
+            // Id-dedupe against the existing bank: an imported "Rock" next
+            // to a saved "Rock" becomes custom:rock-2 (never an overwrite).
+            const base =
+                preset.id.startsWith('custom:') && preset.id !== 'custom:'
+                    ? preset.id
+                    : slugify(preset.name);
+            let id = base;
+            let n = 2;
+            while (
+                get().customPresets.some((candidate) => candidate.id === id) ||
+                getBuiltinEqPreset(id) !== null
+            ) {
+                id = `${base}-${n}`;
+                n += 1;
+            }
+            const imported: EqPreset = {
+                bands: preset.bands.map((band) => ({
+                    freq: band.freq,
+                    gain: clampBandGain(band.gain),
+                    q: band.q,
+                })),
+                id,
+                name: preset.name,
+                preamp: clampPreamp(preset.preamp),
+            };
+            set((state) => ({
+                customPresets: [...state.customPresets, imported],
+                selectedPresetId: id,
+            }));
+            persist(get());
+            writeEqualizerSettings(imported.bands, imported.preamp, true);
+            return imported;
+        },
         load: () => {
             set(loadPersisted());
         },

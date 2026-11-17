@@ -9,13 +9,18 @@
  * genre column), discovery-vs-repeat, and the hour-of-day histogram.
  * Empty/new-account states render as zero states — never NaN, never a
  * broken chart.
+ *
+ * W3-B extends the same route with the listening-rhythm card (peak
+ * hour/weekday + streaks), the Top Discovery card (Discover Mix / Automix
+ * graduates) and the client-side PNG share card — all fed by
+ * features/streamify/wrapped/wrapped-engine.ts, the same ledger, the same
+ * invariant (min(half-duration, 4 min); skips never count).
  */
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
-    getWrappedStats,
     WRAPPED_WINDOWS,
     type WrappedStats,
     type WrappedWindow,
@@ -23,6 +28,13 @@ import {
 import { PageHeader } from '/@/renderer/components/page-header/page-header';
 import { AnimatedPage } from '/@/renderer/features/shared/components/animated-page';
 import { PageErrorBoundary } from '/@/renderer/features/shared/components/page-error-boundary';
+import { WrappedDiscoveryCard } from '/@/renderer/features/streamify/wrapped/components/wrapped-discovery-card';
+import { WrappedRhythmCard } from '/@/renderer/features/streamify/wrapped/components/wrapped-rhythm-card';
+import { WrappedShareCardButton } from '/@/renderer/features/streamify/wrapped/components/wrapped-share-card';
+import {
+    formatWrappedShareCardData,
+    getWrappedExtended,
+} from '/@/renderer/features/streamify/wrapped/wrapped-engine';
 import { Badge } from '/@/shared/components/badge/badge';
 import { Group } from '/@/shared/components/group/group';
 import { Paper } from '/@/shared/components/paper/paper';
@@ -94,9 +106,25 @@ const StreamifyWrappedRoute = () => {
     const { t } = useTranslation();
     const [window, setWindow] = useState<WrappedWindow>('30d');
 
-    const stats = useMemo(() => getWrappedStats(window), [window]);
+    // W3-B: the extended snapshot (stats + rhythm + streak + graduation)
+    // over the same ledger getWrappedStats seeds and reads.
+    const extended = useMemo(() => getWrappedExtended(window), [window]);
+    const stats: WrappedStats = extended.stats;
 
     const empty = stats.count === 0;
+
+    const shareData = useMemo(
+        () =>
+            formatWrappedShareCardData({
+                minutesWord: t('streamifyWrapped.shareMinutes'),
+                playsTemplate: (count) => t('streamifyWrapped.sharePlays', { count }),
+                stats,
+                streak: extended.streak,
+                streakTemplate: (days) => t('streamifyWrapped.shareStreak', { count: days }),
+                windowLabel: t(`streamifyWrapped.window_${window}`),
+            }),
+        [extended.streak, stats, t, window],
+    );
 
     return (
         <AnimatedPage>
@@ -122,6 +150,7 @@ const StreamifyWrappedRoute = () => {
                             </Text>
                         ) : null}
                     </Group>
+                    {!empty ? <WrappedShareCardButton data={shareData} /> : null}
 
                     {empty ? (
                         <Paper p="xl" shadow="none" withBorder>
@@ -163,6 +192,10 @@ const StreamifyWrappedRoute = () => {
                                     <HourHistogram stats={stats} t={t} />
                                 </Stack>
                             </Paper>
+
+                            <WrappedRhythmCard rhythm={extended.rhythm} streak={extended.streak} />
+
+                            <WrappedDiscoveryCard discovery={extended.discovery} />
 
                             <Group gap="md" grow>
                                 <Paper p="md" shadow="none" withBorder>

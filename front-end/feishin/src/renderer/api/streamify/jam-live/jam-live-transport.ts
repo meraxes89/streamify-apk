@@ -25,12 +25,13 @@
 
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 
-import type { JamBroadcastMessage, JamSyncMessage } from './jam-live-protocol';
+import type { JamBroadcastMessage, JamReactionMessage, JamSyncMessage } from './jam-live-protocol';
 import type { JamJournalRow, JamOp } from './jam-live-wire';
 
 import {
     JAM_CONTROL_EVENT,
     JAM_META_EVENT,
+    JAM_REACTION_EVENT,
     JAM_SYNC_EVENT,
     type JamMetaMessage,
 } from './jam-live-protocol';
@@ -124,6 +125,15 @@ export class JamLiveTransport {
         });
     }
 
+    /** W3-B: the ephemeral reaction lane — fire-and-forget, never journaled. */
+    broadcastReaction(message: JamReactionMessage): void {
+        void this.channel.send({
+            event: JAM_REACTION_EVENT,
+            payload: message,
+            type: 'broadcast',
+        });
+    }
+
     broadcastSync(message: JamSyncMessage): void {
         void this.channel.send({
             event: JAM_SYNC_EVENT,
@@ -157,6 +167,10 @@ export class JamLiveTransport {
             .on('broadcast', { event: JAM_META_EVENT }, (payload: { payload: unknown }) => {
                 if (this.closed) return;
                 this.deps.events.onBroadcast(JAM_META_EVENT, payload.payload);
+            })
+            .on('broadcast', { event: JAM_REACTION_EVENT }, (payload: { payload: unknown }) => {
+                if (this.closed) return;
+                this.deps.events.onBroadcast(JAM_REACTION_EVENT, payload.payload);
             })
             .on('broadcast', { event: JAM_CONTROL_EVENT }, (payload: { payload: unknown }) => {
                 if (this.closed) return;

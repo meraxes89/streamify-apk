@@ -37,6 +37,16 @@ export interface JamQueueItemView {
     /** Resolved metadata (null until a meta/snapshot arrives). */
     track: JamTrackPayload | null;
     upvotes: number;
+    /** W3-B: has THIS device already voted the element (+1 per sender). */
+    voted: boolean;
+}
+
+/** One ephemeral floating reaction (W3-B — display-only, never journaled). */
+export interface JamReactionView {
+    atMs: number;
+    emoji: string;
+    /** Unique per-push key (animation identity; not a stable id). */
+    key: number;
 }
 
 export interface JamSessionView {
@@ -48,6 +58,8 @@ export interface JamSessionView {
 }
 
 export interface StreamifyJamActions {
+    /** Push one ephemeral reaction into the floating feed (capped + pruned). */
+    pushReaction: (emoji: string, atMs: number) => void;
     requestEqPanel: () => void;
     reset: () => void;
     setHostDemoted: (demoted: boolean) => void;
@@ -71,8 +83,10 @@ export interface StreamifyJamState {
     isDesynced: boolean;
     /** Live participant roster (Supabase Realtime presence view). */
     participants: JamParticipantView[];
-    /** Ordered live queue (metadata-resolved). */
+    /** Ordered live queue (metadata-resolved, voting-ordered since W3-B). */
     queue: JamQueueItemView[];
+    /** W3-B: the ephemeral floating-reaction feed (newest last, capped). */
+    reactions: JamReactionView[];
     session: JamSessionView | null;
     /** Connection-state error detail (status === 'error'). */
     sessionError: null | string;
@@ -91,15 +105,31 @@ const initialState: StreamifyJamState = {
     isDesynced: false,
     participants: [],
     queue: [],
+    reactions: [],
     session: null,
     sessionError: null,
     sessionIsHost: false,
     status: 'idle',
 };
 
+/** Reaction feed bounds: the float animation is ~2.4 s; 24 slots is ample. */
+const REACTION_CAP = 24;
+const REACTION_MAX_AGE_MS = 10_000;
+let reactionKeySeq = 0;
+
 export const useStreamifyJamStoreBase = create<StreamifyJamActions & StreamifyJamState>()(
     (set) => ({
         ...initialState,
+        pushReaction: (emoji, atMs) => {
+            if (typeof emoji !== 'string' || emoji === '') return;
+            const key = (reactionKeySeq += 1);
+            set((state) => ({
+                reactions: [
+                    ...state.reactions.filter((r) => atMs - r.atMs < REACTION_MAX_AGE_MS),
+                    { atMs, emoji, key },
+                ].slice(-REACTION_CAP),
+            }));
+        },
         requestEqPanel: () => {
             set((state) => ({ eqQuickLinkCounter: state.eqQuickLinkCounter + 1 }));
         },

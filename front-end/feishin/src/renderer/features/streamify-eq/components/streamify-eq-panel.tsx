@@ -19,11 +19,17 @@ import {
     EQ_MAX_PREAMP_DB,
     type EqPreset,
 } from '/@/renderer/features/streamify-eq/utils/eq-math';
+import {
+    decodeEqPresetShareCode,
+    encodeEqPresetShareCode,
+    type EqPresetShareError,
+} from '/@/renderer/features/streamify/eq-presets/preset-codec';
 import { useSettingsStore } from '/@/renderer/store/settings.store';
 import { selectAllEqPresets, useStreamifyEqStore } from '/@/renderer/store/streamify-eq.store';
 import { Button } from '/@/shared/components/button/button';
 import { Divider } from '/@/shared/components/divider/divider';
 import { Group } from '/@/shared/components/group/group';
+import { Popover } from '/@/shared/components/popover/popover';
 import { Select } from '/@/shared/components/select/select';
 import { Slider } from '/@/shared/components/slider/slider';
 import { Stack } from '/@/shared/components/stack/stack';
@@ -37,6 +43,22 @@ const MANUAL_VALUE = '__manual';
 
 const bandLabel = (freq: number): string => (freq >= 1000 ? `${freq / 1000}k` : `${freq}`);
 
+/** Typed share-codec errors → literal i18n keys (check-i18n scans these). */
+const shareErrorKey = (error: EqPresetShareError): string => {
+    switch (error.code) {
+        case 'bad-bands':
+            return 'streamify.eq.shareErrorBadBands';
+        case 'bad-base64':
+            return 'streamify.eq.shareErrorBadBase64';
+        case 'bad-json':
+            return 'streamify.eq.shareErrorBadJson';
+        case 'bad-schema':
+            return 'streamify.eq.shareErrorBadSchema';
+        default:
+            return 'streamify.eq.shareErrorEmpty';
+    }
+};
+
 export const StreamifyEqPanel = () => {
     const { t } = useTranslation();
     const equalizer = useSettingsStore((state) => state.playback.equalizer);
@@ -44,6 +66,11 @@ export const StreamifyEqPanel = () => {
     const eq = useStreamifyEqStore();
 
     const [presetName, setPresetName] = useState('');
+    // W3-B: the share-code lane (import popover + copy-out) and rename mode.
+    const [importOpened, setImportOpened] = useState(false);
+    const [importCode, setImportCode] = useState('');
+    const [importError, setImportError] = useState<null | string>(null);
+    const [renameMode, setRenameMode] = useState(false);
 
     useEffect(() => {
         eq.load();
@@ -70,7 +97,18 @@ export const StreamifyEqPanel = () => {
         eq.applyPreset(value);
     };
 
+    const selectedCustom = useMemo(
+        () => presets.find((preset: EqPreset) => preset.id === eq.selectedPresetId),
+        [presets, eq.selectedPresetId],
+    );
+
     const handleSavePreset = () => {
+        if (renameMode && selectedCustom) {
+            eq.renameCustomPreset(selectedCustom.id, presetName);
+            setRenameMode(false);
+            setPresetName('');
+            return;
+        }
         const saved = eq.saveCustomPreset(presetName);
         if (saved) {
             setPresetName('');
@@ -78,10 +116,27 @@ export const StreamifyEqPanel = () => {
         }
     };
 
-    const selectedCustom = useMemo(
-        () => presets.find((preset: EqPreset) => preset.id === eq.selectedPresetId),
-        [presets, eq.selectedPresetId],
-    );
+    const handleImport = () => {
+        const result = decodeEqPresetShareCode(importCode);
+        if (!result.ok) {
+            setImportError(t(shareErrorKey(result.error)));
+            return;
+        }
+        const imported = eq.importCustomPreset(result.preset);
+        setImportCode('');
+        setImportError(null);
+        setImportOpened(false);
+        toast.success({ message: t('streamify.eq.importDone', { name: imported.name }) });
+    };
+
+    const handleCopyShareCode = () => {
+        const selected = presets.find((preset) => preset.id === eq.selectedPresetId);
+        if (!selected) return;
+        const code = encodeEqPresetShareCode(selected);
+        void navigator.clipboard?.writeText(code).then(() => {
+            toast.success({ message: t('streamify.eq.shareCodeCopied') });
+        });
+    };
 
     return (
         <Stack gap="sm">
@@ -161,7 +216,11 @@ export const StreamifyEqPanel = () => {
                 <Group gap="xs">
                     <TextInput
                         onChange={(event) => setPresetName(event.currentTarget.value)}
-                        placeholder={t('streamify.eq.presetNamePlaceholder')}
+                        placeholder={
+                            renameMode && selectedCustom
+                                ? selectedCustom.name
+                                : t('streamify.eq.presetNamePlaceholder')
+                        }
                         value={presetName}
                         w={200}
                     />
@@ -171,18 +230,89 @@ export const StreamifyEqPanel = () => {
                         size="sm"
                         variant="filled"
                     >
-                        {t('streamify.eq.savePreset')}
+                        {renameMode && selectedCustom
+                            ? t('streamify.eq.saveName')
+                            : t('streamify.eq.savePreset')}
                     </Button>
                     {selectedCustom && selectedCustom.id.startsWith('custom:') ? (
-                        <Button
-                            color="error"
-                            onClick={() => eq.deleteCustomPreset(selectedCustom.id)}
-                            size="sm"
-                            variant="outline"
-                        >
-                            {t('streamify.eq.deletePreset')}
-                        </Button>
+                        <>
+                            <Button
+                                onClick={() => {
+                                    setRenameMode((mode) => !mode);
+                                    setPresetName(renameMode ? '' : selectedCustom.name);
+                                }}
+                                size="sm"
+                                variant="light"
+                            >
+                                {renameMode
+                                    ? t('streamify.eq.cancelRename')
+                                    : t('streamify.eq.renamePreset')}
+                            </Button>
+                            <Button
+                                color="error"
+                                onClick={() => {
+                                    eq.deleteCustomPreset(selectedCustom.id);
+                                    setRenameMode(false);
+                                    setPresetName('');
+                                }}
+                                size="sm"
+                                variant="outline"
+                            >
+                                {t('streamify.eq.deletePreset')}
+                            </Button>
+                        </>
                     ) : null}
+                </Group>
+                <Group gap="xs">
+                    <Button
+                        disabled={eq.selectedPresetId === null}
+                        onClick={handleCopyShareCode}
+                        size="sm"
+                        variant="light"
+                    >
+                        {t('streamify.eq.shareCode')}
+                    </Button>
+                    <Popover
+                        onChange={(opened) => {
+                            setImportOpened(opened);
+                            if (!opened) {
+                                setImportError(null);
+                                setImportCode('');
+                            }
+                        }}
+                        opened={importOpened}
+                        position="bottom"
+                        width={340}
+                    >
+                        <Popover.Target>
+                            <Button onClick={() => setImportOpened(true)} size="sm" variant="light">
+                                {t('streamify.eq.importShareCode')}
+                            </Button>
+                        </Popover.Target>
+                        <Popover.Dropdown>
+                            <Stack gap="xs">
+                                <Text size="sm">{t('streamify.eq.importIntro')}</Text>
+                                <TextInput
+                                    onChange={(event) => setImportCode(event.currentTarget.value)}
+                                    placeholder={t('streamify.eq.shareCodePlaceholder')}
+                                    value={importCode}
+                                />
+                                {importError !== null ? (
+                                    <Text c="var(--theme-colors-state-error)" size="xs">
+                                        {importError}
+                                    </Text>
+                                ) : null}
+                                <Button
+                                    disabled={importCode.trim() === ''}
+                                    onClick={handleImport}
+                                    size="xs"
+                                    variant="filled"
+                                >
+                                    {t('streamify.eq.importPreset')}
+                                </Button>
+                            </Stack>
+                        </Popover.Dropdown>
+                    </Popover>
                 </Group>
                 <Text isMuted size="xs">
                     {t('streamify.eq.builtinCount', { count: BUILTIN_EQ_PRESETS.length })}

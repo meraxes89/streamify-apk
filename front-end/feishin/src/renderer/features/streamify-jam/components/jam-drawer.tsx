@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { buildJamInviteLink } from '/@/renderer/api/streamify/jam-live/jam-live-protocol';
 import { StreamifyEqPanel } from '/@/renderer/features/streamify-eq/components/streamify-eq-panel';
 import { JamQueueList } from '/@/renderer/features/streamify-jam/components/jam-queue-list';
+import { JamReactionBar } from '/@/renderer/features/streamify/jam/components/jam-reaction-bar';
 import { useStreamifyJamStore } from '/@/renderer/store/streamify-jam.store';
 import { ActionIcon } from '/@/shared/components/action-icon/action-icon';
 import { Badge } from '/@/shared/components/badge/badge';
@@ -178,6 +179,9 @@ export const JamDrawer = ({
                     {t('streamify.jam.demoted')}
                 </Text>
             ) : null}
+
+            {/* W3-B: ephemeral live reactions (broadcast-only, flood-controlled). */}
+            <JamReactionBar controller={controller} />
 
             {!isHost && hostPlayback ? (
                 <Stack gap={4}>

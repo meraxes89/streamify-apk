@@ -34,12 +34,13 @@ import type {
 } from './jam-live-transport';
 import type { JamJournalRow, JamOp } from './jam-live-wire';
 
-import { deviceNonceOf, generateCadIdU64 } from './jam-live-cad';
+import { deviceNonceHex, deviceNonceOf, generateCadIdU64 } from './jam-live-cad';
 import { fracAfter, fracIndexForInsertAt } from './jam-live-frac';
 import {
     computeDriftCorrection,
     decodeJamControlMessage,
     decodeJamMetaMessage,
+    decodeJamReactionMessage,
     decodeJamSyncMessage,
     estimateHostPositionMs,
     generateJamRoomCode,
@@ -48,9 +49,11 @@ import {
     JAM_HOST_TICK_MS,
     JAM_META_EVENT,
     JAM_PRESENCE_INTERVAL_MS,
+    JAM_REACTION_EVENT,
     JAM_SYNC_EVENT,
     type JamBroadcastMessage,
     type JamMetaMessage,
+    type JamReactionMessage,
     type JamSnapshotMessage,
     type JamSyncKind,
     type JamSyncMessage,
@@ -73,11 +76,18 @@ import {
     canonicalJamQueueState,
     createJamQueueDoc,
     type JamQueueDoc,
+    type JamQueueElement,
     jamQueueOrderedLive,
     jamQueueRespacePlan,
     jamQueueUpvotes,
 } from './jam-queue-crdt';
 
+import {
+    canSendJamReaction,
+    hasMyJamVote,
+    isJamReactionEmoji,
+    jamVotingOrder,
+} from '/@/renderer/features/streamify/jam/jam-voting';
 import { useStreamifyJamStoreBase } from '/@/renderer/store/streamify-jam.store';
 import { useStreamifySettingsStoreBase } from '/@/renderer/store/streamify-settings.store';
 import { logger } from '/@/renderer/utils/logger';
@@ -126,6 +136,8 @@ export type JamTransportFactory = (
 export interface JamTransportLike {
     broadcastControl(message: JamBroadcastMessage): void;
     broadcastMeta(message: JamMetaMessage): void;
+    /** W3-B: the ephemeral reaction lane (fire-and-forget). */
+    broadcastReaction(message: JamReactionMessage): void;
     broadcastSync(message: JamSyncMessage): void;
     connect(): Promise<void>;
     fetchJournal(): Promise<JamJournalRow[]>;
@@ -163,6 +175,9 @@ export class StreamifyJamSessionController {
 
     private lastHostEpoch = 0;
 
+    /** W3-B: the last emitted reaction (the 500 ms flood-control fence). */
+    private lastReactionAtMs = Number.NEGATIVE_INFINITY;
+
     private readonly metaCache = new Map<string, JamTrackPayload>();
 
     private readonly outbox: JamOp[] = [];
@@ -174,6 +189,9 @@ export class StreamifyJamSessionController {
     private pendingOps: JamJournalRow[] = [];
 
     private presenceTimer: null | ReturnType<typeof setInterval> = null;
+
+    /** W3-B: this device's vote-map key (the sender nonce hex). */
+    private readonly senderHex: string;
 
     private sessionRow: JamSessionRow | null = null;
 
@@ -195,6 +213,7 @@ export class StreamifyJamSessionController {
 
     constructor(deps: JamControllerDeps) {
         this.deps = deps;
+        this.senderHex = deviceNonceHex(deps.deviceId);
     }
 
     // -------------------------------------------------------------------------
@@ -352,10 +371,36 @@ export class StreamifyJamSessionController {
         });
     }
 
+    /**
+     * W3-B: broadcast one ephemeral reaction. Flood-controlled to one emit
+     * per 500 ms, whitelisted glyphs only, local echo pushed immediately
+     * (the channel is broadcast self:false — we never hear our own).
+     */
+    sendReaction(emoji: string): void {
+        if (this.state !== 'live' || !this.transport) return;
+        if (!isJamReactionEmoji(emoji)) return;
+        const now = this.now;
+        if (!canSendJamReaction(this.lastReactionAtMs, now)) return;
+        this.lastReactionAtMs = now;
+        this.transport.broadcastReaction({
+            emoji,
+            kind: 'reaction',
+            senderNonce: this.senderHex,
+            ts: now,
+            v: 1,
+        });
+        this.store.pushReaction(emoji, now);
+    }
+
     upvoteTrack(addOpId: string): void {
         if (this.state !== 'live') return;
         const target = this.doc.elements.get(BigInt(addOpId));
         if (!target || target.removedAtOpId !== null) return;
+        // W3-B: +1 per sender — an already-voted element is a client-side
+        // no-op (the fold would dedupe it anyway; this keeps the op journal
+        // free of no-op votes). Vote REMOVAL needs a new frozen op type and
+        // stays out of scope (see the W3-B ADR).
+        if (hasMyJamVote(target, this.senderHex)) return;
         this.mintAndSend(OP_VOTE, target.cadId, target.frac, target.addOpId);
         this.publishQueue();
     }
@@ -484,6 +529,14 @@ export class StreamifyJamSessionController {
             if (message) {
                 this.metaCache.set(message.cadId, message.track);
                 this.publishQueue();
+            }
+            return;
+        }
+        if (event === JAM_REACTION_EVENT) {
+            // W3-B: ephemeral — decoded strictly, rendered, never journaled.
+            const message = decodeJamReactionMessage(raw);
+            if (message) {
+                this.store.pushReaction(message.emoji, message.ts);
             }
             return;
         }
@@ -665,14 +718,36 @@ export class StreamifyJamSessionController {
         this.enqueueOp(op);
     }
 
+    /**
+     * W3-B: the queue element the room is audibly playing right now, when
+     * it can be named unambiguously — exactly one live element matches the
+     * local bridge's current track cad. The protocol's currentAddOpId /
+     * trackAddOpId fields stay reserved for the future consumption lane;
+     * this derivation is deterministic per device and pins the head.
+     */
+    private pinnedPlayingAddOpId(ordered: JamQueueElement[]): null | string {
+        const current = this.deps.bridge.getCurrentTrack();
+        if (!current) return null;
+        const cad = generateCadIdU64(current.name, current.artistName, current.duration);
+        const matches = ordered.filter((element) => element.cadId === cad);
+        return matches.length === 1 ? matches[0]!.addOpId.toString(10) : null;
+    }
+
     private publishQueue(): void {
+        // W3-B: the published view is the VOTING order — (voteCount DESC,
+        // addedAt ASC) — with the currently playing element pinned first
+        // (votes never reorder what's playing). The CRDT's fractional
+        // storage order is untouched; this is presentation only.
+        const ordered = jamQueueOrderedLive(this.doc);
+        const pinned = this.pinnedPlayingAddOpId(ordered);
         this.store.setQueue(
-            jamQueueOrderedLive(this.doc).map((element) => ({
+            jamVotingOrder(ordered, { pinnedAddOpId: pinned }).map((element) => ({
                 addedBy: element.addedBy,
                 addOpId: element.addOpId.toString(10),
                 cadId: element.cadId.toString(10),
                 track: this.metaCache.get(element.cadId.toString(10)) ?? null,
                 upvotes: jamQueueUpvotes(element),
+                voted: hasMyJamVote(element, this.senderHex),
             })),
         );
     }

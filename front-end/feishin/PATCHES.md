@@ -145,9 +145,13 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (#205), W2-B (#206), W3-A (this PR).
   `streamifyDebug.*` + `page.sidebar.{downloads,wrapped}` (P4-A, #192);
   `streamifyDebug.{panelCanary,canaryHint}` (P5-A). P4-B (#193) adds the
   `streamify` top-level group (jam/eq/settings strings). W1-A adds the
-  `streamifyImport.*` group (the 1-Click YTM importer modal). Other
-  locales fall back to `en` (the fork's i18n policy — W1-A keeps it
-  en.json-only; check-i18n.mjs stays green by construction).
+  `streamifyImport.*` group (the 1-Click YTM importer modal). W3-B adds
+  keys inside the existing groups only: `streamifyWrapped.*` (rhythm /
+  streak / discovery / share-card strings), `streamify.jam.*` (upvoted,
+  votingHint, reactionsTitle) and `streamify.eq.*` (share-code import /
+  export / rename + the five typed codec-error strings). Other locales
+  fall back to `en` (the fork's i18n policy — W1-A keeps it en.json-only;
+  check-i18n.mjs stays green by construction).
 - **Conflict surface:** none — append-only at file end (plus keys inside
   the alphabetically-adjacent `page.sidebar` block).
 
@@ -482,12 +486,23 @@ can ignore them and audits can hold us to the directory-isolation rule.
   semantic, one implementation, pinned by golden-vector tests) plus the
   listening-room additions: the `jam_ops` journal-row normalizer, the queue
   CRDT fold, the host/follower sync protocol (pure), the supabase-js
-  transport, the session controller, the player-store bridge.
+  transport, the session controller, the player-store bridge. W3-B adds
+  the ephemeral `jam_reaction` broadcast lane (a fourth event + strict
+  decoder in jam-live-protocol.ts; `broadcastReaction` + subscription in
+  jam-live-transport.ts) and the controller's voting publish (the
+  (voteCount DESC, addedAt ASC) view with the playing element pinned +
+  per-item `voted` flag) and the flood-gated `sendReaction` — the
+  48-byte op codec, the fold, and the Rust mirror are untouched.
 - **`downloads/` + `wasm/` + `wrapped/` (P4-A, #192):** the OPFS chunk-
   cipher download pipeline (`cipher`/`format`/`meta`/`opfs`/
   `download-manager`/`instance`), the vendored cipher artifact
   (`streamify_cipher_bg.wasm` + `artifact.json` manifest + the hand-written
-  `cipher-loader.ts`), and the wrapped-stats ledger + aggregates.
+  `cipher-loader.ts`), and the wrapped-stats ledger + aggregates. W3-B
+  extends the ledger with the discovery-`origin` annotation (one optional
+  LedgerEvent field + the recordCountedPlay payload, resolved in the
+  controller's onCountedPlay wiring — the scrobble spine itself is
+  untouched) plus `origin-hints.ts` (the bounded first-writer-wins claim
+  registry) and the Automix claim hook in `catalog/automix.ts`.
 - **`metadata/` (W1-A; extended W2-A):** the provider seam — `types.ts` (the typed
   payload family + `MetadataProvider` interface, mirrored from the relay
   worker's schemas), `edge.ts` (the /ytm/meta client with abort-timeout
@@ -604,7 +619,19 @@ can ignore them and audits can hold us to the directory-isolation rule.
   source of truth stays `supabase/migrations/`.
 - `streamify-jam/` / `streamify-eq/` / `streamify-settings/` (P4-B, #193) —
   the Jam live-queue drawer, the EQ DSP panel, the Streamify settings pages
-  + brand theme.
+  + brand theme. W3-B edits stay fork-internal: the Jam drawer mounts the
+  reaction bar, the queue list renders the vote-toggle state, and the EQ
+  panel grows the share-code/rename/import section — no new upstream
+  seams (right-controls.tsx untouched, per the W3-A isolation rule).
+- **`features/streamify/{wrapped,jam,eq-presets}/` (W3-B — the nested
+  Wave-3 feature tree, the W1-A nested-namespace rule):**
+  `wrapped/wrapped-engine.ts` (the pure rhythm / streak / graduation /
+  share-card folds over the P4-A ledger) + `wrapped/components/`
+  (rhythm card, discovery card, canvas share card — mounted inside the
+  P4-A `streamify-wrapped` route); `jam/jam-voting.ts` (the voting-order
+  policy + reaction throttle, pure) + `jam/components/jam-reaction-bar.tsx`
+  (+ its CSS module); `eq-presets/preset-codec.ts` (the strict
+  base64url/JSON share codec with typed errors and ±12 dB clamps).
 - `streamify-badges/` (W1-B) — the player-bar honest quality badges:
   the pure badge model (`quality-badge-model.ts` — the strict
   audioChannels > 2 Spatial rule, zero-RPC facts) and the component
@@ -639,7 +666,10 @@ can ignore them and audits can hold us to the directory-isolation rule.
   `streamify-eq.store.ts` / `streamify-settings.store.ts` (P4-B),
   `streamify-smart-sync.store.ts` (W2-B — the breaker/usage UI slice) — the
   deliberately-dumb state slices with hand-rolled localStorage lanes (no
-  store-barrel exports; node-testable).
+  store-barrel exports; node-testable). W3-B: the jam store gains the
+  ephemeral `reactions` feed (`pushReaction`, capped + aged out) and the
+  per-item `voted` flag; the eq store gains `importCustomPreset`
+  (id-deduped, applied through the same write-through).
 
 ### Other fork-owned files
 
