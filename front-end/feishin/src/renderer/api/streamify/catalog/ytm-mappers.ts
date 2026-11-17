@@ -70,8 +70,16 @@ export function cloudTrackIdOfSong(song: Song): string {
 export function extractVideoId(raw: null | string | undefined): null | string {
     if (!raw) return null;
     const trimmed = raw.trim();
+    if (!trimmed) return null;
+
     const match = trimmed.match(/(?:v=|youtu\.be\/|embed\/|\/v\/|\/vi\/)([A-Za-z0-9_-]{11})/);
     if (match) return match[1] ?? null;
+
+    // If it's a URL (e.g. expired googlevideo link), or contains path separators / query params, it's not a video ID:
+    if (/^https?:\/\//i.test(trimmed) || trimmed.includes('/') || trimmed.includes('?') || trimmed.length > 32) {
+        return null;
+    }
+
     return trimmed;
 }
 
@@ -86,7 +94,8 @@ export function songBySig(snapshot: LibrarySnapshot): Map<string, SongRow> {
 export function songByVideoId(snapshot: LibrarySnapshot): Map<string, SongRow> {
     const map = new Map<string, SongRow>();
     for (const row of snapshot.songs) {
-        if (row.streamUrl !== null && row.streamUrl !== '') map.set(row.streamUrl, row);
+        const vid = extractVideoId(row.streamUrl);
+        if (vid !== null) map.set(vid, row);
     }
     return map;
 }
@@ -286,6 +295,9 @@ export function ytmToSong(
     const bySig = indexes?.bySig ?? songBySig(snapshot);
     const known = byVideoId.get(ref.videoId) ?? bySig.get(songSig(ref.title, ref.artist));
     if (known !== undefined) {
+        if (!extractVideoId(known.streamUrl) && extractVideoId(ref.videoId)) {
+            known.streamUrl = ref.videoId;
+        }
         return normalizeSong(known, snapshot, serverId);
     }
     const artist = ref.artist.trim() === '' ? 'Unknown Artist' : ref.artist;

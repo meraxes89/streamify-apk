@@ -87,11 +87,12 @@ jobs:
                   STREAMIFY_RELAY_BASE: ${{ secrets.STREAMIFY_RELAY_BASE || vars.STREAMIFY_RELAY_BASE || '' }}
                   STREAMIFY_META_BASE: ${{ secrets.STREAMIFY_META_BASE || vars.STREAMIFY_META_BASE || '' }}
                   STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
+                  STREAMIFY_GSF_URL: ${{ vars.GSF_URL || '' }}
               run: |
                   set -euo pipefail
                   VARS="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | sed -e 's/^\${/\$/' -e 's/}$//')"
                   export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
-                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN
+                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN STREAMIFY_GSF_URL
                   export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
                   envsubst "$VARS" < settings.js.template > out/web/settings.js
@@ -131,11 +132,12 @@ jobs:
                   STREAMIFY_RELAY_BASE: ${{ secrets.STREAMIFY_RELAY_BASE || vars.STREAMIFY_RELAY_BASE || '' }}
                   STREAMIFY_META_BASE: ${{ secrets.STREAMIFY_META_BASE || vars.STREAMIFY_META_BASE || '' }}
                   STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
+                  STREAMIFY_GSF_URL: ${{ vars.GSF_URL || '' }}
               run: |
                   set -euo pipefail
                   VARS="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | sed -e 's/^\${/\$/' -e 's/}$//')"
                   export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
-                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN
+                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN STREAMIFY_GSF_URL
                   export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
                   envsubst "$VARS" < settings.js.template > out/web/settings.js

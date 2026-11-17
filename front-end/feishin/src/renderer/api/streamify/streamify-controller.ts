@@ -1061,7 +1061,8 @@ export const StreamifyController: InternalControllerEndpoint = {
         // is fixed by the codec ladder; they are read but not honored.
         const { apiClientProps, query } = args;
         const ytmVideoId = videoIdOfYtmSong(query.id);
-        let videoId: null | string;
+        let videoId: null | string = null;
+        let candidateRow;
         if (ytmVideoId !== null) {
             videoId = extractVideoId(ytmVideoId);
         } else {
@@ -1069,9 +1070,30 @@ export const StreamifyController: InternalControllerEndpoint = {
                 apiClientProps.server,
                 apiClientProps.signal,
             );
-            const row = snapshot.songById.get(query.id);
-            videoId = extractVideoId(row?.streamUrl);
+            candidateRow = snapshot.songById.get(query.id);
+            videoId = extractVideoId(candidateRow?.streamUrl);
         }
+
+        // Fallback: If snapshot row has no valid 11-char videoId (e.g. legacy row in Supabase
+        // with expired googlevideo stream_url), resolve the current playable videoId by searching YTM:
+        if (!videoId && candidateRow) {
+            const queryText = `${candidateRow.title} ${candidateRow.artist}`.trim();
+            if (queryText) {
+                try {
+                    const remote = await getMetadataProvider().search(queryText, 'songs');
+                    if (remote?.songs && remote.songs.length > 0 && remote.songs[0]?.videoId) {
+                        const resolvedId = extractVideoId(remote.songs[0].videoId);
+                        if (resolvedId) {
+                            videoId = resolvedId;
+                            candidateRow.streamUrl = resolvedId;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[Streamify] Fallback search failed for track:', queryText, err);
+                }
+            }
+        }
+
         if (videoId === '' || videoId === null) {
             // Honest empty: the ingestion has not mapped a stream video for
             // this track. Surfaced as an error state (react-query) — never

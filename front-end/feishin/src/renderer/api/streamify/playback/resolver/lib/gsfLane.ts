@@ -60,7 +60,7 @@ function normalizeGsfUrl(url: string): string | null {
   }
 }
 
-/** The configured script URL, if any (?gsf= > build env > localStorage). */
+/** The configured script URL, if any (?gsf= > window > build env > localStorage). */
 export function gsfUrl(): string | null {
   if (urlCandidate === undefined) {
     let found: string | null = null;
@@ -68,6 +68,11 @@ export function gsfUrl(): string | null {
       found =
         normalizeGsfUrl(
           new URLSearchParams(window.location.search).get('gsf') ?? '',
+        ) ??
+        normalizeGsfUrl(
+          (typeof window !== 'undefined'
+            ? ((window as unknown as { STREAMIFY_GSF_URL?: string }).STREAMIFY_GSF_URL ?? '')
+            : ''),
         ) ??
         normalizeGsfUrl(
           (import.meta.env.VITE_GSF_URL as string | undefined) ?? '',

@@ -566,11 +566,13 @@ export function WebPlayer() {
         async (reactPlayer: ReactPlayer) => {
             applyPendingSeekIfNeeded(reactPlayer, 1);
             if (!webAudio || player1Source) return;
-            if (player1Url && player1Url.includes('googlevideo.com')) {
-                // Progressive googlevideo.com audio carries no CORS headers for foreign origins.
-                // Attaching createMediaElementSource causes Web Audio API to output silence per the
-                // W3C cross-origin security specification. Leaving it unattached lets HTMLAudioElement
-                // play natively to speakers.
+            // Progressive googlevideo.com audio carries no CORS headers for foreign origins.
+            // Attaching createMediaElementSource causes Web Audio API to output silence per the
+            // W3C cross-origin security specification. Leaving it unattached lets HTMLAudioElement
+            // play natively to speakers.
+            // Also: NEVER attach createMediaElementSource on dummy/empty source (!player1Url)
+            // because it permanently taints the <audio> element before any real song starts!
+            if (!player1Url || player1Url.includes('googlevideo.com')) {
                 return;
             }
             if (player1Url) {
@@ -599,7 +601,7 @@ export function WebPlayer() {
         async (reactPlayer: ReactPlayer) => {
             applyPendingSeekIfNeeded(reactPlayer, 2);
             if (!webAudio || player2Source) return;
-            if (player2Url && player2Url.includes('googlevideo.com')) {
+            if (!player2Url || player2Url.includes('googlevideo.com')) {
                 return;
             }
             if (player2Url) {

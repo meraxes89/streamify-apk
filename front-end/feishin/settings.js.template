@@ -123,3 +123,5 @@ window.STREAMIFY_RELAY_BASE = "${STREAMIFY_RELAY_BASE}";
 // knob is unset, the metadata seam stays OFF (metaBase.ts priority 3);
 // empty = follow a worker-shaped relay, else edge-off (fallback lane).
 window.STREAMIFY_META_BASE = "${STREAMIFY_META_BASE}";
+// GSF unburnable egress proxy
+window.STREAMIFY_GSF_URL = "${STREAMIFY_GSF_URL}";

@@ -341,10 +341,11 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
     return (
         <div id="web-player-engine" style={{ display: 'none' }}>
             <ReactPlayerComponent
+                key={src1 ? (src1.includes('googlevideo.com') ? 'gv1' : 'src1') : 'empty1'}
                 config={{
                     file: {
                         attributes: {
-                            crossOrigin: src1?.includes('googlevideo.com') ? undefined : 'anonymous',
+                            crossOrigin: !src1 || src1.includes('googlevideo.com') ? undefined : 'anonymous',
                         },
                         forceAudio: true,
                     },
@@ -372,10 +373,11 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                 width={0}
             />
             <ReactPlayerComponent
+                key={src2 ? (src2.includes('googlevideo.com') ? 'gv2' : 'src2') : 'empty2'}
                 config={{
                     file: {
                         attributes: {
-                            crossOrigin: src2?.includes('googlevideo.com') ? undefined : 'anonymous',
+                            crossOrigin: !src2 || src2.includes('googlevideo.com') ? undefined : 'anonymous',
                         },
                         forceAudio: true,
                     },
