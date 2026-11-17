@@ -1848,7 +1848,8 @@
                 "ok": "Reachable",
                 "checking": "Checking",
                 "unreachable": "Unreachable"
-            }
+            },
+            "tabOffline": "Offline"
         },
         "badges": {
             "title": "Playback quality",
@@ -1879,5 +1880,36 @@
         "toastDone": "Imported {{count}} tracks",
         "toastCancelled": "Import cancelled — {{count}} tracks kept",
         "toastFailed": "Import failed — try again in a minute"
+    },
+    "streamifyCredits": {
+        "actionViewCredits": "View Credits / Liner Notes",
+        "emptyDescription": "YouTube Music has no credits shelf for this track.",
+        "emptyTitle": "No credits available",
+        "errorTitle": "Could not load credits",
+        "loading": "Loading credits…",
+        "modalTitle": "Liner Notes",
+        "retry": "Retry",
+        "toastNoStreamTrack": "No stream track found for this song"
+    },
+    "streamifySmartSync": {
+        "clearCache": "Clear Smart Sync Cache",
+        "cooldownNote": "Smart Sync is cooling down after an upstream limit ({{minutes}} min left).",
+        "description": "Quietly pre-caches the next couple of queue tracks into the encrypted offline store for instant zero-egress playback.",
+        "storageLabel": "Smart Sync storage",
+        "storageNote": "Pre-fetched tracks only — your manual downloads are never evicted.",
+        "storageUsed": "{{used}} MB / {{cap}} MB used",
+        "title": "Smart Sync",
+        "toggleDescription": "Pre-fetches only after the current track has been playing for a few seconds, one track at a time.",
+        "toggleLabel": "Pre-fetch upcoming queue tracks"
+    },
+    "streamifyDiscover": {
+        "becauseYouListened": "Because you listened to {{seeds}}",
+        "coldStartSubtitle": "Fresh from Explore — play a few tracks to personalize your mix.",
+        "errorTitle": "Could not build your Discover Mix",
+        "loading": "Building your Discover Mix…",
+        "playMix": "Play Mix",
+        "refreshMix": "Refresh Mix",
+        "retry": "Retry",
+        "shelfTitle": "Discover Mix"
     }
 }

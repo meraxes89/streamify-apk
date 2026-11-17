@@ -36,6 +36,7 @@ import type {
     ArtistPayload,
     ChaptersPayload,
     CounterpartPayload,
+    CreditsPayload,
     ExploreHomePayload,
     HomePayload,
     LyricsPayload,
@@ -305,6 +306,21 @@ export async function fallbackCounterpart(
         videoId,
         results,
     );
+}
+/**
+ * W2-B: song credits — the client-side InnerTube lane.
+ *
+ * KNOWN DEGRADATION (honest, documented): youtubei.js 18.3 exposes no
+ * parser for the watch page's structured-description engagement panel
+ * (`engagement-panel-structured-description` → videoAttributesSection
+ * ViewModel — the exact surface the relay worker's WEB /next walker
+ * extracts). The fallback therefore resolves null (the provider maps it
+ * to its not-found class); the Edge KV lane serves credits fine.
+ */
+export async function fallbackCredits(videoId: string, hl: string): Promise<CreditsPayload | null> {
+    void videoId;
+    void hl;
+    return null;
 }
 
 export async function fallbackExplore(gl: string, hl: string): Promise<ExploreHomePayload | null> {

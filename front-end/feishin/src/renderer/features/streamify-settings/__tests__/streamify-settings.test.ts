@@ -45,6 +45,10 @@ describe('streamify-settings: validation', () => {
             jamOpenQueue: true,
             relayBaseOverride: '',
             scrobbleEnabled: true,
+            // W2-B (Smart Sync): on by default; the save-data opt-in is
+            // ONLY ever set by an explicit user toggle.
+            smartSyncEnabled: true,
+            smartSyncSaveDataOverride: false,
         });
     });
 
@@ -61,6 +65,17 @@ describe('streamify-settings: validation', () => {
         expect(clampCrossfade(5.6)).toBe(6);
         expect(validateStreamifySettings({ gapless: 'nope' }).gapless).toBe(true);
         expect(validateStreamifySettings({ scrobbleEnabled: false }).scrobbleEnabled).toBe(false);
+        // W2-B: Smart Sync defaults on; the save-data override requires the
+        // explicit true (never implied by garbage).
+        expect(validateStreamifySettings(null).smartSyncEnabled).toBe(true);
+        expect(validateStreamifySettings({ smartSyncEnabled: false }).smartSyncEnabled).toBe(false);
+        expect(
+            validateStreamifySettings({ smartSyncSaveDataOverride: 1 }).smartSyncSaveDataOverride,
+        ).toBe(false);
+        expect(
+            validateStreamifySettings({ smartSyncSaveDataOverride: true })
+                .smartSyncSaveDataOverride,
+        ).toBe(true);
     });
 
     it('validates relay URLs', () => {

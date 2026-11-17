@@ -30,6 +30,7 @@ import { WebAudio } from '/@/shared/types/types';
 import '/@/shared/styles/global.css';
 import { PlayerProvider } from '/@/renderer/features/player/context/player-context';
 import { AudioPlayers } from '/@/renderer/features/player/components/audio-players';
+import { StreamifyGlobalRuntime } from '/@/renderer/features/streamify/global-runtime';
 import { ReleaseNotesModal } from '/@/renderer/release-notes-modal';
 
 const UpdateAvailableDialog = lazy(() =>
@@ -101,6 +102,10 @@ const AppShell = memo(function AppShell() {
                 <PlayerProvider>
                     <AudioPlayers />
                     <AppRouter />
+                    {/* W2-B: the fork's global feature mounts (Liner Notes
+                        drawer host + Smart Sync runtime); self-gating on the
+                        Streamify server type — PATCHES.md A27. */}
+                    <StreamifyGlobalRuntime />
                 </PlayerProvider>
             </WebAudioContext.Provider>
             <ReleaseNotesModal />

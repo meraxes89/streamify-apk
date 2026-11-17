@@ -24,6 +24,7 @@ import {
     ensureStreamifyThemeRegistered,
     STREAMIFY_THEME_LABEL,
 } from '/@/renderer/features/streamify-settings/theme/streamify-theme';
+import { SmartSyncPanel } from '/@/renderer/features/streamify/smart-sync/components/smart-sync-panel';
 import { useStreamifySettingsStore } from '/@/renderer/store/streamify-settings.store';
 import { Divider } from '/@/shared/components/divider/divider';
 import { Group } from '/@/shared/components/group/group';
@@ -86,6 +87,9 @@ const StreamifySettingsRoute = () => {
                             <Tabs.Tab value="network">
                                 {t('streamify.settings.tabNetwork')}
                             </Tabs.Tab>
+                            <Tabs.Tab value="offline">
+                                {t('streamify.settings.tabOffline')}
+                            </Tabs.Tab>
                             <Tabs.Tab value="jam">{t('streamify.settings.tabJam')}</Tabs.Tab>
                             <Tabs.Tab value="theme">{t('streamify.settings.tabTheme')}</Tabs.Tab>
                             <Tabs.Tab value="account">
@@ -97,6 +101,9 @@ const StreamifySettingsRoute = () => {
                         </Tabs.Panel>
                         <Tabs.Panel px="xs" py="md" value="network">
                             <NetworkRelayPanel />
+                        </Tabs.Panel>
+                        <Tabs.Panel px="xs" py="md" value="offline">
+                            <SmartSyncPanel />
                         </Tabs.Panel>
                         <Tabs.Panel px="xs" py="md" value="jam">
                             <JamPrivacyPanel />

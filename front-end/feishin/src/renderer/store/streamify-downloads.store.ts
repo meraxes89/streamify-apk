@@ -23,9 +23,14 @@ export interface DownloadEntryState {
     completedAt: null | string;
     durationSec: null | number;
     integrity: DownloadStatus;
+    /** W2-B (Smart Sync): last observed play (LRU input; null = never). */
+    lastPlayedAt: null | string;
     mimeType: string;
     rung: null | string;
     songId: string;
+    /** W2-B (Smart Sync): 'smart-sync' entries are LRU-evictable under the
+     * 500 MB cap; 'manual' entries never are. */
+    source: 'manual' | 'smart-sync';
     title: string;
     totalPlainLen: number;
     videoId: string;

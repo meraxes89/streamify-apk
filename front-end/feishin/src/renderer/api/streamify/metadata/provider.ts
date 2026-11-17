@@ -60,6 +60,7 @@ import type {
     ArtistPayload,
     ChaptersPayload,
     CounterpartPayload,
+    CreditsPayload,
     ExploreHomePayload,
     LyricsPayload,
     MetadataPayload,
@@ -78,6 +79,7 @@ import {
     fallbackArtist,
     fallbackChapters,
     fallbackCounterpart,
+    fallbackCredits,
     fallbackExplore,
     fallbackHomeFeed,
     fallbackLyrics,
@@ -92,6 +94,7 @@ import {
     validateArtistPayload,
     validateChaptersPayload,
     validateCounterpartPayload,
+    validateCreditsPayload,
     validateLyricsPayload,
     validatePlaylistPayload,
     validateRelatedPayload,
@@ -112,6 +115,13 @@ import { logger } from '/@/renderer/utils/logger';
 export interface MetadataProvider {
     getAlbum(browseId: string, gl?: string, hl?: string): Promise<null | YtmAlbumDetail>;
     getArtist(browseId: string, gl?: string, hl?: string): Promise<null | YtmArtistDetail>;
+    /**
+     * W2-B: song credits for one video (the Liner Notes lane). OPTIONAL so
+     * pre-W2B providers and test fakes keep satisfying the interface;
+     * consumers duck-type its presence (the meta bridge) and the honest
+     * miss is null. Relay TTL class: 7 days.
+     */
+    getCredits?(videoId: string, hl?: string): Promise<null | YtmCredits>;
     getExplore(gl?: string, hl?: string): Promise<null | YtmExplore>;
     getHomeFeed(gl?: string, hl?: string): Promise<null | YtmHomeFeed>;
     getLyrics(videoId: string, hl?: string): Promise<null | YtmLyrics>;
@@ -170,6 +180,18 @@ export interface YtmArtistRef {
     browseId: string;
     name: string;
     thumbnailUrl?: null | string;
+}
+
+/**
+ * Structured song credits — the Liner Notes surface (W2-B): grouped
+ * contributor roles (Performed by / Written by / Produced by / Source /
+ * Label — whatever sections YTM's structured description carries).
+ */
+export interface YtmCredits {
+    roleGroups: Array<{
+        credits: Array<{ name: string; subtitle: null | string }>;
+        title: string;
+    }>;
 }
 
 export interface YtmExplore {
@@ -306,6 +328,7 @@ interface TypedMetadataProvider {
     getArtist(browseId: string, gl?: string, hl?: string): Promise<MetadataResult<ArtistPayload>>;
     /** W2-A: the timestamped chapters (7 d-TTL endpoint, seconds-space rows). */
     getChapters(videoId: string, hl?: string): Promise<MetadataResult<ChaptersPayload>>;
+    getCredits(videoId: string, hl?: string): Promise<MetadataResult<CreditsPayload>>;
     getExplore(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
     getHomeFeed(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
     getLyrics(videoId: string, hl?: string): Promise<MetadataResult<LyricsPayload>>;
@@ -354,6 +377,11 @@ function adaptProvider(engine: TypedMetadataProvider): MetadataProvider {
         async getArtist(browseId, gl, hl) {
             const payload = unwrap(await engine.getArtist(browseId, gl, hl));
             return payload === null ? null : artistPayloadToDetail(payload);
+        },
+        async getCredits(videoId, hl) {
+            const payload = unwrap(await engine.getCredits(videoId, hl));
+            if (payload === null) return null;
+            return { roleGroups: payload.roleGroups };
         },
         async getExplore(gl, hl) {
             const payload = unwrap(await engine.getExplore(gl, hl));
@@ -541,6 +569,22 @@ function createProvider(deps: ProviderDeps = {}): TypedMetadataProvider {
                     id: videoId,
                     validateEdge: validateChaptersPayload,
                     validateFallback: (payload) => payload.chapters.length > 0,
+                },
+                deps,
+                d,
+            );
+        },
+        async getCredits(videoId, hl) {
+            const d = resolve(undefined, hl);
+            return run<CreditsPayload>(
+                {
+                    endpoint: 'credits',
+                    // youtubei.js 18.3 has no structured-description parser
+                    // (the documented degradation) — the fallback is the
+                    // honest null and the edge lane serves the payload.
+                    fallback: () => fallbackCredits(videoId, d.hl),
+                    id: videoId,
+                    validateEdge: validateCreditsPayload,
                 },
                 deps,
                 d,
@@ -947,6 +991,7 @@ function unwrap<TPayload>(result: MetadataResult<TPayload>): null | TPayload {
 export const stubMetadataProvider: MetadataProvider = {
     getAlbum: async () => null,
     getArtist: async () => null,
+    getCredits: async () => null,
     getExplore: async () => null,
     getHomeFeed: async () => null,
     getLyrics: async () => null,

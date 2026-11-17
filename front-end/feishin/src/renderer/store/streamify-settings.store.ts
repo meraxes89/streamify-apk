@@ -37,6 +37,11 @@ export interface StreamifySettings {
     relayBaseOverride: string;
     /** Streamify scrobble tracking. */
     scrobbleEnabled: boolean;
+    /** W2-B (Smart Sync): the 500 MB OPFS predictive pre-fetcher. */
+    smartSyncEnabled: boolean;
+    /** W2-B: the user EXPLICITLY re-enabled Smart Sync — pre-fetch even on
+     * metered/save-data connections (the task's opt-in escape hatch). */
+    smartSyncSaveDataOverride: boolean;
 }
 
 export const DEFAULT_STREAMIFY_SETTINGS: StreamifySettings = {
@@ -48,6 +53,8 @@ export const DEFAULT_STREAMIFY_SETTINGS: StreamifySettings = {
     jamOpenQueue: true,
     relayBaseOverride: '',
     scrobbleEnabled: true,
+    smartSyncEnabled: true,
+    smartSyncSaveDataOverride: false,
 };
 
 export const MAX_CROSSFADE_SEC = 12;
@@ -134,6 +141,8 @@ export function validateStreamifySettings(raw: unknown): StreamifySettings {
                 ? relay.trim()
                 : DEFAULT_STREAMIFY_SETTINGS.relayBaseOverride,
         scrobbleEnabled: source.scrobbleEnabled !== false,
+        smartSyncEnabled: source.smartSyncEnabled !== false,
+        smartSyncSaveDataOverride: source.smartSyncSaveDataOverride === true,
     };
 }
 

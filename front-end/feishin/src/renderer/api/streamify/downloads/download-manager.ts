@@ -34,7 +34,14 @@ import {
     openContainer,
     sealContainer,
 } from './format';
-import { dataNameFor, decodeKey, type DownloadMeta, encodeKey, type MetaCodec } from './meta';
+import {
+    dataNameFor,
+    decodeKey,
+    type DownloadMeta,
+    encodeKey,
+    type MetaCodec,
+    sourceOfMeta,
+} from './meta';
 import { type DownloadStorage, isQuotaError } from './opfs';
 
 import {
@@ -54,10 +61,15 @@ export interface DownloadManager {
     remove(videoId: string): Promise<void>;
     /** Read + verify + decrypt → a seekable Blob URL; null = not ours. */
     serveOffline(videoId: string): Promise<null | OfflineServeResult>;
-    /** Queue a download (idempotent: no-op when live or already complete). */
-    startDownload(spec: DownloadSpec, signal?: AbortSignal): Promise<void>;
+    /** Queue a download (idempotent: no-op when live or already complete).
+     * W2-B: resolves the structured outcome (success facts or the failure
+     * stage + HTTP status — the Smart Sync circuit breaker consumes it). */
+    startDownload(spec: DownloadSpec, signal?: AbortSignal): Promise<DownloadOutcome>;
     /** Drop crash orphans (sidecars stuck at 'downloading' with no live job). */
     sweepOrphans(): Promise<void>;
+    /** W2-B (Smart Sync): stamp lastPlayedAt on a completed sidecar (the
+     * LRU input). No-op for missing/incomplete entries; never throws. */
+    touchPlayed(videoId: string): Promise<void>;
     /** The wasm chunk-cipher self-test (the /debug panel). */
     wasmSelfTest(): number;
 }
@@ -70,12 +82,33 @@ export interface DownloadManagerOptions {
     wasm: CipherWasmExports;
 }
 
+/**
+ * W2-B: what one download attempt resolved to. `stage` names where it
+ * failed ('resolve' = the getStreamUrl ladder — the solver lane; 'fetch' =
+ * the media byte fetch; 'seal' = the container write/quota lane) so the
+ * Smart Sync circuit breaker can distinguish solver/quota answers from
+ * plain network blips without parsing message strings.
+ */
+export type DownloadOutcome =
+    | { alreadyActive: true; ok: true }
+    | { bytes: number; meta: DownloadMeta; ok: true }
+    | {
+          ok: false;
+          reason: string;
+          stage: 'fetch' | 'resolve' | 'seal';
+          /** null when the stage failed before an HTTP answer existed. */
+          status: null | number;
+      };
+
 /** What the caller knows about a track (from the library snapshot row). */
 export interface DownloadSpec {
     album: null | string;
     artist: string;
     durationSec: null | number;
     songId: string;
+    /** W2-B (Smart Sync): 'smart-sync' tags background pre-fetches (the
+     * LRU may evict them); 'manual' (the default) is a user download. */
+    source?: 'manual' | 'smart-sync';
     title: string;
     videoId: string;
 }
@@ -117,6 +150,12 @@ export class StreamifyDownloadError extends Error {
     constructor(
         public readonly videoId: string,
         message: string,
+        /** W2-B: where the failure happened + the HTTP status when one
+         * existed (the Smart Sync breaker's 403/429/bot-gate detector). */
+        public readonly failure: { stage: 'fetch' | 'resolve' | 'seal'; status: null | number } = {
+            stage: 'seal',
+            status: null,
+        },
     ) {
         super(`streamify download ${videoId}: ${message}`);
         this.name = 'StreamifyDownloadError';
@@ -169,9 +208,11 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
                     completedAt: m.completedAt,
                     durationSec: m.durationSec,
                     integrity: m.status,
+                    lastPlayedAt: m.lastPlayedAt ?? null,
                     mimeType: m.mimeType,
                     rung: m.rung,
                     songId: m.songId,
+                    source: sourceOfMeta(m),
                     title: m.title,
                     totalPlainLen: m.totalPlainLen,
                     videoId: m.videoId,
@@ -184,11 +225,17 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
     // Download
     // -----------------------------------------------------------------
 
-    async function startDownload(spec: DownloadSpec, signal?: AbortSignal): Promise<void> {
+    async function startDownload(
+        spec: DownloadSpec,
+        signal?: AbortSignal,
+    ): Promise<DownloadOutcome> {
         const { videoId } = spec;
-        if (live.has(videoId)) return;
+        if (live.has(videoId)) return { alreadyActive: true, ok: true };
         const existing = await meta.read(videoId);
-        if (existing !== null && existing.status !== 'corrupt') return;
+        if (existing !== null && existing.status !== 'corrupt') {
+            // Idempotent no-op: already complete (or a live job owns it).
+            return { bytes: existing.ciphertextBytes, meta: existing, ok: true };
+        }
 
         const controller = new AbortController();
         signal?.addEventListener('abort', () => controller.abort(), { once: true });
@@ -201,29 +248,54 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
             title: spec.title,
             totalBytes: null,
         });
+        let outcome: DownloadOutcome;
         try {
-            await runDownload(spec, controller);
+            outcome = await runDownload(spec, controller);
         } catch (err) {
-            await cleanupFailed(videoId, err, controller);
+            outcome = await cleanupFailed(videoId, err, controller);
         } finally {
             live.delete(videoId);
         }
+        return outcome;
     }
 
-    async function runDownload(spec: DownloadSpec, controller: AbortController): Promise<void> {
+    async function runDownload(
+        spec: DownloadSpec,
+        controller: AbortController,
+    ): Promise<DownloadOutcome> {
         const { videoId } = spec;
-        const resolution = await resolveOnline(videoId);
+        let resolution: OnlineResolution;
+        try {
+            resolution = await resolveOnline(videoId);
+        } catch (err) {
+            // The solver lane answered with an error — surface it as a
+            // resolve-stage failure (the Smart Sync breaker trips on it).
+            throw new StreamifyDownloadError(
+                videoId,
+                err instanceof Error ? err.message : String(err),
+                { stage: 'resolve', status: null },
+            );
+        }
         if (resolution.protocol !== 'progressive' || resolution.url === '') {
             throw new StreamifyDownloadError(
                 videoId,
                 `cannot download a ${resolution.protocol} resolution (no fetchable byte stream)`,
+                { stage: 'resolve', status: null },
             );
         }
 
         const res = await fetchImpl(resolution.url, { signal: controller.signal });
-        if (!res.ok) throw new StreamifyDownloadError(videoId, `upstream responded ${res.status}`);
+        if (!res.ok) {
+            throw new StreamifyDownloadError(videoId, `upstream responded ${res.status}`, {
+                stage: 'fetch',
+                status: res.status,
+            });
+        }
         if (res.body === null) {
-            throw new StreamifyDownloadError(videoId, 'response carries no body stream');
+            throw new StreamifyDownloadError(videoId, 'response carries no body stream', {
+                stage: 'fetch',
+                status: res.status,
+            });
         }
 
         const contentLengthHeader = res.headers.get('content-length');
@@ -244,9 +316,11 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
             createdAt: new Date().toISOString(),
             durationSec: spec.durationSec,
             key: encodeKey(key),
+            lastPlayedAt: null,
             mimeType: res.headers.get('content-type') ?? 'audio/mp4',
             rung: resolution.rung,
             songId: spec.songId,
+            source: spec.source ?? 'manual',
             status: 'downloading',
             title: spec.title,
             totalPlainLen: 0,
@@ -254,11 +328,13 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         };
 
         if (declaredTotal === null) {
-            await runInMemory(baseMeta, key, res, spec);
-            return;
+            return runInMemory(baseMeta, key, res, spec);
         }
         if (declaredTotal === 0) {
-            throw new StreamifyDownloadError(videoId, 'Content-Length is zero (not audio)');
+            throw new StreamifyDownloadError(videoId, 'Content-Length is zero (not audio)', {
+                stage: 'fetch',
+                status: res.status,
+            });
         }
 
         const header: DlHeader = {
@@ -349,6 +425,7 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         await meta.write(videoId, finished);
         dropJob(videoId);
         publishEntry(finished);
+        return { bytes: finished.ciphertextBytes, meta: finished, ok: true };
     }
 
     /** No-Content-Length fallback: accumulate, one in-memory seal, one write. */
@@ -357,7 +434,7 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         key: Uint8Array,
         res: Response,
         spec: DownloadSpec,
-    ): Promise<void> {
+    ): Promise<DownloadOutcome> {
         const { videoId } = spec;
         const reader = res.body!.getReader();
         const parts: Uint8Array[] = [];
@@ -369,7 +446,12 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
             received += value.length;
             publishJob(videoId, { receivedBytes: received, totalBytes: null });
         }
-        if (received === 0) throw new StreamifyDownloadError(videoId, 'empty body (not audio)');
+        if (received === 0) {
+            throw new StreamifyDownloadError(videoId, 'empty body (not audio)', {
+                stage: 'fetch',
+                status: res.status,
+            });
+        }
 
         const plain = concatParts(parts);
         const { bytes, header } = sealContainer(wasm, key, plain, mintNonce);
@@ -392,6 +474,7 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         await meta.write(videoId, finished);
         dropJob(videoId);
         publishEntry(finished);
+        return { bytes: finished.ciphertextBytes, meta: finished, ok: true };
     }
 
     function concatParts(parts: Uint8Array[]): Uint8Array {
@@ -406,19 +489,37 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         return out;
     }
 
-    async function cleanupFailed(videoId: string, err: unknown, controller: AbortController) {
+    async function cleanupFailed(
+        videoId: string,
+        err: unknown,
+        controller: AbortController,
+    ): Promise<DownloadOutcome> {
         const aborted = controller.signal.aborted;
         await storage.remove(dataNameFor(videoId)).catch(() => undefined);
         await meta.remove(videoId).catch(() => undefined);
         if (aborted) {
             dropJob(videoId); // user cancel / upstream abort: quiet cleanup
-            return;
+            return {
+                ok: false,
+                reason: 'aborted',
+                stage: 'fetch',
+                status: null,
+            };
         }
         if (isQuotaError(err)) {
             failJob(videoId, 'quota exceeded — remove some downloads and retry');
-            return;
+            return {
+                ok: false,
+                reason: 'quota exceeded',
+                stage: 'seal',
+                status: null,
+            };
         }
-        failJob(videoId, err instanceof Error ? err.message : String(err));
+        const reason = err instanceof Error ? err.message : String(err);
+        failJob(videoId, reason);
+        const failure: { stage: 'fetch' | 'resolve' | 'seal'; status: null | number } =
+            err instanceof StreamifyDownloadError ? err.failure : { stage: 'seal', status: null };
+        return { ok: false, reason, stage: failure.stage, status: failure.status };
     }
 
     // -----------------------------------------------------------------
@@ -537,6 +638,21 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         return wasm.dl_self_test();
     }
 
+    async function touchPlayed(videoId: string): Promise<void> {
+        try {
+            const m = await meta.read(videoId);
+            if (m === null || m.status !== 'complete') return;
+            const stamped: DownloadMeta = {
+                ...m,
+                lastPlayedAt: new Date().toISOString(),
+            };
+            await meta.write(videoId, stamped);
+            publishEntry(stamped);
+        } catch {
+            // A failed LRU stamp never disturbs playback or syncing.
+        }
+    }
+
     return {
         cancel,
         listEntries,
@@ -545,6 +661,7 @@ export function createDownloadManager(options: DownloadManagerOptions): Download
         serveOffline,
         startDownload,
         sweepOrphans,
+        touchPlayed,
         wasmSelfTest,
     };
 }

@@ -13,6 +13,7 @@ import { LibraryContainer } from '/@/renderer/features/shared/components/library
 import { LibraryHeaderBar } from '/@/renderer/features/shared/components/library-header-bar';
 import { PageErrorBoundary } from '/@/renderer/features/shared/components/page-error-boundary';
 import { SongInfiniteCarousel } from '/@/renderer/features/songs/components/song-infinite-carousel';
+import { DiscoverMixShelf } from '/@/renderer/features/streamify/discover/components/discover-mix-shelf';
 import {
     HomeFeatureStyle,
     HomeItem,
@@ -44,6 +45,7 @@ const HomeRoute = () => {
     const containerQuery = useGridCarouselContainerQuery();
 
     const isJellyfin = server?.type === ServerType.JELLYFIN;
+    const isStreamify = server?.type === ServerType.STREAMIFY;
 
     const carousels = {
         [HomeItem.MOST_PLAYED]: {
@@ -118,6 +120,7 @@ const HomeRoute = () => {
                         px="2rem"
                         ref={containerQuery.ref}
                     >
+                        {isStreamify && <DiscoverMixShelf />}
                         {homeFeature && homeFeatureStyle === HomeFeatureStyle.SINGLE && (
                             <AlbumInfiniteSingleFeatureCarousel />
                         )}

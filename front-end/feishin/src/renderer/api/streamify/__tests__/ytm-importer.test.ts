@@ -131,6 +131,8 @@ function scriptedProvider(
         getAlbum: vi.fn(async () => ({ kind: 'not-found' as const })),
         getArtist: vi.fn(async () => ({ kind: 'not-found' as const })),
         getChapters: vi.fn(async () => ({ kind: 'not-found' as const })),
+        // W2-B: the typed engine's credits arm (unused by the importer).
+        getCredits: vi.fn(async () => ({ kind: 'not-found' as const })),
         getExplore: vi.fn(async () => ({ kind: 'not-found' as const })),
         getHomeFeed: vi.fn(async () => ({ kind: 'not-found' as const })),
         getLyrics: vi.fn(async () => ({ kind: 'not-found' as const })),

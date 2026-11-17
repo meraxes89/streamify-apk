@@ -165,6 +165,8 @@ export interface MetadataProvider {
      * "this video has no chapters" form.
      */
     getChapters(videoId: string, hl?: string): Promise<MetadataResult<ChaptersPayload>>;
+    /** W2-B: the credits lane (7-day TTL class — the Liner Notes surface). */
+    getCredits(videoId: string, hl?: string): Promise<MetadataResult<CreditsPayload>>;
     getExplore(gl?: string, hl?: string): Promise<MetadataResult<ExploreHomePayload>>;
     getHomeFeed(gl?: string, hl?: string): Promise<MetadataResult<HomePayload>>;
     getLyrics(videoId: string, hl?: string): Promise<MetadataResult<LyricsPayload>>;

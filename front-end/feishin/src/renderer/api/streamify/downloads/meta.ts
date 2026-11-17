@@ -28,24 +28,37 @@ export interface DownloadMeta {
     durationSec: null | number;
     /** base64 — the per-file XChaCha20-Poly1305 key (see the header note). */
     key: string;
+    /** W2-B (Smart Sync): last time this entry's track PLAYED (LRU input).
+     * Absent on P4-A sidecars = never observed — the honest null. */
+    lastPlayedAt?: null | string;
     mimeType: string;
     /** The resolver rung that served the download (provenance). */
     rung: null | string;
     songId: string;
+    /** W2-B (Smart Sync): who owns this entry. Absent on P4-A sidecars =
+     * 'manual' (every pre-W2B download was a user action). Smart Sync's
+     * LRU evicts ONLY source === 'smart-sync' — manual downloads are
+     * never evicted by background pre-fetching. */
+    source?: 'manual' | 'smart-sync';
     status: DownloadStatus;
     title: string;
     totalPlainLen: number;
     videoId: string;
 }
 
-import type { DownloadStorage } from './opfs';
-
 export type DownloadStatus = 'complete' | 'corrupt' | 'downloading';
+
+import type { DownloadStorage } from './opfs';
 
 export interface MetaCodec {
     read(videoId: string): Promise<DownloadMeta | null>;
     remove(videoId: string): Promise<void>;
     write(videoId: string, meta: DownloadMeta): Promise<void>;
+}
+
+/** W2-B: normalize the persisted source field (absent = manual). */
+export function sourceOfMeta(meta: DownloadMeta | null): 'manual' | 'smart-sync' {
+    return meta?.source === 'smart-sync' ? 'smart-sync' : 'manual';
 }
 
 const META_SUFFIX = '.meta.json';
