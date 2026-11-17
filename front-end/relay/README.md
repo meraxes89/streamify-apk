@@ -22,6 +22,21 @@ browser ──GET /r?u=<urlencoded-target>──▶ streamify-relay (Workers)
          ◀── upstream response, streamed, ACAO:* ──┘
 ```
 
+## W2-A — the optional Apps Script solver lane + the metadata cache
+
+Since W1-A the worker also serves `/ytm/meta` — the Edge KV metadata cache (key-encoded
+`(endpoint, id_or_query, gl, hl)`, single-flight SWR, server-side validation before any
+write; the `YTM_CACHE` KV binding is optional and bypassed cleanly when absent).
+
+Since W2-A a deployment may additionally set the `APPS_SCRIPT_SOLVER_URL` var (a
+`script.google.com/macros/s/…/exec` URL, see `wrangler.toml`): `/r` **control-plane**
+legs (innertube hosts, the WAA mint, the BotGuard interpreter script — never
+googlevideo media) then forward through the Apps Script envelope so the stream-solve
+egress rides Google's ASN 15169 instead of the shared Cloudflare edge. `/ytm/meta` and
+`/bg-session` stay worker-local; a solver-lane failure (network / not-ok envelope /
+oversized payload) degrades to the direct worker fetch — the lane is strictly additive.
+See `front-end/decisions/waves/W2A-video-chapters-meta-isolation.md` §A.
+
 ## P1 / W1.0 — the minting surface
 
 Licensed tracks (e.g. `4NRXx6U8ABQ`) answer the player endpoint with `LOGIN_REQUIRED`

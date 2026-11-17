@@ -60,3 +60,17 @@ compatibility_date = "2025-06-01"
 [[kv_namespaces]]
 binding = "YTM_CACHE"
 id = "275cb7d17fe34ea59626c1ea4ba71dc9"
+
+# ---------------------------------------------------------------------------
+# W2-A — the OPTIONAL Apps Script solver forwarding var.
+#
+# Set APPS_SCRIPT_SOLVER_URL to a script.google.com/macros/s/…/exec
+# deployment when STREAMIFY_RELAY_BASE points at THIS worker: the /r
+# CONTROL-PLANE legs (innertube / WAA / the BotGuard script host — never
+# googlevideo media bytes) then forward through the Apps Script envelope
+# (Google-ASN egress, the GSF bet server-side). Unset — the default —
+# leaves every /r request on the direct worker egress (strictly
+# additive). /ytm/meta and /bg-session are worker-local either way.
+# ---------------------------------------------------------------------------
+[vars]
+# APPS_SCRIPT_SOLVER_URL = "https://script.google.com/macros/s/…/exec"
