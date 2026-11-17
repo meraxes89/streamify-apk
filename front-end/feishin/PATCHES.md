@@ -56,7 +56,7 @@ discrepancies found by the P5 audit are corrected here, not papered over:
 Every edit to an upstream file is listed here — the exact conflict map for the
 next tag merge. Phase attributions: P0 (#181), P1 (#182), P1B (#184), P2-A
 (#185/#186), P2-B (#187), P3-A (#190), P3-B (#191), P4-A (#192), P4-B (#193),
-P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
+P5-A (#195), W1-A (#198), W1-B (#200), W2-A (#205), W2-B (#206), W3-A (this PR).
 
 ### A1. `package.json`
 
@@ -195,7 +195,7 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
   claimed errors return early, unclaimed run the stock retry/skip logic.
 - **Conflict surface:** low.
 
-### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193; W1-B; W2-A)
+### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193; W1-B; W2-A; W3-A)
 
 - **What:** one import + one `<StreamifyJamButton />` element at the head of
   the right-controls button row (the Jam drawer / EQ panel trigger;
@@ -207,7 +207,14 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
   W2-A adds the sibling seam in the same shape: one import + one
   `<StreamifyVideoButton />` element (the Audio ↔ Official Music Video
   toggle + the stable video overlay mount; renders `null` on stock
-  servers — all logic in `features/streamify/video/`).
+  servers — all logic in `features/streamify/video/`). W3-A adds two more
+  in the same shape: one import + one `<StreamifyConnectButton />`
+  element (the Connect Devices popover — cross-device presence, remote
+  transport, playback handoff) and one import + one
+  `<StreamifyMediaSessionBridge />` element (the OS media-session
+  position-state/chapter bridge + the ?play=/?import= deep-link entry —
+  zero UI, the mount IS the post-auth boot timing); all logic in
+  `features/streamify/{connect,media-session}/`.
 - **Conflict surface:** low — additive elements in a stable row.
 
 ### A15. `src/renderer/features/player/utils/get-visualizer-audio-nodes.ts` (P4-B, #193)
@@ -300,8 +307,14 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
   workflow (feishin-pages.yml) sets `VITE_BASE_PATH=/streamify-apk/`
   (plus the `--base` CLI flag) for the project-site subpath; every other
   consumer (Docker at `/`, electron) keeps the relative default.
+  W3-A: the PWA manifest gains a `share_target` stanza (GET,
+  `params: { text: 'text' }`, action `/`) — shared YouTube/YTM links land
+  on the app root as `?text=<url>`, the media-session deep-link entry
+  routes them into the YTM importer (see A14 +
+  `features/streamify/media-session/deep-link.ts`).
 - **Conflict surface:** low — additive entries in the resolve block; the
-  base line swaps a literal for an env-conditional with the same default.
+  base line swaps a literal for an env-conditional with the same default;
+  the share_target stanza is additive manifest config.
 
 ### A25. `tsconfig.web.json` (P5-A)
 
@@ -517,6 +530,42 @@ can ignore them and audits can hold us to the directory-isolation rule.
   `components/streamify-chapter-strip.tsx` (the full-player chips row).
   Store addition: `store/streamify-settings.store.ts` busts
   `resetMetaBaseCache()` beside `resetRelayBaseCache()` (W2-A).
+  W3-A: `hooks/use-video-mode.ts` grows the module-level
+  `requestVideoModeAtPosition()` (the Connect handoff's video-mode
+  restore — one shared pipeline with the manual toggle).
+- **`features/streamify/connect/` (W3-A):** Streamify Connect — the
+  cross-device presence + remote control + playback-handoff lane over
+  Supabase Realtime (user-scoped channel, presence + broadcast
+  `self:false`; zero stateful backend): `connect-protocol.ts` (PURE —
+  the presence shape + sanitize gate, the message union + echo/target
+  filtering + nonce dedup, the chunked-handoff assembler, the
+  interpolation + device-label math), `connect-transport.ts` (the
+  channel wrapper — the jam-live pattern, injectable client),
+  `hooks/use-streamify-connect.ts` (the controller: device identity,
+  throttled presence publishing, command execution through the player
+  store's own pipelines, both handoff directions — the receiver maps the
+  ids through its own library snapshot), the W1-A importer modal's
+  `streamify.import.prefill` session-key seed,
+  `components/streamify-connect-button.tsx` (the player-bar popover).
+- **`features/streamify/media-session/` (W3-A):** the OS lock-screen
+  bridge + the deep-link entry — the nested-namespace rule honored:
+  `media-session-bridge.ts` (PURE — feature detection, the
+  multi-resolution YTM artwork ladder, chapter-aware metadata, the
+  clamped positionState, `applyBridgeTick`), `deep-link.ts` (PURE —
+  `?play=`/`?import=`/share-target `?text=`/`?url=` parsing + the
+  history.replaceState cleanup), `use-streamify-media-session.ts` (the
+  mount hook — whole-second position ticks, boundary-driven metadata
+  rewrites, the once-per-mount deep-link consumption),
+  `components/streamify-media-session-bridge.tsx` (the zero-UI mount).
+- **`features/streamify-settings/` additions (W3-A):**
+  `connection-diagnostics.ts` (PURE — the 3-plane probes with injectable
+  fetch, the solver-plane quota rule: ONE `?ping=1`/capability echo per
+  user action, never a background loop; the redaction core — masked
+  hostnames, statuses, latencies only) +
+  `components/connection-diagnostics-panel.tsx` (the Network-tab card:
+  run-on-mount + manual button, the Healthy/Degraded/Unconfigured
+  badges, the Edge KV HIT/MISS/BYPASS state, the copyable redacted
+  report).
 - `__tests__/` — the network-free vitest suites (queue round-trip, scrobble
   semantics, favorites, curation, playlist convergence, downloads
   cipher/lifecycle, offline bypass, wrapped aggregation, the /debug gate,
@@ -530,7 +579,13 @@ can ignore them and audits can hold us to the directory-isolation rule.
   video branch + typed misses) and `video-chapters.test.ts` (chapter
   extraction/coercion, boundary selection, tick fractions, timecode
   capture/restore — plus the relay-side chapters/counterpart/solver lanes
-  in `front-end/relay/src/ytm-meta.test.ts`).
+  in `front-end/relay/src/ytm-meta.test.ts`); the W3-A locks:
+  `w3a-connect.test.ts` (presence serialization, echo/target filtering,
+  nonce dedup, chunked handoff reassembly, interpolation),
+  `w3a-media-session.test.ts` (the bridge wiring + the absent-
+  mediaSession no-op + deep-link parsing/cleanup) and
+  `w3a-diagnostics.test.ts` (the 3-plane state transitions + the P5-B
+  redaction contract).
 
 ### `src/renderer/features/streamify-*/` — the UI surfaces
 
