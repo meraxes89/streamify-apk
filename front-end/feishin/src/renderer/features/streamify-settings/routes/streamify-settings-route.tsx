@@ -19,6 +19,7 @@ import { PageErrorBoundary } from '/@/renderer/features/shared/components/page-e
 import { AccountSessionPanel } from '/@/renderer/features/streamify-settings/components/account-session-panel';
 import { AudioPlaybackPanel } from '/@/renderer/features/streamify-settings/components/audio-playback-panel';
 import { ConnectionDiagnosticsPanel } from '/@/renderer/features/streamify-settings/components/connection-diagnostics-panel';
+import { EngineEgressPanel } from '/@/renderer/features/streamify-settings/components/engine-egress-panel';
 import { JamPrivacyPanel } from '/@/renderer/features/streamify-settings/components/jam-privacy-panel';
 import { NetworkRelayPanel } from '/@/renderer/features/streamify-settings/components/network-relay-panel';
 import {
@@ -102,6 +103,10 @@ const StreamifySettingsRoute = () => {
                         </Tabs.Panel>
                         <Tabs.Panel px="xs" py="md" value="network">
                             <NetworkRelayPanel />
+                            {/* G5: the unburnable lane - the user's own Apps
+                                Script egress, with a ping and a licensed-track
+                                posture probe (opt-in, off by default). */}
+                            <EngineEgressPanel />
                             {/* W3-A: the 3-plane connection & health diagnostics
                                 (solver / Edge KV / cloud sync — user-triggered
                                 probes, redacted targets). Fork-owned surface. */}

@@ -19,7 +19,7 @@ VIDEO_ID="${2:-4NRXx6U8ABQ}"
 jqf() { jq -r "$1" 2>/dev/null <<<"$2" || printf 'PARSE-ERR'; }
 
 echo "== GSF ping =="
-if ! PING=$(curl -sS --max-time 20 "${GSF_URL}?ping=1"); then
+if ! PING=$(curl -sSL --max-time 20 "${GSF_URL}?ping=1"); then
   echo "PING-FAIL — the /exec URL did not answer (deployment not 'Anyone'? offline?)"
   exit 1
 fi
@@ -41,12 +41,13 @@ ENVELOPE=$(jq -nc \
   '{u:$u, m:"post",
     h:{"content-type":"application/json","x-youtube-client-name":"5","x-youtube-client-version":"21.26.4"},
     b:$b, e:"t"}')
-if ! WIRE=$(curl -sS -G --max-time 30 "$GSF_URL" --data-urlencode "q=$ENVELOPE"); then
+if ! WIRE=$(curl -sSL -G --max-time 30 "$GSF_URL" --data-urlencode "q=$ENVELOPE"); then
   echo "ENVELOPE-FAIL — the script refused/errored the envelope"
   exit 1
 fi
 WIRE_OK=$(jqf '.ok // false' "$WIRE")
 WIRE_STATUS=$(jqf '.s // "?"' "$WIRE")
+WIRE_ERROR=$(jqf '.error // ""' "$WIRE")
 PLAYER=$(jqf '.b // ""' "$WIRE")
 STATUS=$(jqf '.playabilityStatus.status // "NO-RESPONSE"' "$PLAYER")
 REASON=$(jqf '.playabilityStatus.reason // "-"' "$PLAYER")
@@ -55,6 +56,9 @@ PROG=$(jqf '[.streamingData.adaptiveFormats[]? | select(.url != null)] | length'
 printf '%-8s http=%-4s status=%-16s progUrls=%-3s fmts=%-3s egress=%s\n' \
   "ok=${WIRE_OK}" "${WIRE_STATUS:0:4}" "${STATUS:0:16}" "${PROG:0:3}" "${FMTS:0:3}" "$EIP"
 echo "reason: ${REASON}"
+if [ -n "$WIRE_ERROR" ]; then
+  echo "script error: ${WIRE_ERROR}"
+fi
 
 echo
 if [ "$STATUS" = "OK" ]; then

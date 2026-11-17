@@ -52,6 +52,18 @@ var ALLOWED_HOSTS = [
   'www.youtube.com'
 ];
 
+/** Apps Script V8 has no WHATWG `URL` — parse the envelope target with a
+ * regex. Returns { host, path } for an absolute https URL, or null. */
+var HTTPS_URL_RE = /^https:\/\/([a-zA-Z0-9.-]+)(:[0-9]+)?([\/?#][^\s]*)?$/;
+function parseHttpsUrl_(u) {
+  if (typeof u !== 'string') return null;
+  var m = HTTPS_URL_RE.exec(u);
+  if (!m) return null;
+  var host = m[1].toLowerCase();
+  var path = m[3] || '/';
+  return { host: host, path: path };
+}
+
 /** The one non-Google host fetched — the egress-IP echo for diagnostics. */
 var IP_ECHO_URL = 'https://api.ipify.org';
 
@@ -106,17 +118,12 @@ function proxy_(req) {
   if (typeof req.u !== 'string' || req.u.length === 0) {
     return { ok: false, error: 'envelope missing u (url)' };
   }
-  var url;
-  try {
-    url = new URL(req.u);
-  } catch (urlErr) {
+  var parsed = parseHttpsUrl_(req.u);
+  if (parsed === null) {
     return { ok: false, error: 'envelope u is not a URL' };
   }
-  if (url.protocol !== 'https:') {
-    return { ok: false, error: 'only https targets' };
-  }
-  if (!hostAllowed_(url)) {
-    return { ok: false, error: 'host not allowed: ' + url.hostname };
+  if (!hostAllowed_(parsed)) {
+    return { ok: false, error: 'host not allowed: ' + parsed.host };
   }
   var method = ALLOWED_METHODS[String(req.m || 'get').toLowerCase()];
   if (method === undefined) {
@@ -166,7 +173,7 @@ function proxy_(req) {
   }
   var resp;
   try {
-    resp = UrlFetchApp.fetch(url.toString(), options);
+    resp = UrlFetchApp.fetch(req.u, options);
   } catch (fetchErr) {
     return { ok: false, error: 'urlfetch: ' + String(fetchErr) };
   }
@@ -205,13 +212,13 @@ function proxy_(req) {
 }
 
 /** The allowlist: exact googleapis hosts, *.googlevideo.com, www /youtubei/*. */
-function hostAllowed_(url) {
-  var host = url.hostname.toLowerCase();
+function hostAllowed_(parsed) {
+  var host = parsed.host;
   for (var i = 0; i < ALLOWED_HOSTS.length; i++) {
     if (host === ALLOWED_HOSTS[i]) {
       // www.youtube.com is allowed for the /youtubei/* API surface only.
       if (host === 'www.youtube.com') {
-        return url.pathname.indexOf('/youtubei/') === 0;
+        return parsed.path.indexOf('/youtubei/') === 0;
       }
       return true;
     }
