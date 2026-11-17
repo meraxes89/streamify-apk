@@ -1,0 +1,194 @@
+# Preview GitHub Pages — deploy the site at /streamify-apk/preview/ from
+# the feature branch, WITHOUT touching what production serves.
+#
+# The GitHub Pages project site serves ONE artifact, so we cannot swap in a
+# subpath without carrying the rest of the tree. This job therefore builds
+# BOTH trees and fuses them into a single artifact:
+#
+#   root     (/streamify-apk/)        <- built from origin/main (fresh, identical
+#                                        to what feishin-pages.yml ships — the
+#                                        prod path stays green and live)
+#   preview/ (/streamify-apk/preview/) <- built from feat/browser-sabr-player
+#
+# Triggered only by pushes to the feature branch (and manual dispatch).
+# main is never deployed from this workflow's branch state; both builds are
+# identical to their own workflows, so production is content-identical either
+# way. The preview bundle additionally bakes VITE_GSF_URL from the repo
+# variable GSF_URL (the owner's unlisted preview; production never sees it —
+# feishin-pages.yml is intentionally NOT touched).
+
+name: Preview GitHub Pages
+
+on:
+    push:
+        branches: [feat/browser-sabr-player]
+    workflow_dispatch: {}
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out production tree (main)
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+                  path: prod
+
+            - name: Check out preview tree (feat/browser-sabr-player)
+              uses: actions/checkout@v4
+              with:
+                  path: preview
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 11.5.2
+
+            - name: Install Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+                  cache: pnpm
+                  cache-dependency-path: preview/front-end/feishin/pnpm-lock.yaml
+
+            # --------------- production build (main — unchanged content) ----
+            - name: Install dependencies (main)
+              working-directory: prod/front-end/feishin
+              run: pnpm install --frozen-lockfile
+              env:
+                  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+            - name: Build web bundle (production subpath)
+              working-directory: prod/front-end/feishin
+              run: VITE_BASE_PATH=/streamify-apk/ pnpm run build:web -- --base=/streamify-apk/
+
+            - name: Stamp settings.js (main)
+              working-directory: prod/front-end/feishin
+              env:
+                  SERVER_LOCK: 'true'
+                  SERVER_TYPE: streamify
+                  SERVER_URL: 'https://streamify.local'
+                  REMOTE_URL: ''
+                  SERVER_NAME: streamify
+                  LEGACY_AUTHENTICATION: 'false'
+                  ANALYTICS_DISABLED: 'true'
+                  STREAMIFY_AUTH: ${{ secrets.STREAMIFY_AUTH || vars.STREAMIFY_AUTH || 'true' }}
+                  STREAMIFY_SUPABASE_URL: ${{ secrets.STREAMIFY_SUPABASE_URL || vars.STREAMIFY_SUPABASE_URL || secrets.SUPABASE_URL || '' }}
+                  STREAMIFY_SUPABASE_ANON_KEY: ${{ secrets.STREAMIFY_SUPABASE_ANON_KEY || vars.STREAMIFY_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY || '' }}
+                  STREAMIFY_RELAY_BASE: ${{ secrets.STREAMIFY_RELAY_BASE || vars.STREAMIFY_RELAY_BASE || '' }}
+                  STREAMIFY_META_BASE: ${{ secrets.STREAMIFY_META_BASE || vars.STREAMIFY_META_BASE || '' }}
+                  STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
+              run: |
+                  set -euo pipefail
+                  VARS="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | sed -e 's/^\${/\$/' -e 's/}$//')"
+                  export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
+                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN
+                  export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
+                  export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
+                  envsubst "$VARS" < settings.js.template > out/web/settings.js
+
+            - name: Provide SPA fallback page (main)
+              working-directory: prod/front-end/feishin
+              run: |
+                  set -euo pipefail
+                  if [ ! -f out/web/404.html ]; then
+                      cp out/web/index.html out/web/404.html
+                  fi
+
+            # --------------- preview build (feat/browser-sabr-player) -------
+            - name: Install dependencies (preview)
+              working-directory: preview/front-end/feishin
+              run: pnpm install --frozen-lockfile
+              env:
+                  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+            - name: Build web bundle (preview subpath)
+              working-directory: preview/front-end/feishin
+              run: VITE_BASE_PATH=/streamify-apk/preview/ VITE_GSF_URL="${{ vars.GSF_URL }}" pnpm run build:web -- --base=/streamify-apk/preview/
+
+            - name: Stamp settings.js (preview)
+              working-directory: preview/front-end/feishin
+              env:
+                  SERVER_LOCK: 'true'
+                  SERVER_TYPE: streamify
+                  SERVER_URL: 'https://streamify.local'
+                  REMOTE_URL: ''
+                  SERVER_NAME: streamify
+                  LEGACY_AUTHENTICATION: 'false'
+                  ANALYTICS_DISABLED: 'true'
+                  STREAMIFY_AUTH: ${{ secrets.STREAMIFY_AUTH || vars.STREAMIFY_AUTH || 'true' }}
+                  STREAMIFY_SUPABASE_URL: ${{ secrets.STREAMIFY_SUPABASE_URL || vars.STREAMIFY_SUPABASE_URL || secrets.SUPABASE_URL || '' }}
+                  STREAMIFY_SUPABASE_ANON_KEY: ${{ secrets.STREAMIFY_SUPABASE_ANON_KEY || vars.STREAMIFY_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY || '' }}
+                  STREAMIFY_RELAY_BASE: ${{ secrets.STREAMIFY_RELAY_BASE || vars.STREAMIFY_RELAY_BASE || '' }}
+                  STREAMIFY_META_BASE: ${{ secrets.STREAMIFY_META_BASE || vars.STREAMIFY_META_BASE || '' }}
+                  STREAMIFY_DEV_ACCESS_TOKEN: ${{ secrets.STREAMIFY_DEV_ACCESS_TOKEN || vars.STREAMIFY_DEV_ACCESS_TOKEN || '' }}
+              run: |
+                  set -euo pipefail
+                  VARS="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' settings.js.template | sort -u | sed -e 's/^\${/\$/' -e 's/}$//')"
+                  export STREAMIFY_AUTH STREAMIFY_SUPABASE_URL STREAMIFY_SUPABASE_ANON_KEY
+                  export STREAMIFY_RELAY_BASE STREAMIFY_META_BASE STREAMIFY_DEV_ACCESS_TOKEN
+                  export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
+                  export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
+                  envsubst "$VARS" < settings.js.template > out/web/settings.js
+
+            - name: Provide SPA fallback page (preview)
+              working-directory: preview/front-end/feishin
+              run: |
+                  set -euo pipefail
+                  if [ ! -f out/web/404.html ]; then
+                      cp out/web/index.html out/web/404.html
+                  fi
+
+            # --------------- fuse + verify ---------------------------------
+            - name: Fuse the production and preview trees
+              run: |
+                  set -euo pipefail
+                  rm -rf site
+                  mkdir -p site
+                  cp -a prod/front-end/feishin/out/web/. site/
+                  mkdir -p site/preview
+                  cp -a preview/front-end/feishin/out/web/. site/preview/
+                  echo 'site layout:'
+                  ls site
+                  ls site/preview
+
+            - name: Verify fused outputs
+              run: |
+                  set -euo pipefail
+                  for f in site/index.html site/settings.js site/preview/index.html site/preview/settings.js; do
+                      test -s "$f" || { echo "$f missing or empty"; exit 1; }
+                  done
+                  for f in site/settings.js site/preview/settings.js; do
+                      if grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$f"; then
+                          echo "$f contains unexpanded placeholders"; exit 1
+                      fi
+                  done
+                  if grep -qE '/assets/' site/preview/index.html && ! grep -qE '/streamify-apk/preview/assets/' site/preview/index.html; then
+                      echo 'preview index.html references an unexpected asset base'; exit 1
+                  fi
+                  echo 'Fused site verified: prod root + /preview/ subpath.'
+
+            - name: Upload Pages artifact
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: site
+
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4

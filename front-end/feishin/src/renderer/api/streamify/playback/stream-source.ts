@@ -10,6 +10,11 @@ import {
     type StreamUrlResolution,
 } from './resolver/audio/get-stream-url';
 import { relayBaseCandidate } from './resolver/lib/relayBase';
+import {
+    mseAudioAvailable,
+    startSabrAudio,
+    type SabrSessionHandle,
+} from './sabr/sabrStreamPlayer';
 
 /**
  * api/streamify/playback/stream-source.ts — the engine-side consumption
@@ -92,6 +97,7 @@ export class StreamifySabrError extends Error {
 
 const sessions = new Map<string, PlaybackSession>();
 const urlIndex = new Map<string, string>();
+let activeSabrSession: SabrSessionHandle | null = null;
 
 // ---------------------------------------------------------------------------
 // The zero-egress offline bypass (P4-A)
@@ -177,6 +183,26 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
     const resolution = await getStreamUrl(videoId, { relayBase: relayBaseCandidate() });
     indexResolution(resolution);
     if (resolution.protocol === 'sabr') {
+        if (resolution.sabr && mseAudioAvailable()) {
+            activeSabrSession?.abort();
+            try {
+                const sabrSession = await startSabrAudio(
+                    resolution.sabr,
+                    true,
+                    relayBaseCandidate(),
+                );
+                activeSabrSession = sabrSession;
+                const effectiveResolution: StreamUrlResolution = {
+                    ...resolution,
+                    url: sabrSession.objectUrl,
+                };
+                indexResolution(effectiveResolution);
+                return effectiveResolution;
+            } catch (err) {
+                logger.warn('streamify: SABR MSE start failed, falling back to error', { err });
+                throw new StreamifySabrError(videoId);
+            }
+        }
         // Honest state: surfaced to the caller; the instrumentation already
         // counted the hit inside get-stream-url.
         throw new StreamifySabrError(videoId);
@@ -280,6 +306,26 @@ async function recoverFromError(
             });
             indexResolution(fresh);
             if (fresh.protocol === 'sabr') {
+                if (fresh.sabr && mseAudioAvailable()) {
+                    activeSabrSession?.abort();
+                    try {
+                        const sabrSession = await startSabrAudio(
+                            fresh.sabr,
+                            true,
+                            relayBaseCandidate(),
+                        );
+                        activeSabrSession = sabrSession;
+                        const effective: StreamUrlResolution = {
+                            ...fresh,
+                            url: sabrSession.objectUrl,
+                        };
+                        indexResolution(effective);
+                        swapSource(audio, effective.url, at, session.videoId);
+                        return;
+                    } catch {
+                        throw new StreamifySabrError(session.videoId);
+                    }
+                }
                 throw new StreamifySabrError(session.videoId);
             }
             swapSource(audio, fresh.url, at, session.videoId);
@@ -316,6 +362,26 @@ async function recoverFromError(
             });
             indexResolution(fresh);
             if (fresh.protocol === 'sabr') {
+                if (fresh.sabr && mseAudioAvailable()) {
+                    activeSabrSession?.abort();
+                    try {
+                        const sabrSession = await startSabrAudio(
+                            fresh.sabr,
+                            true,
+                            relayBaseCandidate(),
+                        );
+                        activeSabrSession = sabrSession;
+                        const effective: StreamUrlResolution = {
+                            ...fresh,
+                            url: sabrSession.objectUrl,
+                        };
+                        indexResolution(effective);
+                        swapSource(audio, effective.url, at, session.videoId);
+                        return;
+                    } catch {
+                        throw new StreamifySabrError(session.videoId);
+                    }
+                }
                 throw new StreamifySabrError(session.videoId);
             }
             swapSource(audio, fresh.url, at, session.videoId);

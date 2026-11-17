@@ -50,6 +50,7 @@ import {
   resolveAudioStream,
   type LadderDigest,
   type LadderRung,
+  type SabrPayload,
 } from './resolve';
 
 // Re-exported so consumers (the feishin bridge) can type against this module
@@ -110,6 +111,8 @@ export interface StreamUrlResolution {
   artist: string;
   rung: LadderRung;
   isSabr: boolean;
+  /** SABR payload for client-side MSE playback */
+  sabr?: SabrPayload;
   /** W1-B (honest badges): the live rung's channel count (null = the
    *  wire did not say — the Spatial badge stays suppressed). */
   audioChannels: number | null;
@@ -522,6 +525,7 @@ export async function getStreamUrl(
       artist: stream.artist,
       rung: stream.rung,
       isSabr: stream.isSabr,
+      sabr: stream.sabr,
       audioChannels: top?.audioChannels ?? null,
     };
 
