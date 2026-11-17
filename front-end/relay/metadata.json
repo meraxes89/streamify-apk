@@ -1,0 +1,19 @@
+{
+  "main_module": "index.js",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "bindings": [
+    {
+      "name": "YTM_CACHE",
+      "namespace_id": "275cb7d17fe34ea59626c1ea4ba71dc9",
+      "type": "kv_namespace"
+    },
+    {
+      "name": "APPS_SCRIPT_SOLVER_URL",
+      "type": "plain_text",
+      "text": "https://script.google.com/macros/s/AKfycbxk5SsxkUGuLL8aRJE4OqaogCDvXBnyyMi7BvIgzqASpOIoiV0t0a4ilnmhZzz8KImR/exec"
+    }
+  ]
+}

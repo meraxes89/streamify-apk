@@ -386,6 +386,384 @@ function extractBgSession(html: string): BgSession | { error: string } {
   };
 }
 
+// ---------------------------------------------------------------------------
+// /play & /api/search — Direct Serverless Streaming & Search Endpoints
+// ---------------------------------------------------------------------------
+
+async function resolveDirectAudioStream(
+  videoId: string,
+  env: RelayEnv,
+  pot?: string | null,
+  visitorData?: string | null,
+): Promise<{ url: string; mimeType: string; status?: string } | null> {
+  const playerBody: Record<string, unknown> = {
+    videoId,
+    playbackContext: {
+      contentPlaybackContext: {
+        signatureTimestamp: 20768,
+      },
+    },
+    context: {
+      client: {
+        clientName: "iOS",
+        clientVersion: "20.11.6",
+        deviceModel: "iPhone10,4",
+        osName: "iOS",
+        osVersion: "16.7.7.20H330",
+        platform: "MOBILE",
+        hl: "en",
+        gl: "US",
+      },
+    },
+  };
+
+  if (visitorData) {
+    (playerBody.context as { client: Record<string, unknown> }).client.visitorData = visitorData;
+  }
+  if (pot) {
+    (playerBody as Record<string, unknown>).serviceIntegrityDimensions = {
+      poToken: pot,
+    };
+  }
+
+  const solverUrl = appsScriptSolverUrl(env);
+  const targetUrl = new URL("https://www.youtube.com/youtubei/v1/player?prettyPrint=false");
+  const playerHeaders = new Headers({
+    "Content-Type": "application/json",
+    "User-Agent": "com.google.ios.youtube/20.11.6 (iPhone10,4; U; CPU iOS 16_7_7 like Mac OS X;)",
+    "X-YouTube-Client-Name": "5",
+    "X-YouTube-Client-Version": "20.11.6",
+  });
+  const playerBodyStr = JSON.stringify(playerBody);
+
+  let playerRes: Response | null = null;
+  if (solverUrl !== null) {
+    const dummyReq = new Request("https://dummy", { method: "POST", body: playerBodyStr });
+    playerRes = await forwardThroughAppsScript(
+      solverUrl,
+      targetUrl,
+      "POST",
+      playerHeaders,
+      dummyReq.body,
+    );
+  }
+
+  if (!playerRes || !playerRes.ok) {
+    playerRes = await fetch(targetUrl.toString(), {
+      method: "POST",
+      headers: playerHeaders,
+      body: playerBodyStr,
+    });
+  }
+
+  if (!playerRes.ok) return null;
+
+  const playerData = (await playerRes.json()) as {
+    playabilityStatus?: { status?: string; reason?: string };
+    streamingData?: {
+      formats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
+      adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
+    };
+  };
+
+  if (playerData.playabilityStatus?.status !== "OK") {
+    return { url: "", mimeType: "", status: playerData.playabilityStatus?.status };
+  }
+
+  const formats = [
+    ...(playerData.streamingData?.formats || []),
+    ...(playerData.streamingData?.adaptiveFormats || []),
+  ];
+
+  const audioFormats = formats.filter(
+    (f) => (f.mimeType && f.mimeType.startsWith("audio/")) || f.itag === 140,
+  );
+  const chosen =
+    audioFormats.find((f) => f.itag === 140 && f.url) ||
+    audioFormats.find((f) => f.url) ||
+    formats.find((f) => f.url);
+
+  if (chosen && chosen.url) {
+    let mimeType = "audio/mp4";
+    if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
+    return { url: chosen.url, mimeType, status: "OK" };
+  }
+
+  return null;
+}
+
+async function searchYouTube(q: string): Promise<Array<{ videoId: string; title: string; artist?: string }>> {
+  try {
+    const searchRes = await fetch("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: "WEB",
+            clientVersion: "2.20250219.01.00",
+            hl: "en",
+            gl: "US",
+          },
+        },
+        query: q,
+      }),
+    });
+
+    if (!searchRes.ok) return [];
+
+    const data = (await searchRes.json()) as {
+      contents?: {
+        twoColumnSearchResultsRenderer?: {
+          primaryContents?: {
+            sectionListRenderer?: {
+              contents?: Array<{
+                itemSectionRenderer?: {
+                  contents?: Array<{
+                    videoRenderer?: {
+                      videoId?: string;
+                      title?: { runs?: Array<{ text?: string }> };
+                      ownerText?: { runs?: Array<{ text?: string }> };
+                    };
+                  }>;
+                };
+              }>;
+            };
+          };
+        };
+      };
+    };
+
+    const contents =
+      data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+    const results: Array<{ videoId: string; title: string; artist?: string }> = [];
+    for (const c of contents) {
+      for (const v of c.itemSectionRenderer?.contents || []) {
+        const vr = v.videoRenderer;
+        if (vr && vr.videoId) {
+          results.push({
+            videoId: vr.videoId,
+            title: vr.title?.runs?.[0]?.text || "",
+            artist: vr.ownerText?.runs?.[0]?.text || "",
+          });
+        }
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+async function handlePlay(request: Request, url: URL, env: RelayEnv): Promise<Response> {
+  let videoId = url.searchParams.get("videoId");
+  const queryParam = url.searchParams.get("q") || url.searchParams.get("query");
+
+  if (!videoId && queryParam) {
+    const searchMatches = await searchYouTube(queryParam);
+    if (searchMatches.length > 0 && searchMatches[0].videoId) {
+      videoId = searchMatches[0].videoId;
+    } else {
+      return jsonResponse({ error: "no search matches found", query: queryParam }, 404);
+    }
+  }
+
+  if (!videoId) {
+    return jsonResponse({ error: "missing videoId or query parameter ?videoId= or ?q=" }, 400);
+  }
+
+  const pot = url.searchParams.get("pot");
+  const visitorData = url.searchParams.get("visitorData");
+  const clientRange = request.headers.get("range");
+
+  // Step 1: Attempt direct resolve
+  let resolved = await resolveDirectAudioStream(videoId, env, pot, visitorData);
+  let effectiveVideoId = videoId;
+  let isSubstituted = false;
+
+  // Step 2: Fallback to Catalog Substitution if primary resolve fails or is gated
+  if (!resolved || !resolved.url) {
+    let titleToSearch = url.searchParams.get("title") || "";
+    if (!titleToSearch) {
+      try {
+        const oembedRes = await fetch(
+          `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+        );
+        if (oembedRes.ok) {
+          const oembedData = (await oembedRes.json()) as { title?: string };
+          if (oembedData.title) titleToSearch = oembedData.title;
+        }
+      } catch {
+        // Fall back to videoId
+      }
+    }
+
+    const searchQuery = `${titleToSearch || videoId} audio`;
+    const candidates = await searchYouTube(searchQuery);
+
+    for (const cand of candidates.slice(0, 3)) {
+      if (cand.videoId === videoId) continue;
+      const subResolved = await resolveDirectAudioStream(cand.videoId, env, pot, visitorData);
+      if (subResolved && subResolved.url) {
+        resolved = subResolved;
+        effectiveVideoId = cand.videoId;
+        isSubstituted = true;
+        break;
+      }
+    }
+  }
+
+  if (!resolved || !resolved.url) {
+    return jsonResponse(
+      {
+        error: "stream resolve failed",
+        videoId,
+        status: resolved?.status || "UNKNOWN",
+      },
+      404,
+    );
+  }
+
+  // Step 3: Fetch googlevideo media bytes from the SAME Worker IP and pipe back with Range support
+  const outgoingHeaders: Record<string, string> = {
+    "User-Agent": "com.google.ios.youtube/20.11.6 (iPhone10,4; U; CPU iOS 16_7_7 like Mac OS X;)",
+  };
+  if (clientRange) {
+    outgoingHeaders["Range"] = clientRange;
+  } else {
+    outgoingHeaders["Range"] = "bytes=0-";
+  }
+
+  try {
+    const mediaRes = await fetch(resolved.url, {
+      headers: outgoingHeaders,
+    });
+
+    const responseHeaders = new Headers();
+    responseHeaders.set("Content-Type", mediaRes.headers.get("content-type") || resolved.mimeType);
+    if (mediaRes.headers.has("content-range")) {
+      responseHeaders.set("Content-Range", mediaRes.headers.get("content-range")!);
+    }
+    if (mediaRes.headers.has("content-length")) {
+      responseHeaders.set("Content-Length", mediaRes.headers.get("content-length")!);
+    }
+    responseHeaders.set("Accept-Ranges", "bytes");
+    responseHeaders.set("Cache-Control", "public, max-age=3600");
+    if (isSubstituted) {
+      responseHeaders.set("X-Streamify-Substituted", effectiveVideoId);
+    }
+
+    for (const [k, v] of Object.entries(corsHeaders())) {
+      responseHeaders.set(k, v);
+    }
+    responseHeaders.set(
+      "Access-Control-Expose-Headers",
+      "Content-Length, Content-Range, Accept-Ranges, Content-Type, X-Streamify-Substituted",
+    );
+
+    return new Response(mediaRes.body, {
+      status: mediaRes.status,
+      statusText: mediaRes.statusText,
+      headers: responseHeaders,
+    });
+  } catch (err) {
+    return jsonResponse(
+      {
+        error: "stream fetch failed",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      502,
+    );
+  }
+}
+
+async function handleSearch(_request: Request, url: URL): Promise<Response> {
+  const q = url.searchParams.get("q") || url.searchParams.get("query");
+  if (!q) {
+    return jsonResponse({ error: "missing search query ?q=" }, 400);
+  }
+
+  try {
+    const searchRes = await fetch("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: "WEB",
+            clientVersion: "2.20250219.01.00",
+            hl: "en",
+            gl: "US",
+          },
+        },
+        query: q,
+      }),
+    });
+
+    if (!searchRes.ok) {
+      return jsonResponse({ error: "upstream search failed", status: searchRes.status }, 502);
+    }
+
+    const data = (await searchRes.json()) as {
+      contents?: {
+        twoColumnSearchResultsRenderer?: {
+          primaryContents?: {
+            sectionListRenderer?: {
+              contents?: Array<{
+                itemSectionRenderer?: {
+                  contents?: Array<{
+                    videoRenderer?: {
+                      videoId?: string;
+                      title?: { runs?: Array<{ text?: string }> };
+                      ownerText?: { runs?: Array<{ text?: string }> };
+                      lengthText?: { simpleText?: string };
+                      thumbnail?: { thumbnails?: Array<{ url?: string }> };
+                    };
+                  }>;
+                };
+              }>;
+            };
+          };
+        };
+      };
+    };
+
+    const contents =
+      data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+    const results: Array<{
+      videoId: string;
+      title: string;
+      artist?: string;
+      duration?: string;
+      thumbnail?: string;
+    }> = [];
+
+    for (const c of contents) {
+      for (const v of c.itemSectionRenderer?.contents || []) {
+        const vr = v.videoRenderer;
+        if (vr && vr.videoId) {
+          results.push({
+            videoId: vr.videoId,
+            title: vr.title?.runs?.[0]?.text || "",
+            artist: vr.ownerText?.runs?.[0]?.text || "",
+            duration: vr.lengthText?.simpleText || "",
+            thumbnail: vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || "",
+          });
+        }
+      }
+    }
+
+    return jsonResponse({ query: q, count: results.length, results }, 200);
+  } catch (err) {
+    return jsonResponse(
+      { error: "search exception", detail: err instanceof Error ? err.message : String(err) },
+      500
+    );
+  }
+}
+
 /**
  * GET /bg-session — the browser mint stack's first leg.
  *
@@ -864,6 +1242,20 @@ async function route(request: Request, env: RelayEnv, ctx: ExecutionContext): Pr
         "Access-Control-Max-Age": "86400",
       },
     });
+  }
+
+  if (path === "/play") {
+    if (method !== "GET" && method !== "HEAD") {
+      return jsonResponse({ error: "method not allowed", method }, 405);
+    }
+    return handlePlay(request, url, env);
+  }
+
+  if (path === "/api/search" || path === "/search") {
+    if (method !== "GET") {
+      return jsonResponse({ error: "method not allowed", method }, 405);
+    }
+    return handleSearch(request, url);
   }
 
   if (path === "/health") {
