@@ -428,7 +428,7 @@ export async function playerPoToken(
       // fall through to the lazy live mint below.
     }
   }
-  if (opts.autoMint !== true) return null;
+  if (opts.autoMint === false) return null;
   try {
     const s = await ensureLiveSession(relayBase, { signal: opts.signal });
     const poToken = await s.mintPlayerToken(videoId);

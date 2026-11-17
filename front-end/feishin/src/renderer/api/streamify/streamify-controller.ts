@@ -1100,10 +1100,51 @@ export const StreamifyController: InternalControllerEndpoint = {
             // fake data.
             throw new StreamifyNoVideoError(query.id);
         }
-        // Throws StreamifySabrError on SABR-only resolves (react-player
-        // cannot parse SABR — the daily corpus instrumentation counts it).
-        const resolution = await resolveStreamifyTrack(videoId);
-        return resolution.url;
+
+        try {
+            const resolution = await resolveStreamifyTrack(videoId);
+            return resolution.url;
+        } catch (initialErr) {
+            // Recommendation §4: Automated catalog substitution fallback
+            // When an official music release hits a gate (LOGIN_REQUIRED, UNPLAYABLE, etc.),
+            // perform fallback search for the lyric / alternate audio video:
+            const trackName = candidateRow ? `${candidateRow.title} ${candidateRow.artist}` : query.id;
+            console.warn(`[Streamify] Resolution failed for ${videoId} (${trackName}), attempting substitution fallback...`, initialErr);
+            
+            let fallbackQuery = '';
+            if (candidateRow) {
+                fallbackQuery = `${candidateRow.title} ${candidateRow.artist} lyric video`.trim();
+            } else if (ytmVideoId) {
+                // query.id was ytm:videoId
+                fallbackQuery = `${videoId} audio`;
+            }
+
+            if (fallbackQuery) {
+                try {
+                    const searchRes = await getMetadataProvider().search(fallbackQuery, 'songs');
+                    if (searchRes?.songs && searchRes.songs.length > 0) {
+                        for (const alt of searchRes.songs) {
+                            const altId = extractVideoId(alt.videoId);
+                            if (altId && altId !== videoId) {
+                                try {
+                                    console.info(`[Streamify] Attempting fallback alternate videoId: ${altId} (${alt.title})`);
+                                    const altRes = await resolveStreamifyTrack(altId);
+                                    if (altRes?.url) {
+                                        return altRes.url;
+                                    }
+                                } catch {
+                                    // Try next candidate in search results
+                                }
+                            }
+                        }
+                    }
+                } catch (fallbackSearchErr) {
+                    console.warn('[Streamify] Fallback substitution search error:', fallbackSearchErr);
+                }
+            }
+
+            throw initialErr;
+        }
     },
     getStructuredLyrics: async (args) => {
         // W1-B: the two-tier structured lyrics — LRCLIB primary (timestamped
