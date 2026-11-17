@@ -84,8 +84,14 @@ export async function quarantineOfflineTrack(videoId: string, reason: string): P
     await manager.quarantine(videoId, reason);
 }
 
-/** The context-menu / download-action entry point (song-row → spec). */
-export async function queueSongDownload(songId: string): Promise<void> {
+/** The context-menu / download-action entry point (song-row → spec).
+ * W2-B: `source` tags the download's owner — 'manual' (the default, the
+ * only pre-W2B spelling) or 'smart-sync' (the background pre-fetcher;
+ * those entries are LRU-evictable under the 500 MB cap). */
+export async function queueSongDownload(
+    songId: string,
+    opts: { source?: 'manual' | 'smart-sync' } = {},
+): Promise<void> {
     const manager = await ensureManager();
     if (manager === null) return;
     const snapshot = currentStreamifyLibrary();
@@ -97,6 +103,7 @@ export async function queueSongDownload(songId: string): Promise<void> {
         artist: row?.artist ?? '',
         durationSec: row?.durationSec ?? null,
         songId,
+        source: opts.source ?? 'manual',
         title: row?.title ?? songId,
         videoId,
     };

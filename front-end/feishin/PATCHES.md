@@ -247,13 +247,16 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
 - **Conflict surface:** low — one line per map; icon cases append at a
   stable switch.
 
-### A19. `src/renderer/features/context-menu/menus/{song,album,playlist-song,playlist}-context-menu.tsx` (P4-A, #192)
+### A19. `src/renderer/features/context-menu/menus/{song,album,playlist-song,playlist}-context-menu.tsx` (P4-A, #192; W2-B)
 
 - **What:** one `<StreamifyDownloadAction ids={ids} itemType={…} />` line +
   one import per menu. The action component lives in our tree
   (`features/streamify-downloads/components/download-action.tsx`) and
   self-hides on non-Streamify servers — the stock `DownloadAction` is
-  untouched.
+  untouched. W2-B adds one more line to the SONG menu only:
+  `<ViewCreditsAction songs={items} />` (the Liner Notes drawer trigger,
+  `features/streamify/credits/components/view-credits-action.tsx` — same
+  self-hiding pattern).
 - **Conflict surface:** low — single lines at stable anchors.
 
 ### A20. `src/shared/types/domain-types.ts`
@@ -359,6 +362,28 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (this PR).
   no chapters AND on non-Streamify servers; all fetching, highlighting and
   seeking live in the fork-owned video tree.
 - **Conflict surface:** low — two additive lines at stable anchors.
+
+### A29. `src/renderer/features/home/routes/home-route.tsx` (W2-B)
+
+- **What:** one import + one conditional element:
+  `{isStreamify && <DiscoverMixShelf />}` at the head of the home
+  shelves stack (the playTally-seeded Discover Mix — seed attribution,
+  Play Mix / Refresh Mix). The shelf lives in our tree
+  (`features/streamify/discover/components/discover-mix-shelf.tsx`),
+  self-hides on non-Streamify servers, and renders nothing when the mix
+  honestly cannot be built.
+- **Conflict surface:** low — one line above the feature-carousels block;
+  conflicts only if upstream restructures the home layout wholesale.
+
+### A30. `src/renderer/app.tsx` (W2-B)
+
+- **What:** one import + one `<StreamifyGlobalRuntime />` element inside
+  the `PlayerProvider` (after `<AppRouter />`). The component lives in
+  our tree (`features/streamify/global-runtime.tsx`) and mounts the
+  fork's global feature surfaces — the Liner Notes drawer host and the
+  Smart Sync clean-play observer — both self-gating on the Streamify
+  server type; stock deployments render nothing.
+- **Conflict surface:** low — additive element at a stable anchor.
 
 ---
 
@@ -530,11 +555,34 @@ can ignore them and audits can hold us to the directory-isolation rule.
   audioChannels > 2 Spatial rule, zero-RPC facts) and the component
   (`components/quality-badges.tsx` — resolver-cache reads only).
 
+### `src/renderer/features/streamify/` — the nested Wave-feature tree
+
+- `global-runtime.tsx` (W2-B) — the one component `app.tsx` mounts (A27):
+  the global hosts (Liner Notes drawer host + Smart Sync runtime).
+- `credits/` (W2-B) — the Liner Notes surface: `credits-store.ts` (the
+  drawer state), `use-song-credits.ts` (the session-cached data hook),
+  `song-video-id.ts` (songId → videoId, `ytm:` decode + snapshot row),
+  `components/{view-credits-action,song-credits-modal}.tsx`.
+- `smart-sync/` (W2-B) — the 500 MB OPFS predictive pre-fetcher:
+  `smart-sync-engine.ts` (LRU + circuit breaker + budget), `queue-source.ts`
+  (N+1/N+2 lookahead off the player store), `use-smart-sync.ts` (the
+  clean-play observer), `components/{smart-sync-runtime,smart-sync-panel}.tsx`
+  (the settings Offline tab lives in the fork-owned settings route).
+- `discover/` (W2-B) — the playTally-seeded Discover Mix:
+  `discover-engine.ts` (seeds / candidates / filters / interleave),
+  `discover-songs.ts` (the `ytm:` playable mapping), `use-discover-mix.ts`,
+  `components/discover-mix-shelf.tsx` (the A26 home seam).
+- `api/streamify/meta-bridge.ts` (W2-B, api side) — the shape-agnostic
+  consumer seam over the W1 metadata provider (both #198's
+  `MetadataResult` envelope and #200's installer API; honest null before
+  the provider exists).
+
 ### `src/renderer/store/streamify-*.store.ts`
 
 - `streamify-playlists.store.ts` (P3-A), `streamify-downloads.store.ts` /
   `streamify-debug.store.ts` (P4-A), `streamify-jam.store.ts` /
-  `streamify-eq.store.ts` / `streamify-settings.store.ts` (P4-B) — the
+  `streamify-eq.store.ts` / `streamify-settings.store.ts` (P4-B),
+  `streamify-smart-sync.store.ts` (W2-B — the breaker/usage UI slice) — the
   deliberately-dumb state slices with hand-rolled localStorage lanes (no
   store-barrel exports; node-testable).
 
