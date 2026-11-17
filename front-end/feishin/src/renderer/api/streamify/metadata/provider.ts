@@ -835,7 +835,11 @@ async function run<TPayload>(
         deps,
     );
 
-    if (edgeOutcome.kind === 'edge-not-found') {
+    if (
+        edgeOutcome.kind === 'edge-not-found' &&
+        options.endpoint !== 'search' &&
+        options.endpoint !== 'search-suggest'
+    ) {
         // The 404 class: remember it 15 min, zero retries, no fallback — a
         // missing entity is not transient.
         snapshotUpsert(key, null, now());

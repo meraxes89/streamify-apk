@@ -470,12 +470,15 @@ export async function fallbackSearch(
                 null;
             const album = item.album?.name || null;
             const subtitle = [artist, album].filter(Boolean).join(' • ') || null;
-            const isVideoId = typeof item.id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(item.id);
+            const candidateId =
+                item.id ||
+                (raw as { endpoint?: { payload?: { videoId?: string } } }).endpoint?.payload?.videoId;
+            const isVideoId = typeof candidateId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(candidateId);
             results.push({
                 durationMs: durationMsOf(item),
                 subtitle,
                 title: item.title,
-                videoId: isVideoId ? item.id : null,
+                videoId: isVideoId ? candidateId : null,
             });
         }
     }
