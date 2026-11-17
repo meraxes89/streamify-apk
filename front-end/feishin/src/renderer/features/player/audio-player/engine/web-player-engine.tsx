@@ -342,7 +342,12 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
         <div id="web-player-engine" style={{ display: 'none' }}>
             <ReactPlayerComponent
                 config={{
-                    file: { attributes: { crossOrigin: 'anonymous' }, forceAudio: true },
+                    file: {
+                        attributes: {
+                            crossOrigin: src1?.includes('googlevideo.com') ? undefined : 'anonymous',
+                        },
+                        forceAudio: true,
+                    },
                 }}
                 controls={false}
                 height={0}
@@ -368,7 +373,12 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
             />
             <ReactPlayerComponent
                 config={{
-                    file: { attributes: { crossOrigin: 'anonymous' }, forceAudio: true },
+                    file: {
+                        attributes: {
+                            crossOrigin: src2?.includes('googlevideo.com') ? undefined : 'anonymous',
+                        },
+                        forceAudio: true,
+                    },
                 }}
                 controls={false}
                 height={0}

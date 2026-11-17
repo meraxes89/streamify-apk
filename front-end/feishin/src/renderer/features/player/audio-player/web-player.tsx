@@ -566,6 +566,13 @@ export function WebPlayer() {
         async (reactPlayer: ReactPlayer) => {
             applyPendingSeekIfNeeded(reactPlayer, 1);
             if (!webAudio || player1Source) return;
+            if (player1Url && player1Url.includes('googlevideo.com')) {
+                // Progressive googlevideo.com audio carries no CORS headers for foreign origins.
+                // Attaching createMediaElementSource causes Web Audio API to output silence per the
+                // W3C cross-origin security specification. Leaving it unattached lets HTMLAudioElement
+                // play natively to speakers.
+                return;
+            }
             if (player1Url) {
                 // This should fire once, only if the source is real (meaning we
                 // saw the dummy source) and the context is not ready
@@ -592,6 +599,9 @@ export function WebPlayer() {
         async (reactPlayer: ReactPlayer) => {
             applyPendingSeekIfNeeded(reactPlayer, 2);
             if (!webAudio || player2Source) return;
+            if (player2Url && player2Url.includes('googlevideo.com')) {
+                return;
+            }
             if (player2Url) {
                 if (webAudio.context.state !== 'running') {
                     await webAudio.context.resume();

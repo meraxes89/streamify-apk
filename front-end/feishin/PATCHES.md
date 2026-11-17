@@ -189,7 +189,9 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (#205), W2-B (#206), W3-A (this PR).
   claim non-range seeks; (P4-B, #193) the EQ attach seam —
   `source.connect(gains[i])` became `connectStreamifySource(webAudio,
   source, i)` in both player-start handlers (the EQ watchdog's hard-bypass
-  guardrail). Unclaimed paths stay byte-identical.
+  guardrail); and skip attaching `createMediaElementSource` for non-CORS
+  `googlevideo.com` progressive streams so the browser's native audio output
+  plays without Web Audio cross-origin muting. Unclaimed paths stay byte-identical.
 - **Conflict surface:** low — additive lines inside three handlers.
 
 ### A13. `src/renderer/features/player/audio-player/engine/web-player-engine.tsx`
@@ -197,6 +199,8 @@ P5-A (#195), W1-A (#198), W1-B (#200), W2-A (#205), W2-B (#206), W3-A (this PR).
 - **What:** (P2-A) one optional `onSourceError?: (err, audio) => boolean`
   prop and one claim block at the head of `handleOnError`'s inner handler;
   claimed errors return early, unclaimed run the stock retry/skip logic.
+  Conditionally set `crossOrigin` attribute to `undefined` for `googlevideo.com`
+  progressive URLs so browsers do not block media loading on missing CORS headers.
 - **Conflict surface:** low.
 
 ### A14. `src/renderer/features/player/components/right-controls.tsx` (P4-B, #193; W1-B; W2-A; W3-A)
