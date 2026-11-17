@@ -161,7 +161,7 @@ jobs:
         working-directory: front-end
 
   relay:
-    name: relay worker bundles (wrangler dry-run)
+    name: relay worker bundles + ytm-meta tests (wrangler dry-run)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -171,6 +171,13 @@ jobs:
       - name: Install deps
         run: npm install --no-fund --no-audit
         working-directory: front-end
+      - name: ytm-meta network-free vitest (W1-A)
+        # The edge metadata cache lane: key encoding (gl/hl isolation),
+        # TTL matrix, synced-flag preservation, single-flight coalescing,
+        # KV-absent fallback, SWR policy, failure separation. Runs before
+        # the dry-run so a broken module never reaches the bundler.
+        run: npm test
+        working-directory: front-end/relay
       - name: wrangler dry-run (no Cloudflare creds needed)
         run: npx wrangler deploy --dry-run --outdir dist
         working-directory: front-end/relay

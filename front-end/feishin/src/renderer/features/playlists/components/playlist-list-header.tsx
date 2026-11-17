@@ -8,6 +8,9 @@ import { usePlaylistListFilters } from '/@/renderer/features/playlists/hooks/use
 import { FilterBar } from '/@/renderer/features/shared/components/filter-bar';
 import { LibraryHeaderBar } from '/@/renderer/features/shared/components/library-header-bar';
 import { ListSearchInput } from '/@/renderer/features/shared/components/list-search-input';
+// W1-A (fork seam, PATCHES.md A26): the 1-Click YTM importer trigger. Self-hides
+// on non-Streamify servers — the StreamifyDownloadAction pattern, verbatim.
+import { StreamifyYtmImportButton } from '/@/renderer/features/streamify/import/components/ytm-import-button';
 import { Group } from '/@/shared/components/group/group';
 import { Stack } from '/@/shared/components/stack/stack';
 import { LibraryItem } from '/@/shared/types/domain-types';
@@ -31,6 +34,7 @@ export const PlaylistListHeader = ({ title }: PlaylistListHeaderProps) => {
                 </LibraryHeaderBar>
                 <Group>
                     <ListSearchInput />
+                    <StreamifyYtmImportButton />
                 </Group>
             </PageHeader>
             <FilterBar>

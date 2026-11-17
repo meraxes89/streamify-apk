@@ -100,8 +100,19 @@
  *   and the body is passed as a STREAM, never buffered. Byte-range audio
  *   from googlevideo through this relay is the project kill criterion.
  *
+ * W1-A — THE EDGE METADATA CACHE (/ytm/meta, ytm-meta.ts): the Worker's
+ * third duty. All public InnerTube browse/metadata traffic routes through
+ * a cached, validated, single-flight endpoint instead of the /r passthrough
+ * — the global metadata cache the P1 cloud.ts boundary rule now names
+ * (decisions/waves/W1A-edge-kv-metadata-importer.md). The Worker entry
+ * signature grows (request, env, ctx): env carries the optional YTM_CACHE
+ * KV binding (absent in local dev/test → bypassed cleanly), ctx keeps SWR
+ * background revalidations alive past the response.
+ *
  * Pure Workers runtime — no external dependencies. ES-module default export.
  */
+
+import { ytmMetaRoute, type YtmEnv } from "./ytm-meta";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -633,9 +644,9 @@ function playabilityStatusOf(body: string): string | null {
 // ---------------------------------------------------------------------------
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: YtmEnv, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await route(request);
+      return await route(request, env, ctx);
     } catch (err) {
       // Belt-and-braces: an unexpected throw must still answer WITH CORS —
       // otherwise a browser-side error path becomes undebuggable.
@@ -650,8 +661,9 @@ export default {
   },
 };
 
-/** Route table: OPTIONS anywhere → preflight; /health; /; /bg-session; /r; else 404. */
-async function route(request: Request): Promise<Response> {
+/** Route table: OPTIONS anywhere → preflight; /health; /; /bg-session;
+ * /ytm/meta (W1-A); /r; else 404. */
+async function route(request: Request, env: YtmEnv, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
   const path = url.pathname;
@@ -706,6 +718,7 @@ async function route(request: Request): Promise<Response> {
           "client-hints-passthrough", // P3b — sec-ch-ua* on WAA + WEB legs
           "g3b-oss-stack", // G3b — YouTube.js + bgutils-js egress surface
           "neg-cache", // G4.3 — edge negative cache (LOGIN_REQUIRED, 30 min)
+          "ytm-meta", // W1-A — edge KV metadata cache (/ytm/meta)
         ],
       },
       200,
@@ -717,6 +730,14 @@ async function route(request: Request): Promise<Response> {
       return jsonResponse({ error: "method not allowed", method }, 405);
     }
     return bgSession(request);
+  }
+
+  // ---- W1-A: the edge metadata cache ------------------------------------
+  if (path === "/ytm/meta") {
+    if (method !== "GET") {
+      return jsonResponse({ error: "method not allowed", method }, 405);
+    }
+    return ytmMetaRoute(request, env, ctx);
   }
 
   if (path === "/r") {

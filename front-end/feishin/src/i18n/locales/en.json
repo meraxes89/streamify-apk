@@ -1847,5 +1847,21 @@
                 "unreachable": "Unreachable"
             }
         }
+    },
+    "streamifyImport": {
+        "title": "Import from YouTube Music",
+        "action": "Import",
+        "buttonTooltip": "Import a playlist or album from YouTube Music",
+        "inputPlaceholder": "Paste a YouTube Music link or ID (PL…, OLAK5uy_…, RDCLAK5uy_…, VL…)",
+        "invalidInput": "Not a YouTube Music playlist or album link.",
+        "detectedPlaylist": "Playlist detected: {{id}}",
+        "detectedAlbum": "Album detected: {{id}}",
+        "importing": "Importing…",
+        "progress": "{{count}} of {{total}} tracks imported",
+        "progressUnknownTotal": "an unknown total",
+        "progressCancelled": "Cancelled — {{count}} tracks had already landed and stay in your library.",
+        "toastDone": "Imported {{count}} tracks",
+        "toastCancelled": "Import cancelled — {{count}} tracks kept",
+        "toastFailed": "Import failed — try again in a minute"
     }
 }
