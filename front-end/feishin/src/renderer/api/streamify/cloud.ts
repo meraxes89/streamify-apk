@@ -22,6 +22,15 @@ import { StreamifySession } from './session';
 // Row shapes (the wire columns, nothing more)
 // ---------------------------------------------------------------------------
 
+/** One user_item_favorites row (the wire columns). */
+export interface CloudItemFavoriteRow {
+    created_at: string;
+    /** The feishin album/artist id (alb_/art_ derivation). */
+    item_id: string;
+    item_type: 'album' | 'artist';
+    user_id: string;
+}
+
 export interface CloudPlaylistRow {
     cover_url: null | string;
     created_at: string;
@@ -53,6 +62,10 @@ export interface LikeTrackFacts {
     videoId?: null | string;
 }
 
+// ---------------------------------------------------------------------------
+// The fetch lane
+// ---------------------------------------------------------------------------
+
 export interface PlayEventRow {
     artist: string;
     /** Included so lastPlayedAt is a real timestamp (see decisions/p1). */
@@ -62,10 +75,6 @@ export interface PlayEventRow {
     title: string;
     track_sig: string;
 }
-
-// ---------------------------------------------------------------------------
-// The fetch lane
-// ---------------------------------------------------------------------------
 
 export interface PlaylistTrackRow {
     playlist_id: string;
@@ -81,15 +90,15 @@ export interface RestCallInit {
     signal?: AbortSignal;
 }
 
+// ---------------------------------------------------------------------------
+// The library lanes (each one exists verbatim in the web app's load path)
+// ---------------------------------------------------------------------------
+
 interface AuthTokenResponse {
     access_token?: string;
     expires_in?: number;
     refresh_token?: string;
 }
-
-// ---------------------------------------------------------------------------
-// The library lanes (each one exists verbatim in the web app's load path)
-// ---------------------------------------------------------------------------
 
 /** playlist_tracks rows for a set of playlists (position ascending). */
 export async function fetchAllPlaylistTracks(
@@ -119,6 +128,35 @@ export async function fetchAllPlaylistTracks(
         position: typeof row.position === 'number' ? row.position : 0,
         track_id: String(row.track_id ?? ''),
     }));
+}
+
+/** The user's item favorites (albums + artists), most recent first. */
+export async function fetchItemFavorites(
+    session: StreamifySession,
+    signal?: AbortSignal,
+): Promise<CloudItemFavoriteRow[]> {
+    if (session.accessToken === '' || session.userId === '') {
+        return [];
+    }
+    const res = await restCall(
+        session,
+        `user_item_favorites?user_id=eq.${session.userId}&select=item_type,item_id,created_at&order=created_at.desc`,
+        { method: 'GET', signal },
+    );
+    if (!res.ok) {
+        return [];
+    }
+    const rows = (await res.json()) as Array<Record<string, unknown>>;
+    return rows
+        .map((row) => ({
+            created_at: String(row.created_at ?? ''),
+            item_id: String(row.item_id ?? ''),
+            item_type: (row.item_type === 'artist'
+                ? 'artist'
+                : 'album') as CloudItemFavoriteRow['item_type'],
+            user_id: session.userId,
+        }))
+        .filter((row) => row.item_id !== '');
 }
 
 /**
@@ -163,6 +201,12 @@ export async function fetchLikes(
     }
     return out;
 }
+
+// ---------------------------------------------------------------------------
+// The item-favorites lanes (W1-B: album / artist favorites on the
+// user_item_favorites table — the #191 likes ledger extended beyond
+// tracks; migration 2026_12_w1b_item_favorites.sql)
+// ---------------------------------------------------------------------------
 
 /** The user's own play events (most recent first) - the top/similar data. */
 export async function fetchPlayEvents(
@@ -244,6 +288,20 @@ export async function fetchTracksByIds(
     return rows.map((row) => toTrackRow(row));
 }
 
+/** Favorite an album/artist (idempotent — 409 counts as success). */
+export async function likeItem(
+    session: StreamifySession,
+    type: 'album' | 'artist',
+    itemId: string,
+): Promise<boolean> {
+    const res = await restCall(session, 'user_item_favorites', {
+        body: { item_id: itemId, item_type: type, user_id: session.userId },
+        method: 'POST',
+        prefer: 'resolution=ignore-duplicates',
+    });
+    return res.ok || res.status === 409;
+}
+
 /**
  * Like a track: upsert the shared catalog row (merge-duplicates, same
  * posture as the Android client) then insert the user_likes edge
@@ -276,11 +334,6 @@ export async function likeTrack(
     });
     return like.ok || like.status === 409;
 }
-
-// ---------------------------------------------------------------------------
-// The write lanes (P3-B: play events + likes — mirror front-end/web's
-// lib/supabase.ts call-for-call; each exists verbatim in the web app)
-// ---------------------------------------------------------------------------
 
 /**
  * Record one play event (the scrobble outbox's send target). Mirrors the
@@ -318,6 +371,11 @@ export async function recordPlayEventStrict(
         return false; // offline / dead session — the outbox retries or drops
     }
 }
+
+// ---------------------------------------------------------------------------
+// The write lanes (P3-B: play events + likes — mirror front-end/web's
+// lib/supabase.ts call-for-call; each exists verbatim in the web app)
+// ---------------------------------------------------------------------------
 
 /**
  * The shared PostgREST lane (401 → one refresh → replay; a dead session
@@ -358,6 +416,20 @@ export async function restCall(
         throw new Error('Streamify session unauthorized (401)');
     }
     return res;
+}
+
+/** Unfavorite an album/artist (the catalog rows stay — they are derived). */
+export async function unlikeItem(
+    session: StreamifySession,
+    type: 'album' | 'artist',
+    itemId: string,
+): Promise<boolean> {
+    const res = await restCall(
+        session,
+        `user_item_favorites?user_id=eq.${session.userId}&item_type=eq.${type}&item_id=eq.${itemId}`,
+        { method: 'DELETE' },
+    );
+    return res.ok;
 }
 
 /** Remove a like (the catalog row stays — it is shared). */

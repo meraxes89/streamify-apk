@@ -25,13 +25,13 @@
  * rate-limited surface as distinct terminal phases — no retry storms.
  */
 
-import type { MetadataProvider, PlaylistPayload } from '/@/renderer/api/streamify/metadata/types';
+import type { PlaylistPayload } from '/@/renderer/api/streamify/metadata/types';
 import type { ServerListItemWithCredential } from '/@/shared/types/domain-types';
 
 import type { ParsedYtmTarget } from './url-parser';
 
 import { upsertCatalogTracks } from '/@/renderer/api/streamify/cloud';
-import { metadataProvider } from '/@/renderer/api/streamify/metadata/provider';
+import { typedMetadataProvider } from '/@/renderer/api/streamify/metadata/provider';
 import {
     addTracksToStreamifyPlaylist,
     createStreamifyPlaylist,
@@ -59,8 +59,8 @@ export interface ImportSummary {
 
 export interface ImportYtmOptions {
     onProgress?: (progress: ImportProgress) => void;
-    /** Provider seam override (tests inject a double here). */
-    provider?: MetadataProvider;
+    /** Typed provider seam override (tests inject a double here). */
+    provider?: typeof typedMetadataProvider;
     server: null | ServerListItemWithCredential;
     serverId: string | undefined;
     signal?: AbortSignal;
@@ -68,7 +68,7 @@ export interface ImportYtmOptions {
 }
 
 export async function importYtmTarget(options: ImportYtmOptions): Promise<ImportSummary> {
-    const provider = options.provider ?? metadataProvider;
+    const provider = options.provider ?? typedMetadataProvider;
     const report = (progress: ImportProgress) => options.onProgress?.(progress);
 
     report({

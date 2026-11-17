@@ -61,6 +61,10 @@ export interface StreamUrlRung {
   codec: string;
   bitrate: number;
   contentLength: number | null;
+  /** W1-B (honest badges): the wire's channel count when the format
+   *  carried one (2 = stereo, 6 = 5.1); null = unknown — consumers MUST
+   *  treat null as "cannot claim spatial", never guess. */
+  audioChannels: number | null;
 }
 
 /** Everything the playback engine needs for one track, in one object. */
@@ -94,6 +98,9 @@ export interface StreamUrlResolution {
   artist: string;
   rung: LadderRung;
   isSabr: boolean;
+  /** W1-B (honest badges): the live rung's channel count (null = the
+   *  wire did not say — the Spatial badge stays suppressed). */
+  audioChannels: number | null;
 }
 
 /** The instrumentation record — one per resolve (never per cache hit). */
@@ -156,6 +163,15 @@ interface Candidate {
   codec: string;
   bitrate: number;
   contentLength: number | null;
+  audioChannels: number | null;
+}
+
+/** W1-B: the wire channel count, honestly — anything not a positive
+ *  finite number is "unknown" (null), never a guess. Exported for the
+ *  network-free badge suites. */
+export function parseAudioChannels(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
+  return Math.round(raw);
 }
 
 /** Mime → element-ladder tier. null = not element-playable. */
@@ -222,6 +238,8 @@ function candidatesFromResp(digest: LadderDigest & { kind: 'progressive' }): Can
           : typeof f.contentLength === 'string' && f.contentLength !== ''
             ? Number(f.contentLength)
             : null,
+      // The raw PlayerResponse carries audioChannels on audio formats.
+      audioChannels: parseAudioChannels((f as { audioChannels?: unknown }).audioChannels),
     });
   }
   return out;
@@ -270,6 +288,12 @@ async function candidatesFromInfo(
       codec: cls.codec,
       bitrate: typeof f.bitrate === 'number' ? f.bitrate : 0,
       contentLength: typeof f.content_length === 'number' ? f.content_length : null,
+      // youtubei.js maps the payload defensively: read whichever naming
+      // the installed build exposes; absent = unknown (null), never a guess.
+      audioChannels: parseAudioChannels(
+        (f as unknown as Record<string, unknown>).audio_channels ??
+          (f as unknown as Record<string, unknown>).audioChannels,
+      ),
     });
   }
   return out;
@@ -445,6 +469,7 @@ export async function getStreamUrl(
         codec: c.codec,
         bitrate: c.bitrate,
         contentLength: c.contentLength,
+        audioChannels: c.audioChannels,
       })),
       codecs,
       resolvedAt,
@@ -457,6 +482,7 @@ export async function getStreamUrl(
       artist: stream.artist,
       rung: stream.rung,
       isSabr: stream.isSabr,
+      audioChannels: top?.audioChannels ?? null,
     };
 
     // 7. Instrumentation — one record per resolve, protocol + format.

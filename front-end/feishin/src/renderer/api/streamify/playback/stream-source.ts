@@ -231,6 +231,9 @@ function offlineResolution(off: OfflineServeResult): StreamUrlResolution {
     }
     return {
         artist: off.artist,
+        // The OPFS sidecar carries codecs but not a channel count — the
+        // honest unknown (the Spatial badge stays suppressed offline).
+        audioChannels: null,
         codecs: off.codecs,
         contentLength: off.contentLength,
         durationMs: off.durationMs,

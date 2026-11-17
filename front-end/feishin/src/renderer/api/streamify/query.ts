@@ -82,7 +82,11 @@ export interface SongListFilter {
 
 type Comparator<T> = (a: T, b: T) => number;
 
-export function filterAlbums(rows: AlbumRow[], filter: AlbumListFilter): AlbumRow[] {
+export function filterAlbums(
+    rows: AlbumRow[],
+    filter: AlbumListFilter,
+    snapshot?: LibrarySnapshot,
+): AlbumRow[] {
     const artistIds = filter.artistIds !== undefined ? new Set(filter.artistIds) : null;
     const term = filter.searchTerm?.trim().toLowerCase() ?? '';
     return rows.filter((row) => {
@@ -90,15 +94,19 @@ export function filterAlbums(rows: AlbumRow[], filter: AlbumListFilter): AlbumRo
             return false;
         }
         if (filter.genreIds !== undefined && filter.genreIds.length > 0) {
+            // YTM tiles (W1-B) are branch-handled by the controller before
+            // this filter runs; reaching here with a genre filter stays the
+            // honest empty (no genre data on snapshot rows).
             return false;
         }
         if (filter.minYear !== undefined || filter.maxYear !== undefined) {
             return false;
         }
         if (filter.favorite !== undefined) {
-            // No album-level favorites in the cloud model yet: a favorite
-            // filter honestly matches nothing.
-            return false;
+            // W1-B: the user_item_favorites ledger backs the filter now.
+            return snapshot !== undefined
+                ? snapshot.likedAlbumIds.has(row.id) === filter.favorite
+                : false;
         }
         if (filter.compilation !== undefined) {
             return false;
@@ -113,11 +121,18 @@ export function filterAlbums(rows: AlbumRow[], filter: AlbumListFilter): AlbumRo
     });
 }
 
-export function filterArtists(rows: ArtistRow[], filter: ArtistListFilter): ArtistRow[] {
+export function filterArtists(
+    rows: ArtistRow[],
+    filter: ArtistListFilter,
+    snapshot?: LibrarySnapshot,
+): ArtistRow[] {
     const term = filter.searchTerm?.trim().toLowerCase() ?? '';
     return rows.filter((row) => {
         if (filter.favorite !== undefined) {
-            return false;
+            // W1-B: the user_item_favorites ledger backs the filter now.
+            return snapshot !== undefined
+                ? snapshot.likedArtistIds.has(row.id) === filter.favorite
+                : false;
         }
         if (term !== '' && !row.name.toLowerCase().includes(term)) {
             return false;

@@ -17,6 +17,7 @@ import {
 import { useSetRating } from '/@/renderer/features/shared/hooks/use-set-rating';
 import { useCreateFavorite } from '/@/renderer/features/shared/mutations/create-favorite-mutation';
 import { useDeleteFavorite } from '/@/renderer/features/shared/mutations/delete-favorite-mutation';
+import { StreamifyQualityBadges } from '/@/renderer/features/streamify-badges/components/quality-badges';
 import { StreamifyJamButton } from '/@/renderer/features/streamify-jam/components/streamify-jam-button';
 import { useHotkeys } from '/@/renderer/hooks/use-hotkeys';
 import {
@@ -101,6 +102,11 @@ export const RightControls = () => {
                     trigger. Renders null on stock servers; all logic lives in
                     features/streamify-jam/ (see PATCHES.md). */}
                 <StreamifyJamButton />
+                {/* W1-B (Streamify, thin seam): the honest quality badges
+                    (codec · bitrate / OPFS Offline / HLS / 5.1 — zero extra
+                    RPCs, reads the active StreamUrlResolution). Renders null
+                    on stock servers; see PATCHES.md A14. */}
+                <StreamifyQualityBadges />
                 <DlnaCastButton />
                 <SleepTimerButton />
                 <PlayerConfig />

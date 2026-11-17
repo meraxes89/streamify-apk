@@ -113,6 +113,8 @@ function emptySnapshot(): LibrarySnapshot {
             albums: [],
             artistById: new Map(),
             artists: [],
+            likedAlbumIds: new Set(),
+            likedArtistIds: new Set(),
             likedIds: [],
             loadedAt: new Date().toISOString(),
             playEvents: [],
