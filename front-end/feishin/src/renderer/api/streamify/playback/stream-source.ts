@@ -39,7 +39,6 @@ import { mseAudioAvailable, type SabrSessionHandle, startSabrAudio } from './sab
  * Contract: front-end/decisions/p2/P2A-contract-getstream-url.md.
  */
 import { usePlayerStoreBase } from '/@/renderer/store';
-import { getUserCookie } from '/@/renderer/store/streamify-settings.store';
 import { useTimestampStoreBase } from '/@/renderer/store/timestamp.store';
 import { logger } from '/@/renderer/utils/logger';
 import { PlayerStatus, PlayerStyle } from '/@/shared/types/types';
@@ -177,67 +176,33 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
         return resolution;
     }
     offlineServed.delete(videoId);
-    const relayBase = relayBaseCandidate();
-    try {
-        const resolution = await getStreamUrl(videoId, { relayBase });
-        indexResolution(resolution);
-        if (resolution.protocol === 'sabr') {
-            const userCookie = getUserCookie();
-            if (userCookie) {
-                return fallbackRelayPlayResolution(videoId, relayBase);
-            }
-            if (resolution.sabr && mseAudioAvailable()) {
-                activeSabrSession?.abort();
-                try {
-                    const sabrSession = await startSabrAudio(resolution.sabr, true, relayBase);
-                    activeSabrSession = sabrSession;
-                    const effectiveResolution: StreamUrlResolution = {
-                        ...resolution,
-                        url: sabrSession.objectUrl,
-                    };
-                    indexResolution(effectiveResolution);
-                    return effectiveResolution;
-                } catch (err) {
-                    logger.warn('streamify: SABR MSE start failed, throwing StreamifySabrError', {
-                        err,
-                    });
-                }
-            }
-            throw new StreamifySabrError(videoId);
-        }
-        return resolution;
-    } catch (err) {
-        if (getUserCookie()) {
-            return fallbackRelayPlayResolution(videoId, relayBase);
-        }
-        throw err;
-    }
-}
-
-function fallbackRelayPlayResolution(videoId: string, relayBase: string): StreamUrlResolution {
-    const userCookie = getUserCookie();
-    const cookieParam = userCookie ? `&cookie=${encodeURIComponent(userCookie)}` : '';
-    const playUrl = `${relayBase.replace(/\/+$/, '')}/play?videoId=${videoId}${cookieParam}`;
-    const now = Date.now();
-    const resolution: StreamUrlResolution = {
-        artist: null,
-        audioChannels: 2,
-        codecs: 'mp4a.40.2',
-        contentLength: null,
-        durationMs: null,
-        expiresAt: now + 3600 * 1000,
-        expirySource: 'default',
-        isSabr: false,
-        ladder: [],
-        protocol: 'progressive',
-        rangeSupport: true,
-        resolvedAt: now,
-        rung: 'visionos-relay',
-        title: null,
-        trackId: videoId,
-        url: playUrl,
-    };
+    const resolution = await getStreamUrl(videoId, { relayBase: relayBaseCandidate() });
     indexResolution(resolution);
+    if (resolution.protocol === 'sabr') {
+        if (resolution.sabr && mseAudioAvailable()) {
+            activeSabrSession?.abort();
+            try {
+                const sabrSession = await startSabrAudio(
+                    resolution.sabr,
+                    true,
+                    relayBaseCandidate(),
+                );
+                activeSabrSession = sabrSession;
+                const effectiveResolution: StreamUrlResolution = {
+                    ...resolution,
+                    url: sabrSession.objectUrl,
+                };
+                indexResolution(effectiveResolution);
+                return effectiveResolution;
+            } catch (err) {
+                logger.warn('streamify: SABR MSE start failed, falling back to error', { err });
+                throw new StreamifySabrError(videoId);
+            }
+        }
+        // Honest state: surfaced to the caller; the instrumentation already
+        // counted the hit inside get-stream-url.
+        throw new StreamifySabrError(videoId);
+    }
     return resolution;
 }
 

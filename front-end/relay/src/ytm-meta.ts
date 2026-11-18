@@ -985,65 +985,28 @@ function normalizeRelated(params: YtmMetaParams, relatedJson: unknown | null): R
 
 function normalizeSearch(params: YtmMetaParams, searchJson: unknown): SearchPayload | null {
   const json = searchJson as Json;
-  const sections =
+  // Continuation pages answer with continuationContents.
+  const sourceShelf =
     (json?.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer
-      ?.contents as Json[] | undefined) ?? [];
-  const contShelf = json?.continuationContents?.musicPlaylistShelfContinuation as Json | undefined;
-  const continuation = contShelf ? shelfContinuationOf(contShelf) : null;
-
+      ?.contents?.find((c: Json) => c.musicShelfRenderer)?.musicShelfRenderer as Json | undefined) ??
+    (json?.continuationContents?.musicPlaylistShelfContinuation as Json | undefined);
+  if (sourceShelf === undefined) return null;
+  const continuation = shelfContinuationOf(sourceShelf);
   const results: SearchPayload['results'] = [];
-
-  const processListItem = (li: Json) => {
+  for (const entry of (sourceShelf.contents ?? []) as Json[]) {
+    const li = entry.musicResponsiveListItemRenderer as Json | undefined;
+    if (li === undefined) continue;
     const flex = (li.flexColumns ?? []) as Json[];
     const info = splitSongColumns(
       (flex[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs ?? []) as Array<{ text?: unknown }>,
     );
-    const title = runsText(flex[0]?.musicResponsiveListItemFlexColumnRenderer?.text) || '';
-    const subtitle = runsText(flex[1]?.musicResponsiveListItemFlexColumnRenderer?.text) || null;
-    const videoId = watchVideoIdOfListItem(li);
-    if (title !== '') {
-      results.push({
-        durationMs: info.durationText !== null ? parseDurationText(info.durationText) : null,
-        subtitle,
-        title,
-        videoId,
-      });
-    }
-  };
-
-  // Check sections (musicShelfRenderer and itemSectionRenderer with musicResponsiveListItemRenderer)
-  for (const sec of sections) {
-    if (sec.musicShelfRenderer) {
-      for (const entry of ((sec.musicShelfRenderer as Json).contents ?? []) as Json[]) {
-        if (entry.musicResponsiveListItemRenderer) {
-          processListItem(entry.musicResponsiveListItemRenderer as Json);
-        }
-      }
-    }
-    if (sec.itemSectionRenderer) {
-      for (const entry of ((sec.itemSectionRenderer as Json).contents ?? []) as Json[]) {
-        if (entry.musicResponsiveListItemRenderer) {
-          processListItem(entry.musicResponsiveListItemRenderer as Json);
-        } else if (entry.musicShelfRenderer) {
-          for (const item of ((entry.musicShelfRenderer as Json).contents ?? []) as Json[]) {
-            if (item.musicResponsiveListItemRenderer) {
-              processListItem(item.musicResponsiveListItemRenderer as Json);
-            }
-          }
-        }
-      }
-    }
+    results.push({
+      durationMs: info.durationText !== null ? parseDurationText(info.durationText) : null,
+      subtitle: runsText(flex[1]?.musicResponsiveListItemFlexColumnRenderer?.text) || null,
+      title: runsText(flex[0]?.musicResponsiveListItemFlexColumnRenderer?.text) || '',
+      videoId: watchVideoIdOfListItem(li),
+    });
   }
-
-  // Check continuation shelf if present
-  if (contShelf) {
-    for (const entry of ((contShelf.contents ?? []) as Json[])) {
-      if (entry.musicResponsiveListItemRenderer) {
-        processListItem(entry.musicResponsiveListItemRenderer as Json);
-      }
-    }
-  }
-
   const realResults = results.filter((r) => r.title !== '');
   if (realResults.length === 0) return null;
   return {

@@ -89,27 +89,6 @@ function userRelayOverride(): string {
     }
 }
 
-/** Option 3: Read user session cookie for stream authentication. Node-safe. */
-export function userCookieCandidate(): string {
-    try {
-        if (typeof localStorage === 'undefined') return '';
-        const raw = localStorage.getItem('streamify.settings.v1');
-        if (raw) {
-            const parsed = JSON.parse(raw) as {
-                settings?: { userCookie?: unknown };
-                v?: number;
-            };
-            if (parsed.v === 1 && typeof parsed.settings?.userCookie === 'string') {
-                const cookie = parsed.settings.userCookie.trim();
-                if (cookie) return cookie;
-            }
-        }
-        return localStorage.getItem('streamify.user_cookie')?.trim() || '';
-    } catch {
-        return '';
-    }
-}
-
 export function relayBaseCandidate(): string {
     if (candidate === null) {
         let value = userRelayOverride();
