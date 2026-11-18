@@ -25,16 +25,10 @@ name: Unified CI Pipeline
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**']
   merge_group:
   push:
-    branches: [main]
-  # Manual escape hatch (2026-10-30): GitHub's pull_request event delivery
-  # occasionally drops events (diagnosed on both eng1 and eng3 feature PRs).
-  # A workflow_dispatch run evaluates the same full matrix (preflight treats
-  # non-pull_request events as run-everything, fail-safe) and attaches its
-  # check runs to the head sha, so the "CI Gate (Blocking)" required check
-  # is satisfied exactly as a pull_request run would.
+    branches: [main, 'integration/**']
   workflow_dispatch:
 
 # Parallel-safe multi-engineer concurrency:
@@ -83,24 +77,34 @@ jobs:
             core:
               - 'rust/**'
               - 'native/**'
+              - 'CMakeLists.txt'
             android:
-              - 'app/**'
-              - 'shared/android/**'
+              - 'androidApp/**'
+              - 'composeApp/**'
+              - 'core/**'
+              - 'streamify-modules/**'
+              - 'vivoAndroidApp/**'
+              - 'cast/**'
+              - 'lastfm/**'
             desktop:
-              - 'desktop/**'
-              - 'shared/**'
+              - 'desktopApp/**'
+              - 'composeApp/**'
+              - 'core/**'
+              - 'streamify-modules/**'
+              - 'conveyor.conf'
             ios:
               - 'iosApp/**'
               - 'scripts/build_ios_xcframework.sh'
             supabase:
               - 'supabase/**'
+              - 'streamify-modules/supabase/**'
             packaging:
               - '**/*.gradle.kts'
               - 'gradle/**'
               - 'gradle.properties'
               - 'gradlew'
               - 'gradlew.bat'
-              - 'native/**'
+              - 'conveyor.conf'
             ci:
               - '.github/workflows/**'
 
