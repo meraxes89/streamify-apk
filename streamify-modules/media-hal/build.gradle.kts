@@ -19,5 +19,11 @@ kotlin {
                 implementation(project(":streamify-core-bridge"))
             }
         }
+        androidMain {
+            dependencies {
+                implementation(libs.media3.common)
+                implementation(libs.media3.exoplayer)
+            }
+        }
     }
 }
