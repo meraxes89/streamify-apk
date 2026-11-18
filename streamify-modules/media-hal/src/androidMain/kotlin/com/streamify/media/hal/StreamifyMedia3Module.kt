@@ -6,7 +6,7 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
-import androidx.media3.exoplayer.audio.SonicAudioProcessor
+import androidx.media3.common.audio.SonicAudioProcessor
 
 /**
  * Creates the enhanced audio sink chain incorporating Streamify's
