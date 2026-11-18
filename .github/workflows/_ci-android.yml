@@ -74,10 +74,10 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Run :app:testDebugUnitTest
+      - name: Run :androidApp:testDebugUnitTest
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest \
+          ./gradlew :androidApp:testDebugUnitTest \
             -PskipExternalNativeBuild=true \
             --parallel --build-cache --configuration-cache --stacktrace
 
@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: android-jvm-test-reports
-          path: app/build/reports/tests/**
+          path: androidApp/build/reports/tests/**
           if-no-files-found: ignore
 
   # ── APK assembly over the prebuilt engine artifacts ─────────────────────────
@@ -125,12 +125,9 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew \
-            :app:compileDebugKotlin \
-            :app:compileDebugJavaWithJavac \
-            :app:processDebugResources \
-            :app:dexBuilderDebug \
-            :app:mergeExtDexDebug \
-            :app:mergeProjectDexDebug \
+            :androidApp:compileDebugKotlin \
+            :androidApp:compileDebugJavaWithJavac \
+            :androidApp:processDebugResources \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache
 
@@ -141,14 +138,14 @@ jobs:
           pattern: jniLibs-*
           path: staged-jni
 
-      - name: Stage prebuilt .so into app/src/main/jniLibs
+      - name: Stage prebuilt .so into androidApp/src/main/jniLibs
         run: |
           for ABI in arm64-v8a x86_64; do
-            mkdir -p app/src/main/jniLibs/$ABI
-            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} app/src/main/jniLibs/$ABI/ \;
+            mkdir -p androidApp/src/main/jniLibs/$ABI
+            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} androidApp/src/main/jniLibs/$ABI/ \;
           done
           echo "Staged JNI libraries:"
-          ls -lR app/src/main/jniLibs
+          ls -lR androidApp/src/main/jniLibs
 
       - name: "Decode release keystore (SEC-04 — no debug-signing fallback)"
         if: inputs.release_mode
@@ -174,8 +171,8 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
-          ./gradlew assembleDebug \
-            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+          ./gradlew :androidApp:assembleDebug \
+            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/androidApp/src/main/jniLibs" \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
@@ -189,8 +186,8 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
-          ./gradlew assembleRelease \
-            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+          ./gradlew :androidApp:assembleRelease \
+            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/androidApp/src/main/jniLibs" \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
@@ -198,7 +195,7 @@ jobs:
       # Hard verification: the universal APK must carry BOTH beta ABIs.
       - name: Verify both architectures exist in the final APK
         run: |
-          APK=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          APK=$(find androidApp/build/outputs/apk -name "*.apk" | head -n 1)
           if [ -z "$APK" ]; then
             echo "FATAL: no APK produced!" >&2
             exit 1
@@ -215,7 +212,7 @@ jobs:
           NM="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
           if [ ! -x "$NM" ]; then NM=nm; fi
           python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
-            --so-glob 'app/src/main/jniLibs/**/*.so'
+            --so-glob 'androidApp/src/main/jniLibs/**/*.so'
 
       - name: Upload build log (debug aid)
         if: always()
@@ -230,13 +227,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Streamify-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: androidApp/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Stage release APK as Streamify-v<tag>.apk
         if: inputs.release_mode
         run: |
-          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          APK=$(find androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
           if [ -z "$APK" ]; then
             echo "FATAL: no release APK produced!" >&2
             exit 1

@@ -103,9 +103,9 @@ if (streamifyDir.exists()) {
     project(":streamify-jam").projectDir = File(streamifyDir, "jam")
 }
 
-// Legacy modules preservation
-val legacyAppDir = File(rootDir, "legacy/app")
-if (legacyAppDir.exists()) {
-    include(":legacy-app")
-    project(":legacy-app").projectDir = legacyAppDir
-}
+// Legacy modules preservation (archived for git history and reference; not built in CMP)
+// val legacyAppDir = File(rootDir, "legacy/app")
+// if (legacyAppDir.exists()) {
+//     include(":legacy-app")
+//     project(":legacy-app").projectDir = legacyAppDir
+// }

@@ -4,7 +4,7 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // id("org.jetbrains.kotlin.android") // Built into AGP 9.0
 }
 
 val localProperties = Properties().apply {
@@ -286,7 +286,7 @@ dependencies {
     // in Settings renders from :shared-android's RustAudioDogfoodPanel).
     // Single edge; :shared-android compiles shared/src/{commonMain,androidMain}
     // against this module's exact Compose pair.
-    implementation(project(":shared-android"))
+    // implementation(project(":shared-android"))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     // Installs baseline profiles when they ship; required before the

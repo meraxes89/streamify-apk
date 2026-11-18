@@ -62,8 +62,8 @@ jobs:
       - name: Generate aboutLibraries.json
         run: ./gradlew exportLibraryDefinitions
 
-      - name: Build release APK
-        run: ./gradlew androidApp:assembleRelease
+      - name: Build APKs
+        run: ./gradlew :androidApp:assembleDebug :androidApp:assembleRelease
 
       - name: Check build-tools version
         shell: bash
@@ -75,7 +75,8 @@ jobs:
       # A pull request from a fork gets no secrets, so it only checks that the APK builds.
       - uses: kevin-david/zipalign-sign-android-release@v2
         id: sign_app
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        if: ${{ env.SIGNING_KEY != '' }}
         with:
           releaseDirectory: androidApp/build/outputs/apk/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
@@ -85,13 +86,14 @@ jobs:
           zipAlign: true
         env:
             BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
+            SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
 
       - name: Upload APK
-        if: steps.sign_app.outcome == 'success'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app
-          path: androidApp/build/outputs/apk/release/*-signed.apk
+          name: Streamify-Android-APK
+          path: androidApp/build/outputs/apk/**/*.apk
 
   # SimpMusic for vivo (vivoAndroidApp, com.spotify.music), same Full build as above.
   build-vivo:
@@ -134,8 +136,8 @@ jobs:
       - name: Generate aboutLibraries.json
         run: ./gradlew exportLibraryDefinitions
 
-      - name: Build vivo release APK
-        run: ./gradlew vivoAndroidApp:assembleRelease
+      - name: Build vivo APKs
+        run: ./gradlew :vivoAndroidApp:assembleDebug :vivoAndroidApp:assembleRelease
 
       - name: Check build-tools version
         shell: bash
@@ -147,7 +149,8 @@ jobs:
       # A pull request from a fork gets no secrets, so it only checks that the APK builds.
       - uses: kevin-david/zipalign-sign-android-release@v2
         id: sign_app
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        if: ${{ env.SIGNING_KEY != '' }}
         with:
           releaseDirectory: vivoAndroidApp/build/outputs/apk/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
@@ -157,10 +160,11 @@ jobs:
           zipAlign: true
         env:
             BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
+            SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
 
       - name: Upload APK
-        if: steps.sign_app.outcome == 'success'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: app-vivo
-          path: vivoAndroidApp/build/outputs/apk/release/*-signed.apk
+          path: vivoAndroidApp/build/outputs/apk/**/*.apk
