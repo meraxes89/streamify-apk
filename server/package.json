@@ -1,0 +1,18 @@
+{
+  "name": "streamify-relay",
+  "version": "3.0.0",
+  "description": "Architecture v3 Stream Relay & Multi-Profile Resolver for Streamify",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "youtubei.js": "^18.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
