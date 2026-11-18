@@ -120,6 +120,38 @@ cd streamify-apk
 ls -lh app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### 📱 Termux & Local Web Player Edition
+
+Streamify includes a self-contained local web player and SABR stream resolver designed to run natively on Android via **Termux** (or any Node.js environment). It bypasses Google rate-limits using residential mobile IPs and client profile rotation (iOS/Android/TV), coupled with an unburnable Google Apps Script (GSF) fallback proxy.
+
+#### 1. Launching on Termux
+```bash
+# Ensure Node.js is installed
+pkg install nodejs
+
+# Launch the server (default port 3000)
+./start-termux.sh
+```
+
+#### 2. Managing the Server
+```bash
+./start-termux.sh start    # Run in background as daemon
+./start-termux.sh status   # Show server status and ping /api/health
+./start-termux.sh stop     # Stop running server
+./start-termux.sh restart  # Restart server
+```
+
+#### 3. Accessing the Player
+* **On Phone**: Open Chrome/Firefox and navigate to `http://localhost:3000/`
+* **On Local Network (LAN)**: Open `http://<your-wifi-ip>:3000/` from any phone, tablet, or laptop on the same WiFi network.
+* **Install as PWA**: In mobile Chrome, tap the three dots `⋮` → **Add to Home screen** / **Install app** for full-screen native audio playback.
+
+#### 4. Authentication & Supabase Setup
+* **Guest / Local Mode**: Click the red **Play** button or **Enter Locally** on the splash screen to immediately access the player and stream audio without an account.
+* **Google OAuth**: If using Supabase sync, ensure your Supabase Dashboard has `http://localhost:3000/**` added under:
+  `Authentication` → `URL Configuration` → `Redirect URLs`.
+
+
 ### Running Native & Rust Test Suites
 ```bash
 # Run Rust unit, resolver, and UniFFI contract tests

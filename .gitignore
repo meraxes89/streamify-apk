@@ -61,4 +61,5 @@ tools/gsf/.clasp.json
 node_modules/
 server/node_modules/
 server/public/
+.streamify.pid
 

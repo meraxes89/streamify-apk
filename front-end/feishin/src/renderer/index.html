@@ -18,7 +18,7 @@
                                 .then(function (r) { return r.json(); })
                                 .then(function (d) {
                                     if (d && d.status === 'ok') {
-                                        window.location.replace('http://localhost:3000/streamify-apk/preview/' + window.location.hash);
+                                        window.location.replace('http://localhost:3000/' + window.location.hash);
                                     }
                                 })
                                 .catch(function () {});

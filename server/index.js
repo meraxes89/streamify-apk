@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, 'public');
 
 const app = express();
-const PORT = process.env.PORT || 7860;
+const PORT = process.env.PORT || 3000;
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MiB bounded chunk
 
 // Support Private Network Access (PNA) and CORS preflights from any origin
@@ -51,8 +51,11 @@ app.use((req, res, next) => {
 
 if (fs.existsSync(publicDir)) {
     app.use(express.static(publicDir));
-    app.use('/streamify-apk/preview', express.static(publicDir));
-    app.use('/streamify-apk', express.static(publicDir));
+    // Cleanly redirect any legacy GitHub Pages subpaths to root
+    app.use('/streamify-apk', (req, res) => {
+        const target = req.url === '/' || req.url === '/preview' || req.url === '/preview/' ? '/' : req.url.replace(/^\/preview/, '');
+        res.redirect(301, target || '/');
+    });
 }
 
 // In-memory cache for resolved stream metadata and URLs (TTL 5.5 hours)
@@ -308,10 +311,7 @@ async function resolveStream(videoId) {
 // 1. Root Capability Echo & Health
 // ---------------------------------------------------------------------------
 
-app.get('/', (req, res) => {
-    if (fs.existsSync(path.join(publicDir, 'index.html'))) {
-        return res.sendFile(path.join(publicDir, 'index.html'));
-    }
+const echoCapabilities = (req, res) => {
     res.json({
         capabilities: [
             '8mib-range-stream',
@@ -325,6 +325,15 @@ app.get('/', (req, res) => {
         status: 'ok',
         version: '3.0.0',
     });
+};
+
+app.get('/api/capabilities', echoCapabilities);
+
+app.get('/', (req, res) => {
+    if (fs.existsSync(path.join(publicDir, 'index.html')) && req.accepts(['html', 'json']) !== 'json') {
+        return res.sendFile(path.join(publicDir, 'index.html'));
+    }
+    echoCapabilities(req, res);
 });
 
 app.get('/api/health', (req, res) => {
