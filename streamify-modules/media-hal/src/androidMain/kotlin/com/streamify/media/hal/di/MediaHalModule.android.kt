@@ -8,7 +8,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 actual val mediaHalModule: Module = module {
-    single<DacClockBridge> { DacClockBridge() }
+    single<DacClockBridge> { DacClockBridge }
     single<StreamifyAudioProcessor> { StreamifyAudioProcessor() }
     single<DolbySpatialManager> { DolbySpatialManager }
     single<StreamifyMedia3Module> { StreamifyMedia3Module }
