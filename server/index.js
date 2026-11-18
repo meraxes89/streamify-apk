@@ -11,13 +11,31 @@
 
 import cors from 'cors';
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
 import https from 'https';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.join(__dirname, 'public');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MiB bounded chunk
 
+// Support Private Network Access (PNA) and CORS preflights from any origin
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, HEAD');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+    next();
+});
 app.use(cors({ origin: '*' }));
 // Parse raw bodies for binary / protobuf / json forwarding in /r proxy
 app.use(express.raw({ limit: '50mb', type: '*/*' }));
@@ -46,15 +64,15 @@ const GAPI_ENDPOINT =
 
 const CLIENTS = [
     {
-        name: 'ANDROID_VR',
-        number: '28',
-        version: '1.65.10',
-        ua: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+        name: 'IOS',
+        number: '5',
+        version: '21.26.4',
+        ua: 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
         extra: {
-            deviceMake: 'Oculus',
-            deviceModel: 'Quest 2',
-            osName: 'Android',
-            osVersion: '12L',
+            deviceMake: 'Apple',
+            deviceModel: 'iPhone16,2',
+            osName: 'iPhone',
+            osVersion: '18.3.2.22D82',
         },
     },
     {
@@ -70,15 +88,15 @@ const CLIENTS = [
         },
     },
     {
-        name: 'IOS',
-        number: '5',
-        version: '21.26.4',
-        ua: 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+        name: 'ANDROID_VR',
+        number: '28',
+        version: '1.65.10',
+        ua: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
         extra: {
-            deviceMake: 'Apple',
-            deviceModel: 'iPhone16,2',
-            osName: 'iPhone',
-            osVersion: '18.3.2.22D82',
+            deviceMake: 'Oculus',
+            deviceModel: 'Quest 2',
+            osName: 'Android',
+            osVersion: '12L',
         },
     },
 ];
@@ -812,6 +830,18 @@ app.get('/ytm/meta', async (req, res) => {
         });
     }
 });
+
+if (fs.existsSync(publicDir)) {
+    app.use(express.static(publicDir));
+    app.use('/streamify-apk/preview', express.static(publicDir));
+    app.use('/streamify-apk', express.static(publicDir));
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/') || req.path.startsWith('/ytm/') || req.path.startsWith('/r')) {
+            return next();
+        }
+        res.sendFile(path.join(publicDir, 'index.html'));
+    });
+}
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Streamify Architecture v3 Relay listening on port ${PORT}`);

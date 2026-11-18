@@ -58,3 +58,7 @@ reports/
 !docs/*.md
 test_lyrics_benchmark/
 tools/gsf/.clasp.json
+node_modules/
+server/node_modules/
+server/public/
+
