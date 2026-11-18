@@ -9,10 +9,10 @@ import com.streamify.supabase.SupabaseWrappedSync
 import org.koin.dsl.module
 
 val supabaseModule = module {
-    single { SupabaseClient }
-    single { SupabaseAdminClient }
-    single { SupabaseWrappedSync }
-    single { HybridHomeRepository }
-    single { SupabaseLibrarySync }
-    single { SupabaseFriendSync }
+    single<SupabaseClient> { SupabaseClient }
+    single<SupabaseAdminClient> { SupabaseAdminClient }
+    single<SupabaseWrappedSync> { SupabaseWrappedSync }
+    single<HybridHomeRepository> { HybridHomeRepository }
+    single<SupabaseLibrarySync> { SupabaseLibrarySync }
+    single<SupabaseFriendSync> { SupabaseFriendSync }
 }

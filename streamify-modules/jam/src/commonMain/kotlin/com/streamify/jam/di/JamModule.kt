@@ -10,8 +10,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 val jamModule = module {
-    single { BlendGenerator }
-    single { StreamifyJamCoordinator }
+    single<BlendGenerator> { BlendGenerator }
+    single<StreamifyJamCoordinator> { StreamifyJamCoordinator }
 }
 
 val streamifyAllModules: List<Module> = listOf(

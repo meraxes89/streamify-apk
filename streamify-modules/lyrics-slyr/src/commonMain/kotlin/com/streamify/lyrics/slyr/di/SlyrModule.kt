@@ -5,6 +5,6 @@ import com.streamify.lyrics.slyr.SlyrBytecodeCompiler
 import org.koin.dsl.module
 
 val slyrModule = module {
-    single { SlyrBytecodeCompiler() }
-    single { LyricsPlaybackEngine() }
+    single<SlyrBytecodeCompiler> { SlyrBytecodeCompiler() }
+    single<LyricsPlaybackEngine> { LyricsPlaybackEngine() }
 }
