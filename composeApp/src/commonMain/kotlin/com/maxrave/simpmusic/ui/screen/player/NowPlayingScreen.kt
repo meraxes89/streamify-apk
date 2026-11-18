@@ -196,6 +196,8 @@ fun NowPlayingScreenContent(
     // the elapsed-time readout keep the raw position: they report where the player is, while a
     // lyric reports what the ear is hearing, and those two are what the offset separates.
     val lyricsOffsetMs by sharedViewModel.getLyricsOffsetMs().collectAsStateWithLifecycle(0)
+    val autoBluetoothDelayMs by com.streamify.lyrics.slyr.BluetoothLatencyTracker.dynamicDelayMs.collectAsStateWithLifecycle()
+    val effectiveLyricsOffsetMs = lyricsOffsetMs + autoBluetoothDelayMs
     val likeStatus by sharedViewModel.likeStatus.collectAsStateWithLifecycle()
     val isDislikePending by sharedViewModel.isDislikePending.collectAsStateWithLifecycle()
     val castState by sharedViewModel.castState.collectAsStateWithLifecycle()
@@ -592,7 +594,7 @@ fun NowPlayingScreenContent(
     }
 
     // Canvas subtitle sync
-    LaunchedEffect(timelineState, screenDataState.lyricsData?.lyrics, lyricsOffsetMs) {
+    LaunchedEffect(timelineState, screenDataState.lyricsData?.lyrics, effectiveLyricsOffsetMs) {
         val lyrics = screenDataState.lyricsData?.lyrics
         if (lyrics == null || lyrics.syncType == "UNSYNCED" || lyrics.syncType == null) {
             currentLyricLineIndex = -1
@@ -606,7 +608,7 @@ fun NowPlayingScreenContent(
                 ?.lines
         // What the ear is hearing right now, which is what a lyric answers to. Keyed on the offset
         // as well so dragging the setting while paused still moves the line.
-        val nowMs = timelineState.current - lyricsOffsetMs
+        val nowMs = timelineState.current - effectiveLyricsOffsetMs
         if (nowMs > 0L) {
             lines.indices.forEach { i ->
                 val startTimeMs = lines[i].startTimeMs.toLongOrNull() ?: 0L
@@ -662,7 +664,7 @@ fun NowPlayingScreenContent(
             isExpanded = isExpanded,
             dismissIcon = dismissIcon,
             audioQualityLabel = formatState.toAudioQualityLabel(),
-            lyricsOffsetMs = lyricsOffsetMs.toLong(),
+            lyricsOffsetMs = effectiveLyricsOffsetMs.toLong(),
             videoAspectRatio = rememberVideoAspectRatio(MAIN_PLAYER) ?: 16f / 9,
             videoId = commentsVideoId,
         )

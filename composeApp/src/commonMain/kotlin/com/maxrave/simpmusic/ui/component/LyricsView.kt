@@ -454,6 +454,8 @@ fun LyricsView(
     // which the `now <= 0L` guard below already reads as "no line yet" — correct, since in heard
     // time the song has not reached its first line.
     val lyricsOffsetMs by dataStoreManager.lyricsOffsetMs.collectAsStateWithLifecycle(0)
+    val autoBluetoothDelayMs by com.streamify.lyrics.slyr.BluetoothLatencyTracker.dynamicDelayMs.collectAsStateWithLifecycle()
+    val effectiveLyricsOffsetMs = lyricsOffsetMs + autoBluetoothDelayMs
 
     // Read here rather than taken as a parameter: all four call sites (the fullscreen sheet and
     // the three player styles) want the user's one choice, so making them each thread it through
@@ -529,9 +531,9 @@ fun LyricsView(
             }
         }
 
-    val currentLineIndex by remember(timedLineIndexes) {
+    val currentLineIndex by remember(timedLineIndexes, effectiveLyricsOffsetMs) {
         derivedStateOf {
-            val now = current.current - lyricsOffsetMs
+            val now = current.current - effectiveLyricsOffsetMs
             if (now <= 0L) -1 else timedLineIndexes.activeIndexAt(now)
         }
     }
@@ -652,7 +654,7 @@ fun LyricsView(
                                         parsedLine = parsedLine,
                                         translatedWords = translatedWords,
                                         romanizedWords = romanizedWords,
-                                        currentTimeMs = current.current - lyricsOffsetMs,
+                                        currentTimeMs = current.current - effectiveLyricsOffsetMs,
                                         isCurrent = index == currentLineIndex,
                                         customFontSize = if (appleStyle) AppleMusicLyricFontSize else null,
                                         glow = if (appleStyle && index == currentLineIndex) AppleMusicActiveLineGlow else null,

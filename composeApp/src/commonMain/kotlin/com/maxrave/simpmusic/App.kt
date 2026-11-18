@@ -533,6 +533,7 @@ fun App(
         val platformContext = rememberPlatformContext()
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
+            com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
         }
         val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
 
