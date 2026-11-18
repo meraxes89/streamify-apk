@@ -284,18 +284,35 @@ fun HomeScreen(
     val isScrollingUp by scrollState.isScrollingUp()
     val accountInfo by viewModel.accountInfo.collectAsStateWithLifecycle()
     val homeData by viewModel.homeItemList.collectAsStateWithLifecycle()
+    val quickPicksTitle = stringResource(Res.string.quick_picks)
     // Any shelf YouTube heads with the listener's own avatar over its title (Listen again is one of
     // several). Home's header already shows the avatar, so those shelves drop it and keep their name
     // and title. Matched on the name rather than on any shelf title, the way the old Welcome back row did.
+    // Quick picks is pinned to index 0 so that it does not swap places or drop below large album
+    // carousels on refresh.
     val homeShelves =
-        remember(homeData, accountInfo) {
+        remember(homeData, accountInfo, quickPicksTitle) {
             val accountName = accountInfo?.first
-            if (accountName.isNullOrBlank()) {
-                homeData
-            } else {
-                homeData.map {
-                    if (it.subtitle.equals(accountName, ignoreCase = true)) it.copy(thumbnail = null) else it
+            val mapped =
+                if (accountName.isNullOrBlank()) {
+                    homeData
+                } else {
+                    homeData.map {
+                        if (it.subtitle.equals(accountName, ignoreCase = true)) it.copy(thumbnail = null) else it
+                    }
                 }
+            val qpIndex =
+                mapped.indexOfFirst {
+                    it.title.equals(quickPicksTitle, ignoreCase = true) ||
+                        it.title.equals("Quick picks", ignoreCase = true)
+                }
+            if (qpIndex > 0) {
+                val list = mapped.toMutableList()
+                val qp = list.removeAt(qpIndex)
+                list.add(0, qp)
+                list
+            } else {
+                mapped
             }
         }
     val newRelease by viewModel.newRelease.collectAsStateWithLifecycle()
@@ -866,7 +883,7 @@ fun HomeScreen(
                                     // Android drops the 8dp over each section's title: the list's own 8dp
                                     // spacing already separates it from the shelf above.
                                     if (getPlatform() != Platform.Android) Spacer(modifier = Modifier.height(8.dp))
-                                    if (item.title == stringResource(Res.string.quick_picks)) {
+                                    if (item.title.equals(quickPicksTitle, ignoreCase = true) || item.title.equals("Quick picks", ignoreCase = true)) {
                                         AnimatedVisibility(
                                             visible =
                                                 homeData.find {
