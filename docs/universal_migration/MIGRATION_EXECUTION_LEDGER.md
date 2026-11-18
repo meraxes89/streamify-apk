@@ -12,8 +12,8 @@
 | Phase | Description | Status | Target |
 |---|---|---|---|
 | **Phase 0** | **Branch & Preservation**: Branch setup, `/app` archival to `legacy/app/`, documentation initialization. | 🟢 Completed | Day 1 |
-| **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | 🟡 In Progress | Day 2 |
-| **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | ⚪ Pending | Day 3 |
+| **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | 🟢 Completed | Day 2 |
+| **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | 🟡 In Progress | Day 3 |
 | **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | ⚪ Pending | Day 4 |
 | **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | ⚪ Pending | Day 5 |
 | **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | ⚪ Pending | Day 6 |
@@ -41,11 +41,11 @@
 ---
 
 ### Phase 1: CMP Foundation & Skeleton Setup
-- [ ] Establish `upstream-tracking` branch tracking `https://github.com/maxrave-dev/SimpMusic.git`.
-- [ ] Set up `streamify-modules/` directory structure for custom downstream extensions.
-- [ ] Import SimpMusic multi-module Gradle layout (`:composeApp`, `:desktopApp`, `:androidApp`, `:core:*`).
-- [ ] Configure `settings.gradle.kts` to conditionally include `streamify-modules/`.
-- [ ] Verify `./gradlew tasks` resolves cleanly on Android and Desktop JVM.
+- [x] Establish `upstream-tracking` branch tracking `https://github.com/maxrave-dev/SimpMusic.git`.
+- [x] Merge upstream SimpMusic foundation into `integration/universal-multiplatform`.
+- [x] Initialize `core` git submodule at commit `8413a257`.
+- [x] Set up `streamify-modules/` directory structure for custom downstream extensions.
+- [x] Configure `settings.gradle.kts` to conditionally include `streamify-modules/` and preserve `legacy/app`.
 
 **Acceptance Criteria**:
 * `:androidApp:assembleDebug` succeeds.
