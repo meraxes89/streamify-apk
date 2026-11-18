@@ -2,7 +2,7 @@
  * Architecture v3 Stream Relay & Multi-Profile Resolver
  *
  * Implements:
- * 1. Mobile/VR Client Impersonation (ANDROID_VR / VISIONOS / IOS) to bypass bot-checks
+ * 1. Mobile/VR Client Impersonation (VISIONOS / IOS / ANDROID_VR) via direct GAPI player endpoint
  * 2. 8 MiB Bounded Upstream Chunking to prevent GoogleVideo 32 KiB/s throttling
  * 3. Range-capable HTTP 206 Partial Content downstream streaming
  * 4. Single-Flight Request Deduplication & In-Memory LRU Cache
@@ -13,7 +13,6 @@ import cors from 'cors';
 import express from 'express';
 import http from 'http';
 import https from 'https';
-import { Innertube, UniversalCache } from 'youtubei.js';
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -32,16 +31,47 @@ const prefetchBuffers = new Map();
 // Single-flight in-flight resolves deduplication
 const inFlightResolves = new Map();
 
-let yt = null;
-async function getInnertube() {
-    if (!yt) {
-        yt = await Innertube.create({
-            cache: new UniversalCache(false),
-            generate_session_locally: true,
-        });
-    }
-    return yt;
-}
+const GAPI_ENDPOINT =
+    'https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false';
+
+const CLIENTS = [
+    {
+        name: 'VISIONOS',
+        number: '101',
+        version: '1.02',
+        ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+        extra: {
+            deviceMake: 'Apple',
+            deviceModel: 'RealityDevice17,1',
+            osName: 'visionOS',
+            osVersion: '26.5.23O471',
+        },
+    },
+    {
+        name: 'IOS',
+        number: '5',
+        version: '21.26.4',
+        ua: 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+        extra: {
+            deviceMake: 'Apple',
+            deviceModel: 'iPhone16,2',
+            osName: 'iPhone',
+            osVersion: '18.3.2.22D82',
+        },
+    },
+    {
+        name: 'ANDROID_VR',
+        number: '28',
+        version: '1.61.48',
+        ua: 'Mozilla/5.0 (Linux; Android 10; Quest 2 Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/24.0.0.9.36.417255152 SamsungBrowser/4.0 Chrome/106.0.5249.126 Mobile VR Safari/537.36',
+        extra: {
+            deviceMake: 'Oculus',
+            deviceModel: 'Quest 2',
+            osName: 'Android',
+            osVersion: '10',
+        },
+    },
+];
 
 /**
  * Resolve video stream using mobile/VR client profiles that don't trigger bot gates
@@ -57,60 +87,79 @@ async function resolveStream(videoId) {
     }
 
     const resolvePromise = (async () => {
-        const innertube = await getInnertube();
-        const clients = ['ANDROID_VR', 'VISIONOS', 'IOS', 'WEB'];
         let lastError = null;
 
-        for (const client of clients) {
+        for (const spec of CLIENTS) {
             try {
-                const info = await innertube.getInfo(videoId, client);
+                const body = {
+                    context: {
+                        client: {
+                            clientName: spec.name,
+                            clientVersion: spec.version,
+                            hl: 'en',
+                            gl: 'US',
+                            userAgent: spec.ua,
+                            ...spec.extra,
+                        },
+                    },
+                    videoId,
+                    contentCheckOk: true,
+                    racyCheckOk: true,
+                };
+
+                const res = await fetch(GAPI_ENDPOINT, {
+                    body: JSON.stringify(body),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': spec.ua,
+                        'x-youtube-client-name': spec.number,
+                        'x-youtube-client-version': spec.version,
+                    },
+                    method: 'POST',
+                    signal: AbortSignal.timeout(8000),
+                });
+
+                if (!res.ok) continue;
+                const data = await res.json();
+                const playability = data.playabilityStatus?.status;
+                if (playability !== 'OK') {
+                    lastError = new Error(data.playabilityStatus?.reason || `Playability ${playability}`);
+                    continue;
+                }
+
                 const formats = [
-                    ...(info.streaming_data?.adaptive_formats || []),
-                    ...(info.streaming_data?.formats || []),
+                    ...(data.streamingData?.adaptiveFormats || []),
+                    ...(data.streamingData?.formats || []),
                 ];
 
-                // Prefer Opus (itag 251), then AAC (itag 140)
+                // Prefer Opus (itag 251), then AAC (itag 140), then any audio
                 let selected = formats.find((f) => f.itag === 251 && f.url);
                 if (!selected) {
                     selected = formats.find((f) => f.itag === 140 && f.url);
                 }
                 if (!selected) {
-                    selected = formats.find((f) => f.mime_type?.startsWith('audio/') && f.url);
+                    selected = formats.find((f) => (f.mimeType || '').startsWith('audio/') && f.url);
                 }
-                if (!selected && formats.length > 0) {
-                    // Try decipher if needed
-                    for (const f of formats) {
-                        if (f.mime_type?.startsWith('audio/') && typeof f.decipher === 'function') {
-                            try {
-                                const url = await f.decipher(innertube.session.player);
-                                if (url) {
-                                    selected = { ...f, url };
-                                    break;
-                                }
-                            } catch {
-                                // continue to next candidate
-                            }
-                        }
-                    }
+                if (!selected) {
+                    // Fallback to muxed video format with audio (itag 18)
+                    selected = formats.find((f) => f.itag === 18 && f.url);
                 }
 
                 if (selected?.url) {
-                    const isOpus = (selected.mime_type || '').includes('opus');
+                    const isOpus = (selected.mimeType || '').includes('opus');
                     const descriptor = {
-                        artist: info.basic_info?.author || '',
+                        artist: data.videoDetails?.author || '',
                         bitrate: selected.bitrate || (isOpus ? 160000 : 128000),
-                        client,
+                        client: spec.name,
                         codecs: isOpus ? 'opus' : 'aac',
-                        contentLength: selected.content_length
-                            ? parseInt(selected.content_length, 10)
-                            : null,
-                        durationMs: (info.basic_info?.duration || 0) * 1000,
+                        contentLength: selected.contentLength ? parseInt(selected.contentLength, 10) : null,
+                        durationMs: (parseInt(data.videoDetails?.lengthSeconds, 10) || 0) * 1000,
                         expiresAt: Date.now() + CACHE_TTL_MS,
                         googlevideoUrl: selected.url,
                         itag: selected.itag,
-                        mimeType: selected.mime_type || 'audio/webm; codecs="opus"',
+                        mimeType: selected.mimeType || 'audio/webm; codecs="opus"',
                         ok: true,
-                        title: info.basic_info?.title || '',
+                        title: data.videoDetails?.title || '',
                         videoId,
                     };
 
@@ -122,7 +171,7 @@ async function resolveStream(videoId) {
             }
         }
 
-        throw lastError || new Error(`Failed to resolve stream for ${videoId}`);
+        throw lastError || new Error(`No playable stream found for ${videoId}`);
     })();
 
     inFlightResolves.set(videoId, resolvePromise);
@@ -369,18 +418,17 @@ app.get('/api/search', async (req, res) => {
     }
 
     try {
-        const innertube = await getInnertube();
-        const searchRes = await innertube.music.search(query);
-        const songs = (searchRes.songs?.contents || []).map((s) => ({
-            album: s.album?.name || '',
-            artist: s.artists?.map((a) => a.name).join(', ') || '',
-            durationSeconds: s.duration?.seconds || 0,
-            thumbnailUrl: s.thumbnails?.[0]?.url || '',
-            title: s.title || '',
-            videoId: s.id,
-        }));
+        const suggestUrl = `https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q=${encodeURIComponent(query)}`;
+        const suggestRes = await fetch(suggestUrl);
+        const text = await suggestRes.text();
+        const jsonMatch = text.match(/window\.google\.ac\.h\((.*)\)/);
+        let suggestions = [];
+        if (jsonMatch && jsonMatch[1]) {
+            const parsed = JSON.parse(jsonMatch[1]);
+            suggestions = (parsed[1] || []).map((item) => item[0]);
+        }
 
-        res.json({ ok: true, songs });
+        res.json({ ok: true, suggestions });
     } catch (err) {
         res.status(502).json({ error: err.message, ok: false });
     }
