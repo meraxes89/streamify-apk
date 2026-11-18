@@ -8,6 +8,7 @@ import {
     Played,
     type QueueSong,
     type ServerListItem,
+    ServerType,
     Song,
     SongListSort,
     SortOrder,
@@ -88,13 +89,15 @@ const collectSongsSimilar = async (args: AutoDjSongCollectArgs): Promise<Song[]>
         });
 
         const slotsToFill = remainingCount();
-        const shuffledSimilarSongs = shuffleInPlace(
-            similarSongs.filter((song) =>
-                isSongAvailable(song, args.allowDuplicates, args.queueSongIdSet, selectedSongIds),
-            ),
+        const availableSimilarSongs = similarSongs.filter((song) =>
+            isSongAvailable(song, args.allowDuplicates, args.queueSongIdSet, selectedSongIds),
         );
+        const orderedSimilarSongs =
+            args.server?.type === ServerType.STREAMIFY
+                ? availableSimilarSongs
+                : shuffleInPlace(availableSimilarSongs);
 
-        for (const song of shuffledSimilarSongs.slice(0, slotsToFill)) {
+        for (const song of orderedSimilarSongs.slice(0, slotsToFill)) {
             selectedSongIds.add(song.id);
             selected.push(song);
         }

@@ -65,26 +65,30 @@ const addCssRules = (rules: CSSRuleList, output: string[]) => {
     }
 };
 
-DomPurify.addHook('afterSanitizeAttributes', (node: Element) => {
-    if (node.tagName === 'A') {
-        if (node.getAttribute('href')?.startsWith('//')) {
-            node.setAttribute('href', `https:${node.getAttribute('href')}`);
+if (typeof DomPurify?.addHook === 'function') {
+    DomPurify.addHook('afterSanitizeAttributes', (node: Element) => {
+        if (node.tagName === 'A') {
+            if (node.getAttribute('href')?.startsWith('//')) {
+                node.setAttribute('href', `https:${node.getAttribute('href')}`);
+            }
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
         }
-        node.setAttribute('target', '_blank');
-        node.setAttribute('rel', 'noopener noreferrer');
-    }
-});
+    });
+}
 
-(DomPurify as any).addHook('uponSanitizeElement', (node: Element) => {
-    if (node.tagName === 'STYLE') {
-        const rules = (node as HTMLStyleElement).sheet?.cssRules;
-        if (rules) {
-            const output: string[] = [];
-            addCssRules(rules, output);
-            node.textContent = output.join('\n');
+if (typeof (DomPurify as any)?.addHook === 'function') {
+    (DomPurify as any).addHook('uponSanitizeElement', (node: Element) => {
+        if (node.tagName === 'STYLE') {
+            const rules = (node as HTMLStyleElement).sheet?.cssRules;
+            if (rules) {
+                const output: string[] = [];
+                addCssRules(rules, output);
+                node.textContent = output.join('\n');
+            }
         }
-    }
-});
+    });
+}
 
 export const sanitize = (text: string): string => {
     return DomPurify.sanitize(text, SANITIZE_OPTIONS);

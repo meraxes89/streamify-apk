@@ -1315,12 +1315,12 @@ const initialState: SettingsState = {
     autoDJ: {
         albumStrategy: AUTO_DJ_STRATEGY.SIMILAR,
         allowDuplicates: false,
-        enabled: false,
-        itemCount: 5,
+        enabled: true,
+        itemCount: 15,
         mode: 'songs',
         onlySimilar: false,
         songStrategy: AUTO_DJ_STRATEGY.SIMILAR,
-        timing: 1,
+        timing: 2,
     },
     css: {
         content: '',

@@ -524,24 +524,35 @@ export async function fallbackUpNext(seedVideoId: string): Promise<null | UpNext
     if (panel === undefined || panel === null) return null;
     const tracks: UpNextPayload['tracks'] = [];
     for (const entry of panel.contents ?? []) {
-        const v = entry as {
-            length_text?: TextLike;
-            long_byline_text?: unknown;
-            title?: TextLike;
-            videoId?: string;
-        };
-        const title = textOf(v?.title);
-        if (title === '' || typeof v?.videoId !== 'string') continue;
+        const v = entry as any;
+        const title = textOf(v?.title) || (typeof v?.title?.text === 'string' ? v.title.text : '');
+        const videoId =
+            (typeof v?.video_id === 'string' && v.video_id) ||
+            (typeof v?.videoId === 'string' && v.videoId) ||
+            (typeof v?.endpoint?.payload?.videoId === 'string' && v.endpoint.payload.videoId) ||
+            null;
+        if (!title || !videoId) continue;
         const byline = textOf(v?.long_byline_text);
         const segments = byline
-            .split(' • ')
-            .map((s) => s.trim())
-            .filter((s) => s !== '');
+            ? byline
+                  .split(' • ')
+                  .map((s: string) => s.trim())
+                  .filter((s: string) => s !== '')
+            : [];
+        const artist =
+            (typeof v?.author === 'string' && v.author) ||
+            (Array.isArray(v?.artists) && typeof v.artists[0]?.name === 'string' && v.artists[0].name) ||
+            segments[0] ||
+            null;
+        const durationMs =
+            typeof v?.duration?.seconds === 'number'
+                ? v.duration.seconds * 1000
+                : parseColonDuration(textOf(v?.length_text));
         tracks.push({
-            artistText: segments[0] ?? null,
-            durationMs: parseColonDuration(textOf(v?.length_text)),
+            artistText: artist,
+            durationMs,
             title,
-            videoId: v.videoId,
+            videoId,
         });
     }
     if (tracks.length === 0) return null;

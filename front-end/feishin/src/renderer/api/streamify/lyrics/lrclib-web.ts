@@ -42,6 +42,15 @@ export interface LrclibSearchResult {
 
 let fetchImpl: LrclibFetch | null = null;
 
+export function cleanTitleForLyrics(raw: string): string {
+    return raw
+        .replace(/\s*[\(\[](?:official|music|video|audio|lyric(?:s)?|visualizer|hd|4k|mv|remastered|version|edit|extended)[^\)\]]*[\)\]]/gi, '')
+        .replace(/\s*-\s*(?:official|music|video|audio|lyric(?:s)?|visualizer).*/gi, '')
+        .replace(/\s*(?:ft\.|feat\.|featuring)\s+.*$/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
 /**
  * Rank search hits: synced beats plain (the two-tier rule), then title
  * fidelity, then artist fidelity, then duration proximity (±3 s window,
@@ -53,20 +62,30 @@ export function bestMatch(
 ): LrclibSearchResult | null {
     let best: LrclibSearchResult | null = null;
     let bestScore = -Infinity;
+    const cleanedTitle = cleanTitleForLyrics(song.title);
     for (const hit of hits) {
         let score = 0;
         if (hit.syncedLyrics !== null && hit.syncedLyrics !== '') score += 100;
-        if (norm(hit.trackName) === norm(song.title)) score += 50;
-        else if (norm(hit.trackName).includes(norm(song.title))) score += 20;
-        if (norm(hit.artistName) === norm(song.artist)) score += 30;
-        else if (norm(hit.artistName).includes(norm(song.artist))) score += 10;
+        const normHitTrack = norm(hit.trackName);
+        const normSongTitle = norm(song.title);
+        const normCleaned = norm(cleanedTitle);
+
+        if (normHitTrack === normSongTitle || (normCleaned !== '' && normHitTrack === normCleaned)) score += 50;
+        else if (normHitTrack.includes(normSongTitle) || normSongTitle.includes(normHitTrack)) score += 25;
+        else if (normCleaned !== '' && (normHitTrack.includes(normCleaned) || normCleaned.includes(normHitTrack))) score += 20;
+
+        const normHitArtist = norm(hit.artistName);
+        const normSongArtist = norm(song.artist);
+        if (normHitArtist === normSongArtist) score += 30;
+        else if (normHitArtist.includes(normSongArtist) || normSongArtist.includes(normHitArtist)) score += 15;
+
         if (hit.instrumental === true) score -= 40;
         if (
             song.durationSec != null &&
             typeof hit.duration === 'number' &&
             Math.abs(hit.duration - song.durationSec) <= 3
         ) {
-            score += 5;
+            score += 10;
         }
         if (score > bestScore) {
             bestScore = score;
@@ -97,23 +116,9 @@ export async function getLyricsBySongId(
     };
 }
 
-/**
- * Search LRCLIB for the song's lyrics. The `/api/search` endpoint accepts
- * track/artist/album filters; we query the fuzzy free-text form (the same
- * one the Electron client uses via `?q=`) plus the structured form when we
- * have the facts, taking whichever answers first with a synced hit.
- */
-export async function searchLrclib(
-    song: Pick<SongRow, 'album' | 'artist' | 'durationSec' | 'title'>,
-    signal?: AbortSignal,
-): Promise<LrclibSearchResult | null> {
-    const params = new URLSearchParams();
-    if (song.title.trim() !== '') params.set('track_name', song.title.trim());
-    if (song.artist.trim() !== '') params.set('artist_name', song.artist.trim());
-    if (params.size === 0) return null;
-    const raw = await getJson(`/search?${params.toString()}`, signal);
-    if (!Array.isArray(raw) || raw.length === 0) return null;
-    const hits = raw
+function parseHits(raw: unknown): LrclibSearchResult[] {
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return raw
         .map((row): LrclibSearchResult | null => {
             if (typeof row !== 'object' || row === null) return null;
             const r = row as Partial<LrclibSearchResult>;
@@ -130,8 +135,74 @@ export async function searchLrclib(
             };
         })
         .filter((row): row is LrclibSearchResult => row !== null);
-    if (hits.length === 0) return null;
-    return bestMatch(hits, song);
+}
+
+/**
+ * Search LRCLIB for the song's lyrics. The `/api/search` endpoint accepts
+ * track/artist/album filters; we query the fuzzy free-text form (the same
+ * one the Electron client uses via `?q=`) plus the structured form when we
+ * have the facts, taking whichever answers first with a synced hit.
+ */
+export async function searchLrclib(
+    song: Pick<SongRow, 'album' | 'artist' | 'durationSec' | 'title'>,
+    signal?: AbortSignal,
+): Promise<LrclibSearchResult | null> {
+    let cleanedTitle = cleanTitleForLyrics(song.title);
+    if (cleanedTitle.includes(' - ')) {
+        const parts = cleanedTitle.split(' - ');
+        if (parts.length === 2 && norm(parts[0]) === norm(song.artist)) {
+            cleanedTitle = parts[1].trim();
+        }
+    }
+
+    // Tier 1a: Try cleaned structured query if title was stripped of noise
+    if (cleanedTitle !== '' && cleanedTitle !== song.title.trim()) {
+        const params = new URLSearchParams();
+        params.set('track_name', cleanedTitle);
+        if (song.artist.trim() !== '') params.set('artist_name', song.artist.trim());
+        const raw = await getJson(`/search?${params.toString()}`, signal);
+        const hits = parseHits(raw);
+        if (hits.length > 0) {
+            const match = bestMatch(hits, song);
+            if (match) return match;
+        }
+    }
+
+    // Tier 1b: Try raw structured query
+    if (song.title.trim() !== '' || song.artist.trim() !== '') {
+        const params = new URLSearchParams();
+        if (song.title.trim() !== '') params.set('track_name', song.title.trim());
+        if (song.artist.trim() !== '') params.set('artist_name', song.artist.trim());
+        const raw = await getJson(`/search?${params.toString()}`, signal);
+        const hits = parseHits(raw);
+        if (hits.length > 0) {
+            const match = bestMatch(hits, song);
+            if (match) return match;
+        }
+    }
+
+    // Tier 1c: Try fuzzy text query with artist + title
+    const searchTarget = `${song.artist.trim()} ${cleanedTitle || song.title.trim()}`.trim();
+    if (searchTarget !== '') {
+        const raw = await getJson(`/search?q=${encodeURIComponent(searchTarget)}`, signal);
+        const hits = parseHits(raw);
+        if (hits.length > 0) {
+            const match = bestMatch(hits, song);
+            if (match) return match;
+        }
+    }
+
+    // Tier 1d: Try fuzzy text query with title only
+    const titleOnly = (cleanedTitle || song.title.trim()).trim();
+    if (titleOnly !== '' && titleOnly !== searchTarget) {
+        const raw = await getJson(`/search?q=${encodeURIComponent(titleOnly)}`, signal);
+        const hits = parseHits(raw);
+        if (hits.length > 0) {
+            return bestMatch(hits, song);
+        }
+    }
+
+    return null;
 }
 
 /** Test seam: inject a fake fetch (network-free vitest lane). */

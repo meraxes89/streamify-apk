@@ -18,7 +18,7 @@ import {
 } from '/@/renderer/store';
 import { logger } from '/@/renderer/utils/logger';
 import { hasFeature } from '/@/shared/api/utils';
-import { LibraryItem } from '/@/shared/types/domain-types';
+import { LibraryItem, ServerType } from '/@/shared/types/domain-types';
 import { ServerFeature } from '/@/shared/types/features-types';
 import { Play } from '/@/shared/types/types';
 
@@ -29,6 +29,9 @@ export const useAutoDJ = () => {
     const player = usePlayer();
     const settings = useAutoDJSettings();
     const isFetching = useIsPlayerFetching();
+    const isStreamify = server?.type === ServerType.STREAMIFY;
+    const isAutoDJActive = settings.enabled || isStreamify;
+    const inFlightRef = React.useRef(false);
 
     const hasSimilarSongsMusicFolder = hasFeature(server, ServerFeature.SIMILAR_SONGS_MUSIC_FOLDER);
 
@@ -52,7 +55,7 @@ export const useAutoDJ = () => {
                 return { index, remaining, song: queue.items[index] };
             },
             async (properties) => {
-                if (!settings.enabled) {
+                if (!isAutoDJActive) {
                     return;
                 }
 
@@ -63,6 +66,11 @@ export const useAutoDJ = () => {
                 if (properties.remaining >= settings.timing) {
                     return;
                 }
+
+                if (inFlightRef.current) {
+                    return;
+                }
+                inFlightRef.current = true;
 
                 logger.info('Auto DJ triggered', {
                     remaining: properties.remaining,
@@ -81,7 +89,7 @@ export const useAutoDJ = () => {
 
                     const runnerDepsBase = {
                         allowDuplicates: settings.allowDuplicates,
-                        itemCount: settings.itemCount,
+                        itemCount: isStreamify ? Math.max(settings.itemCount || 15, 15) : settings.itemCount,
                         musicFolderId,
                         onlySimilar: settings.onlySimilar,
                         queryClient,
@@ -149,6 +157,8 @@ export const useAutoDJ = () => {
                         error: (error as Error).message,
                         songId: properties.song?.id,
                     });
+                } finally {
+                    inFlightRef.current = false;
                 }
             },
             {
@@ -161,7 +171,9 @@ export const useAutoDJ = () => {
         return () => unsubscribe();
     }, [
         hasSimilarSongsMusicFolder,
+        isAutoDJActive,
         isFetching,
+        isStreamify,
         player,
         queryClient,
         server,
@@ -184,8 +196,10 @@ const AutoDJHookInner = () => {
 
 export const AutoDJHook = () => {
     const isAutoDJEnabled = useSettingsStore((state) => state.autoDJ.enabled);
+    const server = useCurrentServer();
+    const isStreamify = server?.type === ServerType.STREAMIFY;
 
-    if (!isAutoDJEnabled) {
+    if (!isAutoDJEnabled && !isStreamify) {
         return null;
     }
 

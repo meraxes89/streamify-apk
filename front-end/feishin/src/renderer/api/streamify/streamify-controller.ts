@@ -85,6 +85,7 @@ import { getStreamifySupabase, signOutStreamify } from './streamify-supabase';
 import { recordCountedPlay } from './wrapped/listening-ledger';
 import { discoveryOriginOf } from './wrapped/origin-hints';
 
+import { usePlayerStoreBase } from '/@/renderer/store/player.store';
 import { useStreamifySettingsStoreBase } from '/@/renderer/store/streamify-settings.store';
 import { logger } from '/@/renderer/utils/logger';
 import { InternalControllerEndpoint, LibraryItem } from '/@/shared/types/domain-types';
@@ -206,6 +207,91 @@ function scrobbleBridge() {
         },
         resolveRung: lastRungForVideo,
     });
+}
+
+function resolveSongRow(snapshot: LibrarySnapshot, songId: string): SongRow | null {
+    const existing = snapshot.songById.get(songId);
+    if (existing !== undefined) return existing;
+
+    try {
+        const store = usePlayerStoreBase.getState();
+        const currentSong = store.getCurrentSong();
+        const queue = store.getQueue();
+        const matched =
+            (currentSong?.id === songId ? currentSong : null) ??
+            queue?.items?.find((item) => item.id === songId);
+
+        const videoId =
+            extractVideoId(matched?.id) ??
+            videoIdOfYtmSong(songId) ??
+            extractVideoId(songId) ??
+            '';
+
+        if (matched) {
+            return {
+                album: matched.album ?? null,
+                artist: matched.artistName || matched.artists?.[0]?.name || '',
+                cloudTrackId: matched.id,
+                createdAt: snapshot.loadedAt || new Date().toISOString(),
+                durationSec: matched.duration ? Math.round(matched.duration / 1000) : null,
+                genre: matched.genres?.[0] ?? null,
+                id: matched.id,
+                playCount: matched.playCount || 0,
+                playTally: 0,
+                streamUrl: videoId,
+                title: matched.name || '',
+                updatedAt: snapshot.loadedAt || new Date().toISOString(),
+                userFavorite: matched.userFavorite || false,
+                userRating: matched.userRating || null,
+                year: matched.releaseYear ?? (matched.date ? Number(matched.date) : null),
+            };
+        }
+
+        if (videoId) {
+            return {
+                album: null,
+                artist: '',
+                cloudTrackId: songId,
+                createdAt: snapshot.loadedAt || new Date().toISOString(),
+                durationSec: null,
+                genre: null,
+                id: songId,
+                playCount: 0,
+                playTally: 0,
+                streamUrl: videoId,
+                title: '',
+                updatedAt: snapshot.loadedAt || new Date().toISOString(),
+                userFavorite: false,
+                userRating: null,
+                year: null,
+            };
+        }
+    } catch {
+        // Player store not ready or outside browser context
+    }
+
+    const videoId = videoIdOfYtmSong(songId) ?? extractVideoId(songId);
+    if (videoId) {
+        return {
+            album: null,
+            artist: '',
+            cloudTrackId: songId,
+            createdAt: snapshot.loadedAt || new Date().toISOString(),
+            durationSec: null,
+            genre: null,
+            id: songId,
+            playCount: 0,
+            playTally: 0,
+            streamUrl: videoId,
+            title: '',
+            updatedAt: snapshot.loadedAt || new Date().toISOString(),
+            userFavorite: false,
+            userRating: null,
+            year: null,
+        };
+    }
+
+    return null;
 }
 
 export const StreamifyController: InternalControllerEndpoint = {
@@ -687,8 +773,8 @@ export const StreamifyController: InternalControllerEndpoint = {
         // endpoint below is the one Streamify advertises).
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const row = snapshot.songById.get(query.songId);
-        if (row === undefined) {
+        const row = resolveSongRow(snapshot, query.songId);
+        if (row === null) {
             return '';
         }
         return (
@@ -974,13 +1060,17 @@ export const StreamifyController: InternalControllerEndpoint = {
         // via the MetadataProvider, filtered against the recently played
         // ledger (playTally + the 3h play-event window). A provider miss
         // (or an empty feed) keeps the P1 play-stats derivation.
-        const seed = snapshot.songById.get(query.songId);
-        const seedVideoId = seed?.streamUrl ?? '';
+        const seed = resolveSongRow(snapshot, query.songId);
+        const seedVideoId =
+            extractVideoId(seed?.streamUrl) ??
+            videoIdOfYtmSong(query.songId) ??
+            extractVideoId(query.songId) ??
+            '';
         if (seedVideoId !== '') {
             const exclusions = recentExclusions(snapshot);
             const refs = await automixRadio(getMetadataProvider(), seedVideoId, count, {
                 extra: {
-                    sigs: new Set(seed === undefined ? [] : [songSigOfRow(seed)]),
+                    sigs: new Set(seed === null ? [] : [songSigOfRow(seed)]),
                     videoIds: new Set([seedVideoId, ...exclusions.videoIds]),
                 },
                 signal: apiClientProps.signal,
@@ -1163,8 +1253,8 @@ export const StreamifyController: InternalControllerEndpoint = {
         // LYRICS_MULTIPLE_STRUCTURED feature flag in getServerInfo.
         const { apiClientProps, query } = args;
         const snapshot = await getStreamifyLibrary(apiClientProps.server, apiClientProps.signal);
-        const row = snapshot.songById.get(query.songId);
-        if (row === undefined) {
+        const row = resolveSongRow(snapshot, query.songId);
+        if (row === null) {
             return [];
         }
         return fetchStructuredLyrics(row, {
