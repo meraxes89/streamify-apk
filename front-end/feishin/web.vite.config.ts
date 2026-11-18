@@ -50,7 +50,7 @@ export default defineConfig({
                 sourcemapExcludeSources: false,
             },
         },
-        sourcemap: true,
+        sourcemap: false,
     },
     css: {
         modules: {

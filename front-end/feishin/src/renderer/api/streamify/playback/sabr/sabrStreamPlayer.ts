@@ -39,7 +39,6 @@ async function sabrBodyFor(
 
 const AAC_MIME = 'audio/mp4; codecs="mp4a.40.2"';
 const FIRST_MEDIA_BUDGET_MS = 8_000;
-const NO_MEDIA_BREAKER_LIMIT = 6;
 
 export function mseAudioAvailable(): boolean {
     return (
@@ -77,8 +76,6 @@ export async function startSabrAudio(
     let sabr: null | SabrStream = null;
 
     let mediaBytesSeen = 0;
-    let bytesAtLastProtectionEvent = -1;
-    let noMediaStreak = 0;
     let firstMediaTimer: null | ReturnType<typeof setTimeout> = null;
 
     const fail = (message: string): void => {
@@ -216,22 +213,6 @@ export async function startSabrAudio(
                     if (s >= 3) {
                         fail(`SABR protection status ${s}`);
                         reject(new Error(`SABR protection status ${s}`));
-                        return;
-                    }
-                    if (s >= 2) {
-                        if (mediaBytesSeen === bytesAtLastProtectionEvent) {
-                            noMediaStreak += 1;
-                            if (noMediaStreak >= NO_MEDIA_BREAKER_LIMIT) {
-                                fail(
-                                    `SABR protection wall — ${noMediaStreak} consecutive responses with zero media (status ${s}, ${mediaBytesSeen} B total)`,
-                                );
-                                reject(new Error(`SABR protection wall (status ${s}, no media)`));
-                                return;
-                            }
-                        } else {
-                            noMediaStreak = 0;
-                        }
-                        bytesAtLastProtectionEvent = mediaBytesSeen;
                     }
                 },
             );
