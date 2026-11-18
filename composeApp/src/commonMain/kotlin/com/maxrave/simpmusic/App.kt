@@ -96,8 +96,12 @@ import com.maxrave.simpmusic.ui.navigation.destination.player.FullscreenDestinat
 import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
 import com.maxrave.simpmusic.ui.navigation.graph.AppNavigationGraph
 import com.maxrave.simpmusic.ui.screen.MiniPlayer
+import com.maxrave.simpmusic.expect.ui.rememberPlatformContext
+import com.maxrave.simpmusic.ui.screen.login.GoogleOnboardingAuthScreen
 import com.maxrave.simpmusic.ui.screen.other.StreamifySplashScreen
 import com.maxrave.simpmusic.ui.screen.other.UnofficialBuildScreen
+import com.streamify.supabase.AuthState
+import com.streamify.supabase.StreamifyAuthManager
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreen
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreenContent
 import com.maxrave.simpmusic.ui.theme.AppTheme
@@ -523,6 +527,21 @@ fun App(
     ) {
         if (!isOfficialBuild) {
             UnofficialBuildScreen()
+            return@AppTheme
+        }
+
+        val platformContext = rememberPlatformContext()
+        LaunchedEffect(platformContext) {
+            StreamifyAuthManager.init(platformContext)
+        }
+        val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
+
+        if (streamifyAuthState is AuthState.Unauthenticated) {
+            GoogleOnboardingAuthScreen(
+                onAuthenticated = {
+                    // Identity is persisted and authState transitions to Authenticated
+                },
+            )
             return@AppTheme
         }
         // Read inside AppTheme so MaterialTheme reflects the resolved scheme.

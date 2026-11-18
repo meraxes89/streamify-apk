@@ -127,7 +127,10 @@ import com.maxrave.simpmusic.extension.bytesToMB
 import com.maxrave.simpmusic.extension.displayString
 import com.maxrave.simpmusic.extension.isTwoLetterCode
 import com.maxrave.simpmusic.extension.isValidProxyHost
+import com.maxrave.simpmusic.expect.ui.rememberPlatformContext
 import com.maxrave.simpmusic.getPlatform
+import com.streamify.supabase.StreamifyAuthManager
+import com.streamify.supabase.SupabaseClient
 import com.maxrave.simpmusic.ui.component.ActionButton
 import com.maxrave.simpmusic.ui.component.AdminCommandCenterCard
 import com.maxrave.simpmusic.ui.component.AmbientThemeGlow
@@ -2910,6 +2913,21 @@ fun SettingScreen(
                         navController.navigate(AppLogDestination)
                     },
                 )
+            }
+        }
+        item(key = "streamify_account") {
+            val streamifyUser by SupabaseClient.currentUser.collectAsStateWithLifecycle()
+            val platformCtx = rememberPlatformContext()
+            if (streamifyUser != null && streamifyUser?.id?.isNotEmpty() == true) {
+                SettingGroup(title = "Streamify Account") {
+                    SettingItem(
+                        title = streamifyUser?.displayName ?: "Streamify Listener",
+                        subtitle = "${streamifyUser?.email} · Tap to log out",
+                        onClick = {
+                            StreamifyAuthManager.signOut(platformCtx)
+                        },
+                    )
+                }
             }
         }
         item(key = "admin_command_center") {
