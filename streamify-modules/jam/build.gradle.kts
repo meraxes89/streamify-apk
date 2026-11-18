@@ -20,6 +20,7 @@ kotlin {
                 implementation(libs.kotlinx.serialization.json)
                 implementation(project(":streamify-core-bridge"))
                 implementation(project(":streamify-supabase"))
+                implementation(project(":streamify-media-hal"))
             }
         }
     }
