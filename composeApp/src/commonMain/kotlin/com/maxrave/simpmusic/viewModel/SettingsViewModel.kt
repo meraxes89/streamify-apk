@@ -233,13 +233,13 @@ class SettingsViewModel(
     private val _combineLocalAndYouTubeLiked = MutableStateFlow<Boolean>(false)
     val combineLocalAndYouTubeLiked: StateFlow<Boolean> = _combineLocalAndYouTubeLiked
 
-    private val _downloadQuality = MutableStateFlow<String?>(null)
+    private val _downloadQuality = MutableStateFlow<String?>(QUALITY.items[2].toString())
     val downloadQuality: StateFlow<String?> = _downloadQuality
 
-    private val _videoDownloadQuality = MutableStateFlow<String?>(null)
+    private val _videoDownloadQuality = MutableStateFlow<String?>(VIDEO_QUALITY.items[0].toString())
     val videoDownloadQuality: StateFlow<String?> = _videoDownloadQuality
 
-    private val _localTrackingEnabled = MutableStateFlow<Boolean>(false)
+    private val _localTrackingEnabled = MutableStateFlow<Boolean>(true)
     val localTrackingEnabled: StateFlow<Boolean> = _localTrackingEnabled
 
     private val _blogNotificationEnabled = MutableStateFlow(true)
@@ -1246,7 +1246,7 @@ class SettingsViewModel(
         }
     }
 
-    private var _quality: MutableStateFlow<String?> = MutableStateFlow(null)
+    private var _quality: MutableStateFlow<String?> = MutableStateFlow(QUALITY.items[2].toString())
     val quality: StateFlow<String?> = _quality
 
     fun getQuality() {
@@ -1269,7 +1269,7 @@ class SettingsViewModel(
     fun changeQuality(qualityItem: String?) {
         viewModelScope.launch {
             log("changeQuality: $qualityItem")
-            dataStoreManager.setQuality(qualityItem ?: QUALITY.items.first().toString())
+            dataStoreManager.setQuality(qualityItem ?: QUALITY.items[2].toString())
             getQuality()
         }
     }

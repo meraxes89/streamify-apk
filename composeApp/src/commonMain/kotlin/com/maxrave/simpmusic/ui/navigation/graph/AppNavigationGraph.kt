@@ -33,7 +33,7 @@ import com.maxrave.simpmusic.ui.screen.player.FullscreenPlayer
 fun AppNavigationGraph(
     innerPadding: PaddingValues,
     navController: NavHostController,
-    startDestination: Any = HomeDestination,
+    startDestination: Any = AnalyticsDestination,
     hideNavBar: () -> Unit = { },
     showNavBar: (shouldShowNowPlayingSheet: Boolean) -> Unit = { },
     showNowPlayingSheet: () -> Unit = {},

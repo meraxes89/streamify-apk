@@ -162,15 +162,15 @@ fun App(
     val showNotificationPermissionDialog by viewModel.showNotificationPermissionDialog.collectAsStateWithLifecycle()
 
     val isLiquidGlassEnabled by viewModel.getEnableLiquidGlass().collectAsStateWithLifecycle(DataStoreManager.FALSE)
-    // Analytics only makes sense with local tracking on, so its tab follows that setting.
-    val isLocalTrackingEnabled by viewModel.getLocalTrackingEnabled().collectAsStateWithLifecycle(DataStoreManager.FALSE)
-    val showAnalyticsTab = isLocalTrackingEnabled == TRUE
+    // Analytics only makes sense with local tracking on, so its tab follows that setting (enabled by default).
+    val isLocalTrackingEnabled by viewModel.getLocalTrackingEnabled().collectAsStateWithLifecycle(DataStoreManager.TRUE)
+    val showAnalyticsTab = isLocalTrackingEnabled != DataStoreManager.FALSE
     // Mix for you comes from the signed-in YouTube account, so its tab follows the session — the
     // same condition that used to hide the chip inside Library.
     val isYouTubeLoggedIn by viewModel.getYouTubeLoggedIn().collectAsStateWithLifecycle(DataStoreManager.FALSE)
     val showMixForYouTab = isYouTubeLoggedIn == TRUE
 
-    val themeMode by viewModel.getThemeMode().collectAsStateWithLifecycle(DataStoreManager.THEME_MODE_DARK)
+    val themeMode by viewModel.getThemeMode().collectAsStateWithLifecycle(DataStoreManager.THEME_MODE_LIGHT)
     val themeColorSource by viewModel.getThemeColorSource().collectAsStateWithLifecycle(DataStoreManager.THEME_COLOR_DEFAULT)
     val customThemeColorHex by viewModel.getCustomThemeColor().collectAsStateWithLifecycle(DataStoreManager.DEFAULT_THEME_COLOR_HEX)
     val isOfficialBuild by viewModel.isOfficialBuild.collectAsStateWithLifecycle()

@@ -256,7 +256,7 @@ fun LibrarySyncLoginPrompt(sharedViewModel: SharedViewModel) {
     val pending by repository.pendingLogins.collectAsStateWithLifecycle()
     val logins = pending ?: return
     // Outside App(), so it applies the user's theme itself, read the way App() reads it.
-    val themeMode by sharedViewModel.getThemeMode().collectAsStateWithLifecycle(DataStoreManager.THEME_MODE_DARK)
+    val themeMode by sharedViewModel.getThemeMode().collectAsStateWithLifecycle(DataStoreManager.THEME_MODE_LIGHT)
     val themeColorSource by sharedViewModel.getThemeColorSource().collectAsStateWithLifecycle(DataStoreManager.THEME_COLOR_DEFAULT)
     val customThemeColorHex by sharedViewModel.getCustomThemeColor().collectAsStateWithLifecycle(DataStoreManager.DEFAULT_THEME_COLOR_HEX)
     AppTheme(

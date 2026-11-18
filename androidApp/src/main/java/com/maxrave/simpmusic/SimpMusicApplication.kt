@@ -79,6 +79,9 @@ class SimpMusicApplication :
             loadKoinModules(com.streamify.jam.di.streamifyAllModules)
         }
         com.streamify.media.hal.StreamifyMedia3Module.init(this)
+        applicationScope.launch {
+            com.maxrave.simpmusic.utils.StreamifyDefaultsInitializer.initialize(dataStoreManager)
+        }
         // provide custom configuration
         val workConfig =
             Configuration
