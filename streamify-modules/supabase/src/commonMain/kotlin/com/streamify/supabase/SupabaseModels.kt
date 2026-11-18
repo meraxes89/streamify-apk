@@ -160,6 +160,37 @@ data class WrappedCloudSnapshot(
 )
 
 @Serializable
+data class AdminCommentItem(
+    val id: String,
+    @SerialName("track_id")
+    val trackId: String = "",
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("user_name")
+    val userName: String = "Listener",
+    @SerialName("user_avatar")
+    val userAvatar: String = "",
+    @SerialName("comment_text")
+    val commentText: String = "",
+    @SerialName("timestamp_ms")
+    val timestampMs: Long = 0L,
+    @SerialName("created_at")
+    val createdAt: String = ""
+)
+
+@Serializable
+data class AdminBroadcastItem(
+    val id: String = "",
+    val message: String = "",
+    @SerialName("author_email")
+    val authorEmail: String = "",
+    @SerialName("is_active")
+    val isActive: Boolean = true,
+    @SerialName("created_at")
+    val createdAt: String = ""
+)
+
+@Serializable
 data class AdminTelemetry(
     val totalUsers: Int,
     val totalTracks: Int,

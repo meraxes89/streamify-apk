@@ -144,6 +144,7 @@ import com.maxrave.simpmusic.ui.icon.Error
 import com.maxrave.simpmusic.ui.icon.PeopleAlt
 import com.maxrave.simpmusic.ui.icon.PlaylistAdd
 import com.maxrave.simpmusic.ui.icon.SimpIcons
+import com.maxrave.simpmusic.ui.navigation.destination.home.AdminDashboardDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.AppLogDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.CreditDestination
 import com.maxrave.simpmusic.ui.navigation.destination.login.DiscordLoginDestination
@@ -2914,7 +2915,7 @@ fun SettingScreen(
         item(key = "admin_command_center") {
             AdminCommandCenterCard(
                 onNavigateToAdmin = {
-                    navController.navigate(AppLogDestination)
+                    navController.navigate(AdminDashboardDestination)
                 },
                 modifier = Modifier.padding(bottom = 12.dp)
             )
