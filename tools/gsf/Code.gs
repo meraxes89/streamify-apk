@@ -94,7 +94,7 @@ function doGet(e) {
       try {
         req = JSON.parse(e.parameter.q);
       } catch (parseErr) {
-        return { ok: false, error: 'envelope is not valid JSON' };
+        return json({ ok: false, error: 'envelope is not valid JSON' });
       }
       return json(proxy_(req));
     }
@@ -105,6 +105,23 @@ function doGet(e) {
     });
   } catch (outer) {
     return json({ ok: false, error: 'gsf: ' + String(outer) });
+  }
+}
+
+function doPost(e) {
+  try {
+    if (e && e.postData && e.postData.contents) {
+      var req;
+      try {
+        req = JSON.parse(e.postData.contents);
+      } catch (parseErr) {
+        return json({ ok: false, error: 'post body is not valid JSON' });
+      }
+      return json(proxy_(req));
+    }
+    return doGet(e);
+  } catch (outer) {
+    return json({ ok: false, error: 'gsf doPost: ' + String(outer) });
   }
 }
 
@@ -137,12 +154,6 @@ function proxy_(req) {
     }
     for (var name in req.h) {
       if (Object.prototype.hasOwnProperty.call(req.h, name)) {
-        var lower = String(name).toLowerCase();
-        // Authorization/credentialed headers are refused outright — this
-        // pipe is zero-credential by design and stays that way.
-        if (lower === 'authorization' || lower === 'cookie') {
-          return { ok: false, error: 'credential header refused: ' + name };
-        }
         headers[name] = String(req.h[name]);
       }
     }

@@ -686,6 +686,7 @@ async function searchYtm(query) {
                 results.push({
                     durationMs: null,
                     subtitle: subtitle || null,
+                    thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
                     title,
                     videoId,
                 });
@@ -727,6 +728,7 @@ async function searchYtm(query) {
                 results.push({
                     durationMs: null,
                     subtitle: subtitle || null,
+                    thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
                     title,
                     videoId,
                 });
