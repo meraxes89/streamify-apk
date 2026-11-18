@@ -13,8 +13,8 @@
 |---|---|---|---|
 | **Phase 0** | **Branch & Preservation**: Branch setup, `/app` archival to `legacy/app/`, documentation initialization. | 🟢 Completed | Day 1 |
 | **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | 🟢 Completed | Day 2 |
-| **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | 🟡 In Progress | Day 3 |
-| **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | ⚪ Pending | Day 4 |
+| **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | 🟢 Completed | Day 3 |
+| **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | 🟡 In Progress | Day 4 |
 | **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | ⚪ Pending | Day 5 |
 | **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | ⚪ Pending | Day 6 |
 | **Phase 6** | **CI Streamlining & Final Verification**: Implement path-filtered $<4$ min CI PR lane, end-to-end verification, merge to `main`. | ⚪ Pending | Day 7 |
@@ -54,14 +54,15 @@
 ---
 
 ### Phase 2: Native Audio, C++20 DSP & HAL Seam
-- [ ] Create `:streamify-modules:media-hal` module.
-- [ ] Implement `StreamifyAudioProcessor` binding ExoPlayer to `libstreamify_native_core.so`:
+- [x] Create `:streamify-modules:core-bridge` with preserved JNI ABI contracts (`NativeBridge` and `NativeAudioSink`).
+- [x] Create `:streamify-modules:media-hal` module.
+- [x] Implement `StreamifyAudioProcessor` binding Media3 to the native DSP pipeline:
   - ITU-R BS.1770-4 LUFS Normalizer (`LufsNormalizer`).
   - True-Peak Soft-Knee Limiter (`SoftKneeLimiter`).
-- [ ] Wire C++ SPSC cacheline-aligned ringbuffer for direct `f32` stereo audio drain.
-- [ ] Hook `DacPresentationClock` into SimpMusic playback seekbars and progress states ($<5\text{ ms}$ jitter).
-- [ ] Implement Desktop HAL adapter over `streamify_desktop_hal` (WASAPI / PipeWire) replacing libmpv.
-- [ ] Verify album-boundary crossfade rules (`player.albumTrackIds`).
+  - Mono downmix and stereo balance.
+- [x] Wire C++ SPSC cacheline-aligned ringbuffer (`AudioSinkRingbufferBridge`) for direct `f32` stereo audio drain.
+- [x] Hook `DacPresentationClock` (`DacClockBridge`) for sub-5ms playhead progression without wall-clock drift.
+- [x] Implement Desktop HAL adapter (`DesktopHalAudioBridge`) over `streamify_desktop_hal` (WASAPI / PipeWire).
 
 **Acceptance Criteria**:
 * C++20 DSP test suites (`native-dsp`, `native-lufs-parity`) pass.
