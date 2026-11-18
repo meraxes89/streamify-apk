@@ -6,9 +6,11 @@ import { useTranslation } from 'react-i18next';
 
 import { playerHandoff } from './engine/player-handoff';
 
+import { extractVideoId } from '/@/renderer/api/streamify/catalog/ytm-mappers';
 import {
     applyStreamifySeek,
     onStreamifySourceError,
+    prefetchTrack,
 } from '/@/renderer/api/streamify/playback/stream-source';
 import { eventEmitter } from '/@/renderer/events/event-emitter';
 import {
@@ -156,6 +158,20 @@ export function WebPlayer() {
                 return;
             }
 
+            const duration1 = getDuration(playerRef.current.player1().ref);
+            const timeLeft1 = duration1 - e.playedSeconds;
+            if (timeLeft1 > 0 && timeLeft1 <= 20 && player1 && player2) {
+                const currId = extractVideoId(
+                    player1.id.startsWith('ytm:') ? player1.id.slice(4) : player1.id,
+                );
+                const nextId = extractVideoId(
+                    player2.id.startsWith('ytm:') ? player2.id.slice(4) : player2.id,
+                );
+                if (currId && nextId) {
+                    void prefetchTrack(currId, nextId);
+                }
+            }
+
             switch (transitionType) {
                 case PlayerStyle.CROSSFADE:
                     crossfadeHandler({
@@ -192,6 +208,7 @@ export function WebPlayer() {
             handleRepeatOne,
             isTransitioning,
             num,
+            player1,
             player2,
             repeat,
             setTimestamp,
@@ -217,6 +234,20 @@ export function WebPlayer() {
             if (repeat === PlayerRepeat.ONE) {
                 handleRepeatOne(2, e.playedSeconds, getDuration(playerRef.current.player2().ref));
                 return;
+            }
+
+            const duration2 = getDuration(playerRef.current.player2().ref);
+            const timeLeft2 = duration2 - e.playedSeconds;
+            if (timeLeft2 > 0 && timeLeft2 <= 20 && player2 && player1) {
+                const currId = extractVideoId(
+                    player2.id.startsWith('ytm:') ? player2.id.slice(4) : player2.id,
+                );
+                const nextId = extractVideoId(
+                    player1.id.startsWith('ytm:') ? player1.id.slice(4) : player1.id,
+                );
+                if (currId && nextId) {
+                    void prefetchTrack(currId, nextId);
+                }
             }
 
             switch (transitionType) {
@@ -256,6 +287,7 @@ export function WebPlayer() {
             isTransitioning,
             num,
             player1,
+            player2,
             repeat,
             setTimestamp,
             transitionType,

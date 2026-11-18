@@ -158,9 +158,36 @@ export function onStreamifySourceError(err: SourceErrorShape, audio: HTMLMediaEl
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// The controller seam's back end
-// ---------------------------------------------------------------------------
+let lastPrefetchedPair = '';
+
+/**
+ * Predictive Queue Prefetch (Architecture v3 Principle 4):
+ * Signals the Oracle VPS to pre-resolve and warm the first 8 MiB chunk
+ * of the upcoming track in the VPS memory cache, achieving sub-100ms TTFB.
+ */
+export async function prefetchTrack(currentVideoId: string, nextVideoId: string): Promise<void> {
+    const relay = relayBaseCandidate();
+    if (relay === '' || relay.includes('script.google.com')) return;
+    const pairKey = `${currentVideoId}->${nextVideoId}`;
+    if (lastPrefetchedPair === pairKey) return;
+    lastPrefetchedPair = pairKey;
+
+    try {
+        const base = relay.replace(/\/+$/, '');
+        await fetch(`${base}/api/prefetch`, {
+            body: JSON.stringify({
+                clientCodecHint: 'opus',
+                currentVideoId,
+                nextVideoId,
+            }),
+            headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            signal: AbortSignal.timeout(5000),
+        });
+    } catch {
+        // Prefetch is best-effort fire-and-forget; never interrupt playback.
+    }
+}
 
 /** Resolve a video and register its playback session (ladder + URL index).
  * The P4-A order: OPFS FIRST — a valid, tag-verified offline entry is served
@@ -176,7 +203,15 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
         return resolution;
     }
     offlineServed.delete(videoId);
-    const resolution = await getStreamUrl(videoId, { relayBase: relayBaseCandidate() });
+
+    const relay = relayBaseCandidate();
+    const vpsResolution = await tryResolveViaVps(videoId, relay);
+    if (vpsResolution !== null) {
+        indexResolution(vpsResolution);
+        return vpsResolution;
+    }
+
+    const resolution = await getStreamUrl(videoId, { relayBase: relay });
     indexResolution(resolution);
     if (resolution.protocol === 'sabr') {
         if (resolution.sabr && mseAudioAvailable()) {
@@ -206,6 +241,10 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
     return resolution;
 }
 
+// ---------------------------------------------------------------------------
+// The controller seam's back end
+// ---------------------------------------------------------------------------
+
 function inCrossfadeWindow(session: PlaybackSession): boolean {
     try {
         const player = usePlayerStoreBase.getState().player;
@@ -222,10 +261,6 @@ function inCrossfadeWindow(session: PlaybackSession): boolean {
     }
 }
 
-// ---------------------------------------------------------------------------
-// The mid-crossfade guard (the contract: never re-resolve mid-crossfade)
-// ---------------------------------------------------------------------------
-
 function indexResolution(resolution: StreamUrlResolution): void {
     sessions.set(resolution.trackId, { cursor: 0, resolution, videoId: resolution.trackId });
     const urls = [resolution.url, ...resolution.ladder.map((r) => r.url)];
@@ -237,7 +272,7 @@ function indexResolution(resolution: StreamUrlResolution): void {
 }
 
 // ---------------------------------------------------------------------------
-// Source swaps (element-level, position-preserving)
+// The mid-crossfade guard (the contract: never re-resolve mid-crossfade)
 // ---------------------------------------------------------------------------
 
 /** Build the offline resolution (the StreamUrlResolution contract, with
@@ -274,7 +309,7 @@ function offlineResolution(off: OfflineServeResult): StreamUrlResolution {
 }
 
 // ---------------------------------------------------------------------------
-// The error claim hook (the thin upstream seam calls this)
+// Source swaps (element-level, position-preserving)
 // ---------------------------------------------------------------------------
 
 async function recoverFromError(
@@ -395,6 +430,10 @@ async function recoverFromError(
     walkCachedLadder(session, audio, at);
 }
 
+// ---------------------------------------------------------------------------
+// The error claim hook (the thin upstream seam calls this)
+// ---------------------------------------------------------------------------
+
 function sessionByUrl(url: string): null | PlaybackSession {
     const videoId = urlIndex.get(url);
     if (videoId === undefined) return null;
@@ -419,6 +458,84 @@ function swapSource(
         logger.debug(`streamify: swapped ${videoId} to a fresh source at ${atSeconds.toFixed(2)}s`);
     } catch (err) {
         logger.error('streamify: source swap failed', { err });
+    }
+}
+
+/**
+ * Attempt to resolve a track via the Architecture v3 Oracle VPS / Cloudflare Edge.
+ * When relayBase is configured (and is not an Apps Script URL), it queries
+ * GET /api/resolve?videoId=...
+ * On success, returns a progressive StreamUrlResolution pointing to
+ * ${relayBase}/api/stream/${videoId} (or the returned streamUrl).
+ * Returns null if the endpoint is unreachable or returns a non-200 status,
+ * allowing immediate fallback to the local getStreamUrl ladder.
+ */
+async function tryResolveViaVps(
+    videoId: string,
+    relayBase: string,
+): Promise<null | StreamUrlResolution> {
+    if (relayBase === '' || relayBase.includes('script.google.com')) {
+        return null;
+    }
+
+    try {
+        const base = relayBase.replace(/\/+$/, '');
+        const res = await fetch(`${base}/api/resolve?videoId=${encodeURIComponent(videoId)}`, {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(6000),
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as {
+            artist?: string;
+            bitrate?: number;
+            codecs?: string;
+            contentLength?: number;
+            durationMs?: number;
+            expiresAt?: number;
+            ladder?: StreamUrlRung[];
+            ok?: boolean;
+            streamUrl?: string;
+            title?: string;
+            url?: string;
+        };
+        if (!data || (data.ok === false && !data.streamUrl && !data.url)) {
+            return null;
+        }
+
+        const streamUrl = data.streamUrl || data.url || `${base}/api/stream/${videoId}`;
+        const resolution: StreamUrlResolution = {
+            artist: data.artist || '',
+            audioChannels: 2,
+            codecs: data.codecs || 'opus',
+            contentLength: data.contentLength ?? null,
+            durationMs: data.durationMs ?? null,
+            expiresAt: data.expiresAt || Date.now() + 6 * 3600 * 1000,
+            expirySource: data.expiresAt ? 'wire' : 'default',
+            isSabr: false,
+            ladder: data.ladder || [
+                {
+                    audioChannels: 2,
+                    audioOnly: true,
+                    bitrate: data.bitrate || 160000,
+                    codec: data.codecs || 'opus',
+                    contentLength: data.contentLength ?? null,
+                    itag: 251,
+                    mimeType: 'audio/webm; codecs="opus"',
+                    rank: 0,
+                    url: streamUrl,
+                },
+            ],
+            protocol: 'progressive',
+            rangeSupport: true,
+            resolvedAt: Date.now(),
+            rung: 'visionos-relay' as LadderRung,
+            title: data.title || '',
+            trackId: videoId,
+            url: streamUrl,
+        };
+        return resolution;
+    } catch {
+        return null;
     }
 }
 

@@ -45,7 +45,7 @@ export const NetworkRelayPanel = () => {
                     <TextInput
                         error={validation.ok ? undefined : t('streamify.settings.relayInvalid')}
                         onChange={(event) => setDraft(event.currentTarget.value)}
-                        placeholder="https://my-relay.example.workers.dev"
+                        placeholder="https://api.yourdomain.com"
                         style={{ flex: 1 }}
                         value={draft}
                         w="auto"
