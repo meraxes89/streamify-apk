@@ -99,6 +99,7 @@ export const MobileFullscreenPlayerAlbumArt = () => {
 
     const currentImageUrl = useItemImageUrl({
         id: currentSong?.imageId || undefined,
+        imageUrl: currentSong?.imageUrl || undefined,
         itemType: LibraryItem.SONG,
         size: mainImageDimensions.idealSize,
         type: 'fullScreenPlayer',
@@ -106,6 +107,7 @@ export const MobileFullscreenPlayerAlbumArt = () => {
 
     const nextImageUrl = useItemImageUrl({
         id: nextSong?.imageId || undefined,
+        imageUrl: nextSong?.imageUrl || undefined,
         itemType: LibraryItem.SONG,
         size: mainImageDimensions.idealSize,
         type: 'fullScreenPlayer',

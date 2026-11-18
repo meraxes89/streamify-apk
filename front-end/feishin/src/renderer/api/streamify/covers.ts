@@ -41,6 +41,9 @@ export function coverUrlFor(
         const videoId = id.slice(4);
         return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     }
+    if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) {
+        return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    }
     if (snapshot === null || snapshot === undefined) {
         return null;
     }

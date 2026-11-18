@@ -251,7 +251,7 @@ export function ytmToAlbum(ref: YtmAlbumRef, serverId: ServerId): Album {
         gain: null,
         genres: [],
         id: ytmAlbumIdOf(ref.browseId),
-        imageId: null,
+        imageId: ytmAlbumIdOf(ref.browseId),
         imageUrl: ref.thumbnailUrl ?? null,
         isCompilation: null,
         lastPlayedAt: null,
@@ -336,7 +336,7 @@ export function ytmToSong(
         gain: null,
         genres: [],
         id: ytmSongIdOf(ref.videoId),
-        imageId: null,
+        imageId: ytmSongIdOf(ref.videoId),
         imageUrl:
             ref.thumbnailUrl ??
             (ref.videoId ? `https://i.ytimg.com/vi/${ref.videoId}/hqdefault.jpg` : null),

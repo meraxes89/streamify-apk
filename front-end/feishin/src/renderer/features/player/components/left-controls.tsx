@@ -175,6 +175,7 @@ export const LeftControls = () => {
                                             explicitStatus={currentSong?.explicitStatus}
                                             fetchPriority="high"
                                             id={currentSong?.imageId}
+                                            imageUrl={currentSong?.imageUrl}
                                             itemType={LibraryItem.SONG}
                                             serverId={currentSong?._serverId}
                                             thumbHash={currentSong?.thumbHash}

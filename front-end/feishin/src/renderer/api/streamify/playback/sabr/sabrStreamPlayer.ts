@@ -177,27 +177,31 @@ export async function startSabrAudio(
                             : typeof input === 'string'
                               ? input
                               : input.url;
-                    if (gsfAlive()) {
-                        try {
-                            const headers: Record<string, string> = {};
-                            new Headers(init?.headers).forEach((value, name) => {
-                                headers[name] = value;
-                            });
-                            const body = await sabrBodyFor(init?.body);
-                            return await gsfFetch(url, {
-                                ...(init?.method !== undefined ? { method: init.method } : {}),
-                                ...(Object.keys(headers).length > 0 ? { headers } : {}),
-                                ...(body !== undefined ? { body } : {}),
-                                ...(init?.signal !== undefined && init?.signal !== null
-                                    ? { signal: init.signal }
-                                    : {}),
-                            });
-                        } catch {
-                            // Lane-level fallback to relay
-                        }
-                    }
                     const target = relayBase !== '' ? relayUrl(relayBase, url) : url;
-                    return fetch(target, init);
+                    try {
+                        return await fetch(target, init);
+                    } catch (relayErr) {
+                        if (gsfAlive()) {
+                            try {
+                                const headers: Record<string, string> = {};
+                                new Headers(init?.headers).forEach((value, name) => {
+                                    headers[name] = value;
+                                });
+                                const body = await sabrBodyFor(init?.body);
+                                return await gsfFetch(url, {
+                                    ...(init?.method !== undefined ? { method: init.method } : {}),
+                                    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+                                    ...(body !== undefined ? { body } : {}),
+                                    ...(init?.signal !== undefined && init?.signal !== null
+                                        ? { signal: init.signal }
+                                        : {}),
+                                });
+                            } catch {
+                                throw relayErr;
+                            }
+                        }
+                        throw relayErr;
+                    }
                 },
                 formats: payload.formats as SabrFormat[],
                 poToken: payload.poToken ?? undefined,

@@ -15,6 +15,7 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import path from 'path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -659,6 +660,7 @@ app.all('/r', async (req, res) => {
         res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
         res.set('Access-Control-Allow-Headers', '*');
         res.set('Access-Control-Expose-Headers', '*');
+        res.set('Access-Control-Allow-Private-Network', 'true');
 
         for (const [k, v] of upstreamRes.headers.entries()) {
             const lk = k.toLowerCase();
@@ -666,8 +668,15 @@ app.all('/r', async (req, res) => {
             res.set(k, v);
         }
 
-        const buffer = await upstreamRes.arrayBuffer();
-        res.send(Buffer.from(buffer));
+        if (upstreamRes.body) {
+            const nodeStream = Readable.fromWeb(upstreamRes.body);
+            nodeStream.pipe(res);
+            res.on('close', () => {
+                nodeStream.destroy();
+            });
+        } else {
+            res.end();
+        }
     } catch (err) {
         console.error('[/r proxy error]:', err.message);
         res.status(502).send(`Proxy error: ${err.message}`);
