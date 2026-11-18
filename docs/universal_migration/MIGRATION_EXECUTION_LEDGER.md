@@ -16,8 +16,8 @@
 | **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | 🟢 Completed | Day 3 |
 | **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | 🟢 Completed | Day 4 |
 | **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | 🟢 Completed | Day 5 |
-| **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | 🟡 In Progress | Day 6 |
-| **Phase 6** | **CI Streamlining & Final Verification**: Implement path-filtered $<4$ min CI PR lane, end-to-end verification, merge to `main`. | ⚪ Pending | Day 7 |
+| **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | 🟢 Completed | Day 6 |
+| **Phase 6** | **CI Streamlining & Final Verification**: Implement path-filtered $<4$ min CI PR lane, end-to-end verification, merge to `main`. | 🟡 In Progress | Day 7 |
 
 ---
 
@@ -100,15 +100,10 @@
 ---
 
 ### Phase 5: Social Listening (Jam & Blend) & Dynamic Home
-- [ ] Replace fragile serverless UDP mesh with SimpMusic's WebSocket relay (`metroproto`) + Supabase Realtime channel.
-- [ ] Synchronize multi-device playhead progression using `DacPresentationClock`.
-- [ ] Implement Taste Profiler & Blend generator via Supabase Edge Functions.
-- [ ] Create `HybridHomeRepository` decorating SimpMusic's `HomeRepository`:
-  - Shelf 0: Quick Picks (YouTube Music / SimpMusic cache).
-  - Shelf 1: Circadian Daypart Flow (Streamify $C^1$-continuous curves).
-  - Shelf 2: Global Community Hits (Supabase telemetry).
-  - Shelf 3: Shared Friend Blend (Dynamic Supabase blend).
-  - Shelves 4+: Trending Songs, New Releases & Explore Albums (YouTube Music).
+- [x] Replace fragile serverless UDP mesh with `StreamifyJamCoordinator` combining WebSocket room consensus with Supabase Realtime rooms.
+- [x] Synchronize multi-device transport commands using `DacPresentationClock` monotonic anchors.
+- [x] Implement `BlendGenerator` calculating multi-user Jaccard artist affinity and interleaved Blend playlists.
+- [x] Implement `HybridHomeRepository` interleaving Quick Picks, Circadian Daypart curves, Global Community Hits, and Friend Blends into Home shelves.
 
 **Acceptance Criteria**:
 * Listen Together sessions connect reliably over 4G/5G mobile networks and restricted Wi-Fi.
