@@ -1,8 +1,13 @@
 package com.streamify.supabase
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.Json
 
 /**
  * Universal Supabase Client facade.
@@ -10,11 +15,24 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object SupabaseClient {
 
-    private val _currentUser = MutableStateFlow<UserProfile?>(null)
+    private val _currentUser = MutableStateFlow<UserProfile?>(SupabaseConfig.DEFAULT_USER)
     val currentUser: StateFlow<UserProfile?> = _currentUser.asStateFlow()
 
     private val _accessToken = MutableStateFlow<String?>(null)
     val accessToken: StateFlow<String?> = _accessToken.asStateFlow()
+
+    val httpClient: HttpClient by lazy {
+        HttpClient(CIO) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    encodeDefaults = true
+                    isLenient = true
+                    coerceInputValues = true
+                })
+            }
+        }
+    }
 
     /**
      * SEC-09 invariant: Admin is a server-verified claim ONLY.
@@ -28,20 +46,23 @@ object SupabaseClient {
      */
     fun setSession(token: String?, profile: UserProfile?) {
         _accessToken.value = token
-        _currentUser.value = profile
+        _currentUser.value = profile ?: SupabaseConfig.DEFAULT_USER
     }
 
     fun clearSession() {
         _accessToken.value = null
-        _currentUser.value = null
+        _currentUser.value = SupabaseConfig.DEFAULT_USER
+    }
+
+    fun getAuthToken(): String {
+        return _accessToken.value ?: SupabaseConfig.ANON_KEY
     }
 
     fun getAuthHeaders(): Map<String, String> {
-        val token = _accessToken.value
-        return if (!token.isNullOrBlank()) {
-            mapOf("Authorization" to "Bearer $token")
-        } else {
-            emptyMap()
-        }
+        val token = getAuthToken()
+        return mapOf(
+            "apikey" to SupabaseConfig.ANON_KEY,
+            "Authorization" to "Bearer $token"
+        )
     }
 }

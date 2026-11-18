@@ -400,14 +400,19 @@ class LibraryViewModel(
     fun createPlaylist(title: String) {
         viewModelScope.launch {
             val localPlaylistEntity = LocalPlaylistEntity(title = title)
-            localPlaylistRepository
+            val newId = localPlaylistRepository
                 .insertLocalPlaylist(
                     localPlaylistEntity,
                     getString(Res.string.added_local_playlist),
                 ).lastOrNull()
-                ?.let {
-                    log("Created playlist with id: $it")
-                }
+            newId?.let {
+                log("Created playlist with id: $it")
+                com.streamify.supabase.SupabaseLibrarySync.syncPlaylist(
+                    playlistId = "local_pl_$it",
+                    name = title,
+                    trackIds = emptyList(),
+                )
+            }
             getLocalPlaylist()
         }
     }

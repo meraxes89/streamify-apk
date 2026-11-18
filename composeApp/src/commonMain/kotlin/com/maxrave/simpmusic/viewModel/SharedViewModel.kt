@@ -415,6 +415,17 @@ class SharedViewModel(
                             ?: -1L
                     _timeline.update { it.copy(total = seededTotal) }
                     state.songEntity?.let { track ->
+                        viewModelScope.launch {
+                            com.streamify.supabase.SupabaseFriendSync.reportPlayback(
+                                trackId = track.videoId,
+                                title = track.title,
+                                artist = track.artistName?.joinToString(", ") ?: "",
+                                coverUrl = track.thumbnails ?: "",
+                                durationSec = track.durationSeconds,
+                                positionMs = 0L,
+                                isPlaying = true,
+                            )
+                        }
                         _nowPlayingScreenData.value =
                             NowPlayingScreenData(
                                 nowPlayingTitle = track.title,
@@ -1100,6 +1111,20 @@ class SharedViewModel(
                 UIEvent.ToggleLike -> {
                     Logger.w(tag, "ToggleLike")
                     mediaPlayerHandler.onPlayerEvent(PlayerEvent.ToggleLike)
+                    _nowPlayingState.value?.songEntity?.let { track ->
+                        val newLiked = !track.liked
+                        viewModelScope.launch {
+                            com.streamify.supabase.SupabaseLibrarySync.syncLike(
+                                trackId = track.videoId,
+                                title = track.title,
+                                artist = track.artistName?.joinToString(", ") ?: "",
+                                album = track.albumName,
+                                coverUrl = track.thumbnails,
+                                durationSec = track.durationSeconds,
+                                isLiked = newLiked,
+                            )
+                        }
+                    }
                 }
 
                 is UIEvent.UpdateVolume -> {

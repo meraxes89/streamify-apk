@@ -264,10 +264,21 @@ class NowPlayingBottomSheetViewModel(
                 }
 
                 is NowPlayingBottomSheetUIEvent.ToggleLike -> {
+                    val newLiked = !songUIState.liked
                     songRepository.updateLikeStatus(
                         songUIState.videoId,
-                        if (songUIState.liked) 0 else 1,
+                        if (newLiked) 1 else 0,
                     )
+                    viewModelScope.launch {
+                        com.streamify.supabase.SupabaseLibrarySync.syncLike(
+                            trackId = songUIState.videoId,
+                            title = songUIState.title,
+                            artist = songUIState.artists ?: "",
+                            coverUrl = songUIState.thumbnails,
+                            durationSec = songUIState.durationSeconds,
+                            isLiked = newLiked,
+                        )
+                    }
                 }
 
                 is NowPlayingBottomSheetUIEvent.Download -> {
