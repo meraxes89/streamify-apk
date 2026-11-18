@@ -31,7 +31,8 @@ object SupabaseFriendSync {
     /**
      * Reports user playback activity:
      * 1. Records telemetry in `user_play_events`
-     * 2. Updates `listening_sessions` so friends see live listening status
+     * 2. Updates `listening_sessions` so friends see live listening status and position
+     * 3. Updates `profiles.listening_seconds`, `total_plays`, and `top_track` via monotonic RPC
      */
     suspend fun reportPlayback(
         trackId: String,
@@ -92,6 +93,21 @@ object SupabaseFriendSync {
                 setBody(sessionPayload)
             }
 
+            // 3. Increment monotonic listener statistics in `profiles` (listening_seconds, total_plays)
+            val rpcPayload = buildJsonObject {
+                put("p_listening_seconds", (positionMs / 1000).toInt().coerceAtLeast(1))
+                put("p_total_plays", 1)
+                put("p_top_track", "$title - $artist")
+                put("p_user_id", targetUserId)
+            }.toString()
+
+            SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/upsert_user_telemetry") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(rpcPayload)
+            }
+
             Result.success(true)
         } catch (e: Exception) {
             Result.failure(e)
@@ -113,9 +129,9 @@ object SupabaseFriendSync {
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
             }
 
-            // 2. Fetch profiles
+            // 2. Fetch profiles with listener metrics
             val profilesResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
-                parameter("select", "id,display_name,email,avatar_url")
+                parameter("select", "id,display_name,email,avatar_url,listening_seconds,total_plays,top_track")
                 parameter("limit", "50")
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
@@ -136,6 +152,16 @@ object SupabaseFriendSync {
                 val profile = profileMap[session.host_user_id]
                 val track = session.current_track_json
                 if (track != null && track.title.isNotBlank()) {
+                    val listeningTime = if (profile != null && profile.listeningSeconds > 0) {
+                        val hrs = profile.listeningSeconds / 3600
+                        val mins = (profile.listeningSeconds % 3600) / 60
+                        if (hrs > 0) "${hrs}h ${mins}m listened" else "$mins mins listened"
+                    } else if (profile != null && profile.totalPlays > 0) {
+                        "${profile.totalPlays} plays"
+                    } else {
+                        ""
+                    }
+
                     activityList.add(
                         FriendActivityItem(
                             userId = session.host_user_id,
@@ -146,7 +172,10 @@ object SupabaseFriendSync {
                             coverUrl = track.coverArtPath,
                             isLive = session.is_playing,
                             jamCode = session.session_code,
-                            timeAgo = if (session.is_playing) "Listening now" else "Paused"
+                            timeAgo = if (session.is_playing) "Listening now" else "Paused",
+                            listeningTimeText = listeningTime,
+                            positionMs = session.position_ms,
+                            durationSec = track.durationSec
                         )
                     )
                 }
@@ -165,6 +194,16 @@ object SupabaseFriendSync {
                             Triple("House Of Balloons", "The Weeknd", "https://yt3.googleusercontent.com/VW7wbxNbC_2EyHz9s1FNWuWYVWuxMJ03FZhCQdPB3WTxcoCxKpi173jIVHujpzJdDtkDMKz712wFvpo8=w544-h544-l90-rj")
                         )
                         val sample = sampleTracks[i % sampleTracks.size]
+                        val listeningTime = if (prof.listeningSeconds > 0) {
+                            val hrs = prof.listeningSeconds / 3600
+                            val mins = (prof.listeningSeconds % 3600) / 60
+                            if (hrs > 0) "${hrs}h ${mins}m listened" else "$mins mins listened"
+                        } else if (prof.totalPlays > 0) {
+                            "${prof.totalPlays} plays"
+                        } else {
+                            "${(i + 1) * 35} mins listened"
+                        }
+
                         activityList.add(
                             FriendActivityItem(
                                 userId = prof.id,
@@ -175,7 +214,10 @@ object SupabaseFriendSync {
                                 coverUrl = sample.third,
                                 isLive = true,
                                 jamCode = if (i == 0) "JLOISG" else if (i == 1) "CRBTNR" else null,
-                                timeAgo = "Listening now"
+                                timeAgo = "Listening now",
+                                listeningTimeText = listeningTime,
+                                positionMs = (45_000L * (i + 1)).coerceAtMost(200_000L),
+                                durationSec = 220
                             )
                         )
                     }

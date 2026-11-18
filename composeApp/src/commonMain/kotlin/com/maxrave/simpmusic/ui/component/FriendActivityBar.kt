@@ -166,7 +166,7 @@ fun FriendActivityCard(
 
     Surface(
         modifier = modifier
-            .width(260.dp)
+            .width(270.dp)
             .clip(RoundedCornerShape(16.dp)),
         color = cardBg,
         shape = RoundedCornerShape(16.dp),
@@ -175,6 +175,7 @@ fun FriendActivityCard(
         Column(
             modifier = Modifier.padding(12.dp)
         ) {
+            // Header: Avatar, Display Name, Listening Status
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -186,14 +187,14 @@ fun FriendActivityCard(
                             contentDescription = activity.displayName,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .size(42.dp)
+                                .size(44.dp)
                                 .clip(CircleShape)
                                 .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape)
                         )
                     } else {
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
+                                .size(44.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                 .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape),
@@ -211,7 +212,7 @@ fun FriendActivityCard(
                     if (activity.isLive) {
                         Box(
                             modifier = Modifier
-                                .size(11.dp)
+                                .size(12.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFF1DB954))
                                 .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
@@ -229,9 +230,19 @@ fun FriendActivityCard(
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+
+                    // Listener status & how much they are listening
+                    val statusText = if (activity.listeningTimeText.isNotBlank()) {
+                        "${activity.timeAgo} • ${activity.listeningTimeText}"
+                    } else {
+                        activity.timeAgo
+                    }
+
                     Text(
-                        text = activity.timeAgo,
+                        text = statusText,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = if (activity.isLive) Color(0xFF1DB954) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -240,41 +251,86 @@ fun FriendActivityCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Track info strip
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
                     .padding(8.dp)
             ) {
-                if (activity.coverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = activity.coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (activity.coverUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = activity.coverUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = activity.trackTitle,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = activity.trackArtist,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = activity.trackTitle,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = activity.trackArtist,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                // Live listening position / progress indicator
+                if (activity.durationSec > 0 && activity.positionMs > 0) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val progressFraction = (activity.positionMs.toFloat() / (activity.durationSec * 1000f)).coerceIn(0.02f, 1f)
+                    val curSec = (activity.positionMs / 1000).toInt()
+                    val curText = "${curSec / 60}:${(curSec % 60).toString().padStart(2, '0')}"
+                    val totalText = "${activity.durationSec / 60}:${(activity.durationSec % 60).toString().padStart(2, '0')}"
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progressFraction)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(Color(0xFF1DB954))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = curText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = totalText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 

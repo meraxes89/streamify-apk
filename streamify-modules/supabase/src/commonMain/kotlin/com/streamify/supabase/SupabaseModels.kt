@@ -127,7 +127,10 @@ data class FriendActivityItem(
     val coverUrl: String,
     val isLive: Boolean,
     val jamCode: String? = null,
-    val timeAgo: String = "Listening now"
+    val timeAgo: String = "Listening now",
+    val listeningTimeText: String = "",
+    val positionMs: Long = 0L,
+    val durationSec: Int = 0
 )
 
 @Serializable
