@@ -1,7 +1,6 @@
 import path from 'path';
 import { defineConfig, normalizePath } from 'vite';
 import { ViteEjsPlugin } from 'vite-plugin-ejs';
-import { VitePWA } from 'vite-plugin-pwa';
 
 import { kuromojiDictionaryPlugin } from './vite.kuromoji-plugin';
 import { createReactPlugin } from './vite.react-plugin';
@@ -73,87 +72,6 @@ export default defineConfig({
         ViteEjsPlugin({
             root: normalizePath(path.resolve(__dirname, './src/renderer')),
             web: true,
-        }),
-        VitePWA({
-            devOptions: {
-                // The PWA will not be shown during development
-                enabled: false,
-            },
-            filename: 'assets/sw.js',
-            injectRegister: 'inline',
-            manifest: {
-                background_color: '#FFDCB5',
-                display: 'standalone',
-                icons: [
-                    {
-                        sizes: '32x32',
-                        src: '32x32.png',
-                        type: 'image/png',
-                    },
-                    {
-                        sizes: '64x64',
-                        src: '64x64.png',
-                        type: 'image/png',
-                    },
-                    {
-                        sizes: '128x128',
-                        src: '128x128.png',
-                        type: 'image/png',
-                    },
-                    {
-                        sizes: '256x256',
-                        src: '256x256.png',
-                        type: 'image/png',
-                    },
-                    {
-                        purpose: 'any',
-                        sizes: '512x512',
-                        src: '512x512.png',
-                        type: 'image/png',
-                    },
-                    {
-                        sizes: '1024x1024',
-                        src: '1024x1024.png',
-                        type: 'image/png',
-                    },
-                ],
-                name: 'Feishin',
-                orientation: 'portrait',
-                screenshots: [
-                    {
-                        form_factor: 'wide',
-                        label: 'Full screen player showing music player and lyrics',
-                        sizes: '720x450',
-                        src: 'preview_full_screen_player.webp',
-                        type: 'image/webp',
-                    },
-                ],
-                // W3-A: the PWA share target — shared YouTube/YTM links land on
-                // the app root as ?text=<url>, the media-session deep-link
-                // entry routes them into the YTM importer (see
-                // features/streamify/media-session/deep-link.ts).
-                share_target: {
-                    action: '/',
-                    method: 'GET',
-                    params: {
-                        text: 'text',
-                    },
-                },
-                short_name: 'Feishin',
-                start_url: '/',
-                theme_color: '#1E003D',
-            },
-            manifestFilename: 'assets/manifest.webmanifest',
-            outDir: path.resolve(__dirname, './out/web/'),
-            registerType: 'autoUpdate',
-            scope: '/assets/',
-            workbox: {
-                cleanupOutdatedCaches: true,
-                clientsClaim: true,
-                globIgnores: ['**/kuromoji/**'],
-                maximumFileSizeToCacheInBytes: 1000000 * 10, // 10 MB
-                skipWaiting: true,
-            },
         }),
     ],
     resolve: {

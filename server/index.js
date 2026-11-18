@@ -51,7 +51,15 @@ app.use((req, res, next) => {
 });
 
 if (fs.existsSync(publicDir)) {
-    app.use(express.static(publicDir));
+    app.use(express.static(publicDir, {
+        setHeaders: (res, filePath) => {
+            if (filePath.endsWith('index.html')) {
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            }
+        },
+    }));
     // Cleanly redirect any legacy GitHub Pages subpaths to root
     app.use('/streamify-apk', (req, res) => {
         const target = req.url === '/' || req.url === '/preview' || req.url === '/preview/' ? '/' : req.url.replace(/^\/preview/, '');
@@ -330,9 +338,16 @@ const echoCapabilities = (req, res) => {
 
 app.get('/api/capabilities', echoCapabilities);
 
+const sendNoCacheIndex = (res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    return res.sendFile(path.join(publicDir, 'index.html'));
+};
+
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(publicDir, 'index.html')) && req.accepts(['html', 'json']) !== 'json') {
-        return res.sendFile(path.join(publicDir, 'index.html'));
+        return sendNoCacheIndex(res);
     }
     echoCapabilities(req, res);
 });
@@ -863,7 +878,7 @@ if (fs.existsSync(publicDir)) {
         if (req.path.startsWith('/api/') || req.path.startsWith('/ytm/') || req.path.startsWith('/r')) {
             return next();
         }
-        res.sendFile(path.join(publicDir, 'index.html'));
+        sendNoCacheIndex(res);
     });
 }
 
