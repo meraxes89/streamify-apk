@@ -46,6 +46,18 @@ const GAPI_ENDPOINT =
 
 const CLIENTS = [
     {
+        name: 'ANDROID_VR',
+        number: '28',
+        version: '1.65.10',
+        ua: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+        extra: {
+            deviceMake: 'Oculus',
+            deviceModel: 'Quest 2',
+            osName: 'Android',
+            osVersion: '12L',
+        },
+    },
+    {
         name: 'VISIONOS',
         number: '101',
         version: '1.02',
@@ -69,19 +81,48 @@ const CLIENTS = [
             osVersion: '18.3.2.22D82',
         },
     },
-    {
-        name: 'ANDROID_VR',
-        number: '28',
-        version: '1.61.48',
-        ua: 'Mozilla/5.0 (Linux; Android 10; Quest 2 Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/24.0.0.9.36.417255152 SamsungBrowser/4.0 Chrome/106.0.5249.126 Mobile VR Safari/537.36',
-        extra: {
-            deviceMake: 'Oculus',
-            deviceModel: 'Quest 2',
-            osName: 'Android',
-            osVersion: '10',
-        },
-    },
 ];
+
+let cachedVisitor = null;
+let visitorExpiresAt = 0;
+
+async function getVisitorData() {
+    if (cachedVisitor && Date.now() < visitorExpiresAt) {
+        return cachedVisitor;
+    }
+    try {
+        const res = await fetch(
+            'https://youtubei.googleapis.com/youtubei/v1/visitor_id?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
+            {
+                body: JSON.stringify({
+                    context: {
+                        client: {
+                            clientName: 'WEB',
+                            clientVersion: '2.20240101.01.00',
+                            gl: 'US',
+                            hl: 'en',
+                        },
+                    },
+                }),
+                headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                signal: AbortSignal.timeout(5000),
+            },
+        );
+        if (res.ok) {
+            const data = await res.json();
+            const vd = data.responseContext?.visitorData;
+            if (vd) {
+                cachedVisitor = vd;
+                visitorExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
+                return vd;
+            }
+        }
+    } catch {
+        // Fallback to cached
+    }
+    return cachedVisitor;
+}
 
 /**
  * Resolve video stream using mobile/VR client profiles that don't trigger bot gates
@@ -98,33 +139,44 @@ async function resolveStream(videoId) {
 
     const resolvePromise = (async () => {
         let lastError = null;
+        const visitorData = await getVisitorData();
 
         for (const spec of CLIENTS) {
             try {
-                const body = {
-                    context: {
-                        client: {
-                            clientName: spec.name,
-                            clientVersion: spec.version,
-                            hl: 'en',
-                            gl: 'US',
-                            userAgent: spec.ua,
-                            ...spec.extra,
-                        },
-                    },
-                    videoId,
-                    contentCheckOk: true,
-                    racyCheckOk: true,
+                const clientContext = {
+                    clientName: spec.name,
+                    clientVersion: spec.version,
+                    gl: 'US',
+                    hl: 'en',
+                    userAgent: spec.ua,
+                    ...spec.extra,
                 };
+                if (visitorData) {
+                    clientContext.visitorData = visitorData;
+                }
+
+                const body = {
+                    contentCheckOk: true,
+                    context: {
+                        client: clientContext,
+                    },
+                    racyCheckOk: true,
+                    videoId,
+                };
+
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'User-Agent': spec.ua,
+                    'x-youtube-client-name': spec.number,
+                    'x-youtube-client-version': spec.version,
+                };
+                if (visitorData) {
+                    headers['x-goog-visitor-id'] = visitorData;
+                }
 
                 const res = await fetch(GAPI_ENDPOINT, {
                     body: JSON.stringify(body),
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': spec.ua,
-                        'x-youtube-client-name': spec.number,
-                        'x-youtube-client-version': spec.version,
-                    },
+                    headers,
                     method: 'POST',
                     signal: AbortSignal.timeout(8000),
                 });
@@ -501,6 +553,18 @@ app.get('/api/search', async (req, res) => {
 // 6. Universal CORS Passthrough Proxy (/r?u=<target>)
 // ---------------------------------------------------------------------------
 
+const CLIENT_NAME_UA = new Map([
+    ['3', 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip'],
+    ['5', 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)'],
+    ['28', 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip'],
+    ['101', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'],
+]);
+
+const UA_OVERRIDES = new Map([
+    ['safari-mac', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'],
+    ['safari-ios', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'],
+]);
+
 app.all('/r', async (req, res) => {
     const targetUrl = req.query.u;
     if (!targetUrl || typeof targetUrl !== 'string') {
@@ -513,14 +577,26 @@ app.all('/r', async (req, res) => {
             return res.status(400).send('Invalid protocol');
         }
 
+        const clientName = req.headers['x-youtube-client-name'];
+        const namedUa = req.headers['x-relay-ua'];
+        let matchedUa = null;
+        if (clientName && CLIENT_NAME_UA.has(String(clientName))) {
+            matchedUa = CLIENT_NAME_UA.get(String(clientName));
+        } else if (namedUa && UA_OVERRIDES.has(String(namedUa).toLowerCase())) {
+            matchedUa = UA_OVERRIDES.get(String(namedUa).toLowerCase());
+        }
+
         const upstreamHeaders = {};
         for (const [key, value] of Object.entries(req.headers)) {
             const lower = key.toLowerCase();
-            if (['connection', 'content-length', 'cookie', 'host', 'origin', 'referer'].includes(lower)) continue;
+            if (['connection', 'content-length', 'cookie', 'host', 'origin', 'referer', 'x-relay-ua'].includes(lower)) continue;
+            if (matchedUa && lower.startsWith('sec-ch-ua')) continue;
             upstreamHeaders[key] = value;
         }
 
-        if (!upstreamHeaders['user-agent']) {
+        if (matchedUa) {
+            upstreamHeaders['user-agent'] = matchedUa;
+        } else if (!upstreamHeaders['user-agent']) {
             upstreamHeaders['user-agent'] =
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
         }

@@ -337,7 +337,9 @@ export function ytmToSong(
         genres: [],
         id: ytmSongIdOf(ref.videoId),
         imageId: null,
-        imageUrl: ref.thumbnailUrl ?? null,
+        imageUrl:
+            ref.thumbnailUrl ??
+            (ref.videoId ? `https://i.ytimg.com/vi/${ref.videoId}/hqdefault.jpg` : null),
         lastPlayedAt: null,
         libraryId: null,
         libraryName: null,

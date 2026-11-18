@@ -445,6 +445,7 @@ function adaptProvider(engine: TypedMetadataProvider): MetadataProvider {
                         album: parts.extra,
                         artist: parts.artist ?? '',
                         durationSec: r.durationMs === null ? null : Math.round(r.durationMs / 1000),
+                        thumbnailUrl: `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
                         title: r.title,
                         videoId: r.videoId,
                     });
