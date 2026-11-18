@@ -6,6 +6,13 @@ pluginManagement {
         maven { setUrl("https://jitpack.io") }
         maven("https://jogamp.org/deployment/maven")
     }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "io.sentry.android.gradle") {
+                useModule("io.sentry:sentry-android-gradle-plugin:${requested.version}")
+            }
+        }
+    }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
