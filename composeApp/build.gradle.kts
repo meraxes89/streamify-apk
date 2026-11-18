@@ -34,6 +34,7 @@ plugins {
 // (it treats a KMP *library* module as not owning the public resource class).
 // Force it to `always` so `Res` is generated for this app module.
 compose.resources {
+    packageOfResClass = "simpmusic.composeapp.generated.resources"
     generateResClass = always
 }
 
