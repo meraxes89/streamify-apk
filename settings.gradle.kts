@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Streamify"
 include(":app")
+project(":app").projectDir = file("legacy/app")
 
 // Phase 4b (MP-HAL10 / Beta): Desktop JVM target — Compose Desktop scaffold
 // over the JNA-mode UniFFI engine lane. The module is desktop-only: it never

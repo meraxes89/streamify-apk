@@ -11,8 +11,8 @@
 
 | Phase | Description | Status | Target |
 |---|---|---|---|
-| **Phase 0** | **Branch & Preservation**: Branch setup, `/app` archival to `legacy/app/`, documentation initialization. | 🟡 In Progress | Day 1 |
-| **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | ⚪ Pending | Day 2 |
+| **Phase 0** | **Branch & Preservation**: Branch setup, `/app` archival to `legacy/app/`, documentation initialization. | 🟢 Completed | Day 1 |
+| **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | 🟡 In Progress | Day 2 |
 | **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | ⚪ Pending | Day 3 |
 | **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | ⚪ Pending | Day 4 |
 | **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | ⚪ Pending | Day 5 |
@@ -27,11 +27,12 @@
 - [x] Create integration branch `integration/universal-multiplatform`.
 - [x] Create dedicated documentation directory `docs/universal_migration/`.
 - [x] Write `MASTER_PLAN.md` and `MIGRATION_EXECUTION_LEDGER.md`.
-- [ ] Move `/app` to `legacy/app` via git move to preserve history:
+- [x] Move `/app` to `legacy/app` via git move to preserve history:
   ```bash
   git mv app legacy/app
   ```
-- [ ] Ensure existing native C++ (`native/`) and Rust (`rust/`) directories remain intact at the repository root.
+- [x] Update `settings.gradle.kts` to point `:app` to `legacy/app`.
+- [x] Ensure existing native C++ (`native/`) and Rust (`rust/`) directories remain intact at the repository root.
 
 **Acceptance Criteria**:
 * Clean `git status` on branch `integration/universal-multiplatform`.
