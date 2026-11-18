@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.material3.MaterialTheme
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -667,19 +668,26 @@ fun Palette?.getColorFromPalette(): Color {
  * lighter the source, the harder it is pulled toward black, so white text stays readable on any
  * artwork.
  */
-fun Palette?.toImmersiveBackground(): Color {
-    val p = this ?: return Color.Black
+fun Palette?.toImmersiveBackground(isDark: Boolean = true): Color {
+    val p = this ?: return if (isDark) Color.Black else Color(0xFFFAFAFA)
     val rgb =
         p.getDominantColor(0).takeIf { it != 0 }
             ?: p.getMutedColor(0).takeIf { it != 0 }
             ?: p.getVibrantColor(0).takeIf { it != 0 }
-            ?: return Color.Black
+            ?: return if (isDark) Color.Black else Color(0xFFFAFAFA)
     val base = Color(rgb)
     // Perceived luminance (0 dark .. 1 light) of the source swatch.
     val luminance = 0.299f * base.red + 0.587f * base.green + 0.114f * base.blue
-    // Darken more for lighter artwork so the page stays dark enough for white text.
-    val darkenFactor = 0.35f + 0.45f * luminance
-    return androidx.compose.ui.graphics.lerp(base, Color.Black, darkenFactor)
+    return if (isDark) {
+        // Darken more for lighter artwork so the page stays dark enough for white text.
+        val darkenFactor = 0.35f + 0.45f * luminance
+        androidx.compose.ui.graphics.lerp(base, Color.Black, darkenFactor)
+    } else {
+        // In light mode, create an Apple Music-style luminous subtle pastel tinted background
+        // Lighten towards neutral off-white so dark text and icons contrast cleanly
+        val lightenFactor = (0.86f - 0.08f * luminance).coerceIn(0.80f, 0.94f)
+        androidx.compose.ui.graphics.lerp(base, Color(0xFFFAFAFA), lightenFactor)
+    }
 }
 
 /**
@@ -694,11 +702,12 @@ fun Palette?.toImmersiveBackground(): Color {
 @Composable
 fun rememberPaletteColor(
     palette: Palette?,
-    fallback: Color = Color.Black,
-    pick: (Palette) -> Color = { it.toImmersiveBackground() },
+    isDark: Boolean = LocalIsDarkTheme.current,
+    fallback: Color = if (isDark) Color.Black else Color(0xFFFAFAFA),
+    pick: (Palette) -> Color = { it.toImmersiveBackground(isDark) },
 ): Color {
-    var held by rememberSaveable { mutableStateOf<Int?>(null) }
-    LaunchedEffect(palette) { palette?.let { held = pick(it).toArgb() } }
+    var held by rememberSaveable(isDark) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(palette, isDark) { palette?.let { held = pick(it).toArgb() } }
     return animateColorAsState(held?.let { Color(it) } ?: fallback, tween(500), label = "paletteColor").value
 }
 

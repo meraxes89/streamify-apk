@@ -41,6 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -217,11 +218,12 @@ fun AlbumScreen(
     // narrow desktop window) gets the edge-to-edge artwork header, a landscape one gets the
     // side-by-side header. Everything else on the page — the palette background, the row
     // dividers, the blurred top bar — is shared by both.
+    val isDark = LocalIsDarkTheme.current
     val screenInfo = getScreenSizeInfo()
     val isPortrait = screenInfo.wDP < screenInfo.hDP
-    val dominantColor = uiState.colors.firstOrNull() ?: Color.Black
+    val dominantColor = uiState.colors.firstOrNull() ?: if (isDark) Color.Black else Color(0xFFFAFAFA)
     // Apple Music-style page background from the artwork's dominant tone, held and faded (see UIExt.rememberPaletteColor).
-    val mutedPaletteBg = rememberPaletteColor(paletteState.palette)
+    val mutedPaletteBg = rememberPaletteColor(paletteState.palette, isDark = isDark)
 
     Crossfade(uiState.loadState) {
         when (it) {
@@ -254,7 +256,7 @@ fun AlbumScreen(
                                         // ~half screen height) with title overlay + liquid glass buttons.
                                         // Glass buttons MUST be siblings of the backdrop source (not children)
                                         // to avoid render feedback loop / RuntimeShader crash.
-                                        val artworkBackdrop = rememberBackdrop(Color.Black)
+                                        val artworkBackdrop = rememberBackdrop(if (isDark) Color.Black else Color.White)
                                         Box(
                                             modifier =
                                                 Modifier
@@ -310,7 +312,7 @@ fun AlbumScreen(
                                                     Text(
                                                         text = uiState.title,
                                                         style = typo().titleLarge,
-                                                        color = Color.White,
+                                                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                         maxLines = 2,
                                                         textAlign = TextAlign.Center,
                                                     )
@@ -318,7 +320,7 @@ fun AlbumScreen(
                                                     Text(
                                                         text = uiState.artist.name,
                                                         style = typo().titleSmall,
-                                                        color = Color.White,
+                                                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         textAlign = TextAlign.Center,
                                                         modifier =
                                                             Modifier.clickable {
@@ -340,7 +342,7 @@ fun AlbumScreen(
                                                                 stringResource(Res.string.album),
                                                             ),
                                                         style = typo().bodyMedium,
-                                                        color = Color(0xC4FFFFFF),
+                                                        color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         textAlign = TextAlign.Center,
                                                     )
                                                 }
@@ -387,7 +389,7 @@ fun AlbumScreen(
                                                     Icon(
                                                         imageVector = SimpIcons.MoreVert,
                                                         contentDescription = "More",
-                                                        tint = Color.White,
+                                                        tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                     )
                                                 }
                                             }
@@ -401,7 +403,7 @@ fun AlbumScreen(
                                         // so the recorded layer holds something to refract — and the glass buttons
                                         // are SIBLINGS placed with align(), never children of the source (that
                                         // nesting is the render-feedback loop that kills the RuntimeShader).
-                                        val headerBackdrop = rememberBackdrop(Color.Black)
+                                        val headerBackdrop = rememberBackdrop(if (isDark) Color.Black else Color.White)
                                         Box(modifier = Modifier.fillMaxWidth()) {
                                             Column(
                                                 modifier =
@@ -448,7 +450,7 @@ fun AlbumScreen(
                                                         Text(
                                                             text = uiState.title,
                                                             style = typo().headlineSmall,
-                                                            color = Color.White,
+                                                            color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                             maxLines = 2,
                                                         )
                                                         Spacer(modifier = Modifier.height(4.dp))
@@ -456,7 +458,7 @@ fun AlbumScreen(
                                                             text = uiState.artist.name,
                                                             style = typo().titleMedium,
                                                             // The app accent, standing in for the brand red
-                                                            // Apple uses on this line.
+                                                             // Apple uses on this line.
                                                             color = seed,
                                                             modifier =
                                                                 Modifier.clickable {
@@ -478,7 +480,7 @@ fun AlbumScreen(
                                                                     stringResource(Res.string.album),
                                                                 ),
                                                             style = typo().labelMedium,
-                                                            color = Color(0xC4FFFFFF),
+                                                            color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         )
                                                         Spacer(modifier = Modifier.height(20.dp))
                                                         // Apple Music-style action row:
@@ -499,14 +501,14 @@ fun AlbumScreen(
                                                                     Modifier
                                                                         .size(48.dp)
                                                                         .clip(CircleShape)
-                                                                        .background(Color.White.copy(alpha = 0.12f))
+                                                                        .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
                                                                         .clickable { viewModel.shuffle() },
                                                                 contentAlignment = Alignment.Center,
                                                             ) {
                                                                 Icon(
                                                                     imageVector = SimpIcons.Shuffle,
                                                                     contentDescription = "Shuffle",
-                                                                    tint = Color.White,
+                                                                    tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                                     modifier = Modifier.size(22.dp),
                                                                 )
                                                             }
@@ -516,7 +518,7 @@ fun AlbumScreen(
                                                                         .height(48.dp)
                                                                         .widthIn(min = 110.dp)
                                                                         .clip(CircleShape)
-                                                                        .background(Color.White)
+                                                                        .background(if (isDark) Color.White else MaterialTheme.colorScheme.primary)
                                                                         .clickable {
                                                                             if (isThisPlaying) {
                                                                                 sharedViewModel.onUIEvent(UIEvent.PlayPause)
@@ -533,13 +535,13 @@ fun AlbumScreen(
                                                                         imageVector =
                                                                             if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
                                                                         contentDescription = null,
-                                                                        tint = Color.Black,
+                                                                        tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                                         modifier = Modifier.size(22.dp),
                                                                     )
                                                                     Spacer(modifier = Modifier.width(4.dp))
                                                                     Text(
                                                                         text = if (isThisPlaying) "Pause" else "Play",
-                                                                        color = Color.Black,
+                                                                        color = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                                         style = typo().labelLarge,
                                                                     )
                                                                 }
@@ -549,7 +551,7 @@ fun AlbumScreen(
                                                                     Modifier
                                                                         .size(48.dp)
                                                                         .clip(CircleShape)
-                                                                        .background(Color.White.copy(alpha = 0.12f)),
+                                                                        .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest),
                                                                 contentAlignment = Alignment.Center,
                                                             ) {
                                                                 Crossfade(targetState = uiState.downloadState) { state ->
@@ -607,7 +609,7 @@ fun AlbumScreen(
                                                                             ) {
                                                                                 Icon(
                                                                                     imageVector = SimpIcons.DownloadForOffline,
-                                                                                    tint = Color.White,
+                                                                                    tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                                                     contentDescription = "Download",
                                                                                     modifier = Modifier.size(22.dp),
                                                                                 )
@@ -669,7 +671,7 @@ fun AlbumScreen(
                                                     Icon(
                                                         imageVector = SimpIcons.MoreVert,
                                                         contentDescription = "More",
-                                                        tint = Color.White,
+                                                        tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                     )
                                                 }
                                             }
@@ -703,14 +705,14 @@ fun AlbumScreen(
                                                             Modifier
                                                                 .size(48.dp)
                                                                 .clip(CircleShape)
-                                                                .background(Color.White.copy(alpha = 0.12f))
+                                                                .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
                                                                 .clickable { viewModel.shuffle() },
                                                         contentAlignment = Alignment.Center,
                                                     ) {
                                                         Icon(
                                                             imageVector = SimpIcons.Shuffle,
                                                             contentDescription = "Shuffle",
-                                                            tint = Color.White,
+                                                            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                             modifier = Modifier.size(22.dp),
                                                         )
                                                     }
@@ -720,7 +722,7 @@ fun AlbumScreen(
                                                                 .height(48.dp)
                                                                 .widthIn(min = 110.dp)
                                                                 .clip(CircleShape)
-                                                                .background(Color.White)
+                                                                .background(if (isDark) Color.White else MaterialTheme.colorScheme.primary)
                                                                 .clickable {
                                                                     if (isThisPlaying) {
                                                                         sharedViewModel.onUIEvent(UIEvent.PlayPause)
@@ -737,13 +739,13 @@ fun AlbumScreen(
                                                                 imageVector =
                                                                     if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
                                                                 contentDescription = null,
-                                                                tint = Color.Black,
+                                                                tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                                 modifier = Modifier.size(22.dp),
                                                             )
                                                             Spacer(modifier = Modifier.width(4.dp))
                                                             Text(
                                                                 text = if (isThisPlaying) "Pause" else "Play",
-                                                                color = Color.Black,
+                                                                color = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                                 style = typo().labelLarge,
                                                             )
                                                         }
@@ -753,7 +755,7 @@ fun AlbumScreen(
                                                             Modifier
                                                                 .size(48.dp)
                                                                 .clip(CircleShape)
-                                                                .background(Color.White.copy(alpha = 0.12f)),
+                                                                .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest),
                                                         contentAlignment = Alignment.Center,
                                                     ) {
                                                         Crossfade(targetState = uiState.downloadState) { state ->
@@ -811,7 +813,7 @@ fun AlbumScreen(
                                                                     ) {
                                                                         Icon(
                                                                             imageVector = SimpIcons.DownloadForOffline,
-                                                                            tint = Color.White,
+                                                                            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                                             contentDescription = "Download",
                                                                             modifier = Modifier.size(22.dp),
                                                                         )
@@ -844,7 +846,7 @@ fun AlbumScreen(
                                                         (uiState.trackCount).toString(),
                                                         uiState.length,
                                                     ),
-                                                color = Color.White,
+                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 style = typo().bodyMedium,
                                                 modifier = Modifier.padding(vertical = 8.dp),
                                             )
@@ -862,7 +864,7 @@ fun AlbumScreen(
                         if (item != null) {
                             Column(modifier = Modifier.animateItem()) {
                                 SongFullWidthItems(
-                                    forceDark = true,
+                                    forceDark = isDark,
                                     isPlaying = item.videoId == playingVideoId,
                                     index = index,
                                     track = item,
@@ -888,7 +890,7 @@ fun AlbumScreen(
                                     HorizontalDivider(
                                         modifier = Modifier.padding(start = 72.dp, end = 16.dp),
                                         thickness = 0.5.dp,
-                                        color = Color.White.copy(alpha = 0.12f),
+                                        color = if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant,
                                     )
                                 }
                             }
@@ -915,7 +917,7 @@ fun AlbumScreen(
                                 ) {
                                     items(uiState.otherVersion) { album ->
                                         HomeItemContentPlaylist(
-                                            forceDark = true,
+                                            forceDark = isDark,
                                             onClick = {
                                                 navController.navigate(
                                                     AlbumDestination(

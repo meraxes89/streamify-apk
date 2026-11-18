@@ -31,21 +31,17 @@ fun NavGraphBuilder.listScreenGraph(
 ) {
     composable<AlbumDestination> { entry ->
         val data = entry.toRoute<AlbumDestination>()
-        ForceDarkContent {
-            AlbumScreen(
-                browseId = data.browseId,
-                navController = navController,
-            )
-        }
+        AlbumScreen(
+            browseId = data.browseId,
+            navController = navController,
+        )
     }
     composable<ArtistDestination> { entry ->
         val data = entry.toRoute<ArtistDestination>()
-        ForceDarkContent {
-            ArtistScreen(
-                channelId = data.channelId,
-                navController = navController,
-            )
-        }
+        ArtistScreen(
+            channelId = data.channelId,
+            navController = navController,
+        )
     }
     composable<LocalPlaylistDestination> { entry ->
         val data = entry.toRoute<LocalPlaylistDestination>()

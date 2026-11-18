@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -253,15 +254,16 @@ fun ArtistScreen(
         }
     }
 
+    val isDark = LocalIsDarkTheme.current
     // Apple Music-style page background from the artwork's dominant tone, held and faded (see UIExt.rememberPaletteColor).
-    val mutedPaletteBg = rememberPaletteColor(paletteState.palette)
+    val mutedPaletteBg = rememberPaletteColor(paletteState.palette, isDark = isDark)
     // Tint for the description card, matching the non-portrait CollapsingToolbar color.
-    val sectionTint = rememberPaletteColor(paletteState.palette) { it.getColorFromPalette() }
+    val sectionTint = rememberPaletteColor(paletteState.palette, isDark = isDark) { it.getColorFromPalette() }
 
     // Accent color for the action buttons, sourced from the artist name-logo image's dominant
-    // color (hidden catalog). Falls back to white until the logo loads (or if none exists), and
+    // color (hidden catalog). Falls back to white/primary until the logo loads (or if none exists), and
     // fades to the logo's colour instead of snapping when it does. A logo colour without WCAG's 3:1
-    // contrast against the page also falls back to white: Ariana Grande's is near-black on a
+    // contrast against the page also falls back: Ariana Grande's is near-black on a
     // near-black page, which hid all three buttons.
     val artistAccent by animateColorAsState(
         targetValue =
@@ -272,7 +274,7 @@ fun ArtistScreen(
                     val accent = it.luminance()
                     val page = mutedPaletteBg.luminance()
                     (maxOf(accent, page) + 0.05f) / (minOf(accent, page) + 0.05f) >= 3f
-                } ?: Color.White,
+                } ?: if (isDark) Color.White else MaterialTheme.colorScheme.primary,
         animationSpec = tween(500),
         label = "artistAccent",
     )
@@ -319,7 +321,7 @@ fun ArtistScreen(
                                 // Edge-to-edge artwork (the artist's video plays on top of it when available).
                                 // Glass back button MUST be a sibling of the backdrop source
                                 // (not a child) to avoid render feedback loop / RuntimeShader crash.
-                                val artworkBackdrop = rememberBackdrop(Color.Black)
+                                val artworkBackdrop = rememberBackdrop(if (isDark) Color.Black else Color.White)
                                 // Portrait fills a SQUARE frame, so the URL is clamped to a square
                                 // size there (logic from commit 5e596c5b). Landscape keeps YouTube's
                                 // own wide banner (e.g. w2880-h1200) instead: squaring the source
@@ -505,7 +507,7 @@ fun ArtistScreen(
                                                     Text(
                                                         text = state.data.title ?: stringResource(Res.string.unknown),
                                                         style = typo().titleLarge,
-                                                        color = Color.White,
+                                                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                         maxLines = 2,
                                                         textAlign = TextAlign.Center,
                                                         modifier = Modifier.graphicsLayer { alpha = 1f - logoAlpha },
@@ -560,7 +562,7 @@ fun ArtistScreen(
                                                 Text(
                                                     text = meta,
                                                     style = typo().bodyMedium,
-                                                    color = Color(0xC4FFFFFF),
+                                                    color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                                     textAlign = TextAlign.Center,
                                                 )
                                             }
@@ -601,14 +603,14 @@ fun ArtistScreen(
                                                 Icon(
                                                     imageVector = if (showHeaderVideo) SimpIcons.MovieOff else SimpIcons.Movie,
                                                     contentDescription = null,
-                                                    tint = Color.White,
+                                                    tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 )
                                             }
                                         }
                                         IconButton(
                                             onClick = { shareUrl(shareTitle, "https://music.youtube.com/channel/$channelId") },
                                         ) {
-                                            Icon(SimpIcons.IosShare, contentDescription = shareTitle, tint = Color.White)
+                                            Icon(SimpIcons.IosShare, contentDescription = shareTitle, tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface)
                                         }
                                     }
                                 }
@@ -668,10 +670,11 @@ fun ArtistScreen(
                                                 },
                                         contentAlignment = Alignment.Center,
                                     ) {
+                                        val onAccent = if (artistAccent.luminance() > 0.5f) Color.Black else Color.White
                                         Icon(
                                             imageVector = SimpIcons.Shuffle,
                                             contentDescription = "Shuffle",
-                                            tint = mutedPaletteBg,
+                                            tint = if (isDark) mutedPaletteBg else onAccent,
                                             modifier = Modifier.size(28.dp),
                                         )
                                     }
@@ -693,10 +696,11 @@ fun ArtistScreen(
                                                 },
                                         contentAlignment = Alignment.Center,
                                     ) {
+                                        val onAccent = if (artistAccent.luminance() > 0.5f) Color.Black else Color.White
                                         Icon(
                                             imageVector = if (isFollowed) SimpIcons.Check else SimpIcons.PersonAdd,
                                             contentDescription = if (isFollowed) "Followed" else "Follow",
-                                            tint = if (isFollowed) mutedPaletteBg else artistAccent,
+                                            tint = if (isFollowed) (if (isDark) mutedPaletteBg else onAccent) else artistAccent,
                                             modifier = Modifier.size(22.dp),
                                         )
                                     }
@@ -753,7 +757,7 @@ fun ArtistScreen(
                                         Icon(
                                             imageVector = SimpIcons.ArrowBackIosNew,
                                             contentDescription = "Back",
-                                            tint = Color.White,
+                                            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                             modifier = Modifier.size(20.dp),
                                         )
                                     }
@@ -864,6 +868,7 @@ private fun ArtistSections(
     sharedViewModel: SharedViewModel,
     onTrackMore: (Track) -> Unit,
 ) {
+    val isDark = LocalIsDarkTheme.current
     val likedSongCount by viewModel.likedSongCount.collectAsStateWithLifecycle()
     Column {
         // Liked songs by this artist (issue #2524), shaped like Spotify's section: a heading, then
@@ -894,7 +899,7 @@ private fun ArtistSections(
                     Text(
                         text = stringResource(Res.string.popular),
                         style = typo().labelMedium,
-                        color = Color.White,
+                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
@@ -910,7 +915,7 @@ private fun ArtistSections(
                             ButtonDefaults
                                 .textButtonColors()
                                 .copy(
-                                    contentColor = Color.White,
+                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
                                 ),
                     ) {
                         Text(stringResource(Res.string.more), style = typo().bodySmall)
@@ -918,7 +923,8 @@ private fun ArtistSections(
                 }
                 state.data.popularSongs.forEach { song ->
                     SongFullWidthItems(
-                        forceDark = true,                        track = song,
+                        forceDark = isDark,
+                        track = song,
                         isPlaying = song.videoId == playingTrack,
                         modifier = Modifier.fillMaxWidth(),
                         onMoreClickListener = {
@@ -970,7 +976,7 @@ private fun ArtistSections(
                     Text(
                         text = stringResource(Res.string.singles),
                         style = typo().labelMedium,
-                        color = Color.White,
+                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
@@ -991,7 +997,7 @@ private fun ArtistSections(
                             ButtonDefaults
                                 .textButtonColors()
                                 .copy(
-                                    contentColor = Color.White,
+                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
                                 ),
                     ) {
                         Text(stringResource(Res.string.more), style = typo().bodySmall)
@@ -1008,7 +1014,8 @@ private fun ArtistSections(
                     }
                     items(state.data.singles?.results ?: emptyList()) { single ->
                         HomeItemContentPlaylist(
-                            forceDark = true,                            onClick = {
+                            forceDark = isDark,
+                            onClick = {
                                 navController.navigate(
                                     AlbumDestination(
                                         single.browseId,
@@ -1041,7 +1048,7 @@ private fun ArtistSections(
                     Text(
                         text = stringResource(Res.string.albums),
                         style = typo().labelMedium,
-                        color = Color.White,
+                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
@@ -1062,7 +1069,7 @@ private fun ArtistSections(
                             ButtonDefaults
                                 .textButtonColors()
                                 .copy(
-                                    contentColor = Color.White,
+                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
                                 ),
                     ) {
                         Text(stringResource(Res.string.more), style = typo().bodySmall)
@@ -1079,7 +1086,7 @@ private fun ArtistSections(
                     }
                     items(state.data.albums?.results ?: emptyList()) { album ->
                         HomeItemContentPlaylist(
-                            forceDark = true,                            onClick = {
+                            forceDark = isDark,                            onClick = {
                                 navController.navigate(
                                     AlbumDestination(
                                         browseId = album.browseId,
@@ -1112,7 +1119,7 @@ private fun ArtistSections(
                     Text(
                         text = stringResource(Res.string.videos),
                         style = typo().labelMedium,
-                        color = Color.White,
+                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
@@ -1132,7 +1139,7 @@ private fun ArtistSections(
                             ButtonDefaults
                                 .textButtonColors()
                                 .copy(
-                                    contentColor = Color.White,
+                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
                                 ),
                     ) {
                         Text(stringResource(Res.string.more), style = typo().bodySmall)
@@ -1149,7 +1156,7 @@ private fun ArtistSections(
                     }
                     items(state.data.video?.video ?: emptyList()) { video ->
                         HomeItemVideo(
-                            forceDark = true,                            onClick = {
+                            forceDark = isDark,                            onClick = {
                                 val firstQueue: Track = video
                                 viewModel.setQueueData(
                                     QueueData.Data(
@@ -1201,7 +1208,7 @@ private fun ArtistSections(
                     Text(
                         text = stringResource(Res.string.featured_inArtist),
                         style = typo().labelMedium,
-                        color = Color.White,
+                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier =
                             Modifier
                                 .weight(1f)
@@ -1219,7 +1226,8 @@ private fun ArtistSections(
                     }
                     items(state.data.featuredOn) { feature ->
                         HomeItemContentPlaylist(
-                            forceDark = true,                            onClick = {
+                            forceDark = isDark,
+                            onClick = {
                                 navController.navigate(
                                     PlaylistDestination(
                                         feature.id,
@@ -1252,7 +1260,7 @@ private fun ArtistSections(
                     Text(
                         text = stringResource(Res.string.related_artists),
                         style = typo().labelMedium,
-                        color = Color.White,
+                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier =
                             Modifier
                                 .weight(1f)
@@ -1270,7 +1278,8 @@ private fun ArtistSections(
                     }
                     items(state.data.related?.results ?: emptyList()) { related ->
                         HomeItemArtist(
-                            forceDark = true,                            onClick = {
+                            forceDark = isDark,
+                            onClick = {
                                 navController.navigate(
                                     ArtistDestination(
                                         channelId = related.browseId,
@@ -1314,7 +1323,7 @@ private fun ArtistSections(
             Text(
                 text = stringResource(Res.string.description),
                 style = typo().labelMedium,
-                color = Color.White,
+                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier =
                     Modifier
                         .weight(1f)
@@ -1327,7 +1336,7 @@ private fun ArtistSections(
             shape = RoundedCornerShape(8.dp),
             colors =
                 CardDefaults.elevatedCardColors().copy(
-                    containerColor = descriptionTint.rgbFactor(0.5f),
+                    containerColor = if (isDark) descriptionTint.rgbFactor(0.5f) else MaterialTheme.colorScheme.surfaceVariant,
                 ),
         ) {
             DescriptionView(
@@ -1357,13 +1366,14 @@ private fun LikedSongsSection(
     artistName: String,
     onClick: () -> Unit,
 ) {
+    val isDark = LocalIsDarkTheme.current
     Column {
         // No "More" button beside it, so the padding stands in for the height the TextButton gives
         // the Popular and Singles headings.
         Text(
             text = stringResource(Res.string.liked_songs),
             style = typo().labelMedium,
-            color = Color.White,
+            color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
         Row(
@@ -1389,7 +1399,7 @@ private fun LikedSongsSection(
                             .align(Alignment.BottomEnd)
                             .size(20.dp)
                             .clip(CircleShape)
-                            .background(Color.Black)
+                            .background(if (isDark) Color.Black else Color.White)
                             .padding(3.dp),
                 )
             }
@@ -1397,13 +1407,13 @@ private fun LikedSongsSection(
                 Text(
                     text = pluralStringResource(Res.plurals.liked_songs_count, count, count),
                     style = typo().titleSmall,
-                    color = Color.White,
+                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                 )
                 Text(
                     text = stringResource(Res.string.liked_songs_by, artistName),
                     style = typo().bodySmall,
-                    color = Color(0xC4FFFFFF),
+                    color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
