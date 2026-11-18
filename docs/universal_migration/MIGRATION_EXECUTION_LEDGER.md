@@ -121,3 +121,19 @@
 **Acceptance Criteria**:
 * PR CI gate completes in under 4 minutes on code-only changes.
 * Full release matrix passes without regressions.
+
+---
+
+### Phase 7: Runtime Wiring, UI Integration & Upstream Synchronizability
+- [x] Wire Koin dependency injection modules across `streamifyCoreBridgeModule`, `mediaHalModule`, `slyrModule`, `supabaseModule`, and `jamModule`.
+- [x] Hook `streamifyAllModules` into application startup for Android (`SimpMusicApplication.kt`) and Desktop (`DesktopApp.kt`).
+- [x] Bind `StreamifyMedia3Module.init(context)` to probe OEM Dolby Atmos and Android 13+ Spatializer capabilities on startup.
+- [x] Integrate `DolbyAtmosCard` into the Audio section of `SettingScreen.kt`.
+- [x] Integrate `AdminCommandCenterCard` into `SettingScreen.kt` (gated by verified server claim `SupabaseClient.isAdmin`).
+- [x] Expose `streamify-modules` through typesafe project dependencies (`projects.streamify*`) in `composeApp/build.gradle.kts`.
+- [x] Verify Git history cleanliness and Upstream Immunity Guarantee across all commits.
+
+**Acceptance Criteria**:
+* All Streamify modules wire cleanly into Koin container on startup without overriding upstream core modules.
+* Settings screen dynamically reflects both Dolby Atmos hardware status and verified admin privileges.
+* Branch tree is ready for PR review and merge into `main`.
