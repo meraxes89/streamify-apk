@@ -129,9 +129,13 @@ async function resolveStream(videoId) {
                     signal: AbortSignal.timeout(8000),
                 });
 
-                if (!res.ok) continue;
+                if (!res.ok) {
+                    console.log('[resolve]', videoId, spec.name, 'HTTP', res.status);
+                    continue;
+                }
                 const data = await res.json();
                 const playability = data.playabilityStatus?.status;
+                console.log('[resolve]', videoId, spec.name, 'playability:', playability, 'reason:', data.playabilityStatus?.reason);
                 if (playability !== 'OK') {
                     lastError = new Error(data.playabilityStatus?.reason || `Playability ${playability}`);
                     continue;
