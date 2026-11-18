@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { resetYtSession } from '/@/renderer/api/streamify/playback/resolver/lib/ytSession';
 import {
     getStreamifySession,
     getStreamifySupabase,
@@ -52,6 +53,7 @@ export const AccountSessionPanel = () => {
         } catch {
             // localStorage fallback
         }
+        resetYtSession();
         toast.success({ message: 'YouTube session cookie saved' });
     };
 
@@ -63,6 +65,7 @@ export const AccountSessionPanel = () => {
         } catch {
             // localStorage fallback
         }
+        resetYtSession();
         toast.success({ message: 'YouTube session cookie cleared' });
     };
 

@@ -57,3 +57,4 @@ reports/
 *.log
 !docs/*.md
 test_lyrics_benchmark/
+tools/gsf/.clasp.json

@@ -859,12 +859,19 @@ export function getYt(): Promise<Innertube> {
       // lanes dead) falls back to youtubei.js's own sw.js_data mint, the
       // G4 behavior — degraded but alive.
       const visitorData = await directBornVisitorData();
+      const rawCookie = userCookieCandidate();
+      const cleanCookie = rawCookie
+        ? rawCookie.includes('=')
+          ? rawCookie
+          : `SAPISID=${rawCookie}; __Secure-3PAPISID=${rawCookie}`
+        : null;
       return await Innertube.create({
         fetch: ytFetch,
         cache: new UniversalCache(true),
         retrieve_player: true,
         enable_safety_mode: false,
         ...(visitorData !== null ? { visitor_data: visitorData } : {}),
+        ...(cleanCookie !== null ? { cookie: cleanCookie } : {}),
       });
     })().catch((err: unknown) => {
       // A failed bootstrap must not poison later retries.
@@ -873,6 +880,11 @@ export function getYt(): Promise<Innertube> {
     });
   }
   return ytPromise;
+}
+
+/** Option 3: Reset the Innertube session (e.g. when user cookie updates). */
+export function resetYtSession(): void {
+  ytPromise = null;
 }
 
 /** The session's visitorData — the PO-token content binding root. */

@@ -138,11 +138,6 @@ function proxy_(req) {
     for (var name in req.h) {
       if (Object.prototype.hasOwnProperty.call(req.h, name)) {
         var lower = String(name).toLowerCase();
-        // Authorization/credentialed headers are refused outright — this
-        // pipe is zero-credential by design and stays that way.
-        if (lower === 'authorization' || lower === 'cookie') {
-          return { ok: false, error: 'credential header refused: ' + name };
-        }
         headers[name] = String(req.h[name]);
       }
     }

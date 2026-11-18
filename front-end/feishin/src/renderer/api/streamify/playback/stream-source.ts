@@ -182,6 +182,10 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
         const resolution = await getStreamUrl(videoId, { relayBase });
         indexResolution(resolution);
         if (resolution.protocol === 'sabr') {
+            const userCookie = getUserCookie();
+            if (userCookie) {
+                return fallbackRelayPlayResolution(videoId, relayBase);
+            }
             if (resolution.sabr && mseAudioAvailable()) {
                 activeSabrSession?.abort();
                 try {
@@ -194,21 +198,19 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
                     indexResolution(effectiveResolution);
                     return effectiveResolution;
                 } catch (err) {
-                    logger.warn(
-                        'streamify: SABR MSE start failed, falling back to relay play endpoint',
-                        { err },
-                    );
+                    logger.warn('streamify: SABR MSE start failed, throwing StreamifySabrError', {
+                        err,
+                    });
                 }
             }
-            return fallbackRelayPlayResolution(videoId, relayBase);
+            throw new StreamifySabrError(videoId);
         }
         return resolution;
     } catch (err) {
-        logger.warn('streamify: online getStreamUrl failed, falling back to relay /play endpoint', {
-            err,
-            videoId,
-        });
-        return fallbackRelayPlayResolution(videoId, relayBase);
+        if (getUserCookie()) {
+            return fallbackRelayPlayResolution(videoId, relayBase);
+        }
+        throw err;
     }
 }
 

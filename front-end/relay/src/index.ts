@@ -418,7 +418,8 @@ async function resolveDirectAudioStream(
   pot?: string | null,
   visitorData?: string | null,
   userCookie?: string | null,
-): Promise<{ url: string; mimeType: string; status?: string } | null> {
+): Promise<{ url: string; mimeType: string; status?: string; tier1Error?: string } | null> {
+  let lastTier1Error = "NO_COOKIE";
   // --- Tier 1: Authenticated User Session (Option 3 — bypasses datacenter bot-gates) ---
   if (userCookie && userCookie.trim().length > 0) {
     const sapisid = extractSapisid(userCookie);
@@ -432,6 +433,9 @@ async function resolveDirectAudioStream(
       const iosHeaders = new Headers({
         "Content-Type": "application/json",
         "User-Agent": "com.google.ios.youtube/20.11.6 (iPhone10,4; U; CPU iOS 16_7_7 like Mac OS X;)",
+        "Origin": "https://www.youtube.com",
+        "X-Origin": "https://www.youtube.com",
+        "X-Goog-AuthUser": "0",
         "Cookie": cleanCookie,
       });
       if (sapisid) {
@@ -446,20 +450,15 @@ async function resolveDirectAudioStream(
             client: {
               clientName: "IOS",
               clientVersion: "20.11.6",
-              deviceMake: "Apple",
-              deviceModel: "iPhone10,4",
               hl: "en",
               gl: "US",
-              osName: "iOS",
-              osVersion: "16.7.7.20H357",
-              ...(visitorData ? { visitorData } : {}),
             },
           },
         }),
       });
       if (iosRes.ok) {
         const iosData = (await iosRes.json()) as {
-          playabilityStatus?: { status?: string };
+          playabilityStatus?: { status?: string; reason?: string };
           streamingData?: {
             formats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
             adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string }>;
@@ -480,10 +479,14 @@ async function resolveDirectAudioStream(
             if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
             return { url: chosen.url, mimeType, status: "OK" };
           }
+        } else {
+          lastTier1Error = `IOS:${iosData.playabilityStatus?.status}:${iosData.playabilityStatus?.reason || ""}`;
         }
+      } else {
+        lastTier1Error = `IOS_HTTP_${iosRes.status}`;
       }
-    } catch {
-      // Continue to WEB_REMIX check
+    } catch (e) {
+      lastTier1Error = `IOS_ERR:${e instanceof Error ? e.message : String(e)}`;
     }
 
     // 1b: Try WEB_REMIX with cookie (only if pre-signed url is available)
@@ -697,7 +700,7 @@ async function resolveDirectAudioStream(
   };
 
   if (playerData.playabilityStatus?.status !== "OK") {
-    return { url: "", mimeType: "", status: playerData.playabilityStatus?.status };
+    return { url: "", mimeType: "", status: playerData.playabilityStatus?.status, tier1Error: lastTier1Error };
   }
 
   const formats = [
@@ -716,10 +719,10 @@ async function resolveDirectAudioStream(
   if (chosen && chosen.url) {
     let mimeType = "audio/mp4";
     if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
-    return { url: chosen.url, mimeType, status: "OK" };
+    return { url: chosen.url, mimeType, status: "OK", tier1Error: lastTier1Error };
   }
 
-  return null;
+  return { url: "", mimeType: "", status: playerData?.playabilityStatus?.status || "UNKNOWN", tier1Error: lastTier1Error };
 }
 
 async function searchYouTube(q: string): Promise<Array<{ videoId: string; title: string; artist?: string }>> {
@@ -787,6 +790,7 @@ async function searchYouTube(q: string): Promise<Array<{ videoId: string; title:
 }
 
 async function handlePlay(request: Request, url: URL, env: RelayEnv): Promise<Response> {
+  const isDebug = url.searchParams.get("debug") === "1";
   let videoId = url.searchParams.get("videoId");
   const queryParam = url.searchParams.get("q") || url.searchParams.get("query");
 
@@ -810,6 +814,20 @@ async function handlePlay(request: Request, url: URL, env: RelayEnv): Promise<Re
 
   // Step 1: Attempt direct resolve
   let resolved = await resolveDirectAudioStream(videoId, env, pot, visitorData, userCookie);
+
+  if (isDebug) {
+    return jsonResponse({
+      debug: true,
+      videoId,
+      hasCookie: !!userCookie,
+      cookieLength: userCookie?.length ?? 0,
+      extractedSapisid: userCookie ? extractSapisid(userCookie) : null,
+      resolvedStatus: resolved?.status ?? "NULL",
+      tier1Error: resolved?.tier1Error ?? "NONE",
+      resolvedHasUrl: !!resolved?.url,
+      resolvedUrl: resolved?.url ? resolved.url.substring(0, 80) : null
+    }, 200);
+  }
   let effectiveVideoId = videoId;
   let isSubstituted = false;
 

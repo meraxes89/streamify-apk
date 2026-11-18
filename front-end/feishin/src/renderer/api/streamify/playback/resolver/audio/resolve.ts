@@ -1122,9 +1122,11 @@ export async function resolveAudioStream(
   // direct-lane miss (native bridge) keeps the flap budget. The rung still
   // runs when there is no token (its honest no-token verdict matters for
   // the diagnosis), but never past the Worker-egress cap.
-  if (token === null || gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
+  // Option 3: If Innertube is authenticated (user session cookie / SAPISID), PO token is not strictly required.
+  const isUserAuthenticated = (yt.session as unknown as { logged_in?: boolean })?.logged_in === true;
+  if (isUserAuthenticated || token !== null || gapiDirectAlive() || relayEgressRungs < RELAY_EGRESS_RUNG_CAP) {
     let verdict = 'not attempted';
-    if (token === null) {
+    if (!isUserAuthenticated && token === null) {
       verdict =
         'no PO token available (mint failed — coldstart/websafe fallbacks exhausted)';
     } else {
@@ -1137,7 +1139,7 @@ export async function resolveAudioStream(
             client: 'WEB',
             // PLAYER-context token (serviceIntegrityDimensions.poToken) —
             // videoId-bound, per-call so it never leaks into other clients.
-            po_token: token.poToken,
+            ...(token?.poToken ? { po_token: token.poToken } : {}),
           })) as YtBasicInfo;
           status = candidate.playability_status?.status ?? 'UNKNOWN';
           if (status === 'OK') {
