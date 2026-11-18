@@ -10,6 +10,25 @@
         <% } %>
         <script>
             (function () {
+                if (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('error='))) {
+                    try {
+                        var isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                        if (!isLocal) {
+                            fetch('http://localhost:3000/api/health')
+                                .then(function (r) { return r.json(); })
+                                .then(function (d) {
+                                    if (d && d.status === 'ok') {
+                                        window.location.replace('http://localhost:3000/streamify-apk/preview/' + window.location.hash);
+                                    }
+                                })
+                                .catch(function () {});
+                        }
+                    } catch (e) {}
+                }
+            })();
+        </script>
+        <script>
+            (function () {
                 if (localStorage.getItem('umami.disabled') !== '1' && window.ANALYTICS_DISABLED !== true && window.ANALYTICS_DISABLED !== 'true') {
                     var s = document.createElement('script');
                     s.defer = true;
