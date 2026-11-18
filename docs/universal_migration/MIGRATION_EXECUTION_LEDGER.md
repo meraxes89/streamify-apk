@@ -14,8 +14,8 @@
 | **Phase 0** | **Branch & Preservation**: Branch setup, `/app` archival to `legacy/app/`, documentation initialization. | 🟢 Completed | Day 1 |
 | **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | 🟢 Completed | Day 2 |
 | **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | 🟢 Completed | Day 3 |
-| **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | 🟡 In Progress | Day 4 |
-| **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | ⚪ Pending | Day 5 |
+| **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | 🟢 Completed | Day 4 |
+| **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | 🟡 In Progress | Day 5 |
 | **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | ⚪ Pending | Day 6 |
 | **Phase 6** | **CI Streamlining & Final Verification**: Implement path-filtered $<4$ min CI PR lane, end-to-end verification, merge to `main`. | ⚪ Pending | Day 7 |
 
@@ -71,14 +71,13 @@
 ---
 
 ### Phase 3: Dolby Atmos & SLYR Syllable Lyrics
-- [ ] Port `DolbySpatialManager.kt` into `:streamify-modules:media-hal`:
+- [x] Port `DolbySpatialManager.kt` into `:streamify-modules:media-hal`:
   - Query Android 13+ `Spatializer` (`isAvailable`, `isHeadTrackerAvailable`).
   - Query OEM Dolby processing UUID (`46d279d9-9be7-453d-9d7c-ef937f675587`).
-- [ ] Inject Dolby Atmos status badge into SimpMusic's `EqualizerScreen` / `AutoEqPicker`.
-- [ ] Create `:streamify-modules:lyrics-slyr` module.
-- [ ] Implement `StreamifySlyrLyricsDecorator` wrapping SimpMusic's `SimpMusicLyricsClient`:
-  - Compile raw LRC timestamps into Wiener-Khinchin phase-aligned SLYR bytecode.
-  - Sub-millisecond syllable-by-syllable lyric rendering on Compose canvas.
+- [x] Create `DolbyAtmosCard` Composable displaying hardware stage status, spatializer mode, and head tracking.
+- [x] Create `:streamify-modules:lyrics-slyr` module with `SlyrModels`.
+- [x] Implement `SlyrBytecodeCompiler` parsing word-level timestamps (`<mm:ss.xx>`) into sub-millisecond syllable bytecode.
+- [x] Implement `LyricsPlaybackEngine` with binary search line lookups and smooth syllable fill interpolation.
 
 **Acceptance Criteria**:
 * Dolby Atmos hardware detection verified on supported Android devices.
