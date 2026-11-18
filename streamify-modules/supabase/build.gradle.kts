@@ -18,6 +18,7 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
+                implementation(libs.koin.core)
                 implementation(project(":streamify-core-bridge"))
             }
         }

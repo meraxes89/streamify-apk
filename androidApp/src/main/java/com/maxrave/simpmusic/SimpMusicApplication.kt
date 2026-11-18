@@ -76,7 +76,9 @@ class SimpMusicApplication :
                 ),
             )
             loadKoinModules(viewModelModule)
+            loadKoinModules(com.streamify.jam.di.streamifyAllModules)
         }
+        com.streamify.media.hal.StreamifyMedia3Module.init(this)
         // provide custom configuration
         val workConfig =
             Configuration

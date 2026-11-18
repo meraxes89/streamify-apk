@@ -14,18 +14,18 @@ import java.util.UUID
  * Detects whether the host Android device carries OEM Dolby Audio Processing (DAP)
  * or system spatialization hardware with head tracking.
  */
-object DolbySpatialManager {
+actual object DolbySpatialManager {
     private val _isDolbyAtmosDetected = MutableStateFlow(false)
-    val isDolbyAtmosDetected: StateFlow<Boolean> = _isDolbyAtmosDetected.asStateFlow()
+    actual val isDolbyAtmosDetected: StateFlow<Boolean> = _isDolbyAtmosDetected.asStateFlow()
 
     private val _isSpatializerAvailable = MutableStateFlow(false)
-    val isSpatializerAvailable: StateFlow<Boolean> = _isSpatializerAvailable.asStateFlow()
+    actual val isSpatializerAvailable: StateFlow<Boolean> = _isSpatializerAvailable.asStateFlow()
 
     private val _hasHeadTracking = MutableStateFlow(false)
-    val hasHeadTracking: StateFlow<Boolean> = _hasHeadTracking.asStateFlow()
+    actual val hasHeadTracking: StateFlow<Boolean> = _hasHeadTracking.asStateFlow()
 
     private val _hardwareDetail = MutableStateFlow("Detecting audio architecture...")
-    val hardwareDetail: StateFlow<String> = _hardwareDetail.asStateFlow()
+    actual val hardwareDetail: StateFlow<String> = _hardwareDetail.asStateFlow()
 
     // Well-known OEM Dolby Audio Processing UUIDs
     private val DOLBY_EFFECT_UUID = UUID.fromString("46d279d9-9be7-453d-9d7c-ef937f675587")

@@ -130,6 +130,13 @@ kotlin {
             api(projects.domain)
             implementation(projects.data)
 
+            // Streamify Sovereign Modules
+            api(projects.streamifyCoreBridge)
+            api(projects.streamifyMediaHal)
+            api(projects.streamifyLyricsSlyr)
+            api(projects.streamifySupabase)
+            api(projects.streamifyJam)
+
             // Last.fm (gated: real scrobbler for full builds, no-op stub for FOSS builds).
             // `api` rather than `implementation` so :androidApp can hand it the credentials from
             // BuildKonfig at startup, the same way it does for Sentry.

@@ -211,6 +211,7 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
             ),
         )
         loadKoinModules(viewModelModule)
+        loadKoinModules(com.streamify.jam.di.streamifyAllModules)
     }
 
     val language =

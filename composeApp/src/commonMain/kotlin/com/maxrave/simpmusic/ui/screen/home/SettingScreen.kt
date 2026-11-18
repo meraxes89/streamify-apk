@@ -129,8 +129,10 @@ import com.maxrave.simpmusic.extension.isTwoLetterCode
 import com.maxrave.simpmusic.extension.isValidProxyHost
 import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.ui.component.ActionButton
+import com.maxrave.simpmusic.ui.component.AdminCommandCenterCard
 import com.maxrave.simpmusic.ui.component.AmbientThemeGlow
 import com.maxrave.simpmusic.ui.component.CenterLoadingBox
+import com.maxrave.simpmusic.ui.component.DolbyAtmosCard
 import com.maxrave.simpmusic.ui.component.EndOfPage
 import com.maxrave.simpmusic.ui.component.LoadingDialog
 import com.maxrave.simpmusic.ui.component.RippleIconButton
@@ -1467,6 +1469,9 @@ fun SettingScreen(
         if (getPlatform() == Platform.Android) {
             item(key = "audio") {
                 SettingGroup(title = stringResource(Res.string.audio)) {
+                    DolbyAtmosCard(
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     SettingItem(
                         title = stringResource(Res.string.normalize_volume),
                         subtitle = stringResource(Res.string.balance_media_loudness),
@@ -2898,6 +2903,14 @@ fun SettingScreen(
                     },
                 )
             }
+        }
+        item(key = "admin_command_center") {
+            AdminCommandCenterCard(
+                onNavigateToAdmin = {
+                    navController.navigate(AppLogDestination)
+                },
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
         }
         item(key = "end") {
             EndOfPage()
