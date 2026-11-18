@@ -49,6 +49,12 @@ app.use((req, res, next) => {
     next();
 });
 
+if (fs.existsSync(publicDir)) {
+    app.use(express.static(publicDir));
+    app.use('/streamify-apk/preview', express.static(publicDir));
+    app.use('/streamify-apk', express.static(publicDir));
+}
+
 // In-memory cache for resolved stream metadata and URLs (TTL 5.5 hours)
 const CACHE_TTL_MS = 5.5 * 60 * 60 * 1000;
 const streamCache = new Map();
@@ -303,6 +309,9 @@ async function resolveStream(videoId) {
 // ---------------------------------------------------------------------------
 
 app.get('/', (req, res) => {
+    if (fs.existsSync(path.join(publicDir, 'index.html'))) {
+        return res.sendFile(path.join(publicDir, 'index.html'));
+    }
     res.json({
         capabilities: [
             '8mib-range-stream',
@@ -832,9 +841,6 @@ app.get('/ytm/meta', async (req, res) => {
 });
 
 if (fs.existsSync(publicDir)) {
-    app.use(express.static(publicDir));
-    app.use('/streamify-apk/preview', express.static(publicDir));
-    app.use('/streamify-apk', express.static(publicDir));
     app.get('*', (req, res, next) => {
         if (req.path.startsWith('/api/') || req.path.startsWith('/ytm/') || req.path.startsWith('/r')) {
             return next();
