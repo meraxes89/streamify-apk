@@ -1,6 +1,5 @@
 package com.streamify.app.data.models
 
-@androidx.compose.runtime.Stable
 data class TrackNative(
     val id: Int,
     val filepath: String,
@@ -25,7 +24,6 @@ data class TrackNative(
  * value and mark every composable that only takes a [Track] as skippable —
  * the foundation of the 120Hz zero-jank recomposition architecture.
  */
-@androidx.compose.runtime.Immutable
 data class Track(
     val id: Int = 0,
     val filepath: String = "",
