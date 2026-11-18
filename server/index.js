@@ -19,7 +19,17 @@ const PORT = process.env.PORT || 7860;
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MiB bounded chunk
 
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+// Parse raw bodies for binary / protobuf / json forwarding in /r proxy
+app.use(express.raw({ limit: '50mb', type: '*/*' }));
+
+// Live request logger middleware for Render dashboard
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl || req.url} ${res.statusCode} (${Date.now() - start}ms)`);
+    });
+    next();
+});
 
 // In-memory cache for resolved stream metadata and URLs (TTL 5.5 hours)
 const CACHE_TTL_MS = 5.5 * 60 * 60 * 1000;
@@ -156,9 +166,41 @@ async function resolveStream(videoId) {
                         durationMs: (parseInt(data.videoDetails?.lengthSeconds, 10) || 0) * 1000,
                         expiresAt: Date.now() + CACHE_TTL_MS,
                         googlevideoUrl: selected.url,
+                        isSabr: false,
                         itag: selected.itag,
                         mimeType: selected.mimeType || 'audio/webm; codecs="opus"',
                         ok: true,
+                        protocol: 'progressive',
+                        title: data.videoDetails?.title || '',
+                        videoId,
+                    };
+
+                    streamCache.set(videoId, descriptor);
+                    return descriptor;
+                }
+
+                if (data.streamingData?.serverAbrStreamingUrl) {
+                    const ustreamerConfig =
+                        data.playerConfig?.mediaCommonConfig
+                            ?.mediaUstreamerRequestConfig
+                            ?.videoPlaybackUstreamerConfig;
+                    const descriptor = {
+                        artist: data.videoDetails?.author || '',
+                        client: spec.name,
+                        durationMs: (parseInt(data.videoDetails?.lengthSeconds, 10) || 0) * 1000,
+                        expiresAt: Date.now() + CACHE_TTL_MS,
+                        isSabr: true,
+                        ok: true,
+                        protocol: 'sabr',
+                        sabr: {
+                            clientInfo: {
+                                clientName: parseInt(spec.number, 10) || 5,
+                                clientVersion: spec.version,
+                            },
+                            formats,
+                            serverAbrStreamingUrl: data.streamingData.serverAbrStreamingUrl,
+                            ustreamerConfig: ustreamerConfig || null,
+                        },
                         title: data.videoDetails?.title || '',
                         videoId,
                     };
@@ -194,6 +236,7 @@ app.get('/', (req, res) => {
             'prefetch',
             'ytm-meta',
             'neg-cache',
+            'r-proxy',
         ],
         name: 'streamify-relay',
         status: 'ok',
@@ -230,6 +273,20 @@ app.get('/api/resolve', async (req, res) => {
         const proto = req.get('x-forwarded-proto') || 'https';
         const baseUrl = `${proto}://${host}`;
 
+        if (stream.isSabr) {
+            return res.json({
+                artist: stream.artist,
+                durationMs: stream.durationMs,
+                expiresAt: stream.expiresAt,
+                isSabr: true,
+                ok: true,
+                protocol: 'sabr',
+                sabr: stream.sabr,
+                title: stream.title,
+                videoId,
+            });
+        }
+
         res.json({
             artist: stream.artist,
             bitrate: stream.bitrate,
@@ -237,7 +294,9 @@ app.get('/api/resolve', async (req, res) => {
             contentLength: stream.contentLength,
             durationMs: stream.durationMs,
             expiresAt: stream.expiresAt,
+            isSabr: false,
             ok: true,
+            protocol: 'progressive',
             rangeSupport: true,
             streamUrl: `${baseUrl}/api/stream/${videoId}`,
             title: stream.title,
@@ -431,6 +490,244 @@ app.get('/api/search', async (req, res) => {
         res.json({ ok: true, suggestions });
     } catch (err) {
         res.status(502).json({ error: err.message, ok: false });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// 6. Universal CORS Passthrough Proxy (/r?u=<target>)
+// ---------------------------------------------------------------------------
+
+app.all('/r', async (req, res) => {
+    const targetUrl = req.query.u;
+    if (!targetUrl || typeof targetUrl !== 'string') {
+        return res.status(400).send('u query parameter required');
+    }
+
+    try {
+        const parsed = new URL(targetUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return res.status(400).send('Invalid protocol');
+        }
+
+        const upstreamHeaders = {};
+        for (const [key, value] of Object.entries(req.headers)) {
+            const lower = key.toLowerCase();
+            if (['connection', 'content-length', 'cookie', 'host', 'origin', 'referer'].includes(lower)) continue;
+            upstreamHeaders[key] = value;
+        }
+
+        if (!upstreamHeaders['user-agent']) {
+            upstreamHeaders['user-agent'] =
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+        }
+
+        const fetchOptions = {
+            headers: upstreamHeaders,
+            method: req.method,
+        };
+
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+                fetchOptions.body = req.body;
+            } else if (typeof req.body === 'string' && req.body.length > 0) {
+                fetchOptions.body = req.body;
+            } else if (typeof req.body === 'object' && req.body && Object.keys(req.body).length > 0) {
+                fetchOptions.body = JSON.stringify(req.body);
+            }
+        }
+
+        const upstreamRes = await fetch(targetUrl, fetchOptions);
+
+        res.status(upstreamRes.status);
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+        res.set('Access-Control-Allow-Headers', '*');
+        res.set('Access-Control-Expose-Headers', '*');
+
+        for (const [k, v] of upstreamRes.headers.entries()) {
+            const lk = k.toLowerCase();
+            if (['connection', 'content-encoding', 'transfer-encoding'].includes(lk)) continue;
+            res.set(k, v);
+        }
+
+        const buffer = await upstreamRes.arrayBuffer();
+        res.send(Buffer.from(buffer));
+    } catch (err) {
+        console.error('[/r proxy error]:', err.message);
+        res.status(502).send(`Proxy error: ${err.message}`);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// 7. Metadata Edge Gateway (/ytm/meta)
+// ---------------------------------------------------------------------------
+
+const GAPI_SEARCH_ENDPOINT =
+    'https://youtubei.googleapis.com/youtubei/v1/search?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false';
+
+async function searchYtm(query) {
+    const body = {
+        context: {
+            client: {
+                clientName: 'WEB_REMIX',
+                clientVersion: '1.20240101.01.00',
+                gl: 'US',
+                hl: 'en',
+            },
+        },
+        query,
+    };
+
+    const res = await fetch(GAPI_SEARCH_ENDPOINT, {
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    const sections =
+        data.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content
+            ?.sectionListRenderer?.contents || [];
+    const results = [];
+
+    for (const s of sections) {
+        const card = s.musicCardShelfRenderer;
+        if (card) {
+            const title = card.title?.runs?.map((r) => r.text).join('') || '';
+            const rawSub = card.subtitle?.runs?.map((r) => r.text).join('') || '';
+            const subtitle = rawSub.replace(/^(Song|Video|Single|Album|EP)\s*•\s*/i, '');
+            const videoId =
+                card.buttons?.[0]?.buttonRenderer?.command?.watchEndpoint?.videoId ||
+                card.title?.runs?.[0]?.navigationEndpoint?.watchEndpoint?.videoId ||
+                null;
+            if (title && videoId) {
+                results.push({
+                    durationMs: null,
+                    subtitle: subtitle || null,
+                    title,
+                    videoId,
+                });
+            }
+        }
+
+        const shelf = s.musicShelfRenderer || s.itemSectionRenderer;
+        const items = shelf?.contents || [];
+        for (const raw of items) {
+            const item = raw.musicResponsiveListItemRenderer;
+            if (!item) continue;
+            const flexCols = item.flexColumns || [];
+            const titleRuns = flexCols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+            const title = titleRuns.map((r) => r.text).join('') || '';
+            const subRuns = flexCols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+            const rawSub = subRuns.map((r) => r.text).join('') || '';
+            const subtitle = rawSub.replace(/^(Song|Video|Single|Album|EP)\s*•\s*/i, '');
+
+            let videoId = item.playlistItemData?.videoId || null;
+            if (!videoId) {
+                const playNav =
+                    item.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer
+                        ?.playNavigationEndpoint;
+                videoId = playNav?.watchEndpoint?.videoId || null;
+            }
+            if (!videoId) {
+                for (const col of flexCols) {
+                    for (const run of col.musicResponsiveListItemFlexColumnRenderer?.text?.runs || []) {
+                        if (run.navigationEndpoint?.watchEndpoint?.videoId) {
+                            videoId = run.navigationEndpoint.watchEndpoint.videoId;
+                            break;
+                        }
+                    }
+                    if (videoId) break;
+                }
+            }
+
+            if (title && videoId) {
+                results.push({
+                    durationMs: null,
+                    subtitle: subtitle || null,
+                    title,
+                    videoId,
+                });
+            }
+        }
+    }
+
+    const seen = new Set();
+    const deduped = [];
+    for (const r of results) {
+        if (seen.has(r.videoId)) continue;
+        seen.add(r.videoId);
+        deduped.push(r);
+    }
+    return deduped;
+}
+
+app.get('/ytm/meta', async (req, res) => {
+    const endpoint = req.query.endpoint;
+    const query = req.query.q || req.query.query;
+    const filter = req.query.filter;
+
+    try {
+        if (endpoint === 'search') {
+            if (!query || typeof query !== 'string') {
+                return res.json({
+                    cache: { state: 'fresh' },
+                    payload: { continuation: null, filter: filter || null, kind: 'search', query: '', results: [] },
+                });
+            }
+            const results = await searchYtm(query);
+            return res.json({
+                cache: { state: 'fresh' },
+                payload: {
+                    continuation: null,
+                    filter: filter || null,
+                    kind: 'search',
+                    query,
+                    results,
+                },
+            });
+        }
+
+        if (endpoint === 'search-suggest') {
+            if (!query || typeof query !== 'string') {
+                return res.json({
+                    cache: { state: 'fresh' },
+                    payload: { input: '', kind: 'search-suggest', suggestions: [] },
+                });
+            }
+            const suggestUrl = `https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q=${encodeURIComponent(query)}`;
+            const suggestRes = await fetch(suggestUrl);
+            const text = await suggestRes.text();
+            const jsonMatch = text.match(/window\.google\.ac\.h\((.*)\)/);
+            let suggestions = [];
+            if (jsonMatch && jsonMatch[1]) {
+                const parsed = JSON.parse(jsonMatch[1]);
+                suggestions = (parsed[1] || []).map((item) => item[0]);
+            }
+            return res.json({
+                cache: { state: 'fresh' },
+                payload: {
+                    input: query,
+                    kind: 'search-suggest',
+                    suggestions,
+                },
+            });
+        }
+
+        // For chapters, counterpart, credits, lyrics, etc. not yet cached on relay:
+        // Return 200 with missing: true so edgeMetaCall maps cleanly to not-found / fallback
+        res.json({
+            cache: { state: 'fresh' },
+            missing: true,
+        });
+    } catch (err) {
+        console.error('[/ytm/meta error]:', err.message);
+        res.status(502).json({
+            error: err.message,
+            ok: false,
+        });
     }
 });
 

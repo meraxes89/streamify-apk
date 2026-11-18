@@ -1,4 +1,5 @@
 import type { OfflineServeResult } from '../downloads/download-manager';
+import type { SabrPayload } from './resolver/audio/resolve';
 
 import { quarantineOfflineTrack, tryServeOfflineTrack } from '../downloads/instance';
 import {
@@ -208,7 +209,27 @@ export async function resolveStreamifyTrack(videoId: string): Promise<StreamUrlR
     const vpsResolution = await tryResolveViaVps(videoId, relay);
     if (vpsResolution !== null) {
         indexResolution(vpsResolution);
-        return vpsResolution;
+        if (vpsResolution.protocol === 'sabr' && vpsResolution.sabr && mseAudioAvailable()) {
+            activeSabrSession?.abort();
+            try {
+                const sabrSession = await startSabrAudio(
+                    vpsResolution.sabr,
+                    true,
+                    relayBaseCandidate(),
+                );
+                activeSabrSession = sabrSession;
+                const effectiveResolution: StreamUrlResolution = {
+                    ...vpsResolution,
+                    url: sabrSession.objectUrl,
+                };
+                indexResolution(effectiveResolution);
+                return effectiveResolution;
+            } catch (err) {
+                logger.warn('streamify: SABR MSE start failed on VPS resolution', { err });
+            }
+        } else {
+            return vpsResolution;
+        }
     }
 
     const resolution = await getStreamUrl(videoId, { relayBase: relay });
@@ -492,14 +513,40 @@ async function tryResolveViaVps(
             contentLength?: number;
             durationMs?: number;
             expiresAt?: number;
+            isSabr?: boolean;
             ladder?: StreamUrlRung[];
             ok?: boolean;
+            protocol?: string;
+            sabr?: SabrPayload;
             streamUrl?: string;
             title?: string;
             url?: string;
         };
-        if (!data || (data.ok === false && !data.streamUrl && !data.url)) {
+        if (!data || (data.ok === false && !data.streamUrl && !data.url && !data.isSabr)) {
             return null;
+        }
+
+        if (data.isSabr && data.sabr) {
+            const sabrResolution: StreamUrlResolution = {
+                artist: data.artist || '',
+                audioChannels: 2,
+                codecs: 'aac',
+                contentLength: null,
+                durationMs: data.durationMs ?? null,
+                expiresAt: data.expiresAt || Date.now() + 6 * 3600 * 1000,
+                expirySource: 'wire',
+                isSabr: true,
+                ladder: [],
+                protocol: 'sabr',
+                rangeSupport: false,
+                resolvedAt: Date.now(),
+                rung: 'visionos-relay' as LadderRung,
+                sabr: data.sabr,
+                title: data.title || '',
+                trackId: videoId,
+                url: '',
+            };
+            return sabrResolution;
         }
 
         const streamUrl = data.streamUrl || data.url || `${base}/api/stream/${videoId}`;
