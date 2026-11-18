@@ -1,20 +1,67 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    id("com.android.application") version "8.2.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.compose.compiler) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.kotlin.parcelize) apply false
+    alias(libs.plugins.ksp) apply false
+    alias(libs.plugins.aboutlibraries) apply false
+    alias(libs.plugins.aboutlibraries.multiplatform) apply false
+    alias(libs.plugins.room) apply false
+    alias(libs.plugins.sentry.gradle) apply false
+    alias(libs.plugins.android.lint) apply false
+    alias(libs.plugins.compose.multiplatform) apply false
+    alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.android.kotlin.multiplatform.library) apply false
+    alias(libs.plugins.jetbrains.kotlin.jvm) apply false
+    alias(libs.plugins.build.config) apply false
+    alias(libs.plugins.osdetector) apply false
+    alias(libs.plugins.conveyor) apply false
+    alias(libs.plugins.compose.hotReload) apply false
+}
 
-    // Phase 4b (MP-HAL10 / Beta): Desktop JVM lane. The Kotlin JVM plugin
-    // pins the SAME 1.9.22 toolchain as the Android module — one KGP version
-    // per build, no cross-module classpath drift. Compose Multiplatform 1.6.1
-    // is the last stable line of the Kotlin 1.9.x era (its bundled Compose
-    // compiler mapping resolves 1.5.10.x for Kotlin 1.9.22, the exact pair
-    // the app module already ships as kotlinCompilerExtensionVersion).
-    id("org.jetbrains.kotlin.jvm") version "1.9.22" apply false
-    id("org.jetbrains.compose") version "1.6.1" apply false
+tasks.register<Delete>("Clean") {
+    delete(rootProject.layout.buildDirectory)
+}
 
-    // Phase 5 (MP-UI03 / Beta): the shared CMP module. Kotlin Multiplatform
-    // stays on the same 1.9.22 line (one KGP per build), and the library
-    // flavor of AGP backs `:shared-android` — the Android consumption seam
-    // for shared/src/{commonMain,androidMain}.
-    id("org.jetbrains.kotlin.multiplatform") version "1.9.22" apply false
-    id("com.android.library") version "8.2.2" apply false
+subprojects {
+    tasks.withType<KotlinCompile>().configureEach {
+        compilerOptions {
+            if (project.findProperty("enableComposeCompilerReports") == "true") {
+                arrayOf("reports", "metrics").forEach {
+                    freeCompilerArgs.addAll(
+                        listOf(
+                            "-P",
+                            "plugin:androidx.compose.compiler.plugins.kotlin:${it}Destination=${layout.buildDirectory.asFile.get().absolutePath}/compose_metrics",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    // PipePipe and Brave both depend on com.github.TeamNewPipe:nanojson with different commit
+    // hashes. Gradle's default resolver picks PipePipe's older 1d9e1aea... commit which lacks
+    // JsonArray.streamAsJsonObjects(), causing NoSuchMethodError when Brave's fallback runs at
+    // runtime. Force the latest upstream commit (newer than both libs ship) across every module
+    // so the merged APK/JAR carries a nanojson with the API both extractors expect.
+    configurations.all {
+        resolutionStrategy {
+            force("com.github.TeamNewPipe:nanojson:c7a6c1c08d16b6d5ecded34758e6415e07be2166")
+
+            // Kotaml retains Kaml's com.charleskorn.kaml package. Different Maven coordinates
+            // otherwise let both copies reach DEX. Align root and platform-specific modules.
+            eachDependency {
+                if (requested.group == "com.charleskorn.kaml" &&
+                    (requested.name == "kaml" || requested.name.startsWith("kaml-"))
+                ) {
+                    useTarget("io.heapy.kotaml:${requested.name.replaceFirst("kaml", "kotaml")}:${libs.versions.kotaml.get()}")
+                    because("Kotaml and Kaml provide the same classes; use one YAML implementation")
+                }
+            }
+        }
+    }
 }
