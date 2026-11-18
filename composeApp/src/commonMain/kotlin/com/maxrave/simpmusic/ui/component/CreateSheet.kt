@@ -52,9 +52,11 @@ import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
 import com.maxrave.simpmusic.ui.icon.Add
 import com.maxrave.simpmusic.ui.icon.Groups
 import com.maxrave.simpmusic.ui.icon.PlaylistAdd
+import com.maxrave.simpmusic.ui.icon.Search
 import com.maxrave.simpmusic.ui.icon.Settings
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.navigation.destination.home.ListenTogetherDestination
+import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SharedViewModel
@@ -71,6 +73,7 @@ import simpmusic.composeapp.generated.resources.listen_together
 import simpmusic.composeapp.generated.resources.local_playlist
 import simpmusic.composeapp.generated.resources.playlist_name
 import simpmusic.composeapp.generated.resources.playlist_name_cannot_be_empty
+import simpmusic.composeapp.generated.resources.search
 import simpmusic.composeapp.generated.resources.settings
 
 /**
@@ -117,6 +120,16 @@ fun CreateActions(
             if (room.inRoom) LiveRoomDot()
         }
     }
+    val searchButton: @Composable () -> Unit = {
+        IconButton(
+            onClick = {
+                navController.navigate(SearchDestination) { launchSingleTop = true }
+            },
+            modifier = Modifier.size(44.dp),
+        ) {
+            Icon(SimpIcons.Search, contentDescription = stringResource(Res.string.search), tint = tint)
+        }
+    }
     val settingsButton: @Composable () -> Unit = {
         if (onSettings != null) {
             IconButton(onClick = onSettings, modifier = Modifier.size(44.dp)) {
@@ -139,11 +152,13 @@ fun CreateActions(
                     ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            searchButton()
             createButton()
             settingsButton()
         }
     } else {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            searchButton()
             createButton()
             settingsButton()
         }
