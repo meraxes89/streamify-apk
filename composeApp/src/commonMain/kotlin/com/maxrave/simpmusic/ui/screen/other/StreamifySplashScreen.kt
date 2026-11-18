@@ -77,6 +77,7 @@ fun StreamifySplashScreen(
 ) {
     val timeline = remember { Animatable(0f) }
     val textMeasurer = rememberTextMeasurer()
+    val appFontFamily = fontFamily()
 
     // Determine theme mode
     val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
@@ -214,7 +215,7 @@ fun StreamifySplashScreen(
                 color = wordmarkColor,
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Black,
-                fontFamily = fontFamily(),
+                fontFamily = appFontFamily,
             )
 
             val letterLayouts = word.map { ch ->
@@ -329,7 +330,7 @@ fun StreamifySplashScreen(
                     }
                     val signatureLayout = textMeasurer.measure(
                         text = signatureAnnotated,
-                        style = TextStyle(fontFamily = fontFamily()),
+                        style = TextStyle(fontFamily = appFontFamily),
                     )
                     drawText(
                         textLayoutResult = signatureLayout,
@@ -352,7 +353,7 @@ fun StreamifySplashScreen(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = 2.5.sp,
-                            fontFamily = fontFamily(),
+                            fontFamily = appFontFamily,
                         ),
                     )
                     drawText(

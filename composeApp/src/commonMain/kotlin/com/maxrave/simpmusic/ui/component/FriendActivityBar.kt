@@ -336,7 +336,7 @@ fun FriendActivityCard(
 
             // Join Jam button if Jam session is active
             if (!activity.jamCode.isNullOrBlank()) {
-                val code = activity.jamCode
+                val code = activity.jamCode.orEmpty()
                 Spacer(modifier = Modifier.height(8.dp))
                 ElevatedButton(
                     onClick = { onJoinJam(code) },

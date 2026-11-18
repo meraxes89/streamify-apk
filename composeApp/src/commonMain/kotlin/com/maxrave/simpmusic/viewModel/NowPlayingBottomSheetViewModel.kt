@@ -273,9 +273,9 @@ class NowPlayingBottomSheetViewModel(
                         com.streamify.supabase.SupabaseLibrarySync.syncLike(
                             trackId = songUIState.videoId,
                             title = songUIState.title,
-                            artist = songUIState.artists ?: "",
+                            artist = songUIState.listArtists.joinToString(", ") { it.name },
                             coverUrl = songUIState.thumbnails,
-                            durationSec = songUIState.durationSeconds,
+                            durationSec = 0,
                             isLiked = newLiked,
                         )
                     }
