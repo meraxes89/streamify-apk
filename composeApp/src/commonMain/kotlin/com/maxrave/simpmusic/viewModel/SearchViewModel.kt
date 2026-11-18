@@ -10,6 +10,7 @@ import com.maxrave.domain.data.model.searchResult.songs.SongsResult
 import com.maxrave.domain.data.model.mood.Mood
 import com.maxrave.domain.data.model.searchResult.videos.VideosResult
 import com.maxrave.domain.data.type.SearchResultType
+import com.maxrave.domain.data.model.browse.album.Track
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.repository.HomeRepository
 import com.maxrave.domain.repository.SearchRepository
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.jetbrains.compose.resources.StringResource
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.albums
@@ -102,6 +105,9 @@ class SearchViewModel(
     private val _searchHistory: MutableStateFlow<List<String>> = MutableStateFlow(emptyList())
     val searchHistory: StateFlow<List<String>> get() = _searchHistory.asStateFlow()
 
+    private val _lastPlayedSearchTrack = MutableStateFlow<Track?>(null)
+    val lastPlayedSearchTrack: StateFlow<Track?> get() = _lastPlayedSearchTrack.asStateFlow()
+
     /** Browse categories shown on the empty search screen, the way YouTube Music itself does. */
     private val _moodAndGenres: MutableStateFlow<Mood?> = MutableStateFlow(null)
     val moodAndGenres: StateFlow<Mood?> get() = _moodAndGenres.asStateFlow()
@@ -120,6 +126,7 @@ class SearchViewModel(
         language = runBlocking { dataStoreManager.getString(SELECTED_LANGUAGE).first() }
         getSearchHistory()
         getMoodAndGenres()
+        loadLastPlayedSearchTrack()
     }
 
     /**
@@ -184,6 +191,33 @@ class SearchViewModel(
             searchRepository.deleteSearchHistory()
             delay(1000)
             getSearchHistory()
+        }
+    }
+
+    private fun loadLastPlayedSearchTrack() {
+        viewModelScope.launch {
+            dataStoreManager.getString(LAST_PLAYED_SEARCH_TRACK_KEY).collectLatest { json ->
+                if (!json.isNullOrBlank()) {
+                    runCatching {
+                        val track = searchJson.decodeFromString<Track>(json)
+                        _lastPlayedSearchTrack.value = track
+                    }.onFailure {
+                        Logger.e(tag, "Failed to decode last played search track: $it")
+                    }
+                }
+            }
+        }
+    }
+
+    fun setLastPlayedSearchTrack(track: Track) {
+        _lastPlayedSearchTrack.value = track
+        viewModelScope.launch {
+            runCatching {
+                val json = searchJson.encodeToString(track)
+                dataStoreManager.putString(LAST_PLAYED_SEARCH_TRACK_KEY, json)
+            }.onFailure {
+                Logger.e(tag, "Failed to encode last played search track: $it")
+            }
         }
     }
 
@@ -516,3 +550,6 @@ class SearchViewModel(
         }
     }
 }
+
+private const val LAST_PLAYED_SEARCH_TRACK_KEY = "last_played_search_track"
+private val searchJson = Json { ignoreUnknownKeys = true }

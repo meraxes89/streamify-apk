@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -167,6 +168,7 @@ import simpmusic.composeapp.generated.resources.clear_search_history
 import simpmusic.composeapp.generated.resources.error_occurred
 import simpmusic.composeapp.generated.resources.everything_you_need
 import simpmusic.composeapp.generated.resources.in_search
+import simpmusic.composeapp.generated.resources.last_played_from_search
 import simpmusic.composeapp.generated.resources.no_results_found
 import simpmusic.composeapp.generated.resources.playlists
 import simpmusic.composeapp.generated.resources.podcasts
@@ -193,6 +195,7 @@ fun SearchScreen(
     val searchHistory by searchViewModel.searchHistory.collectAsStateWithLifecycle()
     val moodAndGenres by searchViewModel.moodAndGenres.collectAsStateWithLifecycle()
     val moodArtwork by searchViewModel.moodArtwork.collectAsStateWithLifecycle()
+    val lastPlayedSearchTrack by searchViewModel.lastPlayedSearchTrack.collectAsStateWithLifecycle()
 
     var searchUIType by rememberSaveable { mutableStateOf(SearchUIType.EMPTY) }
     var searchText by rememberSaveable { mutableStateOf("") }
@@ -451,6 +454,11 @@ fun SearchScreen(
                                         is SongsResult, is VideosResult -> {
                                             focusManager.clearFocus()
                                             val firstTrack: Track = (item as? SongsResult)?.toTrack() ?: (item as VideosResult).toTrack()
+                                            searchViewModel.setLastPlayedSearchTrack(firstTrack)
+                                            searchViewModel.insertSearchHistory(firstTrack.title)
+                                            if (searchText.isNotBlank() && searchText.trim() != firstTrack.title) {
+                                                searchViewModel.insertSearchHistory(searchText.trim())
+                                            }
                                             searchViewModel.setQueueData(
                                                 QueueData.Data(
                                                     listTracks = arrayListOf(firstTrack),
@@ -558,6 +566,58 @@ fun SearchScreen(
                             state = historyState,
                             contentPadding = PaddingValues(top = searchBarHeight, bottom = 10.dp),
                         ) {
+                            lastPlayedSearchTrack?.let { track ->
+                                item {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                    ) {
+                                        Text(
+                                            text = stringResource(Res.string.last_played_from_search),
+                                            style = typo().titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
+                                        )
+                                        SongFullWidthItems(
+                                            track = track,
+                                            isPlaying = track.videoId == currentVideoId,
+                                            modifier = Modifier,
+                                            onMoreClickListener = {
+                                                onMoreClick(track.toSongEntity())
+                                            },
+                                            onClickListener = {
+                                                focusManager.clearFocus()
+                                                searchViewModel.setQueueData(
+                                                    QueueData.Data(
+                                                        listTracks = arrayListOf(track),
+                                                        firstPlayedTrack = track,
+                                                        playlistId = "RDAMVM${track.videoId}",
+                                                        playlistName =
+                                                            "\"${track.title}\" ${
+                                                                getStringBlocking(
+                                                                    Res.string.in_search,
+                                                                )
+                                                            }",
+                                                        playlistType = PlaylistType.RADIO,
+                                                        continuation = null,
+                                                    ),
+                                                )
+                                                searchViewModel.loadMediaItem(track, Config.SONG_CLICK)
+                                            },
+                                            onAddToQueue = {
+                                                sharedViewModel.addListToQueue(
+                                                    arrayListOf(track),
+                                                )
+                                            },
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 4.dp),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                        )
+                                    }
+                                }
+                            }
                             stickyHeader {
                                 Crossfade(
                                     targetState = searchHistory.isNotEmpty(),
@@ -668,6 +728,59 @@ fun SearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            lastPlayedSearchTrack?.let { track ->
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Column(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 16.dp, bottom = 4.dp),
+                                    ) {
+                                        Text(
+                                            text = stringResource(Res.string.last_played_from_search),
+                                            style = typo().titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                                        )
+                                        SongFullWidthItems(
+                                            track = track,
+                                            isPlaying = track.videoId == currentVideoId,
+                                            modifier = Modifier,
+                                            onMoreClickListener = {
+                                                onMoreClick(track.toSongEntity())
+                                            },
+                                            onClickListener = {
+                                                searchViewModel.setQueueData(
+                                                    QueueData.Data(
+                                                        listTracks = arrayListOf(track),
+                                                        firstPlayedTrack = track,
+                                                        playlistId = "RDAMVM${track.videoId}",
+                                                        playlistName =
+                                                            "\"${track.title}\" ${
+                                                                getStringBlocking(
+                                                                    Res.string.in_search,
+                                                                )
+                                                            }",
+                                                        playlistType = PlaylistType.RADIO,
+                                                        continuation = null,
+                                                    ),
+                                                )
+                                                searchViewModel.loadMediaItem(track, Config.SONG_CLICK)
+                                            },
+                                            onAddToQueue = {
+                                                sharedViewModel.addListToQueue(
+                                                    arrayListOf(track),
+                                                )
+                                            },
+                                        )
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(top = 12.dp),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                        )
+                                    }
+                                }
+                            }
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 Column(
                                     modifier =
@@ -844,6 +957,11 @@ fun SearchScreen(
                                                                         },
                                                                         onClickListener = {
                                                                             val firstTrack = result.toTrack()
+                                                                            searchViewModel.setLastPlayedSearchTrack(firstTrack)
+                                                                            searchViewModel.insertSearchHistory(firstTrack.title)
+                                                                            if (searchText.isNotBlank() && searchText.trim() != firstTrack.title) {
+                                                                                searchViewModel.insertSearchHistory(searchText.trim())
+                                                                            }
                                                                             searchViewModel.setQueueData(
                                                                                 QueueData.Data(
                                                                                     listTracks = arrayListOf(firstTrack),
@@ -883,6 +1001,11 @@ fun SearchScreen(
                                                                         },
                                                                         onClickListener = {
                                                                             val firstTrack = result.toTrack()
+                                                                            searchViewModel.setLastPlayedSearchTrack(firstTrack)
+                                                                            searchViewModel.insertSearchHistory(firstTrack.title)
+                                                                            if (searchText.isNotBlank() && searchText.trim() != firstTrack.title) {
+                                                                                searchViewModel.insertSearchHistory(searchText.trim())
+                                                                            }
                                                                             searchViewModel.setQueueData(
                                                                                 QueueData.Data(
                                                                                     listTracks = arrayListOf(firstTrack),

@@ -737,6 +737,7 @@
     <string name="analytics_axis_concentration">Concentration</string>
     <string name="analytics_axis_replay">Replay</string>
     <string name="your_recently_played">Your recently played</string>
+    <string name="last_played_from_search">Last played from search</string>
     <string name="your_top_artists">Your top artists</string>
     <string name="your_top_albums">Your top albums</string>
     <string name="your_top_tracks">Your top tracks</string>
