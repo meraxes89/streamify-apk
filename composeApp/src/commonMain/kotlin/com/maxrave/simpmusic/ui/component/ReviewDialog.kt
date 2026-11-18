@@ -43,7 +43,7 @@ fun ReviewDialog(
         confirmButton = {
             TextButton(onClick = {
                 onDoneReview.invoke()
-                uriHandler.openUri("https://github.com/maxrave-dev/SimpMusic")
+                uriHandler.openUri("https://github.com/meraxes89/streamify-apk")
             }) {
                 Text(
                     stringResource(Res.string.give_a_star),
@@ -93,12 +93,12 @@ fun ReviewDialog(
                         append(stringResource(Res.string.if_you_love_my_work_consider).removeSurrounding("\"").trimEnd() + " ")
                         withLink(
                             LinkAnnotation.Url(
-                                "https://buymeacoffee.com/maxrave",
+                                "https://github.com/meraxes89/streamify-apk",
                                 TextLinkStyles(style = SpanStyle(textDecoration = TextDecoration.Underline, color = seed)),
                             ) {
                                 onDoneReview.invoke()
                                 onDismissRequest.invoke()
-                                uriHandler.openUri("https://buymeacoffee.com/maxrave")
+                                uriHandler.openUri("https://github.com/meraxes89/streamify-apk")
                             },
                         ) {
                             append(stringResource(Res.string.buying_me_a_coffee))
@@ -106,13 +106,13 @@ fun ReviewDialog(
                         append("\n")
                         withLink(
                             LinkAnnotation.Url(
-                                "https://x.com/maxrave_dev",
+                                "https://x.com/sireenyadav",
                                 TextLinkStyles(style = SpanStyle(textDecoration = TextDecoration.Underline, color = seed)),
                             ) {
                                 onDoneReview.invoke()
                                 onDismissRequest.invoke()
                                 // openUrl rather than the uri handler, which throws where no browser answers.
-                                runCatching { openUrl("https://x.com/maxrave_dev") }
+                                runCatching { openUrl("https://x.com/sireenyadav") }
                             },
                         ) {
                             append(stringResource(Res.string.follow_me_on_x))

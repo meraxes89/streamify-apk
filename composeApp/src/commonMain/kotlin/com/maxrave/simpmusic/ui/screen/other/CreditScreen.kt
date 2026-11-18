@@ -108,14 +108,14 @@ fun CreditScreen(
             fontSize = 13.sp,
         )
 
-        // Developer - clickable, opens dev blog
+        // Developer - clickable, opens github
         Text(
-            text = stringResource(Res.string.maxrave_dev),
+            text = "meraxes_89",
             style = typo().bodyMedium,
             textDecoration = TextDecoration.Underline,
             modifier =
                 Modifier.clickable {
-                    openUrl("https://maxrave.dev")
+                    openUrl("https://github.com/meraxes89")
                 },
         )
 
@@ -172,7 +172,7 @@ fun CreditScreen(
             // GitHub button
             TextButton(
                 onClick = {
-                    openUrl("https://github.com/maxrave-dev/SimpMusic")
+                    openUrl("https://github.com/meraxes89/streamify-apk")
                 },
                 modifier =
                     Modifier
@@ -186,7 +186,7 @@ fun CreditScreen(
             // Issue tracker button
             TextButton(
                 onClick = {
-                    openUrl("https://github.com/maxrave-dev/SimpMusic/issues")
+                    openUrl("https://github.com/meraxes89/streamify-apk/issues")
                 },
                 modifier =
                     Modifier
@@ -200,7 +200,7 @@ fun CreditScreen(
             // Buy me a coffee button
             TextButton(
                 onClick = {
-                    openUrl("https://github.com/sponsors/maxrave-dev")
+                    openUrl("https://github.com/meraxes89/streamify-apk")
                 },
                 modifier =
                     Modifier

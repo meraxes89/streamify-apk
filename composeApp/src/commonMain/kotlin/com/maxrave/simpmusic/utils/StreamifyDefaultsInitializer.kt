@@ -56,6 +56,13 @@ object StreamifyDefaultsInitializer {
                 Logger.d("Streamify: Maxing out video download quality to 1080p", TAG)
                 dataStoreManager.setVideoDownloadQuality(VIDEO_QUALITY.items[0].toString())
             }
+
+            // 4. Apple Music lyrics style default
+            val currentLyricsStyle = dataStoreManager.lyricsStyle.first()
+            if (currentLyricsStyle == DataStoreManager.LYRICS_STYLE_CLASSIC || currentLyricsStyle.isEmpty()) {
+                Logger.d("Streamify: Setting default lyrics style to APPLE_MUSIC", TAG)
+                dataStoreManager.setLyricsStyle(DataStoreManager.LYRICS_STYLE_APPLE_MUSIC)
+            }
         } catch (e: Exception) {
             Logger.e("Streamify: Failed to initialize defaults: ${e.message}", TAG)
         }
