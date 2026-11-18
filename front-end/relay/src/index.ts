@@ -394,7 +394,12 @@ function extractBgSession(html: string): BgSession | { error: string } {
 
 function extractSapisid(cookie: string): string | null {
   const match = cookie.match(/(?:^|;\s*)(?:__Secure-3PAPISID|SAPISID)=([^;]+)/);
-  return match ? match[1].trim() : null;
+  if (match) return match[1].trim();
+  const trimmed = cookie.trim();
+  if (!trimmed.includes("=") && !trimmed.includes(";") && trimmed.length > 15) {
+    return trimmed;
+  }
+  return null;
 }
 
 async function computeSapisidHash(sapisid: string, origin: string): Promise<string> {
@@ -416,89 +421,13 @@ async function resolveDirectAudioStream(
 ): Promise<{ url: string; mimeType: string; status?: string } | null> {
   // --- Tier 1: Authenticated User Session (Option 3 — bypasses datacenter bot-gates) ---
   if (userCookie && userCookie.trim().length > 0) {
-    const cleanCookie = userCookie.trim();
-    const ytmBody: Record<string, unknown> = {
-      videoId,
-      playbackContext: {
-        contentPlaybackContext: {
-          signatureTimestamp: 20768,
-        },
-      },
-      context: {
-        client: {
-          clientName: "WEB_REMIX",
-          clientVersion: "1.20250219.01.00",
-          hl: "en",
-          gl: "US",
-          ...(visitorData ? { visitorData } : {}),
-        },
-      },
-      ...(pot ? { serviceIntegrityDimensions: { poToken: pot } } : {}),
-    };
+    const sapisid = extractSapisid(userCookie);
+    const cleanCookie =
+      sapisid && !userCookie.includes("=")
+        ? `SAPISID=${sapisid}; __Secure-3PAPISID=${sapisid}`
+        : userCookie.trim();
 
-    const ytmHeaders = new Headers({
-      "Content-Type": "application/json",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-      "Origin": "https://music.youtube.com",
-      "Referer": "https://music.youtube.com/",
-      "Cookie": cleanCookie,
-    });
-
-    const sapisid = extractSapisid(cleanCookie);
-    if (sapisid) {
-      ytmHeaders.set("Authorization", await computeSapisidHash(sapisid, "https://music.youtube.com"));
-    }
-
-    try {
-      const ytmRes = await fetch("https://music.youtube.com/youtubei/v1/player?prettyPrint=false", {
-        method: "POST",
-        headers: ytmHeaders,
-        body: JSON.stringify(ytmBody),
-      });
-
-      if (ytmRes.ok) {
-        const ytmData = (await ytmRes.json()) as {
-          playabilityStatus?: { status?: string; reason?: string };
-          streamingData?: {
-            formats?: Array<{ itag?: number; mimeType?: string; url?: string; cipher?: string; signatureCipher?: string }>;
-            adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string; cipher?: string; signatureCipher?: string }>;
-          };
-        };
-
-        if (ytmData.playabilityStatus?.status === "OK") {
-          const fmts = [
-            ...(ytmData.streamingData?.formats || []),
-            ...(ytmData.streamingData?.adaptiveFormats || []),
-          ];
-          const audioFmts = fmts.filter(
-            (f) => (f.mimeType && f.mimeType.startsWith("audio/")) || f.itag === 140,
-          );
-          const chosen =
-            audioFmts.find((f) => f.itag === 140 && f.url) ||
-            audioFmts.find((f) => f.url) ||
-            audioFmts[0] ||
-            fmts[0];
-
-          if (chosen) {
-            let finalUrl = chosen.url;
-            if (!finalUrl && (chosen.signatureCipher || chosen.cipher)) {
-              const cipherStr = chosen.signatureCipher || chosen.cipher || "";
-              const params = new URLSearchParams(cipherStr);
-              finalUrl = params.get("url") || undefined;
-            }
-            if (finalUrl) {
-              let mimeType = "audio/mp4";
-              if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
-              return { url: finalUrl, mimeType, status: "OK" };
-            }
-          }
-        }
-      }
-    } catch {
-      // Continue to IOS auth check
-    }
-
-    // 1b: Try IOS with cookie (IOS always gives pre-signed direct audio URLs, no cipher!)
+    // 1a: Try IOS with cookie (IOS always gives pre-signed direct audio URLs, no cipher!)
     try {
       const iosHeaders = new Headers({
         "Content-Type": "application/json",
@@ -546,6 +475,79 @@ async function resolveDirectAudioStream(
             audioFmts.find((f) => f.itag === 140 && f.url) ||
             audioFmts.find((f) => f.url) ||
             fmts.find((f) => f.url);
+          if (chosen && chosen.url) {
+            let mimeType = "audio/mp4";
+            if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
+            return { url: chosen.url, mimeType, status: "OK" };
+          }
+        }
+      }
+    } catch {
+      // Continue to WEB_REMIX check
+    }
+
+    // 1b: Try WEB_REMIX with cookie (only if pre-signed url is available)
+    const ytmBody: Record<string, unknown> = {
+      videoId,
+      playbackContext: {
+        contentPlaybackContext: {
+          signatureTimestamp: 20768,
+        },
+      },
+      context: {
+        client: {
+          clientName: "WEB_REMIX",
+          clientVersion: "1.20250219.01.00",
+          hl: "en",
+          gl: "US",
+          ...(visitorData ? { visitorData } : {}),
+        },
+      },
+      ...(pot ? { serviceIntegrityDimensions: { poToken: pot } } : {}),
+    };
+
+    const ytmHeaders = new Headers({
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+      "Origin": "https://music.youtube.com",
+      "Referer": "https://music.youtube.com/",
+      "Cookie": cleanCookie,
+    });
+
+    if (sapisid) {
+      ytmHeaders.set("Authorization", await computeSapisidHash(sapisid, "https://music.youtube.com"));
+    }
+
+    try {
+      const ytmRes = await fetch("https://music.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        headers: ytmHeaders,
+        body: JSON.stringify(ytmBody),
+      });
+
+      if (ytmRes.ok) {
+        const ytmData = (await ytmRes.json()) as {
+          playabilityStatus?: { status?: string; reason?: string };
+          streamingData?: {
+            formats?: Array<{ itag?: number; mimeType?: string; url?: string; cipher?: string; signatureCipher?: string }>;
+            adaptiveFormats?: Array<{ itag?: number; mimeType?: string; url?: string; cipher?: string; signatureCipher?: string }>;
+          };
+        };
+
+        if (ytmData.playabilityStatus?.status === "OK") {
+          const fmts = [
+            ...(ytmData.streamingData?.formats || []),
+            ...(ytmData.streamingData?.adaptiveFormats || []),
+          ];
+          const audioFmts = fmts.filter(
+            (f) => (f.mimeType && f.mimeType.startsWith("audio/")) || f.itag === 140,
+          );
+          const chosen =
+            audioFmts.find((f) => f.itag === 140 && f.url) ||
+            audioFmts.find((f) => f.url) ||
+            audioFmts[0] ||
+            fmts[0];
+
           if (chosen && chosen.url) {
             let mimeType = "audio/mp4";
             if (chosen.mimeType) mimeType = chosen.mimeType.split(";")[0];
