@@ -1,6 +1,544 @@
 ========================================================================
-STREAMIFY EXTREME TESTING MATRIX AGGREGATE RUN #20
-COMMIT: 856cfce6eb305e0162b894ff896950cb588fce4b
+STREAMIFY NIGHTLY DEEP MATRIX RUN #20
+COMMIT: ffd1098c84630e734233d9d793d1e399a9203278
 ========================================================================
+openjdk version "17.0.21" 2026-10-20
+OpenJDK Runtime Environment Temurin-17.0.21+9 (build 17.0.21+9)
+OpenJDK 64-Bit Server VM Temurin-17.0.21+9 (build 17.0.21+9, mixed mode, sharing)
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: connectedDebugAndroidTest
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:generateUniffiKotlinBindings SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :shared-android:preBuild UP-TO-DATE
+> Task :shared-android:preDebugBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :shared-android:generateDebugResValues FROM-CACHE
+> Task :shared-android:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :shared-android:packageDebugResources FROM-CACHE
+> Task :shared-android:writeDebugAarMetadata
+> Task :app:generateDebugBuildConfig
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :shared-android:extractDeepLinksDebug FROM-CACHE
+> Task :shared-android:processDebugManifest FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :shared-android:compileDebugLibraryResources FROM-CACHE
+> Task :shared-android:parseDebugLocalResources FROM-CACHE
+> Task :shared-android:generateDebugRFile FROM-CACHE
+> Task :shared-android:checkKotlinGradlePluginConfigurationErrors
+> Task :app:checkDebugAarMetadata
+> Task :shared-android:javaPreCompileDebug FROM-CACHE
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:mergeDebugResources FROM-CACHE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :shared-android:compileDebugKotlin FROM-CACHE
+> Task :shared-android:compileDebugJavaWithJavac NO-SOURCE
+> Task :app:checkDebugAndroidTestAarMetadata
+> Task :app:generateDebugAndroidTestResValues FROM-CACHE
+> Task :app:mapDebugAndroidTestSourceSetPaths
+> Task :app:generateDebugAndroidTestResources UP-TO-DATE
+> Task :app:processDebugAndroidTestManifest
+> Task :app:generateDebugAndroidTestBuildConfig
+> Task :app:javaPreCompileDebugAndroidTest FROM-CACHE
+> Task :shared-android:bundleLibCompileToJarDebug
+> Task :shared-android:mergeDebugShaders
+> Task :app:mergeDebugShaders
+> Task :shared-android:compileDebugShaders NO-SOURCE
+> Task :shared-android:generateDebugAssets UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :shared-android:packageDebugAssets FROM-CACHE
+> Task :shared-android:bundleLibRuntimeToJarDebug
+> Task :app:mergeDebugAssets
+> Task :app:compressDebugAssets
+> Task :app:desugarDebugFileDependencies
+> Task :shared-android:processDebugJavaRes
+> Task :app:mergeDebugAndroidTestResources
+> Task :app:processDebugResources
+> Task :app:checkDebugDuplicateClasses
+> Task :app:processDebugAndroidTestResources
+> Task :app:compileDebugKotlin
+> Task :app:mergeExtDexDebug
+> Task :shared-android:bundleLibRuntimeToDirDebug
+> Task :app:mergeDebugJniLibFolders FROM-CACHE
+> Task :shared-android:mergeDebugJniLibFolders FROM-CACHE
+> Task :shared-android:mergeDebugNativeLibs NO-SOURCE
+> Task :shared-android:copyDebugJniLibsProjectOnly
+> Task :app:mergeDebugNativeLibs
+> Task :app:mergeLibDexDebug
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:mergeDebugAndroidTestShaders FROM-CACHE
+> Task :app:compileDebugAndroidTestShaders NO-SOURCE
+> Task :app:generateDebugAndroidTestAssets UP-TO-DATE
 
-WARN: No shard logs found.
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libjnidispatch.so.
+
+> Task :app:desugarDebugAndroidTestFileDependencies FROM-CACHE
+> Task :app:checkDebugAndroidTestDuplicateClasses
+> Task :app:mergeDebugAndroidTestAssets
+> Task :app:compressDebugAndroidTestAssets
+> Task :app:mergeLibDexDebugAndroidTest
+> Task :app:mergeDebugAndroidTestJniLibFolders FROM-CACHE
+> Task :app:mergeDebugAndroidTestNativeLibs
+
+> Task :app:stripDebugAndroidTestDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbenchmarkNative.so, libtracing_perfetto.so.
+
+> Task :app:validateSigningDebugAndroidTest
+> Task :app:writeDebugAndroidTestSigningConfigVersions
+> Task :shared-android:preDebugAndroidTestBuild UP-TO-DATE
+> Task :shared-android:checkDebugAndroidTestAarMetadata
+> Task :shared-android:generateDebugAndroidTestResValues FROM-CACHE
+> Task :shared-android:mapDebugAndroidTestSourceSetPaths
+> Task :shared-android:generateDebugAndroidTestResources UP-TO-DATE
+> Task :shared-android:mergeDebugAndroidTestResources
+> Task :shared-android:processDebugAndroidTestManifest
+> Task :shared-android:processDebugAndroidTestResources
+> Task :shared-android:compileDebugAndroidTestKotlin NO-SOURCE
+> Task :shared-android:javaPreCompileDebugAndroidTest FROM-CACHE
+> Task :shared-android:compileDebugAndroidTestJavaWithJavac NO-SOURCE
+> Task :shared-android:mergeDebugAndroidTestShaders FROM-CACHE
+> Task :shared-android:compileDebugAndroidTestShaders NO-SOURCE
+> Task :shared-android:generateDebugAndroidTestAssets UP-TO-DATE
+> Task :shared-android:mergeDebugAndroidTestAssets FROM-CACHE
+> Task :shared-android:compressDebugAndroidTestAssets
+> Task :shared-android:desugarDebugAndroidTestFileDependencies FROM-CACHE
+> Task :shared-android:dexBuilderDebugAndroidTest
+> Task :app:mergeExtDexDebugAndroidTest
+> Task :shared-android:mergeDebugAndroidTestGlobalSynthetics
+> Task :shared-android:processDebugAndroidTestJavaRes NO-SOURCE
+> Task :shared-android:mergeDebugAndroidTestJavaResource
+> Task :shared-android:mergeDebugAndroidTestJniLibFolders FROM-CACHE
+> Task :shared-android:mergeDebugAndroidTestNativeLibs NO-SOURCE
+> Task :shared-android:checkDebugAndroidTestDuplicateClasses
+> Task :shared-android:stripDebugAndroidTestDebugSymbols NO-SOURCE
+> Task :shared-android:validateSigningDebugAndroidTest
+> Task :shared-android:mergeLibDexDebugAndroidTest FROM-CACHE
+> Task :shared-android:mergeProjectDexDebugAndroidTest
+> Task :shared-android:writeDebugAndroidTestSigningConfigVersions
+> Task :shared-android:mergeExtDexDebugAndroidTest
+> Task :shared-android:packageDebugAndroidTest
+> Task :shared-android:createDebugAndroidTestApkListingFileRedirect
+> Task :shared-android:connectedDebugAndroidTest
+
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/MainActivity.kt:102:21 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/cast/StreamifyMediaRouteProvider.kt:62:22 Parameter 'phase' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:45 Parameter 'artistA' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/discovery/FuzzyTitleMatcher.kt:145:78 Parameter 'artistB' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/ExportifyParser.kt:239:37 Variable 'durFormatted' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:35:24 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/ingestion/NeuroQueueManager.kt:39:25 Parameter 'track' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/lyrics/LyricsCacheManager.kt:105:34 'getter for isBluetoothA2dpOn: Boolean' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:173:17 Variable 'version' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:176:17 Variable 'textPoolLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:178:17 Variable 'flags' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:186:21 Variable 'sylStartIdx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/models/LyricsData.kt:187:21 Variable 'sylCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:86:9 Parameter 'seedTitle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/CandidateAggregator.kt:87:9 Parameter 'seedArtist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:194:37 'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:197:56 'getter for host: InetAddress!' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/MeshDiscoveryEngine.kt:225:37 Parameter 'userId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:24:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:26:20 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/NegativeResultCache.kt:28:15 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/ParallelStreamDownloader.kt:108:41 Variable 'expectedLen' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:20:28 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:22:18 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/StreamifyCircuitBreaker.kt:24:23 Parameter 'videoId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeMusicRadioApi.kt:635:9 Parameter 'rendererKey' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/YouTubeStreamResolver.kt:562:9 Parameter 'statuses' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:61:21 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/network/iTunesSearchApi.kt:115:21 Variable 'artistName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:22:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:96:37 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/BackupManager.kt:113:29 Variable 'trackId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/NuclearResetManager.kt:44:21 Variable 'currentPlaylists' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/persistence/SmartOfflineVaultEngine.kt:67:39 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:116:9 Parameter 'encoding' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:168:25 Variable 'lraDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/EdgeMeshRepository.kt:169:25 Variable 'truePeakDb' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:68:47 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:241:13 Variable 'tombstone' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:358:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:388:13 Variable 'updatedPlaylist' is assigned but never accessed
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/repository/PlaylistRepository.kt:476:82 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:5:33 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:6:33 'MasterKey' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:116:25 'MasterKey' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:116:35 'Builder' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:117:27 'MasterKey' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:117:37 'KeyScheme' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:119:21 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:123:13 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:123:40 'PrefKeyEncryptionScheme' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:124:13 'EncryptedSharedPreferences' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/spotify/SpotifySecureStore.kt:124:40 'PrefValueEncryptionScheme' is deprecated. Deprecated in Java
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/supabase/SupabaseAdminClient.kt:213:24 Variable 'resp' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/supabase/SupabaseClient.kt:326:45 Parameter 'userId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:249:43 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:250:42 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:35 Parameter 'counts' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:296:55 Parameter 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:307:66 Parameter 'cloudTopTrack' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:356:37 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:357:35 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:439:13 Variable 'meta' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:470:40 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/telemetry/YtStatsTelemetryEngine.kt:471:38 Type mismatch: inferred type is String? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:516:36 Unsafe use of a nullable receiver of type Any?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:538:61 Type mismatch: inferred type is Any? but Any was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:539:56 Type mismatch: inferred type is Any? but Any was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:540:52 Type mismatch: inferred type is Any? but Any was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:710:71 Type mismatch: inferred type is ClassLoader? but ClassLoader was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:725:68 Type mismatch: inferred type is ClassLoader? but ClassLoader was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/uniffi/StreamifyEngineBridge.kt:745:64 Type mismatch: inferred type is ClassLoader? but ClassLoader was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/update/StreamifyUpdateManager.kt:182:74 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/PlaylistLinkScraper.kt:459:92 Type mismatch: inferred type is Nothing? but String was expected
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/data/youtube/YtSessionExtractor.kt:20:9 Parameter 'onError' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JamEngine.kt:1615:73 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/JoinFabric.kt:327:27 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:99:13 Variable 'senderId' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:102:13 Variable 'sequence' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/jam/LanBeaconPacket.kt:103:13 Variable 'timestampMonoNs' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/StreamifyAudioProcessor.kt:463:64 Parameter 'channelCount' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/audio/SyncAudioProcessor.kt:106:13 Variable 'kalmanActive' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:25:48 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:84:28 Variable 'finalBpm' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:85:28 Variable 'finalKey' initializer is redundant
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/media/playback/OnlineTrackProcessor.kt:98:21 Name shadowed: trackKey
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:287:41 Parameter 'mode' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/navigation/AppNavGraph.kt:305:37 Parameter 'playlist' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:122:63 Parameter 'limit' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/radio/ContinuumRadioEngine.kt:310:53 Parameter 'rawJson' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CanvasVideoSurface.kt:141:9 Variable 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:163:42 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:73 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:278:98 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CommentsSheet.kt:523:56 'Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:238:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ConnectAccountsSheet.kt:252:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:119:5 Parameter 'onAddToPlaylistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:190:37 'PlaylistPlay: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistPlay
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:201:37 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:228:41 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/ContextMenuSheet.kt:335:37 'PlaylistAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.PlaylistAdd
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:260:65 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/CoverCropperSheet.kt:261:53 There is more than one label with such a name in this scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/FriendActivityCard.kt:185:49 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/HeartButton.kt:43:9 Variable 'tint' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QrShareCard.kt:147:5 Parameter 'qrBitmap' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/QuantumSonicTokenController.kt:217:37 Parameter 'heightPx' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/RelatedDiscoverSheet.kt:46:9 Variable 'scope' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:197:94 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/TrackListItem.kt:199:38 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtPlaylistHeroHeader.kt:181:102 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtQueueTrackItem.kt:42:5 Parameter 'onReplay' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSortFilterBar.kt:52:56 'ViewList: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ViewList
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtSyllableLine.kt:191:5 Parameter 'startSearchOffset' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/components/yt/YtThumbnail.kt:45:5 Parameter 'artist' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:191:39 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:352:53 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:368:53 'Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AdminDashboardScreen.kt:419:13 Duplicate label in when
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/AlbumScreen.kt:307:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ArtistScreen.kt:92:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:50:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:355:5 Parameter 'onClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/BlendScreen.kt:414:26 Parameter 'friendName' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:68:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/CommunityHubScreen.kt:260:68 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:364:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/DownloadScreen.kt:459:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/EqualizerScreen.kt:56:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:164:5 Parameter 'progressFlow' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:178:5 Parameter 'onQueueClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:179:5 Parameter 'onLyricsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:182:5 Parameter 'isAutoPlayEnabled' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheet.kt:183:5 Parameter 'onAutoPlayToggle' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/FullPlayerSheetPanes.kt:425:5 Parameter 'playerViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:40:5 Parameter 'dominantColor' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:42:5 Parameter 'onSettingsClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/HomeScreen.kt:57:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:103:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:786:56 'ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ExitToApp
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionScreen.kt:1238:5 Parameter 'votes' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/JamSessionWidgets.kt:107:5 Parameter 'isHost' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:52:9 Variable 'downloadTasks' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:56:9 Variable 'user' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:88:9 Variable 'isRefreshing' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:694:21 Variable 'gridColumns' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1204:43 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1374:5 Parameter 'onMoveToFolder' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/LibraryScreen.kt:1392:44 'QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/PlayerScreen.kt:14:33 Parameter 'onCollapse' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:46:9 Variable 'spotifyAuth' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:27 Parameter 'token' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:155:34 Parameter 'spDc' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:27 Parameter 'authHeader' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/ProfileSelectionScreen.kt:170:39 Parameter 'cookies' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:43:5 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SearchScreen.kt:428:33 Parameter 'index' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:93:35 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:470:75 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:684:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:752:21 Name shadowed: scope
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:799:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:816:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/SettingsScreen.kt:999:47 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:69:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/StatsWrappedScreen.kt:244:33 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:148:48 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UpdatesHubScreen.kt:272:5 Parameter 'onArtistClick' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:106:52 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:412:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:473:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:529:48 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/ui/screens/UserProfileScreen.kt:606:52 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/FleetConfig.kt:204:29 Parameter 'd' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/util/SLog.kt:97:15 Unnecessary safe call on a non-null receiver of type Throwable
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/HomeViewModel.kt:74:18 This declaration is in a preview state and can be changed in a backwards-incompatible manner with a best-effort migration. Its usage should be marked with '@kotlinx.coroutines.FlowPreview' or '@OptIn(kotlinx.coroutines.FlowPreview::class)' if you accept the drawback of relying on preview API
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:186:43 Parameter '_peers' is never used, could be renamed to _
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:193:56 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/JamViewModel.kt:198:40 Parameter 'currentPosition' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerHousekeeping.kt:36:46 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:351:92 Elvis operator (?:) always returns the left operand of non-nullable type Int?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:447:29 Name shadowed: currentT
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:805:93 Unnecessary safe call on a non-null receiver of type Track?
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/PlayerViewModel.kt:1020:50 Parameter 'context' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:296:9 Parameter 'allOnlineResults' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:298:9 Parameter 'ingestionViewModel' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/viewmodel/SearchViewModel.kt:399:25 Variable 'coverUrl' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/weft/Steward.kt:37:48 Parameter 'align' is never used
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:35:52 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///home/runner/work/streamify-apk/streamify-apk/app/src/main/java/com/streamify/app/worker/DownloadWorker.kt:81:13 Variable 'quality' is never used
+
+> Task :app:processDebugJavaRes
+> Task :app:mergeDebugJavaResource
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:compileDebugAndroidTestKotlin
+> Task :app:processDebugAndroidTestJavaRes
+> Task :app:mergeDebugAndroidTestJavaResource
+> Task :app:compileDebugAndroidTestJavaWithJavac
+> Task :app:dexBuilderDebugAndroidTest
+> Task :app:mergeDebugAndroidTestGlobalSynthetics FROM-CACHE
+> Task :app:mergeProjectDexDebugAndroidTest
+> Task :app:packageDebugAndroidTest
+> Task :app:createDebugAndroidTestApkListingFileRedirect
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics FROM-CACHE
+> Task :app:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+[EmulatorConsole]: Failed to start Emulator console for 5554
+
+> Task :app:connectedDebugAndroidTest
+Starting 1 tests on emulator-5554 - 14
+
+com.streamify.benchmark.StreamifyMacrobenchmark > benchmark120FpsScrollAndLyricSweep[emulator-5554 - 14] [31mFAILED [0m
+	junit.framework.AssertionFailedError: Failed to grant permissions, see logcat for details
+	at junit.framework.Assert.fail(Assert.java:50)
+Tests on emulator-5554 - 14 failed: There was 1 failure(s).
+
+> Task :app:connectedDebugAndroidTest FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__reactivecircus_android-emulator-runner-1794978572839.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:connectedDebugAndroidTest'.
+> There were failing tests. See the report at: file:///home/runner/work/streamify-apk/streamify-apk/app/build/reports/androidTests/connected/debug/index.html
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:connectedDebugAndroidTest'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:282)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+Caused by: org.gradle.api.GradleException: There were failing tests. See the report at: file:///home/runner/work/streamify-apk/streamify-apk/app/build/reports/androidTests/connected/debug/index.html
+	at com.android.build.gradle.internal.tasks.DeviceProviderInstrumentTestTask.doTaskAction(DeviceProviderInstrumentTestTask.java:382)
+	at com.android.build.gradle.internal.tasks.NonIncrementalTask$taskAction$$inlined$recordTaskAction$1.invoke(BaseTask.kt:66)
+	at com.android.build.gradle.internal.tasks.Blocks.recordSpan(Blocks.java:51)
+	at com.android.build.gradle.internal.tasks.NonIncrementalTask.taskAction(NonIncrementalTask.kt:97)
+	at jdk.internal.reflect.GeneratedMethodAccessor112.invoke(Unknown Source)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.run(DefaultBuildOperationExecutor.java:68)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:41)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:74)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:67)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:45)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:175)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:76)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:54)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:54)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:106)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:55)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:56)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:200)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:195)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:157)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.operations.DefaultBuildOperationExecutor.call(DefaultBuildOperationExecutor.java:73)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:80)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:463)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:380)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 5m 29s
+111 actionable tasks: 79 executed, 32 from cache
+Configuration cache entry stored.
