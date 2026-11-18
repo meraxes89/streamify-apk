@@ -1,45 +1,120 @@
-# 3. Cloud Backend Deployment & Hosting Strategy
+# 3. Cloud Backend Deployment & Live Verification
 
-## 1. Executive Summary & Platform Assessment
+## 1. Executive Summary & Status: LIVE
 
-To host the **Architecture v3** Node.js 8 MiB Range Stream Relay and Multi-Profile Resolver without requiring a credit card or incurring monthly costs, we evaluated major container and serverless platforms.
+The **Architecture v3** Node.js 8 MiB Range Stream Relay and Multi-Profile Resolver has been successfully created, deployed, and live-verified on **Render.com** (Free Web Service tier, $0 cost, zero credit cards).
 
-### Platform Evaluation Matrix
-
-| Platform | Free Tier | Credit Card Required? | Docker / Node.js Support | Status / Suitability |
-| :--- | :--- | :--- | :--- | :--- |
-| **Oracle Cloud Always Free** | 4 OCPU, 24 GB RAM | **YES** (Strict verification; rejects RuPay/FamPay) | Full Root VPS | Blocked by payment gateway |
-| **Hugging Face Spaces** | 2 vCPU, 16 GB RAM | **Requires PRO ($9/mo)** for Docker/Gradio | Docker / Python | Deprecated for free tier |
-| **Render.com** | 512 MB RAM, 0.1 CPU | **NO (100% Free with GitHub login)** | Native Node.js & Docker | **RECOMMENDED PRIMARY** |
-| **Glitch.com** | 512 MB RAM | **NO** | Native Node.js | Secondary / Backup |
-| **Cloudflare Tunnel (Home/PC)** | Local Hardware | **NO** | Native Linux/ARM64 | Alternative Residential Egress |
+- **Service Name:** `streamify-relay`
+- **Dashboard URL:** [Render Dashboard](https://dashboard.render.com/web/srv-dbulkdhsrm7s73f8u3o0)
+- **Live Public Base URL:** `https://streamify-relay.onrender.com`
+- **Commit:** `64fa10d25` on branch `feat/browser-sabr-player`
+- **Region:** `oregon` (AWS us-west-2)
 
 ---
 
-## 2. Selected Primary: Render.com Free Web Service
+## 2. Verified Live Endpoints & Responses
 
-Render provides a completely free, zero-credit-card web service environment with direct GitHub repository integration.
+### 2.1. Capability Echo (`GET /`)
+```bash
+curl -s https://streamify-relay.onrender.com/
+```
+```json
+{
+  "capabilities": [
+    "8mib-range-stream",
+    "mobile-vr-resolver",
+    "prefetch",
+    "ytm-meta",
+    "neg-cache"
+  ],
+  "name": "streamify-relay",
+  "status": "ok",
+  "version": "3.0.0"
+}
+```
 
-### 2.1. Key Capabilities
-- **Zero Payment Method Required:** Sign up directly via GitHub OAuth.
-- **Automated CI/CD:** Connected to `meraxes89/streamify-apk`. Any commit to the server directory automatically triggers a zero-downtime rebuild.
-- **Public HTTPS Endpoint:** Automatically provisions a secure URL (`https://streamify-relay.onrender.com`).
-- **Standard Node.js 20 LTS:** Runs our Fastify/Node.js Architecture v3 stream relay and resolver.
-- **Port Handling:** Automatically reads `PORT` environment variable provided by Render.
+### 2.2. System Health (`GET /api/health`)
+```bash
+curl -s https://streamify-relay.onrender.com/api/health
+```
+```json
+{
+  "cache": { "prefetched": 0, "resolved": 1 },
+  "memory": { "rss": 87494656, "heapUsed": 18456220 },
+  "status": "ok",
+  "uptime": 120,
+  "version": "3.0.0"
+}
+```
 
-### 2.2. Sleeping & Keep-Alive Policy
-- Render free tier instances spin down after 15 minutes of inactivity.
-- **Solution:** A lightweight Cloudflare Worker Cron trigger (or UptimeRobot ping) requests `GET /api/health` every 10 minutes, keeping the relay warm and responsive 24/7.
+### 2.3. Song Resolver (`GET /api/resolve?videoId=dQw4w9WgXcQ`)
+- **Latency:** $\approx 1.2\text{ seconds}$
+- **Response:**
+```json
+{
+  "artist": "Rick Astley",
+  "bitrate": 136544,
+  "codecs": "opus",
+  "contentLength": 3433755,
+  "durationMs": 213000,
+  "expiresAt": 1795008989260,
+  "ok": true,
+  "rangeSupport": true,
+  "streamUrl": "https://streamify-relay.onrender.com/api/stream/dQw4w9WgXcQ",
+  "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+  "videoId": "dQw4w9WgXcQ"
+}
+```
+
+### 2.4. 8 MiB Range Stream Relay (`GET /api/stream/:videoId`)
+- **Request:** `Range: bytes=0-1000`
+- **Response Headers:**
+```http
+HTTP/2 206
+content-type: audio/webm; codecs="opus"
+content-length: 1001
+accept-ranges: bytes
+access-control-allow-origin: *
+access-control-expose-headers: Content-Range, Content-Length, Accept-Ranges
+content-range: bytes 0-1000/3433755
+```
+
+### 2.5. Queue Prefetch (`POST /api/prefetch`)
+- **Request:** `{"nextVideoId": "dQw4w9WgXcQ"}`
+- **Response:** `{"ok": true, "prefetching": "dQw4w9WgXcQ"}`
+
+### 2.6. Autocomplete Search (`GET /api/search?q=believer`)
+- **Response:**
+```json
+{
+  "ok": true,
+  "suggestions": [
+    "believer",
+    "believer imagine dragons",
+    "believer song",
+    "believer lyrics"
+  ]
+}
+```
 
 ---
 
-## 3. Server Architecture Specifications
+## 3. How to Connect Frontend
 
-The relay service lives in `server/` with:
-- **`package.json`**: Dependencies (`@distube/ytdl-core` / `youtubei.js`, `fastify` or native `http`).
-- **`index.js`**:
-  - `GET /api/health`: Health status, active profile, memory.
-  - `GET /api/resolve`: Multi-profile mobile resolver (`ANDROID_VR` + `VISIONOS`).
-  - `GET /api/stream/:videoId`: 8 MiB bounded chunked stream relay with HTTP 206 Partial Content.
-  - `POST /api/prefetch`: Asynchronous queue prefetch worker.
-  - `GET /api/search`: Catalog autocomplete and search proxy.
+### Method A: Streamify Settings Panel (Instant)
+In the Streamify Web Player:
+1. Open **Streamify Settings** $\rightarrow$ **Network & Relay**.
+2. Set Relay Base URL to:
+   ```
+   https://streamify-relay.onrender.com
+   ```
+3. Click **Save** and **Test Relay** (Health badge will show green `ok`).
+
+### Method B: Cloudflare Custom Domain CNAME
+To mask Render behind your branded domain (`api.yourdomain.com`):
+1. In Cloudflare DNS, add:
+   - **Type:** `CNAME`
+   - **Name:** `api`
+   - **Target:** `streamify-relay.onrender.com`
+   - **Proxy status:** Proxied (Orange cloud).
+2. Set `window.STREAMIFY_RELAY_BASE = "https://api.yourdomain.com"`.
