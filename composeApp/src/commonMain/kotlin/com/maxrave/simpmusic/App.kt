@@ -96,6 +96,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.player.FullscreenDestinat
 import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
 import com.maxrave.simpmusic.ui.navigation.graph.AppNavigationGraph
 import com.maxrave.simpmusic.ui.screen.MiniPlayer
+import com.maxrave.simpmusic.ui.screen.other.StreamifySplashScreen
 import com.maxrave.simpmusic.ui.screen.other.UnofficialBuildScreen
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreen
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreenContent
@@ -207,6 +208,10 @@ fun App(
 
     var shouldShowUpdateDialog by rememberSaveable {
         mutableStateOf(false)
+    }
+
+    var isSplashVisible by rememberSaveable {
+        mutableStateOf(true)
     }
 
     // Every dialog this file raises on its own. Home's launch banner waits until none is up; see
@@ -868,6 +873,18 @@ fun App(
                             isShowNowPlaylistScreen = false
                         }
                     }
+                }
+
+                AnimatedVisibility(
+                    visible = isSplashVisible,
+                    enter = fadeIn(animationSpec = tween(300)),
+                    exit = fadeOut(animationSpec = tween(500)),
+                ) {
+                    StreamifySplashScreen(
+                        onDismiss = {
+                            isSplashVisible = false
+                        },
+                    )
                 }
 
                 if (sleepTimerState.isDone) {
