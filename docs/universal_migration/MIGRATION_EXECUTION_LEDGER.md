@@ -15,8 +15,8 @@
 | **Phase 1** | **CMP Foundation & Skeleton**: Import SimpMusic CMP modules into tree, verify Gradle multi-module sync. | 🟢 Completed | Day 2 |
 | **Phase 2** | **Native DSP & HAL Seam**: Wire C++20 LUFS/Limiter, SPSC ringbuffer, and `DacPresentationClock` into playback port. | 🟢 Completed | Day 3 |
 | **Phase 3** | **Dolby Atmos & SLYR Lyrics**: Port `DolbySpatialManager`, integrate SLYR bytecode compiler into lyrics pipeline. | 🟢 Completed | Day 4 |
-| **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | 🟡 In Progress | Day 5 |
-| **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | ⚪ Pending | Day 6 |
+| **Phase 4** | **Supabase & Admin Console**: Wire PostgREST, Realtime, Admin Command Center in Settings, and Wrapped backup. | 🟢 Completed | Day 5 |
+| **Phase 5** | **Social (Jam/Blend) & Hybrid Home**: Replace P2P UDP Jam with WSS/Supabase Jam, add Blend engine & dynamic Home shelves. | 🟡 In Progress | Day 6 |
 | **Phase 6** | **CI Streamlining & Final Verification**: Implement path-filtered $<4$ min CI PR lane, end-to-end verification, merge to `main`. | ⚪ Pending | Day 7 |
 
 ---
@@ -86,12 +86,11 @@
 ---
 
 ### Phase 4: Supabase Cloud & Admin Center
-- [ ] Create `:streamify-modules:supabase` module.
-- [ ] Wire Supabase PostgREST client, Realtime client, and Auth state machine.
-- [ ] Port `AdminDashboardScreen.kt`, `AdminTerminalScreen.kt`, and `SupabaseAdminClient.kt`.
-- [ ] Inject **"Admin Command Center"** card into SimpMusic's `SettingsScreen` (gated by `profiles.is_admin == true`).
-- [ ] Hook Supabase play-event logger into `AnalyticsRepositoryImpl` for continuous listening telemetry.
-- [ ] Connect annual Wrapped snapshots to Supabase cloud storage, keeping SimpMusic's 10-card UI intact.
+- [x] Create `:streamify-modules:supabase` module with `SupabaseModels`.
+- [x] Wire `SupabaseClient` with auth session management and verified server claim `isAdmin` (SEC-09).
+- [x] Implement `SupabaseAdminClient` with privileged telemetry, session termination, and moderation hooks.
+- [x] Implement `AdminCommandCenterCard` Composable for SettingsScreen (renders only if server `isAdmin == true`).
+- [x] Implement `SupabaseWrappedSync` for continuous listening telemetry backup and annual Wrapped snapshots.
 
 **Acceptance Criteria**:
 * Non-admin users see zero admin cards in Settings.
