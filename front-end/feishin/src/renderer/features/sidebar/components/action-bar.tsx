@@ -5,6 +5,7 @@ import styles from './action-bar.module.css';
 
 import { useScanStatus } from '/@/renderer/features/shared/hooks/use-scan-status';
 import { AppMenu } from '/@/renderer/features/titlebar/components/app-menu';
+import { AppRoute } from '/@/renderer/router/routes';
 import { useCommandPalette } from '/@/renderer/store';
 import { Button } from '/@/shared/components/button/button';
 import { DropdownMenu } from '/@/shared/components/dropdown-menu/dropdown-menu';
@@ -17,23 +18,24 @@ export const ActionBar = () => {
     const { t } = useTranslation();
     const { open } = useCommandPalette();
     const { isScanning } = useScanStatus();
+    const navigate = useNavigate();
 
     return (
         <div className={styles.container}>
             <Grid
                 display="flex"
-                gap="sm"
+                gap="xs"
                 styles={{
                     inner: {
                         width: '100%',
                     },
                     root: {
-                        padding: '0 var(--theme-spacing-md',
+                        padding: '0 var(--theme-spacing-md)',
                         width: '100%',
                     },
                 }}
             >
-                <Grid.Col span={7}>
+                <Grid.Col span={6}>
                     <TextInput
                         leftSection={<Icon icon="search" />}
                         onClick={open}
@@ -46,8 +48,15 @@ export const ActionBar = () => {
                         readOnly
                     />
                 </Grid.Col>
-                <Grid.Col span={5}>
-                    <Group gap="sm" grow wrap="nowrap">
+                <Grid.Col span={6}>
+                    <Group gap="xs" grow wrap="nowrap">
+                        <Button
+                            onClick={() => navigate(AppRoute.STREAMIFY_SETTINGS)}
+                            p="0"
+                            tooltip={{ label: 'Streamify Settings', position: 'bottom' }}
+                        >
+                            <Icon icon="settings" size="lg" />
+                        </Button>
                         <DropdownMenu position="bottom-start">
                             <DropdownMenu.Target>
                                 <Button p="0">

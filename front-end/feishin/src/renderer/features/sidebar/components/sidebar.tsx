@@ -21,6 +21,7 @@ import {
     SidebarSharedPlaylistList,
     useSidebarPlaylistAddDragMonitor,
 } from '/@/renderer/features/sidebar/components/sidebar-playlist-list';
+import { AppRoute } from '/@/renderer/router/routes';
 import {
     useAppStore,
     useAppStoreActions,
@@ -156,6 +157,15 @@ export const Sidebar = () => {
                                     </SidebarItem>
                                 );
                             })}
+                            <SidebarItem
+                                key="sidebar-streamify-settings"
+                                to={AppRoute.STREAMIFY_SETTINGS}
+                            >
+                                <Group gap="md">
+                                    <Icon icon="settings" />
+                                    {t('streamify.settings.title', 'Streamify Settings')}
+                                </Group>
+                            </SidebarItem>
                         </Accordion.Panel>
                     </Accordion.Item>
                     <SidebarCollectionList />

@@ -12,6 +12,7 @@ import {
     SidebarSharedPlaylistList,
     useSidebarPlaylistAddDragMonitor,
 } from '/@/renderer/features/sidebar/components/sidebar-playlist-list';
+import { AppRoute } from '/@/renderer/router/routes';
 import {
     SidebarItemType,
     useSidebarItems,
@@ -19,6 +20,7 @@ import {
 } from '/@/renderer/store/settings.store';
 import { Accordion } from '/@/shared/components/accordion/accordion';
 import { Group } from '/@/shared/components/group/group';
+import { Icon } from '/@/shared/components/icon/icon';
 import { ScrollArea } from '/@/shared/components/scroll-area/scroll-area';
 import { Text } from '/@/shared/components/text/text';
 
@@ -106,6 +108,15 @@ export const MobileSidebar = () => {
                                     </SidebarItem>
                                 );
                             })}
+                            <SidebarItem
+                                key="sidebar-streamify-settings"
+                                to={AppRoute.STREAMIFY_SETTINGS}
+                            >
+                                <Group gap="sm">
+                                    <Icon icon="settings" />
+                                    {t('streamify.settings.title', 'Streamify Settings')}
+                                </Group>
+                            </SidebarItem>
                         </Accordion.Panel>
                     </Accordion.Item>
                     {sidebarPlaylistList && <MobileSidebarPlaylistSection />}

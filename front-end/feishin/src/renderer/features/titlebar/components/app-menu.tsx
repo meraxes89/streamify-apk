@@ -9,6 +9,7 @@ import { UpdateAvailableButton } from '/@/renderer/features/settings/components/
 import { openSettingsModal } from '/@/renderer/features/settings/utils/open-settings-modal';
 import { ServerSelector } from '/@/renderer/features/sidebar/components/server-selector';
 import { openReleaseNotesModal } from '/@/renderer/release-notes-modal';
+import { AppRoute } from '/@/renderer/router/routes';
 import {
     useAppStore,
     useAppStoreActions,
@@ -211,6 +212,13 @@ export const AppMenu = () => {
         {
             id: 'divider-2',
             type: 'divider',
+        },
+        {
+            icon: 'settings',
+            id: 'streamify-settings',
+            label: t('streamify.settings.title', 'Streamify Settings'),
+            onClick: () => navigate(AppRoute.STREAMIFY_SETTINGS),
+            type: 'item',
         },
         {
             icon: 'settings',
