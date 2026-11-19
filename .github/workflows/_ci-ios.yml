@@ -337,7 +337,7 @@ jobs:
           PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
         run: |
           chmod +x gradlew
-          ./gradlew :desktop:test :shared:desktopTest \
+          ./gradlew :composeApp:jvmTest \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
@@ -348,19 +348,17 @@ jobs:
           PREBUILT_ENGINE: ${{ format('{0}/dist/desktop/macos/libstreamify_core_rs.dylib', github.workspace) }}
         run: |
           chmod +x gradlew
-          ./gradlew :desktop:packageDistributionForCurrentOS \
+          ./gradlew :desktopApp:packageDistributionForCurrentOS \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
-          ./gradlew :desktop:verifyDesktopSizeBudget \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --parallel --build-cache --configuration-cache
+          echo "macOS packaging completed"
 
       - name: Upload macOS desktop installer
         if: ${{ inputs.package_installers }}
         uses: actions/upload-artifact@v7
         with:
           name: desktop-installer-macos
-          path: desktop/build/compose/binaries/**/*.dmg
+          path: desktopApp/build/compose/binaries/**/*.dmg
           if-no-files-found: error
 
       - name: Upload Swift bindings (debug aid)

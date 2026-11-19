@@ -2,6 +2,7 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://repo1.maven.org/maven2/") }
         gradlePluginPortal()
         maven { setUrl("https://jitpack.io") }
         maven("https://jogamp.org/deployment/maven")

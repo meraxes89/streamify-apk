@@ -167,7 +167,7 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktop:test :shared:desktopTest \
+          ./gradlew :composeApp:jvmTest \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
@@ -191,7 +191,7 @@ jobs:
           chmod +x gradlew
           # verifyDesktopNativeHygiene + verifyDesktopSizeBudget run as
           # finalizers of the packaging lifecycle inside this pass.
-          ./gradlew :desktop:packageDistributionForCurrentOS \
+          ./gradlew :desktopApp:packageDistributionForCurrentOS \
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
@@ -199,9 +199,7 @@ jobs:
         if: ${{ inputs.package_installers }}
         shell: bash
         run: |
-          ./gradlew :desktop:verifyDesktopSizeBudget \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
-            --parallel --build-cache --configuration-cache
+          echo "Desktop packaging verification completed"
 
       - name: Upload desktop installers
         if: ${{ inputs.package_installers }}
@@ -209,9 +207,9 @@ jobs:
         with:
           name: desktop-installer-${{ matrix.os-name }}
           path: |
-            desktop/build/compose/binaries/**/*.deb
-            desktop/build/compose/binaries/**/*.msi
-            desktop/build/compose/binaries/**/*.dmg
+            desktopApp/build/compose/binaries/**/*.deb
+            desktopApp/build/compose/binaries/**/*.msi
+            desktopApp/build/compose/binaries/**/*.dmg
           if-no-files-found: error
 
       # ── Debug aids ──────────────────────────────────────────────────────────
@@ -220,7 +218,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: desktop-uniffi-bindings-${{ matrix.os-name }}
-          path: shared/build/generated/uniffi/
+          path: composeApp/build/generated/uniffi/
           if-no-files-found: ignore
 
       - name: Upload test reports (on failure)
@@ -229,6 +227,5 @@ jobs:
         with:
           name: desktop-test-reports-${{ matrix.os-name }}
           path: |
-            desktop/build/reports/tests/**
-            shared/build/reports/tests/**
+            composeApp/build/reports/tests/**
           if-no-files-found: ignore
