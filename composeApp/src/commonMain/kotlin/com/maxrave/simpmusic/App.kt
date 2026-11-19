@@ -531,12 +531,21 @@ fun App(
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
         }
         val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
+        LaunchedEffect(streamifyAuthState) {
+            if (streamifyAuthState is AuthState.Authenticated) {
+                val user = (streamifyAuthState as AuthState.Authenticated).user
+                com.streamify.sync.StreamifySyncEngine.triggerSync(user.id)
+            }
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             if (streamifyAuthState is AuthState.Unauthenticated) {
                 GoogleOnboardingAuthScreen(
                     onAuthenticated = {
-                        // Identity is persisted and authState transitions to Authenticated
+                        val current = StreamifyAuthManager.authState.value
+                        if (current is AuthState.Authenticated) {
+                            com.streamify.sync.StreamifySyncEngine.triggerSync(current.user.id)
+                        }
                     },
                 )
             } else {

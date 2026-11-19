@@ -2927,6 +2927,13 @@ fun SettingScreen(
                             StreamifyAuthManager.signOut(platformCtx)
                         },
                     )
+                    SettingItem(
+                        title = "Sync Library with Cloud",
+                        subtitle = "Sync liked songs, playlists, and artists with Streamify Cloud",
+                        onClick = {
+                            com.streamify.sync.StreamifySyncEngine.triggerSync(streamifyUser?.id)
+                        },
+                    )
                 }
             }
         }

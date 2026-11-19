@@ -121,6 +121,100 @@ object SupabaseLibrarySync {
     }
 
     /**
+     * Fetches full CloudTrack metadata for all liked songs of this user.
+     * Batches requests in chunks of 40 IDs to avoid query string truncation.
+     */
+    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> = withContext(Dispatchers.IO) {
+        try {
+            val likedIds = fetchCloudLikes(userId)
+            if (likedIds.isEmpty()) return@withContext emptyList()
+
+            val resultTracks = mutableListOf<CloudTrack>()
+            val chunks = likedIds.chunked(40)
+            for (chunk in chunks) {
+                val inClause = chunk.joinToString(",") { "\"$it\"" }
+                val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
+                    parameter("id", "in.($inClause)")
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                }
+                if (resp.status.isSuccess()) {
+                    val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
+                    resultTracks.addAll(tracks)
+                }
+            }
+            resultTracks
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Fetches favorited artist or album IDs from user_item_favorites.
+     */
+    suspend fun fetchCloudItemFavorites(itemType: String, userId: String? = null): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_item_favorites") {
+                parameter("user_id", "eq.$targetUserId")
+                parameter("item_type", "eq.$itemType")
+                parameter("select", "item_id")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                val list = json.decodeFromString<List<CloudUserItemFavorite>>(resp.bodyAsText())
+                list.map { it.itemId }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Synchronizes a favorited/unfavorited artist or album with user_item_favorites.
+     */
+    suspend fun syncItemFavorite(
+        itemType: String,
+        itemId: String,
+        isFavorited: Boolean,
+        userId: String? = null
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            if (isFavorited) {
+                val payload = buildJsonObject {
+                    put("user_id", targetUserId)
+                    put("item_type", itemType)
+                    put("item_id", itemId)
+                }.toString()
+
+                val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_item_favorites") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                    header("Prefer", "resolution=ignore-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }
+                Result.success(resp.status.isSuccess())
+            } else {
+                val resp = SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_item_favorites") {
+                    parameter("user_id", "eq.$targetUserId")
+                    parameter("item_type", "eq.$itemType")
+                    parameter("item_id", "eq.$itemId")
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                }
+                Result.success(resp.status.isSuccess())
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Synchronizes a user playlist and its tracks into Supabase cloud storage.
      */
     suspend fun syncPlaylist(

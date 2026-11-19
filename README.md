@@ -86,6 +86,7 @@ All in-depth systems documentation, engineering specifications, and architectura
 
 | Document | Description |
 |---|---|
+| **[Hybrid Database Architecture](supabase/HYBRID_SYNC_ARCHITECTURE.md)** | **Anti-corruption dual-store sync**: Local Room SQLite ↔ Supabase Postgres hybrid engine (LWW, batch transactions, echo suppression). |
 | **[Detailed Systems Manual](docs/README_DETAILED.MD)** | **Full technical manual (2,600+ lines)**: 64-feature technical specs, memory invariants, FMEA fault analysis, and deep-dive architectural diagrams. |
 | **[Multiplatform Master Plan](docs/architecture/MULTIPLATFORM_PLAN_27_10.MD)** | **The governing multiplatform roadmap**: 15 architectural decisions covering Android, iOS (CoreAudio/SwiftUI), and Desktop (WASAPI/PipeWire). |
 | **[Execution Ledger & Tracker](docs/architecture/MULTIPLATFORM_CHECKBOX.MD)** | **Real-time implementation ledger**: Track status of all phases (Phase 3 Contract Freeze, Phase 4a Mobile Parity, Phase 4b Desktop). |

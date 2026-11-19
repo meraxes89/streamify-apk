@@ -62,6 +62,18 @@ data class CloudUserLike(
 )
 
 @Serializable
+data class CloudUserItemFavorite(
+    @SerialName("user_id")
+    val userId: String,
+    @SerialName("item_type")
+    val itemType: String,
+    @SerialName("item_id")
+    val itemId: String,
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+
+@Serializable
 data class CloudPlaylist(
     val id: String,
     @SerialName("user_id")
