@@ -24,7 +24,7 @@ class StreamifyUpdateRepositoryImpl(
 ) : UpdateRepository {
 
     override fun checkForGithubReleaseUpdate(): Flow<Resource<UpdateData>> =
-        flow {
+        flow<Resource<UpdateData>> {
             try {
                 val response = httpClient.get(GITHUB_API_LATEST_RELEASE) {
                     header(HttpHeaders.UserAgent, "Streamify-App")
@@ -47,21 +47,21 @@ class StreamifyUpdateRepositoryImpl(
                         ),
                     )
                 } else {
-                    emit(Resource.Error("GitHub API returned HTTP ${response.status.value}"))
+                    emit(Resource.Error<UpdateData>("GitHub API returned HTTP ${response.status.value}"))
                 }
             } catch (e: Exception) {
-                emit(Resource.Error(e.message ?: "Failed to check for updates"))
+                emit(Resource.Error<UpdateData>(e.message ?: "Failed to check for updates"))
             }
         }.flowOn(Dispatchers.IO)
 
     override fun checkForFdroidUpdate(): Flow<Resource<UpdateData>> =
-        flow {
-            emit(Resource.Error("F-Droid updates not supported for Streamify"))
+        flow<Resource<UpdateData>> {
+            emit(Resource.Error<UpdateData>("F-Droid updates not supported for Streamify"))
         }.flowOn(Dispatchers.IO)
 
     override fun getFdroidSigningKeys(): Flow<Resource<List<String>>> =
-        flow {
-            emit(Resource.Success(emptyList()))
+        flow<Resource<List<String>>> {
+            emit(Resource.Success<List<String>>(emptyList()))
         }.flowOn(Dispatchers.IO)
 
     companion object {
