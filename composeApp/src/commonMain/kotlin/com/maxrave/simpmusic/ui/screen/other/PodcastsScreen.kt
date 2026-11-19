@@ -32,10 +32,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -128,6 +130,7 @@ fun PodcastScreen(
         shouldHideTopBar = !firstItemVisible
     }
 
+    val isDark = LocalIsDarkTheme.current
     val paletteState = rememberPaletteState()
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
@@ -139,7 +142,12 @@ fun PodcastScreen(
     }
 
     // Background gradient from the artwork, held and faded (see UIExt.rememberPaletteColor).
-    val gradientColors = listOf(rememberPaletteColor(paletteState.palette) { it.getColorFromPalette() }, Color.Black)
+    val baseBackground = if (isDark) Color.Black else MaterialTheme.colorScheme.background
+    val gradientColors =
+        listOf(
+            rememberPaletteColor(paletteState.palette, isDark = isDark) { it.getColorFromPalette() },
+            baseBackground,
+        )
 
     LaunchedEffect(key1 = podcastId) {
         if ((uiState as? PodcastUIState.Success)?.id == podcastId) {
@@ -157,7 +165,7 @@ fun PodcastScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(Color.Black),
+                            .background(baseBackground),
                     state = lazyState,
                 ) {
                     item(contentType = "header") {
@@ -187,7 +195,7 @@ fun PodcastScreen(
                                             .fillMaxWidth()
                                             .height(180.dp)
                                             .align(Alignment.BottomCenter)
-                                            .background(artworkScrimBrush(Color.Black)),
+                                            .background(artworkScrimBrush(baseBackground)),
                                 )
                             }
                             Column(
@@ -243,7 +251,7 @@ fun PodcastScreen(
                                             Text(
                                                 text = data.title,
                                                 style = typo().titleLarge,
-                                                color = Color.White,
+                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 maxLines = 2,
                                             )
                                             Column(
@@ -293,7 +301,7 @@ fun PodcastScreen(
                                                             Text(
                                                                 text = data.author.name,
                                                                 style = typo().labelSmall,
-                                                                color = Color.White,
+                                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                                             )
                                                         }
                                                     }
@@ -373,7 +381,7 @@ fun PodcastScreen(
                                                         data.listEpisode.size.toString(),
                                                         "",
                                                     ),
-                                                color = Color.White,
+                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 style = typo().bodyMedium,
                                                 modifier = Modifier.padding(vertical = 8.dp),
                                             )

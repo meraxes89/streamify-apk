@@ -21,7 +21,6 @@ import com.maxrave.simpmusic.ui.screen.other.BrowseScreen
 import com.maxrave.simpmusic.ui.screen.other.MoreAlbumsScreen
 import com.maxrave.simpmusic.ui.screen.other.PlaylistScreen
 import com.maxrave.simpmusic.ui.screen.other.PodcastScreen
-import com.maxrave.simpmusic.ui.theme.ForceDarkContent
 
 @ExperimentalMaterial3Api
 @ExperimentalFoundationApi
@@ -79,11 +78,9 @@ fun NavGraphBuilder.listScreenGraph(
     }
     composable<PodcastDestination> { entry ->
         val data = entry.toRoute<PodcastDestination>()
-        ForceDarkContent {
-            PodcastScreen(
-                podcastId = data.podcastId,
-                navController = navController,
-            )
-        }
+        PodcastScreen(
+            podcastId = data.podcastId,
+            navController = navController,
+        )
     }
 }
