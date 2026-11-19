@@ -78,14 +78,19 @@ useDefault = true
 # front-end/web/src/audio/botguard/protocol.ts (WAA_REQUEST_KEY).
 #
 # Feishin P0 addition — see the header block above for the rationale.
-id = "public client-protocol constants (documented per-regex above) + vendored feishin i18n locales"
-description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key — public protocol constants, not credentials (see header); plus vendored feishin translation catalogs (UI copy, not secrets)"
+#
+# Supabase public anon key: client-side public JWT key for Supabase cloud sync,
+# authorized via database Row-Level Security (RLS).
+id = "public client-protocol constants (documented per-regex above) + vendored feishin i18n locales + Supabase public anon key"
+description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key + Supabase anon key — public protocol constants, not credentials (see header); plus vendored feishin translation catalogs (UI copy, not secrets)"
 regexTarget = "match"
 regexes = [
     '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
     '''O43z0dpjhgX20SCx4KAo''',
     '''AIzaSyC1xlRQImGslL28Q8HqTqD_o-w-r2Q_Z4''',
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+''',
 ]
 paths = [
     '''front-end/feishin/src/i18n/locales/.*\.json''',
+    '''streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/SupabaseConfig\.kt''',
 ]
