@@ -119,6 +119,13 @@ fun StreamifySplashScreen(
 
     val p = timeline.value
 
+    // Unified vertical lockup positioning: guarantees logo and text maintain fixed spacing
+    val anchorProg = ((p - 0.25f) / 0.35f).coerceIn(0f, 1f)
+    val anchorEase = 1f - (1f - anchorProg).pow(3f)
+    val unifiedDriftDp = -40.dp * anchorEase
+    val logoCenterYDp = -60.dp + unifiedDriftDp
+    val textCenterYDp = 42.dp + unifiedDriftDp
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -182,6 +189,7 @@ fun StreamifySplashScreen(
             }
 
             // --- Central Pulse Aura around Logo ---
+            val logoCenterY = center.y + logoCenterYDp.toPx()
             if (p in 0.05f..0.85f) {
                 val pLogo = ((p - 0.05f) / 0.80f).coerceIn(0f, 1f)
                 val pulseRadius = 55.dp.toPx() * (1f + (pLogo * 1.6f))
@@ -194,19 +202,16 @@ fun StreamifySplashScreen(
                             activeControl.copy(alpha = auraAlpha * (if (isDark) 0.20f else 0.10f)),
                             Color.Transparent,
                         ),
-                        center = center,
+                        center = Offset(center.x, logoCenterY),
                         radius = pulseRadius,
                     ),
                     radius = pulseRadius,
-                    center = center,
+                    center = Offset(center.x, logoCenterY),
                 )
             }
 
             // --- Persistent Brand Lockup ---
-            val anchorProg = ((p - 0.25f) / 0.35f).coerceIn(0f, 1f)
-            val anchorEase = 1f - (1f - anchorProg).pow(3f)
-            val ascendDrift = -height * 0.16f * anchorEase
-            val lockupCenterY = center.y + 60.dp.toPx() + ascendDrift
+            val lockupCenterY = center.y + textCenterYDp.toPx()
             val lockupScale = 1f + (0.03f * anchorEase)
 
             val word = "STREAMIFY"
@@ -371,8 +376,6 @@ fun StreamifySplashScreen(
         // 2. Center Streamify Logo Image (swapping legacy triangle)
         val logoScaleEase = ((p - 0.05f) / 0.25f).coerceIn(0f, 1f)
         val logoScale = if (p < 0.05f) 0f else (1f - (1f - logoScaleEase).pow(3f)) * (1f + (0.06f * sin(p * PI * 2).toFloat()))
-        val anchorProg = ((p - 0.25f) / 0.35f).coerceIn(0f, 1f)
-        val anchorEase = 1f - (1f - anchorProg).pow(3f)
 
         if (logoScale > 0.01f) {
             Image(
@@ -383,7 +386,7 @@ fun StreamifySplashScreen(
                     .offset {
                         IntOffset(
                             x = 0,
-                            y = (-80.dp.toPx() * anchorEase).roundToInt(),
+                            y = logoCenterYDp.roundToPx(),
                         )
                     }
                     .scale(logoScale)
