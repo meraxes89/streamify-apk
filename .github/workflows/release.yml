@@ -67,16 +67,9 @@ jobs:
       package_installers: true
       release_mode: true
 
-  apple:
-    name: "Apple Unified (.dmg & xcframework)"
-    uses: ./.github/workflows/_ci-ios.yml
-    with:
-      package_installers: true
-      release_mode: true
-
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [engine, android, desktop, apple]
+    needs: [engine, android, desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # GOV-05: the actual publish (Release creation + binary attach) sits in
