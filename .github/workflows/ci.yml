@@ -28,7 +28,7 @@ on:
     branches: [main, 'integration/**']
   merge_group:
   push:
-    branches: [main, 'integration/**']
+    branches: [main]
   workflow_dispatch:
 
 # Branch-isolated concurrency:
