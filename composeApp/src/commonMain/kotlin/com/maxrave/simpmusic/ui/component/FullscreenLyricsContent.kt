@@ -176,7 +176,7 @@ fun FullscreenLyricsContent(
     // the edge. This sheet's own 50dp then stacked on top of it, insetting the text by 70dp.
     val fullscreenLyricsStyle by sharedViewModel
         .getLyricsStyle()
-        .collectAsStateWithLifecycle(DataStoreManager.LYRICS_STYLE_APPLE_MUSIC)
+        .collectAsStateWithLifecycle(DataStoreManager.LYRICS_STYLE_CLASSIC)
     val fullscreenAppleLyrics =
         fullscreenLyricsStyle == DataStoreManager.LYRICS_STYLE_APPLE_MUSIC && isLyricsBlurSupported()
     val screenDataState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()

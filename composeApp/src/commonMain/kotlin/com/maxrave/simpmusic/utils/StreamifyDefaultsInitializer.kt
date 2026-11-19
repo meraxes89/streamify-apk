@@ -57,11 +57,11 @@ object StreamifyDefaultsInitializer {
                 dataStoreManager.setVideoDownloadQuality(VIDEO_QUALITY.items[0].toString())
             }
 
-            // 4. Apple Music lyrics style default
+            // 4. Classic lyrics style default for maximum performance
             val currentLyricsStyle = dataStoreManager.lyricsStyle.first()
-            if (currentLyricsStyle == DataStoreManager.LYRICS_STYLE_CLASSIC || currentLyricsStyle.isEmpty()) {
-                Logger.d("Streamify: Setting default lyrics style to APPLE_MUSIC", TAG)
-                dataStoreManager.setLyricsStyle(DataStoreManager.LYRICS_STYLE_APPLE_MUSIC)
+            if (currentLyricsStyle == DataStoreManager.LYRICS_STYLE_APPLE_MUSIC || currentLyricsStyle.isEmpty()) {
+                Logger.d("Streamify: Setting default lyrics style to CLASSIC for optimal performance", TAG)
+                dataStoreManager.setLyricsStyle(DataStoreManager.LYRICS_STYLE_CLASSIC)
             }
 
             // 5. Apple Music Animated Artwork default enabled
