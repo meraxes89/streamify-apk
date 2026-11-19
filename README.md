@@ -149,12 +149,9 @@ cd ..
 
 ## 📦 Verified Releases & Artifacts
 
-All releases are verified through the hub-and-spoke CI DAG (a single blocking `CI Gate (Blocking)` check folds the Tier-2 spokes — engine/DSP, Android, desktop, Apple unified, and the Supabase RLS suite — into one verdict) and are published under [GitHub Releases](https://github.com/meraxes89/streamify-apk/releases):
+All releases are verified through the hub-and-spoke Unified CI pipeline and published under [GitHub Releases](https://github.com/meraxes89/streamify-apk/releases).
 
-* **[Build 691](https://github.com/meraxes89/streamify-apk/releases/tag/build-691)** — latest verified release at the multiplatform consolidation point (7-crate Rust workspace, RustyPipe JNI resolver, DMG desktop installers, 78 MB APK).
-* **[Build 650](https://github.com/meraxes89/streamify-apk/releases/tag/build-650)** — Phase 3 Beta Client Bridge (Reactive `EngineEventListener`, debounced `MediaCommandDispatcher`, 77.86 MB).
-* **[Build 648](https://github.com/meraxes89/streamify-apk/releases/tag/build-648)** — Phase 3 Alpha Core Contracts (SPSC hardening, Rubato 48kHz SRC, Cargo matrix, 77.84 MB).
-* **[Build 642](https://github.com/meraxes89/streamify-apk/releases/tag/build-642)** — Lean Baseline (Stripped onnxruntime bloat: 217 MB → 82.96 MB).
+* **Official Releases**: Multiplatform distribution packages (Android universal APK, Desktop Linux AppImage / Debian `.deb`, and Windows `.msi`).
 * **Pre-Multiplatform Base Archive** — the immutable preservation head lives at commit [`95773a8`](https://github.com/meraxes89/streamify-apk/commit/95773a8) (SHA256 of the archived head: `8193cecab358279dbfb87438dd356e2e0565f597f799cf6e983b91964f9144f8`).
 
 ---
