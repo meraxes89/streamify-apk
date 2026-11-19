@@ -31,12 +31,13 @@ on:
     branches: [main, 'integration/**']
   workflow_dispatch:
 
-# Parallel-safe multi-engineer concurrency:
-# Isolate runs by branch (head_ref) so multiple engineers pushing in parallel
-# never collide or cancel each other. In-flight runs complete without premature abortion.
+# Branch-isolated concurrency:
+# Isolate runs by branch (head_ref on PRs, ref_name on push).
+# When a new commit is pushed, cancel in-flight runs immediately so runners
+# only build and test the latest commit on the branch/PR.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: false
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

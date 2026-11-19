@@ -21,6 +21,10 @@ on:
       - '.github/FUNDING.yml'
       - '.github/ISSUE_TEMPLATE/**'
 
+concurrency:
+  group: android-apk-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
