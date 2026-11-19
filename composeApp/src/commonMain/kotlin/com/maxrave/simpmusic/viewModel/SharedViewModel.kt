@@ -1142,6 +1142,13 @@ class SharedViewModel(
     }
 
     fun getLocation() {
+        val currentLoc = runBlocking { dataStoreManager.location.first() }
+        if (currentLoc.isEmpty() || currentLoc == "VN") {
+            runBlocking {
+                dataStoreManager.setLocation("IN")
+                dataStoreManager.setChartKey("IN")
+            }
+        }
         regionCode = runBlocking { dataStoreManager.location.first() }
         language = runBlocking { dataStoreManager.getString(SELECTED_LANGUAGE).first() }
     }

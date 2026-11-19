@@ -100,8 +100,16 @@ class HomeViewModel(
         }
         homeJob = Job()
         viewModelScope.launch {
+            val currentLoc = dataStoreManager.location.first()
+            if (currentLoc.isEmpty() || currentLoc == "VN") {
+                dataStoreManager.setLocation("IN")
+            }
+            val currentChart = dataStoreManager.chartKey.first()
+            if (currentChart == null || currentChart == "ZZ" || currentChart == "VN") {
+                dataStoreManager.setChartKey("IN")
+            }
             regionCodeChart.value = dataStoreManager.chartKey.first()
-            exploreChart(regionCodeChart.value ?: "ZZ")
+            exploreChart(regionCodeChart.value ?: "IN")
             language = dataStoreManager.getString(SELECTED_LANGUAGE).first()
                 ?: SUPPORTED_LANGUAGE.codes.first()
             //  refresh when region change
