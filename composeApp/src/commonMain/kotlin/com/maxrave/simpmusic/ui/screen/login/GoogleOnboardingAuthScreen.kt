@@ -118,11 +118,7 @@ fun GoogleOnboardingAuthScreen(
             } else {
                 val err = result.exceptionOrNull()?.message ?: "Sign-in failed"
                 if (!err.contains("cancelled", ignoreCase = true)) {
-                    errorMessage = if (err.contains("no credential", ignoreCase = true)) {
-                        "Google Play Services found no credentials. You can continue with your profile or as guest below."
-                    } else {
-                        err
-                    }
+                    errorMessage = err
                 }
             }
         }
@@ -264,53 +260,7 @@ fun GoogleOnboardingAuthScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Default Sireen Yadav profile fallback / quick sync
-                Button(
-                    onClick = {
-                        val res = StreamifyAuthManager.signInAsDefaultUser(platformContext)
-                        if (res.isSuccess) {
-                            res.getOrNull()?.let(onAuthenticated)
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = primaryColor.copy(alpha = 0.12f),
-                        contentColor = primaryColor,
-                    ),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Text(
-                        text = "Continue as Sireen Yadav",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = fontFamily(),
-                        color = primaryColor,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                TextButton(
-                    onClick = {
-                        val res = StreamifyAuthManager.signInAsGuest(platformContext)
-                        if (res.isSuccess) {
-                            res.getOrNull()?.let(onAuthenticated)
-                        }
-                    },
-                ) {
-                    Text(
-                        text = "Continue as Guest",
-                        fontSize = 13.sp,
-                        color = textSecondary,
-                        fontFamily = fontFamily(),
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
                     text = "🔒 Secure Cloud Sync & Offline Listening",
