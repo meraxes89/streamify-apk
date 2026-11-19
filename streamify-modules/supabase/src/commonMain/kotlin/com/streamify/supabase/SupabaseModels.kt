@@ -11,7 +11,7 @@ data class UserProfile(
     val displayName: String = "",
     @SerialName("avatar_url")
     val avatarUrl: String = "",
-    val bio: String = "Music lover on Streamify 🎧",
+    val bio: String = "Music lover on Streamify",
     @SerialName("is_admin")
     val isAdmin: Boolean = false,
     @SerialName("total_plays")

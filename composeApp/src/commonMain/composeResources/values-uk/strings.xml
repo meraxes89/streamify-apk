@@ -138,7 +138,7 @@
     <string name="developer_blog">Блог розробника</string>
     <string name="developer_blog_tagline">Читайте нотатки розробника, навчальні посібники та закулісся</string>
     <string name="blog_promo_title">Щось нове від розробника</string>
-    <string name="blog_promo_message">Я щойно запустив свій особистий блог на simpmusic.org — ділюся історією SimpMusic, глибоким зануренням у музичні технології та інженерними нотатками. Почитайте, якщо вам цікаво ✨</string>
+    <string name="blog_promo_message">Я щойно запустив свій особистий блог на simpmusic.org — ділюся історією SimpMusic, глибоким зануренням у музичні технології та інженерними нотатками. Почитайте, якщо вам цікаво </string>
     <string name="visit_blog">Відвідати блог</string>
     <string name="paypal">PayPal</string>
     <string name="title">Назва</string>
@@ -295,7 +295,7 @@
     <string name="older_first">Спочатку старіші</string>
     <string name="newer_first">Спочатку новіші</string>
     <string name="added_date">Дата додавання</string>
-    <string name="credit_app">Простий музичний застосунок з використанням YouTube Music для бекенду \n\nSimpMusic - це проєкт з відкритим вихідним кодом для потокової передачі музики з YouTube та YouTube Music без реклами та відстеження. SimpMusic надає багато можливостей:\n\n - Потокова музика\n - Синхронізовані тексти\n - Персоналізація даних\n - тощо... \n\nSimpMusic завжди безкоштовний і без реклами\n\nСтворено з ❤️ від Tuan Minh Nguyen Duc (maxrave-dev)</string>
+    <string name="credit_app">Простий музичний застосунок з використанням YouTube Music для бекенду \n\nSimpMusic - це проєкт з відкритим вихідним кодом для потокової передачі музики з YouTube та YouTube Music без реклами та відстеження. SimpMusic надає багато можливостей:\n\n - Потокова музика\n - Синхронізовані тексти\n - Персоналізація даних\n - тощо... \n\nSimpMusic завжди безкоштовний і без реклами\n\nСтворено з love від Tuan Minh Nguyen Duc (maxrave-dev)</string>
     <string name="issue_tracker">Відстежувач випусків</string>
     <string name="featured_playlists">Рекомендовані плейлисти</string>
     <string name="featured_inArtist">Рекомендовано</string>

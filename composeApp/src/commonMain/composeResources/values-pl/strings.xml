@@ -135,7 +135,7 @@
     <string name="developer_blog">Blog dewelopera</string>
     <string name="developer_blog_tagline">Czytaj notatki deweloperów &amp; poradniki i materiały zza kulis</string>
     <string name="blog_promo_title">Nowości od dewelopera</string>
-    <string name="blog_promo_message">​Właśnie wystartowałem z moim osobistym blogiem pod adresem simpmusic.org – dzielę się tam historią powstania SimpMusic, technicznymi analizami ze świata music-tech oraz notatkami inżynieryjnymi. Zajrzyj, jeśli jesteś ciekawy ✨</string>
+    <string name="blog_promo_message">​Właśnie wystartowałem z moim osobistym blogiem pod adresem simpmusic.org – dzielę się tam historią powstania SimpMusic, technicznymi analizami ze świata music-tech oraz notatkami inżynieryjnymi. Zajrzyj, jeśli jesteś ciekawy </string>
     <string name="visit_blog">Odwiedź blog</string>
     <string name="paypal">PayPal</string>
     <string name="title">Tytuł</string>
@@ -294,7 +294,7 @@
     <string name="older_first">Najpierw starsze</string>
     <string name="newer_first">Najpierw nowsze</string>
     <string name="added_date">Dodana data</string>
-    <string name="credit_app">Prosta aplikacja muzyczna wykorzystująca YouTube Music jako backend\n\nSimpMusic to projekt open source służący do strumieniowego przesyłania muzyki z serwisów YouTube i YouTube Music bez reklam i śledzenia. SimpMusic oferuje wiele funkcji:\n\n - Strumieniowe przesyłanie muzyki \n - Zsynchronizowane teksty piosenek\n - Personalizację danych\n - itp. \n\nSimpMusic jest zawsze bezpłatny i nie zawiera reklam\n\nStworzony z ❤️ przez Tuan Minh Nguyen Duc (maxrave-dev)</string>
+    <string name="credit_app">Prosta aplikacja muzyczna wykorzystująca YouTube Music jako backend\n\nSimpMusic to projekt open source służący do strumieniowego przesyłania muzyki z serwisów YouTube i YouTube Music bez reklam i śledzenia. SimpMusic oferuje wiele funkcji:\n\n - Strumieniowe przesyłanie muzyki \n - Zsynchronizowane teksty piosenek\n - Personalizację danych\n - itp. \n\nSimpMusic jest zawsze bezpłatny i nie zawiera reklam\n\nStworzony z love przez Tuan Minh Nguyen Duc (maxrave-dev)</string>
     <string name="issue_tracker">Lista problemow</string>
     <string name="featured_playlists">Polecane playlisty</string>
     <string name="featured_inArtist">Polecane</string>

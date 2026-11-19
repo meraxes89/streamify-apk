@@ -860,7 +860,7 @@ fun PaddingValues.copy(
 /**
  * Lays [content] out left-to-right even in a right-to-left language. For playback controls, seek
  * bars and anything else that shows which way time runs: those follow the timeline, not the
- * reading direction, so ⏮ stays left of ⏭ and a progress bar fills from the left.
+ * reading direction, so previous stays left of next and a progress bar fills from the left.
  */
 @Composable
 fun LeftToRight(content: @Composable () -> Unit) {

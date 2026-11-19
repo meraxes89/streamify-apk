@@ -262,7 +262,7 @@ private fun NowPlayingM3ExpressiveLayout(
     }
     LaunchedEffect(
         topAppBarHeightDp,
-        // Unlike Classic, the M3E artwork frame CHANGES height (square ↔ the video's shape while
+        // Unlike Classic, the M3E artwork frame CHANGES height (square to the video's shape while
         // a video plays), so the fold math must re-run when the measured middle height moves too —
         // without this key the gap keeps the previous track's numbers and the layout drifts.
         middleLayoutHeightDp,

@@ -40,7 +40,7 @@ import com.maxrave.simpmusic.viewModel.UIEvent
 fun PlayerControlLayout(
     controllerState: ControlState,
     isSmallSize: Boolean = false,
-    // Bare ▶ / ⏸ glyphs instead of the disc-enclosed PlayCircle/PauseCircle pair.
+    // Bare Play / Pause glyphs instead of the disc-enclosed PlayCircle/PauseCircle pair.
     // The desktop capsule asks for these; Now Playing keeps the discs.
     plainPlayPause: Boolean = false,
     // The capsule already pads its own edges; stacking this 20dp on top of that

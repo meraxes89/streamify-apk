@@ -129,6 +129,8 @@ import com.maxrave.simpmusic.ui.icon.Repeat
 import com.maxrave.simpmusic.ui.icon.RepeatOne
 import com.maxrave.simpmusic.ui.icon.Replay5
 import com.maxrave.simpmusic.ui.icon.Shuffle
+import com.maxrave.simpmusic.ui.icon.ThumbUp
+import com.maxrave.simpmusic.ui.icon.Star
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.icon.SkipNext
 import com.maxrave.simpmusic.ui.icon.SkipPrevious
@@ -1081,16 +1083,22 @@ private fun CommentBox(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        QUICK_REACTIONS.forEach { emoji ->
-            Text(
-                text = emoji,
-                style = typo().bodyMedium.copy(fontSize = 18.sp),
+        QUICK_REACTIONS.forEach { (icon, tag) ->
+            Box(
                 modifier =
                     Modifier
+                        .size(32.dp)
                         .clip(CircleShape)
-                        .clickable { onWriteComment("${soundCloudCommentTimestamp(latestPosition())} $emoji") }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+                        .clickable { onWriteComment("${soundCloudCommentTimestamp(latestPosition())} $tag") },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
     }
 }
@@ -1209,7 +1217,11 @@ private val LOWER_BLUR = 32.dp
 private const val LOWER_SCRIM_AT_LINE = 0.6f
 private const val LOWER_SCRIM_AT_BOTTOM = 0.85f
 private val COMMENT_BOX_HEIGHT = 40.dp
-private val QUICK_REACTIONS = listOf("🔥", "👏", "🥹")
+private val QUICK_REACTIONS = listOf(
+    SimpIcons.Favorite to "<3",
+    SimpIcons.ThumbUp to "+1",
+    SimpIcons.Star to "*",
+)
 private val ACTION_ROW_HEIGHT = 64.dp
 private const val COVER_FADE_MS = 400
 

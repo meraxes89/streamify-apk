@@ -277,7 +277,7 @@
     <string name="older_first">Més antics primer</string>
     <string name="newer_first">Més nous primer</string>
     <string name="added_date">Data afegida</string>
-    <string name="credit_app">Una aplicació de música senzilla que utilitza YouTube Music per al backend \n\nSimpMusic és un projecte de codi obert per reproduir música de YouTube i YouTube Music sense anuncis ni seguiment. SimpMusic ofereix moltes funcions:\n\n - Reproducció de música en temps real \n - Lletres sincronitzades\n - Personalització de dades\n - etc... \n\nSimpMusic sempre és gratuït i sense anuncis\n\nCrea amb ❤️ de Tuan Minh Nguyen Duc (maxrave -dev)</string>
+    <string name="credit_app">Una aplicació de música senzilla que utilitza YouTube Music per al backend \n\nSimpMusic és un projecte de codi obert per reproduir música de YouTube i YouTube Music sense anuncis ni seguiment. SimpMusic ofereix moltes funcions:\n\n - Reproducció de música en temps real \n - Lletres sincronitzades\n - Personalització de dades\n - etc... \n\nSimpMusic sempre és gratuït i sense anuncis\n\nCrea amb love de Tuan Minh Nguyen Duc (maxrave -dev)</string>
     <string name="issue_tracker">Detector de problemes</string>
     <string name="featured_playlists">Llistes de reproducció destacades</string>
     <string name="featured_inArtist">Destacat a</string>

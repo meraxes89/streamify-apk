@@ -139,11 +139,11 @@
     <string name="github">GitHub</string>
     <string name="maxrave_dev">meraxes_89</string>
     <string name="follow_me_on_x">Suivez-moi sur X</string>
-    <string name="buy_me_a_coffee">Offrez-moi un café ! ☕</string>
+    <string name="buy_me_a_coffee">Offrez-moi un café ! </string>
     <string name="developer_blog">Blog des développeurs</string>
     <string name="developer_blog_tagline">Lisez les notes des développeurs, les tutoriels &amp; les coulisses du projet</string>
     <string name="blog_promo_title">Une nouveauté du développeur</string>
-    <string name="blog_promo_message">Je viens de lancer le blog SimpMusic sur simpmusic.org — j'y partage l'histoire de SimpMusic, des analyses approfondies sur les technologies musicales et des notes d'ingénierie. N'hésitez pas à y jeter un œil si ça vous intéresse. ✨</string>
+    <string name="blog_promo_message">Je viens de lancer le blog SimpMusic sur simpmusic.org — j'y partage l'histoire de SimpMusic, des analyses approfondies sur les technologies musicales et des notes d'ingénierie. N'hésitez pas à y jeter un œil si ça vous intéresse. </string>
     <string name="visit_blog">Consultez le blog</string>
     <string name="paypal">PayPal</string>
     <string name="title">Titre</string>
@@ -302,7 +302,7 @@
     <string name="older_first">Les plus anciens en premier</string>
     <string name="newer_first">Les plus récents en premier</string>
     <string name="added_date">Date d'ajout</string>
-    <string name="credit_app">Une application musicale simple utilisant YouTube Music pour le backend \n\nSimpMusic est un projet open source pour diffuser de la musique à partir de YouTube et YouTube Music sans publicité ni suivi. SimpMusic offre de nombreuses fonctionnalités :\n\n - Streaming de musique \n - Paroles synchronisées\n - Personnaliser les données\n - etc… \n\nSimpMusic est toujours gratuit et sans publicité\n\nConstruit avec ❤️ de Tuan Minh Nguyen Duc (maxrave-dev)</string>
+    <string name="credit_app">Une application musicale simple utilisant YouTube Music pour le backend \n\nSimpMusic est un projet open source pour diffuser de la musique à partir de YouTube et YouTube Music sans publicité ni suivi. SimpMusic offre de nombreuses fonctionnalités :\n\n - Streaming de musique \n - Paroles synchronisées\n - Personnaliser les données\n - etc… \n\nSimpMusic est toujours gratuit et sans publicité\n\nConstruit avec love de Tuan Minh Nguyen Duc (maxrave-dev)</string>
     <string name="issue_tracker">Suivi des problèmes</string>
     <string name="featured_playlists">Playlists à la une</string>
     <string name="featured_inArtist">Présenté sur</string>
@@ -451,7 +451,7 @@
     <string name="theme_color_wallpaper">Fond d'écran</string>
     <string name="theme_color_custom">Personnalisé</string>
     <string name="custom_color">Couleur personnalisée</string>
-    <string name="donation">Si vous appréciez mon travail, offrez-moi un café ! ☕</string>
+    <string name="donation">Si vous appréciez mon travail, offrez-moi un café ! </string>
     <string name="relax">Détente</string>
     <string name="sleep">Sommeil</string>
     <string name="energize">Stimulant</string>

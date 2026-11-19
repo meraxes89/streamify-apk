@@ -263,7 +263,7 @@ fun GoogleOnboardingAuthScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "🔒 Secure Cloud Sync & Offline Listening",
+                    text = "Secure Cloud Sync & Offline Listening",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     fontFamily = fontFamily(),

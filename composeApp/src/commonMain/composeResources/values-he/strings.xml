@@ -146,7 +146,7 @@
     <string name="developer_blog">בלוג המפתח</string>
     <string name="developer_blog_tagline">קרא הערות מפתח, מדריכים &amp; ומאחורי-הקלעים</string>
     <string name="blog_promo_title">משהו חדש מהמפתח</string>
-    <string name="blog_promo_message">השקתי את הבלוג של SimpMusic ב-simpmusic.org - אני משתף את הסיפור מאחורי SimpMusic, צלילות מעמיקות בטכנולוגיית מוזיקה והערות הנדסיות. קראו אותו אם אתם סקרנים ✨</string>
+    <string name="blog_promo_message">השקתי את הבלוג של SimpMusic ב-simpmusic.org - אני משתף את הסיפור מאחורי SimpMusic, צלילות מעמיקות בטכנולוגיית מוזיקה והערות הנדסיות. קראו אותו אם אתם סקרנים </string>
     <string name="visit_blog">בקרו בבלוג</string>
     <string name="paypal">PayPal</string>
     <string name="title">כותרת</string>
@@ -306,7 +306,7 @@
     <string name="newer_first">החדש ביותר תחילה</string>
     <string name="added_date">תאריך הוספה</string>
     <string name="credit_app">אפליקציית מוזיקה פשוטה המשתמשת ב-YouTube Music כבסיס. \n\nSimpMusic הוא פרויקט קוד פתוח להזרמת מוזיקה מ-YouTube ו-YouTube Music ללא פרסומות ומעקבים. SimpMusic מספקת תכונות רבות:\n\n - הזרמת מוזיקה \n - מילים מסונכרנות\n - התאמה אישית של נתונים\n - ועוד… \n\n
-SimpMusic תמיד בחינם וללא פרסומות \n\nנבנה ב-❤️ מאת Tuan Minh Nguyen Duc (maxrave-dev)</string>
+SimpMusic תמיד בחינם וללא פרסומות \n\nנבנה ב-love מאת Tuan Minh Nguyen Duc (maxrave-dev)</string>
     <string name="issue_tracker">מעקב אחר בעיות</string>
     <string name="featured_playlists">פלייליסטים נבחרים</string>
     <string name="featured_inArtist">נבחר לככב</string>

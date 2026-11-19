@@ -57,7 +57,7 @@ private val TOGGLE_SEPARATION = 8.dp
 /**
  * M3-Expressive transport: three pill buttons in a 68dp row.
  *
- * - Play/pause corner radius morphs 22dp (playing) ↔ 34dp (paused) on
+ * - Play/pause corner radius morphs 22dp (playing) to 34dp (paused) on
  *   [MaterialTheme.motionScheme]'s default spatial spring.
  * - The pressed button's weight grows ×1.15 on the fast spatial spring while the
  *   neighbours shrink proportionally (Row weight normalization).

@@ -141,7 +141,7 @@
     <string name="developer_blog">開発者ブログ</string>
     <string name="developer_blog_tagline">開発ノートやチュートリアル &amp; 開発秘話を読む</string>
     <string name="blog_promo_title">開発者からの新着情報</string>
-    <string name="blog_promo_message">SimpMusicのブログを simpmusic.org で公開しました！SimpMusicの開発の裏話や、音楽テクノロジーの掘り下げた解説、エンジニアリングに関する記事などを発信しています。興味があれば、ぜひ読んでみてください ✨</string>
+    <string name="blog_promo_message">SimpMusicのブログを simpmusic.org で公開しました！SimpMusicの開発の裏話や、音楽テクノロジーの掘り下げた解説、エンジニアリングに関する記事などを発信しています。興味があれば、ぜひ読んでみてください </string>
     <string name="visit_blog">ブログを見る</string>
     <string name="paypal">PayPal</string>
     <string name="title">題名</string>
@@ -300,7 +300,7 @@
     <string name="older_first">古い順</string>
     <string name="newer_first">新しい順</string>
     <string name="added_date">追加日</string>
-    <string name="credit_app">バックエンドに YouTube ミュージックを使用するシンプルな音楽アプリ \n\nSimpMusic は、広告や追跡なしで YouTube や YouTube ミュージックから音楽をストリーミングするオープンソースのプロジェクトです。SimpMusic の豊富な機能:\n\n - 音楽のストリーミング \n - 歌詞の同期\n - あなたに最適化されたデータ\n - など... \n\nSimpMusic は常に無料、そして広告もなしです。\n\nTuan Minh Nguyen Duc (maxrave) が❤️を込めて開発しました</string>
+    <string name="credit_app">バックエンドに YouTube ミュージックを使用するシンプルな音楽アプリ \n\nSimpMusic は、広告や追跡なしで YouTube や YouTube ミュージックから音楽をストリーミングするオープンソースのプロジェクトです。SimpMusic の豊富な機能:\n\n - 音楽のストリーミング \n - 歌詞の同期\n - あなたに最適化されたデータ\n - など... \n\nSimpMusic は常に無料、そして広告もなしです。\n\nTuan Minh Nguyen Duc (maxrave) がloveを込めて開発しました</string>
     <string name="issue_tracker">既知の問題一覧</string>
     <string name="featured_playlists">注目の再生リスト</string>
     <string name="featured_inArtist">おすすめ</string>
