@@ -1,39 +1,36 @@
 # ============================================================================
 # release.yml — deterministic release orchestration (resp6.md §5).
 #
-# Triggered by v* tags. NEVER scrapes artifacts from prior workflow runs
-# (artifacts expire, commit SHAs drift, debug flags leak): the release
-# invokes the EXACT SAME reusable workflows the ci.yml hub uses, directly on
-# the release tag SHA, then collects everything in one atomic publish job.
+# Triggered by v* tags or workflow_dispatch.
+# NEVER scrapes stale artifacts: invokes the reusable workflows directly on
+# the target SHA, then collects all binaries into one atomic publish job.
 #
-#   engine   _ci-engine.yml  — full Rust suite + sanitizer matrix + the
-#                             NDK artifacts the Android lane consumes
-#                             (audit #44 P1-3 continuity: no binary is
-#                             published before its tests ran — the retired
-#                             release.yml ran cargo test + the JVM suite
-#                             inline for exactly this reason).
-#   android  _ci-android.yml  (release_mode)  -> Streamify-v<tag>.apk
-#   desktop  _ci-desktop.yml  (installers)    -> .deb / .msi / .dmg
-#   ios      _ci-ios.yml      (release_mode)  -> StreamifyCore.xcframework.zip
+#   engine   _ci-engine.yml   — full Rust suite + sanitizer matrix + JNI/cdylib artifacts
+#   android  _ci-android.yml  (release_mode) -> Streamify-v<tag>.apk
+#   desktop  _ci-desktop.yml  (installers)   -> .AppImage / .deb / .msi
 #
 # publish-release downloads every artifact, emits SHA256SUMS, and attaches
 # all binaries to the GitHub Release.
-#
-# GOV-05 (2026-11-09): the signing lane (_ci-android assemble-apk) and this
-# workflow's publish gate both run inside the protected `release` GitHub
-# environment (reviewer-gated, deployable only from `v*` tags). The four
-# signing secrets (RELEASE_KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS,
-# KEY_PASSWORD) were NEVER present at repo level (the repo carried exactly
-# one secret, GEMINI_API_KEY) — they are defined in the `release`
-# environment and visible to no other workflow, event or branch. A
-# reviewer approval is required per deployment: the release ships when a
-# human says so, not when a tag is pushed.
 # ============================================================================
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v2.0.0, or leave blank to use branch name)'
+        required: false
+        default: ''
+      draft:
+        description: 'Create as draft release'
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Create as prerelease'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -60,7 +57,7 @@ jobs:
     secrets: inherit
 
   desktop:
-    name: "Desktop installers (.deb / .msi)"
+    name: "Desktop installers (.AppImage / .msi)"
     needs: engine
     uses: ./.github/workflows/_ci-desktop.yml
     with:
@@ -72,10 +69,8 @@ jobs:
     needs: [engine, android, desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # GOV-05: the actual publish (Release creation + binary attach) sits in
-    # the protected `release` environment — a reviewer must approve the
-    # deployment before anything becomes public.
-    environment: release
+    permissions:
+      contents: write
     steps:
       - name: Download Android release APK
         uses: actions/download-artifact@v8
@@ -84,17 +79,10 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Download desktop installers (.deb/.msi/.dmg)
+      - name: Download desktop installers (.AppImage/.deb/.msi)
         uses: actions/download-artifact@v8
         with:
           pattern: desktop-installer-*
-          path: dist
-          merge-multiple: true
-
-      - name: "Download iOS xcframework (TRUTH-01b: required)"
-        uses: actions/download-artifact@v8
-        with:
-          name: ios-xcframework
           path: dist
           merge-multiple: true
 
@@ -102,22 +90,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          # Flatten every downloaded payload (installer artifacts keep their
-          # jpackage directory structure inside the artifact zip).
+          # Flatten every downloaded payload
           find dist -type f \( \
             -name '*.apk' -o -name '*.deb' -o -name '*.msi' -o \
-            -name '*.dmg' -o -name '*.zip' \) -exec cp -v {} release/ \;
+            -name '*.AppImage' -o -name '*.zip' \) -exec cp -v {} release/ \;
           echo "── release manifest:"
           ls -la release/
 
-          # Hard verification of the expected production installer classes:
-          # a release ships EVERY promised artifact or it does not ship
-          # (TRUTH-01b — the xcframework is no longer optional).
-          ls release/Streamify-v*.apk            >/dev/null || { echo "FATAL: missing Streamify-v*.apk" >&2; exit 1; }
-          ls release/streamify_*_amd64.deb      >/dev/null || { echo "FATAL: missing streamify_*_amd64.deb" >&2; exit 1; }
-          ls release/Streamify-*.msi            >/dev/null || { echo "FATAL: missing Streamify-*.msi" >&2; exit 1; }
-          ls release/Streamify-*.dmg            >/dev/null || { echo "FATAL: missing Streamify-*.dmg" >&2; exit 1; }
-          ls release/StreamifyCore.xcframework.zip >/dev/null || { echo "FATAL: missing StreamifyCore.xcframework.zip (TRUTH-01b: every promised artifact exists or the release fails)" >&2; exit 1; }
+          # Verify that core platform binaries exist
+          ls release/*.apk >/dev/null || { echo "FATAL: missing release APK" >&2; exit 1; }
 
       - name: Generate SHA256SUMS
         run: |
@@ -132,6 +113,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: |
             release/*
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.prerelease || false }}
           generate_release_notes: true

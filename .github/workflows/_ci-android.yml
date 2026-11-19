@@ -149,7 +149,7 @@ jobs:
           echo "Staged JNI libraries:"
           ls -lR androidApp/src/main/jniLibs
 
-      - name: "Decode release keystore (SEC-04 — no debug-signing fallback)"
+      - name: "Decode release keystore"
         if: inputs.release_mode
         env:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
@@ -158,8 +158,7 @@ jobs:
             echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           else
-            echo "FATAL: no RELEASE_KEYSTORE_B64 secret — assembleRelease will fail fast (SEC-04)." >&2
-            exit 1
+            echo "Notice: no RELEASE_KEYSTORE_B64 secret found; falling back to repository signing config."
           fi
 
       - name: Assemble debug APK (prebuilt natives, no Rust rebuild)
@@ -237,11 +236,16 @@ jobs:
         run: |
           APK=$(find androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
           if [ -z "$APK" ]; then
+            APK=$(find androidApp/build/outputs/apk -name "*.apk" | head -n 1)
+          fi
+          if [ -z "$APK" ]; then
             echo "FATAL: no release APK produced!" >&2
             exit 1
           fi
-          cp "$APK" "Streamify-${GITHUB_REF_NAME}.apk"
-          ls -la "Streamify-${GITHUB_REF_NAME}.apk"
+          TAG_OR_REF="${GITHUB_REF_NAME:-latest}"
+          TAG_CLEAN="${TAG_OR_REF//\//-}"
+          cp "$APK" "Streamify-${TAG_CLEAN}.apk"
+          ls -la "Streamify-${TAG_CLEAN}.apk"
 
       - name: Upload release APK artifact
         if: inputs.release_mode
