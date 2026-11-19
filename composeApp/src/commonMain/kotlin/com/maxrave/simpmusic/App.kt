@@ -100,7 +100,6 @@ import com.maxrave.simpmusic.ui.screen.MiniPlayer
 import com.maxrave.simpmusic.expect.ui.rememberPlatformContext
 import com.maxrave.simpmusic.ui.screen.login.GoogleOnboardingAuthScreen
 import com.maxrave.simpmusic.ui.screen.other.StreamifySplashScreen
-import com.maxrave.simpmusic.ui.screen.other.UnofficialBuildScreen
 import com.streamify.supabase.AuthState
 import com.streamify.supabase.StreamifyAuthManager
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreen
@@ -526,11 +525,6 @@ fun App(
         // The setting governs Desktop too, the same as Android: off, every glass surface draws flat.
         liquidGlassEnabled = isLiquidGlassEnabled == TRUE,
     ) {
-        if (!isOfficialBuild) {
-            UnofficialBuildScreen()
-            return@AppTheme
-        }
-
         val platformContext = rememberPlatformContext()
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
