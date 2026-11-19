@@ -20,7 +20,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.maxrave.simpmusic"
+        applicationId = "com.streamify.app"
         minSdk = 26
         targetSdk = 36
         versionCode =
@@ -83,6 +83,15 @@ android {
         }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -103,8 +112,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

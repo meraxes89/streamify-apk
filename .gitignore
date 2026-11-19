@@ -48,6 +48,7 @@ target/
 *.jks
 *.keystore
 !app/debug.keystore
+!androidApp/debug.keystore
 
 # Sentry & Crowdin
 sentry.properties

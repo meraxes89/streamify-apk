@@ -1,12 +1,16 @@
 package com.streamify.supabase
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +28,15 @@ actual object StreamifyAuthManager {
         return prefs ?: context.getSharedPreferences("streamify_auth", Context.MODE_PRIVATE).also {
             prefs = it
         }
+    }
+
+    private fun findActivity(context: Context?): Activity? {
+        var current = context
+        while (current is ContextWrapper) {
+            if (current is Activity) return current
+            current = current.baseContext
+        }
+        return null
     }
 
     private fun saveProfile(profile: UserProfile, token: String? = null) {
@@ -70,14 +83,10 @@ actual object StreamifyAuthManager {
         val ctx = context as? Context ?: return@withContext Result.failure(Exception("Context required for Google Sign-In"))
         try {
             getPrefs(ctx)
-            val credentialManager = CredentialManager.create(ctx)
+            val hostActivity = findActivity(ctx) ?: ctx
+            val credentialManager = CredentialManager.create(hostActivity)
 
-            // Primary: GetSignInWithGoogleOption (triggers account chooser bottom sheet on button click)
-            val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
-                serverClientId = SupabaseConfig.GOOGLE_WEB_CLIENT_ID
-            ).build()
-
-            // Secondary: GetGoogleIdOption (for one-tap token resolution)
+            // Exact legacy One-Tap request structure from legacy/app AuthManager.kt
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
                 .setServerClientId(SupabaseConfig.GOOGLE_WEB_CLIENT_ID)
@@ -85,11 +94,10 @@ actual object StreamifyAuthManager {
                 .build()
 
             val request = GetCredentialRequest.Builder()
-                .addCredentialOption(signInWithGoogleOption)
                 .addCredentialOption(googleIdOption)
                 .build()
 
-            val result = credentialManager.getCredential(context = ctx, request = request)
+            val result = credentialManager.getCredential(context = hostActivity, request = request)
             val credential = result.credential
 
             val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
@@ -120,8 +128,23 @@ actual object StreamifyAuthManager {
             Result.success(profile)
         } catch (e: GetCredentialCancellationException) {
             Result.failure(Exception("Sign-in cancelled."))
+        } catch (e: NoCredentialException) {
+            // If Credential Manager fails, trigger web-based browser OAuth fallback
+            tryLaunchWebOAuth(ctx)
+            Result.failure(Exception("No Google credentials available on device. Opening web sign-in..."))
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    fun tryLaunchWebOAuth(context: Context) {
+        try {
+            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=streamify://callback"
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
         }
     }
 
