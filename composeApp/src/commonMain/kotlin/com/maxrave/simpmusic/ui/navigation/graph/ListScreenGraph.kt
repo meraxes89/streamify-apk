@@ -45,12 +45,10 @@ fun NavGraphBuilder.listScreenGraph(
     }
     composable<LocalPlaylistDestination> { entry ->
         val data = entry.toRoute<LocalPlaylistDestination>()
-        ForceDarkContent {
-            LocalPlaylistScreen(
-                id = data.id,
-                navController = navController,
-            )
-        }
+        LocalPlaylistScreen(
+            id = data.id,
+            navController = navController,
+        )
     }
     composable<MoreAlbumsDestination> { entry ->
         val data = entry.toRoute<MoreAlbumsDestination>()

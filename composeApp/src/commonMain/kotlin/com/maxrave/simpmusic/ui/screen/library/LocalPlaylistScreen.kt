@@ -56,7 +56,9 @@ import com.maxrave.simpmusic.ui.component.DownloadingIndicator
 import com.maxrave.simpmusic.ui.icon.Search
 import com.maxrave.simpmusic.ui.icon.Close
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBarDefaults
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.foundation.lazy.items
@@ -403,6 +405,7 @@ fun LocalPlaylistScreen(
     // narrow desktop window) gets the edge-to-edge artwork header, a landscape one gets the
     // side-by-side header. Everything else on the page — the palette background, the row
     // dividers, the blurred top bar — is shared by both.
+    val isDark = LocalIsDarkTheme.current
     val screenInfo = getScreenSizeInfo()
     val isPortrait = screenInfo.wDP < screenInfo.hDP
     // Apple Music-style page background. When the playlist has real artwork we pick a vivid
@@ -416,9 +419,14 @@ fun LocalPlaylistScreen(
         if (titleColors.size >= 2) {
             lerp(titleColors[0], titleColors[1], 0.5f)
         } else {
-            titleColors.firstOrNull() ?: Color.Black
+            titleColors.firstOrNull() ?: if (isDark) Color.Black else Color(0xFFFAFAFA)
         }
-    val mutedPaletteBg = rememberPaletteColor(paletteState.palette, fallback = lerp(titleBase, Color.Black, 0.3f))
+    val mutedPaletteBg =
+        rememberPaletteColor(
+            paletteState.palette,
+            isDark = isDark,
+            fallback = if (isDark) lerp(titleBase, Color.Black, 0.3f) else lerp(titleBase, Color.White, 0.85f),
+        )
 
     // Loading dialog
     val showLoadingDialog by viewModel.showLoadingDialog.collectAsStateWithLifecycle()
@@ -525,7 +533,7 @@ fun LocalPlaylistScreen(
                             // Apple Music-style: edge-to-edge artwork + liquid glass buttons.
                             // Glass buttons MUST be siblings of the backdrop source (not children)
                             // to avoid render feedback loop / RuntimeShader crash.
-                            val artworkBackdrop = rememberBackdrop(Color.Black)
+                            val artworkBackdrop = rememberBackdrop(if (isDark) Color.Black else Color.White)
                             Box(
                                 modifier =
                                     Modifier
@@ -578,7 +586,7 @@ fun LocalPlaylistScreen(
                                         Text(
                                             text = uiState.title,
                                             style = typo().titleLarge,
-                                            color = Color.White,
+                                            color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                             maxLines = 2,
                                             textAlign = TextAlign.Center,
                                         )
@@ -586,7 +594,7 @@ fun LocalPlaylistScreen(
                                         Text(
                                             text = stringResource(Res.string.your_playlist),
                                             style = typo().titleSmall,
-                                            color = Color.White,
+                                            color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                             textAlign = TextAlign.Center,
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
@@ -691,7 +699,7 @@ fun LocalPlaylistScreen(
                                             Icon(
                                                 imageVector = SimpIcons.Search,
                                                 contentDescription = "Search in playlist",
-                                                tint = Color.White,
+                                                tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
                                         IconButton(
@@ -700,7 +708,7 @@ fun LocalPlaylistScreen(
                                             Icon(
                                                 imageVector = SimpIcons.MoreVert,
                                                 contentDescription = "More",
-                                                tint = Color.White,
+                                                tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
                                     }
@@ -763,7 +771,7 @@ fun LocalPlaylistScreen(
                                             Text(
                                                 text = uiState.title,
                                                 style = typo().headlineSmall,
-                                                color = Color.White,
+                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 maxLines = 2,
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
@@ -795,7 +803,7 @@ fun LocalPlaylistScreen(
                                                         ) ?: "",
                                                     ),
                                                 style = typo().bodyMedium,
-                                                color = Color(0xC4FFFFFF),
+                                                color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 textAlign = TextAlign.Center,
                                             )
                                             Spacer(modifier = Modifier.height(20.dp))
@@ -820,16 +828,16 @@ fun LocalPlaylistScreen(
                                                         Modifier
                                                             .size(48.dp)
                                                             .clip(CircleShape)
-                                                            .background(Color.White.copy(alpha = 0.12f))
+                                                            .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
                                                             .clickable {
                                                                 viewModel.onUIEvent(LocalPlaylistUIEvent.ShuffleClick)
-                                                            },
+                                                             },
                                                     contentAlignment = Alignment.Center,
                                                 ) {
                                                     Icon(
                                                         imageVector = SimpIcons.Shuffle,
                                                         contentDescription = "Shuffle",
-                                                        tint = Color.White,
+                                                        tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                         modifier = Modifier.size(22.dp),
                                                     )
                                                 }
@@ -839,7 +847,7 @@ fun LocalPlaylistScreen(
                                                             .height(48.dp)
                                                             .widthIn(min = 110.dp)
                                                             .clip(CircleShape)
-                                                            .background(Color.White)
+                                                            .background(if (isDark) Color.White else MaterialTheme.colorScheme.primary)
                                                             .clickable {
                                                                 if (isThisPlaying) {
                                                                     sharedViewModel.onUIEvent(UIEvent.PlayPause)
@@ -858,13 +866,13 @@ fun LocalPlaylistScreen(
                                                                     SimpIcons.PlayArrow
                                                                 },
                                                             contentDescription = null,
-                                                            tint = Color.Black,
+                                                            tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                             modifier = Modifier.size(22.dp),
                                                         )
                                                         Spacer(modifier = Modifier.width(4.dp))
                                                         Text(
                                                             text = if (isThisPlaying) "Pause" else "Play",
-                                                            color = Color.Black,
+                                                            color = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                             style = typo().labelLarge,
                                                         )
                                                     }
@@ -874,7 +882,7 @@ fun LocalPlaylistScreen(
                                                         Modifier
                                                             .size(48.dp)
                                                             .clip(CircleShape)
-                                                            .background(Color.White.copy(alpha = 0.12f)),
+                                                            .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest),
                                                     contentAlignment = Alignment.Center,
                                                 ) {
                                                     Crossfade(targetState = downloadState) { state ->
@@ -931,7 +939,7 @@ fun LocalPlaylistScreen(
                                                                 ) {
                                                                     Icon(
                                                                         imageVector = SimpIcons.DownloadForOffline,
-                                                                        tint = Color.White,
+                                                                        tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                                         contentDescription = "Download",
                                                                         modifier = Modifier.size(22.dp),
                                                                     )
@@ -1023,7 +1031,7 @@ fun LocalPlaylistScreen(
                                         Icon(
                                             imageVector = SimpIcons.Search,
                                             contentDescription = "Search in playlist",
-                                            tint = Color.White,
+                                            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                         )
                                     }
                                     IconButton(
@@ -1032,7 +1040,7 @@ fun LocalPlaylistScreen(
                                         Icon(
                                             imageVector = SimpIcons.MoreVert,
                                             contentDescription = "More",
-                                            tint = Color.White,
+                                            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                         )
                                     }
                                 }
@@ -1067,7 +1075,7 @@ fun LocalPlaylistScreen(
                                                 Modifier
                                                     .size(48.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color.White.copy(alpha = 0.12f))
+                                                    .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
                                                     .clickable {
                                                         viewModel.onUIEvent(LocalPlaylistUIEvent.ShuffleClick)
                                                     },
@@ -1076,7 +1084,7 @@ fun LocalPlaylistScreen(
                                             Icon(
                                                 imageVector = SimpIcons.Shuffle,
                                                 contentDescription = "Shuffle",
-                                                tint = Color.White,
+                                                tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 modifier = Modifier.size(22.dp),
                                             )
                                         }
@@ -1086,7 +1094,7 @@ fun LocalPlaylistScreen(
                                                     .height(48.dp)
                                                     .widthIn(min = 110.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color.White)
+                                                    .background(if (isDark) Color.White else MaterialTheme.colorScheme.primary)
                                                     .clickable {
                                                         if (isThisPlaying) {
                                                             sharedViewModel.onUIEvent(UIEvent.PlayPause)
@@ -1105,13 +1113,13 @@ fun LocalPlaylistScreen(
                                                             SimpIcons.PlayArrow
                                                         },
                                                     contentDescription = null,
-                                                    tint = Color.Black,
+                                                    tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                     modifier = Modifier.size(22.dp),
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = if (isThisPlaying) "Pause" else "Play",
-                                                    color = Color.Black,
+                                                    color = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
                                                     style = typo().labelLarge,
                                                 )
                                             }
@@ -1121,7 +1129,7 @@ fun LocalPlaylistScreen(
                                                 Modifier
                                                     .size(48.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color.White.copy(alpha = 0.12f)),
+                                                    .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Crossfade(targetState = downloadState) { state ->
@@ -1178,7 +1186,7 @@ fun LocalPlaylistScreen(
                                                         ) {
                                                             Icon(
                                                                 imageVector = SimpIcons.DownloadForOffline,
-                                                                tint = Color.White,
+                                                                tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                                 contentDescription = "Download",
                                                                 modifier = Modifier.size(22.dp),
                                                             )
@@ -1196,7 +1204,7 @@ fun LocalPlaylistScreen(
                                             (uiState.trackCount).toString(),
                                             "",
                                         ),
-                                    color = Color.White,
+                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = typo().bodyMedium,
                                     modifier = Modifier.padding(vertical = 8.dp),
                                 )
@@ -1213,7 +1221,7 @@ fun LocalPlaylistScreen(
                                                     stringResource(
                                                         Res.string.suggest,
                                                     ),
-                                                color = Color.White,
+                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 modifier =
                                                     Modifier
                                                         .padding(vertical = 8.dp)
@@ -1227,7 +1235,7 @@ fun LocalPlaylistScreen(
                                             ) {
                                                 Text(
                                                     text = stringResource(Res.string.reload),
-                                                    color = Color.White,
+                                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
                                                     modifier =
                                                         Modifier.align(
                                                             Alignment.CenterVertically,
@@ -1249,7 +1257,7 @@ fun LocalPlaylistScreen(
                                                 Column {
                                                     suggestedTracks.forEachIndexed { index, track ->
                                                         SuggestItems(
-                                                            forceDark = true,
+                                                            forceDark = isDark,
                                                             track = track,
                                                             isPlaying = playingTrack?.videoId == track.videoId,
                                                             onAddClickListener = {
@@ -1267,7 +1275,7 @@ fun LocalPlaylistScreen(
                                         }
                                         Spacer(modifier = Modifier.size(12.dp))
                                         HorizontalDivider(
-                                            color = Color.Gray,
+                                            color = if (isDark) Color.Gray else MaterialTheme.colorScheme.outlineVariant,
                                             thickness = 0.5.dp,
                                         )
                                         Spacer(modifier = Modifier.size(8.dp))
@@ -1280,7 +1288,7 @@ fun LocalPlaylistScreen(
                                             modifier =
                                                 Modifier
                                                     .clip(CircleShape)
-                                                    .background(Color.White.copy(alpha = 0.12f))
+                                                    .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
                                                     .clickable {
                                                         sortBottomSheetShow = true
                                                     }.padding(vertical = 8.dp, horizontal = 14.dp),
@@ -1289,7 +1297,7 @@ fun LocalPlaylistScreen(
                                             Icon(
                                                 imageVector = SimpIcons.Sort,
                                                 contentDescription = "Sort playlist",
-                                                tint = Color.White,
+                                                tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 modifier = Modifier.size(20.dp),
                                             )
                                             Spacer(modifier = Modifier.size(6.dp))
@@ -1300,7 +1308,7 @@ fun LocalPlaylistScreen(
                                                             uiState.filterState.displayNameRes(),
                                                         ),
                                                 style = typo().bodySmall,
-                                                color = Color.White,
+                                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
                                         Spacer(Modifier.weight(1f))
@@ -1323,7 +1331,7 @@ fun LocalPlaylistScreen(
                                                             "Change order"
                                                         },
                                                     style = typo().bodySmall,
-                                                    color = Color.White,
+                                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
                                                 )
                                             }
                                         }
@@ -1344,7 +1352,7 @@ fun LocalPlaylistScreen(
                 val content = @Composable { mod: Modifier ->
                     if (playingTrack?.videoId == item.videoId && isPlaying) {
                         SongFullWidthItems(
-                            forceDark = true,
+                            forceDark = isDark,
                             isPlaying = true,
                             shouldShowDragHandle = changingOrder,
                             songEntity = item,
@@ -1367,7 +1375,7 @@ fun LocalPlaylistScreen(
                         )
                     } else {
                         SongFullWidthItems(
-                            forceDark = true,
+                            forceDark = isDark,
                             isPlaying = false,
                             shouldShowDragHandle = changingOrder,
                             songEntity = item,
@@ -1405,7 +1413,7 @@ fun LocalPlaylistScreen(
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 72.dp, end = 16.dp),
                                 thickness = 0.5.dp,
-                                color = Color.White.copy(alpha = 0.12f),
+                                color = if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant,
                             )
                         }
                     }
@@ -1675,7 +1683,7 @@ fun LocalPlaylistScreen(
                             viewModel.setSearchQuery("")
                         },
                     ) {
-                        Icon(SimpIcons.Close, null, tint = Color.White)
+                        Icon(SimpIcons.Close, null, tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -1685,7 +1693,7 @@ fun LocalPlaylistScreen(
                     key = { (song, pair) -> song.videoId + "_" + pair.position },
                 ) { (song, _) ->
                     SongFullWidthItems(
-                        forceDark = true,
+                        forceDark = isDark,
                         isPlaying = playingTrack?.videoId == song.videoId && isPlaying,
                         songEntity = song,
                         onMoreClickListener = { onItemMoreClick(it) },
