@@ -462,7 +462,7 @@ jobs:
               cargo binstall -y cargo-ndk
             }
           fi
-          cargo-ndk --version
+          cargo ndk --version
 
       # Direct cargo-ndk + CMake/Ninja: zero Gradle daemon startup tax.
       - name: Cross-compile Rust + C++ DSP for ${{ matrix.abi }}
