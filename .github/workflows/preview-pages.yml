@@ -97,6 +97,13 @@ jobs:
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
                   envsubst "$VARS" < settings.js.template > out/web/settings.js
 
+            # Streamify Skin: the main checkout has no scripts/ or skin/ (this
+            # branch added them), so run the SCRIPT FROM the preview checkout
+            # against the main tree's generated output. The skin source is
+            # therefore always this branch's, for both fused trees.
+            - name: Inject Streamify Skin (main tree)
+              run: node preview/scripts/inject-skin.mjs prod/front-end/feishin/out/web --repo-root preview --no-verify
+
             - name: Provide SPA fallback page (main)
               working-directory: prod/front-end/feishin
               run: |
@@ -141,6 +148,9 @@ jobs:
                   export SERVER_LOCK SERVER_TYPE SERVER_URL REMOTE_URL SERVER_NAME
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
                   envsubst "$VARS" < settings.js.template > out/web/settings.js
+
+            - name: Inject Streamify Skin (preview tree)
+              run: node preview/scripts/inject-skin.mjs preview/front-end/feishin/out/web --repo-root preview
 
             - name: Provide SPA fallback page (preview)
               working-directory: preview/front-end/feishin

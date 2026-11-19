@@ -128,6 +128,14 @@ jobs:
                   export LEGACY_AUTHENTICATION ANALYTICS_DISABLED
                   envsubst "$VARS" < settings.js.template > out/web/settings.js
 
+            # Streamify Skin: inject the monorepo-owned mobile YTM shell into
+            # the GENERATED bundle only. front-end/feishin/ stays byte-identical
+            # to the fork so upstream tag merges never see a conflict. The
+            # script also fails the build if Feishin renamed a class the skin
+            # targets (fs-* CSS module names are stable, not hashed).
+            - name: Inject Streamify Skin
+              run: node scripts/inject-skin.mjs front-end/feishin/out/web
+
             # HashRouter keeps routes in location.hash, so subroutes never
             # hit the server — this copy only guards direct hits on
             # nonexistent paths (e.g. a stray /streamify-apk/whatever).

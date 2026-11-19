@@ -74,6 +74,22 @@ check_prerequisites() {
         echo -e "${C_YELLOW}[!] Warning: server/public/index.html not found.${C_RESET}"
         echo "    The API relay will run, but the Web UI may not be served."
     fi
+
+    # Streamify Skin (mobile YTM shell) is injected into the GENERATED
+    # server/public/settings.js, which is gitignored. On a fresh checkout that
+    # file has no loader, so wire it here. Non-fatal: the relay itself must
+    # still start if the skin wiring fails. Live edits to front-end/skin/*.css
+    # need no restart — server/index.js serves that source dir at /skin.
+    if [ -f "${DIR}/server/public/settings.js" ] && [ -f "${DIR}/scripts/inject-skin.mjs" ]; then
+        if ! grep -q 'STREAMIFY_SKIN_LOADER' "${DIR}/server/public/settings.js"; then
+            echo -e "${C_YELLOW}[*] Wiring Streamify Skin into local bundle...${C_RESET}"
+            if (cd "${DIR}" && node scripts/inject-skin.mjs server/public); then
+                echo -e "${C_GREEN}[✓] Skin wired into settings.js.${C_RESET}"
+            else
+                echo -e "${C_YELLOW}[!] Skin wiring failed; continuing without it.${C_RESET}"
+            fi
+        fi
+    fi
 }
 
 print_banner() {

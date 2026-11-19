@@ -1,0 +1,419 @@
+/*
+ * ============================================================================
+ * STREAMIFY SKIN — YouTube-Music-style mobile shell
+ * ============================================================================
+ *
+ * WHAT THIS IS
+ *   A standalone stylesheet that restyles Feishin's *stock* mobile layout into
+ *   a YouTube-Music-like player. It is loaded by front-end/skin/loader.js,
+ *   which is appended to the generated settings.js by scripts/inject-skin.mjs.
+ *
+ * UPSTREAM ISOLATION CONTRACT (do not break this)
+ *   - This file lives at front-end/skin/, NOT under front-end/feishin/.
+ *   - The fork at front-end/feishin/ is vendored from meraxes89/streamify-feishin
+ *     and merged from jeffvli/feishin release tags. NOTHING in this skin edits
+ *     an upstream file, so tag merges keep working and PATCHES.md stays valid.
+ *   - To change the mobile look, edit THIS file (or ytm.js). Do not "fix" the
+ *     UI by patching Feishin components; that reintroduces merge conflicts.
+ *
+ * WHY THE SELECTORS LOOK WEIRD
+ *   Vite is configured with generateScopedName: 'fs-[name]-[local]', so CSS
+ *   module classes compile to stable, human-readable names like
+ *   `fs-mobile-layout-module-layout` (not hashes). We target those names.
+ *   They are stable across builds but NOT an upstream API — if a Feishin
+ *   component is renamed, this skin silently de-styles. scripts/inject-skin.mjs
+ *   checks that every critical selector below still exists in the built CSS
+ *   and fails the build loudly if one disappears. When adding a selector,
+ *   add it to REQUIRED_CLASSES there too.
+ *
+ * SCOPE
+ *   Everything is inside a coarse-pointer/narrow-width media query. Desktop
+ *   users of the same GitHub Pages bundle keep the stock Feishin look.
+ *
+ * CASCADE NOTES
+ *   - loader.js injects this <link> after DOMContentLoaded so it lands after
+ *     Vite's CSS <link> in <head>. At equal specificity we win.
+ *   - Feishin sets --theme-colors-primary as an INLINE style on <html>
+ *     (use-app-theme.ts), and custom themes inject <style> tags at React
+ *     mount. Those outrank a plain :root rule, so theme-token overrides use
+ *     !important. Everything else uses normal specificity + the link order.
+ * ============================================================================
+ */
+
+@media (max-width: 768px) and (pointer: coarse) {
+    :root {
+        /* Layout metrics shared with ytm.js — keep these two files in sync. */
+        --skin-nav-height: 64px;
+        --skin-player-height: 90px;
+        --skin-safe-bottom: env(safe-area-inset-bottom, 0px);
+        --skin-safe-top: env(safe-area-inset-top, 0px);
+
+        /* YTM-ish palette. Red is the Streamify brand accent from the fork's
+         * streamifyBrand theme, hardcoded here so the skin never depends on
+         * whether that theme was actually applied to this session. */
+        --skin-bg: #030303;
+        --skin-surface: #121212;
+        --skin-surface-raised: #1f1f1f;
+        --skin-surface-active: #2c2c2c;
+        --skin-border: #303030;
+        --skin-text: #ffffff;
+        --skin-text-muted: #b3b3b3;
+        --skin-accent: #ff0033;
+        --skin-accent-contrast: #ffffff;
+        --skin-radius: 12px;
+        --skin-tap: 44px;
+    }
+
+    /* ---------------------------------------------------------------------
+     * 1. FORCED PALETTE
+     * Override Feishin's runtime theme tokens so no user theme choice can
+     * make buttons blend into surfaces. !important is required because
+     * use-app-theme.ts writes --theme-colors-primary as an inline style.
+     * ------------------------------------------------------------------- */
+    html {
+        --theme-colors-background: var(--skin-bg) !important;
+        --theme-colors-background-alternate: var(--skin-surface) !important;
+        --theme-colors-surface: var(--skin-surface-raised) !important;
+        --theme-colors-surface-foreground: var(--skin-text) !important;
+        --theme-colors-foreground: var(--skin-text) !important;
+        --theme-colors-foreground-muted: var(--skin-text-muted) !important;
+        --theme-colors-border: var(--skin-border) !important;
+        --theme-colors-primary: var(--skin-accent) !important;
+        --theme-colors-primary-filled: var(--skin-accent) !important;
+        --theme-colors-primary-contrast: var(--skin-accent-contrast) !important;
+        --theme-btn-subtle-bg-hover: var(--skin-surface-active) !important;
+        --theme-btn-subtle-fg: var(--skin-text) !important;
+        --theme-btn-subtle-fg-hover: var(--skin-text) !important;
+        --theme-overlay-header: linear-gradient(180deg, rgb(0 0 0 / 55%) 0%, transparent 100%) !important;
+        --theme-overlay-subheader: linear-gradient(0deg, rgb(0 0 0 / 65%) 0%, transparent 100%) !important;
+        color-scheme: dark;
+    }
+
+    html,
+    body,
+    #root {
+        background: var(--skin-bg) !important;
+        color: var(--skin-text);
+    }
+
+    /* Kill the white flash before Feishin's own background kicks in. */
+    body[style*='background-color'] {
+        background-color: var(--skin-bg) !important;
+    }
+
+    /* Scrollbars: thin, dark, visible. Stock ones are easy to miss on OLED. */
+    * {
+        scrollbar-color: #3a3a3a transparent;
+        scrollbar-width: thin;
+    }
+
+    /* ---------------------------------------------------------------------
+     * 2. APP SHELL GRID
+     * Feishin's mobile layout is a 3-row grid: [window-bar | main | player].
+     * The bottom nav is position:fixed, so we add an empty 4th grid row to
+     * reserve its space. That pushes the player bar above the nav without
+     * touching mobile-layout.tsx / its CSS module.
+     * ------------------------------------------------------------------- */
+    .fs-mobile-layout-module-layout {
+        grid-template-areas: 'window-bar' 'main-content' 'player' 'nav' !important;
+        grid-template-rows: 0 calc(100dvh - var(--skin-player-height) - var(--skin-nav-height) - var(--skin-safe-bottom)) var(--skin-player-height) calc(var(--skin-nav-height) + var(--skin-safe-bottom)) !important;
+        background: var(--skin-bg) !important;
+    }
+
+    .fs-mobile-layout-module-windows {
+        grid-template-rows: 30px calc(100dvh - 30px - var(--skin-player-height) - var(--skin-nav-height) - var(--skin-safe-bottom)) var(--skin-player-height) calc(var(--skin-nav-height) + var(--skin-safe-bottom)) !important;
+    }
+
+    .fs-mobile-layout-module-macos {
+        grid-template-rows: 30px calc(100dvh - 30px - var(--skin-player-height) - var(--skin-nav-height) - var(--skin-safe-bottom)) var(--skin-player-height) calc(var(--skin-nav-height) + var(--skin-safe-bottom)) !important;
+    }
+
+    .fs-mobile-layout-module-main-content {
+        background: var(--skin-bg);
+        padding-bottom: 8px;
+        overscroll-behavior-y: contain;
+    }
+
+    /* The floating search button is redundant now that the bottom nav has a
+     * Search tab. The menu button stays — it opens the mobile sidebar and is
+     * restyled into a YTM-style top-left avatar/menu affordance below. */
+    .fs-mobile-layout-module-search-button {
+        display: none !important;
+    }
+
+    .fs-mobile-layout-module-drawer-button {
+        top: calc(var(--skin-safe-top) + 12px) !important;
+        bottom: auto !important;
+        left: 12px !important;
+        width: var(--skin-tap) !important;
+        height: var(--skin-tap) !important;
+        min-width: var(--skin-tap) !important;
+        min-height: var(--skin-tap) !important;
+        border: 1px solid var(--skin-border) !important;
+        border-radius: 50% !important;
+        background: var(--skin-surface-raised) !important;
+        color: var(--skin-text) !important;
+        backdrop-filter: none !important;
+        z-index: 130 !important;
+    }
+
+    /* Fullscreen player / visualizer overlay is z-index 200 in Feishin; our
+     * nav is 120, so it is naturally covered. ytm.js also sets
+     * body.skin-player-open so we can hard-hide it during the exit animation. */
+    body.skin-player-open #streamify-skin-nav {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(100%);
+    }
+
+    /* ---------------------------------------------------------------------
+     * 3. MINI PLAYER (the 90px bar above the nav)
+     * ------------------------------------------------------------------- */
+    .fs-mobile-playerbar-module-container {
+        height: var(--skin-player-height) !important;
+        padding: 8px 12px !important;
+        gap: 12px !important;
+        background: var(--skin-surface-raised) !important;
+        border-top: 1px solid var(--skin-border) !important;
+        box-shadow: 0 -6px 18px rgb(0 0 0 / 35%);
+    }
+
+    .fs-mobile-playerbar-module-image {
+        width: 52px !important;
+        height: 52px !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 10px rgb(0 0 0 / 45%);
+    }
+
+    .fs-mobile-playerbar-module-metadata-stack {
+        max-width: none !important;
+        gap: 2px !important;
+    }
+
+    .fs-mobile-playerbar-module-line-item {
+        line-height: 1.25 !important;
+        letter-spacing: 0.01em;
+    }
+
+    .fs-mobile-playerbar-module-line-item:first-child {
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        color: var(--skin-text) !important;
+    }
+
+    .fs-mobile-playerbar-module-secondary {
+        font-size: 12px !important;
+        color: var(--skin-text-muted) !important;
+    }
+
+    .fs-mobile-playerbar-module-controls-wrapper {
+        gap: 6px !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* Every transport control gets a real 44px hit area. */
+    .fs-mobile-playerbar-module-controls-wrapper button {
+        min-width: var(--skin-tap) !important;
+        min-height: var(--skin-tap) !important;
+        width: var(--skin-tap) !important;
+        height: var(--skin-tap) !important;
+        border-radius: 50% !important;
+        color: var(--skin-text) !important;
+        background: transparent !important;
+    }
+
+    .fs-mobile-playerbar-module-controls-wrapper button:active {
+        background: var(--skin-surface-active) !important;
+    }
+
+    /* The filled red play button is the primary affordance — YTM style. */
+    .fs-player-button-module-main {
+        width: 48px !important;
+        height: 48px !important;
+        min-width: 48px !important;
+        min-height: 48px !important;
+        border-radius: 50% !important;
+        background: var(--skin-accent) !important;
+        color: var(--skin-accent-contrast) !important;
+        box-shadow: 0 3px 12px rgb(255 0 51 / 30%) !important;
+    }
+
+    .fs-player-button-module-main:hover,
+    .fs-player-button-module-main:active {
+        background: #ff1a47 !important;
+    }
+
+    /* ---------------------------------------------------------------------
+     * 4. FULLSCREEN PLAYER
+     * ------------------------------------------------------------------- */
+    .fs-mobile-fullscreen-player-module-container {
+        /* No nav padding here: the overlay is z-index 200 in Feishin (above
+         * our z-index 120 nav) and ytm.js hides the nav while it is mounted. */
+        background: linear-gradient(180deg, #1a0d10 0%, var(--skin-bg) 42%) !important;
+    }
+
+    .fs-mobile-fullscreen-player-module-header {
+        padding: calc(var(--skin-safe-top) + 12px) 12px 8px !important;
+        background: var(--theme-overlay-header);
+    }
+
+    .fs-mobile-fullscreen-player-module-title-row,
+    .fs-mobile-fullscreen-player-module-metadata-row {
+        color: var(--skin-text) !important;
+    }
+
+    .fs-mobile-fullscreen-player-module-image {
+        border-radius: 14px !important;
+        box-shadow: 0 18px 46px rgb(0 0 0 / 60%) !important;
+    }
+
+    .fs-mobile-fullscreen-player-module-actions-row button,
+    .fs-mobile-fullscreen-player-module-bottom-controls-bar button,
+    .fs-mobile-fullscreen-player-module-controls-container button {
+        min-width: var(--skin-tap) !important;
+        min-height: var(--skin-tap) !important;
+        border-radius: 50% !important;
+        color: var(--skin-text) !important;
+    }
+
+    .fs-mobile-fullscreen-player-module-actions-row button:active,
+    .fs-mobile-fullscreen-player-module-bottom-controls-bar button:active,
+    .fs-mobile-fullscreen-player-module-controls-container button:active {
+        background: var(--skin-surface-active) !important;
+    }
+
+    .fs-mobile-fullscreen-player-module-time-container {
+        font-variant-numeric: tabular-nums;
+        font-size: 12px !important;
+        color: var(--skin-text-muted) !important;
+    }
+
+    /* Keep queue/lyrics tab content readable against the dark backdrop. */
+    .fs-mobile-fullscreen-player-module-lyrics-content,
+    .fs-mobile-fullscreen-player-module-queue-header {
+        color: var(--skin-text) !important;
+    }
+
+    /* ---------------------------------------------------------------------
+     * 5. LIST ROWS / CARDS / SIDEBAR (inside the mobile drawer)
+     * ------------------------------------------------------------------- */
+    .fs-item-card-module-container {
+        border-radius: var(--skin-radius) !important;
+        background: var(--skin-surface) !important;
+    }
+
+    .fs-item-card-module-image-container {
+        border-radius: 8px !important;
+    }
+
+    .fs-item-card-controls-module-play-button {
+        background: var(--skin-accent) !important;
+        color: var(--skin-accent-contrast) !important;
+        border-radius: 50% !important;
+        opacity: 1 !important;
+    }
+
+    .fs-mobile-sidebar-module-container,
+    .fs-sidebar-module-container {
+        background: var(--skin-surface) !important;
+        color: var(--skin-text) !important;
+    }
+
+    .fs-sidebar-item-module-item,
+    .fs-sidebar-collection-list-module-row,
+    .fs-sidebar-playlist-list-module-row {
+        border-radius: 8px !important;
+        min-height: var(--skin-tap) !important;
+    }
+
+    .fs-sidebar-item-module-active,
+    .fs-sidebar-collection-list-module-row-active,
+    .fs-sidebar-playlist-list-module-name-active {
+        background: var(--skin-surface-active) !important;
+        color: var(--skin-text) !important;
+    }
+
+    /* Text inputs / search fields need visible borders in dark themes. */
+    input,
+    textarea,
+    [role='combobox'] {
+        color: var(--skin-text) !important;
+        caret-color: var(--skin-accent) !important;
+    }
+
+    /* ---------------------------------------------------------------------
+     * 6. BOTTOM NAV (created by ytm.js — no Feishin component involved)
+     * ------------------------------------------------------------------- */
+    #streamify-skin-nav {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 120;
+        display: flex;
+        align-items: stretch;
+        justify-content: space-around;
+        height: calc(var(--skin-nav-height) + var(--skin-safe-bottom));
+        padding: 4px 4px var(--skin-safe-bottom);
+        background: var(--skin-surface) !important;
+        border-top: 1px solid var(--skin-border) !important;
+        box-shadow: 0 -8px 24px rgb(0 0 0 / 45%);
+        transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    #streamify-skin-nav .skin-nav-item {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        gap: 3px;
+        align-items: center;
+        justify-content: center;
+        min-width: var(--skin-tap);
+        min-height: var(--skin-tap);
+        padding: 4px 2px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--skin-text-muted);
+        font: inherit;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    #streamify-skin-nav .skin-nav-item:active {
+        background: var(--skin-surface-active);
+    }
+
+    #streamify-skin-nav .skin-nav-item[aria-current='page'] {
+        color: var(--skin-accent);
+    }
+
+    #streamify-skin-nav .skin-nav-icon {
+        display: block;
+        width: 24px;
+        height: 24px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    #streamify-skin-nav .skin-nav-item[aria-current='page'] .skin-nav-icon {
+        fill: currentColor;
+        stroke: none;
+    }
+
+    #streamify-skin-nav .skin-nav-label {
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: 0.02em;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #streamify-skin-nav {
+            transition: none;
+        }
+    }
+}

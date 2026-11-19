@@ -22,6 +22,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, 'public');
 
+// Streamify Skin (mobile YTM-style shell): serve the monorepo-owned source
+// directly at /skin so edits to front-end/skin/ytm.css show up on the next
+// reload with no rebuild. This tree is NEVER vendored into front-end/feishin/,
+// so upstream Feishin tag merges stay conflict-free. The generated copy in
+// server/public/skin/ (written by scripts/inject-skin.mjs) is the fallback for
+// deployments that ship only server/. Registered BEFORE express.static(publicDir)
+// so the live source wins over the generated copy when both exist.
+const skinSourceDir = path.resolve(__dirname, '../front-end/skin');
+const skinDir = fs.existsSync(skinSourceDir)
+    ? skinSourceDir
+    : path.join(publicDir, 'skin');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MiB bounded chunk
@@ -38,6 +50,7 @@ app.use((req, res, next) => {
     next();
 });
 app.use(cors({ origin: '*' }));
+
 // Parse raw bodies for binary / protobuf / json forwarding in /r proxy
 app.use(express.raw({ limit: '50mb', type: '*/*' }));
 
@@ -49,6 +62,17 @@ app.use((req, res, next) => {
     });
     next();
 });
+
+// Skin assets must be cache-busted independently of the SPA: index.html is
+// no-store, but the skin files are versioned by this repo, not by Vite hashes.
+// Mounted after the request logger (so /skin hits show up in Render logs) and
+// before express.static(publicDir) (so live source wins over the generated copy).
+app.use(
+    '/skin',
+    express.static(skinDir, {
+        setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+    }),
+);
 
 if (fs.existsSync(publicDir)) {
     app.use(express.static(publicDir, {
