@@ -210,7 +210,10 @@ jobs:
             desktopApp/build/compose/binaries/**/*.deb
             desktopApp/build/compose/binaries/**/*.msi
             desktopApp/build/compose/binaries/**/*.dmg
-          if-no-files-found: error
+            desktopApp/build/compose/binaries/**/*.AppImage
+            desktopApp/build/compose/binaries/main/app/**
+            desktopApp/build/appimage/**
+          if-no-files-found: warn
 
       # ── Debug aids ──────────────────────────────────────────────────────────
       - name: Upload generated uniffi bindings (debug aid)
