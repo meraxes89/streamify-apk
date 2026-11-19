@@ -32,6 +32,8 @@ import com.maxrave.simpmusic.viewModel.AutoEqViewModel
 import com.maxrave.simpmusic.viewModel.SettingsViewModel
 import com.maxrave.simpmusic.viewModel.SharedViewModel
 import com.maxrave.simpmusic.viewModel.SongSelectionViewModel
+import com.maxrave.domain.repository.UpdateRepository
+import com.maxrave.simpmusic.data.StreamifyUpdateRepositoryImpl
 import com.maxrave.simpmusic.viewModel.TasteViewModel
 import com.maxrave.simpmusic.viewModel.WrappedViewModel
 import org.koin.core.module.dsl.viewModel
@@ -39,11 +41,14 @@ import org.koin.dsl.module
 
 val viewModelModule =
     module {
+        single<UpdateRepository> {
+            StreamifyUpdateRepositoryImpl()
+        }
         single {
             SharedViewModel(
                 get(),
                 get(),
-                get(),
+                get<UpdateRepository>(),
                 get(),
                 get(),
                 get(),
