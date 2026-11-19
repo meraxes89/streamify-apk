@@ -301,11 +301,7 @@ fun HomeScreen(
                         if (it.subtitle.equals(accountName, ignoreCase = true)) it.copy(thumbnail = null) else it
                     }
                 }
-            val qpIndex =
-                mapped.indexOfFirst {
-                    it.title.equals(quickPicksTitle, ignoreCase = true) ||
-                        it.title.equals("Quick picks", ignoreCase = true)
-                }
+            val qpIndex = mapped.indexOfFirst { it.isQuickPicksShelf(quickPicksTitle) }
             if (qpIndex > 0) {
                 val list = mapped.toMutableList()
                 val qp = list.removeAt(qpIndex)
@@ -883,46 +879,29 @@ fun HomeScreen(
                                     // Android drops the 8dp over each section's title: the list's own 8dp
                                     // spacing already separates it from the shelf above.
                                     if (getPlatform() != Platform.Android) Spacer(modifier = Modifier.height(8.dp))
-                                    if (item.title.equals(quickPicksTitle, ignoreCase = true) || item.title.equals("Quick picks", ignoreCase = true)) {
-                                        AnimatedVisibility(
-                                            visible =
-                                                homeData.find {
-                                                    it.title ==
-                                                        stringResource(
-                                                            Res.string.quick_picks,
-                                                        )
-                                                } != null,
-                                        ) {
-                                            QuickPicks(
-                                                homeItem =
-                                                    (
-                                                        homeData.find {
-                                                            it.title ==
-                                                                stringResource(
-                                                                    Res.string.quick_picks,
+                                    if (item.isQuickPicksShelf(quickPicksTitle)) {
+                                        QuickPicks(
+                                            homeItem =
+                                                item.let { content ->
+                                                    content.copy(
+                                                        contents =
+                                                            content.contents.mapNotNull { ct ->
+                                                                ct?.copy(
+                                                                    artists =
+                                                                        ct.artists?.let { art ->
+                                                                            if (art.size > 1) {
+                                                                                art.dropLast(1)
+                                                                            } else {
+                                                                                art
+                                                                            }
+                                                                        },
                                                                 )
-                                                        } ?: return@AnimatedVisibility
-                                                    ).let { content ->
-                                                        content.copy(
-                                                            contents =
-                                                                content.contents.mapNotNull { ct ->
-                                                                    ct?.copy(
-                                                                        artists =
-                                                                            ct.artists?.let { art ->
-                                                                                if (art.size > 1) {
-                                                                                    art.dropLast(1)
-                                                                                } else {
-                                                                                    art
-                                                                                }
-                                                                            },
-                                                                    )
-                                                                },
-                                                        )
-                                                    },
-                                                navController = navController,
-                                                viewModel = viewModel,
-                                            )
-                                        }
+                                                            },
+                                                    )
+                                                },
+                                            navController = navController,
+                                            viewModel = viewModel,
+                                        )
                                     } else if (item.isSongCardShelf()) {
                                         HomeDiscoverSection(
                                             data = item,
@@ -1375,6 +1354,11 @@ private val LandscapeGridItemMaxWidth = 400.dp
 // A card shelf of songs only that leads to no page of its own ("Your daily discover"). List shelves
 // (Quick picks, Heard in Shorts) carry itemsPerColumn and keep their own look; a shelf with a More
 // page (Listen again can be all songs) keeps its cards; videos draw as wide cards, so never match.
+private fun HomeItem.isQuickPicksShelf(quickPicksTitle: String): Boolean =
+    itemsPerColumn == 4 ||
+        title.equals(quickPicksTitle, ignoreCase = true) ||
+        title.equals("Quick picks", ignoreCase = true)
+
 private fun HomeItem.isSongCardShelf(): Boolean =
     itemsPerColumn == null &&
         moreEndpoint == null &&
