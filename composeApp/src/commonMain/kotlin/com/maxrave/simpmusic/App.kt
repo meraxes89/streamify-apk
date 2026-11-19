@@ -538,16 +538,16 @@ fun App(
         }
         val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
 
-        if (streamifyAuthState is AuthState.Unauthenticated) {
-            GoogleOnboardingAuthScreen(
-                onAuthenticated = {
-                    // Identity is persisted and authState transitions to Authenticated
-                },
-            )
-            return@AppTheme
-        }
-        // Read inside AppTheme so MaterialTheme reflects the resolved scheme.
-        val isLightScheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (streamifyAuthState is AuthState.Unauthenticated) {
+                GoogleOnboardingAuthScreen(
+                    onAuthenticated = {
+                        // Identity is persisted and authState transitions to Authenticated
+                    },
+                )
+            } else {
+                // Read inside AppTheme so MaterialTheme reflects the resolved scheme.
+                val isLightScheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
 
         // The desktop shell is a window colour with panels floating on it. The two schemes mirror
         // each other: the window takes the extreme (pure black / pure white) and the panel steps
@@ -896,18 +896,6 @@ fun App(
                     }
                 }
 
-                AnimatedVisibility(
-                    visible = isSplashVisible,
-                    enter = fadeIn(animationSpec = tween(300)),
-                    exit = fadeOut(animationSpec = tween(500)),
-                ) {
-                    StreamifySplashScreen(
-                        onDismiss = {
-                            isSplashVisible = false
-                        },
-                    )
-                }
-
                 if (sleepTimerState.isDone) {
                     Logger.w("MainActivity", "Sleep Timer Done: $sleepTimerState")
                     AlertDialog(
@@ -1152,5 +1140,19 @@ fun App(
                 }
             },
         )
+    }
+
+    AnimatedVisibility(
+        visible = isSplashVisible,
+        enter = fadeIn(animationSpec = tween(300)),
+        exit = fadeOut(animationSpec = tween(500)),
+    ) {
+        StreamifySplashScreen(
+            onDismiss = {
+                isSplashVisible = false
+            },
+        )
+    }
+        }
     }
 }

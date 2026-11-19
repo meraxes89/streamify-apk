@@ -17,6 +17,23 @@ actual object StreamifyAuthManager {
         return Result.success(SupabaseConfig.DEFAULT_USER)
     }
 
+    actual fun signInAsDefaultUser(context: Any?): Result<UserProfile> {
+        _authState.value = AuthState.Authenticated(SupabaseConfig.DEFAULT_USER)
+        return Result.success(SupabaseConfig.DEFAULT_USER)
+    }
+
+    actual fun signInAsGuest(context: Any?): Result<UserProfile> {
+        val guest = UserProfile(
+            id = "guest_desktop",
+            email = "guest@streamify.app",
+            displayName = "Guest User",
+            avatarUrl = "",
+            isAdmin = false,
+        )
+        _authState.value = AuthState.Authenticated(guest)
+        return Result.success(guest)
+    }
+
     actual fun signOut(context: Any?) {
         _authState.value = AuthState.Unauthenticated
         SupabaseClient.clearSession()
