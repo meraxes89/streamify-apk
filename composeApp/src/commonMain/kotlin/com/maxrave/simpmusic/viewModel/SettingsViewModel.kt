@@ -2048,7 +2048,7 @@ class SettingsViewModel(
     private var _spotifyCanvas: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val spotifyCanvas: StateFlow<Boolean> = _spotifyCanvas
 
-    private var _amAnimatedArtwork: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private var _amAnimatedArtwork: MutableStateFlow<Boolean> = MutableStateFlow(true)
     val amAnimatedArtwork: StateFlow<Boolean> = _amAnimatedArtwork
 
     fun getSpotifyLyrics() {

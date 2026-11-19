@@ -63,6 +63,13 @@ object StreamifyDefaultsInitializer {
                 Logger.d("Streamify: Setting default lyrics style to APPLE_MUSIC", TAG)
                 dataStoreManager.setLyricsStyle(DataStoreManager.LYRICS_STYLE_APPLE_MUSIC)
             }
+
+            // 5. Apple Music Animated Artwork default enabled
+            val currentAnimatedArtwork = dataStoreManager.amAnimatedArtwork.first()
+            if (currentAnimatedArtwork != DataStoreManager.TRUE) {
+                Logger.d("Streamify: Enabling Apple Music animated artwork by default", TAG)
+                dataStoreManager.setAMAnimatedArtwork(true)
+            }
         } catch (e: Exception) {
             Logger.e("Streamify: Failed to initialize defaults: ${e.message}", TAG)
         }
