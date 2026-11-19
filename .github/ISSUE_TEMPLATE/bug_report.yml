@@ -1,84 +1,113 @@
-name: 🐛 Bug report
-description: Something doesn't behave as documented
-title: "[bug] "
-labels: ["bug", "triage"]
+name: Bug report
+description: Report a reproducible issue in SimpMusic
+labels: [ "bug:unconfirmed" ]
+
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the report. ⚠️ **Security vulnerabilities must NOT be filed here** — see [SECURITY.md](https://github.com/meraxes89/streamify-apk/blob/main/SECURITY.md).
-  - type: textarea
-    id: summary
+        ⚠️ **Important:**  
+        Issues that are incomplete or not properly filled out will be closed without further explanation.
+
+  - type: checkboxes
+    id: duplicate_check
     attributes:
-      label: Summary
-      description: One or two sentences describing the incorrect behavior.
-      placeholder: Jam session host migrates twice within one election window when peer C rejoins.
-    validations:
-      required: true
-  - type: dropdown
-    id: engine
-    attributes:
-      label: Affected engine / area
+      label: Duplicate Check
+      description: Confirm you searched both open and closed issues.
       options:
-        - Stream resolution (docs/01)
-        - DSP acoustic (docs/02)
-        - Lyrics alignment (docs/03)
-        - Neural continuum (docs/04)
-        - Mesh / AirDrop (docs/05)
-        - Jam distributed (docs/06)
-        - Database / storage (docs/07)
-        - Ingestion / scraper (docs/08)
-        - Search graph (docs/09)
-        - Telemetry profiler (docs/10)
-        - Playback UI (docs/11)
-        - Server security (docs/12)
-        - Native bridge / JNI
-        - CI / build
-        - Other / unknown
+        - label: I confirm I searched for existing reports and found no duplicates.
+          required: true
+
+  - type: checkboxes
+    id: latest_release
+    attributes:
+      label: Latest Release
+      description: Check the [Releases page](https://github.com/maxrave-dev/SimpMusic/releases) — this may already be fixed.
+      options:
+        - label: I confirm I am on the latest release and the problem still happens.
+          required: true
+
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: Describe the Bug
+      placeholder: Briefly describe the bug you encountered.
     validations:
       required: true
+
   - type: textarea
-    id: repro
+    id: reproduce
     attributes:
-      label: Steps to reproduce
-      description: Be deterministic if possible. Note whether it reproduces every time.
-      value: |
-        1. 
-        2. 
-        3. 
+      label: Steps to Reproduce
       placeholder: |
-        1. Open app, start jam session as host on device A
-        2. Join from device B, then kill B's app mid-session
-        3. Relaunch B and rejoin
-        Expected: single stable host
-        Actual: host migrates twice in ~2s
+        1. …
+        2. …
+        3. …
+        4. …
     validations:
       required: true
+
   - type: textarea
-    id: env
+    id: expected
     attributes:
-      label: Environment
-      value: |
-        - Device model / SoC: 
-        - Android version (API level): 
-        - Streamify version / commit SHA: 
-        - Build type (debug/release): 
+      label: Expected Behavior
+      placeholder: Describe what you expected to happen instead.
     validations:
       required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App Version
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ### 📱 Device Information
+        Please provide details about the device where the issue occurred.
+
+  - type: input
+    id: android_version
+    attributes:
+      label: Android Version
+      placeholder: e.g. Android 15
+    validations:
+      required: true
+
+  - type: input
+    id: device_model
+    attributes:
+      label: Device Model
+      placeholder: e.g. Google Pixel 7 Pro
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: custom_rom
+    attributes:
+      label: Custom ROM
+      description: Check this if you are using a custom ROM.
+      options:
+        - label: I am using a custom ROM
+
+  - type: input
+    id: rom_name
+    attributes:
+      label: Custom ROM Name (if applicable)
+      description: Only fill this out if you checked the box above.
+      placeholder: e.g. LineageOS 21, crDroid, Pixel Experience
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      placeholder: Add screenshots if they help show the issue.
+
   - type: textarea
     id: logs
     attributes:
-      label: Logs / traces
-      description: Trimmed logcat, tombstones, simpleperf output. Wrap in triple backticks.
-      render: shell
-  - type: checkboxes
-    id: checks
-    attributes:
-      label: Pre-filing checklist
-      options:
-        - label: I searched existing issues (open and closed) for duplicates
-          required: true
-        - label: This is not a security vulnerability (those go through SECURITY.md privately)
-          required: true
-        - label: I can reproduce this on the latest main build or a tagged release
-          required: false
+      label: Log / Error Details
+      placeholder: Paste the crash log here if the app crashed.

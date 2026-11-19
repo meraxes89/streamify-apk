@@ -25,24 +25,19 @@ name: Unified CI Pipeline
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**']
   merge_group:
   push:
     branches: [main]
-  # Manual escape hatch (2026-10-30): GitHub's pull_request event delivery
-  # occasionally drops events (diagnosed on both eng1 and eng3 feature PRs).
-  # A workflow_dispatch run evaluates the same full matrix (preflight treats
-  # non-pull_request events as run-everything, fail-safe) and attaches its
-  # check runs to the head sha, so the "CI Gate (Blocking)" required check
-  # is satisfied exactly as a pull_request run would.
   workflow_dispatch:
 
-# Parallel-safe multi-engineer concurrency:
-# Isolate runs by branch (head_ref) so multiple engineers pushing in parallel
-# never collide or cancel each other. In-flight runs complete without premature abortion.
+# Branch-isolated concurrency:
+# Isolate runs by branch (head_ref on PRs, ref_name on push).
+# When a new commit is pushed, cancel in-flight runs immediately so runners
+# only build and test the latest commit on the branch/PR.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: false
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -59,7 +54,6 @@ jobs:
       run_engine: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_ios: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ios == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
@@ -83,24 +77,31 @@ jobs:
             core:
               - 'rust/**'
               - 'native/**'
+              - 'CMakeLists.txt'
             android:
-              - 'app/**'
-              - 'shared/android/**'
+              - 'androidApp/**'
+              - 'composeApp/**'
+              - 'core/**'
+              - 'streamify-modules/**'
+              - 'vivoAndroidApp/**'
+              - 'cast/**'
+              - 'lastfm/**'
             desktop:
-              - 'desktop/**'
-              - 'shared/**'
-            ios:
-              - 'iosApp/**'
-              - 'scripts/build_ios_xcframework.sh'
+              - 'desktopApp/**'
+              - 'composeApp/**'
+              - 'core/**'
+              - 'streamify-modules/**'
+              - 'conveyor.conf'
             supabase:
               - 'supabase/**'
+              - 'streamify-modules/supabase/**'
             packaging:
               - '**/*.gradle.kts'
               - 'gradle/**'
               - 'gradle.properties'
               - 'gradlew'
               - 'gradlew.bat'
-              - 'native/**'
+              - 'conveyor.conf'
             ci:
               - '.github/workflows/**'
 
@@ -127,13 +128,6 @@ jobs:
       # gitleaks step above already requires that fetch depth).
       - name: Docs-vs-reality lint (TRUTH-02)
         run: python3 scripts/docs_ledger_check.py
-
-      # WS-B B2: preview-fixture drift lint — PreviewCatalog is the
-      # preview/test lane's currency and may never appear in a production
-      # code path (the B2 acceptance criterion, enforced mechanically).
-      # ~2 s; runs on every event alongside the docs lint.
-      - name: Preview-catalog production-path guard (WS-B B2)
-        run: python3 scripts/preview_catalog_guard.py
 
       # P5-A: the canonical resolver integrity check. The feishin resolver
       # tree (front-end/feishin/.../playback/resolver/) became the single
@@ -237,21 +231,6 @@ jobs:
       (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
     uses: ./.github/workflows/_ci-android.yml
 
-  # Apple spoke runs as the single consolidated macos-15 runner job (resp8/resp9):
-  # combines iOS headless simulator tests, xcframework probe, macOS cdylib,
-  # and macOS desktop UI & JNA smoke suite into ONE session.
-  # This eliminates macOS runner pool queue starvation and prevents 15-minute queue timeouts.
-  apple:
-    name: "Apple Unified (iOS Tests, XCFramework, macOS Desktop)"
-    needs: preflight
-    if: |
-      always() &&
-      needs.preflight.result == 'success' &&
-      (needs.preflight.outputs.run_ios == 'true' || needs.preflight.outputs.run_desktop == 'true')
-    uses: ./.github/workflows/_ci-ios.yml
-    with:
-      package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
-
   desktop:
     name: "Desktop Matrix (Linux, Windows)"
     needs: [preflight, engine_dsp]
@@ -314,7 +293,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, apple, supabase-rls]
+    needs: [preflight, clippy, engine_dsp, android, desktop, supabase-rls]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)

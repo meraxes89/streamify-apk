@@ -2,8 +2,17 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
-        gradlePluginPortal()
         maven { url = uri("https://repo1.maven.org/maven2/") }
+        gradlePluginPortal()
+        maven { setUrl("https://jitpack.io") }
+        maven("https://jogamp.org/deployment/maven")
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "io.sentry.android.gradle") {
+                useModule("io.sentry:sentry-android-gradle-plugin:${requested.version}")
+            }
+        }
     }
 }
 dependencyResolutionManagement {
@@ -11,41 +20,100 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://repo1.maven.org/maven2/") }
+        gradlePluginPortal()
         maven { url = uri("https://jitpack.io") }
-        maven { url = uri("https://chaquo.com/maven") }
+        maven("https://jogamp.org/deployment/maven")
+        maven(url = "https://raw.githubusercontent.com/bravepipeproject/maven-repo/master/repository")
     }
 }
+
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
+// Core modules live in the `core` git submodule INSIDE this repo.
+val coreDir = File(rootDir, "core")
+val serviceDir = File(rootDir, "core/service")
+val mediaDir = File(rootDir, "core/media")
+
 rootProject.name = "Streamify"
-include(":app")
+include(
+    ":androidApp",
+    ":vivoAndroidApp",
+    ":composeApp",
+    ":desktopApp",
+    ":common",
+    ":data",
+    ":domain",
+    ":ktorExt",
+    ":kotlinYtmusicScraper",
+    ":spotify",
+    ":aiService",
+    ":autoEqService",
+    ":lyricsService",
+    ":media-jvm",
+    ":media-jvm-ui",
+    ":media3",
+    ":media3-ui",
+    ":crashlytics",
+    ":crashlytics-empty",
+    ":cast",
+    ":cast-empty",
+    ":lastfm",
+    ":lastfm-empty",
+    ":kizzy",
+    ":discord",
+    ":listenTogether",
+    ":loginSync",
+)
 
-// Phase 4b (MP-HAL10 / Beta): Desktop JVM target — Compose Desktop scaffold
-// over the JNA-mode UniFFI engine lane. The module is desktop-only: it never
-// participates in the Android variants, so the existing app CI shards are
-// untouched (their gradlew invocations address :app tasks directly).
-include(":desktop")
+// core modules
+project(":common").projectDir = File(coreDir, "common")
+project(":data").projectDir = File(coreDir, "data")
+project(":domain").projectDir = File(coreDir, "domain")
 
-// Phase 5 (MP-UI03 / Beta): the Compose Multiplatform shared UI module.
-//
-// `:shared` is a Kotlin Multiplatform module with a single JVM target
-// (`desktop`): commonMain carries the platform-agnostic theme tokens,
-// playback control components, presentation models and state holders;
-// `src/desktopMain` (plus the conditionally-attached `src/desktopEngine`)
-// carries the desktop engine gateway over the JNA-mode UniFFI bindings
-// generated in this module's build tree.
-//
-// `:shared-android` is the Android consumption seam for the SAME source
-// tree: an AGP library that compiles `shared/src/commonMain` +
-// `shared/src/androidMain` against androidx Compose. It exists as a sibling
-// module (projectDir `shared/android`) instead of an `androidTarget` inside
-// `:shared` for one hard architectural reason: `:desktop` depends on
-// `:shared`, and the desktop CI lane runs `--configure-on-demand` on
-// runners WITHOUT an Android SDK — a KMP androidTarget would drag AGP
-// configuration (and its SDK requirement) into that lane and break the
-// hermeticity guarantee established in Phase 4b. Keeping the Android
-// target in a separate module preserves it exactly: desktop runners
-// configure only :desktop + :shared (both AGP-free), app runners
-// configure everything and have the SDK.
-include(":shared")
-include(":shared-android")
-project(":shared-android").projectDir = file("shared/android")
+// service modules
+project(":ktorExt").projectDir = File(serviceDir, "ktorExt")
+project(":aiService").projectDir = File(serviceDir, "aiService")
+project(":autoEqService").projectDir = File(serviceDir, "autoEqService")
+project(":lyricsService").projectDir = File(serviceDir, "lyricsService")
+project(":kotlinYtmusicScraper").projectDir = File(serviceDir, "kotlinYtmusicScraper")
+project(":spotify").projectDir = File(serviceDir, "spotify")
+project(":kizzy").projectDir = File(serviceDir, "kizzy")
+project(":discord").projectDir = File(serviceDir, "discord")
+project(":listenTogether").projectDir = File(serviceDir, "listenTogether")
+project(":loginSync").projectDir = File(serviceDir, "loginSync")
+
+// media modules
+project(":media-jvm").projectDir = File(mediaDir, "media-jvm")
+project(":media-jvm-ui").projectDir = File(mediaDir, "media-jvm-ui")
+project(":media3").projectDir = File(mediaDir, "media3")
+project(":media3-ui").projectDir = File(mediaDir, "media3-ui")
+
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
+// =========================================================================
+// STREAMIFY EXTENSION SUITE (Non-invasive downstream modules)
+// =========================================================================
+val streamifyDir = File(rootDir, "streamify-modules")
+if (streamifyDir.exists()) {
+    include(
+        ":streamify-core-bridge",
+        ":streamify-media-hal",
+        ":streamify-lyrics-slyr",
+        ":streamify-supabase",
+        ":streamify-jam"
+    )
+    project(":streamify-core-bridge").projectDir = File(streamifyDir, "core-bridge")
+    project(":streamify-media-hal").projectDir = File(streamifyDir, "media-hal")
+    project(":streamify-lyrics-slyr").projectDir = File(streamifyDir, "lyrics-slyr")
+    project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")
+    project(":streamify-jam").projectDir = File(streamifyDir, "jam")
+}
+
+// Legacy modules preservation (archived for git history and reference; not built in CMP)
+// val legacyAppDir = File(rootDir, "legacy/app")
+// if (legacyAppDir.exists()) {
+//     include(":legacy-app")
+//     project(":legacy-app").projectDir = legacyAppDir
+// }

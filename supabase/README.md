@@ -10,6 +10,7 @@ The database contract consumed by `app/.../data/supabase/`.
 | `migrations/2026_11_drift_catchup.sql` | Column catch-up for live projects predating `schema.sql` column additions (incl. the `profiles.top_track` fix). |
 | `migrations/2026_11_ws_w_canary_results.sql` | WS-W web canary results table (anon INSERT-only; the client lives in-tree at `front-end/feishin/src/renderer/features/streamify-canary/` (vendored P5-C; this file is the source-of-truth copy)). |
 | `sql/jam_lease.sql` / `sql/jam_rpc.sql` | Jam lease + RPC functions for `SupabaseJamClient`. |
+| `HYBRID_SYNC_ARCHITECTURE.md` | Robust, anti-corruption Room SQLite ↔ Supabase Postgres hybrid sync architecture. |
 | `supabase.md` | Ops notes. |
 
 Client ↔ schema changes must land in the same PR.

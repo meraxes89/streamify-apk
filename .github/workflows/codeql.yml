@@ -75,12 +75,14 @@ jobs:
             codeql-build-mode: ""
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         if: matrix.language == 'java-kotlin'
         uses: actions/setup-java@v6
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Install Android NDK & CMake
@@ -113,7 +115,7 @@ jobs:
           chmod +x gradlew
           # Trace ONLY Kotlin/Java AST extraction: bypass C++ CMake, Rust
           # cargo-ndk, and D8 dexing via -PskipExternalNativeBuild=true.
-          ./gradlew compileDebugKotlin compileDebugJavaWithJavac \
+          ./gradlew :androidApp:compileDebugKotlin :androidApp:compileDebugJavaWithJavac \
             -PskipExternalNativeBuild=true \
             -Pkotlin.incremental=false \
             -Dkotlin.compiler.execution.strategy=in-process \

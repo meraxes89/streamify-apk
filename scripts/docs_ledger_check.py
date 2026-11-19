@@ -56,14 +56,12 @@ CURATED_DOCS = [
     "docs/playbooks/CI_TESTING_GUIDE.md",
     "docs/architecture/ARCHITECTURE.md",
     "docs/architecture/MULTIPLATFORM_CHECKBOX.MD",
-    "docs/architecture/SWIFT_MIGRATION_PLAN.MD",
     ".github/ISSUE_TEMPLATE/config.yml",
 ]
 
 # Ledger files whose CHECKED boxes get the file-claim audit (check 5).
 LEDGER_FILES = [
     "docs/architecture/MULTIPLATFORM_CHECKBOX.MD",
-    "docs/architecture/SWIFT_MIGRATION_PLAN.MD",
     "docs/architecture/A_Checkbox.md",
 ]
 
@@ -237,7 +235,7 @@ def check_checked_boxes(path: str, lines: list[str], findings: list[str]) -> Non
             if not _is_repo_path(candidate):
                 continue
             if candidate.startswith(("docs/", "scripts/", "app/", "rust/", "native/",
-                                     "iosApp/", "shared/", "desktop/", "supabase/",
+                                     "shared/", "desktop/", "supabase/",
                                      "fixtures/", "tools/", ".github/", "gradle")):
                 if not (REPO_ROOT / candidate).exists():
                     findings.append(

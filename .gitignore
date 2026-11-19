@@ -1,15 +1,22 @@
 # Android / Gradle
 *.iml
 .gradle/
+.gradle
 local.properties
+/local.properties
 .idea/
+.idea
 *.apk
 *.aar
 *.aab
 build/
+/build
 captures/
+/captures
 .externalNativeBuild/
+.externalNativeBuild
 .cxx/
+.cxx
 
 # NDK
 *.so
@@ -36,17 +43,36 @@ Thumbs.db
 /rust/target/
 target/
 *.rs.bk
-# Cargo.lock IS committed (audit #44 P1-3): an app shipping native Rust
-# deps pins its dependency graph exactly — and the CI cache key
-# hashFiles('rust/Cargo.lock') stops being permanently empty.
 
 # Keystore
 *.jks
 *.keystore
 !app/debug.keystore
+!androidApp/debug.keystore
 
-# Scratch Plans
-nano/
+# Sentry & Crowdin
+sentry.properties
+crowdin.yml
+
+# SimpMusic Specific
+.kotlin/
+/simpmusic.jks
+/ffmpeg-kit/build/
+/composeApp/build/
+/composeApp/cache/
+/composeApp/kcef-bundle/
+/.mcp.json
+/.claude/settings.local.json
+/androidApp/build/
+/androidApp/cache/
+/vivoAndroidApp/build/
+/lastfm/build/
+/lastfm-empty/build/
+/mpv-natives/
+.omc/
+/desktopApp/build/
+/desktopApp/generated.conveyor.conf
+/output/
 
 # Testing & Diagnostics
 test-build.log

@@ -93,30 +93,29 @@ def _jni_escape_segment(segment: str) -> str:
 
 def kotlin_surface() -> dict[str, set[str]]:
     """Auto-discover every Kotlin class in the application tree that declares
-    `external fun`s. Returns {expected JNI prefix -> fun names}.
-
-    The prefix for com.streamify.app.data.NativeBridge is
-    Java_com_streamify_app_data_NativeBridge_. Each FQN segment is
-    JNI-escaped (underscore -> _1) BEFORE the dots join into underscores —
-    the exact mangling the JVM performs when resolving `external fun`
-    symbols. Limitation: only top-level classes are mapped (a
-    `external fun` on a nested class mangles the `$` in its binary name);
-    none exist today, and DEC-01 (UniFFI) replaces this whole surface
-    with scaffolding checksums.
-    """
+    `external fun`s. Returns {expected JNI prefix -> fun names}."""
     surface: dict[str, set[str]] = {}
-    for kt in APP_MAIN.rglob("*.kt"):
-        try:
-            src = kt.read_text(encoding="utf-8")
-        except OSError:
+    search_dirs = [
+        REPO / "legacy/app/src/main/java",
+        REPO / "app/src/main/java",
+        REPO / "androidApp/src/main",
+        REPO / "streamify-modules",
+    ]
+    for search_dir in search_dirs:
+        if not search_dir.exists():
             continue
-        funs = EXTERNAL_FUN_RE.findall(src)
-        if not funs:
-            continue
-        pkg = re.search(r"^package\s+([\w.]+)", src, re.MULTILINE)
-        fqn = f"{pkg.group(1)}.{kt.stem}" if pkg else kt.stem
-        escaped = ".".join(_jni_escape_segment(seg) for seg in fqn.split("."))
-        surface.setdefault("Java_" + escaped.replace(".", "_") + "_", set()).update(funs)
+        for kt in search_dir.rglob("*.kt"):
+            try:
+                src = kt.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            funs = EXTERNAL_FUN_RE.findall(src)
+            if not funs:
+                continue
+            pkg = re.search(r"^package\s+([\w.]+)", src, re.MULTILINE)
+            fqn = f"{pkg.group(1)}.{kt.stem}" if pkg else kt.stem
+            escaped = ".".join(_jni_escape_segment(seg) for seg in fqn.split("."))
+            surface.setdefault("Java_" + escaped.replace(".", "_") + "_", set()).update(funs)
     return surface
 
 
