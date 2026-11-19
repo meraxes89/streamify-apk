@@ -72,8 +72,7 @@ changes.
   probes the live client ladder. Rotations land as **reviewed pull
   requests** from the evergreen `bot/fleet-rotation` branch (GOV-05) —
   the canary never pushes to `main` directly.
-* **build-ref.yml** — reference build with the `--nm` JNI parity mode on
-  built artifacts; `release.yml` — `v*`-tag releases from the protected
+* **release.yml** — `v*`-tag releases from the protected
   `release` environment (GOV-05).
 
 ## Where are the Test Logs?
