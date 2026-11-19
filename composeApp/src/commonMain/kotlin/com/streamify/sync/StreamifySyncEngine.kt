@@ -220,7 +220,7 @@ object StreamifySyncEngine : KoinComponent {
                     playlistId = "local_${localPl.id}",
                     name = localPl.title,
                     description = "Streamify Local Playlist",
-                    coverUrl = localPl.thumbnailUrl ?: "",
+                    coverUrl = localPl.thumbnail ?: "",
                     trackIds = emptyList(),
                     isPublic = false,
                     userId = targetUserId

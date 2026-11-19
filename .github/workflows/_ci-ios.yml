@@ -46,6 +46,8 @@ jobs:
       STREAMIFY_IOS_PROFILE: ${{ inputs.release_mode && 'release' || 'debug' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
 
       # ── 0. Rust toolchain FIRST: the engine feeds every downstream pass ────
       - name: Set up Rust toolchain (Apple targets)

@@ -104,6 +104,8 @@ jobs:
     environment: ${{ inputs.release_mode && 'release' || '' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
 
       # audit #44 P0-1 — fail FAST on any external fun in NativeBridge.kt
       # with no JNI export, before any runner time is spent on Gradle.
