@@ -73,13 +73,11 @@ fun NavGraphBuilder.listScreenGraph(
     }
     composable<PlaylistDestination> { entry ->
         val data = entry.toRoute<PlaylistDestination>()
-        ForceDarkContent {
-            PlaylistScreen(
-                playlistId = data.playlistId,
-                isYourYouTubePlaylist = data.isYourYouTubePlaylist,
-                navController = navController,
-            )
-        }
+        PlaylistScreen(
+            playlistId = data.playlistId,
+            isYourYouTubePlaylist = data.isYourYouTubePlaylist,
+            navController = navController,
+        )
     }
     composable<PodcastDestination> { entry ->
         val data = entry.toRoute<PodcastDestination>()
