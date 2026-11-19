@@ -109,7 +109,7 @@ fun MusicRatioChart(
                         Box(Modifier.size(9.dp).clip(CircleShape).background(RATIO_COLORS[i]))
                         Text(label, style = typo().bodySmall, maxLines = 1)
                     }
-                    Text("$value", style = typo().labelMedium, color = Color.White, maxLines = 1)
+                    Text("$value", style = typo().labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
                     Text(
                         text =
                             if (prev == null) {
@@ -175,7 +175,7 @@ fun FingerprintChart(
                     Text(
                         "${(current.axes[i] * 100).toInt()}%",
                         style = typo().bodySmall,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                     )
                 }
@@ -281,7 +281,7 @@ fun ListeningClockChart(
             Text(
                 stringResource(Res.string.analytics_hour_span, hourLabel(peak), hourLabel((peak + 1) % 24)),
                 style = typo().labelMedium,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
             )
             Text(
@@ -290,7 +290,7 @@ fun ListeningClockChart(
                 maxLines = 1,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            Text("${hours[peak]}", style = typo().labelMedium, color = Color.White, maxLines = 1)
+            Text("${hours[peak]}", style = typo().labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
         }
     }
 }

@@ -33,7 +33,7 @@ import com.maxrave.simpmusic.ui.screen.player.FullscreenPlayer
 fun AppNavigationGraph(
     innerPadding: PaddingValues,
     navController: NavHostController,
-    startDestination: Any = AnalyticsDestination,
+    startDestination: Any = HomeDestination,
     hideNavBar: () -> Unit = { },
     showNavBar: (shouldShowNowPlayingSheet: Boolean) -> Unit = { },
     showNowPlayingSheet: () -> Unit = {},
@@ -83,16 +83,12 @@ fun AppNavigationGraph(
             )
         }
         // Only reachable as a tab while local tracking is enabled.
-        // ForceDarkContent for the same reason as album/playlist/artist: the page background comes
-        // from the artwork via toImmersiveBackground(), which always lands dark, so the light
-        // theme's dark-on-light text and icons would be unreadable on it.
+        // Follows the app's ambient theme mode (light/dark/custom).
         composable<AnalyticsDestination> {
-            ForceDarkContent {
-                AnalyticsScreen(
-                    navController = navController,
-                    innerPadding = innerPadding,
-                )
-            }
+            AnalyticsScreen(
+                navController = navController,
+                innerPadding = innerPadding,
+            )
         }
         // Reached only from the Analytics screen's entry banner, so it inherits that screen's
         // gate on local tracking. ForceDarkContent for a different reason than Analytics: the reel

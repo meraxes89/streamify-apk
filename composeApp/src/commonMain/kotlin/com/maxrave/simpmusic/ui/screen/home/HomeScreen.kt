@@ -879,12 +879,6 @@ fun HomeScreen(
                                                 with(LocalDensity.current) { topAppBarHeightPx.toDp() } + 8.dp,
                                             ),
                                         )
-                                        com.maxrave.simpmusic.ui.component.FriendActivityBar(
-                                            onJoinJam = { jamCode ->
-                                                com.streamify.jam.StreamifyJamCoordinator.joinRoom(jamCode)
-                                            },
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
                                     }
                                     // Android drops the 8dp over each section's title: the list's own 8dp
                                     // spacing already separates it from the shelf above.

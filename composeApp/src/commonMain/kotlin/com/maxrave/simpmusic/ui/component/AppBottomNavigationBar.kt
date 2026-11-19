@@ -60,7 +60,7 @@ import kotlin.reflect.KClass
  */
 @Composable
 fun AppBottomNavigationBar(
-    startDestination: Any = AnalyticsDestination,
+    startDestination: Any = HomeDestination,
     navController: NavController,
     showAnalyticsTab: Boolean = false,
     showMixForYouTab: Boolean = false,
@@ -390,7 +390,7 @@ internal fun Modifier.foldedCircle(fullWidth: Dp): Modifier =
 
 @Composable
 fun AppNavigationRail(
-    startDestination: Any = AnalyticsDestination,
+    startDestination: Any = HomeDestination,
     navController: NavController,
     showAnalyticsTab: Boolean = false,
     showMixForYouTab: Boolean = false,

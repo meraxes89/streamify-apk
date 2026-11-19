@@ -101,6 +101,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 File(androidAppDir, "proguard-rules.pro"),
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
             // No ".dev" suffix: vivo matches the exact package, and a debug build is how this is tried on a vivo phone.

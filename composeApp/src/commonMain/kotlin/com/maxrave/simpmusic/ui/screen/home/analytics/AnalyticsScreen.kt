@@ -239,7 +239,10 @@ fun AnalyticsScreen(
     // The last colour that actually resolved, faded on change (see UIExt.rememberPaletteColor).
     // Reading paletteState.palette straight would paint the page black for the whole duration of
     // every generate(), because null is what it reads until the result is Success.
-    val pageBackground = rememberPaletteColor(paletteState.palette)
+    val pageBackground = rememberPaletteColor(
+        palette = paletteState.palette,
+        fallback = MaterialTheme.colorScheme.background,
+    )
 
     if (showSelectionSheet) {
         val selectedIds = selectionState.selected.toList()
@@ -295,7 +298,7 @@ fun AnalyticsScreen(
     // The glass buttons refract whatever the list has drawn, so the LIST is the backdrop source
     // and the buttons are its SIBLINGS. Nesting them inside the source is the render-feedback
     // loop that kills the RuntimeShader — see the note in AlbumScreen.
-    val headerBackdrop = rememberBackdrop(Color.Black)
+    val headerBackdrop = rememberBackdrop(MaterialTheme.colorScheme.background)
 
     Box(
         modifier =
@@ -459,7 +462,7 @@ fun AnalyticsScreen(
                 },
                 onOpenActions = { showSelectionSheet = true },
                 modifier = Modifier.align(Alignment.TopCenter),
-                containerColor = Color.Black,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
             )
         }
 
@@ -557,11 +560,11 @@ private fun DayRangePill(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(text = label, style = typo().labelSmall, color = Color.White, maxLines = 1)
+            Text(text = label, style = typo().labelSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             Icon(
                 imageVector = SimpIcons.KeyboardArrowDown,
                 contentDescription = null,
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -809,7 +812,7 @@ private fun LandscapeHeader(
                 Text(
                     text = stringResource(Res.string.top_song),
                     style = typo().titleLarge,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
                 )
                 Spacer(Modifier.height(6.dp))
@@ -919,7 +922,7 @@ private fun StepArrow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
             modifier = Modifier.size(16.dp),
         )
     }
@@ -945,7 +948,7 @@ private fun HeadlineCount(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("${stats.plays}", style = typo().titleLarge, color = Color.White, maxLines = 1)
+            Text("${stats.plays}", style = typo().titleLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             Text(stringResource(Res.string.songs_played), style = typo().bodyMedium, maxLines = 1)
         }
         if (delta != null) {
@@ -1026,7 +1029,7 @@ private fun QuickFactsSection(
                                 verticalAlignment = Alignment.Bottom,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text(value, style = typo().labelMedium, color = Color.White, maxLines = 2)
+                                Text(value, style = typo().labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2)
                                 if (delta != null) {
                                     Text(
                                         text = if (delta >= 0) "+$delta%" else "$delta%",
@@ -1289,7 +1292,7 @@ private fun TopTracksSection(
                         Text(
                             text = "${pair.first.playCount} ${stringResource(Res.string.lower_plays)}",
                             style = typo().bodySmall,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                         )
                         Text(
