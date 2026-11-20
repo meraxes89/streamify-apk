@@ -197,25 +197,24 @@ impl OutputEngine {
             RouteOption::Named(name) => host
                 .output_devices()
                 .map_err(|e| e.to_string())?
-                .find(|d| d.name().map(|n| n == *name).unwrap_or(false))
+                .find(|d| cpal::traits::DeviceTrait::name(d).map(|n| n == *name).unwrap_or(false))
                 .ok_or_else(|| format!("output device not found: {name}"))?,
             _ => match resolve_auto_route() {
                 OutputRoute::Device(d) => host
                     .output_devices()
                     .map_err(|e| e.to_string())?
-                    .find(|dev| dev.name().map(|n| n == d.name).unwrap_or(false))
+                    .find(|dev| cpal::traits::DeviceTrait::name(dev).map(|n| n == d.name).unwrap_or(false))
                     .ok_or_else(|| format!("auto route device vanished: {}", d.name))?,
                 OutputRoute::NoEndpoint => {
                     return Err("no 48 kHz stereo output endpoint available".into())
                 }
             },
         };
-        let name = device.name().map_err(|e| e.to_string())?;
+        let name = cpal::traits::DeviceTrait::name(&device).map_err(|e| e.to_string())?;
         // Deterministic sizing (PipeWire latency hygiene): request
         // Fixed(1024) when the device range contains it, else the
         // device's default config (still 48 kHz stereo when supported).
-        let base = device
-            .supported_output_configs()
+        let base = cpal::traits::DeviceTrait::supported_output_configs(&device)
             .map_err(|e| e.to_string())?
             .find(|c| {
                 c.channels() == CANONICAL_CHANNELS
@@ -259,7 +258,7 @@ impl OutputEngine {
         let err_tx = self.event_tx.clone();
         let err_dropped = Arc::clone(&self.dropped);
         device
-            .build_output_stream(
+            .build_output_stream::<f32, _, _>(
                 config,
                 move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
                     // ── THE RT PATH (zero alloc / lock / syscall) ──

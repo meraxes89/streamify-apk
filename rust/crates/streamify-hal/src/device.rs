@@ -46,12 +46,11 @@ pub fn enumerate_outputs() -> Vec<OutputDevice> {
     let mut out = Vec::new();
     let default_name = host
         .default_output_device()
-        .and_then(|d| d.name().ok());
+        .and_then(|d| cpal::traits::DeviceTrait::name(&d).ok());
     if let Ok(devices) = host.output_devices() {
         for device in devices {
-            let Ok(name) = device.name() else { continue };
-            let supports_48k_stereo = device
-                .supported_output_configs()
+            let Ok(name) = cpal::traits::DeviceTrait::name(&device) else { continue };
+            let supports_48k_stereo = cpal::traits::DeviceTrait::supported_output_configs(&device)
                 .map(|cfgs| {
                     cfgs.any(|c| {
                         c.channels() == 2

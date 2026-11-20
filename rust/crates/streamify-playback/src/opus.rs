@@ -517,7 +517,7 @@ mod tests {
         head[8] = 2; // unsupported version
         assert!(parse_opus_head(&head).is_err());
         head[8] = 1;
-        head[0..8].copy_from_slice(b"OpusTail!");
+        head[0..8].copy_from_slice(b"OpusTail"); // exactly 8 bytes
         assert!(parse_opus_head(&head).is_err());
     }
 
