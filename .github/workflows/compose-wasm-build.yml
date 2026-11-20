@@ -10,6 +10,8 @@ on:
       - 'core/**'
       - 'streamify-modules/**'
       - 'room-wasm-stub/**'
+      - 'lastfm/**'
+      - 'lastfm-empty/**'
       - 'core.patch'
       - 'gradle/**'
       - 'build.gradle.kts'
