@@ -18,6 +18,28 @@ export async function streamRoutes(fastify, options) {
     handler,
   });
 
+  // L4 SABR: Dynamic DASH MPD Manifest for Media3 / Shaka / CMP players
+  fastify.get('/api/stream/:videoId/manifest.mpd', async (req, reply) => {
+    const videoId = req.params.videoId;
+    let desc;
+    try {
+      desc = await gateway.resolver.resolve(videoId);
+    } catch (err) {
+      reply.status(502);
+      return reply.send({ error: `Resolve error: ${err.message}` });
+    }
+
+    const manifest = gateway.sabrEngine?.generateDashMpd({
+      videoId,
+      durationSec: (desc.durationMs || 180000) / 1000,
+      formats: desc.formats || [{ itag: desc.itag || 251, mimeType: desc.mimeType, bitrate: 160000 }],
+      baseUrl: `${req.protocol}://${req.hostname}`,
+    });
+
+    reply.header('Content-Type', 'application/dash+xml');
+    return reply.send(manifest);
+  });
+
   // P2: Two-Stage Preemptible Prefetching API
   if (prefetch) {
     fastify.post('/api/stream/prefetch', async (req, reply) => {

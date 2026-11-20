@@ -159,6 +159,7 @@ export async function createApp({
       allocationPool: bufferPool.getStatus(),
       upstreamPool: getUpstreamPoolStatus(),
       pageCache: pageCache.getStatus(),
+      sabr: streamGateway.sabrEngine?.getStatus() || {},
     };
   });
 
@@ -189,6 +190,7 @@ export async function createApp({
         'allocation-governance',
         'warm-upstream-pool',
         'page-cache-hygiene',
+        'sabr-stream',
       ],
     };
   });
@@ -196,6 +198,7 @@ export async function createApp({
   app.addHook('onClose', async () => {
     streamResolver?.close?.();
     processSurvival?.releaseLock?.();
+    streamGateway.sabrEngine?.close?.();
     await closeUpstreamPool();
   });
 
