@@ -19,11 +19,11 @@ fn main() {
         match a.as_str() {
             "--device" => device_name = args.next(),
             "--seconds" => {
-                seconds = args
-                    .next()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(3.0)
-                    .clamp(0.5, 30.0)
+                if let Some(s) = args.next() {
+                    if let Ok(v) = s.parse::<f64>() {
+                        seconds = v.clamp(0.5, 30.0);
+                    }
+                }
             }
             _ => {}
         }
