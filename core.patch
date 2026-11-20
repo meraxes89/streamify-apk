@@ -77,16 +77,17 @@ diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/
 index 4024528..7dfe9c5 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
-@@ -3,6 +3,8 @@ package com.maxrave.data.di
+@@ -3,6 +3,9 @@ package com.maxrave.data.di
  import DatabaseDao
  import androidx.datastore.core.DataStore
  import androidx.datastore.preferences.core.Preferences
 +import androidx.room.RoomDatabase
 +import androidx.sqlite.SQLiteConnection
++import androidx.sqlite.execSQL
  import androidx.sqlite.driver.bundled.BundledSQLiteDriver
  import com.maxrave.data.dataStore.DataStoreManagerImpl
  import com.maxrave.data.dataStore.createDataStoreInstance
-@@ -37,6 +39,24 @@ val databaseModule =
+@@ -37,6 +40,24 @@ val databaseModule =
              getDatabaseBuilder(
                  get<Converters>()
              )
@@ -111,7 +112,7 @@ index 4024528..7dfe9c5 100644
                  .setDriver(BundledSQLiteDriver())
                  .setQueryCoroutineContext(Dispatchers.IO)
                  .build()
-@@ -74,19 +94,19 @@ val databaseModule =
+@@ -74,19 +95,19 @@ val databaseModule =
          }
  
          // Move YouTube from Singleton to Koin DI

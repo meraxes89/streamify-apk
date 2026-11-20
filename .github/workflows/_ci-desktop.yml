@@ -76,7 +76,7 @@ jobs:
         shell: bash
         run: |
           if [ -f core.patch ]; then
-            git -C core apply ../core.patch
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
             echo "Successfully applied core.patch to core submodule"
           fi
 
