@@ -113,13 +113,13 @@ export class PrefetchCoordinator {
       return { status: 'error', videoId, reason: err.message };
     }
 
-    // If stream is already completely cached, no byte prefetch required
-    if (this.cache.hasComplete(desc.videoId, desc.itag)) {
+    // If stream is already completely cached or block 0 is present, no byte prefetch required
+    if (this.cache.hasComplete?.(desc.videoId, desc.itag) || this.cache.hasRange?.(desc.videoId, desc.itag, 0, maxWarmBytes - 1)) {
       return { status: 'already_cached', videoId };
     }
 
     // If an active disk writer is already streaming this track, unified handoff is active
-    if (this.cache.getActiveWriter(desc.videoId, desc.itag)) {
+    if (this.cache.getActiveWriter?.(desc.videoId, desc.itag)) {
       return { status: 'in_progress', videoId };
     }
 
@@ -131,7 +131,14 @@ export class PrefetchCoordinator {
     });
 
     try {
-      // Trigger disk write-through pipeline using unified cache writer
+      // P0: Prefer single-block warmBlock if available (downloads ONLY the first 256 KiB)
+      if (typeof this.cache.warmBlock === 'function') {
+        const warmRes = await this.cache.warmBlock(desc, 0, controller.signal);
+        this.prefetchedCount++;
+        return { status: 'warmed', videoId, bytes: warmRes.bytesWarmed };
+      }
+
+      // Backward compatibility fallback for legacy cache / mocks
       const writer = await this.cache.startWriter(desc);
       this.prefetchedCount++;
 

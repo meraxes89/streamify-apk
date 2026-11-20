@@ -4,8 +4,13 @@ export async function catalogRoutes(fastify, options) {
   fastify.get('/api/yt/home', async (req, reply) => {
     try {
       const gl = req.query.gl || req.headers['x-region'] || 'IN';
-      const data = await service.getHome({ gl, baseUrl: '' });
-      return data;
+      const result = await service.getHome({ gl, baseUrl: '' });
+
+      // P2: Serve pre-serialized UTF-8 buffer directly with zero V8 serialization overhead
+      if (result?.rawBuf) {
+        return reply.type('application/json; charset=utf-8').send(result.rawBuf);
+      }
+      return result?.data || result;
     } catch (err) {
       req.log.error(err, '[catalog:home]');
       reply.status(500);
@@ -17,8 +22,13 @@ export async function catalogRoutes(fastify, options) {
     try {
       const query = req.query.q || '';
       const gl = req.query.gl || req.headers['x-region'] || 'IN';
-      const songs = await service.searchSongs({ query, gl, baseUrl: '' });
-      return songs;
+      const result = await service.searchSongs({ query, gl, baseUrl: '' });
+
+      // P2: Serve pre-serialized UTF-8 buffer directly
+      if (result?.rawBuf) {
+        return reply.type('application/json; charset=utf-8').send(result.rawBuf);
+      }
+      return result?.data || result;
     } catch (err) {
       req.log.error(err, '[catalog:search]');
       reply.status(500);
@@ -33,14 +43,18 @@ export async function catalogRoutes(fastify, options) {
       const continuation = req.query.continuation || null;
       const gl = req.query.gl || req.headers['x-region'] || 'IN';
 
-      const queue = await service.getNext({
+      const result = await service.getNext({
         videoId,
         playlistId,
         continuation,
         gl,
         baseUrl: '',
       });
-      return queue;
+
+      if (result?.rawBuf) {
+        return reply.type('application/json; charset=utf-8').send(result.rawBuf);
+      }
+      return result?.data || result;
     } catch (err) {
       req.log.error(err, '[catalog:next]');
       reply.status(500);
@@ -52,6 +66,13 @@ export async function catalogRoutes(fastify, options) {
     try {
       const query = req.query.q || '';
       const suggestions = await service.getSuggestions({ query });
+
+      // P2: Debounced Top-1 Suggestion Pre-Warm with per-client cancellation (query >= 3 chars)
+      if (query.trim().length >= 3 && suggestions.length > 0) {
+        const clientIp = req.headers['x-forwarded-for'] || req.ip || '127.0.0.1';
+        service.prewarmTopSuggestion(suggestions[0], clientIp, req.query.gl || 'IN');
+      }
+
       return suggestions;
     } catch (err) {
       req.log.error(err, '[catalog:suggest]');
@@ -68,8 +89,12 @@ export async function catalogRoutes(fastify, options) {
         return { error: 'browseId required' };
       }
       const gl = req.query.gl || req.headers['x-region'] || 'IN';
-      const data = await service.browse({ browseId, gl, baseUrl: '' });
-      return data;
+      const result = await service.browse({ browseId, gl, baseUrl: '' });
+
+      if (result?.rawBuf) {
+        return reply.type('application/json; charset=utf-8').send(result.rawBuf);
+      }
+      return result?.data || result;
     } catch (err) {
       req.log.error(err, '[catalog:browse]');
       reply.status(500);
