@@ -1,4 +1,0 @@
-# The staged cipher artifact is BINARY — the tree-wide text rules in
-# feishin/.gitattributes must never normalize it (a CRLF pass corrupts the
-# wasm and breaks the artifact.json sha256 gate).
-*.wasm binary

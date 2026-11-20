@@ -1,8 +1,0 @@
-{
-  "name": "streamify-web-monorepo",
-  "version": "0.0.0",
-  "private": true,
-  "workspaces": [
-    "relay"
-  ]
-}
