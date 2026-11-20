@@ -52,6 +52,13 @@ subprojects {
         resolutionStrategy {
             force("com.github.TeamNewPipe:nanojson:c7a6c1c08d16b6d5ecded34758e6415e07be2166")
 
+            // Substitute heavy ffmpeg-kit-audio native binary with our lightweight MediaMuxer shim
+            dependencySubstitution {
+                substitute(module("io.github.maxrave-dev:ffmpeg-kit-audio"))
+                    .using(project(":streamify-ffmpeg-compat-shim"))
+                    .because("Replace 24.4MB native FFmpeg binary with native Android MediaMuxer while preserving upstream API compatibility")
+            }
+
             // Kotaml retains Kaml's com.charleskorn.kaml package. Different Maven coordinates
             // otherwise let both copies reach DEX. Align root and platform-specific modules.
             eachDependency {

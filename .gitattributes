@@ -1,0 +1,7 @@
+# Ensure patch and text files always preserve LF line endings across all OS runners
+*.patch text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
