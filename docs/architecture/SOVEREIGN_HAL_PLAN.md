@@ -131,8 +131,8 @@ targets. The shared machinery (Phase 0 deliverables):
 | 4.1 | **Windows** | `wasapi_pull_adapter.cpp` → `IAudioCaptureClient` loopback | Scaffold: producer self-verdict green; the capture leg mounts in Phase 1 (reported warning, never a silent skip) |
 | 4.2 | **macOS** | `CoreAudioRenderCore` → BlackHole-2ch | Scaffold + BlackHole presence probe |
 | 4.3 | **Linux** | `pipewire_driver.cpp` → headless PipeWire `module-null-sink` monitor | Scaffold: null-sink loaded when a daemon runs |
-| 4.4 | **Android** | QEMU `-audiodev wav` capturing real AudioFlinger mixer output — **APIs 26, 29, 34, 35** (`x86_64` emulator), with the `armeabi-v7a` lane carried by Gate 2b (QEMU user-mode cross-test of the ring/DSP suites) | Scaffold: emulator boots + wav backend armed on every API level |
-| 4.5 | **Browser** | `AudioWorklet` bracket — **dual mode** (below) | Live: the in-page harness runs both transport modes under Playwright Chromium |
+| 4.4 | **Android** | Emulator matrix — **APIs 26, 29, 34, 35** (`x86_64`), audio stack verified live (`audioserver` + audio HAL running) on every level; the `armeabi-v7a` lane carried by Gate 2b (QEMU user-mode cross-test of the ring/DSP suites). NOTE: the emulator's bundled QEMU rejects `-audiodev` (both top-level and post-`-qemu`) — Phase 1's AudioFlinger capture therefore rides the GUEST side (AAudio bracket APK renders through the guest audioserver; capture adb-pulled) | Green: boot + adb + audioserver + audio HAL proven on all 4 API levels |
+| 4.5 | **Browser** | `AudioWorklet` bracket — **dual mode** (below) | Green: live path on both origins — plain-origin MessagePort mode AND isolated-origin SAB + MessagePort modes, real 440/880 Hz FFT verification (mag 18.1 vs median 0.004), zero underruns |
 
 ### 4.1 The browser dual-mode specification (Phase 2's contract, frozen now)
 
@@ -190,7 +190,8 @@ a P1, not tolerated as process cost.
 | Ring conformance + zero-alloc on the exported edge | `rust/.../tests/test_ring_abi_conformance.rs` (6/6 green locally) + the C++ twin (ALL PASSED on host g++) |
 | The armv7-a audit answer | §7 below + Gate 2b (QEMU user-mode cross-test, `-march=armv7-a+neon`) |
 | The loopback verifier is not vacuous | `scripts/sovereign_loopback_verifier_test.py` — the silence control FAILS signal mode |
-| The browser dual-mode contract | `scripts/sovereign_hal_browser_harness.html` (node-syntax-checked; runs live in Gate 4.5) |
+| The browser dual-mode contract | `scripts/sovereign_hal_browser_harness.html` — GREEN in CI on both origins (live path, real FFT); `scripts/browser_harness_sim.js` (Gate 1) pins its FFT + transports under Node (caught the missing bit-reversal that would have made the verdict vacuous) |
+| Phase 0 CI, end to end | `_ci-sovereign-hal.yml`: **12/12 checks green** on the PR head — Gates 1, 2a, 2b (armv7 QEMU), 3, 4.1–4.5 incl. all four Android API levels |
 | The 4-gate ladder | `.github/workflows/_ci-sovereign-hal.yml` (9 jobs, YAML-validated) |
 
 ---
