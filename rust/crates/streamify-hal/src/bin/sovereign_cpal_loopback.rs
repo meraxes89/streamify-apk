@@ -182,7 +182,7 @@ fn run() -> i32 {
                 clock_samples.push(sample);
             }
         }
-        if producer_done.load(Ordering::Relaxed) && ring.occupancy() == 0 {
+        if done.load(Ordering::Relaxed) && ring.occupancy() == 0 {
             break;
         }
     }
@@ -192,7 +192,8 @@ fn run() -> i32 {
         unsafe { ring_export::streamify_ring_stats_wire(wire.as_mut_ptr(), wire.len()) };
         ring.stats()
     };
-    producer_done.store(true, Ordering::Relaxed);
+    done.store(true, Ordering::Relaxed);
+    let _ = producer.join();
     engine.stop_stream();
     let events = events.drain();
     let underruns = stats.underrun_events + engine.underrun_frames();

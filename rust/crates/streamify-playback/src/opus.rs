@@ -418,7 +418,10 @@ impl TrackDecoder for OpusTrackDecoder {
                     // is exercised on the RAW framing, CI-pinned).
                     self.ogg_session =
                         Some(crate::decode::SymphoniaDecoder::with_opus_fallback()?);
-                } else if is_raw_opus_head_framing(&head) {
+                } else if &head[0..8] == b"OpusHead" {
+                    // The 8-byte magic is decisive (is_raw_opus_head_
+                    // framing wants the full 19-byte head, but a 14-byte
+                    // pending buffer already proves the framing).
                     self.framing = Some(Framing::RawHead);
                     self.framing_detected_this_call = true;
                 } else {
