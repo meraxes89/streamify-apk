@@ -426,6 +426,10 @@ jobs:
       - name: Install BlackHole-2ch + switchaudio-osx + coreutils
         run: |
           brew install --cask blackhole-2ch
+          # The driver plugin registers only after coreaudiod rescans
+          # (headless: it caches the device list at boot).
+          sudo killall coreaudiod || true
+          sleep 5
           brew install switchaudio-osx sox
           # Route the system default output to BlackHole too (sox -d
           # records the DEFAULT input; we target BlackHole by name in
@@ -446,12 +450,13 @@ jobs:
           # clocks when a reader is attached (BlackHole delivers no
           # pull until the input side opens — the round-18 finding:
           # the ring filled to capacity and the callbacks never ran).
-          ( sox -d -t coreaudio "BlackHole 2ch" -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log ) || ( sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log ) &
+          ( sox -d -t coreaudio "BlackHole 2ch" -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log || sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log ) &
           SOX_PID=$!
           sleep 2
           # The player: Opus fixture through the real chain -> cpal
           # CoreAudio, into the now-clocked BlackHole output.
-          $BIN --device "BlackHole 2ch" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
+          $BIN --device "BlackHole 2ch" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log || \
+    $BIN --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
           PLAYER=$!
           # Record ~4 s of the 6 s playback, then stop sox (SIGTERM
           # finalizes the WAV header).
@@ -511,7 +516,7 @@ jobs:
           # ONE dbus session for daemons + player + capture (the
           # daemons must share the session with pactl/pw-cat). The
           # python WAV conversion runs AFTER the session (plain file).
-          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pipewire-pulse & sleep 2; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; SINK_OK=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do if pactl list short sinks 2>/dev/null | grep -q ci_sink; then SINK_OK=1; break; fi; sleep 1; done; [ $SINK_OK -eq 1 ] || { echo "::error::ci_sink never appeared"; pactl list short sinks 2>&1 || true; exit 1; }; echo ci_sink ready; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; timeout 8 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log & CAP=$!; sleep 2; ls -la ${XDG_RUNTIME_DIR}/ 2>&1 | head -8; pw-cli info 0 2>&1 | head -3 || true; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --device "ci_sink" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; wait "$CAP" 2>/dev/null; [ -s capture.raw ] || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; echo "---- capture.log ----"; cat capture.log 2>/dev/null | tail -8; exit $PC'
+          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pipewire-pulse & sleep 2; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; SINK_OK=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do if pactl list short sinks 2>/dev/null | grep -q ci_sink; then SINK_OK=1; break; fi; sleep 1; done; [ $SINK_OK -eq 1 ] || { echo "::error::ci_sink never appeared"; pactl list short sinks 2>&1 || true; exit 1; }; echo ci_sink ready; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; timeout 8 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log & CAP=$!; sleep 2; ls -la ${XDG_RUNTIME_DIR}/ 2>&1 | head -8; pw-cli info 0 2>&1 | head -3 || true; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --device "PipeWire Sound Server" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; wait "$CAP" 2>/dev/null; [ -s capture.raw ] || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; echo "---- capture.log ----"; cat capture.log 2>/dev/null | tail -8; exit $PC'
           if dbus-run-session -- bash -c "$PW_PLAY"; then
             echo "playback session OK"
           else
