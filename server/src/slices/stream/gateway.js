@@ -2,6 +2,7 @@ import { parseRange } from '../../lib/range.js';
 import { StreamSemaphore } from '../../lib/semaphore.js';
 import { StreamPacer } from './pacer.js';
 import { StreamWatchdog } from './watchdog.js';
+import { SabrEngine } from './sabr-engine.js';
 
 export class StreamGateway {
   constructor({
@@ -10,12 +11,14 @@ export class StreamGateway {
     semaphore = new StreamSemaphore(),
     pacer = new StreamPacer(),
     watchdog = new StreamWatchdog({ healthManager: resolver?.healthManager }),
+    sabrEngine = new SabrEngine(),
   } = {}) {
     this.resolver = resolver;
     this.cache = cache;
     this.semaphore = semaphore;
     this.pacer = pacer;
     this.watchdog = watchdog;
+    this.sabrEngine = sabrEngine;
 
     // Phase 1+2: On watchdog throttle detection, evict cached URL to trigger ladder escalation
     if (this.watchdog && this.resolver) {
@@ -53,6 +56,25 @@ export class StreamGateway {
     } catch (err) {
       reply.status(502);
       return reply.send(`Resolve error: ${err.message}`);
+    }
+
+    // L4 SABR Stream handling
+    if (desc.isSabr && this.sabrEngine) {
+      reply
+        .header('Content-Type', desc.mimeType)
+        .header('Access-Control-Allow-Origin', '*')
+        .header('Transfer-Encoding', 'chunked');
+
+      const sabrRes = this.sabrEngine.createStream({
+        videoId: desc.videoId,
+        serverAbrStreamingUrl: desc.serverAbrStreamingUrl || desc.targetUrl,
+        videoPlaybackUstreamerConfig: desc.videoPlaybackUstreamerConfig || '',
+        formats: desc.formats || [],
+        poToken: desc.poToken,
+        onMintPoToken: () => this.resolver?.attestClient?.mintPoToken?.(desc.videoId),
+      });
+
+      return reply.send(sabrRes.stream);
     }
 
     const targetUrl = desc.targetUrl;

@@ -431,6 +431,33 @@ export class StreamResolver {
               selected.url = targetUrl;
               return this._buildAndStoreDescriptor(data, selected, spec, t1 - t0, 'resilient');
             }
+
+            // L4 SABR Engine Fallback: If no progressive URL resolved, check for serverAbrStreamingUrl
+            const serverAbrUrl = data.streamingData?.serverAbrStreamingUrl;
+            if (serverAbrUrl) {
+              const ustreamerConfig = data.streamingData?.videoPlaybackUstreamerConfig || '';
+              const sabrDesc = {
+                videoId,
+                targetUrl: serverAbrUrl,
+                serverAbrStreamingUrl: serverAbrUrl,
+                videoPlaybackUstreamerConfig: ustreamerConfig,
+                formats: formats.filter((f) => (f.mimeType || '').startsWith('audio/')),
+                itag: selected?.itag || 251,
+                mimeType: 'audio/webm; codecs="opus"',
+                durationMs: (parseInt(data.videoDetails?.lengthSeconds, 10) || 0) * 1000,
+                title: data.videoDetails?.title || '',
+                artist: data.videoDetails?.author || '',
+                client: spec.name,
+                plane: 'sabr',
+                isSabr: true,
+                poToken,
+                timingMs: Math.round(t1 - t0),
+                expiresAt: Date.now() + 5 * 3600 * 1000,
+              };
+              this.store.setResolvedUrl(sabrDesc);
+              this.cache.set(videoId, sabrDesc, 5 * 3600 * 1000);
+              return sabrDesc;
+            }
           }
         } catch (err) {
           this.healthManager.recordError(spec.name, 500);

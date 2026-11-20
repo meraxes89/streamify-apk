@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { ClockSync } from './clock-sync.js';
 import { EbmlOpusExtractor } from '../stream/ebml-opus-extractor.js';
+import { getDefaultBufferPool } from '../../lib/buffer-pool.js';
 
 export const PLAYOUT_HORIZON_NS = 500_000_000n; // 500 ms playout horizon (comm9.md Section 1)
 export const FRAMES_PER_BATCH = 5; // 5 x 20ms frames = 100 ms per broadcast packet
@@ -99,9 +100,10 @@ export class RoomMember {
  * Multi-Room Synchronized Broadcaster (comm9.md Frontier 2)
  */
 export class RoomBroadcaster {
-  constructor({ roomId, cache } = {}) {
+  constructor({ roomId, cache, bufferPool = getDefaultBufferPool() } = {}) {
     this.roomId = roomId;
     this.cache = cache;
+    this.bufferPool = bufferPool;
     /** @type {Set<RoomMember>} */
     this.members = new Set();
     this.currentTrack = null;
@@ -292,7 +294,76 @@ export class RoomBroadcaster {
     const seq = this.sequenceId++;
     const frameCount = frames.length;
 
-    // 16-byte fixed header
+    // Calculate binary payload length: 16-byte header + (2 bytes * frameCount) + frame bytes
+    let framesBytes = 0;
+    for (let i = 0; i < frameCount; i++) {
+      framesBytes += frames[i].frame.length;
+    }
+    const binaryPayloadLen = 16 + frameCount * 2 + framesBytes;
+
+    // L1 Allocation Governance: Zero-alloc assembly inside pre-allocated Buffer slot
+    const slot = this.bufferPool?.acquire() ?? -1;
+    if (slot >= 0 && binaryPayloadLen + 4 <= this.bufferPool.slotSize) {
+      const view = this.bufferPool.getView(slot);
+      let pos = 0;
+
+      // RFC 6455 Binary Frame Header (Unmasked server->client)
+      view[pos++] = 0x82; // FIN=1, Opcode=2(bin)
+      if (binaryPayloadLen < 126) {
+        view[pos++] = binaryPayloadLen;
+      } else {
+        view[pos++] = 126;
+        view.writeUInt16BE(binaryPayloadLen, pos);
+        pos += 2;
+      }
+
+      // 16-byte fixed audio header
+      view.writeBigInt64BE(playoutAtNs, pos); pos += 8;
+      view.writeUInt32BE(seq, pos);          pos += 4;
+      view[pos++] = 0x01;                     // codecFlags
+      view[pos++] = frameCount;
+      view[pos++] = 0x00;
+      view[pos++] = 0x00;
+
+      // Frame length table
+      for (let i = 0; i < frameCount; i++) {
+        view.writeUInt16BE(frames[i].frame.length, pos);
+        pos += 2;
+      }
+
+      // Frame payloads
+      for (let i = 0; i < frameCount; i++) {
+        frames[i].frame.copy(view, pos);
+        pos += frames[i].frame.length;
+      }
+
+      const wsSlice = view.subarray(0, pos);
+
+      // Fan out with socket write refcounting
+      for (const member of this.members) {
+        if (member.socket.destroyed) {
+          this.members.delete(member);
+          continue;
+        }
+
+        if (member.socket.writableLength > MAX_LAG_BYTES) {
+          member.droppedPackets++;
+          continue;
+        }
+
+        this.bufferPool.retain(slot);
+        member.socket.write(wsSlice, () => {
+          this.bufferPool.release(slot);
+        });
+        member.sentPackets++;
+      }
+
+      // Release initial acquire count
+      this.bufferPool.release(slot);
+      return;
+    }
+
+    // Fallback if pool is exhausted or payload exceeds slot size
     const header = Buffer.allocUnsafe(16);
     header.writeBigInt64BE(playoutAtNs, 0); // Bytes 0..7: playoutAtNs
     header.writeUInt32BE(seq, 8);          // Bytes 8..11: sequenceId
@@ -362,8 +433,9 @@ export class RoomBroadcaster {
  * RoomManager manages active rooms
  */
 export class RoomManager {
-  constructor({ cache } = {}) {
+  constructor({ cache, bufferPool = getDefaultBufferPool() } = {}) {
     this.cache = cache;
+    this.bufferPool = bufferPool;
     /** @type {Map<string, RoomBroadcaster>} */
     this.rooms = new Map();
   }
@@ -371,7 +443,7 @@ export class RoomManager {
   getOrCreateRoom(roomId) {
     let room = this.rooms.get(roomId);
     if (!room) {
-      room = new RoomBroadcaster({ roomId, cache: this.cache });
+      room = new RoomBroadcaster({ roomId, cache: this.cache, bufferPool: this.bufferPool });
       this.rooms.set(roomId, room);
     }
     return room;
