@@ -1,13 +1,30 @@
 import { parseRange } from '../../lib/range.js';
 import { StreamSemaphore } from '../../lib/semaphore.js';
 import { StreamPacer } from './pacer.js';
+import { StreamWatchdog } from './watchdog.js';
 
 export class StreamGateway {
-  constructor({ resolver, cache, semaphore = new StreamSemaphore(), pacer = new StreamPacer() } = {}) {
+  constructor({
+    resolver,
+    cache,
+    semaphore = new StreamSemaphore(),
+    pacer = new StreamPacer(),
+    watchdog = new StreamWatchdog({ healthManager: resolver?.healthManager }),
+  } = {}) {
     this.resolver = resolver;
     this.cache = cache;
     this.semaphore = semaphore;
     this.pacer = pacer;
+    this.watchdog = watchdog;
+
+    // Phase 1+2: On watchdog throttle detection, evict cached URL to trigger ladder escalation
+    if (this.watchdog && this.resolver) {
+      this.watchdog.on('throttled', ({ videoId }) => {
+        if (videoId) {
+          this.resolver.evict?.(videoId);
+        }
+      });
+    }
   }
 
   async handleRequest(req, reply) {
@@ -123,6 +140,14 @@ export class StreamGateway {
       actualEnd,
       req.raw.signal || req.raw
     );
+
+    // P1 Attestation Watchdog: Monitor real-time streaming bytes to detect ~50 kbps throttling
+    const streamId = `${desc.videoId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    if (this.watchdog) {
+      this.watchdog.watch(streamId, desc.client, desc.videoId);
+      rawStream.on('data', (c) => this.watchdog.recordBytes(streamId, c.length));
+      req.raw.on('close', () => this.watchdog.unwatch(streamId));
+    }
 
     // P1 Wi-Fi Bufferbloat Pacing: Bypass probes <= 256 KiB; pace large/open streams with 2-phase token bucket
     const isProbeOrSmallRange = actualLength !== undefined && actualLength <= 256 * 1024;

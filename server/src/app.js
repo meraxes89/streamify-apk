@@ -141,6 +141,8 @@ export async function createApp({
         resolved: streamResolver.cache.size,
       },
       searchTelemetry: catalogService.client?.latestSearchTelemetry || null,
+      clientHealth: streamResolver.healthManager?.getTelemetry() || {},
+      watchdogThrottles: streamGateway.watchdog?.totalThrottlesDetected || 0,
     };
   });
 
@@ -162,8 +164,17 @@ export async function createApp({
         'swr-home',
         'multi-room-sync',
         'ebml-opus-extractor',
+        'throttle-watchdog',
+        'ewma-ladder',
+        'sqlite-store',
+        'worker-cipher',
+        'attest-pot',
       ],
     };
+  });
+
+  app.addHook('onClose', async () => {
+    streamResolver?.close?.();
   });
 
   // Room broadcast slice
