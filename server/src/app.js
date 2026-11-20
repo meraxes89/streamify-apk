@@ -64,6 +64,8 @@ import { StreamGateway } from './slices/stream/gateway.js';
 import { streamRoutes } from './slices/stream/routes.js';
 import { PrefetchCoordinator } from './slices/stream/prefetch.js';
 import { StreamSemaphore } from './lib/semaphore.js';
+import { RoomManager } from './slices/room/broadcaster.js';
+import { roomRoutes } from './slices/room/routes.js';
 import { authPlugin } from './slices/auth/routes.js';
 
 export async function createApp({
@@ -76,6 +78,7 @@ export async function createApp({
   streamSemaphore = new StreamSemaphore({ maxGlobal: profile.maxStreams, maxPerIp: 4 }),
   streamPacer = new StreamPacer(),
   writeThroughCache = new SparseBlockCache({ streamsDir: dataDir.streams, maxCacheMb: profile.diskCacheMb }),
+  roomManager = new RoomManager({ cache: writeThroughCache }),
   streamGateway = new StreamGateway({
     resolver: streamResolver,
     cache: writeThroughCache,
@@ -157,9 +160,14 @@ export async function createApp({
         'sparse-block-cache',
         'wifi-pacing',
         'swr-home',
+        'multi-room-sync',
+        'ebml-opus-extractor',
       ],
     };
   });
+
+  // Room broadcast slice
+  await app.register(roomRoutes, { roomManager });
 
   // Catalog vertical slice
   await app.register(catalogRoutes, { catalogService });

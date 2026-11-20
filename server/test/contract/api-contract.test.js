@@ -173,3 +173,18 @@ test('API Contract: Audio Stream & Range Requests (/api/stream)', async (t) => {
     assert.equal(buf.byteLength, 1024);
   });
 });
+
+test('API Contract: Multi-Room Synchronized Audio Relay (/api/room)', async (t) => {
+  await t.test('GET /api/room/list returns active rooms status', async () => {
+    const res = await fetch(`${BASE_URL}/api/room/list`);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.status, 'ok');
+    assert.ok(Array.isArray(data.rooms));
+  });
+
+  await t.test('GET /api/room/:roomId returns 404 for nonexistent room', async () => {
+    const res = await fetch(`${BASE_URL}/api/room/nonexistent_test_room`);
+    assert.equal(res.status, 404);
+  });
+});
