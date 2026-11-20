@@ -57,6 +57,7 @@ import { lyricsRoutes } from './slices/lyrics/routes.js';
 import { ThumbService } from './slices/thumb/service.js';
 import { thumbRoutes } from './slices/thumb/routes.js';
 import { StreamResolver } from './slices/stream/resolver.js';
+import { SparseBlockCache } from './slices/stream/sparse-block-cache.js';
 import { WriteThroughCache } from './slices/stream/write-through-cache.js';
 import { StreamGateway } from './slices/stream/gateway.js';
 import { streamRoutes } from './slices/stream/routes.js';
@@ -72,7 +73,7 @@ export async function createApp({
   thumbService = new ThumbService(),
   streamResolver = new StreamResolver(),
   streamSemaphore = new StreamSemaphore({ maxGlobal: profile.maxStreams, maxPerIp: 4 }),
-  writeThroughCache = new WriteThroughCache({ streamsDir: dataDir.streams, maxCacheMb: profile.diskCacheMb }),
+  writeThroughCache = new SparseBlockCache({ streamsDir: dataDir.streams, maxCacheMb: profile.diskCacheMb }),
   streamGateway = new StreamGateway({ resolver: streamResolver, cache: writeThroughCache, semaphore: streamSemaphore }),
   prefetchCoordinator = new PrefetchCoordinator({
     resolver: streamResolver,

@@ -1,10 +1,5 @@
-import fs from 'node:fs';
-import { Readable } from 'node:stream';
 import { parseRange } from '../../lib/range.js';
-
 import { StreamSemaphore } from '../../lib/semaphore.js';
-
-const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MiB bounded chunking
 
 export class StreamGateway {
   constructor({ resolver, cache, semaphore = new StreamSemaphore() } = {}) {
@@ -62,7 +57,7 @@ export class StreamGateway {
       } catch {}
     }
 
-    // P1 Performance: Disable Nagle's algorithm on streaming sockets to prevent 40ms delayed-ACK stalls
+    // P1: Disable Nagle's algorithm on streaming sockets to eliminate delayed-ACK stalls
     if (req.raw?.socket && typeof req.raw.socket.setNoDelay === 'function') {
       req.raw.socket.setNoDelay(true);
     }
@@ -95,74 +90,38 @@ export class StreamGateway {
 
     const start = range?.start ?? 0;
     const end = range?.end ?? (totalLength ? totalLength - 1 : undefined);
-    const length = range?.length ?? (end !== undefined ? end - start + 1 : undefined);
+    const actualEnd = end !== undefined ? end : totalLength ? totalLength - 1 : undefined;
+    const actualLength = actualEnd !== undefined ? actualEnd - start + 1 : undefined;
 
-    // 1. Check complete disk cache file
-    const completeFilePath = this.cache.hasComplete(desc.videoId, desc.itag);
-    if (completeFilePath && totalLength) {
-      const actualEnd = end !== undefined ? end : totalLength - 1;
-      const actualLength = actualEnd - start + 1;
-
-      reply
-        .status(206)
-        .header('Content-Range', `bytes ${start}-${actualEnd}/${totalLength}`)
-        .header('Content-Length', actualLength);
-
-      // P1: Direct slab read for small ranges <= 256 KiB (bypasses Node stream allocation)
-      if (actualLength <= 256 * 1024) {
-        const fd = await fs.promises.open(completeFilePath, 'r');
-        try {
-          const buf = Buffer.allocUnsafe(actualLength);
-          const { bytesRead } = await fd.read(buf, 0, actualLength, start);
-          return reply.send(buf.subarray(0, bytesRead));
-        } finally {
-          await fd.close();
-        }
-      }
-
-      // P1: 256 KiB highWaterMark for large streams (4x fewer fs.read libuv threadpool ops)
-      const stream = fs.createReadStream(completeFilePath, {
-        start,
-        end: actualEnd,
-        highWaterMark: 256 * 1024,
-      });
-      return reply.send(stream);
+    // Response headers for 206 Partial Content or 200
+    if (actualLength !== undefined) {
+      reply.header('Content-Length', actualLength);
+    }
+    if (totalLength && (range || actualEnd !== undefined)) {
+      reply.status(206);
+      reply.header('Content-Range', `bytes ${start}-${actualEnd}/${totalLength}`);
+    } else {
+      reply.status(200);
     }
 
-    // 2. Otherwise serve via bounded upstream range relay (and start disk writer)
-    this.cache.startWriter(desc).catch(() => {});
-
-    const chunkEnd =
-      end !== undefined ? Math.min(start + CHUNK_SIZE - 1, end) : start + CHUNK_SIZE - 1;
-
-    const upstreamHeaders = {
-      Accept: '*/*',
-      Range: `bytes=${start}-${chunkEnd}`,
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-    };
-
-    const upstreamRes = await fetch(targetUrl, { headers: upstreamHeaders });
-    const statusCode = upstreamRes.status === 206 || upstreamRes.status === 200 ? 206 : upstreamRes.status;
-
-    if (upstreamRes.headers.get('content-range')) {
-      reply.header('Content-Range', upstreamRes.headers.get('content-range'));
-    } else if (totalLength) {
-      reply.header('Content-Range', `bytes ${start}-${chunkEnd}/${totalLength}`);
+    // P1 Slab Optimization: Direct read for small ranges <= 256 KiB if blocks are already PRESENT on disk/cache
+    if (
+      actualLength !== undefined &&
+      actualLength <= 256 * 1024 &&
+      this.cache.hasRange(desc.videoId, desc.itag, start, actualEnd)
+    ) {
+      const buf = await this.cache.readDirect(desc, start, actualLength);
+      return reply.send(buf);
     }
 
-    if (upstreamRes.headers.get('content-length')) {
-      reply.header('Content-Length', upstreamRes.headers.get('content-length'));
-    } else if (length !== undefined) {
-      reply.header('Content-Length', Math.min(length, chunkEnd - start + 1));
-    }
+    // P0 Sparse Block Engine: Single upstream fetch with zero-copy page cache read-while-write multiplexing
+    const stream = this.cache.createRangeStream(
+      desc,
+      start,
+      actualEnd,
+      req.raw.signal || req.raw
+    );
 
-    reply.status(statusCode);
-
-    if (upstreamRes.body) {
-      const nodeReadable = Readable.fromWeb(upstreamRes.body);
-      return reply.send(nodeReadable);
-    }
-    return reply.send();
+    return reply.send(stream);
   }
 }
