@@ -455,7 +455,7 @@ jobs:
           sleep 2
           # The player: Opus fixture through the real chain -> cpal
           # CoreAudio, into the now-clocked BlackHole output.
-          ( "$BIN" --device "BlackHole 2ch" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log ) || ( "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log ) &
+          ( RUST_BACKTRACE=1 "$BIN" --device "BlackHole 2ch" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log ) || ( RUST_BACKTRACE=1 "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log ) &
           PLAYER=$!
           # Record ~4 s of the 6 s playback, then stop sox (SIGTERM
           # finalizes the WAV header).
@@ -468,7 +468,7 @@ jobs:
           wait $PLAYER
           PC=$?
           cat player.json || true
-          tail -5 player.log || true
+          cat player.log || true
           [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
           [ -s capture.wav ] || { echo "::error::no BlackHole capture"; cat capture.log; exit 1; }
       - name: FFT-verify the captured OS audio
@@ -515,7 +515,7 @@ jobs:
           # ONE dbus session for daemons + player + capture (the
           # daemons must share the session with pactl/pw-cat). The
           # python WAV conversion runs AFTER the session (plain file).
-          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pipewire-pulse & sleep 2; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; SINK_OK=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do if pactl list short sinks 2>/dev/null | grep -q ci_sink; then SINK_OK=1; break; fi; sleep 1; done; [ $SINK_OK -eq 1 ] || { echo "::error::ci_sink never appeared"; pactl list short sinks 2>&1 || true; exit 1; }; echo ci_sink ready; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; timeout 8 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log & CAP=$!; sleep 2; ls -la ${XDG_RUNTIME_DIR}/ 2>&1 | head -8; pw-cli info 0 2>&1 | head -3 || true; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --device "PipeWire Sound Server" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; wait "$CAP" 2>/dev/null; [ -s capture.raw ] || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; echo "---- capture.log ----"; cat capture.log 2>/dev/null | tail -8; exit $PC'
+          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pipewire-pulse & sleep 2; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; SINK_OK=0; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do if pactl list short sinks 2>/dev/null | grep -q ci_sink; then SINK_OK=1; break; fi; sleep 1; done; [ $SINK_OK -eq 1 ] || { echo "::error::ci_sink never appeared"; pactl list short sinks 2>&1 || true; exit 1; }; echo ci_sink ready; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; ls -la ${XDG_RUNTIME_DIR}/ 2>&1 | head -8; PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 9 parec -d ci_sink.monitor --file-format=raw --rate=48000 --channels=2 --format=s16le capture.raw 2> capture.log & CAP=$!; sleep 2; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --device "PipeWire Sound Server" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; wait "$CAP" 2>/dev/null; [ -s capture.raw ] || { echo "::error::parec produced nothing"; cat capture.log; }; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; echo "---- capture.log ----"; cat capture.log 2>/dev/null | tail -8; exit $PC'
           if dbus-run-session -- bash -c "$PW_PLAY"; then
             echo "playback session OK"
           else
@@ -525,7 +525,7 @@ jobs:
           fi
           [ -s capture.raw ] || { echo "::error::no monitor capture"; cat capture.log; exit 1; }
           # raw f32le -> wav for the shared verifier.
-          python3 -c "import wave; raw=open('capture.raw','rb').read(); w=wave.open('capture.wav','wb'); w.setnchannels(2); w.setsampwidth(4); w.setframerate(48000); w.writeframes(raw); print(f'capture.wav: {len(raw)//4} samples')"
+          python3 -c "import wave, struct; raw=open('capture.raw','rb').read(); n=len(raw)//2; s=struct.unpack(f'<{n}h', raw); f=[v/32768.0 for v in s]; w=wave.open('capture.wav','wb'); w.setnchannels(2); w.setsampwidth(4); w.setframerate(48000); w.writeframes(struct.pack(f'<{len(f)}f', *f)); print(f'capture.wav: {n} samples')"
       - name: FFT-verify the captured OS audio
         run: |
           python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
