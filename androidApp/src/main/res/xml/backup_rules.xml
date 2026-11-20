@@ -1,14 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older that API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup rules for API <= 30.
+   Prevents backing up plaintext YouTube cookies, database files, and sensitive credentials
+   to Google Drive or ADB backups, matching the policy in data_extraction_rules.xml.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
-    <include domain="file" path="datastore/."/>
+    <include domain="file" path="datastore/." />
+    <!-- Explicitly exclude sensitive credentials and databases -->
+    <exclude domain="file" path="ytdlp-cookie.txt" />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="root" path="." />
 </full-backup-content>

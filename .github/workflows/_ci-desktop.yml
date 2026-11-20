@@ -72,6 +72,14 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: Apply core submodule patch if present
+        shell: bash
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
       - name: Set up JDK 21
         uses: actions/setup-java@v6
         with:
