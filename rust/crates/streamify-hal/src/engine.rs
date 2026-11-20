@@ -209,9 +209,28 @@ impl OutputEngine {
                 })
                 .ok_or_else(|| format!("output device not found: {name}"))?
             }
-            RouteOption::Default => host
-                .default_output_device()
-                .ok_or("no default output device on this host")?,
+            RouteOption::Default => {
+                // The CI contract: open the host's default output device.
+                // cpal's default_host() picks ONE backend (PipeWire first
+                // on Linux); when that backend's registry hiccups (the
+                // headless runner's pipewire context races the daemon),
+                // fall through to the OTHER available hosts (pulse,
+                // alsa) rather than failing the leg.
+                if let Some(d) = host.default_output_device() {
+                    d
+                } else {
+                    let mut found = None;
+                    for id in cpal::available_hosts() {
+                        if let Some(h) = cpal::host_from_id(id).ok() {
+                            if let Some(d) = h.default_output_device() {
+                                found = Some(d);
+                                break;
+                            }
+                        }
+                    }
+                    found.ok_or("no default output device on any host")?
+                }
+            }
             _ => match resolve_auto_route() {
                 OutputRoute::Device(d) => {
                     let mut devices = host
@@ -268,6 +287,10 @@ impl OutputEngine {
             sample_rate: CANONICAL_RATE_HZ, // cpal 0.18: plain u32
             buffer_size: buffer,
         };
+        eprintln!(
+            "engine: device {name} -> 48kHz stereo, buffer {:?}",
+            config.buffer_size
+        );
         let stream = self.build_stream(&device, &config, &name)?;
         stream.play().map_err(|e| e.to_string())?;
         self.stream = Some(stream);

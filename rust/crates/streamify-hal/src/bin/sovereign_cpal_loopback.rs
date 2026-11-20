@@ -165,6 +165,22 @@ fn run() -> i32 {
         let _ = start;
     });
     // 3. Open the cpal output route.
+    // Diagnostics: what does cpal see on this host? (per-host default
+    // device + 48k-stereo capability) — the loopback legs' first log
+    // lines when something goes sideways.
+    for id in cpal::available_hosts() {
+        let Ok(h) = cpal::host_from_id(id) else { continue };
+        let def = h
+            .default_output_device()
+            .and_then(|d| {
+                cpal::traits::DeviceTrait::description(&d)
+                    .ok()
+                    .map(|desc| desc.name().to_string())
+            })
+            .unwrap_or_else(|| "<none>".into());
+        eprintln!("cpal-host {:?}: default_output = {def}", id);
+    }
+
     let (mut engine, events) = OutputEngine::new(16);
     let route = if args.any_device {
         RouteOption::Default
