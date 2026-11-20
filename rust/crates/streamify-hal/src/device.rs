@@ -140,9 +140,20 @@ mod tests {
     }
 
     #[test]
-    fn no_capable_device_is_no_endpoint() {
+    fn no_capable_device_falls_back_to_default() {
+        // The last-resort arm: the DEFAULT endpoint rides even without
+        // an advertised 48 kHz range (RDP/virtual endpoints accept 48
+        // kHz via the shared-mode mix resampler).
         let devices = vec![OutputDevice { name: "mic-only".into(), is_default: true, supports_48k_stereo: false }];
-        assert_eq!(prefer_sound_server(&devices), OutputRoute::NoEndpoint);
+        match prefer_sound_server(&devices) {
+            OutputRoute::Device(d) => assert_eq!(d.name, "mic-only"),
+            OutputRoute::NoEndpoint => panic!("expected the last-resort default route"),
+        }
+    }
+
+    #[test]
+    fn empty_enumeration_is_no_endpoint() {
+        assert_eq!(prefer_sound_server(&[]), OutputRoute::NoEndpoint);
     }
 
     #[test]

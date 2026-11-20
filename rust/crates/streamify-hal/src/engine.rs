@@ -329,10 +329,17 @@ impl OutputEngine {
                     let presented = rt
                         .frames_counter
                         .load(std::sync::atomic::Ordering::Relaxed);
+                    // Host clock: the callback's playback instant when the
+                    // host reports one (WASAPI QPC / ALSA monotonic), else
+                    // the engine's anchor domain (CoreAudio reports the
+                    // playback instant only after first delivery — 0 during
+                    // the stream's first callbacks).
+                    let host_ns = info.timestamp().playback.as_nanos() as u64;
+                    let monotonic_ns = if host_ns > 0 { host_ns } else { rt.anchor.now_ns() };
                     let sample = DacPresentationClock {
                         dac_frame_position: presented,
                         sample_rate: rate,
-                        monotonic_ns: info.timestamp().playback.as_nanos() as u64,
+                        monotonic_ns,
                     };
                     rt.clock.publish(&sample);
                 },
