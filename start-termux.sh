@@ -109,6 +109,9 @@ print_banner() {
 }
 
 stop_server() {
+    if command -v termux-wake-unlock >/dev/null 2>&1; then
+        termux-wake-unlock 2>/dev/null || true
+    fi
     local pid
     pid="$(find_running_pid)"
     if [ -n "${pid}" ]; then
@@ -133,6 +136,9 @@ stop_server() {
 }
 
 show_status() {
+    if command -v termux-wake-unlock >/dev/null 2>&1; then
+        termux-wake-unlock 2>/dev/null || true
+    fi
     local pid
     pid="$(find_running_pid)"
     if [ -n "${pid}" ]; then
@@ -165,8 +171,13 @@ start_daemon() {
         echo -e "${C_YELLOW}[i] Running legacy Express server architecture.${C_RESET}"
     fi
 
+    if command -v termux-wake-lock >/dev/null 2>&1; then
+        echo -e "${C_GREEN}[*] Holding Termux CPU wake lock (L0 Survival Shell)...${C_RESET}"
+        termux-wake-lock 2>/dev/null || true
+    fi
+
     export PORT="${PORT}"
-    nohup node "${server_script}" > "${LOG_FILE}" 2>&1 &
+    nohup node --max-semi-space-size=16 "${server_script}" > "${LOG_FILE}" 2>&1 &
     local new_pid=$!
     echo "${new_pid}" > "${PID_FILE}"
     sleep 1
@@ -192,6 +203,11 @@ start_foreground() {
         sleep 1
     fi
 
+    if command -v termux-wake-lock >/dev/null 2>&1; then
+        echo -e "${C_GREEN}[*] Holding Termux CPU wake lock (L0 Survival Shell)...${C_RESET}"
+        termux-wake-lock 2>/dev/null || true
+    fi
+
     print_banner
     echo -e "Press ${C_BOLD}Ctrl+C${C_RESET} to stop the server."
     echo -e "${C_CYAN}====================================================${C_RESET}"
@@ -199,6 +215,9 @@ start_foreground() {
     cleanup() {
         echo ""
         echo -e "${C_YELLOW}[*] Shutting down Streamify...${C_RESET}"
+        if command -v termux-wake-unlock >/dev/null 2>&1; then
+            termux-wake-unlock 2>/dev/null || true
+        fi
         rm -f "${PID_FILE}"
         exit 0
     }
@@ -212,7 +231,7 @@ start_foreground() {
 
     export PORT="${PORT}"
     echo $$ > "${PID_FILE}"
-    exec node "${server_script}"
+    exec node --max-semi-space-size=16 "${server_script}"
 }
 
 # Command dispatch

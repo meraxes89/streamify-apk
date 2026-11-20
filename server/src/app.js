@@ -67,6 +67,8 @@ import { StreamSemaphore } from './lib/semaphore.js';
 import { RoomManager } from './slices/room/broadcaster.js';
 import { roomRoutes } from './slices/room/routes.js';
 import { authPlugin } from './slices/auth/routes.js';
+import { ProcessSurvival } from './platform/survival.js';
+import { getDefaultBufferPool } from './lib/buffer-pool.js';
 
 export async function createApp({
   profile = resolveProfile(),
@@ -91,8 +93,13 @@ export async function createApp({
     liveSemaphore: streamSemaphore,
     eventLoopLagMonitor,
   }),
+  processSurvival = new ProcessSurvival(),
+  bufferPool = getDefaultBufferPool(),
   logger = false,
 } = {}) {
+  // L0 Survival Shell initialization (wake lock + oom_score_adj tuning)
+  processSurvival.init();
+
   const app = Fastify({
     logger,
     exposeHeadRoutes: false,
@@ -143,6 +150,8 @@ export async function createApp({
       searchTelemetry: catalogService.client?.latestSearchTelemetry || null,
       clientHealth: streamResolver.healthManager?.getTelemetry() || {},
       watchdogThrottles: streamGateway.watchdog?.totalThrottlesDetected || 0,
+      survival: processSurvival.getStatus(),
+      allocationPool: bufferPool.getStatus(),
     };
   });
 
@@ -169,12 +178,15 @@ export async function createApp({
         'sqlite-store',
         'worker-cipher',
         'attest-pot',
+        'survival-shell',
+        'allocation-governance',
       ],
     };
   });
 
   app.addHook('onClose', async () => {
     streamResolver?.close?.();
+    processSurvival?.releaseLock?.();
   });
 
   // Room broadcast slice
