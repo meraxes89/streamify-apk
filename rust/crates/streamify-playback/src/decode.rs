@@ -537,7 +537,23 @@ impl SymphoniaDecoder {
                     self.rewind_to_checkpoint()?;
                     return Ok(());
                 }
-                Err(e) => return Err(unsupported(&format!("demux failed: {e}"))),
+                Err(e) => {
+                    // isomp4 frontier shape: the stateful atom reader
+                    // errors "no atom pending read" when the accumulated
+                    // source ends mid-atom instead of WouldBlock — the
+                    // same frontier condition, recoverable by waiting
+                    // for the next range (rewind re-parses the fuller
+                    // buffer). Only treat it as a frontier hit while the
+                    // source is still growing.
+                    let msg = format!("{e}");
+                    if !self.source_finished()
+                        && msg.contains("no atom pending read")
+                    {
+                        self.rewind_to_checkpoint()?;
+                        return Ok(());
+                    }
+                    return Err(unsupported(&format!("demux failed: {msg}")));
+                }
             }
         }
     }

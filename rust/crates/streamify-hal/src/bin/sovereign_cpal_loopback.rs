@@ -127,7 +127,9 @@ fn run() -> i32 {
     let done = Arc::new(AtomicBool::new(false));
     let producer_done = Arc::clone(&done);
     let producer_pcm = Arc::new(pcm);
+    let producer_ring = Arc::clone(&ring); // the closure's own handle
     let producer = std::thread::spawn(move || {
+        let ring = producer_ring;
         let quantum = 512 * 2; // 512 frames interleaved
         let mut pos = 0usize;
         let start = Instant::now();

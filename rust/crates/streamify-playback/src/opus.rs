@@ -363,6 +363,10 @@ pub struct OpusTrackDecoder {
     raw: Option<LibOpusDecoder>,
     /// Byte stream mode once detected.
     framing: Option<Framing>,
+    /// True only on the push_range call that performed the detection
+    /// (the prefix in `pending` was consumed for detection and must be
+    /// handed to the chosen arm exactly once).
+    framing_detected_this_call: bool,
     /// Accumulated bytes for the raw path.
     pending: Vec<u8>,
     /// True once the raw OpusHead has been consumed (19 bytes).
@@ -387,6 +391,7 @@ impl OpusTrackDecoder {
             ogg_session: None,
             raw: None,
             framing: None,
+            framing_detected_this_call: false,
             pending: Vec::new(),
             head_consumed: 0,
             geometry: None,
@@ -406,6 +411,7 @@ impl TrackDecoder for OpusTrackDecoder {
                 let head = self.pending.clone();
                 if &head[0..4] == b"OggS" {
                     self.framing = Some(Framing::Ogg);
+                    self.framing_detected_this_call = true;
                     // The Ogg demuxer rides symphonia; the Opus CODEC
                     // rides symphonia-opus at Tier::Fallback in BOTH
                     // tiers (libopus has no Ogg demuxer; tier divergence
@@ -414,6 +420,7 @@ impl TrackDecoder for OpusTrackDecoder {
                         Some(crate::decode::SymphoniaDecoder::with_opus_fallback()?);
                 } else if is_raw_opus_head_framing(&head) {
                     self.framing = Some(Framing::RawHead);
+                    self.framing_detected_this_call = true;
                 } else {
                     return Err(EngineError::Audio {
                         kind: AudioErrorKind::FormatUnsupported,
@@ -429,6 +436,7 @@ impl TrackDecoder for OpusTrackDecoder {
             } else if self.pending.len() >= 4 && &self.pending[0..4] == b"OggS" {
                 // 4-7 bytes of OggS: enough to commit to Ogg framing.
                 self.framing = Some(Framing::Ogg);
+                self.framing_detected_this_call = true;
                 self.ogg_session = Some(crate::decode::SymphoniaDecoder::with_opus_fallback()?);
             } else if self.pending.len() >= 19 && is_raw_opus_head_framing(&self.pending) {
                 self.framing = Some(Framing::RawHead);
@@ -436,6 +444,15 @@ impl TrackDecoder for OpusTrackDecoder {
                 return Ok(()); // wait for enough magic bytes
             }
         }
+        // The detect buffer holds the prefix already consumed for
+        // detection; each arm below re-receives `bytes` — hand the
+        // prefix out ONCE here and clear (no double-append).
+        let detect_prefix = if self.framing_detected_this_call {
+            self.framing_detected_this_call = false;
+            Some(std::mem::take(&mut self.pending))
+        } else {
+            None
+        };
         match self.framing.unwrap() {
             Framing::Ogg => {
                 // The Ogg path always rides symphonia (ogg demuxer +
@@ -445,12 +462,12 @@ impl TrackDecoder for OpusTrackDecoder {
                 // tier divergence is exercised on the RAW framing both
                 // ways and pinned by CI on shared fixtures).
                 let session = self.ogg_session.as_mut().unwrap();
-                // The detection buffer (if any) rides FIRST.
-                if !self.pending.is_empty() {
-                    let buffered = std::mem::take(&mut self.pending);
-                    session.push_range(&buffered, out)?;
+                // When detection happened THIS call, `bytes` is already
+                // inside the prefix — feed once, never twice.
+                match detect_prefix.as_ref() {
+                    Some(prefix) => session.push_range(prefix, out)?,
+                    None => session.push_range(bytes, out)?,
                 }
-                session.push_range(bytes, out)?;
                 if self.geometry.is_none() {
                     if let Some(g) = session.geometry() {
                         self.geometry = Some(g);
@@ -460,7 +477,12 @@ impl TrackDecoder for OpusTrackDecoder {
             }
             Framing::RawHead => {
                 // Consume the OpusHead from the pending stream first.
-                self.pending.extend_from_slice(bytes);
+                // When detection happened THIS call, `bytes` is already
+                // inside the prefix — extend once, never twice.
+                match detect_prefix {
+                    Some(prefix) => self.pending.extend_from_slice(&prefix),
+                    None => self.pending.extend_from_slice(bytes),
+                }
                 if self.head_consumed < OPUS_HEAD_MIN_LEN {
                     let have = self.pending.len();
                     if have < OPUS_HEAD_MIN_LEN {
