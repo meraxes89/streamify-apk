@@ -26,7 +26,7 @@ use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, SampleRate, Stream, StreamConfig};
+use cpal::{BufferSize, Stream, StreamConfig};
 use streamify_playback::ring_export;
 
 use crate::dac_clock::HostClockAnchor;
@@ -197,29 +197,41 @@ impl OutputEngine {
             RouteOption::Named(name) => host
                 .output_devices()
                 .map_err(|e| e.to_string())?
-                .find(|d| cpal::traits::DeviceTrait::name(d).map(|n| n == *name).unwrap_or(false))
+                .find(|d| {
+                    cpal::traits::DeviceTrait::description(d)
+                        .map(|desc| desc.name() == name.as_str())
+                        .unwrap_or(false)
+                })
                 .ok_or_else(|| format!("output device not found: {name}"))?,
             _ => match resolve_auto_route() {
                 OutputRoute::Device(d) => host
                     .output_devices()
                     .map_err(|e| e.to_string())?
-                    .find(|dev| cpal::traits::DeviceTrait::name(dev).map(|n| n == d.name).unwrap_or(false))
+                    .find(|dev| {
+                        cpal::traits::DeviceTrait::description(dev)
+                            .map(|desc| desc.name() == d.name)
+                            .unwrap_or(false)
+                    })
                     .ok_or_else(|| format!("auto route device vanished: {}", d.name))?,
                 OutputRoute::NoEndpoint => {
                     return Err("no 48 kHz stereo output endpoint available".into())
                 }
             },
         };
-        let name = cpal::traits::DeviceTrait::name(&device).map_err(|e| e.to_string())?;
+        let name = cpal::traits::DeviceTrait::description(&device)
+            .map_err(|e| e.to_string())?
+            .name()
+            .to_string();
         // Deterministic sizing (PipeWire latency hygiene): request
         // Fixed(1024) when the device range contains it, else the
         // device's default config (still 48 kHz stereo when supported).
         let base = cpal::traits::DeviceTrait::supported_output_configs(&device)
             .map_err(|e| e.to_string())?
             .find(|c| {
+                // cpal 0.18: SampleRate is a plain u32 alias.
                 c.channels() == CANONICAL_CHANNELS
-                    && c.min_sample_rate().0 <= CANONICAL_RATE_HZ
-                    && c.max_sample_rate().0 >= CANONICAL_RATE_HZ
+                    && c.min_sample_rate() <= CANONICAL_RATE_HZ
+                    && c.max_sample_rate() >= CANONICAL_RATE_HZ
             })
             .ok_or_else(|| format!("device {name} lacks 48 kHz stereo"))?;
         let buffer = match base.buffer_size() {
@@ -232,7 +244,7 @@ impl OutputEngine {
         };
         let config = StreamConfig {
             channels: CANONICAL_CHANNELS,
-            sample_rate: SampleRate(CANONICAL_RATE_HZ),
+            sample_rate: CANONICAL_RATE_HZ, // cpal 0.18: plain u32
             buffer_size: buffer,
         };
         let stream = self.build_stream(&device, &config, &name)?;
@@ -253,7 +265,7 @@ impl OutputEngine {
         name: &str,
     ) -> Result<Stream, String> {
         let rt = Arc::clone(&self.rt);
-        let rate = config.sample_rate.0;
+        let rate = config.sample_rate; // cpal 0.18: plain u32
         let err_name = name.to_string();
         let err_tx = self.event_tx.clone();
         let err_dropped = Arc::clone(&self.dropped);

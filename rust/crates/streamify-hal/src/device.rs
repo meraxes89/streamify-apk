@@ -46,16 +46,25 @@ pub fn enumerate_outputs() -> Vec<OutputDevice> {
     let mut out = Vec::new();
     let default_name = host
         .default_output_device()
-        .and_then(|d| cpal::traits::DeviceTrait::name(&d).ok());
+        .and_then(|d| {
+            cpal::traits::DeviceTrait::description(&d)
+                .ok()
+                .map(|desc| desc.name().to_string())
+        });
     if let Ok(devices) = host.output_devices() {
         for device in devices {
-            let Ok(name) = cpal::traits::DeviceTrait::name(&device) else { continue };
+            let Ok(name) = cpal::traits::DeviceTrait::description(&device)
+                .map(|desc| desc.name().to_string())
+            else {
+                continue;
+            };
             let supports_48k_stereo = cpal::traits::DeviceTrait::supported_output_configs(&device)
                 .map(|cfgs| {
+                    // cpal 0.18: SampleRate is a plain u32 alias.
                     cfgs.any(|c| {
                         c.channels() == 2
-                            && c.min_sample_rate().0 <= 48_000
-                            && c.max_sample_rate().0 >= 48_000
+                            && c.min_sample_rate() <= 48_000
+                            && c.max_sample_rate() >= 48_000
                     })
                 })
                 .unwrap_or(false);

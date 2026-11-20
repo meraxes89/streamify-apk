@@ -87,7 +87,8 @@ pub fn sample_from_callback(
 /// field).
 #[inline]
 pub fn config_rate(config: &StreamConfig) -> u32 {
-    config.sample_rate.0
+    // cpal 0.18: SampleRate is a plain u32 alias.
+    config.sample_rate
 }
 
 /// One host DAC clock query, Windows flavor (documented contract).
