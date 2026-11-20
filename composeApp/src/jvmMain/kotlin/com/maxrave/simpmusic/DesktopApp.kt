@@ -212,6 +212,9 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
         )
         loadKoinModules(viewModelModule)
         loadKoinModules(com.streamify.jam.di.streamifyAllModules)
+        // Sovereign HAL Phase 0 (D2): wrap the registered libmpv handler
+        // with the Sovereign wrapper (flag-off = 1:1 delegation).
+        com.streamify.sovereign.player.di.installSovereignMediaPlayerHandler()
     }
 
     val dataStoreManager = getKoin().get<DataStoreManager>()

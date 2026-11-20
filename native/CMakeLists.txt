@@ -283,6 +283,22 @@ if (STREAMIFY_BUILD_TESTS)
     target_include_directories(jni_sink_bridge_test_suite PRIVATE include src util .)
     target_link_libraries(jni_sink_bridge_test_suite PRIVATE m pthread)
 
+    # Sovereign HAL Phase 0 (D3): the C++ twin of the Rust ring ABI
+    # conformance suite — static_asserts on the frozen 96-byte wire
+    # (magic/offsets/sizes), alignas/kCacheLineSize compile-time pins for
+    # the armv7-a ILP32 audit, wire round-trip, AMP-10 counter semantics,
+    # and the zero-allocation edge proof (alloc_guard_override.cc = the
+    # real counting back-end, the Phase-4a audit's non-vacuous-guard
+    # pattern). Standalone main: runs in the cpp-sanitizers matrix AND
+    # cross-builds for the armv7 QEMU lane in _ci-sovereign-hal.yml Gate 2.
+    add_executable(ring_abi_conformance_test_suite
+        tests/test_ring_abi_conformance.cc
+        src/audio_sink_ringbuffer.cpp
+        tests/alloc_guard_override.cc
+    )
+    target_include_directories(ring_abi_conformance_test_suite PRIVATE include src util .)
+    target_link_libraries(ring_abi_conformance_test_suite PRIVATE m pthread)
+
     # WS-C (C8): the LUFS cross-implementation parity lane — the C++
     # BS.1770-4 path pinned to golden vectors generated from the CANONICAL
     # Rust implementation (streamify-audio/src/lufs.rs; the generator is
@@ -368,7 +384,7 @@ if (STREAMIFY_BUILD_TESTS)
     # portable, while the arm64-v8a NDK lane carries the deterministic
     # -march=armv8-a+simd+crypto baseline set at the top of this file.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer jni_sink_bridge_test_suite lufs_parity_test_suite desktop_hal_render_core_test_suite capability_abi_parity_test_suite)
+        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer jni_sink_bridge_test_suite lufs_parity_test_suite desktop_hal_render_core_test_suite capability_abi_parity_test_suite ring_abi_conformance_test_suite)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             list(APPEND PHASE4B_TEST_TARGETS linux_hal_driver_test_suite)
         endif()
@@ -400,6 +416,8 @@ if (STREAMIFY_BUILD_TESTS)
     # WS-C lanes: the C1 JNI bridge round-trip (stub JNIEnv) and the C8
     # LUFS cross-implementation parity (Rust-canonical golden vectors).
     add_test(NAME jni_sink_bridge_test_suite COMMAND jni_sink_bridge_test_suite)
+    # Sovereign HAL Phase 0 (D3): the ring ABI conformance twin.
+    add_test(NAME ring_abi_conformance_test_suite COMMAND ring_abi_conformance_test_suite)
     add_test(NAME lufs_parity_test_suite COMMAND lufs_parity_test_suite)
     # Phase 4b lanes: the desktop HAL render cores (every host) and the
     # Linux dlopen driver (Linux hosts).

@@ -2901,6 +2901,26 @@ fun SettingScreen(
                         navController.navigate(AppLogDestination)
                     },
                 )
+                // Sovereign HAL Phase 0 (D2): the live route badge + master
+                // toggle. Flag-off by default (the shipped state); flipping
+                // it re-evaluates the route ladder on the next command and
+                // the badge reports FlagOff / Sovereign Ring / Legacy
+                // Fallback (+reason) exactly as the monitor records it.
+                val sovereignEnabled by com.streamify.sovereign.player.SovereignHalFlags.enabled.collectAsStateWithLifecycle()
+                val sovereignMonitor = org.koin.compose.koinInject<com.streamify.sovereign.player.SovereignHalMonitor>()
+                val sovereignRoute by sovereignMonitor.route.collectAsStateWithLifecycle()
+                val routeLabel = when (val r = sovereignRoute) {
+                    is com.streamify.sovereign.player.SovereignRoute.FlagOff -> "Legacy (flag off)"
+                    is com.streamify.sovereign.player.SovereignRoute.SovereignRing -> "Sovereign Ring"
+                    is com.streamify.sovereign.player.SovereignRoute.LegacyFallback -> "Legacy Fallback: ${r.reason}"
+                }
+                SettingItem(
+                    title = "Sovereign HAL (experimental)",
+                    subtitle = "Active route: $routeLabel",
+                    switch = sovereignEnabled to { enabled ->
+                        com.streamify.sovereign.player.SovereignHalFlags.setEnabled(enabled)
+                    },
+                )
             }
         }
         item(key = "streamify_account") {

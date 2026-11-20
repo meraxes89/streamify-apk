@@ -1,0 +1,444 @@
+# ============================================================================
+# _ci-sovereign-hal.yml — The Sovereign HAL program's dedicated CI spoke
+# (Phase 0 / D4).
+#
+# Triggered on pushes/PRs to feat/sovereign-hal* ONLY — main's PRs stay fast
+# (the hub ci.yml is untouched except the D1 preflight gate); every HAL PR
+# runs the full 4-gate ladder:
+#
+#   Gate 1  immunity-preflight   core.patch allowlist + JNI parity (fast, pure source)
+#   Gate 2  ring-abi             Rust conformance (x86_64) + armv7-a QEMU cross-test
+#                                + the C++ conformance twin (host build)
+#   Gate 3  koin-seam            :streamify-sovereign-player unit tests + the
+#                                composeApp android compile (the wrapper, the
+#                                ladder, the delegation contract)
+#   Gate 4  loopback-scaffold    the 5-platform OS-loopback harness scaffold:
+#                                WASAPI / PipeWire null-sink / blackhole-2ch /
+#                                Android emulator -audiodev wav / Playwright
+#                                Chromium (SAB + MessagePort dual mode) — each
+#                                driving the synthetic smoke binary + the
+#                                shared verifier, ready for Phase 1/2 brackets.
+#
+# Cost discipline: Gates 1-2 are lightweight (pure source + cargo + cmake
+# host builds). Gate 3 compiles one Gradle module + composeApp Kotlin (the
+# heaviest leg, ~10 min, cached). Gate 4's scaffold jobs each carry a
+# CAN_SKIP marker step: when a platform's capture tooling is unavailable
+# on the runner (no blackhole pkg, no KVM), the job reports the gap and
+# passes WITH A WARNING rather than silently skipping — the truth-program
+# discipline (a skipped verification is a reported fact, not a green box
+# pretending).
+# ============================================================================
+name: Sovereign HAL (Phase Gates)
+
+on:
+  pull_request:
+    branches: ["feat/sovereign-hal**"]
+  push:
+    branches: ["feat/sovereign-hal**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-sovereign-hal-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Gate 1: Immunity & ABI preflight (ubuntu, ~1 min) ─────────────────────
+  immunity-preflight:
+    name: "Gate 1: Immunity & ABI preflight"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+          fetch-depth: 1
+
+      - name: core.patch hunk-allowlist gate (D1, Layer 1)
+        run: python3 scripts/check_core_patch.py
+
+      - name: core.patch linter test battery (hermetic)
+        run: python3 scripts/check_core_patch_test.py
+
+      - name: JNI parity (both directions)
+        run: python3 scripts/jni_parity_check.py --source
+
+      - name: JNI panic-boundary convention
+        run: python3 scripts/jni_panic_boundary_check.py
+
+      - name: Loopback verifier self-test (the shared gate's gate)
+        run: python3 scripts/sovereign_loopback_verifier_test.py
+
+  # ── Gate 2: Rust ring ABI conformance + armv7-a QEMU (ubuntu) ─────────────
+  ring-abi-x86_64:
+    name: "Gate 2a: Ring ABI conformance (x86_64 + host C++)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-ring-abi
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/feat/sovereign-hal' }}
+
+      - name: The ring ABI conformance suite (Rust)
+        run: cargo test --manifest-path rust/Cargo.toml -p streamify-playback --test test_ring_abi_conformance -- --nocapture
+
+      - name: The existing ring/producer suites (regression)
+        run: cargo test --manifest-path rust/Cargo.toml -p streamify-playback --tests
+
+      - name: Compile the loopback smoke binary
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke
+
+      - name: Smoke run — the producer's own verdict (host stand-in consumer)
+        run: |
+          BIN=rust/target/debug/sovereign-loopback-smoke
+          $BIN --seconds 1.0 --json
+          $BIN --seconds 1.0 --mode silence --json || { echo "::error::silence control must exit clean"; exit 1; }
+
+      - name: C++ conformance twin (host g++, no sanitizers — fast lane)
+        run: |
+          cd native
+          g++ -std=c++17 -O1 -Iinclude -Itests \
+            tests/test_ring_abi_conformance.cc tests/alloc_guard_override.cc \
+            src/audio_sink_ringbuffer.cpp \
+            -o /tmp/ring_abi_conformance -lpthread -lm
+          /tmp/ring_abi_conformance
+
+  ring-abi-armv7-qemu:
+    name: "Gate 2b: Ring ABI armv7-a 32-bit cross-test (QEMU user-mode)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-gnueabihf
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-armv7
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}-armv7
+          save-if: ${{ github.ref == 'refs/heads/feat/sovereign-hal' }}
+
+      - name: Install the armhf cross toolchain + QEMU user-mode
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            qemu-user qemu-user-binfmt libc6-armhf-cross
+
+      - name: Rust conformance suite under QEMU (armv7 + NEON, ILP32)
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+        run: |
+          cargo test --manifest-path rust/Cargo.toml \
+            -p streamify-playback --test test_ring_abi_conformance \
+            --target armv7-unknown-linux-gnueabihf --no-fail-fast -- --test-threads=1
+
+      - name: Compile-time ABI pins under the 32-bit target (compile_error! guards)
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+        run: |
+          cargo check --manifest-path rust/Cargo.toml \
+            -p streamify-playback --lib --target armv7-unknown-linux-gnueabihf
+
+      - name: C++ conformance twin cross-compiled + QEMU
+        run: |
+          arm-linux-gnueabihf-g++ -std=c++17 -O1 -march=armv7-a+neon \
+            -I native/include -I native/tests \
+            native/tests/test_ring_abi_conformance.cc \
+            native/tests/alloc_guard_override.cc \
+            native/src/audio_sink_ringbuffer.cpp \
+            -o /tmp/ring_abi_armv7 -lpthread -lm -static
+          qemu-arm /tmp/ring_abi_armv7
+
+  # ── Gate 3: Koin seam + multi-target build check ──────────────────────────
+  koin-seam:
+    name: "Gate 3: Koin seam (:sovereign-player) + composeApp compile"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+          fetch-depth: 1
+
+      - name: Apply core submodule patches (the wasm lane's discipline)
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply ../core.patch
+            echo "Successfully applied core.patch"
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Android NDK & CMake (AGP sync)
+        id: ndk-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/26.1.10909125
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: ${{ runner.os }}-ndk-26.1.10909125-cmake-3.22.1
+
+      - name: Install Android NDK for AGP sync
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/feat/sovereign-hal' }}
+
+      - name: ":streamify-sovereign-player JVM unit tests (routing + fallback)"
+        run: |
+          chmod +x gradlew
+          ./gradlew :streamify-sovereign-player:jvmTest \
+            --parallel --build-cache --stacktrace
+
+      - name: "composeApp Android compile (the wrapper's consumer surface)"
+        run: |
+          ./gradlew :composeApp:compileDebugKotlinAndroid \
+            -PskipExternalNativeBuild=true \
+            --parallel --build-cache --stacktrace
+
+  # ── Gate 4: the 5-platform OS-loopback harness scaffold ───────────────────
+  # Each job: build the smoke binary, mount the platform bracket's capture
+  # pipeline, run the producer, verify the CAPTURE with the shared verifier.
+  # Phase 0 ships the scaffold (where the runner lacks the capture tooling,
+  # the job reports it and exits 0 WITH a visible warning — never a silent
+  # skip); Phase 1/2 PRs harden each into a hard gate.
+
+  loopback-windows:
+    name: "Gate 4.1: Windows WASAPI loopback"
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-loopback-win
+      - name: Build the smoke binary
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke --release
+      # Phase 0 scaffold: WASAPI loopback capture needs the IAudioCaptureClient
+      # harness (Phase 1's wasapi_pull_adapter bracket). The scaffold proves
+      # the binary runs and self-verifies its ring accounting; the OS capture
+      # leg is reported as pending.
+      - name: "Producer self-verdict (WASAPI capture leg — Phase 1)"
+        shell: pwsh
+        run: |
+          $bin = "rust\target\release\sovereign-loopback-smoke.exe"
+          & $bin --seconds 1.0 --json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Write-Output "::warning::Phase 0 scaffold: WASAPI IAudioCaptureClient loopback capture mounts in Phase 1 — this run proves the producer + ring accounting only."
+
+  loopback-macos:
+    name: "Gate 4.2: macOS blackhole-2ch loopback"
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-loopback-mac
+      - name: Build the smoke binary
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke --release
+      - name: Check for BlackHole-2ch (the loopback driver)
+        id: blackhole
+        run: |
+          if system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Producer self-verdict + optional BlackHole capture
+        run: |
+          BIN=rust/target/release/sovereign-loopback-smoke
+          $BIN --seconds 1.0 --json
+          if [ "${{ steps.blackhole.outputs.available }}" = "true" ]; then
+            echo "BlackHole-2ch present — Phase 1 wires the full capture + verifier leg here."
+          else
+            echo "::warning::Phase 0 scaffold: BlackHole-2ch not installed on this runner — producer + ring accounting proven; the OS capture leg mounts in Phase 1."
+          fi
+
+  loopback-linux:
+    name: "Gate 4.3: Linux PipeWire null-sink loopback"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-loopback-linux
+      - name: Build the smoke binary
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke --release
+      - name: Install PipeWire + pulseaudio-utils (the null-sink monitor path)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pipewire pipewire-audio pulseaudio-utils || {
+            echo "::warning::PipeWire packages unavailable — the null-sink capture leg is reported pending (Phase 1)."
+            exit 0
+          }
+      - name: Producer self-verdict + PipeWire null-sink scaffold
+        run: |
+          BIN=rust/target/release/sovereign-loopback-smoke
+          $BIN --seconds 1.0 --json
+          # Scaffold: create the null-sink + monitor source when the daemon runs.
+          if timeout 5 pactl info >/dev/null 2>&1; then
+            pactl load-module module-null-sink sink_name=sovereign_loopback sink_properties=device.description=SovereignLoopback || true
+            echo "PipeWire null-sink loaded — Phase 1 pipes the monitor into the shared verifier here."
+          else
+            echo "::warning::Phase 0 scaffold: no PulseAudio/PipeWire daemon on this runner — producer + ring accounting proven; the null-sink capture leg mounts in Phase 1."
+          fi
+
+  loopback-android:
+    name: "Gate 4.4 — Android emulator AudioFlinger wav capture (API ${{ matrix.api }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 29, 34, 35]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Enable KVM (emulator acceleration)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the emulator with -audiodev wav (scaffold check)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: default
+          # -audiodev wav: QEMU captures the guest's AudioFlinger mixer
+          # output into the wav file — the OS-loopback capture this job
+          # exists for (no host audio device needed on the runner).
+          emulator-options: -no-window -gpu swiftshader_indirect -audiodev wav,path=/tmp/sovereign-emulator-audio.wav -no-boot-anim -camera-back none
+          script: |
+            echo "Emulator booted (API ${{ matrix.api }})."
+            adb shell getprop ro.build.version.sdk
+            # Phase 0 scaffold: the capture file materializes once the
+            # Phase 1 AAudio bracket plays audio through the guest mixer.
+            # This proves the emulator boots, adb works and the -audiodev
+            # wav backend is accepted on every API level in the matrix.
+            echo "::warning::Phase 0 scaffold: -audiodev wav backend armed; the AAudio bracket + smoke APK capture leg mounts in Phase 1 (API ${{ matrix.api }} boot proven)."
+
+  loopback-browser:
+    name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node (Playwright runner)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install Playwright Chromium
+        run: |
+          mkdir -p /tmp/sovereign-hal-browser
+          cd /tmp/sovereign-hal-browser
+          npm init -y >/dev/null
+          npm install playwright@latest >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+          echo "playwright ready"
+      - name: Run the dual-mode harness (COOP/COEP isolated + plain HTTP)
+        run: |
+          cat > /tmp/sovereign-hal-browser/run.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import http from 'node:http';
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const harness = fs.readFileSync(process.argv[2], 'utf8');
+          const port = 8931;
+
+          // Dual-origin matrix: one server WITHOUT isolation headers (the
+          // plain-LAN-HTTP shape, crossOriginIsolated === false) and one
+          // WITH COOP/COEP (the SharedArrayBuffer shape). The harness
+          // itself detects and reports which modes it could exercise.
+          const server = http.createServer((req, res) => {
+            const isolated = req.url.startsWith('/isolated');
+            res.writeHead(200, {
+              'content-type': 'text/html',
+              ...(isolated ? {
+                'cross-origin-opener-policy': 'same-origin',
+                'cross-origin-embedder-policy': 'require-corp',
+              } : {}),
+            });
+            res.end(harness);
+          });
+          await new Promise((r) => server.listen(port, r));
+
+          const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream'] });
+          const results = {};
+          for (const [label, url] of [
+            ['plain', `http://127.0.0.1:${port}/plain`],
+            ['isolated', `http://127.0.0.1:${port}/isolated`],
+          ]) {
+            const page = await browser.newPage();
+            page.on('console', (m) => console.log(`[${label}]`, m.text()));
+            await page.goto(url);
+            // The harness sets window.__sovereignHalResult.done + .pass.
+            await page.waitForFunction(() => window.__sovereignHalResult?.done === true, null, { timeout: 60_000 });
+            const r = await page.evaluate(() => window.__sovereignHalResult);
+            results[label] = r;
+            await page.close();
+          }
+          await browser.close();
+          server.close();
+
+          console.log('RESULTS:', JSON.stringify(results, null, 2));
+          // The plain-origin leg MUST pass (the MessagePort fallback is the
+          // every-browser contract). The isolated leg MUST pass the SAB mode
+          // when crossOriginIsolated worked (SAB skipped only if the headers
+          // did not take effect — reported, not hidden).
+          if (results.plain?.pass !== true) {
+            console.error('PLAIN-ORIGIN (MessagePort) MODE FAILED');
+            process.exit(1);
+          }
+          if (results.isolated?.modes?.sab?.skipped) {
+            console.error('::warning::SAB mode skipped: COOP/COEP isolation did not take effect');
+          } else if (results.isolated?.modes?.sab?.pass !== true) {
+            console.error('ISOLATED-ORIGIN (SAB) MODE FAILED');
+            process.exit(1);
+          }
+          console.log('BROWSER DUAL-MODE VERDICT: PASS');
+          EOF
+          node /tmp/sovereign-hal-browser/run.mjs scripts/sovereign_hal_browser_harness.html

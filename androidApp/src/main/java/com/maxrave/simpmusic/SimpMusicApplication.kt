@@ -77,6 +77,11 @@ class SimpMusicApplication :
             )
             loadKoinModules(viewModelModule)
             loadKoinModules(com.streamify.jam.di.streamifyAllModules)
+            // Sovereign HAL Phase 0 (D2): wrap the registered media3 handler
+            // with the Sovereign wrapper AFTER loadAllModules() bound it
+            // (installSovereignMediaPlayerHandler captures the current
+            // binding as the delegate; flag-off = 1:1 delegation).
+            com.streamify.sovereign.player.di.installSovereignMediaPlayerHandler()
         }
         com.streamify.media.hal.StreamifyMedia3Module.init(this)
         applicationScope.launch {

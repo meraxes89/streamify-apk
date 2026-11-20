@@ -223,6 +223,10 @@ jobs:
           - shard: native-lufs-parity
             description: "C8: C++ BS.1770-4 vs the canonical Rust golden vectors"
             target: lufs_parity_test_suite
+          # ---- Sovereign HAL Phase 0 (D3) ------------------------------------
+          - shard: native-ring-abi-conformance
+            description: "Frozen 96-byte wire + AMP-10 semantics + zero-alloc edge + armv7 alignment pins"
+            target: ring_abi_conformance_test_suite
     env:
       ASAN_OPTIONS: "fast_unwind_on_malloc=1:detect_leaks=1:halt_on_error=1"
       UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"

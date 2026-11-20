@@ -211,4 +211,7 @@ fun initWebKoin() {
             viewModelModule,
         )
     }
+    // Sovereign HAL Phase 0 (D2): wrap the registered HTMLAudioElement
+    // handler with the Sovereign wrapper (flag-off = 1:1 delegation).
+    com.streamify.sovereign.player.di.installSovereignMediaPlayerHandler()
 }

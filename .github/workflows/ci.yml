@@ -142,6 +142,17 @@ jobs:
       - name: Canonical resolver integrity check (P5-A)
         run: python3 scripts/check_feishin_resolver.py
 
+      # Sovereign HAL Phase 0 (D1): Layer-1 upstream-immunity gate. The
+      # core.patch allowlist is FROZEN — the patch may carry ONLY platform
+      # enablement (wasmJs Gradle targets, expect/actual shims) plus the
+      # byte-reviewed utility/security fixes recorded in the script. Any
+      # playback/audio/media-routing hunk inside the submodule patch layer
+      # is a Phase-0 contract violation (playback behavior belongs in
+      # streamify-modules/, never in the patch that every upstream bump
+      # re-applies). Pure source check, < 1 s, every event.
+      - name: core.patch upstream-immunity gate (Sovereign HAL D1)
+        run: python3 scripts/check_core_patch.py
+
   # =========================================================================
   # TIER 2: Modular Domain Shards (Reusable Workflows, parallel dispatch)
   # =========================================================================
