@@ -56,10 +56,15 @@ export class StreamGateway {
     let totalLength = desc.contentLength;
     if (!totalLength || totalLength <= 0) {
       try {
-        const head = await fetch(targetUrl, { method: 'HEAD' });
+        const head = await fetch(targetUrl, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
         const cl = head.headers.get('content-length');
         if (cl) totalLength = parseInt(cl, 10);
       } catch {}
+    }
+
+    // P1 Performance: Disable Nagle's algorithm on streaming sockets to prevent 40ms delayed-ACK stalls
+    if (req.raw?.socket && typeof req.raw.socket.setNoDelay === 'function') {
+      req.raw.socket.setNoDelay(true);
     }
 
     // Common response headers
@@ -103,7 +108,24 @@ export class StreamGateway {
         .header('Content-Range', `bytes ${start}-${actualEnd}/${totalLength}`)
         .header('Content-Length', actualLength);
 
-      const stream = fs.createReadStream(completeFilePath, { start, end: actualEnd });
+      // P1: Direct slab read for small ranges <= 256 KiB (bypasses Node stream allocation)
+      if (actualLength <= 256 * 1024) {
+        const fd = await fs.promises.open(completeFilePath, 'r');
+        try {
+          const buf = Buffer.allocUnsafe(actualLength);
+          const { bytesRead } = await fd.read(buf, 0, actualLength, start);
+          return reply.send(buf.subarray(0, bytesRead));
+        } finally {
+          await fd.close();
+        }
+      }
+
+      // P1: 256 KiB highWaterMark for large streams (4x fewer fs.read libuv threadpool ops)
+      const stream = fs.createReadStream(completeFilePath, {
+        start,
+        end: actualEnd,
+        highWaterMark: 256 * 1024,
+      });
       return reply.send(stream);
     }
 

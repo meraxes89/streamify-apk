@@ -1,10 +1,28 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { Agent, setGlobalDispatcher } from 'undici';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { resolveProfile } from './platform/profile.js';
 import { resolveDataDir } from './platform/data-dir.js';
 import fastifyStatic from '@fastify/static';
 import path from 'node:path';
 import fs from 'node:fs';
+
+// P0 Diagnostics: Event loop delay monitor with 10ms sampling resolution
+const eventLoopLagMonitor = monitorEventLoopDelay({ resolution: 10 });
+eventLoopLagMonitor.enable();
+
+// P1 Performance: Undici Agent with tuned Happy Eyeballs fallback and keep-alive pool
+const undiciAgent = new Agent({
+  connect: {
+    autoSelectFamily: true,
+    autoSelectFamilyAttemptTimeout: 50, // Cut IPv6 Happy Eyeballs fallback from 250ms default to 50ms
+    keepAliveTimeout: 60_000,
+  },
+  pipelining: 1,
+  maxRedirections: 3,
+});
+setGlobalDispatcher(undiciAgent);
 import { CatalogService } from './slices/catalog/service.js';
 import { catalogRoutes } from './slices/catalog/routes.js';
 import { LyricsService } from './slices/lyrics/service.js';
@@ -15,6 +33,7 @@ import { StreamResolver } from './slices/stream/resolver.js';
 import { WriteThroughCache } from './slices/stream/write-through-cache.js';
 import { StreamGateway } from './slices/stream/gateway.js';
 import { streamRoutes } from './slices/stream/routes.js';
+import { PrefetchCoordinator } from './slices/stream/prefetch.js';
 import { StreamSemaphore } from './lib/semaphore.js';
 import { authPlugin } from './slices/auth/routes.js';
 
@@ -28,6 +47,12 @@ export async function createApp({
   streamSemaphore = new StreamSemaphore({ maxGlobal: profile.maxStreams, maxPerIp: 4 }),
   writeThroughCache = new WriteThroughCache({ streamsDir: dataDir.streams, maxCacheMb: profile.diskCacheMb }),
   streamGateway = new StreamGateway({ resolver: streamResolver, cache: writeThroughCache, semaphore: streamSemaphore }),
+  prefetchCoordinator = new PrefetchCoordinator({
+    resolver: streamResolver,
+    cache: writeThroughCache,
+    liveSemaphore: streamSemaphore,
+    eventLoopLagMonitor,
+  }),
   logger = false,
 } = {}) {
   const app = Fastify({
@@ -61,9 +86,21 @@ export async function createApp({
       uptime: Math.floor(process.uptime()),
       profile: profile.name,
       memory: process.memoryUsage(),
+      eventLoopLagMs: {
+        min: eventLoopLagMonitor.min < 1e9 ? +(eventLoopLagMonitor.min / 1e6).toFixed(2) : 0,
+        max: +(eventLoopLagMonitor.max / 1e6).toFixed(2),
+        mean: Number.isFinite(eventLoopLagMonitor.mean) ? +(eventLoopLagMonitor.mean / 1e6).toFixed(2) : 0,
+        p50: +(eventLoopLagMonitor.percentile(50) / 1e6).toFixed(2),
+        p90: +(eventLoopLagMonitor.percentile(90) / 1e6).toFixed(2),
+        p99: +(eventLoopLagMonitor.percentile(99) / 1e6).toFixed(2),
+      },
+      streams: {
+        active: streamGateway.semaphore.globalCount,
+        maxGlobal: streamGateway.semaphore.maxGlobal,
+      },
       cache: {
-        prefetched: 0,
-        resolved: 0,
+        prefetched: prefetchCoordinator.prefetchedCount,
+        resolved: streamResolver.cache.size,
       },
     };
   });
@@ -77,9 +114,10 @@ export async function createApp({
         'modular-fastify',
         '8mib-range-stream',
         'mobile-vr-resolver',
-        'prefetch',
+        'two-stage-prefetch',
         'ytm-meta',
         'neg-cache',
+        'slab-read',
       ],
     };
   });
@@ -94,7 +132,7 @@ export async function createApp({
   await app.register(thumbRoutes, { thumbService });
 
   // Stream gateway vertical slice
-  await app.register(streamRoutes, { gateway: streamGateway });
+  await app.register(streamRoutes, { gateway: streamGateway, prefetch: prefetchCoordinator });
 
   // Static files for Compose Wasm UI & SPA fallback
   const publicDir = path.resolve('server/public');

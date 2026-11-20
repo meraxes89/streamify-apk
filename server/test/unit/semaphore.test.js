@@ -11,7 +11,7 @@ test('Lib: StreamSemaphore limits', () => {
   // Same IP blocked by maxPerIp
   const p1Duplicate = sem.acquire('1.1.1.1');
   assert.equal(p1Duplicate.allowed, false);
-  assert.equal(p1Duplicate.retryAfter, 5);
+  assert.equal(p1Duplicate.retryAfter, 2);
 
   // Different IP allowed
   const p2 = sem.acquire('2.2.2.2');

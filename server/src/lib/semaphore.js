@@ -4,9 +4,10 @@ export class StreamSemaphore {
    * @param {number} [options.maxGlobal=24] - Max concurrent streams across all clients
    * @param {number} [options.maxPerIp=4] - Max concurrent streams per client IP
    */
-  constructor({ maxGlobal = 24, maxPerIp = 4 } = {}) {
+  constructor({ maxGlobal = 24, maxPerIp = 4, retryAfter = 2 } = {}) {
     this.maxGlobal = maxGlobal;
     this.maxPerIp = maxPerIp;
+    this.retryAfter = retryAfter;
     this.globalCount = 0;
     /** @type {Map<string, number>} */
     this.ipCounts = new Map();
@@ -18,7 +19,7 @@ export class StreamSemaphore {
     if (this.globalCount >= this.maxGlobal || ipCount >= this.maxPerIp) {
       return {
         allowed: false,
-        retryAfter: 5,
+        retryAfter: this.retryAfter,
       };
     }
 

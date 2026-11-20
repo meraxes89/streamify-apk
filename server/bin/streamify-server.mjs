@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+import os from 'node:os';
+
+// P1 Performance: Scale libuv threadpool to physical cores (min 8, max 12)
+// Must be set before any asynchronous libuv operations occur.
+if (!process.env.UV_THREADPOOL_SIZE) {
+  const cpuCount = os.cpus()?.length || 4;
+  process.env.UV_THREADPOOL_SIZE = String(Math.min(12, Math.max(8, cpuCount)));
+}
+
 import { createApp } from '../src/app.js';
 import { resolveProfile } from '../src/platform/profile.js';
 import { resolveDataDir } from '../src/platform/data-dir.js';

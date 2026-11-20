@@ -72,7 +72,8 @@ export class WriteThroughCache {
           throw new Error(`Upstream stream returned ${upstream.status}`);
         }
 
-        const out = fs.createWriteStream(partPath);
+        // P1: Bounded 256 KiB write buffer for disk pipeline
+        const out = fs.createWriteStream(partPath, { highWaterMark: 256 * 1024 });
         const nodeReadable = Readable.fromWeb(upstream.body);
 
         nodeReadable.on('data', (chunk) => {
