@@ -166,8 +166,15 @@ export async function createApp({
         'ebml-opus-extractor',
         'throttle-watchdog',
         'ewma-ladder',
+        'sqlite-store',
+        'worker-cipher',
+        'attest-pot',
       ],
     };
+  });
+
+  app.addHook('onClose', async () => {
+    streamResolver?.close?.();
   });
 
   // Room broadcast slice

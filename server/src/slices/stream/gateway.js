@@ -16,6 +16,15 @@ export class StreamGateway {
     this.semaphore = semaphore;
     this.pacer = pacer;
     this.watchdog = watchdog;
+
+    // Phase 1+2: On watchdog throttle detection, evict cached URL to trigger ladder escalation
+    if (this.watchdog && this.resolver) {
+      this.watchdog.on('throttled', ({ videoId }) => {
+        if (videoId) {
+          this.resolver.evict?.(videoId);
+        }
+      });
+    }
   }
 
   async handleRequest(req, reply) {
