@@ -137,6 +137,7 @@ export async function createApp({
         prefetched: prefetchCoordinator.prefetchedCount,
         resolved: streamResolver.cache.size,
       },
+      searchTelemetry: catalogService.client?.latestSearchTelemetry || null,
     };
   });
 
@@ -153,6 +154,9 @@ export async function createApp({
         'ytm-meta',
         'neg-cache',
         'slab-read',
+        'sparse-block-cache',
+        'wifi-pacing',
+        'swr-home',
       ],
     };
   });
