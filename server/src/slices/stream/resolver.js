@@ -63,7 +63,7 @@ async function getVisitorData() {
   }
   try {
     const res = await fetch(
-      'https://youtubei.googleapis.com/youtubei/v1/visitor_id?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
+      'https://youtubei.googleapis.com/youtubei/v1/visitor_id?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk',
       {
         body: JSON.stringify({
           context: {
