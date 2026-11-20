@@ -12,9 +12,36 @@ import fs from 'node:fs';
 const eventLoopLagMonitor = monitorEventLoopDelay({ resolution: 10 });
 eventLoopLagMonitor.enable();
 
-// P1 Performance: Undici Agent with tuned Happy Eyeballs fallback and keep-alive pool
+import dns from 'node:dns/promises';
+
+// P1 Performance: In-memory TTL DNS cache to prevent getaddrinfo libuv threadpool contention
+const dnsCache = new Map();
+function cachedDnsLookup(hostname, options, callback) {
+  const isAll = typeof options === 'object' && options?.all;
+  const cached = dnsCache.get(hostname);
+  if (cached && Date.now() < cached.expiresAt) {
+    if (isAll) return callback(null, cached.records);
+    return callback(null, cached.records[0].address, cached.records[0].family);
+  }
+  dns.lookup(hostname, { ...options, all: true })
+    .then((records) => {
+      dnsCache.set(hostname, {
+        records,
+        expiresAt: Date.now() + 120_000, // 2-minute TTL
+      });
+      if (isAll) {
+        callback(null, records);
+      } else {
+        callback(null, records[0].address, records[0].family);
+      }
+    })
+    .catch((err) => callback(err));
+}
+
+// P1 Performance: Undici Agent with non-blocking cached DNS, tuned Happy Eyeballs, and keep-alive pool
 const undiciAgent = new Agent({
   connect: {
+    lookup: cachedDnsLookup,
     autoSelectFamily: true,
     autoSelectFamilyAttemptTimeout: 50, // Cut IPv6 Happy Eyeballs fallback from 250ms default to 50ms
     keepAliveTimeout: 60_000,
