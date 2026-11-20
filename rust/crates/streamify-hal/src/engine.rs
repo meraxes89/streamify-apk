@@ -45,6 +45,9 @@ pub enum RouteOption {
     Auto,
     /// A named device (the output-sheet picker's choice).
     Named(String),
+    /// The host's default output device, directly (the CI loopback
+    /// legs' contract: the virtual loopback device IS the default).
+    Default,
     /// The Windows x86_64 WASAPI-EXCLUSIVE bracket (miniaudio; steps
     /// down to cpal shared on rejection — see [`crate::exclusive`]).
     #[cfg(all(feature = "wasapi_exclusive", target_os = "windows", target_arch = "x86_64"))]
@@ -206,6 +209,9 @@ impl OutputEngine {
                 })
                 .ok_or_else(|| format!("output device not found: {name}"))?
             }
+            RouteOption::Default => host
+                .default_output_device()
+                .ok_or("no default output device on this host")?,
             _ => match resolve_auto_route() {
                 OutputRoute::Device(d) => {
                     let mut devices = host

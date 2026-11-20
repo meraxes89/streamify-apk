@@ -40,6 +40,10 @@ struct Args {
     file: String,
     seconds: f64,
     json: bool,
+    /// Bypass the hygiene ranking: open the host's default output
+    /// device directly (the CI legs' contract — the virtual loopback
+    /// device IS the system default by the time the player runs).
+    any_device: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -47,6 +51,7 @@ fn parse_args() -> Result<Args, String> {
     let mut file = None;
     let mut seconds = 4.0f64;
     let mut json = false;
+    let mut any_device = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--file" => file = args.next(),
@@ -57,6 +62,7 @@ fn parse_args() -> Result<Args, String> {
                     .ok_or("--seconds needs a number")?;
             }
             "--json" => json = true,
+            "--any-device" => any_device = true,
             _ => return Err(format!("unknown arg {a}")),
         }
     }
@@ -64,6 +70,7 @@ fn parse_args() -> Result<Args, String> {
         file: file.ok_or("--file required")?,
         seconds: seconds.clamp(0.5, 60.0),
         json,
+        any_device,
     })
 }
 
@@ -156,7 +163,12 @@ fn run() -> i32 {
     });
     // 3. Open the cpal output route.
     let (mut engine, events) = OutputEngine::new(16);
-    if let Err(why) = engine.start(&RouteOption::Auto) {
+    let route = if args.any_device {
+        RouteOption::Default
+    } else {
+        RouteOption::Auto
+    };
+    if let Err(why) = engine.start(&route) {
         ring_export::clear();
         eprintln!("cpal route open failed: {why}");
         if args.json {

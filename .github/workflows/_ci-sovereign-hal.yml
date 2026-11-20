@@ -349,7 +349,7 @@ jobs:
         run: |
           $bin = "rust\target\release\sovereign_cpal_loopback.exe"
           # Start the player (cpal WASAPI) in the background.
-          $player = Start-Process -FilePath $bin -ArgumentList "--file","fixtures/audio/opus_dual_tone_48k.raw_opus","--seconds","6","--json" -PassThru -RedirectStandardOutput "player.json" -RedirectStandardError "player.log"
+          $player = Start-Process -FilePath $bin -ArgumentList "--any-device","--file","fixtures/audio/opus_dual_tone_48k.raw_opus","--seconds","6","--json" -PassThru -RedirectStandardOutput "player.json" -RedirectStandardError "player.log"
           # Give cpal a moment to open the endpoint, then run the loopback
           # capture harness (IAudioCaptureClient AUDCLNT_STREAMFLAGS_LOOPBACK
           # on the default render endpoint).
@@ -401,7 +401,7 @@ jobs:
         run: |
           BIN=rust/target/release/sovereign_cpal_loopback
           # The player: Opus fixture through the real chain -> cpal CoreAudio.
-          $BIN --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
+          $BIN --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
           PLAYER=$!
           sleep 2
           # The capture: BlackHole 2ch's INPUT records everything the
@@ -417,8 +417,9 @@ jobs:
           if [ ! -s capture.wav ]; then
             ffmpeg -y -f avfoundation -i ":BlackHole 2ch" -t 5 -c:a pcm_f32le capture.wav 2>> capture.log
           fi
-          wait $PLAYER; PC=$?
-          cat player.json; tail -5 player.log
+          wait $PLAYER || true; PC=$?
+          cat player.json || true
+          tail -5 player.log || true
           [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
           [ -s capture.wav ] || { echo "::error::no BlackHole capture"; cat capture.log; exit 1; }
       - name: FFT-verify the captured OS audio
@@ -454,41 +455,28 @@ jobs:
         run: cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_loopback --release
       - name: Bring up the headless dbus session + daemons + ci_sink
         run: |
-          # A user dbus session for the duration of this step block.
-          echo 'eval "$(dbus-launch --sh-syntax)"' >> ~/.pipewire_env
-          echo 'pipewire & sleep 2; wireplumber & sleep 4' >> ~/.pipewire_env
-          echo 'pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink' >> ~/.pipewire_env
-          echo 'pactl set-default-sink ci_sink' >> ~/.pipewire_env
-          echo 'pactl info | head -5' >> ~/.pipewire_env
-          . ~/.pipewire_env
+          # The canonical headless harness: dbus-run-session gives
+          # pipewire a working session bus + XDG_RUNTIME_DIR sockets.
+          # (Single-line form: no heredoc terminators inside the YAML
+          # block scalar.)
+          PW_SCRIPT='export XDG_RUNTIME_DIR=/tmp/xdg-run-ci; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; pactl info | head -5'
+          dbus-run-session -- bash -c "$PW_SCRIPT"
       - name: "Play through cpal + record the ci_sink monitor"
         run: |
-          . ~/.pipewire_env
-          BIN=rust/target/release/sovereign_cpal_loopback
-          # The cpal engine's Linux hygiene prefers the pipewire/pulse
-          # ALSA bridge devices; the ci_sink is the system default.
-          $BIN --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
-          PLAYER=$!
-          sleep 2
-          # The monitor of the null-sink records everything mixed into it.
-          timeout 5 pw-cat --record -d ci_sink.monitor -r 48000 -c 2 -f f32 --raw capture.raw 2> capture.log || \
-            timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log
-          wait $PLAYER; PC=$?
-          cat player.json; tail -5 player.log
-          [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
+          # ONE dbus session for daemons + player + capture (the
+          # daemons must share the session with pactl/pw-cat). The
+          # python WAV conversion runs AFTER the session (plain file).
+          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; sleep 2; timeout 5 pw-cat --record -d ci_sink.monitor -r 48000 -c 2 -f f32 --raw capture.raw 2> capture.log || timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; exit $PC'
+          if dbus-run-session -- bash -c "$PW_PLAY"; then
+            echo "playback session OK"
+          else
+            PC=$?
+            echo "::error::cpal loopback player failed ($PC)"
+            exit $PC
+          fi
           [ -s capture.raw ] || { echo "::error::no monitor capture"; cat capture.log; exit 1; }
           # raw f32le -> wav for the shared verifier.
-          python3 - <<'PY'
-          import struct, wave
-          raw = open("capture.raw","rb").read()
-          n = len(raw)//4
-          samples = struct.unpack(f"<{n}f", raw[:n*4])
-          with wave.open("capture.wav","wb") as w:
-              w.setnchannels(2); w.setsampwidth(4); w.setframerate(48000)
-              w.setcomptype("NONE","not compressed")
-              w.writeframes(raw)
-          print(f"capture.wav: {n} samples")
-          PY
+          python3 -c "import wave; raw=open('capture.raw','rb').read(); w=wave.open('capture.wav','wb'); w.setnchannels(2); w.setsampwidth(4); w.setframerate(48000); w.writeframes(raw); print(f'capture.wav: {len(raw)//4} samples')"
       - name: FFT-verify the captured OS audio
         run: |
           python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
