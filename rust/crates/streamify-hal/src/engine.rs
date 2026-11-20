@@ -150,6 +150,15 @@ impl OutputEngine {
     }
 
     /// The shared DAC clock slot (telemetry + the JVM stats bridge).
+    /// Whether the output callback has fired at least once (the
+    /// player's diagnostics poll this — the RT callback itself never
+    /// prints).
+    pub fn callback_fired(&self) -> bool {
+        self.rt
+            .first_callback_done
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn clock_slot(&self) -> Arc<DacClockSlot> {
         Arc::clone(&self.rt.clock)
     }
@@ -318,16 +327,13 @@ impl OutputEngine {
                 (*config).clone(), // cpal takes the config by value
                 move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
                     // ── THE RT PATH (zero alloc / lock / syscall) ──
-                    // First-callback diagnostic (one relaxed atomic load;
-                    // the eprintln runs ONCE per stream, never in the
-                    // steady-state RT path).
-                    if !rt.first_callback_done.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                        eprintln!(
-                            "engine: first output callback ({} frames, host_ns {})",
-                            data.len() / CANONICAL_CHANNELS as usize,
-                            info.timestamp().playback.as_nanos()
-                        );
-                    }
+                    // First-callback mark ONLY (an atomic swap — the
+                    // round-34 eprintln inside the callback stalled the
+                    // stream: stderr's lock on the audio thread blocked
+                    // the host's IO loop; the cpal-only probe without it
+                    // sustained 283 callbacks / 3 s on the same device).
+                    let _ = rt.first_callback_done.swap(true, std::sync::atomic::Ordering::Relaxed);
+                    let _ = info;
                     let frames = data.len() / CANONICAL_CHANNELS as usize;
                     if frames == 0 {
                         return;

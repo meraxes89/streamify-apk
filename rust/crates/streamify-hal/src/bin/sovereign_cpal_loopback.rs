@@ -222,8 +222,13 @@ fn run() -> i32 {
     let mut clock_samples = Vec::new();
     let slot = engine.clock_slot();
     let mut last_seq = 0u64;
+    let mut fired_reported = false;
     while Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
+        if !fired_reported && engine.callback_fired() {
+            fired_reported = true;
+            eprintln!("engine: first output callback fired (main-thread poll)");
+        }
         if let Some((sample, seq)) = slot.sample() {
             if seq != last_seq {
                 last_seq = seq;
