@@ -1,26 +1,20 @@
 plugins {
-    id("com.android.library")
-    kotlin("android")
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
-android {
-    namespace = "com.arthenica.ffmpegkit"
-    compileSdk = 35
-
-    defaultConfig {
+kotlin {
+    android {
+        namespace = "com.arthenica.ffmpegkit"
+        compileSdk = 37
         minSdk = 26
     }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+    sourceSets {
+        androidMain {
+            dependencies {
+                implementation(libs.kotlin.stdlib)
+            }
+        }
     }
-
-    kotlinOptions {
-        jvmTarget = "21"
-    }
-}
-
-dependencies {
-    implementation(libs.kotlin.stdlib)
 }
