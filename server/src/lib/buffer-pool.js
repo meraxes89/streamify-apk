@@ -8,31 +8,60 @@ export class SlotBufferPool {
   /**
    * @param {Object} [options]
    * @param {number} [options.slotSize=65536] - 64 KiB slot size
-   * @param {number} [options.numSlots=64] - 64 slots = 4 MiB fixed residency
+   * @param {number} [options.numSlots=64] - initial slot count
+   * @param {number} [options.maxSlots=64] - maximum physical arena capacity
    */
-  constructor({ slotSize = 64 * 1024, numSlots = 64 } = {}) {
+  constructor({ slotSize = 64 * 1024, numSlots = 64, maxSlots } = {}) {
     this.slotSize = slotSize;
-    this.numSlots = numSlots;
+    this.maxSlots = Math.max(numSlots, maxSlots || numSlots);
+    this.activeSlots = numSlots;
 
-    // Single contiguous off-heap backing store
-    this.arena = Buffer.allocUnsafe(this.numSlots * this.slotSize);
+    // Single contiguous off-heap backing store allocated to max capacity
+    this.arena = Buffer.allocUnsafe(this.maxSlots * this.slotSize);
 
     // Fixed reusable subarray views (zero wrapper allocation during runtime)
-    this.views = Array.from({ length: this.numSlots }, (_, i) =>
+    this.views = Array.from({ length: this.maxSlots }, (_, i) =>
       this.arena.subarray(i * this.slotSize, (i + 1) * this.slotSize)
     );
 
-    // LIFO freelist of slot indices (cache-hot, single-thread event loop)
-    this.free = Array.from({ length: this.numSlots }, (_, i) => i);
+    // LIFO freelist of slot indices initially populated up to activeSlots
+    this.free = Array.from({ length: this.activeSlots }, (_, i) => i);
 
     // Reference counts per slot
-    this.rc = new Int32Array(this.numSlots);
+    this.rc = new Int32Array(this.maxSlots);
 
     this.metrics = {
       acquired: 0,
       released: 0,
       fallbackAllocations: 0,
     };
+  }
+
+  /**
+   * Dynamically adjust active slot capacity (Elastic Tiering governance).
+   * @param {number} targetSlots
+   */
+  setActiveSlots(targetSlots) {
+    const clamped = Math.min(Math.max(1, targetSlots), this.maxSlots);
+    if (clamped === this.activeSlots) return;
+
+    if (clamped > this.activeSlots) {
+      // Expanding: push newly unlocked slots onto free list if not currently held
+      for (let i = this.activeSlots; i < clamped; i++) {
+        if (this.rc[i] === 0 && !this.free.includes(i)) {
+          this.free.push(i);
+        }
+      }
+    } else {
+      // Shrinking: filter out slots that are now beyond active range
+      this.free = this.free.filter((idx) => idx < clamped);
+    }
+
+    this.activeSlots = clamped;
+  }
+
+  get numSlots() {
+    return this.activeSlots;
   }
 
   /**
@@ -56,20 +85,22 @@ export class SlotBufferPool {
    * @param {number} idx
    */
   retain(idx) {
-    if (idx >= 0 && idx < this.numSlots) {
+    if (idx >= 0 && idx < this.maxSlots) {
       this.rc[idx]++;
     }
   }
 
   /**
    * Release a slot index (decrement reference count).
-   * Slot returns to LIFO freelist when rc drops to 0.
+   * Slot returns to LIFO freelist when rc drops to 0 (if within activeSlots).
    * @param {number} idx
    */
   release(idx) {
-    if (idx >= 0 && idx < this.numSlots) {
+    if (idx >= 0 && idx < this.maxSlots) {
       if (--this.rc[idx] === 0) {
-        this.free.push(idx);
+        if (idx < this.activeSlots) {
+          this.free.push(idx);
+        }
         this.metrics.released++;
       }
     }
@@ -81,7 +112,7 @@ export class SlotBufferPool {
    * @returns {Buffer}
    */
   getView(idx) {
-    if (idx >= 0 && idx < this.numSlots) {
+    if (idx >= 0 && idx < this.maxSlots) {
       return this.views[idx];
     }
     return null;
@@ -95,7 +126,7 @@ export class SlotBufferPool {
    * @param {Function} [cb]
    */
   send(socket, idx, length = this.slotSize, cb) {
-    if (idx < 0 || idx >= this.numSlots) {
+    if (idx < 0 || idx >= this.maxSlots) {
       if (cb) cb(new Error('Invalid slot index'));
       return;
     }
@@ -120,9 +151,11 @@ export class SlotBufferPool {
   getStatus() {
     return {
       slotSize: this.slotSize,
-      numSlots: this.numSlots,
+      numSlots: this.activeSlots,
+      maxSlots: this.maxSlots,
       availableSlots: this.free.length,
-      totalResidencyBytes: this.numSlots * this.slotSize,
+      totalResidencyBytes: this.maxSlots * this.slotSize,
+      activeResidencyBytes: this.activeSlots * this.slotSize,
       acquiredCount: this.metrics.acquired,
       releasedCount: this.metrics.released,
       fallbackCount: this.metrics.fallbackAllocations,
