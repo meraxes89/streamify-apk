@@ -455,8 +455,7 @@ jobs:
           sleep 2
           # The player: Opus fixture through the real chain -> cpal
           # CoreAudio, into the now-clocked BlackHole output.
-          $BIN --device "BlackHole 2ch" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log || \
-    $BIN --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
+          ( "$BIN" --device "BlackHole 2ch" --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log ) || ( "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log ) &
           PLAYER=$!
           # Record ~4 s of the 6 s playback, then stop sox (SIGTERM
           # finalizes the WAV header).
