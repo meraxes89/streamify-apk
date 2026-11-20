@@ -33,6 +33,10 @@ export class DarwinPowerAdapter {
         stdio: 'ignore',
         detached: true
       });
+      proc.on('error', () => {
+        // Safe fallback if caffeinate binary is missing
+        this.activeInhibitors.delete(id);
+      });
       proc.unref();
 
       this.activeInhibitors.set(id, () => {

@@ -43,10 +43,12 @@ export class LinuxPowerAdapter {
     if (this.isTermux) {
       try {
         const proc = spawn('termux-wake-lock', [], { stdio: 'ignore', detached: true });
+        proc.on('error', () => { this.activeInhibitors.delete(id); });
         proc.unref();
         this.activeInhibitors.set(id, () => {
           try {
             const releaseProc = spawn('termux-wake-unlock', [], { stdio: 'ignore', detached: true });
+            releaseProc.on('error', () => {});
             releaseProc.unref();
           } catch {
             // Ignore unlock errors on shutdown
@@ -66,6 +68,7 @@ export class LinuxPowerAdapter {
           '--mode=block',
           'sleep', 'infinity'
         ], { stdio: 'ignore', detached: true });
+        proc.on('error', () => { this.activeInhibitors.delete(id); });
         proc.unref();
 
         this.activeInhibitors.set(id, () => {

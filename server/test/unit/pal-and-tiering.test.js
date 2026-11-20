@@ -20,9 +20,23 @@ import {
   classify,
   size,
   getTierConfig,
+  TierGovernor,
   TIERS,
   SLOT_SIZE_BYTES
 } from '../../src/platform/tier/index.js';
+import { SlotBufferPool } from '../../src/lib/buffer-pool.js';
+import {
+  DarwinPowerAdapter,
+  DarwinCacheAdapter,
+  DarwinMemoryAdapter,
+  DarwinNetworkAdapter
+} from '../../src/platform/pal/adapters/darwin.js';
+import {
+  Win32PowerAdapter,
+  Win32CacheAdapter,
+  Win32MemoryAdapter,
+  Win32NetworkAdapter
+} from '../../src/platform/pal/adapters/win32.js';
 
 test('PAL Step 1: Core contracts & Capability Registry initialize safely', async () => {
   assert.ok(pal, 'pal singleton should exist');
@@ -236,4 +250,203 @@ test('Tiering Step 2: getTierConfig single-call helper produces valid runtime op
   assert.ok(cfg.bufferPool.maxSlots > 0);
   assert.ok(cfg.v8.nodeOptions.includes('--max-semi-space-size='));
   assert.ok(cfg.v8.nodeOptions.includes('--max-old-space-size='));
+});
+
+test('Governor Step 3: SlotBufferPool supports elastic dynamic slot resizing', () => {
+  const pool = new SlotBufferPool({ numSlots: 32, maxSlots: 64 });
+  assert.equal(pool.numSlots, 32);
+  assert.equal(pool.available, 32);
+
+  // Expand to 48 slots
+  pool.setActiveSlots(48);
+  assert.equal(pool.numSlots, 48);
+  assert.equal(pool.available, 48);
+
+  // Acquire 10 slots
+  const acquired = [];
+  for (let i = 0; i < 10; i++) {
+    acquired.push(pool.acquire());
+  }
+  assert.equal(pool.available, 38);
+
+  // Shrink to 20 slots
+  pool.setActiveSlots(20);
+  assert.equal(pool.numSlots, 20);
+  // Available should now be 20 minus whatever acquired slots fall inside 0..19
+  assert.ok(pool.available <= 20);
+
+  // Release acquired slots
+  for (const idx of acquired) {
+    pool.release(idx);
+  }
+  // Available should now cap at activeSlots (20)
+  assert.equal(pool.available, 20);
+});
+
+test('Governor Step 3: TierGovernor handles normal -> warn -> critical transitions', () => {
+  const tierConfig = getTierConfig();
+  const pool = new SlotBufferPool({
+    numSlots: tierConfig.bufferPool.minSlots,
+    maxSlots: tierConfig.bufferPool.maxSlots
+  });
+
+  let workerTeardownCalled = false;
+  let prefetchPaused = false;
+  let pacingLevel = null;
+  let cacheScale = 1.0;
+
+  const governor = new TierGovernor({
+    tierConfig,
+    bufferPool: pool,
+    hysteresisMs: 100, // Short hysteresis for fast test execution
+    callbacks: {
+      onTeardownIdleWorkers: () => { workerTeardownCalled = true; },
+      onPrefetchStateChange: ({ paused }) => { prefetchPaused = paused; },
+      onPacingLevelChange: ({ level }) => { pacingLevel = level; },
+      onDiskCacheScaleChange: ({ scale }) => { cacheScale = scale; }
+    }
+  });
+
+  // Start in normal state
+  governor.setActiveStreams(5);
+  const normalSlots = pool.numSlots;
+  assert.ok(normalSlots > tierConfig.bufferPool.minSlots);
+
+  // 1. Inject 'warn' pressure
+  governor.tick({
+    level: PRESSURE_LEVEL.WARN,
+    availBytes: 500 * 1024 * 1024,
+    swapPct: 10,
+    timestamp: Date.now()
+  });
+
+  const warnStatus = governor.getStatus();
+  assert.equal(warnStatus.state, PRESSURE_LEVEL.WARN);
+  assert.equal(warnStatus.diskCacheScale, 0.75);
+  assert.equal(prefetchPaused, true);
+
+  // 2. Inject 'critical' pressure
+  governor.tick({
+    level: PRESSURE_LEVEL.CRITICAL,
+    availBytes: 100 * 1024 * 1024,
+    swapPct: 30,
+    timestamp: Date.now()
+  });
+
+  const critStatus = governor.getStatus();
+  assert.equal(critStatus.state, PRESSURE_LEVEL.CRITICAL);
+  assert.equal(critStatus.currentBufferSlots, tierConfig.bufferPool.minSlots);
+  assert.equal(pool.numSlots, tierConfig.bufferPool.minSlots);
+  assert.equal(workerTeardownCalled, true);
+  assert.equal(critStatus.diskCacheScale, 0.5);
+  assert.equal(critStatus.pacingLevel, 'aggressive');
+
+  // Even if active streams spike, critical pressure keeps buffer at minSlots
+  governor.setActiveStreams(50);
+  assert.equal(pool.numSlots, tierConfig.bufferPool.minSlots);
+
+  // 3. Inject 'normal' sample immediately -> Hysteresis must prevent premature step-up
+  governor.tick({
+    level: PRESSURE_LEVEL.NORMAL,
+    availBytes: 2 * 1024 * 1024 * 1024,
+    swapPct: 5,
+    timestamp: Date.now()
+  });
+
+  assert.equal(governor.state, PRESSURE_LEVEL.CRITICAL, 'Hysteresis must hold critical state');
+  assert.ok(governor.getStatus().inHysteresis, 'Should report inHysteresis = true');
+});
+
+test('Governor Step 3: TierGovernor recovers cleanly after hysteresis period', async () => {
+  const tierConfig = getTierConfig();
+  const pool = new SlotBufferPool({
+    numSlots: tierConfig.bufferPool.minSlots,
+    maxSlots: tierConfig.bufferPool.maxSlots
+  });
+
+  let prefetchRestored = false;
+  const governor = new TierGovernor({
+    tierConfig,
+    bufferPool: pool,
+    hysteresisMs: 50, // 50ms hysteresis for test
+    callbacks: {
+      onPrefetchStateChange: ({ paused }) => { prefetchRestored = !paused; }
+    }
+  });
+
+  governor.setActiveStreams(3);
+
+  // Force critical state
+  governor.tick({
+    level: PRESSURE_LEVEL.CRITICAL,
+    availBytes: 50 * 1024 * 1024,
+    swapPct: 40,
+    timestamp: Date.now()
+  });
+  assert.equal(governor.state, PRESSURE_LEVEL.CRITICAL);
+
+  // Wait past the hysteresis window
+  await new Promise((resolve) => setTimeout(resolve, 60));
+
+  // Tick normal
+  governor.tick({
+    level: PRESSURE_LEVEL.NORMAL,
+    availBytes: 3 * 1024 * 1024 * 1024,
+    swapPct: 0,
+    timestamp: Date.now()
+  });
+
+  assert.equal(governor.state, PRESSURE_LEVEL.NORMAL, 'Governor should recover to NORMAL');
+  assert.equal(prefetchRestored, true, 'Prefetch should be restored');
+  assert.equal(governor.diskCacheScale, 1.0);
+  assert.ok(pool.numSlots > tierConfig.bufferPool.minSlots, 'Buffer pool should expand back');
+});
+
+test('Adapters Step 4: Darwin (macOS) adapters execute without error', async () => {
+  const power = new DarwinPowerAdapter();
+  assert.ok(power.cap.available);
+  const release = await power.inhibitSleep('test-darwin');
+  assert.equal(typeof release, 'function');
+  release();
+
+  const cache = new DarwinCacheAdapter();
+  cache.advise(-1, 0, 1024, ADVICE.DONTNEED);
+  cache.noCache(-1);
+  cache.syncRange(-1, 0, 1024);
+
+  const mem = new DarwinMemoryAdapter();
+  const sample = mem.sample();
+  assert.ok(['normal', 'warn', 'critical'].includes(sample.level));
+  assert.equal(mem.oomScoreAdj(), null);
+
+  const net = new DarwinNetworkAdapter();
+  const loopback = await net.classify('lo0');
+  assert.equal(loopback.media, NET_MEDIA.LOOPBACK);
+  const wifi = await net.classify('en0');
+  assert.equal(wifi.media, NET_MEDIA.WIFI);
+});
+
+test('Adapters Step 4: Win32 (Windows) adapters execute with proper cache no-op and power control', async () => {
+  const power = new Win32PowerAdapter();
+  const release = await power.inhibitSleep('test-win32');
+  assert.equal(typeof release, 'function');
+  release();
+
+  const cache = new Win32CacheAdapter();
+  assert.equal(cache.cap.available, false, 'Win32 cache hygiene is intentional no-op per comm11.md');
+  assert.doesNotThrow(() => {
+    cache.advise(1, 0, 1024, ADVICE.DONTNEED);
+    cache.noCache(1);
+    cache.syncRange(1, 0, 1024);
+  });
+
+  const mem = new Win32MemoryAdapter();
+  const sample = mem.sample();
+  assert.ok(sample.availBytes > 0);
+
+  const net = new Win32NetworkAdapter();
+  const wifi = await net.classify('Wi-Fi 2');
+  assert.equal(wifi.media, NET_MEDIA.WIFI);
+  const ethernet = await net.classify('Ethernet adapter');
+  assert.equal(ethernet.media, NET_MEDIA.WIRED);
 });
