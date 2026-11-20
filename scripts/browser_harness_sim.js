@@ -27,28 +27,31 @@ const { toneChunk, fftPeakCheck, RATE, CHANNELS, QUANTUM, TOTAL_FRAMES, EOS_TAIL
 let failures = 0;
 const check = (ok, msg) => { console.log((ok ? "  PASS " : "  FAIL ") + msg); if (!ok) failures++; };
 
-// ── the worklet pull logic, verbatim semantics (SAB cursor ring) ───────────
-function sabPull(state, output) {
+// ── the worklet pull logic, verbatim semantics — per-channel outputs ───────
+// (the AudioWorklet spec shape: outputs[0] = [ch0, ch1], each renderQuantum)
+function sabPull(state, channels) {
   const head = state.head[0];
   let tail = state.tail[0];
   const have = (head - tail) >>> 0;
   if (have === 0) { state.underruns++; return false; }
   const take = Math.min(QUANTUM, have);
   const startIdx = ((tail & state.mask) * CHANNELS) >>> 0;
+  const buf = state.frame;
   for (let i = 0; i < take * CHANNELS; i++) {
     const idx = (startIdx + i) % state.samples.length;
-    output[i] = state.samples[idx];
+    buf[i] = state.samples[idx];
   }
   state.tail[0] = (tail + take) >>> 0;
   state.framesServed += take;
   if (take < QUANTUM) state.underruns++;
+  deinterleave(buf, take, channels);
   return take === QUANTUM;
 }
 
-// ── the worklet pull logic, verbatim semantics (MessagePort chunk queue) ───
-function portPull(state, output) {
+function portPull(state, channels) {
   let need = QUANTUM * CHANNELS;
   let written = 0;
+  const buf = state.frame;
   while (need > 0) {
     if (!state.pending) {
       state.pending = state.queue.shift() || null;
@@ -56,13 +59,24 @@ function portPull(state, output) {
       if (!state.pending) break;
     }
     const copy = Math.min(need, state.pending.length - state.pendingOffset);
-    output.set(state.pending.subarray(state.pendingOffset, state.pendingOffset + copy), written);
+    buf.set(state.pending.subarray(state.pendingOffset, state.pendingOffset + copy), written);
     state.pendingOffset += copy; written += copy; need -= copy;
     if (state.pendingOffset >= state.pending.length) state.pending = null;
   }
-  state.framesServed += (written / CHANNELS) | 0;
-  if (need > 0) { state.underruns++; return false; }
-  return true;
+  const got = (written / CHANNELS) | 0;
+  state.framesServed += got;
+  if (need > 0) { state.underruns++; }
+  deinterleave(buf, got, channels);
+  return got === QUANTUM;
+}
+
+function deinterleave(buf, frames, channels) {
+  for (let c = 0; c < channels.length; c++) {
+    const ch = channels[c];
+    for (let f = 0; f < frames && f < ch.length; f++) {
+      ch[f] = buf[f * CHANNELS + (c % CHANNELS)];
+    }
+  }
 }
 
 // Render one mode: TOTAL_FRAMES frames through QUANTUM-sized pulls, then FFT.
@@ -70,10 +84,14 @@ function render(pullFn, state) {
   const out = new Float32Array(TOTAL_FRAMES * CHANNELS);
   let served = 0;
   while (served < TOTAL_FRAMES) {
-    const output = new Float32Array(QUANTUM * CHANNELS);
-    pullFn(state, output);
+    // The spec output shape: CHANNELS arrays of renderQuantum each.
+    const channels = [new Float32Array(QUANTUM), new Float32Array(QUANTUM)];
+    pullFn(state, channels);
     const take = Math.min(QUANTUM, TOTAL_FRAMES - served);
-    out.set(output.subarray(0, take * CHANNELS), served * CHANNELS);
+    for (let f = 0; f < take; f++) {
+      out[(served + f) * CHANNELS] = channels[0][f];
+      out[(served + f) * CHANNELS + 1] = channels[1][f];
+    }
     served += take;
   }
   return out;
@@ -88,7 +106,7 @@ function render(pullFn, state) {
   const samples = new Float32Array(buf, 64, CAPACITY * CHANNELS);
   samples.set(toneChunk(0, TOTAL_FRAMES));
   head[0] = TOTAL_FRAMES;
-  const state = { head, tail, samples, mask: CAPACITY - 1, underruns: 0, framesServed: 0 };
+  const state = { head, tail, samples, mask: CAPACITY - 1, underruns: 0, framesServed: 0, frame: new Float32Array(QUANTUM * CHANNELS) };
   const rendered = render(sabPull, state);
   const left = new Float32Array(TOTAL_FRAMES);
   for (let i = 0; i < TOTAL_FRAMES; i++) left[i] = rendered[i * CHANNELS];
@@ -104,7 +122,7 @@ function render(pullFn, state) {
   for (let f = 0; f < TOTAL_FRAMES; f += 12000) {
     chunks.push(toneChunk(f, Math.min(12000, TOTAL_FRAMES - f)));
   }
-  const state = { queue: chunks, pending: null, pendingOffset: 0, underruns: 0, framesServed: 0 };
+  const state = { queue: chunks, pending: null, pendingOffset: 0, underruns: 0, framesServed: 0, frame: new Float32Array(QUANTUM * CHANNELS) };
   const rendered = render(portPull, state);
   const left = new Float32Array(TOTAL_FRAMES);
   for (let i = 0; i < TOTAL_FRAMES; i++) left[i] = rendered[i * CHANNELS];
@@ -122,11 +140,11 @@ function render(pullFn, state) {
   const samples = new Float32Array(buf, 64, CAPACITY * CHANNELS);
   samples.set(toneChunk(0, TOTAL_FRAMES));
   head[0] = TOTAL_FRAMES;
-  const sabRendered = render(sabPull, { head, tail, samples, mask: CAPACITY - 1, underruns: 0, framesServed: 0 });
+  const sabRendered = render(sabPull, { head, tail, samples, mask: CAPACITY - 1, underruns: 0, framesServed: 0, frame: new Float32Array(QUANTUM * CHANNELS) });
 
   const chunks = [];
   for (let f = 0; f < TOTAL_FRAMES; f += 12000) chunks.push(toneChunk(f, Math.min(12000, TOTAL_FRAMES - f)));
-  const portRendered = render(portPull, { queue: chunks, pending: null, pendingOffset: 0, underruns: 0, framesServed: 0 });
+  const portRendered = render(portPull, { queue: chunks, pending: null, pendingOffset: 0, underruns: 0, framesServed: 0, frame: new Float32Array(QUANTUM * CHANNELS) });
 
   let equal = sabRendered.length === portRendered.length;
   for (let i = 0; equal && i < sabRendered.length; i++) equal = sabRendered[i] === portRendered[i];

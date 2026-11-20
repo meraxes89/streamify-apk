@@ -71,6 +71,7 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
     this.mode = opts.mode;                 // 'sab' | 'port'
     this.underruns = 0; this.pulls = 0; this.framesServed = 0;
     this.target = opts.targetFrames || Infinity;
+    this.frame = new Float32Array(${QUANTUM} * ${CHANNELS});  // interleaved staging
     if (this.mode === 'sab') {
       this.sab = opts.sab;
       this.head = new Uint32Array(this.sab, 0, 1);   // producer cursor (frames)
@@ -90,10 +91,15 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
       };
     }
   }
-  // Pull CHANNELS-interleaved frames into output; the SAB path mirrors the
-  // frozen read protocol (acquire head, copy below it, release tail).
-  pull(output) {
+  // Pull CHANNELS-interleaved frames; write them DE-INTERLEAVED into the
+  // output's per-channel arrays (the AudioWorklet spec shape: outputs[0]
+  // is an array of channelCount Float32Arrays, each renderQuantum long).
+  // The interleaved staging buffer is this.frame (QUANTUM*CHANNELS); the
+  // copy-out walks each channel. Robust to either engine layout.
+  pull(channels) {
     this.pulls++;
+    const buf = this.frame;                  // interleaved staging, QUANTUM*CHANNELS
+    let got = 0;                             // FRAMES this pull
     if (this.mode === 'sab') {
       const head = Atomics.load(this.head, 0);
       let tail = this.tail[0];
@@ -103,12 +109,11 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
       const startIdx = ((tail & this.mask) * ${CHANNELS}) >>> 0;
       for (let i = 0; i < take * ${CHANNELS}; i++) {
         const idx = (startIdx + i) % this.samples.length;
-        output[i] = this.samples[idx];
+        buf[i] = this.samples[idx];
       }
       this.tail[0] = (tail + take) >>> 0;
-      this.framesServed += take;
+      got = take;
       if (take < ${QUANTUM}) this.underruns++;
-      return take === ${QUANTUM};
     } else {
       let need = ${QUANTUM} * ${CHANNELS};
       let written = 0;
@@ -119,21 +124,33 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
           if (!this.pending) break;
         }
         const copy = Math.min(need, this.pending.length - this.pendingOffset);
-        output.set(this.pending.subarray(this.pendingOffset, this.pendingOffset + copy), written);
+        buf.set(this.pending.subarray(this.pendingOffset, this.pendingOffset + copy), written);
         this.pendingOffset += copy; written += copy; need -= copy;
         if (this.pendingOffset >= this.pending.length) this.pending = null;
       }
-      this.framesServed += (written / ${CHANNELS}) | 0;
-      if (need > 0) { this.underruns++; return false; }
-      return true;
+      got = (written / ${CHANNELS}) | 0;
+      if (need > 0) { this.underruns++; }
     }
+    // De-interleave into per-channel outputs (channels[c][f]).
+    if (channels && channels.length) {
+      for (let c = 0; c < channels.length; c++) {
+        const ch = channels[c];
+        for (let f = 0; f < got && f < ch.length; f++) {
+          ch[f] = buf[f * ${CHANNELS} + (c % ${CHANNELS})];
+        }
+      }
+    }
+    this.framesServed += got;
+    return got === ${QUANTUM};
   }
   process(inputs, outputs) {
-    const out = outputs[0][0];
-    this.pull(out);
+    this.pull(outputs && outputs[0]);
     if (this.framesServed >= this.target) {
       this.port.postMessage({ done: true, underruns: this.underruns, pulls: this.pulls, framesServed: this.framesServed });
       return false;
+    }
+    if ((this.pulls & 255) === 0) {
+      this.port.postMessage({ progress: this.framesServed, queued: this.queue ? this.queue.length : null });
     }
     return true;
   }
@@ -266,7 +283,7 @@ async function runLiveMode(ctx, mode) {
         if (chunks.length) node.port.postMessage({ chunks }, chunks.map((c) => c.buffer));
         if (frame < TOTAL_FRAMES) setTimeout(produce, 25);
       };
-      produce();
+      produce();  // first batch immediately: chunks queued before the first pulls
     }
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 16384;
