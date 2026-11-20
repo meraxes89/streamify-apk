@@ -47,6 +47,13 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: Apply core submodule patch if present
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
       - name: Set up JDK 21
         uses: actions/setup-java@v6
         with:
@@ -106,6 +113,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: 'recursive'
+
+      - name: Apply core submodule patch if present
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
 
       # audit #44 P0-1 — fail FAST on any external fun in NativeBridge.kt
       # with no JNI export, before any runner time is spent on Gradle.
@@ -235,27 +249,36 @@ jobs:
           path: androidApp/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Stage release APK as Streamify-v<tag>.apk
+      - name: Stage release APKs as Streamify-v<tag>*.apk
         if: inputs.release_mode
         run: |
-          APK=$(find androidApp/build/outputs/apk/release -name "*universal*.apk" | head -n 1)
-          if [ -z "$APK" ]; then
-            APK=$(find androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
+          mkdir -p staged-apks
+          TAG_OR_REF="${GITHUB_REF_NAME:-latest}"
+          TAG_CLEAN="${TAG_OR_REF//\//-}"
+          
+          # Find all release APKs (both universal and per-ABI splits)
+          APKS=$(find androidApp/build/outputs/apk/release -name "*.apk")
+          if [ -z "$APKS" ]; then
+            APKS=$(find androidApp/build/outputs/apk -name "*.apk")
           fi
-          if [ -z "$APK" ]; then
-            APK=$(find androidApp/build/outputs/apk -name "*universal*.apk" | head -n 1)
-          fi
-          if [ -z "$APK" ]; then
-            APK=$(find androidApp/build/outputs/apk -name "*.apk" | head -n 1)
-          fi
-          if [ -z "$APK" ]; then
+          if [ -z "$APKS" ]; then
             echo "FATAL: no release APK produced!" >&2
             exit 1
           fi
-          TAG_OR_REF="${GITHUB_REF_NAME:-latest}"
-          TAG_CLEAN="${TAG_OR_REF//\//-}"
-          cp "$APK" "Streamify-${TAG_CLEAN}.apk"
-          ls -la "Streamify-${TAG_CLEAN}.apk"
+          
+          for APK in $APKS; do
+            BASE=$(basename "$APK" .apk)
+            TARGET="Streamify-${TAG_CLEAN}-${BASE}.apk"
+            cp -v "$APK" "$TARGET"
+          done
+          
+          # Also stage universal/primary APK directly as Streamify-${TAG_CLEAN}.apk for standard downloads
+          UNIV=$(find androidApp/build/outputs/apk/release -name "*universal*.apk" | head -n 1)
+          if [ -z "$UNIV" ]; then
+            UNIV=$(echo "$APKS" | head -n 1)
+          fi
+          cp -v "$UNIV" "Streamify-${TAG_CLEAN}.apk"
+          ls -la Streamify-*.apk
 
       - name: Upload release APK artifact
         if: inputs.release_mode

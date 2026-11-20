@@ -51,6 +51,157 @@ index 0000000..09e84b4
 +++ b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
 @@ -0,0 +1 @@
 +package com.maxrave.common
+diff --git a/data/src/commonMain/kotlin/DatabaseDao.kt b/data/src/commonMain/kotlin/DatabaseDao.kt
+index db029df..1e1929c 100644
+--- a/data/src/commonMain/kotlin/DatabaseDao.kt
++++ b/data/src/commonMain/kotlin/DatabaseDao.kt
+@@ -127,7 +127,7 @@ interface DatabaseDao {
+             val fetched =
+                 getDownloadedPlaylists(
+                     limit = 100,
+-                    offset = shouldContinue.second,
++                    offset = shouldContinuePlaylist.second,
+                 )
+             a.addAll(
+                 fetched,
+@@ -194,7 +194,7 @@ interface DatabaseDao {
+             val fetched =
+                 getDownloadingPlaylists(
+                     limit = 100,
+-                    offset = shouldContinue.second,
++                    offset = shouldContinuePlaylist.second,
+                 )
+             a.addAll(
+                 fetched,
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
+index 4024528..7dfe9c5 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
+@@ -3,6 +3,9 @@ package com.maxrave.data.di
+ import DatabaseDao
+ import androidx.datastore.core.DataStore
+ import androidx.datastore.preferences.core.Preferences
++import androidx.room.RoomDatabase
++import androidx.sqlite.SQLiteConnection
++import androidx.sqlite.execSQL
+ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+ import com.maxrave.data.dataStore.DataStoreManagerImpl
+ import com.maxrave.data.dataStore.createDataStoreInstance
+@@ -37,6 +40,24 @@ val databaseModule =
+             getDatabaseBuilder(
+                 get<Converters>()
+             )
++                .addCallback(
++                    object : RoomDatabase.Callback() {
++                        override fun onOpen(connection: SQLiteConnection) {
++                            super.onOpen(connection)
++                            // Index hot columns to eliminate full table scans (Review Item 7)
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_song_albumId ON song(albumId)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_song_liked ON song(liked)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_song_inLibrary ON song(inLibrary)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_song_downloadState ON song(downloadState)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_song_totalPlayTime ON song(totalPlayTime)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_playback_event_videoId ON playback_event(videoId)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_playback_event_timestamp ON playback_event(timestamp)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_album_inLibrary ON album(inLibrary)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_playlist_inLibrary ON playlist(inLibrary)")
++                            connection.execSQL("CREATE INDEX IF NOT EXISTS idx_artist_inLibrary ON artist(inLibrary)")
++                        }
++                    }
++                )
+                 .setDriver(BundledSQLiteDriver())
+                 .setQueryCoroutineContext(Dispatchers.IO)
+                 .build()
+@@ -74,19 +95,19 @@ val databaseModule =
+         }
+ 
+         // Move YouTube from Singleton to Koin DI
+-        single(createdAtStart = true) {
++        single {
+             YouTube()
+         }
+ 
+-        single(createdAtStart = true) {
++        single {
+             Spotify()
+         }
+ 
+-        single(createdAtStart = true) {
++        single {
+             AiClient()
+         }
+ 
+-        single(createdAtStart = true) {
++        single {
+             SimpMusicLyricsClient()
+         }
+ 
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/RepositoryModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/RepositoryModule.kt
+index 1fcea31..7d6729f 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/di/RepositoryModule.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/di/RepositoryModule.kt
+@@ -46,15 +46,15 @@ import org.koin.dsl.module
+ 
+ val repositoryModule =
+     module {
+-        single<AccountRepository>(createdAtStart = true) {
++        single<AccountRepository> {
+             AccountRepositoryImpl(get(), get())
+         }
+ 
+-        single<AlbumRepository>(createdAtStart = true) {
++        single<AlbumRepository> {
+             AlbumRepositoryImpl(get(), get())
+         }
+ 
+-        single<ArtistRepository>(createdAtStart = true) {
++        single<ArtistRepository> {
+             ArtistRepositoryImpl(get(), get(), get())
+         }
+ 
+@@ -88,27 +88,27 @@ val repositoryModule =
+             HomeRepositoryImpl(get(), get())
+         }
+ 
+-        single<ImportRepository>(createdAtStart = true) {
++        single<ImportRepository> {
+             ImportRepositoryImpl(get())
+         }
+ 
+-        single<LocalPlaylistRepository>(createdAtStart = true) {
++        single<LocalPlaylistRepository> {
+             LocalPlaylistRepositoryImpl(get(), get())
+         }
+ 
+-        single<LyricsCanvasRepository>(createdAtStart = true) {
++        single<LyricsCanvasRepository> {
+             LyricsCanvasRepositoryImpl(get(), get(), get(), get(), get())
+         }
+ 
+-        single<PlaylistRepository>(createdAtStart = true) {
++        single<PlaylistRepository> {
+             PlaylistRepositoryImpl(get(), get(), get())
+         }
+ 
+-        single<PodcastRepository>(createdAtStart = true) {
++        single<PodcastRepository> {
+             PodcastRepositoryImpl(get(), get())
+         }
+ 
+-        single<SearchRepository>(createdAtStart = true) {
++        single<SearchRepository> {
+             SearchRepositoryImpl(get(), get())
+         }
+ 
+@@ -120,7 +120,7 @@ val repositoryModule =
+             StreamRepositoryImpl(get(), get())
+         }
+ 
+-        single<UpdateRepository>(createdAtStart = true) {
++        single<UpdateRepository> {
+             UpdateRepositoryImpl(get())
+         }
+ 
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
@@ -149,6 +300,43 @@ index 4a92fcc..7321237 100644
      sourceSets {
          commonMain {
              dependencies {
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
+index 07965f8..63e04b1 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
+@@ -172,6 +172,7 @@ class Ytmusic {
+             expectSuccess = true
+             install(CurlLogger) {
+                 logger = { Logger.d(TAG, it) }
++                redactHeaders = setOf("Authorization", "Cookie")
+             }
+             // Every rejected sign-in on this client lands in the app log in one place. Host and path
+             // only: the query and headers carry the cookie and the account.
+@@ -191,7 +192,7 @@ class Ytmusic {
+             }
+             install(Logging) {
+                 logger = io.ktor.client.plugins.logging.Logger.DEFAULT
+-                level = LogLevel.ALL
++                level = LogLevel.INFO
+             }
+             install(ContentNegotiation) {
+                 protobuf()
+@@ -255,7 +256,6 @@ class Ytmusic {
+                     val currentTime = now().toInstant(TimeZone.currentSystemDefault()).epochSeconds / 1000
+                     val sapisidCookie = cookieMap["SAPISID"] ?: cookieMap["__Secure-3PAPISID"]
+                     val sapisidHash = sha1("$currentTime $sapisidCookie https://music.youtube.com")
+-                    Logger.d(TAG, "SAPI SID Hash: SAPISIDHASH ${currentTime}_$sapisidHash")
+                     append("Authorization", "SAPISIDHASH ${currentTime}_$sapisidHash")
+                 }
+             }
+@@ -271,7 +271,6 @@ class Ytmusic {
+             val currentTime = now().toInstant(TimeZone.currentSystemDefault()).epochSeconds / 1000
+             val sapisidCookie = cookieMap["SAPISID"] ?: cookieMap["__Secure-3PAPISID"]
+             val sapisidHash = sha1("$currentTime $sapisidCookie https://music.youtube.com")
+-            Logger.d(TAG, "SAPI SID Hash: SAPISIDHASH ${currentTime}_$sapisidHash")
+             "SAPISIDHASH ${currentTime}_$sapisidHash"
+         }
+ 
 diff --git a/service/ktorExt/build.gradle.kts b/service/ktorExt/build.gradle.kts
 index 911ba33..f1ab4cf 100644
 --- a/service/ktorExt/build.gradle.kts

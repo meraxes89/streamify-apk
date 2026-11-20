@@ -634,23 +634,18 @@ fun SettingScreen(
     val hazeState =
         rememberHazeState()
 
-    val checkForUpdateSubtitle by remember {
-        derivedStateOf {
-            if (isCheckingUpdate) {
-                return@derivedStateOf runBlocking { getString(Res.string.checking) }
-            } else {
-                val lastCheckLong = lastCheckUpdate?.toLong() ?: 0L
-                return@derivedStateOf runBlocking {
-                    getString(
-                        Res.string.last_checked_at,
-                        DateTimeFormatter
-                            .ofPattern("yyyy-MM-dd HH:mm:ss")
-                            .withZone(ZoneId.systemDefault())
-                            .format(Instant.ofEpochMilli(lastCheckLong)),
-                    )
-                }
-            }
-        }
+    val checkingStr = stringResource(Res.string.checking)
+    val lastCheckLong = lastCheckUpdate?.toLong() ?: 0L
+    val lastCheckFormatted = remember(lastCheckLong) {
+        DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(lastCheckLong))
+    }
+    val checkForUpdateSubtitle = if (isCheckingUpdate) {
+        checkingStr
+    } else {
+        stringResource(Res.string.last_checked_at, lastCheckFormatted)
     }
     var showYouTubeAccountDialog by rememberSaveable {
         mutableStateOf(false)

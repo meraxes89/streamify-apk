@@ -67,6 +67,7 @@
     <application
         android:name=".SimpMusicApplication"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
         android:appCategory="audio"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
