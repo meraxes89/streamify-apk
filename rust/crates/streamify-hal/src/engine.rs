@@ -194,25 +194,31 @@ impl OutputEngine {
         }
         let host = cpal::default_host();
         let device = match route {
-            RouteOption::Named(name) => host
-                .output_devices()
-                .map_err(|e| e.to_string())?
+            RouteOption::Named(name) => {
+                let mut devices = host
+                    .output_devices()
+                    .map_err(|e| e.to_string())?;
+                devices
                 .find(|d| {
                     cpal::traits::DeviceTrait::description(d)
                         .map(|desc| desc.name() == name.as_str())
                         .unwrap_or(false)
                 })
-                .ok_or_else(|| format!("output device not found: {name}"))?,
+                .ok_or_else(|| format!("output device not found: {name}"))?
+            }
             _ => match resolve_auto_route() {
-                OutputRoute::Device(d) => host
-                    .output_devices()
-                    .map_err(|e| e.to_string())?
+                OutputRoute::Device(d) => {
+                    let mut devices = host
+                        .output_devices()
+                        .map_err(|e| e.to_string())?;
+                    devices
                     .find(|dev| {
                         cpal::traits::DeviceTrait::description(dev)
                             .map(|desc| desc.name() == d.name)
                             .unwrap_or(false)
                     })
-                    .ok_or_else(|| format!("auto route device vanished: {}", d.name))?,
+                    .ok_or_else(|| format!("auto route device vanished: {}", d.name))?
+                }
                 OutputRoute::NoEndpoint => {
                     return Err("no 48 kHz stereo output endpoint available".into())
                 }
@@ -225,8 +231,9 @@ impl OutputEngine {
         // Deterministic sizing (PipeWire latency hygiene): request
         // Fixed(1024) when the device range contains it, else the
         // device's default config (still 48 kHz stereo when supported).
-        let base = cpal::traits::DeviceTrait::supported_output_configs(&device)
-            .map_err(|e| e.to_string())?
+        let mut configs = cpal::traits::DeviceTrait::supported_output_configs(&device)
+            .map_err(|e| e.to_string())?;
+        let base = configs
             .find(|c| {
                 // cpal 0.18: SampleRate is a plain u32 alias.
                 c.channels() == CANONICAL_CHANNELS
@@ -271,7 +278,7 @@ impl OutputEngine {
         let err_dropped = Arc::clone(&self.dropped);
         device
             .build_output_stream::<f32, _, _>(
-                config,
+                (*config).clone(), // cpal takes the config by value
                 move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
                     // ── THE RT PATH (zero alloc / lock / syscall) ──
                     let frames = data.len() / CANONICAL_CHANNELS as usize;

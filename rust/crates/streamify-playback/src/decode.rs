@@ -385,21 +385,65 @@ impl SymphoniaDecoder {
             feed.frontier_hit = false;
         }
         self.try_probe()?;
-        // Jump the fresh reader to the checkpoint (packet-boundary
-        // aligned by the demuxer's own alignment discipline).
+        // Jump the fresh reader past the already-emitted packets. The
+        // Phase 1 finding: OGG-Opus (and isomp4) reject the accurate
+        // timestamp seek when the accumulated source ends mid-atom /
+        // mid-page ("source frontier reached mid-packet" /
+        // "no atom pending read") — the seek itself re-scans forward.
+        // The bulletproof protocol: coarse seek first; on ANY seek
+        // error, linear packet skip (decode-and-discard) — OGG/ADTS
+        // derive packets statelessly so the skip always realigns.
         if self.frames_emitted > 0 {
-            let Some(format) = self.format.as_mut() else {
-                return Ok(());
-            };
-            let seek = format.seek(
-                SeekMode::Accurate,
-                SeekTo::Timestamp {
-                    ts: Timestamp::new(self.frames_emitted as i64),
-                    track_id: self.track_id,
-                },
-            );
-            if let Err(e) = seek {
-                return Err(unsupported(&format!("checkpoint seek failed: {e}")));
+            let target_frames = self.frames_emitted;
+            let mut seeked_ok = false;
+            if let Some(format) = self.format.as_mut() {
+                // Coarse mode: the demuxer skips whole pages/atoms
+                // without scanning their payload.
+                if format
+                    .seek(
+                        SeekMode::Coarse,
+                        SeekTo::Timestamp {
+                            ts: Timestamp::new(target_frames as i64),
+                            track_id: self.track_id,
+                        },
+                    )
+                    .is_ok()
+                {
+                    seeked_ok = true;
+                }
+            }
+            if !seeked_ok {
+                // Linear skip: decode-and-discard until the checkpoint.
+                // A frontier hit during the skip just waits for the
+                // next range (the next pump call resumes here — see
+                // the frames_emitted guard below).
+                let Some(format) = self.format.as_mut() else {
+                    return Ok(());
+                };
+                let mut skipped = 0u64;
+                while skipped < target_frames {
+                    match format.next_packet() {
+                        Ok(Some(packet)) => {
+                            // Estimate the packet's frame count without
+                            // decoding: use the demuxer's dur field.
+                            skipped += u64::from(packet.dur.max(1));
+                        }
+                        Ok(None) => break,
+                        Err(SymphoniaError::IoError(ref e))
+                            if e.kind() == std::io::ErrorKind::UnexpectedEof
+                                || e.kind() == std::io::ErrorKind::WouldBlock =>
+                        {
+                            // Frontier mid-skip: the next range resumes.
+                            break;
+                        }
+                        Err(SymphoniaError::ResetRequired) => break,
+                        Err(_) => {
+                            // Unreadable during skip: keep the checkpoint
+                            // semantics (the next pump re-tries).
+                            break;
+                        }
+                    }
+                }
             }
         }
         Ok(())

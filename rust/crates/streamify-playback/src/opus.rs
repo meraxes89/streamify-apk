@@ -397,23 +397,43 @@ impl OpusTrackDecoder {
 
 impl TrackDecoder for OpusTrackDecoder {
     fn push_range(&mut self, bytes: &[u8], out: &mut FrameBuf) -> Result<(), EngineError> {
-        // Framing detection on the very first bytes.
+        // Framing detection buffers until BOTH magics are decidable
+        // (OggS needs 4 bytes, OpusHead needs 8; a chunked feed may
+        // deliver fewer — the 7-byte chunks of the raw-framing test).
         if self.framing.is_none() {
-            if bytes.len() >= 4 && &bytes[0..4] == b"OggS" {
+            self.pending.extend_from_slice(bytes);
+            if self.pending.len() >= 8 {
+                let head = self.pending.clone();
+                if &head[0..4] == b"OggS" {
+                    self.framing = Some(Framing::Ogg);
+                    // The Ogg demuxer rides symphonia; the Opus CODEC
+                    // rides symphonia-opus at Tier::Fallback in BOTH
+                    // tiers (libopus has no Ogg demuxer; tier divergence
+                    // is exercised on the RAW framing, CI-pinned).
+                    self.ogg_session =
+                        Some(crate::decode::SymphoniaDecoder::with_opus_fallback()?);
+                } else if is_raw_opus_head_framing(&head) {
+                    self.framing = Some(Framing::RawHead);
+                } else {
+                    return Err(EngineError::Audio {
+                        kind: AudioErrorKind::FormatUnsupported,
+                        device_id: Some(
+                            "not Opus (neither OggS nor OpusHead framing)".to_string(),
+                        ),
+                    });
+                }
+                // Hand the buffered prefix to the chosen path below by
+                // swapping into `bytes`'s place: the match below reads
+                // `self.pending` for RawHead; for Ogg the session needs
+                // the bytes too — feed them through the pending buffer.
+            } else if self.pending.len() >= 4 && &self.pending[0..4] == b"OggS" {
+                // 4-7 bytes of OggS: enough to commit to Ogg framing.
                 self.framing = Some(Framing::Ogg);
-                // The Ogg demuxer rides symphonia; the Opus CODEC rides
-                // symphonia-opus at Tier::Fallback in BOTH tiers (the
-                // Ogg framing has no libopus involvement — libopus has
-                // no Ogg demuxer; tier divergence is exercised on the
-                // RAW framing, pinned by CI on shared fixtures).
                 self.ogg_session = Some(crate::decode::SymphoniaDecoder::with_opus_fallback()?);
-            } else if is_raw_opus_head_framing(bytes) {
+            } else if self.pending.len() >= 19 && is_raw_opus_head_framing(&self.pending) {
                 self.framing = Some(Framing::RawHead);
             } else {
-                return Err(EngineError::Audio {
-                    kind: AudioErrorKind::FormatUnsupported,
-                    device_id: Some("not Opus (neither OggS nor OpusHead framing)".to_string()),
-                });
+                return Ok(()); // wait for enough magic bytes
             }
         }
         match self.framing.unwrap() {
@@ -425,6 +445,11 @@ impl TrackDecoder for OpusTrackDecoder {
                 // tier divergence is exercised on the RAW framing both
                 // ways and pinned by CI on shared fixtures).
                 let session = self.ogg_session.as_mut().unwrap();
+                // The detection buffer (if any) rides FIRST.
+                if !self.pending.is_empty() {
+                    let buffered = std::mem::take(&mut self.pending);
+                    session.push_range(&buffered, out)?;
+                }
                 session.push_range(bytes, out)?;
                 if self.geometry.is_none() {
                     if let Some(g) = session.geometry() {

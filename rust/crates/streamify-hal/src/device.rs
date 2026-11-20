@@ -59,7 +59,7 @@ pub fn enumerate_outputs() -> Vec<OutputDevice> {
                 continue;
             };
             let supports_48k_stereo = cpal::traits::DeviceTrait::supported_output_configs(&device)
-                .map(|cfgs| {
+                .map(|mut cfgs| {
                     // cpal 0.18: SampleRate is a plain u32 alias.
                     cfgs.any(|c| {
                         c.channels() == 2
