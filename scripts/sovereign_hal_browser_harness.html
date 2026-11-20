@@ -273,17 +273,24 @@ async function runLiveMode(ctx, mode) {
       });
       node.port.onmessage = (e) => { if (e.data.done) resolve(e.data); };
       let frame = 0;
+      // RT lead discipline (the smoke binary's): post the FIRST ~500 ms of
+      // audio before the render loop can drain it, then top up in batches.
+      // A naive 25ms main-thread cadence cannot reliably outpace the
+      // worklet's 2.67ms pull cadence — scheduler jitter starves the pull
+      // (the 8-underrun failure mode observed on the plain-origin leg).
+      const LEAD_FRAMES = Math.floor(RATE * 0.5);
+      const BATCH_FRAMES = Math.floor(RATE * 0.25);
       const produce = () => {
-        const chunks = [];
-        while (frame < TOTAL_FRAMES && chunks.length < 4) {
-          const take = Math.min(2048, TOTAL_FRAMES - frame);
-          chunks.push(toneChunk(frame, take));
+        const target = Math.min(TOTAL_FRAMES, frame + (frame === 0 ? LEAD_FRAMES : BATCH_FRAMES));
+        while (frame < target) {
+          const take = Math.min(2048, target - frame);
+          const chunk = toneChunk(frame, take);
+          node.port.postMessage({ chunks: [chunk] }, [chunk.buffer]);
           frame += take;
         }
-        if (chunks.length) node.port.postMessage({ chunks }, chunks.map((c) => c.buffer));
         if (frame < TOTAL_FRAMES) setTimeout(produce, 25);
       };
-      produce();  // first batch immediately: chunks queued before the first pulls
+      produce();  // burst-fill the lead window before the first pulls
     }
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 16384;
