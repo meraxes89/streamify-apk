@@ -90,14 +90,33 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/feat/sovereign-hal' }}
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      # nextest (process-per-test) is the house engine-lane convention
+      # (rust/.config/nextest.toml, GOV-04): the zero-allocation proofs
+      # register #[global_allocator] counters per PROCESS — under plain
+      # `cargo test`'s thread pool a sibling test's allocations can land
+      # in the counting window (the write_edge_is_zero_allocation flake),
+      # while nextest isolates every binary AND every test.
       - name: The ring ABI conformance suite (Rust)
-        run: cargo test --manifest-path rust/Cargo.toml -p streamify-playback --test test_ring_abi_conformance -- --nocapture
+        run: |
+          cargo nextest run \
+            --manifest-path rust/Cargo.toml \
+            --config-file rust/.config/nextest.toml \
+            --profile ci \
+            -p streamify-playback --test test_ring_abi_conformance
 
       - name: The existing ring/producer suites (regression)
-        run: cargo test --manifest-path rust/Cargo.toml -p streamify-playback --tests
+        run: |
+          cargo nextest run \
+            --manifest-path rust/Cargo.toml \
+            --config-file rust/.config/nextest.toml \
+            --profile ci \
+            -p streamify-playback --tests
 
       - name: Compile the loopback smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke
 
       - name: Smoke run — the producer's own verdict (host stand-in consumer)
         run: |
@@ -243,7 +262,7 @@ jobs:
           workspaces: "rust -> rust/target"
           shared-key: sovereign-hal-loopback-win
       - name: Build the smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke --release
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke --release
       # Phase 0 scaffold: WASAPI loopback capture needs the IAudioCaptureClient
       # harness (Phase 1's wasapi_pull_adapter bracket). The scaffold proves
       # the binary runs and self-verifies its ring accounting; the OS capture
@@ -269,7 +288,7 @@ jobs:
           workspaces: "rust -> rust/target"
           shared-key: sovereign-hal-loopback-mac
       - name: Build the smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke --release
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke --release
       - name: Check for BlackHole-2ch (the loopback driver)
         id: blackhole
         run: |
@@ -301,7 +320,7 @@ jobs:
           workspaces: "rust -> rust/target"
           shared-key: sovereign-hal-loopback-linux
       - name: Build the smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign-loopback-smoke --release
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke --release
       - name: Install PipeWire + pulseaudio-utils (the null-sink monitor path)
         run: |
           sudo apt-get update
