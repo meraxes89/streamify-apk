@@ -206,7 +206,12 @@ impl OutputEngine {
                 devices
                 .find(|d| {
                     cpal::traits::DeviceTrait::description(d)
-                        .map(|desc| desc.name() == name.as_str())
+                        .map(|desc| {
+                            // Exact first; substring fallback (the CI's
+                            // virtual device names may carry suffixes).
+                            let n = desc.name();
+                            n == name.as_str() || n.contains(name.as_str())
+                        })
                         .unwrap_or(false)
                 })
                 .ok_or_else(|| format!("output device not found: {name}"))?

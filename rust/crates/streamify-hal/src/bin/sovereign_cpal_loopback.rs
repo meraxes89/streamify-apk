@@ -187,6 +187,13 @@ fn run() -> i32 {
             })
             .unwrap_or_else(|| "<none>".into());
         eprintln!("cpal-host {:?}: default_output = {def}", id);
+        if let Ok(mut devices) = h.output_devices() {
+            for d in devices.by_ref() {
+                if let Ok(desc) = cpal::traits::DeviceTrait::description(&d) {
+                    eprintln!("  device: {:?}", desc.name());
+                }
+            }
+        }
     }
 
     let (mut engine, events) = OutputEngine::new(16);
