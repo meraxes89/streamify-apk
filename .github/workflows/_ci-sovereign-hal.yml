@@ -412,7 +412,7 @@ jobs:
       - name: Install BlackHole-2ch + switchaudio-osx + coreutils
         run: |
           brew install --cask blackhole-2ch
-          brew install switchaudio-osx || true
+          brew install switchaudio-osx sox || true
           # Route system output to BlackHole 2ch (the loopback driver).
           SwitchAudioSource -t output -s "BlackHole 2ch" || true
           # Give CoreAudio a beat to re-route.
@@ -420,12 +420,14 @@ jobs:
       - name: "Play through cpal CoreAudio + record BlackHole 2ch"
         run: |
           set +e
+          # sox (and its 9 deps) installed in the earlier step — the
+          # capture must be attached BEFORE the player (virtual devices
+          # only clock with a reader).
           BIN=rust/target/release/sovereign_cpal_loopback
           # The CAPTURE starts FIRST: a virtual loopback device only
           # clocks when a reader is attached (BlackHole delivers no
           # pull until the input side opens — the round-18 finding:
           # the ring filled to capacity and the callbacks never ran).
-          command -v sox >/dev/null || brew install sox
           ( sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log ) &
           SOX_PID=$!
           sleep 2
