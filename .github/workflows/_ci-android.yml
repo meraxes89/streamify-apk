@@ -196,11 +196,15 @@ jobs:
       # Hard verification: the universal APK must carry BOTH beta ABIs.
       - name: Verify both architectures exist in the final APK
         run: |
-          APK=$(find androidApp/build/outputs/apk -name "*.apk" | head -n 1)
+          APK=$(find androidApp/build/outputs/apk -name "*universal*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            APK=$(find androidApp/build/outputs/apk -name "*.apk" | head -n 1)
+          fi
           if [ -z "$APK" ]; then
             echo "FATAL: no APK produced!" >&2
             exit 1
           fi
+          echo "Inspecting universal APK: $APK"
           for ABI in arm64-v8a x86_64; do
             unzip -l "$APK" | grep -q "lib/$ABI/" || { echo "FATAL: missing $ABI in $APK" >&2; exit 1; }
           done
@@ -234,7 +238,13 @@ jobs:
       - name: Stage release APK as Streamify-v<tag>.apk
         if: inputs.release_mode
         run: |
-          APK=$(find androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
+          APK=$(find androidApp/build/outputs/apk/release -name "*universal*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            APK=$(find androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
+          fi
+          if [ -z "$APK" ]; then
+            APK=$(find androidApp/build/outputs/apk -name "*universal*.apk" | head -n 1)
+          fi
           if [ -z "$APK" ]; then
             APK=$(find androidApp/build/outputs/apk -name "*.apk" | head -n 1)
           fi

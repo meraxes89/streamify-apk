@@ -70,6 +70,14 @@ object StreamifyDefaultsInitializer {
                 Logger.d("Streamify: Enabling Apple Music animated artwork by default", TAG)
                 dataStoreManager.setAMAnimatedArtwork(true)
             }
+
+            // 6. Default region & charts: India (IN)
+            val currentLoc = dataStoreManager.location.first()
+            if (currentLoc.isEmpty() || currentLoc == "US" || currentLoc == "VN") {
+                Logger.d("Streamify: Setting default region and charts to India (IN)", TAG)
+                dataStoreManager.setLocation("IN")
+                dataStoreManager.setChartKey("IN")
+            }
         } catch (e: Exception) {
             Logger.e("Streamify: Failed to initialize defaults: ${e.message}", TAG)
         }

@@ -86,6 +86,7 @@ description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgut
 regexTarget = "match"
 regexes = [
     '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
+    '''AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8''',
     '''O43z0dpjhgX20SCx4KAo''',
     '''AIzaSyC1xlRQImGslL28Q8HqTqD_o-w-r2Q_Z4''',
     '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+''',

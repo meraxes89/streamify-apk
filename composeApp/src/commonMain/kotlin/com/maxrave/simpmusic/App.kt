@@ -71,6 +71,7 @@ import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.expect.Orientation
 import com.maxrave.simpmusic.expect.currentOrientation
 import com.maxrave.simpmusic.expect.openUrl
+import com.maxrave.simpmusic.expect.ui.BindNavigationBackHandler
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
 import com.maxrave.simpmusic.extension.copy
@@ -158,6 +159,7 @@ fun App(
 ) {
     val windowSize = currentWindowAdaptiveInfo().windowSizeClass
     val navController = rememberNavController()
+    BindNavigationBackHandler(navController)
     val isDesktopShell = getPlatform() == Platform.Desktop
 
     val sleepTimerState by viewModel.sleepTimerState.collectAsStateWithLifecycle()

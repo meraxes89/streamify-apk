@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.maxrave.common.Config.MAIN_PLAYER
+import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.expect.ui.MediaPlayerViewWithSubtitle
 import com.maxrave.simpmusic.extension.LeftToRight
 import com.maxrave.simpmusic.extension.artworkScrimBrush
@@ -136,7 +138,7 @@ fun FullscreenPlayer(
         mutableFloatStateOf(0f)
     }
     var showHideFullscreenOverlay by rememberSaveable {
-        mutableStateOf(false)
+        mutableStateOf(true)
     }
 
     LaunchedEffect(key1 = timelineState, key2 = isSliding) {
@@ -151,8 +153,8 @@ fun FullscreenPlayer(
     }
 
     LaunchedEffect(key1 = showHideFullscreenOverlay, key2 = isSliding) {
-        if (showHideFullscreenOverlay && !isSliding) {
-            delay(3000)
+        if (showHideFullscreenOverlay && !isSliding && getPlatform() != Platform.Web && getPlatform() != Platform.Desktop) {
+            delay(4000)
             showHideFullscreenOverlay = false
         }
     }

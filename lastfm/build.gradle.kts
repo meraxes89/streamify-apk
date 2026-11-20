@@ -1,4 +1,7 @@
+@file:OptIn(ExperimentalWasmDsl::class)
+
 import com.android.build.gradle.internal.tasks.CompileArtProfileTask
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -28,6 +31,10 @@ kotlin {
     }
 
     jvm()
+
+    wasmJs {
+        browser()
+    }
 
     sourceSets {
         commonMain {

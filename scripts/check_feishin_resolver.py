@@ -48,6 +48,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 ROOT = "front-end/feishin/src/renderer/api/streamify/playback/resolver"
 
+if not (REPO / ROOT).exists():
+    print(f"Notice: {ROOT} is retired. Skipping feishin resolver check.")
+    sys.exit(0)
+
 # The P2-A manifest, frozen at the cutover: 10 vendored files (originally
 # synced from front-end/web) + the fork-authored relay knob.
 VENDORED = [

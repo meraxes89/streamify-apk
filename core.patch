@@ -1,0 +1,235 @@
+diff --git a/common/build.gradle.kts b/common/build.gradle.kts
+index 157c0d8..1c04c59 100644
+--- a/common/build.gradle.kts
++++ b/common/build.gradle.kts
+@@ -1,4 +1,7 @@
++@file:OptIn(ExperimentalWasmDsl::class)
++
+ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
++import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+ 
+ plugins {
+     alias(libs.plugins.kotlin.multiplatform)
+@@ -41,6 +44,10 @@ kotlin {
+     jvm {
+     }
+ 
++    wasmJs {
++        browser()
++    }
++
+     // Source set declarations.
+     // Declaring a target automatically creates a source set with the same name. By default, the
+     // Kotlin Gradle Plugin creates additional source sets that depend on each other, since it is
+@@ -87,9 +94,21 @@ kotlin {
+             dependencies {
+             }
+         }
++
++        wasmJsMain {
++            dependencies {
++                implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.6.0")
++            }
++        }
+     }
+ }
+ 
+ tasks.withType<CompileArtProfileTask> {
+     enabled = false
++}
++
++configurations.matching { it.name.contains("wasmJs", ignoreCase = true) }.configureEach {
++    resolutionStrategy.dependencySubstitution {
++        substitute(module("co.touchlab:kermit-io")).using(project(":room-wasm-stub"))
++    }
+ }
+\ No newline at end of file
+diff --git a/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
+new file mode 100644
+index 0000000..09e84b4
+--- /dev/null
++++ b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
+@@ -0,0 +1 @@
++package com.maxrave.common
+diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
+index 9d59c49..1ca8f91 100644
+--- a/domain/build.gradle.kts
++++ b/domain/build.gradle.kts
+@@ -1,4 +1,7 @@
++@file:OptIn(ExperimentalWasmDsl::class)
++
+ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
++import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+ 
+ plugins {
+     alias(libs.plugins.kotlin.multiplatform)
+@@ -33,6 +36,10 @@ kotlin {
+     jvm {
+     }
+ 
++    wasmJs {
++        browser()
++    }
++
+     sourceSets {
+         commonMain {
+             dependencies {
+@@ -78,4 +85,10 @@ kotlin {
+ 
+ tasks.withType<CompileArtProfileTask> {
+     enabled = false
++}
++
++configurations.matching { it.name.contains("wasmJs", ignoreCase = true) }.configureEach {
++    resolutionStrategy.dependencySubstitution {
++        substitute(module("androidx.room:room-runtime")).using(project(":room-wasm-stub"))
++    }
+ }
+\ No newline at end of file
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
+index 54db97f..cafc1c3 100644
+--- a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
+@@ -105,7 +105,7 @@ suspend fun Flow<NoResponseResource>.collectLatestNoResponseResource(
+ 
+ fun wrapMessageResource(
+     successMessage: String,
+-    dispatcher: CoroutineDispatcher = Dispatchers.IO,
++    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+     block: suspend () -> Unit,
+ ): Flow<LocalResource<String>> =
+     flow {
+@@ -119,7 +119,7 @@ fun wrapMessageResource(
+     }.flowOn(dispatcher)
+ 
+ fun <T> wrapDataResource(
+-    dispatcher: CoroutineDispatcher = Dispatchers.IO,
++    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+     block: suspend () -> T,
+ ): Flow<LocalResource<T>> =
+     flow {
+@@ -134,7 +134,7 @@ fun <T> wrapDataResource(
+ 
+ // For one time emit
+ fun <T> wrapResultResource(
+-    dispatcher: CoroutineDispatcher = Dispatchers.IO,
++    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+     block: suspend () -> Result<T>,
+ ): Flow<LocalResource<T>> =
+     flow {
+@@ -149,7 +149,7 @@ fun <T> wrapResultResource(
+     }.flowOn(dispatcher)
+ 
+ suspend fun forceNoReturn(
+-    dispatcher: CoroutineDispatcher = Dispatchers.IO,
++    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+     block: suspend () -> Unit,
+ ) = withContext(dispatcher) {
+     block.invoke()
+diff --git a/service/discord/build.gradle.kts b/service/discord/build.gradle.kts
+index 4a92fcc..7321237 100644
+--- a/service/discord/build.gradle.kts
++++ b/service/discord/build.gradle.kts
+@@ -1,4 +1,7 @@
++@file:OptIn(ExperimentalWasmDsl::class)
++
+ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
++import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+ 
+ plugins {
+     alias(libs.plugins.kotlin.multiplatform)
+@@ -31,6 +34,10 @@ kotlin {
+     jvm {
+     }
+ 
++    wasmJs {
++        browser()
++    }
++
+     sourceSets {
+         commonMain {
+             dependencies {
+diff --git a/service/ktorExt/build.gradle.kts b/service/ktorExt/build.gradle.kts
+index 911ba33..f1ab4cf 100644
+--- a/service/ktorExt/build.gradle.kts
++++ b/service/ktorExt/build.gradle.kts
+@@ -1,4 +1,7 @@
++@file:OptIn(ExperimentalWasmDsl::class)
++
+ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
++import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+ 
+ plugins {
+     alias(libs.plugins.kotlin.multiplatform)
+@@ -42,6 +45,10 @@ kotlin {
+ 
+     jvm()
+ 
++    wasmJs {
++        browser()
++    }
++
+     // Source set declarations.
+     // Declaring a target automatically creates a source set with the same name. By default, the
+     // Kotlin Gradle Plugin creates additional source sets that depend on each other, since it is
+@@ -81,6 +88,12 @@ kotlin {
+             }
+         }
+ 
++        wasmJsMain {
++            dependencies {
++                implementation(libs.ktor.client.js)
++            }
++        }
++
+         iosMain {
+             dependencies {
+                 // Add iOS-specific dependencies here. This a source set created by Kotlin Gradle
+diff --git a/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/Engine.wasmJs.kt b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/Engine.wasmJs.kt
+new file mode 100644
+index 0000000..dff7127
+--- /dev/null
++++ b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/Engine.wasmJs.kt
+@@ -0,0 +1,7 @@
++package com.maxrave.ktorext
++
++import io.ktor.client.engine.HttpClientEngineConfig
++import io.ktor.client.engine.HttpClientEngineFactory
++import io.ktor.client.engine.js.Js
++
++actual fun getEngine(): HttpClientEngineFactory<HttpClientEngineConfig> = Js
+diff --git a/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/crypto/Hmac.wasmJs.kt b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/crypto/Hmac.wasmJs.kt
+new file mode 100644
+index 0000000..2b28cb9
+--- /dev/null
++++ b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/crypto/Hmac.wasmJs.kt
+@@ -0,0 +1,8 @@
++package com.maxrave.ktorext.crypto
++
++actual class Hmac actual constructor(algorithm: String, secretKey: String) {
++    actual fun getMacTimestampPair(uri: String): Pair<String, String> = Pair("", "")
++    actual fun generateHmac(data: String): String = ""
++    actual fun validateHmac(data: String, hmac: String): Boolean = true
++    actual fun isValidTimestamp(timestamp: String): Boolean = true
++}
+diff --git a/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt
+new file mode 100644
+index 0000000..41ade74
+--- /dev/null
++++ b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt
+@@ -0,0 +1,15 @@
++package com.maxrave.ktorext.encoding
++
++import io.ktor.util.ContentEncoder
++import io.ktor.utils.io.ByteReadChannel
++import io.ktor.utils.io.ByteWriteChannel
++import kotlin.coroutines.CoroutineContext
++
++object BrotliEncoder : ContentEncoder {
++    override val name: String = "br"
++    override fun encode(source: ByteReadChannel, coroutineContext: CoroutineContext): ByteReadChannel = source
++    override fun encode(source: ByteWriteChannel, coroutineContext: CoroutineContext): ByteWriteChannel = source
++    override fun decode(source: ByteReadChannel, coroutineContext: CoroutineContext): ByteReadChannel = source
++}
++
++actual fun createBrotliEncoder(): ContentEncoder = BrotliEncoder
