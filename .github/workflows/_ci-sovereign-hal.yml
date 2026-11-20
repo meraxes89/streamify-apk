@@ -371,18 +371,21 @@ jobs:
           # hardware at all (Win32_SoundDevice empty). When absent, the
           # leg reports PENDING (annotated, green) — the compile + COM
           # harness already proved the chain builds; nothing can play.
-          $sound = Get-CimInstance -Namespace root/cimv2 -ClassName Win32_SoundDevice -ErrorAction SilentlyContinue
-          $hasEndpoint = $null -ne $sound -and @($sound).Count -gt 0
-          if (-not $hasEndpoint) {
-            # Second opinion: the cpal host itself (the binary prints its
-            # own no-endpoint verdict if the CIM probe lied).
-            $probe = Start-Process -FilePath "rust\target\release\sovereign_cpal_loopback.exe" -ArgumentList "--any-device","--file","fixtures/audio/opus_dual_tone_48k.raw_opus","--seconds","1","--json" -PassThru -RedirectStandardOutput "probe.json" -RedirectStandardError "probe.log" -Wait -PassThru
-            $pj = Get-Content probe.json -ErrorAction SilentlyContinue | ConvertFrom-Json
-            if ($pj.verdict -eq "no-endpoint") {
-              Write-Output "::warning::WASAPI loopback PENDING: no audio endpoint on this runner image (hardware gap, not a regression)"
-              exit 0
-            }
+          # The single source of truth: the player binary itself. A
+          # no-endpoint verdict means the runner image exposes no audio
+          # endpoint (probed repeatedly across rounds: Win32_SoundDevice
+          # is empty on the hosted images) — the leg reports PENDING
+          # (annotated, green). Any other verdict continues to the real
+          # loopback below.
+          & "rust\target\release\sovereign_cpal_loopback.exe" --any-device --file "fixtures/audio/opus_dual_tone_48k.raw_opus" --seconds 1 --json > probe.json 2> probe.log
+          $probeExit = $LASTEXITCODE
+          $pj = Get-Content probe.json -ErrorAction SilentlyContinue | ConvertFrom-Json
+          if ($pj.verdict -eq "no-endpoint") {
+            Write-Output "::warning::WASAPI loopback PENDING: no audio endpoint on this runner image (hardware gap, not a regression)"
+            Get-Content probe.log -ErrorAction SilentlyContinue | Select-Object -Last 5
+            exit 0
           }
+          Write-Output "probe exit=$probeExit verdict=$($pj.verdict) — continuing to the real loopback"
           $bin = "rust\target\release\sovereign_cpal_loopback.exe"
           # Start the player (cpal WASAPI) in the background.
           $player = Start-Process -FilePath $bin -ArgumentList "--any-device","--file","fixtures/audio/opus_dual_tone_48k.raw_opus","--seconds","6","--json" -PassThru -RedirectStandardOutput "player.json" -RedirectStandardError "player.log"

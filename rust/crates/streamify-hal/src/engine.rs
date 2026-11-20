@@ -104,6 +104,9 @@ pub(crate) struct EngineRt {
     frames_counter: AtomicU64,
     first_callback_done: AtomicBool,
     callback_count: AtomicU64,
+    exit_zero_frames: AtomicU64,
+    exit_stop: AtomicU64,
+    exit_full_path: AtomicU64,
     stop: StopFlag,
 }
 
@@ -138,6 +141,9 @@ impl OutputEngine {
                 frames_counter: AtomicU64::new(0),
             first_callback_done: AtomicBool::new(false),
             callback_count: AtomicU64::new(0),
+            exit_zero_frames: AtomicU64::new(0),
+            exit_stop: AtomicU64::new(0),
+            exit_full_path: AtomicU64::new(0),
                 stop: StopFlag::default(),
             }),
             stream: None,
@@ -157,6 +163,15 @@ impl OutputEngine {
     /// prints).
     /// Total output-callback invocations (diagnostics: distinguishes
     /// 'the host stopped calling' from 'the clock publish failed').
+    /// Callback exit-path diagnostics (RT atomics, main-thread reads).
+    pub fn callback_exits(&self) -> (u64, u64, u64) {
+        (
+            self.rt.exit_zero_frames.load(std::sync::atomic::Ordering::Relaxed),
+            self.rt.exit_stop.load(std::sync::atomic::Ordering::Relaxed),
+            self.rt.exit_full_path.load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
+
     pub fn callback_count(&self) -> u64 {
         self.rt
             .callback_count
@@ -187,6 +202,29 @@ impl OutputEngine {
     /// message (the route layer's cue to fall back to libmpv).
     pub fn start(&mut self, route: &RouteOption) -> Result<(), String> {
         self.stop_stream();
+        // Re-arm the RT state for the NEW stream. stop_stream set the
+        // stop flag to drain the OLD stream's callbacks; the flag lives
+        // in the engine-lifetime EngineRt, so without this clear every
+        // callback of the new stream would zero-fill forever (the
+        // round-38/39 CI signature: callbacks fire, ring never drains,
+        // clock never publishes). The per-stream diagnostics reset with
+        // it (they describe THIS stream, not the engine).
+        self.rt.stop.clear();
+        self.rt
+            .first_callback_done
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        self.rt
+            .callback_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.rt
+            .exit_zero_frames
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.rt
+            .exit_stop
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.rt
+            .exit_full_path
+            .store(0, std::sync::atomic::Ordering::Relaxed);
         // Exclusive bracket first (Windows x86_64 + feature).
         #[cfg(all(feature = "wasapi_exclusive", target_os = "windows", target_arch = "x86_64"))]
         if matches!(route, RouteOption::WasapiExclusive) {
@@ -349,12 +387,15 @@ impl OutputEngine {
                     let _ = info;
                     let frames = data.len() / CANONICAL_CHANNELS as usize;
                     if frames == 0 {
+                        rt.exit_zero_frames.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         return;
                     }
                     if rt.stop.get() {
+                        rt.exit_stop.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         data.fill(0.0);
                         return;
                     }
+                    rt.exit_full_path.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     // 1. The frozen C edge (SPSC consumer side).
                     let served = unsafe {
                         ring_export::streamify_ring_read_f32(data.as_mut_ptr(), frames)

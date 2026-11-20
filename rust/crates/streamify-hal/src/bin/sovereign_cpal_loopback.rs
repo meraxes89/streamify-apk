@@ -251,8 +251,9 @@ fn run() -> i32 {
     let events = events.drain();
     let underruns = stats.underrun_events + engine.underrun_frames();
     // 5. The verdict.
+    let (ex_z, ex_s, ex_f) = engine.callback_exits();
     eprintln!(
-        "engine: callback_count={} clock_samples={}",
+        "engine: callback_count={} clock_samples={} exits(zero_frames/stop/full)={ex_z}/{ex_s}/{ex_f}",
         engine.callback_count(),
         clock_samples.len()
     );

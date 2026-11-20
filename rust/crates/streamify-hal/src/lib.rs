@@ -136,6 +136,12 @@ impl StopFlag {
     pub fn get(&self) -> bool {
         self.0.load(Ordering::Acquire)
     }
+    /// Arm the flag for a fresh stream (the engine's `start` after a
+    /// `stop_stream`: the previous stop must not poison the new stream).
+    #[inline]
+    pub fn clear(&self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 /// Verify the frozen ring edge is installed (the engine's precondition).
