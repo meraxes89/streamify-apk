@@ -421,18 +421,21 @@ jobs:
         run: |
           set +e
           BIN=rust/target/release/sovereign_cpal_loopback
-          # The player: Opus fixture through the real chain -> cpal CoreAudio.
-          $BIN --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
-          PLAYER=$!
-          sleep 2
-          # The capture: BlackHole 2ch's INPUT records everything the
-          # system plays (the loopback). sox/ffmpeg via brew:
+          # The CAPTURE starts FIRST: a virtual loopback device only
+          # clocks when a reader is attached (BlackHole delivers no
+          # pull until the input side opens — the round-18 finding:
+          # the ring filled to capacity and the callbacks never ran).
           command -v sox >/dev/null || brew install sox
-          # macOS has no `timeout`: a bash-native watchdog (kill sox
-          # after 5 s of recording — its SIGTERM finalizes the WAV).
           ( sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log ) &
           SOX_PID=$!
-          sleep 5
+          sleep 2
+          # The player: Opus fixture through the real chain -> cpal
+          # CoreAudio, into the now-clocked BlackHole output.
+          $BIN --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
+          PLAYER=$!
+          # Record ~4 s of the 6 s playback, then stop sox (SIGTERM
+          # finalizes the WAV header).
+          sleep 4
           kill -TERM $SOX_PID 2>/dev/null
           wait $SOX_PID 2>/dev/null
           if [ ! -s capture.wav ]; then
@@ -488,7 +491,7 @@ jobs:
           # ONE dbus session for daemons + player + capture (the
           # daemons must share the session with pactl/pw-cat). The
           # python WAV conversion runs AFTER the session (plain file).
-          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; for i in 1 2 3 4 5 6 7 8 9 10; do pactl info >/dev/null 2>&1 && pactl list short sinks 2>/dev/null | grep -q ci_sink && break; sleep 1; done; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; sleep 2; timeout 5 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; exit $PC'
+          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; for i in 1 2 3 4 5 6 7 8 9 10; do pactl info >/dev/null 2>&1 && pactl list short sinks 2>/dev/null | grep -q ci_sink && break; sleep 1; done; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; timeout 8 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log & CAP=$!; sleep 2; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; wait "$CAP" 2>/dev/null; [ -s capture.raw ] || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; exit $PC'
           if dbus-run-session -- bash -c "$PW_PLAY"; then
             echo "playback session OK"
           else
