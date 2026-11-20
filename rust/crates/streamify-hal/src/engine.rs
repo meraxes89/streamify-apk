@@ -102,6 +102,7 @@ pub(crate) struct EngineRt {
     /// Frames the callback has been asked to render since stream start
     /// (the presented-frame counter feeding the DAC clock).
     frames_counter: AtomicU64,
+    first_callback_done: AtomicBool,
     stop: StopFlag,
 }
 
@@ -134,6 +135,7 @@ impl OutputEngine {
                 anchor: HostClockAnchor::capture(),
                 underrun_frames: AtomicU64::new(0),
                 frames_counter: AtomicU64::new(0),
+            first_callback_done: AtomicBool::new(false),
                 stop: StopFlag::default(),
             }),
             stream: None,
@@ -318,6 +320,16 @@ impl OutputEngine {
                 (*config).clone(), // cpal takes the config by value
                 move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
                     // ── THE RT PATH (zero alloc / lock / syscall) ──
+                    // First-callback diagnostic (one relaxed atomic load;
+                    // the eprintln runs ONCE per stream, never in the
+                    // steady-state RT path).
+                    if !rt.first_callback_done.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!(
+                            "engine: first output callback ({} frames, host_ns {})",
+                            data.len() / CANONICAL_CHANNELS as usize,
+                            info.timestamp().playback.as_nanos()
+                        );
+                    }
                     let frames = data.len() / CANONICAL_CHANNELS as usize;
                     if frames == 0 {
                         return;
