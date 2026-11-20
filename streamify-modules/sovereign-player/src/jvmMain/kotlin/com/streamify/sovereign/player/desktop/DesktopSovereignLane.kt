@@ -4,7 +4,7 @@ import com.streamify.sovereign.player.SovereignHalProbe
 import com.streamify.sovereign.player.SovereignPlaybackLane
 import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
 import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
-import com.maxrave.domain.mediaservice.player.PlayerEvent
+import com.maxrave.domain.mediaservice.handler.PlayerEvent
 
 /**
  * Sovereign HAL Phase 1 (D4): the DESKTOP probe actual.

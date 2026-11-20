@@ -70,6 +70,9 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
     const opts = (options && options.processorOptions) || {};
     this.mode = opts.mode;                 // 'sab' | 'port'
     this.underruns = 0; this.pulls = 0; this.framesServed = 0;
+    this.sawData = false;                  // the ring's semantics: starvation
+                                           // before the FIRST data is startup
+                                           // latency, not an underrun
     this.target = opts.targetFrames || Infinity;
     this.frame = new Float32Array(${QUANTUM} * ${CHANNELS});  // interleaved staging
     if (this.mode === 'sab') {
@@ -104,7 +107,7 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
       const head = Atomics.load(this.head, 0);
       let tail = this.tail[0];
       const have = (head - tail) >>> 0;
-      if (have === 0) { this.underruns++; return false; }
+      if (have === 0) { if (this.sawData) this.underruns++; return false; }
       const take = Math.min(${QUANTUM}, have);
       const startIdx = ((tail & this.mask) * ${CHANNELS}) >>> 0;
       for (let i = 0; i < take * ${CHANNELS}; i++) {
@@ -113,7 +116,8 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
       }
       this.tail[0] = (tail + take) >>> 0;
       got = take;
-      if (take < ${QUANTUM}) this.underruns++;
+      if (got > 0) this.sawData = true;
+      if (take < ${QUANTUM} && this.sawData) this.underruns++;
     } else {
       let need = ${QUANTUM} * ${CHANNELS};
       let written = 0;
@@ -129,7 +133,8 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
         if (this.pendingOffset >= this.pending.length) this.pending = null;
       }
       got = (written / ${CHANNELS}) | 0;
-      if (need > 0) { this.underruns++; }
+      if (got > 0) this.sawData = true;
+      if (need > 0 && this.sawData) { this.underruns++; }
     }
     // De-interleave into per-channel outputs (channels[c][f]).
     if (channels && channels.length) {

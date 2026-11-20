@@ -140,9 +140,12 @@ opus = "0.4"
 symphonia-opus = "0.1"
 # Sovereign HAL Phase 1 (D3 dev-oracle): ebur128 loudness cross-check.
 ebur128 = "0.1"
-# Sovereign HAL Phase 1 (D1): the unified output HAL + the Windows
-# exclusive bracket's engine (feature-gated per member).
-cpal = "0.18"
+# Sovereign HAL Phase 1 (D1): the unified output HAL. Features per the
+# directive: `realtime` (thread-priority promotion on Windows/Android +
+# rtkit on Linux), `realtime-dbus` (Linux rtkit over dbus), and the
+# PipeWire/PulseAudio backends (the Linux hygiene's bridge targets —
+# cpal's cfg gates keep them inert on Windows/macOS).
+cpal = { version = "0.18", features = ["realtime", "realtime-dbus", "pipewire", "pulseaudio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 metrics = "0.24"

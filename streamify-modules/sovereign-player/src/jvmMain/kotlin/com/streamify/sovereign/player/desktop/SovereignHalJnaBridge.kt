@@ -111,9 +111,7 @@ fun readSovereignStatsWire(): SovereignStatsWire? {
             estimatedLatencyMs = mem.getFloat((21 * 4).toLong()),
             sequence = u32(22),
         )
-    }.getOrNull().also {
-        if (it != null && it.layoutMagic != SINK_STATS_WIRE_MAGIC) return null
-    }
+    }.getOrNull()?.takeIf { it.layoutMagic == SINK_STATS_WIRE_MAGIC }
 }
 
 /** The exported ring's live channel count (0 = detached). */
