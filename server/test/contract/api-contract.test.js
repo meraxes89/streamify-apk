@@ -1,7 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createApp } from '../../src/app.js';
 
-const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
+let BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
+let ephemeralApp = null;
+
+test.before(async () => {
+  try {
+    const res = await fetch(`${BASE_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (res.ok) return;
+  } catch {}
+
+  // Spawn ephemeral app instance for self-contained testing
+  ephemeralApp = await createApp({ logger: false });
+  const address = await ephemeralApp.listen({ port: 0, host: '127.0.0.1' });
+  BASE_URL = address;
+});
+
+test.after(async () => {
+  if (ephemeralApp) {
+    await ephemeralApp.close();
+  }
+});
 
 test('API Contract: Health & Capabilities', async (t) => {
   await t.test('GET /api/health returns ok status and runtime metrics', async () => {

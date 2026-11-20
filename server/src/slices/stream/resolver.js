@@ -144,12 +144,14 @@ export class StreamResolver {
             headers['x-goog-visitor-id'] = visitorData;
           }
 
+          const t0 = performance.now();
           const res = await fetch(GAPI_ENDPOINT, {
             body: JSON.stringify(body),
             headers,
             method: 'POST',
             signal: AbortSignal.timeout(8000),
           });
+          const t1 = performance.now();
 
           if (!res.ok) continue;
           const data = await res.json();
@@ -188,6 +190,7 @@ export class StreamResolver {
               title: data.videoDetails?.title || '',
               artist: data.videoDetails?.author || '',
               client: spec.name,
+              timingMs: Math.round(t1 - t0),
               expiresAt: Date.now() + 5 * 3600 * 1000, // 5 hours
             };
 
