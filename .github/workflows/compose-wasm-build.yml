@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feat/wasm-web-demo
+      - main
     paths:
       - 'composeApp/**'
       - 'core/**'
@@ -17,56 +17,11 @@ on:
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - '.github/workflows/compose-wasm-build.yml'
+      - '.github/workflows/_ci-wasm.yml'
 
 jobs:
-  build-wasm:
-    name: Build Compose Wasm Distribution
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository (with submodules)
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Apply core submodule patches
-        run: |
-          if [ -f core.patch ]; then
-            git -C core apply ../core.patch
-            echo "Successfully applied core.patch"
-          fi
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'microsoft'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Build wasmJs Browser Distribution
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :composeApp:wasmJsBrowserDistribution \
-            --no-daemon \
-            --stacktrace \
-            -Dorg.gradle.jvmargs="-Xmx10g -XX:+UseParallelGC" \
-            -Dkotlin.daemon.jvmargs="-Xmx10g"
-
-      - name: Precompress wasm distribution (.gz and .br)
-        run: |
-          DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
-          sudo apt-get update && sudo apt-get install -y brotli
-          find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" \) \
-            -exec gzip -9 -k -f {} \; \
-            -exec brotli -q 11 -k -f {} \;
-          echo "=== Distribution Artifacts ==="
-          ls -lh "$DIST_DIR"
-
-      - name: Upload wasm distribution artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: compose-wasm-dist
-          path: composeApp/build/dist/wasmJs/productionExecutable/
-          if-no-files-found: error
+  wasm:
+    name: "Web Wasm Build"
+    uses: ./.github/workflows/_ci-wasm.yml
+    with:
+      release_mode: false
