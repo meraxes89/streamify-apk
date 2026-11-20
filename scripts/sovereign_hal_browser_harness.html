@@ -252,6 +252,21 @@ async function runLiveMode(ctx, mode) {
       node.port.onmessage = (e) => { if (e.data.done) resolve(e.data); };
       let frame = 0;
       const samples = new Float32Array(sab, 64, CAPACITY * CHANNELS);
+      // PRIME FIRST: fill the ring's initial lead window BEFORE connecting
+      // the node — connection is what starts process() scheduling, so the
+      // first pull must find data already committed (the port-mode
+      // starvation lesson, applied to both transports).
+      const primeLead = () => {
+        while (frame < Math.min(Math.floor(RATE * 0.5), TOTAL_FRAMES)) {
+          const h = Atomics.load(head, 0), t = Atomics.load(tail, 0);
+          if (CAPACITY - (((h - t) >>> 0)) <= 0) return;
+          const s = toneSample(frame / RATE);
+          const base = ((h & (CAPACITY - 1)) * CHANNELS) >>> 0;
+          samples[base] = s; samples[base + 1] = s;
+          Atomics.store(head, 0, (h + 1) >>> 0);
+          frame++;
+        }
+      };
       const produce = () => {
         const deadline = frame + 2048;
         while (frame < Math.min(deadline, TOTAL_FRAMES)) {
@@ -265,6 +280,7 @@ async function runLiveMode(ctx, mode) {
         }
         if (frame < TOTAL_FRAMES) setTimeout(produce, 20);
       };
+      primeLead();
       produce();
     } else {
       node = new AudioWorkletNode(ctx, "sovereign-pull", {
@@ -280,18 +296,26 @@ async function runLiveMode(ctx, mode) {
       // (the 8-underrun failure mode observed on the plain-origin leg).
       const LEAD_FRAMES = Math.floor(RATE * 0.5);
       const BATCH_FRAMES = Math.floor(RATE * 0.25);
-      const produce = () => {
-        const target = Math.min(TOTAL_FRAMES, frame + (frame === 0 ? LEAD_FRAMES : BATCH_FRAMES));
+      const postBatches = (target) => {
         while (frame < target) {
           const take = Math.min(2048, target - frame);
           const chunk = toneChunk(frame, take);
           node.port.postMessage({ chunks: [chunk] }, [chunk.buffer]);
           frame += take;
         }
+      };
+      // PRIME FIRST: the whole lead window is posted BEFORE the node is
+      // connected (see the SAB branch) — the first process() finds the
+      // staging queue non-empty. Top-ups continue on the 25 ms cadence.
+      postBatches(Math.min(LEAD_FRAMES, TOTAL_FRAMES));
+      const produce = () => {
+        postBatches(Math.min(TOTAL_FRAMES, frame + BATCH_FRAMES));
         if (frame < TOTAL_FRAMES) setTimeout(produce, 25);
       };
-      produce();  // burst-fill the lead window before the first pulls
+      setTimeout(produce, 25);
     }
+    // CONNECT LAST: this starts process() scheduling — both transports are
+    // primed by the time the first pull fires.
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 16384;
     node.connect(analyser);
