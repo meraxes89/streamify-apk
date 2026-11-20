@@ -2,13 +2,27 @@ package com.maxrave.simpmusic
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
+import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.simpmusic.di.initWebKoin
+import com.maxrave.simpmusic.utils.StreamifyDefaultsInitializer
 import kotlinx.browser.document
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import org.koin.mp.KoinPlatform.getKoin
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, DelicateCoroutinesApi::class)
 fun main() {
     try {
         initWebKoin()
+        GlobalScope.launch {
+            try {
+                val dataStoreManager: DataStoreManager = getKoin().get()
+                StreamifyDefaultsInitializer.initialize(dataStoreManager)
+            } catch (e: Throwable) {
+                println("StreamifyDefaultsInitializer error: $e")
+            }
+        }
         val loadingEl = document.getElementById("loading")
         loadingEl?.remove()
 
