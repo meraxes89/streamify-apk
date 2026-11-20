@@ -10,26 +10,31 @@
 
   Proves the AudioWorklet bracket contract in BOTH transport modes:
     1. SAB mode    — SharedArrayBuffer ring mirror (crossOriginIsolated):
-                     the producer (a 440+880 Hz tone generator standing in
-                     for the wasm producer) writes into a SAB-backed SPSC
-                     ring; the worklet's pull callback reads frames through
-                     the SAME release/acquire cursor protocol as the frozen
-                     C ABI (streamify_ring_read_f32).
+                     the producer writes into a SAB-backed SPSC ring; the
+                     worklet's pull callback reads frames through the SAME
+                     release/acquire cursor protocol as the frozen C ABI
+                     (streamify_ring_read_f32).
     2. MessagePort — the plain-LAN-HTTP fallback (isSecureContext === false,
                      e.g. http://192.168.1.39:3000): zero-copy TRANSFERABLE
-                     Float32Array chunks posted to the worklet, queued into
-                     a small lock-free staging buffer the pull callback
-                     drains (the "MessagePort transferable chunks" mode of
-                     the Phase 0 directive).
+                     Float32Array chunks posted to the worklet, staged into
+                     a small lock-free queue the pull callback drains.
 
-  Verification (in-page, no external deps): a post-worklet AnalyserNode
-  FFT asserts the 440 Hz + 880 Hz peaks and a zero-underrun counter
-  (every pull fully served). The result posts back via
-  `window.__sovereignHalResult` (Playwright polls it) and renders
-  on-page for manual runs.
+  HEADLESS-PROOF RENDER PATH (CI reality): a headless Chromium runner has no
+  audio device; a live AudioContext may never leave 'suspended' and the
+  worklet's process() would then never be scheduled (the first CI run hung
+  exactly there — 60 s waitForFunction timeout, zero page logs). The harness
+  therefore picks its path at startup and REPORTS it (RESULT.path):
+    * LIVE path     — AudioContext reaches 'running' (the directive's
+                      post-worklet AnalyserNode FFT; what Phase 2 runs on
+                      real hardware).
+    * OFFLINE path  — OfflineAudioContext with a FULLY PRE-FILLED transport
+                      (the identical SAB cursor / chunk staging + drain
+                      code; deterministic, device-free) and the FFT applied
+                      to the RENDERED buffer. Only the pacing differs,
+                      which Phase 2 re-proves on real hardware.
 
-  Phase 2 replaces the tone generator with the real wasm ring producer;
-  the transport brackets and the verifier stay.
+  Every mode runs under a watchdog; nothing can hang the job. All harness
+  logs echo to console.log so the Playwright runner surfaces them in CI.
   ============================================================================
 -->
 </head>
@@ -39,18 +44,25 @@
 <script>
 "use strict";
 
-const LOG = (msg) => { document.getElementById("log").textContent += msg + "\n"; };
-const RESULT = { started: false, done: false, pass: false, modes: {} };
+const LOG = (msg) => {
+  document.getElementById("log").textContent += msg + "\n";
+  console.log("[harness] " + msg);
+};
+const RESULT = { started: false, done: false, pass: false, path: null, modes: {} };
 window.__sovereignHalResult = RESULT;
 
 // ── the frozen constants (mirror of ring_export.rs / sink.rs) ──────────────
 const RATE = 48000, CHANNELS = 2, QUANTUM = 128;
 const FREQ_A = 440.0, FREQ_B = 880.0, AMP = 0.25;
 const DURATION_S = 2.0;
+const TOTAL_FRAMES = Math.floor(RATE * DURATION_S);
+// EOS-aware accounting (the smoke binary's discipline): the stream's final
+// partial quantum registers exactly ONE short-read event; tolerated.
+const EOS_TAIL_EVENTS = 1;
+const MODE_WATCHDOG_MS = 25_000;
+const OVERALL_WATCHDOG_MS = 50_000;
 
-// ── the shared worklet code (both modes pull from a protocol-shaped
-//    cursor structure; SAB mode reads the ring directly, MessagePort mode
-//    drains a staging queue the messages fill) ─────────────────────────────
+// ── the shared worklet code (both transports feed the same pull callback) ──
 const WORKLET_SRC = `
 class SovereignPullProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -58,17 +70,21 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
     const opts = (options && options.processorOptions) || {};
     this.mode = opts.mode;                 // 'sab' | 'port'
     this.underruns = 0; this.pulls = 0; this.framesServed = 0;
+    this.target = opts.targetFrames || Infinity;
     if (this.mode === 'sab') {
       this.sab = opts.sab;
       this.head = new Uint32Array(this.sab, 0, 1);   // producer cursor (frames)
       this.tail = new Uint32Array(this.sab, 4, 1);   // consumer cursor (frames)
-      this.stats = new Uint32Array(this.sab, 8, 4);  // [underruns, overruns, seq, reserved]
       const capacityFrames = opts.capacityFrames;
       this.mask = capacityFrames - 1;
       this.samples = new Float32Array(this.sab, 64, capacityFrames * ${CHANNELS});
     } else {
       this.queue = [];                    // staged Float32Array chunks
       this.pending = null; this.pendingOffset = 0;
+      // The offline path seeds the queue synchronously via
+      // processorOptions (structured clone at node construction) — the
+      // SAME staging + drain code the live MessagePort posts exercise.
+      if (opts.initialChunks) { for (const c of opts.initialChunks) this.queue.push(c); }
       this.port.onmessage = (e) => {
         if (e.data && e.data.chunks) { for (const c of e.data.chunks) this.queue.push(c); }
       };
@@ -115,7 +131,7 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
   process(inputs, outputs) {
     const out = outputs[0][0];
     this.pull(out);
-    if (this.framesServed >= ${RATE} * ${DURATION_S} - ${QUANTUM}) {
+    if (this.framesServed >= this.target) {
       this.port.postMessage({ done: true, underruns: this.underruns, pulls: this.pulls, framesServed: this.framesServed });
       return false;
     }
@@ -125,13 +141,39 @@ class SovereignPullProcessor extends AudioWorkletProcessor {
 registerProcessor('sovereign-pull', SovereignPullProcessor);
 `;
 
-// ── the FFT verification (mirrors scripts/sovereign_loopback_verifier.py) ──
-function fftPeakCheck(samples, rate, freqA, freqB) {
-  let n = 1; while (n * 2 <= samples.length) n *= 2;
-  const re = new Float64Array(n), im = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    re[i] = samples[i] * (0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1))));
+// ── tone generation (period-continuous dual tone, the smoke binary's signal)
+function toneSample(t) {
+  return AMP * Math.sin(2 * Math.PI * FREQ_A * t) + AMP * Math.sin(2 * Math.PI * FREQ_B * t);
+}
+function toneChunk(startFrame, frameCount) {
+  const buf = new Float32Array(frameCount * CHANNELS);
+  for (let i = 0; i < frameCount; i++) {
+    const s = toneSample((startFrame + i) / RATE);
+    buf[i * CHANNELS] = s; buf[i * CHANNELS + 1] = s;
   }
+  return buf;
+}
+
+// ── the FFT verification (mirrors scripts/sovereign_loopback_verifier.py) ──
+// Iterative radix-2 with the bit-reversal permutation FIRST (the Python
+// verifier's exact algorithm — a butterfly pass without the permutation
+// produces a scrambled spectrum; caught by the Node simulation against a
+// brute-force DFT before it could pass vacuously in CI).
+function fftRadix2(re, im) {
+  const n = re.length;
+  if (n & (n - 1)) throw new Error("FFT length must be a power of two");
+  // Bit-reversal permutation.
+  let j = 0;
+  for (let i = 1; i < n; i++) {
+    let bit = n >> 1;
+    while (j & bit) { j ^= bit; bit >>= 1; }
+    j |= bit;
+    if (i < j) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  // Butterflies.
   for (let len = 2; len <= n; len <<= 1) {
     const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
     for (let i = 0; i < n; i += len) {
@@ -146,6 +188,16 @@ function fftPeakCheck(samples, rate, freqA, freqB) {
       }
     }
   }
+}
+
+function fftPeakCheck(samples, rate, freqA, freqB) {
+  let n = 1; while (n * 2 <= samples.length) n *= 2;
+  if (n < 4096) return { ok: false, reason: "fft window too small: " + n };
+  const re = new Float64Array(n), im = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    re[i] = samples[i] * (0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1))));
+  }
+  fftRadix2(re, im);
   const binHz = rate / n;
   const mag = new Float64Array(n / 2);
   for (let i = 0; i < n / 2; i++) mag[i] = Math.hypot(re[i], im[i]);
@@ -153,123 +205,222 @@ function fftPeakCheck(samples, rate, freqA, freqB) {
   const median = sorted[(sorted.length / 2) | 0] || 1e-12;
   const aBin = Math.round(freqA / binHz), bBin = Math.round(freqB / binHz);
   const aOk = mag[aBin] > 20 * median, bOk = mag[bBin] > 20 * median;
-  return { aOk, bOk, aMag: mag[aBin], bMag: mag[bBin], median, binHz };
+  return { ok: aOk && bOk, aOk, bOk, aMag: mag[aBin], bMag: mag[bBin], median, binHz };
 }
 
-function toneSample(t) {
-  return AMP * Math.sin(2 * Math.PI * FREQ_A * t) + AMP * Math.sin(2 * Math.PI * FREQ_B * t);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const withTimeout = (p, ms, label) =>
+  Promise.race([p, sleep(ms).then(() => { throw new Error(label + " watchdog (" + ms + " ms)"); })]);
+
+// ── the LIVE path (AudioContext + post-worklet AnalyserNode tap) ───────────
+async function runLiveMode(ctx, mode) {
+  if (typeof ctx.audioWorklet === "undefined") {
+    throw new Error("AudioWorklet unavailable on the live context");
+  }
+  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+
+  const nodeOptions = { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [CHANNELS] };
+  let node;
+  const done = new Promise((resolve) => {
+    if (mode === "sab") {
+      const CAPACITY = 8192; // frames, power of two — RT-paced producer keeps it small
+      const sab = new SharedArrayBuffer(64 + CAPACITY * CHANNELS * 4);
+      const head = new Uint32Array(sab, 0, 1), tail = new Uint32Array(sab, 4, 1);
+      node = new AudioWorkletNode(ctx, "sovereign-pull", {
+        ...nodeOptions,
+        processorOptions: { mode: "sab", sab, capacityFrames: CAPACITY, targetFrames: TOTAL_FRAMES },
+      });
+      node.port.onmessage = (e) => { if (e.data.done) resolve(e.data); };
+      let frame = 0;
+      const samples = new Float32Array(sab, 64, CAPACITY * CHANNELS);
+      const produce = () => {
+        const deadline = frame + 2048;
+        while (frame < Math.min(deadline, TOTAL_FRAMES)) {
+          const h = Atomics.load(head, 0), t = Atomics.load(tail, 0);
+          if (CAPACITY - (((h - t) >>> 0)) <= 0) break;
+          const s = toneSample(frame / RATE);
+          const base = ((h & (CAPACITY - 1)) * CHANNELS) >>> 0;
+          samples[base] = s; samples[base + 1] = s;
+          Atomics.store(head, 0, (h + 1) >>> 0);
+          frame++;
+        }
+        if (frame < TOTAL_FRAMES) setTimeout(produce, 20);
+      };
+      produce();
+    } else {
+      node = new AudioWorkletNode(ctx, "sovereign-pull", {
+        ...nodeOptions,
+        processorOptions: { mode: "port", targetFrames: TOTAL_FRAMES },
+      });
+      node.port.onmessage = (e) => { if (e.data.done) resolve(e.data); };
+      let frame = 0;
+      const produce = () => {
+        const chunks = [];
+        while (frame < TOTAL_FRAMES && chunks.length < 4) {
+          const take = Math.min(2048, TOTAL_FRAMES - frame);
+          chunks.push(toneChunk(frame, take));
+          frame += take;
+        }
+        if (chunks.length) node.port.postMessage({ chunks }, chunks.map((c) => c.buffer));
+        if (frame < TOTAL_FRAMES) setTimeout(produce, 25);
+      };
+      produce();
+    }
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 16384;
+    node.connect(analyser);
+    analyser.connect(ctx.destination);
+    node._analyser = analyser;
+  });
+
+  const stats = await withTimeout(done, MODE_WATCHDOG_MS, "live " + mode);
+  await sleep(300);
+  const buf = new Float32Array(node._analyser.fftSize);
+  node._analyser.getFloatTimeDomainData(buf);
+  const fft = fftPeakCheck(buf, RATE, FREQ_A, FREQ_B);
+  return { stats, fft };
+}
+
+// ── the OFFLINE path (OfflineAudioContext, pre-filled transport, FFT on the
+//    rendered buffer — deterministic, no audio device required) ─────────────
+async function runOfflineMode(mode) {
+  if (typeof OfflineAudioContext === "undefined") {
+    throw new Error("OfflineAudioContext unavailable in this browser");
+  }
+  const ctx = new OfflineAudioContext(CHANNELS, TOTAL_FRAMES, RATE);
+  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+
+  const nodeOptions = { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [CHANNELS] };
+  let node;
+  if (mode === "sab") {
+    // Capacity 2^17 >= TOTAL_FRAMES: the whole stream lives in the ring
+    // up-front (offline rendering is not real-time — pacing is meaningless
+    // here; Phase 2 re-proves RT pacing on real hardware).
+    const CAPACITY = 131072;
+    const sab = new SharedArrayBuffer(64 + CAPACITY * CHANNELS * 4);
+    const head = new Uint32Array(sab, 0, 1);
+    const samples = new Float32Array(sab, 64, CAPACITY * CHANNELS);
+    samples.set(toneChunk(0, TOTAL_FRAMES));
+    head[0] = TOTAL_FRAMES;
+    node = new AudioWorkletNode(ctx, "sovereign-pull", {
+      ...nodeOptions,
+      processorOptions: { mode: "sab", sab, capacityFrames: CAPACITY, targetFrames: TOTAL_FRAMES },
+    });
+  } else {
+    const chunks = [];
+    for (let f = 0; f < TOTAL_FRAMES; f += 12000) {
+      chunks.push(toneChunk(f, Math.min(12000, TOTAL_FRAMES - f)));
+    }
+    node = new AudioWorkletNode(ctx, "sovereign-pull", {
+      ...nodeOptions,
+      // Pre-seeded via structured clone: the SAME staging + drain code the
+      // live MessagePort posts exercise (offline rendering must be
+      // synchronously complete before startRendering — async posts would
+      // race the render loop).
+      processorOptions: { mode: "port", initialChunks: chunks, targetFrames: TOTAL_FRAMES },
+    });
+  }
+  node.port.onmessage = (e) => { if (e.data.done) node._finalStats = e.data; };
+  node.connect(ctx.destination);
+  const rendered = await withTimeout(ctx.startRendering(), MODE_WATCHDOG_MS, "offline " + mode);
+  const fft = fftPeakCheck(rendered.getChannelData(0), RATE, FREQ_A, FREQ_B);
+  // The offline worklet's own counters ride the port message (listener
+  // attached BEFORE startRendering so it cannot race the done post).
+  const stats = {
+    underruns: node._finalStats ? node._finalStats.underruns : null,
+    pulls: node._finalStats ? node._finalStats.pulls : null,
+    framesServed: node._finalStats ? node._finalStats.framesServed : null,
+    offline: true,
+  };
+  return { stats, fft };
+}
+
+// ── mode orchestration ──────────────────────────────────────────────────────
+async function runMode(path, mode) {
+  const t0 = performance.now();
+  try {
+    let r;
+    if (path === "live") {
+      r = await runLiveMode(runMode._ctx, mode);
+    } else {
+      r = await runOfflineMode(mode);
+    }
+    const underrunsOk = (r.stats.underruns === null) || (r.stats.underruns <= EOS_TAIL_EVENTS);
+    const pass = r.fft.ok && underrunsOk;
+    LOG("mode " + path + "/" + mode + ": " + (pass ? "PASS" : "FAIL") +
+        " — 440Hz " + (r.fft.aOk ? "OK" : "FAIL") + " (mag " + r.fft.aMag.toFixed(1) +
+        " vs median " + r.fft.median.toFixed(4) + "), 880Hz " + (r.fft.bOk ? "OK" : "FAIL") +
+        " (mag " + r.fft.bMag.toFixed(1) + "), underruns " + r.stats.underruns +
+        ", pulls " + r.stats.pulls + ", frames " + r.stats.framesServed +
+        " [" + Math.round(performance.now() - t0) + " ms]");
+    return { pass, underruns: r.stats.underruns, pulls: r.stats.pulls, framesServed: r.stats.framesServed, fft: { aOk: r.fft.aOk, bOk: r.fft.bOk } };
+  } catch (e) {
+    LOG("mode " + path + "/" + mode + ": ERROR — " + (e && e.message ? e.message : String(e)));
+    return { pass: false, error: String(e && e.message ? e.message : e) };
+  }
 }
 
 async function main() {
   RESULT.started = true;
-  LOG(`crossOriginIsolated: ${crossOriginIsolated}, isSecureContext: ${isSecureContext}`);
-  const ctx = new AudioContext({ sampleRate: RATE });
-  await ctx.resume();
+  LOG("crossOriginIsolated: " + crossOriginIsolated + ", isSecureContext: " + isSecureContext);
 
-  // We verify via the AnalyserNode connected per-mode inside runMode; keep
-  // a page-level reference the mode runner registers.
-  const verifyWithAnalyser = async (analyser, label) => {
-    const buf = new Float32Array(analyser.fftSize);
-    // Wait until the analyser has real data (a few render quanta).
-    await new Promise((r) => setTimeout(r, 300));
-    analyser.getFloatTimeDomainData(buf);
-    const res = fftPeakCheck(buf, RATE, FREQ_A, FREQ_B);
-    LOG(`${label}: 440Hz ${res.aOk ? "OK" : "FAIL"} (mag ${res.aMag.toFixed(1)} vs median ${res.median.toFixed(3)}), ` +
-        `880Hz ${res.bOk ? "OK" : "FAIL"} (mag ${res.bMag.toFixed(1)})`);
-    return res.aOk && res.bOk;
-  };
+  // Overall watchdog: nothing may hang the job.
+  setTimeout(() => {
+    if (!RESULT.done) {
+      LOG("OVERALL WATCHDOG fired — marking failed");
+      RESULT.error = "overall watchdog (" + OVERALL_WATCHDOG_MS + " ms)";
+      RESULT.pass = false;
+      RESULT.done = true;
+    }
+  }, OVERALL_WATCHDOG_MS);
 
-  // ── Mode 1: SharedArrayBuffer (requires crossOriginIsolated) ────────────
-  let analyserHolder = {};
-  const runModeWithTap = async (mode) => {
-    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
-    await ctx.audioWorklet.addModule(url);
-    URL.revokeObjectURL(url);
-    const CAPACITY = 8192;
-    const nodeOptions = { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [CHANNELS] };
-    let node;
-    const done = new Promise((resolve) => {
-      if (mode === "sab") {
-        const sab = new SharedArrayBuffer(64 + CAPACITY * CHANNELS * 4);
-        const head = new Uint32Array(sab, 0, 1), tail = new Uint32Array(sab, 4, 1);
-        node = new AudioWorkletNode(ctx, "sovereign-pull", {
-          ...nodeOptions, processorOptions: { mode: "sab", sab, capacityFrames: CAPACITY },
-        });
-        node.port.onmessage = (e) => { if (e.data.done) resolve(e.data); };
-        let frame = 0; const totalFrames = RATE * DURATION_S;
-        const samples = new Float32Array(sab, 64, CAPACITY * CHANNELS);
-        const produce = () => {
-          const deadline = frame + 2048;
-          while (frame < Math.min(deadline, totalFrames)) {
-            const h = Atomics.load(head, 0), t = Atomics.load(tail, 0);
-            if (CAPACITY - (((h - t) >>> 0)) <= 0) break;
-            const s = toneSample(frame / RATE);
-            const base = ((h & (CAPACITY - 1)) * CHANNELS) >>> 0;
-            samples[base] = s; samples[base + 1] = s;
-            Atomics.store(head, 0, (h + 1) >>> 0);
-            frame++;
-          }
-          if (frame < totalFrames) setTimeout(produce, 20);
-        };
-        produce();
-      } else {
-        node = new AudioWorkletNode(ctx, "sovereign-pull", {
-          ...nodeOptions, processorOptions: { mode: "port" },
-        });
-        node.port.onmessage = (e) => { if (e.data.done) resolve(e.data); };
-        let frame = 0; const totalFrames = RATE * DURATION_S;
-        const CHUNK = 2048 * CHANNELS;
-        const produce = () => {
-          const chunks = [];
-          while (frame < totalFrames && chunks.length < 4) {
-            const buf = new Float32Array(CHUNK);
-            for (let i = 0; i < CHUNK; i += CHANNELS) {
-              const s = toneSample(frame / RATE);
-              buf[i] = s; buf[i + 1] = s; frame++;
-            }
-            chunks.push(buf);
-          }
-          if (chunks.length) node.port.postMessage({ chunks }, chunks.map((c) => c.buffer));
-          if (frame < totalFrames) setTimeout(produce, 25);
-        };
-        produce();
-      }
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 16384;
-      node.connect(analyser);
-      analyser.connect(ctx.destination);
-      analyserHolder[mode] = analyser;
-    });
-    const stats = await done;
-    const ok = await verifyWithAnalyser(analyserHolder[mode], mode);
-    return { stats, toneOk: ok };
-  };
+  // Path selection: a headless runner has no audio device; resume() may
+  // hang or the context may never leave 'suspended'. Race it, then pick.
+  let ctx = null;
+  let path = "offline";
+  try {
+    ctx = new AudioContext({ sampleRate: RATE });
+    await Promise.race([ctx.resume(), sleep(4000)]);
+    LOG("AudioContext state after resume race: " + ctx.state);
+    if (ctx.state === "running") {
+      path = "live";
+      runMode._ctx = ctx;
+    } else {
+      try { await ctx.close(); } catch (_) {}
+      ctx = null;
+    }
+  } catch (e) {
+    LOG("AudioContext probe failed (" + (e && e.message ? e.message : e) + ") — offline path");
+    try { if (ctx) await ctx.close(); } catch (_) {}
+    ctx = null;
+  }
+  RESULT.path = path;
+  LOG("render path: " + path + (path === "live"
+      ? " (post-worklet AnalyserNode FFT — the Phase 2 hardware contract)"
+      : " (OfflineAudioContext — headless-runner path, transport contract identical, reported not substituted)"));
 
-  const verdicts = {};
+  // Mode 1: SharedArrayBuffer — only constructible crossOriginIsolated; on
+  // a plain origin the SAB constructor itself throws. SKIPPED is reported.
   if (crossOriginIsolated) {
-    const r = await runModeWithTap("sab");
-    verdicts.sab = {
-      pass: r.stats.underruns === 0 && r.toneOk,
-      underruns: r.stats.underruns, pulls: r.stats.pulls, framesServed: r.stats.framesServed, toneOk: r.toneOk,
-    };
-    LOG(`SAB mode: underruns=${r.stats.underruns} pulls=${r.stats.pulls} frames=${r.stats.framesServed} tone=${r.toneOk}`);
+    RESULT.modes.sab = await runMode(path, "sab");
   } else {
-    LOG("SAB mode SKIPPED (not crossOriginIsolated) — the COOP/COEP headers are not set on this origin.");
-    verdicts.sab = { pass: null, skipped: "not crossOriginIsolated" };
+    LOG("SAB mode SKIPPED (not crossOriginIsolated — the plain-origin contract is the MessagePort mode)");
+    RESULT.modes.sab = { pass: null, skipped: "not crossOriginIsolated" };
   }
 
-  const r2 = await runModeWithTap("port");
-  verdicts.port = {
-    pass: r2.stats.underruns === 0 && r2.toneOk,
-    underruns: r2.stats.underruns, pulls: r2.stats.pulls, framesServed: r2.stats.framesServed, toneOk: r2.toneOk,
-  };
-  LOG(`MessagePort mode: underruns=${r2.stats.underruns} pulls=${r2.stats.pulls} frames=${r2.stats.framesServed} tone=${r2.toneOk}`);
+  // Mode 2: MessagePort / chunk staging — the every-browser contract.
+  RESULT.modes.port = await runMode(path, "port");
 
-  RESULT.modes = verdicts;
-  RESULT.pass = verdicts.port.pass === true && (verdicts.sab.pass !== false);
+  RESULT.pass = RESULT.modes.port.pass === true &&
+    (RESULT.modes.sab.pass !== false);
   RESULT.done = true;
-  LOG(`VERDICT: ${RESULT.pass ? "PASS" : "FAIL"} (port=${verdicts.port.pass}, sab=${verdicts.sab.pass})`);
-  await ctx.close();
+  LOG("VERDICT: " + (RESULT.pass ? "PASS" : "FAIL") +
+      " (port=" + RESULT.modes.port.pass + ", sab=" + RESULT.modes.sab.pass + ", path=" + RESULT.path + ")");
+  if (ctx) { try { await ctx.close(); } catch (_) {} }
 }
 
 main().catch((e) => {

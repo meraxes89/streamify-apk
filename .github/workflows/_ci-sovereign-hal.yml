@@ -71,6 +71,15 @@ jobs:
       - name: Loopback verifier self-test (the shared gate's gate)
         run: python3 scripts/sovereign_loopback_verifier_test.py
 
+      - name: Browser harness offline-path simulation (FFT + transports)
+        run: |
+          # The harness's tone generation, worklet pull logic (SAB cursor
+          # ring + MessagePort chunk staging) and FFT verdict, executed
+          # under Node against a brute-force-checked spectrum — pins the
+          # in-page verifier's correctness (the bit-reversal bug this
+          # caught would have made the CI FFT check vacuous).
+          node scripts/browser_harness_sim.js
+
   # ── Gate 2: Rust ring ABI conformance + armv7-a QEMU (ubuntu) ─────────────
   ring-abi-x86_64:
     name: "Gate 2a: Ring ABI conformance (x86_64 + host C++)"
@@ -376,10 +385,13 @@ jobs:
           api-level: ${{ matrix.api }}
           arch: x86_64
           target: default
-          # -audiodev wav: QEMU captures the guest's AudioFlinger mixer
-          # output into the wav file — the OS-loopback capture this job
+          # -qemu -audiodev wav,...: QEMU-level args AFTER the -qemu
+          # separator (the emulator rejects them as top-level options —
+          # `unknown option: -audiodev`, the API 26/29/34/35 boot
+          # failure). The wav backend captures the guest's AudioFlinger
+          # mixer output into the file — the OS-loopback capture this job
           # exists for (no host audio device needed on the runner).
-          emulator-options: -no-window -gpu swiftshader_indirect -audiodev wav,path=/tmp/sovereign-emulator-audio.wav -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none -qemu -audiodev wav,path=/tmp/sovereign-emulator-audio.wav
           script: |
             echo "Emulator booted (API ${{ matrix.api }})."
             adb shell getprop ro.build.version.sdk
@@ -393,10 +405,6 @@ jobs:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # PHASE 0 SCAFFOLD: first-run Playwright timeout; continue-on-error
-    # keeps the failure visible while Phase 1 debugs headless audio-context
-    # semantics. Never a silent skip.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - name: Set up Node (Playwright runner)
@@ -413,19 +421,19 @@ jobs:
           echo "playwright ready"
       - name: Run the dual-mode harness (COOP/COEP isolated + plain HTTP)
         run: |
-          cat > /tmp/sovereign-hal-browser/run.mjs <<'EOF'
+          cat > /tmp/sovereign-hal-browser/run.mjs <<'RUNNER'
           import { chromium } from 'playwright';
           import http from 'node:http';
           import fs from 'node:fs';
-          import path from 'node:path';
 
           const harness = fs.readFileSync(process.argv[2], 'utf8');
           const port = 8931;
 
-          // Dual-origin matrix: one server WITHOUT isolation headers (the
-          // plain-LAN-HTTP shape, crossOriginIsolated === false) and one
-          // WITH COOP/COEP (the SharedArrayBuffer shape). The harness
-          // itself detects and reports which modes it could exercise.
+          // Dual-origin matrix: plain origin (the LAN-HTTP shape,
+          // crossOriginIsolated === false → MessagePort contract) and the
+          // COOP/COEP-isolated origin (SharedArrayBuffer contract). The
+          // harness itself reports which modes it exercised and its render
+          // path (live vs offline — headless runners have no audio device).
           const server = http.createServer((req, res) => {
             const isolated = req.url.startsWith('/isolated');
             res.writeHead(200, {
@@ -439,7 +447,13 @@ jobs:
           });
           await new Promise((r) => server.listen(port, r));
 
-          const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream'] });
+          const browser = await chromium.launch({
+            args: [
+              '--autoplay-policy=no-user-gesture-required',
+              '--use-fake-device-for-media-stream',
+              '--use-fake-ui-for-media-stream',
+            ],
+          });
           const results = {};
           for (const [label, url] of [
             ['plain', `http://127.0.0.1:${port}/plain`],
@@ -447,9 +461,14 @@ jobs:
           ]) {
             const page = await browser.newPage();
             page.on('console', (m) => console.log(`[${label}]`, m.text()));
+            page.on('pageerror', (e) => console.log(`[${label}] PAGE ERROR:`, e.message));
             await page.goto(url);
-            // The harness sets window.__sovereignHalResult.done + .pass.
-            await page.waitForFunction(() => window.__sovereignHalResult?.done === true, null, { timeout: 60_000 });
+            // The harness sets window.__sovereignHalResult.done + .pass and
+            // carries its own watchdogs; 90 s is the outer belt.
+            await page.waitForFunction(
+              () => window.__sovereignHalResult?.done === true,
+              null, { timeout: 90_000 },
+            );
             const r = await page.evaluate(() => window.__sovereignHalResult);
             results[label] = r;
             await page.close();
@@ -458,20 +477,22 @@ jobs:
           server.close();
 
           console.log('RESULTS:', JSON.stringify(results, null, 2));
-          // The plain-origin leg MUST pass (the MessagePort fallback is the
-          // every-browser contract). The isolated leg MUST pass the SAB mode
-          // when crossOriginIsolated worked (SAB skipped only if the headers
-          // did not take effect — reported, not hidden).
+
+          // The plain-origin leg MUST pass: the MessagePort fallback is the
+          // every-browser contract (the directive's LAN-HTTP requirement).
           if (results.plain?.pass !== true) {
             console.error('PLAIN-ORIGIN (MessagePort) MODE FAILED');
             process.exit(1);
           }
+          // The isolated leg's SAB mode: skipped is REPORTED (the headers
+          // did not take effect); run-and-failed is a hard FAIL.
           if (results.isolated?.modes?.sab?.skipped) {
-            console.error('::warning::SAB mode skipped: COOP/COEP isolation did not take effect');
+            console.error('::warning::SAB mode skipped: COOP/COEP isolation did not take effect on the isolated origin');
           } else if (results.isolated?.modes?.sab?.pass !== true) {
             console.error('ISOLATED-ORIGIN (SAB) MODE FAILED');
             process.exit(1);
           }
-          console.log('BROWSER DUAL-MODE VERDICT: PASS');
-          EOF
+          console.log('BROWSER DUAL-MODE VERDICT: PASS (path=' +
+            results.plain.path + '/isolated=' + results.isolated.path + ')');
+          RUNNER
           node /tmp/sovereign-hal-browser/run.mjs scripts/sovereign_hal_browser_harness.html
