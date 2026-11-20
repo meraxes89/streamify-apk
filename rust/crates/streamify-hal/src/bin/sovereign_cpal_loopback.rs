@@ -140,22 +140,25 @@ fn run() -> i32 {
         let quantum = 512 * 2; // 512 frames interleaved
         let mut pos = 0usize;
         let start = Instant::now();
-        // Lead-fill: the prime-then-connect discipline.
+        // Lead-fill: the prime-then-connect discipline. write_frames
+        // returns the SAMPLE count served (interleaved units).
         while pos < producer_pcm.len() && ring.occupancy() < 8_192 {
             let take = quantum.min(producer_pcm.len() - pos);
             let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
-            pos += wrote * 2;
+            pos += wrote;
             if wrote == 0 {
                 break;
             }
         }
+        // Paced feed: 512 frames (~10.7 ms) per ~8 ms tick — the ring
+        // absorbs the jitter (capacity 65536 frames ≈ 1.37 s).
         while pos < producer_pcm.len() && !producer_done.load(Ordering::Relaxed) {
             let take = quantum.min(producer_pcm.len() - pos);
             let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
-            pos += wrote * 2;
+            pos += wrote;
             if wrote == 0 {
-                std::thread::sleep(Duration::from_millis(5));
-            } else if pos < producer_pcm.len() {
+                std::thread::sleep(Duration::from_millis(10));
+            } else {
                 std::thread::sleep(Duration::from_millis(8));
             }
         }
