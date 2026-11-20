@@ -159,6 +159,94 @@ impl SinkStats {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Sovereign HAL Phase 0 (D3): compile-time 32-bit / 64-bit ABI assertions.
+//
+// The ring crosses FOUR consumers with one frozen contract: the C1 JNI
+// bridge (`streamify_audio_sinks.h`), the desktop JNA shim (C5), the
+// CoreAudio bracket (ring_export.rs) and the Phase 2 wasm bracket. The
+// header pins the same offsets with `static_assert`s; these `const`
+// assertions pin the Rust side AT COMPILE TIME so a field reorder, a type
+// widening, or a 32-bit (armv7-a) size_t/usize mismatch fails the build
+// on EVERY target lane (x86_64 host, armv7 QEMU cross-test, wasm32)
+// instead of corrupting a wire read at runtime.
+//
+// The u64 cursor protocol (head/tail/flush) is additionally required to be
+// LOCK-FREE on every target the HAL ships: `AtomicU64::is_lock_free()`
+// is const-callable since Rust 1.63, so a 32-bit target where the runtime
+// falls back to a hidden lock (e.g. a toolchain without native 64-bit
+// atomics) breaks compilation of this crate — the zero-lock RT contract
+// is enforced, not hoped for.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The frozen wire size in bytes (mirrors `kSinkStatsWireBytes`).
+const _: () = assert!(SINK_STATS_WIRE_BYTES == 96);
+/// The frozen layout magic (mirrors `kSinkStatsWireMagic`).
+const _: () = assert!(SINK_STATS_WIRE_MAGIC == 0x51AB_0001);
+
+/// Wire offsets (little-endian), field-for-field with the C++ header's
+/// `kSinkStatsOff*` constants. `to_wire` hard-codes these positions; the
+/// assertions make drift a compile error.
+mod wire_offsets {
+    pub const LAYOUT_MAGIC: usize = 0;
+    pub const LAYOUT_BYTES: usize = 4;
+    pub const CAPACITY_FRAMES: usize = 8;
+    pub const SAMPLE_RATE_IN: usize = 12;
+    pub const SAMPLE_RATE_OUT: usize = 16;
+    pub const CHANNELS_IN: usize = 20;
+    pub const CHANNELS_OUT: usize = 24;
+    pub const CURRENT_FULLNESS: usize = 28;
+    pub const FRAMES_WRITTEN: usize = 32;
+    pub const FRAMES_READ: usize = 40;
+    pub const UNDERRUN_EVENTS: usize = 48;
+    pub const OVERRUN_EVENTS: usize = 56;
+    pub const OVERRUN_DROPPED: usize = 64;
+    pub const HIGH_WATERMARK: usize = 72;
+    pub const LOW_WATERMARK: usize = 76;
+    pub const FULLNESS_PERCENT: usize = 80;
+    pub const ESTIMATED_LATENCY_MS: usize = 84;
+    pub const SEQUENCE: usize = 88;
+    pub const RESERVED: usize = 92;
+}
+const _: () = assert!(wire_offsets::RESERVED + 4 == SINK_STATS_WIRE_BYTES);
+const _: () = assert!(wire_offsets::FRAMES_WRITTEN + 8 == wire_offsets::FRAMES_READ);
+const _: () = assert!(wire_offsets::UNDERRUN_EVENTS + 8 == wire_offsets::OVERRUN_EVENTS);
+const _: () = assert!(wire_offsets::OVERRUN_EVENTS + 8 == wire_offsets::OVERRUN_DROPPED);
+const _: () = assert!(wire_offsets::HIGH_WATERMARK + 4 == wire_offsets::LOW_WATERMARK);
+const _: () = assert!(wire_offsets::FULLNESS_PERCENT + 4 == wire_offsets::ESTIMATED_LATENCY_MS);
+const _: () = assert!(wire_offsets::ESTIMATED_LATENCY_MS + 4 == wire_offsets::SEQUENCE);
+
+/// The u64 SPSC cursor protocol must be lock-free on every HAL target
+/// (head / tail / flush_generation / flush_ack_generation). On a 32-bit
+/// target without native 64-bit atomics the compiler emits a hidden lock
+/// — a silent RT violation. `target_has_atomic = "64"` is the portable
+/// compile-time form: the armv7-a Phase 0 target is built with NEON
+/// (implies native LDREXD/STREXD 64-bit atomics), so this guard fires
+/// only on a misconfigured toolchain — exactly when we want the build to
+/// stop. (The runtime `is_lock_free()` witness lives in the conformance
+/// suites; the associated-const forms moved around between Rust
+/// versions, so this cfg guard is the durable one.)
+#[cfg(not(target_has_atomic = "64"))]
+compile_error!(
+    "the SPSC ring's u64 cursor protocol requires native 64-bit atomics \
+     (target_has_atomic = \"64\") — a hidden-lock fallback would violate \
+     the zero-lock RT contract"
+);
+const _: () = assert!(std::mem::align_of::<CacheLine<AtomicU64>>() >= 64);
+const _: () = assert!(std::mem::size_of::<CacheLine<AtomicU64>>() >= 64);
+
+/// The `size_t` / `usize` agreement across the C edge: `streamify_ring_*`
+/// returns `usize` (C `size_t`) — identical width on every ABI the HAL
+/// ships (LP64 arm64/x86_64, ILP32 armv7-a, wasm32). The capacity bound
+/// (`1 << 22` frames) is well inside `u32`, so the ring is 32-bit safe BY
+/// CONSTRUCTION: slots length = capacity × channels ≤ (1<<22)×2 f32s.
+const _: () = assert!((MAX_CAPACITY_FRAMES * 2) < u32::MAX as usize);
+
+/// f32 wire fields are IEEE 754 binary32 on every target (Rust guarantees
+/// `f32` == C `float` on the ABIs in scope; `to_le_bytes` is the wire
+/// serialization, checked by `stats_wire_layout_matches_the_frozen_offsets`).
+const _: () = assert!(std::mem::size_of::<f32>() == 4);
+
 /// The SPSC ring backing the write edge.
 ///
 /// One producer thread (via [`RingSink`]) and one consumer thread (the

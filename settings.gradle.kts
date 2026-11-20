@@ -112,6 +112,9 @@ if (streamifyDir.exists()) {
     project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")
     project(":streamify-jam").projectDir = File(streamifyDir, "jam")
     project(":streamify-ffmpeg-compat-shim").projectDir = File(streamifyDir, "ffmpeg-compat-shim")
+    // Sovereign HAL Phase 0 (D2): the Layer-2 upstream-immunity seam.
+    include(":streamify-sovereign-player")
+    project(":streamify-sovereign-player").projectDir = File(streamifyDir, "sovereign-player")
 }
 
 // Legacy modules preservation (archived for git history and reference; not built in CMP)

@@ -95,6 +95,12 @@ fn current() -> Option<&'static SpscAudioRing> {
 /// `dst` must be valid for writes of `max_frames × channels` interleaved
 /// f32 samples, and must be called from AT MOST ONE consumer thread at a
 /// time (the ring is SPSC — the audio render callback is that consumer).
+///
+/// 32-bit hardening (Sovereign HAL Phase 0 / D3): `max_frames` is an
+/// attacker-controlled `usize` on the ILP32 targets (armv7-a). The slice
+/// length computation `max_frames * channels` would wrap on 32-bit for
+/// `max_frames > isize::MAX/2`; the checked multiply turns that into a
+/// clean 0-return (digital silence) instead of a wrapped slice view.
 #[no_mangle]
 pub unsafe extern "C" fn streamify_ring_read_f32(dst: *mut f32, max_frames: usize) -> usize {
     let Some(ring) = current() else { return 0 };
@@ -102,9 +108,17 @@ pub unsafe extern "C" fn streamify_ring_read_f32(dst: *mut f32, max_frames: usiz
         return 0;
     }
     let channels = ring.channels();
+    // Checked multiply: hostile max_frames on a 32-bit ABI serves silence
+    // rather than constructing a wrapped (and wildly wrong) slice length.
+    let Some(sample_count) = max_frames.checked_mul(channels) else {
+        return 0;
+    };
+    if sample_count > (isize::MAX as usize / std::mem::size_of::<f32>()) {
+        return 0;
+    }
     // SAFETY: caller guarantees the buffer's extent; the slice is a
     // transient view (dropped before return — never escapes).
-    let view = unsafe { std::slice::from_raw_parts_mut(dst, max_frames * channels) };
+    let view = unsafe { std::slice::from_raw_parts_mut(dst, sample_count) };
     // read_frames_into returns SAMPLES served; the C ABI speaks FRAMES
     // (the render core's quantum unit).
     ring.read_frames_into(view) / channels.max(1)
