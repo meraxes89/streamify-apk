@@ -69,6 +69,8 @@ import { roomRoutes } from './slices/room/routes.js';
 import { authPlugin } from './slices/auth/routes.js';
 import { ProcessSurvival } from './platform/survival.js';
 import { getDefaultBufferPool } from './lib/buffer-pool.js';
+import { configureGlobalUpstreamPool, getUpstreamPoolStatus, closeUpstreamPool } from './platform/upstream-pool.js';
+import { pageCache } from './platform/page-cache.js';
 
 export async function createApp({
   profile = resolveProfile(),
@@ -99,6 +101,9 @@ export async function createApp({
 } = {}) {
   // L0 Survival Shell initialization (wake lock + oom_score_adj tuning)
   processSurvival.init();
+
+  // L3 Warm Upstream Connection Pool & DNS Pinning (comm10.1.md Frontier 3)
+  configureGlobalUpstreamPool();
 
   const app = Fastify({
     logger,
@@ -152,6 +157,8 @@ export async function createApp({
       watchdogThrottles: streamGateway.watchdog?.totalThrottlesDetected || 0,
       survival: processSurvival.getStatus(),
       allocationPool: bufferPool.getStatus(),
+      upstreamPool: getUpstreamPoolStatus(),
+      pageCache: pageCache.getStatus(),
     };
   });
 
@@ -180,6 +187,8 @@ export async function createApp({
         'attest-pot',
         'survival-shell',
         'allocation-governance',
+        'warm-upstream-pool',
+        'page-cache-hygiene',
       ],
     };
   });
@@ -187,6 +196,7 @@ export async function createApp({
   app.addHook('onClose', async () => {
     streamResolver?.close?.();
     processSurvival?.releaseLock?.();
+    await closeUpstreamPool();
   });
 
   // Room broadcast slice
