@@ -135,9 +135,10 @@ impl PacketBackend {
                 Ok(frames)
             }
             PacketBackend::SymphoniaOpus(dec) => {
-                // Packet: (track 0, ts 0, dur 960 frames, data). The
-                // registry-produced decoder's documented drive path.
-                let pkt = symphonia::core::formats::Packet::new(
+                // The public packet path: core::packet::Packet
+                // (formats re-imports it privately — the round-3 E0603).
+                // decode() takes the owned packet.
+                let pkt = symphonia::core::packet::Packet::new(
                     0,
                     symphonia::core::units::Timestamp::from(0u32),
                     symphonia::core::units::Duration::from(960u64),
@@ -181,7 +182,7 @@ impl PacketBackend {
 pub struct LibOpusDecoder {
     backend: PacketBackend,
     channels: usize,
-    pre_skip: u16,
+    pre_skip: usize,
     skipped: usize,
     /// Byte-level scan position for the next packet's length prefix.
     scan: usize,

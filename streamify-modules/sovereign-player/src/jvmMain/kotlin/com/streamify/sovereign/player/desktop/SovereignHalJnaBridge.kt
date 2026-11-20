@@ -36,15 +36,10 @@ interface SovereignHalNative : Library {
 
 /** The loaded native edge (null while the library is absent). */
 internal val SOVEREIGN_NATIVE: SovereignHalNative? by lazy {
-    val candidates = listOf(
-        "streamify_core_rs", // Linux: libstreamify_core_rs.so
-        "streamify_core_rs", // Windows: streamify_core_rs.dll (same stem)
-    )
-    for (stem in candidates.distinct()) {
-        runCatching { Native.load(stem, SovereignHalNative::class.java) }
-            .onSuccess { return it }
-    }
-    null
+    // One stem everywhere: libstreamify_core_rs.so (Linux) /
+    // streamify_core_rs.dll (Windows) / streamify_core_rs.dylib (macOS).
+    runCatching { Native.load("streamify_core_rs", SovereignHalNative::class.java) }
+        .getOrNull()
 }
 
 /** One decoded 96-byte stats-wire snapshot (the layout the Rust `SinkStats::to_wire` writes). */
