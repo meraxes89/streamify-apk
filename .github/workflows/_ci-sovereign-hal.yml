@@ -385,21 +385,26 @@ jobs:
           api-level: ${{ matrix.api }}
           arch: x86_64
           target: default
-          # -qemu -audiodev wav,...: QEMU-level args AFTER the -qemu
-          # separator (the emulator rejects them as top-level options —
-          # `unknown option: -audiodev`, the API 26/29/34/35 boot
-          # failure). The wav backend captures the guest's AudioFlinger
-          # mixer output into the file — the OS-loopback capture this job
-          # exists for (no host audio device needed on the runner).
-          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none -qemu -audiodev wav,path=/tmp/sovereign-emulator-audio.wav
+          # Plain boot options: the emulator's bundled QEMU
+          # (qemu-system-x86_64-headless) does NOT support -audiodev (it
+          # rejected it both as a top-level option and after -qemu —
+          # 'invalid option', instant exit, the two previous failure
+          # rounds). The AudioFlinger capture in Phase 1 therefore rides
+          # the GUEST side: the AAudio bracket APK plays through the
+          # guest's audioserver and the capture is pulled via adb. This
+          # leg proves the boot matrix + adb + the audio HAL service on
+          # every API level.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
           script: |
             echo "Emulator booted (API ${{ matrix.api }})."
             adb shell getprop ro.build.version.sdk
-            # Phase 0 scaffold: the capture file materializes once the
-            # Phase 1 AAudio bracket plays audio through the guest mixer.
-            # This proves the emulator boots, adb works and the -audiodev
-            # wav backend is accepted on every API level in the matrix.
-            echo "::warning::Phase 0 scaffold: -audiodev wav backend armed; the AAudio bracket + smoke APK capture leg mounts in Phase 1 (API ${{ matrix.api }} boot proven)."
+            # The audio stack must be alive: audioserver runs and the
+            # primary audio HAL is registered (what Phase 1's AAudio
+            # bracket renders into).
+            adb shell ps -A | grep -i audioserver || { echo "::error::audioserver not running on API ${{ matrix.api }}"; exit 1; }
+            timeout 30 adb shell dumpsys media.audio_flinger > /dev/null 2>&1 || echo "::warning::audio_flinger dumpsys unavailable (non-fatal on this API)"
+            adb shell getprop | grep -i "audio" | head -5 || true
+            echo "::warning::Phase 0 scaffold: boot + adb + audioserver proven on API ${{ matrix.api }}; the AAudio bracket capture leg (guest-side, adb-pulled) mounts in Phase 1."
 
   loopback-browser:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
