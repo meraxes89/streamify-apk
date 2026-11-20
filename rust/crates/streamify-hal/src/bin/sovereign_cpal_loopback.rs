@@ -131,6 +131,22 @@ fn run() -> i32 {
         return 2;
     }
     // 2. Install the ring + the producer (RT-paced writer).
+    // The fixture is ~3 s; the legs play 6 s. Loop the PCM to cover the
+    // full window (round-42: the 3 s tail with an empty ring produced
+    // ~144k underrun frames — exactly the fixture length — and failed
+    // the macOS verdict; the device clock pulls 48 kHz realtime
+    // regardless of how much audio exists).
+    let loop_target_samples = (args.seconds.ceil() as usize + 1) * 48_000 * 2;
+    let mut pcm = pcm;
+    if pcm.len() < loop_target_samples {
+        let unit = pcm.len();
+        let mut loops = 1;
+        while pcm.len() < loop_target_samples {
+            pcm.extend_from_within(0..unit);
+            loops += 1;
+        }
+        eprintln!("fixture looped ×{loops} to cover {} s", args.seconds);
+    }
     let ring = match SpscAudioRing::new(65_536, 2, 48_000, 48_000) {
         Ok(r) => Arc::new(r),
         Err(e) => {
