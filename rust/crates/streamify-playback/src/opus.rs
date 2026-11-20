@@ -331,7 +331,10 @@ impl LibOpusDecoder {
                 self.packet.extend_from_slice(&bytes[self.scan..self.scan + take]);
                 self.scan += take;
                 if self.packet.len() == self.packet_need {
-                    self.decode_packet(&self.packet, out)?;
+                    // Take the completed packet OUT (avoids the split
+                    // borrow: decode_packet takes &mut self).
+                    let pkt = std::mem::take(&mut self.packet);
+                    self.decode_packet(&pkt, out)?;
                     self.have_packet_len = false;
                 } else {
                     break; // need more packet bytes
