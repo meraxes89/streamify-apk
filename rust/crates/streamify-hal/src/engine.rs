@@ -21,7 +21,7 @@
 //! rebuilds the stream on device invalidation (USB DAC / BT unplug) or
 //! falls back to libmpv when no endpoint exists.
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
 
