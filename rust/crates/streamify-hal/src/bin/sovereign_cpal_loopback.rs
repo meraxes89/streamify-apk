@@ -235,12 +235,21 @@ fn run() -> i32 {
             serde_json_quote(&format!("{events:?}")),
         );
     } else {
+        let span = clock_samples
+            .first()
+            .zip(clock_samples.last())
+            .map(|(f, l)| (l.dac_frame_position - f.dac_frame_position, l.monotonic_ns - f.monotonic_ns))
+            .unwrap_or((0, 0));
         eprintln!(
-            "device={} frames_written={} underruns={} clock_samples={} drift_ok={drift_ok}",
+            "device={} frames_written={} underruns={} clock_samples={} first_frames={} first_ns={} last_frames={} last_ns={} span_frames={span:?} drift_ok={drift_ok}",
             engine.active_device().unwrap_or("none"),
             stats.frames_written,
             underruns,
             clock_samples.len(),
+            clock_samples.first().map(|s| s.dac_frame_position).unwrap_or(0),
+            clock_samples.first().map(|s| s.monotonic_ns).unwrap_or(0),
+            clock_samples.last().map(|s| s.dac_frame_position).unwrap_or(0),
+            clock_samples.last().map(|s| s.monotonic_ns).unwrap_or(0),
         );
     }
     ring_export::clear();

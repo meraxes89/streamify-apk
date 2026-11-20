@@ -344,13 +344,16 @@ jobs:
       # shared Python verifier FFT-proves the 440 Hz (L) / 880 Hz (R)
       # peaks + noise-floor separation. The binary self-verifies the
       # zero-underrun and ±100 ppm DAC-clock gates (its exit code).
-      - name: Start Audiosrv (the Windows audio service)
+      - name: Start Audiosrv (the Windows audio service) + probe the endpoint
         shell: pwsh
         run: |
           Set-Service -Name Audiosrv -StartupType Manual
           Start-Service -Name Audiosrv
-          Start-Sleep -Seconds 2
+          Start-Sleep -Seconds 5
           Get-Service Audiosrv | Format-List Name, Status
+          # Enumerate what the audio endpoint enumerator sees (diagnostics
+          # for the cpal no-default-device case).
+          Get-CimInstance -Namespace root/cimv2 -ClassName Win32_SoundDevice -ErrorAction SilentlyContinue | Format-List Name, Status
       - name: "Play + capture through WASAPI loopback (IAudioCaptureClient)"
         shell: pwsh
         run: |
@@ -457,7 +460,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config libasound2-dev dbus-x11 \
-            pipewire pipewire-audio pulseaudio-utils wireplumber
+            pipewire pipewire-audio pipewire-pulse pulseaudio-utils wireplumber
           # Sanity: alsa.pc discoverable (alsa-sys's build script gate).
           pkg-config --exists alsa && echo "alsa.pc OK"
       - name: Build the cpal loopback binary (codec -> DSP -> ring -> cpal ALSA/PipeWire)
@@ -475,7 +478,7 @@ jobs:
           # ONE dbus session for daemons + player + capture (the
           # daemons must share the session with pactl/pw-cat). The
           # python WAV conversion runs AFTER the session (plain file).
-          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; for i in 1 2 3 4 5 6 7 8 9 10; do pactl info >/dev/null 2>&1 && pactl list short sinks 2>/dev/null | grep -q ci_sink && break; sleep 1; done; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; sleep 2; timeout 5 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; exit $PC'
+          PW_PLAY='export XDG_RUNTIME_DIR=/tmp/xdg-run-play; mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"; pipewire & sleep 2; wireplumber & sleep 4; pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink; pactl set-default-sink ci_sink; for i in 1 2 3 4 5 6 7 8 9 10; do pactl info >/dev/null 2>&1 && pactl list short sinks 2>/dev/null | grep -q ci_sink && break; sleep 1; done; for i in 1 2 3 4 5; do [ -S ${XDG_RUNTIME_DIR}/pulse/native ] && break; sleep 1; done; BIN=rust/target/release/sovereign_cpal_loopback; "$BIN" --any-device --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log & PLAYER=$!; sleep 2; timeout 5 pw-cat --record -d ci_sink.monitor --rate 48000 --channels 2 --format f32 --raw capture.raw 2> capture.log || PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log; wait "$PLAYER" || true; PC=$?; cat player.json || true; tail -5 player.log || true; exit $PC'
           if dbus-run-session -- bash -c "$PW_PLAY"; then
             echo "playback session OK"
           else

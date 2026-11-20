@@ -78,7 +78,9 @@ $eRender = 0; $eConsole = 0
 # Activator::CreateInstance(GetTypeFromCLSID), and casting to the
 # ComImport interface makes the CLR perform the QI.
 $clsid = [SovereignLoopback.Wasapi]::CLSID_MM_DEVICE_ENUMERATOR
-$enumType = [Type]::GetTypeFromCLSID($clsid)
+# GetTypeFromCLSID needs a [guid] instance (the C# static Guid binds as
+# Guid but PS overload resolution wants the exact [guid] accelerator).
+$enumType = [Type]::GetTypeFromCLSID([guid]$clsid)
 if ($null -eq $enumType) { throw "GetTypeFromCLSID(MMDeviceEnumerator) failed" }
 $enumeratorObj = [Activator]::CreateInstance($enumType)
 if ($null -eq $enumeratorObj) { throw "Activator::CreateInstance(MMDeviceEnumerator) failed" }
