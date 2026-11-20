@@ -145,12 +145,12 @@ fn run() -> i32 {
     let producer_ring = Arc::clone(&ring); // the closure's own handle
     let producer = std::thread::spawn(move || {
         let ring = producer_ring;
-        let quantum = 512 * 2; // 512 frames interleaved
+        let quantum = 2048 * 2; // lead-fill quantum (interleaved)
         let mut pos = 0usize;
         let start = Instant::now();
         // Lead-fill: the prime-then-connect discipline. write_frames
         // returns the SAMPLE count served (interleaved units).
-        while pos < producer_pcm.len() && ring.occupancy() < 8_192 {
+        while pos < producer_pcm.len() && ring.occupancy() < 16_384 {
             let take = quantum.min(producer_pcm.len() - pos);
             let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
             pos += wrote;
@@ -158,16 +158,27 @@ fn run() -> i32 {
                 break;
             }
         }
-        // Paced feed: 512 frames (~10.7 ms) per ~8 ms tick — the ring
-        // absorbs the jitter (capacity 65536 frames ≈ 1.37 s).
+        // Paced feed, occupancy-aware (round-40: the fixed 512f/8ms
+        // tick under-fed BlackHole's bursty pulls — 164k underrun
+        // frames in 6 s). The producer now tops the ring up toward a
+        // 16384-frame cushion in 2048-frame quanta and paces itself
+        // against the 48 kHz realtime drain: it only sleeps when the
+        // cushion is full, so bursts are absorbed by the 65536-frame
+        // capacity instead of underrunning.
+        const CUSHION_FRAMES: usize = 16_384;
+        const FEED_QUANTUM: usize = 2_048 * 2; // interleaved samples
         while pos < producer_pcm.len() && !producer_done.load(Ordering::Relaxed) {
-            let take = quantum.min(producer_pcm.len() - pos);
+            let room = CUSHION_FRAMES.saturating_sub(ring.occupancy());
+            if room == 0 {
+                std::thread::sleep(Duration::from_millis(4));
+                continue;
+            }
+            let want_frames = room.min(FEED_QUANTUM / 2);
+            let take = (want_frames * 2).min(producer_pcm.len() - pos);
             let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
             pos += wrote;
             if wrote == 0 {
-                std::thread::sleep(Duration::from_millis(10));
-            } else {
-                std::thread::sleep(Duration::from_millis(8));
+                std::thread::sleep(Duration::from_millis(2));
             }
         }
         let _ = start;

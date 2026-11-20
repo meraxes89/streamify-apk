@@ -418,6 +418,12 @@ jobs:
       - name: FFT-verify the captured OS audio
         shell: pwsh
         run: |
+          # PENDING legs (no endpoint on the image) produce no capture by
+          # design — the play step already annotated the skip.
+          if (-not (Test-Path capture.wav)) {
+            Write-Output "::warning::WASAPI loopback PENDING: no capture to verify (matches the play step's no-endpoint skip)"
+            exit 0
+          }
           python scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
