@@ -392,7 +392,7 @@ jobs:
       - name: Install BlackHole-2ch + switchaudio-osx + coreutils
         run: |
           brew install --cask blackhole-2ch
-          brew install switchaudio-osx coreutils
+          brew install switchaudio-osx || true
           # Route system output to BlackHole 2ch (the loopback driver).
           SwitchAudioSource -t output -s "BlackHole 2ch" || true
           # Give CoreAudio a beat to re-route.
@@ -407,9 +407,16 @@ jobs:
           # The capture: BlackHole 2ch's INPUT records everything the
           # system plays (the loopback). sox/ffmpeg via brew:
           command -v sox >/dev/null || brew install sox
-          # macOS has no `timeout`; coreutils provides gtimeout.
-          gtimeout 5 sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log || \
+          # macOS has no `timeout`: a bash-native watchdog (kill sox
+          # after 5 s of recording — its SIGTERM finalizes the WAV).
+          ( sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log ) &
+          SOX_PID=$!
+          sleep 5
+          kill -TERM $SOX_PID 2>/dev/null
+          wait $SOX_PID 2>/dev/null
+          if [ ! -s capture.wav ]; then
             ffmpeg -y -f avfoundation -i ":BlackHole 2ch" -t 5 -c:a pcm_f32le capture.wav 2>> capture.log
+          fi
           wait $PLAYER; PC=$?
           cat player.json; tail -5 player.log
           [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
@@ -439,7 +446,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config libasound2-dev \
+            pkg-config libasound2-dev dbus-x11 \
             pipewire pipewire-audio pulseaudio-utils wireplumber
           # Sanity: alsa.pc discoverable (alsa-sys's build script gate).
           pkg-config --exists alsa && echo "alsa.pc OK"

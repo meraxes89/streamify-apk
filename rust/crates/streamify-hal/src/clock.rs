@@ -104,7 +104,9 @@ mod tests {
 
     #[test]
     fn non_monotonic_rejected() {
-        let mut s = synth(0, 48_000, 1_000_000_000);
+        // Nonzero base: 0 - 1 would underflow u64 before the validator
+        // ever sees the non-monotonic pair.
+        let mut s = synth(96_000, 48_000, 1_000_000_000);
         s[1].dac_frame_position = s[0].dac_frame_position - 1;
         assert!(validate_drift_window(&s).is_err());
     }

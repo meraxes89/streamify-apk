@@ -105,6 +105,13 @@ pub fn prefer_sound_server(devices: &[OutputDevice]) -> OutputRoute {
     if let Some(d) = devices.iter().find(|d| d.supports_48k_stereo) {
         return OutputRoute::Device(d.clone());
     }
+    // Last resort: the DEFAULT endpoint even without an advertised
+    // 48 kHz range (Windows RDP endpoints accept 48 kHz streams —
+    // the shared-mode mix format resamples; the engine's sanity check
+    // only requires that a default output config exists).
+    if let Some(d) = devices.iter().find(|d| d.is_default) {
+        return OutputRoute::Device(d.clone());
+    }
     OutputRoute::NoEndpoint
 }
 
