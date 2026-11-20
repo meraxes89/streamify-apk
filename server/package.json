@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node bin/streamify-server.mjs",
+    "start": "node src/boot/streamify.mjs",
+    "start:direct": "node bin/streamify-server.mjs",
     "start:v2": "node bin/streamify-server.mjs",
     "start:legacy": "node index.js",
     "test:contract": "node --test test/contract/api-contract.test.js",

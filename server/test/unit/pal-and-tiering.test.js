@@ -37,6 +37,9 @@ import {
   Win32MemoryAdapter,
   Win32NetworkAdapter
 } from '../../src/platform/pal/adapters/win32.js';
+import { StreamPacer, PacedStreamTransform } from '../../src/slices/stream/pacer.js';
+import { Readable } from 'node:stream';
+import { createApp } from '../../src/app.js';
 
 test('PAL Step 1: Core contracts & Capability Registry initialize safely', async () => {
   assert.ok(pal, 'pal singleton should exist');
@@ -449,4 +452,81 @@ test('Adapters Step 4: Win32 (Windows) adapters execute with proper cache no-op 
   assert.equal(wifi.media, NET_MEDIA.WIFI);
   const ethernet = await net.classify('Ethernet adapter');
   assert.equal(ethernet.media, NET_MEDIA.WIRED);
+});
+
+test('Pacing Step 5: Media-aware pacing bypass applies token-bucket only for bulk over wireless', () => {
+  const pacer = new StreamPacer();
+
+  // Rule 1: Audio streaming (!isBulk) is exempt from token-bucket pacing (comm11.md Section 0 item 6)
+  assert.equal(
+    pacer.shouldPace({ media: 'wifi', isBulk: false }),
+    false,
+    'Audio streaming over Wi-Fi should be exempt from pacing'
+  );
+
+  // Rule 2: Loopback and wired connections are exempt from pacing
+  assert.equal(
+    pacer.shouldPace({ media: 'loopback', isBulk: true }),
+    false,
+    'Loopback traffic must bypass pacing'
+  );
+  assert.equal(
+    pacer.shouldPace({ media: 'wired', isBulk: true }),
+    false,
+    'Wired LAN traffic must bypass pacing'
+  );
+
+  // Rule 3: Bulk transfer over Wi-Fi / cellular requires pacing
+  assert.equal(
+    pacer.shouldPace({ media: 'wifi', isBulk: true }),
+    true,
+    'Bulk video/download over Wi-Fi requires pacing'
+  );
+  assert.equal(
+    pacer.shouldPace({ media: 'cellular', isBulk: true }),
+    true,
+    'Bulk video/download over cellular requires pacing'
+  );
+
+  // Rule 4: Workstation tier pacingPolicy='off' bypasses pacing
+  assert.equal(
+    pacer.shouldPace({ media: 'wifi', isBulk: true, pacingPolicy: 'off' }),
+    false,
+    'Workstation tier off-policy bypasses pacing'
+  );
+
+  // Stream bypass test: when exempt, original stream is returned directly
+  const source = Readable.from([Buffer.from('hello audio')]);
+  const paced = pacer.pace(source, { media: 'wifi', isBulk: false, forcePacing: false });
+  assert.equal(paced, source, 'Exempt stream must bypass transform');
+
+  pacer.close();
+});
+
+test('Bootstrap & App Step 6: Server health exposes PAL & Tier Governor telemetry', async () => {
+  const app = await createApp({ logger: false });
+
+  const healthRes = await app.inject({
+    method: 'GET',
+    url: '/api/health'
+  });
+  assert.equal(healthRes.statusCode, 200);
+  const healthData = JSON.parse(healthRes.payload);
+
+  assert.ok(healthData.tier, 'health must include tier telemetry');
+  assert.ok(healthData.tier.currentBufferSlots > 0);
+  assert.ok(healthData.pal, 'health must include pal capabilities');
+  assert.ok(healthData.pal.power);
+
+  const capRes = await app.inject({
+    method: 'GET',
+    url: '/api/capabilities'
+  });
+  assert.equal(capRes.statusCode, 200);
+  const capData = JSON.parse(capRes.payload);
+  assert.ok(capData.capabilities.includes('platform-abstraction-layer'));
+  assert.ok(capData.capabilities.includes('elastic-tier-governor'));
+  assert.ok(capData.capabilities.includes('universal-bootstrap'));
+
+  await app.close();
 });
