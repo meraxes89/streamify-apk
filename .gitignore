@@ -17,6 +17,7 @@ captures/
 .externalNativeBuild
 .cxx/
 .cxx
+node_modules/
 
 # NDK
 *.so
