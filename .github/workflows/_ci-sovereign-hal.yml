@@ -413,15 +413,23 @@ jobs:
         with:
           workspaces: "rust -> rust/target"
           shared-key: sovereign-hal-p1-linux
-      - name: Build the cpal loopback binary (codec -> DSP -> ring -> cpal ALSA/PipeWire)
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_loopback --release
       # Phase 1 D5: headless dbus session + pipewire + wireplumber, a
       # null-sink (ci_sink), the player routed through cpal, the sink's
       # MONITOR recorded, FFT-verified by the shared Python verifier.
-      - name: Bring up headless PipeWire + the ci_sink null-sink
+      # ALSO installs the ALSA/pkg-config dev packages cpal's alsa-sys
+      # build script needs BEFORE the cargo build.
+      - name: Bring up headless PipeWire + the ci_sink null-sink (+ ALSA dev)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pipewire pipewire-audio pulseaudio-utils wireplumber
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev \
+            pipewire pipewire-audio pulseaudio-utils wireplumber
+          # Sanity: alsa.pc discoverable (alsa-sys's build script gate).
+          pkg-config --exists alsa && echo "alsa.pc OK"
+      - name: Build the cpal loopback binary (codec -> DSP -> ring -> cpal ALSA/PipeWire)
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_loopback --release
+      - name: Bring up the headless dbus session + daemons + ci_sink
+        run: |
           # A user dbus session for the duration of this step block.
           echo 'eval "$(dbus-launch --sh-syntax)"' >> ~/.pipewire_env
           echo 'pipewire & sleep 2; wireplumber & sleep 4' >> ~/.pipewire_env

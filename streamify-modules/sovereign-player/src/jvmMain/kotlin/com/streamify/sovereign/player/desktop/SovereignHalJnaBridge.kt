@@ -82,7 +82,7 @@ fun readSovereignStatsWire(): SovereignStatsWire? {
     return runCatching {
         val mem = Memory(SINK_STATS_WIRE_BYTES.toLong())
         val ok = native.streamify_ring_stats_wire(mem, SINK_STATS_WIRE_BYTES)
-        if (ok != 1) return null
+        if (ok != 1) return@runCatching null
         fun u32(off: Int) = mem.getInt((off * 4).toLong()).toLong() and 0xFFFFFFFFL
         fun u64(off: Int): Long {
             var v = 0L

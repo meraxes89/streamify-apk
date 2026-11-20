@@ -35,6 +35,7 @@
 //! `CanonicalSrc`'s lossless passthrough (rubato never runs); 44.1 kHz
 //! AAC-LC (`itag 140`) is the only lane that resamples.
 
+use symphonia::core::audio::Audio;
 use streamify_core::{AudioErrorKind, EngineError};
 
 use crate::decode::{DecoderGeometry, SymphoniaDecoder};
@@ -126,42 +127,45 @@ impl PacketBackend {
     fn decode(&mut self, packet: &[u8], pcm: &mut [f32], channels: usize) -> Result<usize, String> {
         match self {
             PacketBackend::LibOpus(dec) => {
+                // opus 0.4: decode_float(&[u8], &mut [f32], fec) — the
+                // f32 output the canonical pipeline speaks natively.
                 let frames = dec
-                    .decode(Some(packet), pcm, false)
+                    .decode_float(packet, pcm, false)
                     .map_err(|e| format!("libopus decode failed: {e}"))?;
                 Ok(frames)
             }
             PacketBackend::SymphoniaOpus(dec) => {
-                // PacketRef: (track 0, ts 0, duration 960·frames-units,
-                // data). The Opus decoder only reads the data view.
-                let pref = symphonia::core::formats::PacketRef::new(
+                // Packet: (track 0, ts 0, dur 960 frames, data). The
+                // registry-produced decoder's documented drive path.
+                let pkt = symphonia::core::formats::Packet::new(
                     0,
-                    symphonia::core::units::Timestamp::from(0u64),
+                    symphonia::core::units::Timestamp::from(0u32),
                     symphonia::core::units::Duration::from(960u64),
-                    packet,
+                    packet.to_vec(),
                 );
                 let decoded = dec
-                    .decode_ref(&pref)
+                    .decode(&pkt)
                     .map_err(|e| format!("symphonia-opus decode failed: {e}"))?;
-                // Copy the decoded buffer's planes into the interleaved
-                // staging (symphonia returns per-plane buffers).
-                let spec = *decoded.spec();
-                let frames = decoded.frames();
-                let ch = spec.channels.count();
-                let n = frames * ch;
+                // The canonical interleaved conversion (decode.rs's own
+                // pattern): copy_to_vec_interleaved handles every buffer
+                // flavor; F32 is the Opus decoder's native output.
+                let mut scratch: Vec<f32> = Vec::new();
+                let frames = match &decoded {
+                    symphonia::core::audio::GenericAudioBufferRef::F32(b) => {
+                        b.copy_to_vec_interleaved(&mut scratch);
+                        b.frames()
+                    }
+                    symphonia::core::audio::GenericAudioBufferRef::S16(b) => {
+                        b.copy_to_vec_interleaved(&mut scratch);
+                        b.frames()
+                    }
+                    _ => return Err("unexpected symphonia-opus buffer flavor".into()),
+                };
+                let n = scratch.len();
                 if n > pcm.len() {
                     return Err("pcm staging too small".into());
                 }
-                let planes = decoded.planes();
-                if ch == 1 {
-                    pcm[..frames].copy_from_slice(planes.into_mono());
-                } else {
-                    let stereo = planes.into_stereo();
-                    for (i, (l, r)) in stereo.iter().enumerate() {
-                        pcm[i * 2] = *l;
-                        pcm[i * 2 + 1] = *r;
-                    }
-                }
+                pcm[..n].copy_from_slice(&scratch);
                 let _ = channels;
                 Ok(frames)
             }
@@ -196,21 +200,25 @@ pub struct LibOpusDecoder {
 impl LibOpusDecoder {
     /// Build the scanner + the tier's backend from the parsed OpusHead
     /// fields.
-    pub fn new(tier: OpusTier, channels: usize, pre_skip: u16) -> Result<Self, EngineError> {
+    pub fn new(tier: OpusTier, channels: usize, pre_skip: usize) -> Result<Self, EngineError> {
+        let mode = match channels {
+            1 => opus::Channels::Mono,
+            2 => opus::Channels::Stereo,
+            _ => {
+                return Err(EngineError::Audio {
+                    kind: AudioErrorKind::FormatUnsupported,
+                    device_id: Some(format!("Opus channels {channels} outside 1..=2")),
+                })
+            }
+        };
         let backend = match (tier, channels) {
-            (OpusTier::Primary, 1) => PacketBackend::LibOpus(
-                opus::Decoder::new(opus::SampleRate::Hz48000, opus::Channels::Mono)
-                    .map_err(|e| EngineError::Audio {
-                        kind: AudioErrorKind::Init,
-                        device_id: Some(format!("libopus init failed: {e}")),
-                    })?,
-            ),
-            (OpusTier::Primary, 2) => PacketBackend::LibOpus(
-                opus::Decoder::new(opus::SampleRate::Hz48000, opus::Channels::Stereo)
-                    .map_err(|e| EngineError::Audio {
-                        kind: AudioErrorKind::Init,
-                        device_id: Some(format!("libopus init failed: {e}")),
-                    })?,
+            (OpusTier::Primary, _) => PacketBackend::LibOpus(
+                // opus 0.4: Decoder::new(sample_rate: u32, channels) —
+                // Opus ALWAYS decodes at 48 kHz (RFC 6716 §2).
+                opus::Decoder::new(48_000, mode).map_err(|e| EngineError::Audio {
+                    kind: AudioErrorKind::Init,
+                    device_id: Some(format!("libopus init failed: {e}")),
+                })?,
             ),
             (OpusTier::Fallback, _) => {
                 // symphonia-opus is registry-mediated (RegisterableAudio
@@ -219,16 +227,16 @@ impl LibOpusDecoder {
                 // the registry — exactly the documented integration.
                 let mut head = Vec::with_capacity(OPUS_HEAD_MIN_LEN);
                 head.extend_from_slice(b"OpusHead");
-                head.push(1); // version
+                head.push(1u8); // version
                 head.push(channels as u8);
-                head.extend_from_slice(&pre_skip.to_le_bytes());
+                head.extend_from_slice(&(pre_skip as u16).to_le_bytes());
                 head.extend_from_slice(&48_000u32.to_le_bytes()); // declared rate (informational)
                 head.extend_from_slice(&0i16.to_le_bytes()); // gain
                 head.push(0); // mapping family 0 (mono/stereo)
                 let mut params = symphonia::core::codecs::audio::AudioCodecParameters::new();
                 params
                     .for_codec(symphonia::core::codecs::audio::well_known::CODEC_ID_OPUS)
-                    .with_extra_data(Box::new(head));
+                    .with_extra_data(head.into_boxed_slice());
                 let mut registry =
                     symphonia::core::codecs::registry::CodecRegistry::new();
                 registry.register_audio_decoder_at_tier::<symphonia_opus::OpusDecoder>(
@@ -246,7 +254,7 @@ impl LibOpusDecoder {
         Ok(Self {
             backend,
             channels,
-            pre_skip: pre_skip as usize,
+            pre_skip,
             skipped: 0,
             scan: 0,
             prefix_buf: [0; RAW_FRAME_PREFIX],
@@ -261,14 +269,18 @@ impl LibOpusDecoder {
     /// Decode one framed packet into `out` with RFC 7845 §4.2 pre-skip
     /// trimming (the encoder's lookahead samples drop).
     fn decode_packet(&mut self, packet: &[u8], out: &mut FrameBuf) -> Result<usize, EngineError> {
-        let decoded = self
-            .backend
-            .decode(packet, &mut self.pcm, self.channels)
-            .map_err(|why| EngineError::Audio {
-                kind: AudioErrorKind::FormatUnsupported,
-                device_id: Some(why),
-            })?;
-        let mut samples = decoded * self.channels;
+        // Split borrows: the backend decodes into `pcm` first, then the
+        // staging slice hands off to `out` (no simultaneous field borrows).
+        let channels = self.channels;
+        let decoded = {
+            let pcm = &mut self.pcm;
+            self.backend.decode(packet, pcm, channels)
+        }
+        .map_err(|why| EngineError::Audio {
+            kind: AudioErrorKind::FormatUnsupported,
+            device_id: Some(why),
+        })?;
+        let mut samples = decoded * channels;
         let start = if self.skipped < self.pre_skip {
             let skip = (self.pre_skip - self.skipped).min(samples);
             self.skipped += skip;
@@ -278,7 +290,7 @@ impl LibOpusDecoder {
         };
         samples -= start;
         out.push_interleaved(&self.pcm[start..start + samples])?;
-        Ok(samples / self.channels.max(1))
+        Ok(samples / channels.max(1))
     }
 
     /// Feed raw framed bytes incrementally (the server framing: UInt16BE
@@ -431,7 +443,7 @@ impl TrackDecoder for OpusTrackDecoder {
                         sample_rate_hz: 48_000, // Opus ALWAYS outputs 48 kHz
                         channels,
                     });
-                    self.raw = Some(LibOpusDecoder::new(self.tier, channels, pre_skip)?);
+                    self.raw = Some(LibOpusDecoder::new(self.tier, channels, pre_skip as usize)?);
                     let rest = self.pending.split_off(OPUS_HEAD_MIN_LEN);
                     self.pending = rest;
                     self.head_consumed = OPUS_HEAD_MIN_LEN;
