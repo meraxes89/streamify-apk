@@ -209,6 +209,10 @@ pub struct SymphoniaDecoder {
     feed: Arc<Mutex<FeedState>>,
     format: Option<Box<dyn FormatReader>>,
     decoder: Option<Box<dyn AudioDecoder>>,
+    /// The codec registry the session resolves decoders through — `None`
+    /// uses symphonia's default (no Opus); `Some` carries the Opus
+    /// fallback registry (Phase 1 D3).
+    codecs: Option<Arc<symphonia::core::codecs::registry::CodecRegistry>>,
     track_id: u32,
     geometry: Option<DecoderGeometry>,
     /// Frames emitted so far — the rewind checkpoint.
@@ -239,12 +243,37 @@ impl SymphoniaDecoder {
             feed: Arc::new(Mutex::new(FeedState::default())),
             format: None,
             decoder: None,
+            codecs: None,
             track_id: 0,
             geometry: None,
             frames_emitted: 0,
             scratch: Vec::new(),
             eos: false,
         })
+    }
+
+    /// Start a session whose codec registry ALSO carries symphonia-opus
+    /// at [`Tier::Fallback`] (Sovereign HAL Phase 1 / D3: the pure-Rust
+    /// Opus path — a future first-party symphonia Opus release would
+    /// supersede it automatically, the tier's documented semantics).
+    ///
+    /// The registry is stored in the session and used for BOTH the
+    /// initial probe and every rewind re-probe (the packet decode path
+    /// resolves through `self.codecs`, never the global default).
+    pub fn with_opus_fallback() -> Result<Self, EngineError> {
+        let mut session = Self::new()?;
+        session.codecs = Some(Self::opus_fallback_registry());
+        Ok(session)
+    }
+
+    /// The default codecs + symphonia-opus at Tier::Fallback.
+    fn opus_fallback_registry() -> Arc<symphonia::core::codecs::registry::CodecRegistry> {
+        let mut registry = symphonia::core::codecs::registry::CodecRegistry::new();
+        symphonia::default::register_enabled_codecs(&mut registry);
+        registry.register_audio_decoder_at_tier::<symphonia_opus::OpusDecoder>(
+            symphonia::core::common::Tier::Fallback,
+        );
+        Arc::new(registry)
     }
 
     /// True when the accumulated source is complete and drained.
@@ -309,9 +338,14 @@ impl SymphoniaDecoder {
                         "container geometry outside the canonical pipeline envelope",
                     ));
                 }
-                let decoder = symphonia::default::get_codecs()
-                    .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
-                    .map_err(|e| unsupported(&format!("codec unavailable: {e}")))?;
+                let decoder = match &self.codecs {
+                    Some(registry) => registry
+                        .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
+                        .map_err(|e| unsupported(&format!("codec unavailable: {e}")))?,
+                    None => symphonia::default::get_codecs()
+                        .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
+                        .map_err(|e| unsupported(&format!("codec unavailable: {e}")))?,
+                };
                 self.decoder = Some(decoder);
                 self.geometry = Some(DecoderGeometry {
                     sample_rate_hz: sample_rate,

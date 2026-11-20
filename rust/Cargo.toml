@@ -52,6 +52,7 @@
 resolver = "2"
 members = [
     "crates/streamify-core",
+    "crates/streamify-hal",
     "crates/streamify-jam-crdt",
     "crates/streamify-radio-scorer",
     "crates/streamify-audio",
@@ -64,10 +65,10 @@ members = [
 ]
 default-members = [
     "crates/streamify-core",
+    "crates/streamify-hal",
     "crates/streamify-jam-crdt",
     "crates/streamify-radio-scorer",
     "crates/streamify-audio",
-    "crates/streamify-playback",
     "crates/streamify-playback",
     "crates/streamify-storage",
     "crates/streamify-jam",
@@ -96,6 +97,7 @@ streamify-storage = { path = "crates/streamify-storage" }
 streamify-jam = { path = "crates/streamify-jam" }
 streamify-resolver = { path = "crates/streamify-resolver" }
 streamify-contract = { path = "crates/streamify-contract" }
+streamify-hal = { path = "crates/streamify-hal" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -130,6 +132,17 @@ symphonia = { version = "0.6", default-features = false, features = [
     "pcm",
     "wav",
 ] }
+# Sovereign HAL Phase 1 (D3): the production Opus decoder — the `opus`
+# crate statically builds libopus (BSD-3-Clause) via cc. NOT audiopus
+# (abandoned). symphonia-opus rides as the Tier::Fallback pure-Rust
+# decoder so both paths are exercised and CI-verified.
+opus = "0.4"
+symphonia-opus = "0.1"
+# Sovereign HAL Phase 1 (D3 dev-oracle): ebur128 loudness cross-check.
+ebur128 = "0.1"
+# Sovereign HAL Phase 1 (D1): the unified output HAL + the Windows
+# exclusive bracket's engine (feature-gated per member).
+cpal = "0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 metrics = "0.24"

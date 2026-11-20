@@ -1,0 +1,258 @@
+//! Sovereign HAL Phase 1 (D5): the cpal OS-loopback player.
+//!
+//! The end-to-end leg of the desktop loopback gates: this binary plays
+//! a REAL audio file (the Opus/AAC fixtures, decoded through the
+//! production TrackDecoder chain) into the OS mixer through the cpal
+//! output engine — the same engine the desktop app ships — while the
+//! CI job captures the OS-mixed output (WASAPI loopback / BlackHole /
+//! PipeWire null-sink monitor) and FFT-verifies it with
+//! `scripts/sovereign_loopback_verifier.py`.
+//!
+//! The binary ALSO prints the DAC presentation-clock drift verdict: it
+//! samples [`DacClockSlot`] during playback and validates the ±100 ppm
+//! / <5 ms acceptance window (`validate_drift_window`) — the D2 gate.
+//!
+//! CLI contract (stable — CI scripts against it):
+//!
+//!   sovereign-cpal-loopback --file <fixture> [--seconds N] [--json]
+//!
+//! * `--file`    an Opus (Ogg or raw) or AAC fixture the TrackDecoder
+//!               chain decodes (the REAL codec path, not a synth tone).
+//! * `--seconds` cap playback duration (default: the file's length).
+//! * `--json`    machine-readable summary (exit code still the verdict).
+//!
+//! Exit codes: 0 = played cleanly (underruns 0, ring stats healthy,
+//! clock drift within ±100 ppm); 1 = verification failed; 2 = usage.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use streamify_core::EngineError;
+use streamify_hal::clock::validate_drift_window;
+use streamify_hal::{OutputEngine, RouteOption};
+use streamify_playback::ring_export;
+use streamify_playback::{
+    FrameBuf, OpusTier, OpusTrackDecoder, RingSink, SpscAudioRing, SymphoniaDecoder, TrackDecoder,
+};
+
+struct Args {
+    file: String,
+    seconds: f64,
+    json: bool,
+}
+
+fn parse_args() -> Result<Args, String> {
+    let mut args = std::env::args().skip(1);
+    let mut file = None;
+    let mut seconds = 4.0f64;
+    let mut json = false;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--file" => file = args.next(),
+            "--seconds" => {
+                seconds = args
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or("--seconds needs a number")?;
+            }
+            "--json" => json = true,
+            _ => return Err(format!("unknown arg {a}")),
+        }
+    }
+    Ok(Args {
+        file: file.ok_or("--file required")?,
+        seconds: seconds.clamp(0.5, 60.0),
+        json,
+    })
+}
+
+/// Decode a fixture through the production chain into canonical PCM
+/// (48 kHz interleaved stereo f32). Opus (both framings) rides the
+/// Phase 1 OpusTrackDecoder; AAC rides SymphoniaDecoder.
+fn decode_fixture(path: &str) -> Result<Vec<f32>, EngineError> {
+    let bytes = std::fs::read(path).map_err(|e| EngineError::Audio {
+        kind: streamify_core::AudioErrorKind::Init,
+        device_id: Some(format!("read {path}: {e}")),
+    })?;
+    let is_opus = bytes.len() > 19
+        && (&bytes[0..4] == b"OggS" || &bytes[0..8] == b"OpusHead");
+    let mut out = FrameBuf::with_capacity(65_536, 2)?;
+    if is_opus {
+        let mut dec = OpusTrackDecoder::new(OpusTier::Primary);
+        dec.push_range(&bytes, &mut out)?;
+        dec.finish(&mut out)?;
+    } else {
+        let mut dec = SymphoniaDecoder::new()?;
+        dec.push_range(&bytes, &mut out)?;
+        dec.finish(&mut out)?;
+    }
+    Ok(out.as_slice().to_vec())
+}
+
+fn main() {
+    let code = run();
+    std::process::exit(code);
+}
+
+fn run() -> i32 {
+    let args = match parse_args() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("usage error: {e}");
+            return 2;
+        }
+    };
+    // 1. Decode the fixture (the real codec path).
+    let pcm = match decode_fixture(&args.file) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("decode failed: {e:?}");
+            return 2;
+        }
+    };
+    if pcm.is_empty() {
+        eprintln!("fixture decoded to zero samples");
+        return 2;
+    }
+    // 2. Install the ring + the producer (RT-paced writer).
+    let ring = match SpscAudioRing::new(65_536, 2, 48_000, 48_000) {
+        Ok(r) => Arc::new(r),
+        Err(e) => {
+            eprintln!("ring init failed: {e:?}");
+            return 2;
+        }
+    };
+    ring_export::install(Arc::clone(&ring));
+    let done = Arc::new(AtomicBool::new(false));
+    let producer_done = Arc::clone(&done);
+    let producer_pcm = Arc::new(pcm);
+    let producer = std::thread::spawn(move || {
+        let quantum = 512 * 2; // 512 frames interleaved
+        let mut pos = 0usize;
+        let start = Instant::now();
+        // Lead-fill: the prime-then-connect discipline.
+        while pos < producer_pcm.len() && ring.occupancy() < 8_192 {
+            let take = quantum.min(producer_pcm.len() - pos);
+            let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
+            pos += wrote * 2;
+            if wrote == 0 {
+                break;
+            }
+        }
+        while pos < producer_pcm.len() && !producer_done.load(Ordering::Relaxed) {
+            let take = quantum.min(producer_pcm.len() - pos);
+            let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
+            pos += wrote * 2;
+            if wrote == 0 {
+                std::thread::sleep(Duration::from_millis(5));
+            } else if pos < producer_pcm.len() {
+                std::thread::sleep(Duration::from_millis(8));
+            }
+        }
+        let _ = start;
+    });
+    // 3. Open the cpal output route.
+    let (mut engine, events) = OutputEngine::new(16);
+    if let Err(why) = engine.start(&RouteOption::Auto) {
+        ring_export::clear();
+        eprintln!("cpal route open failed: {why}");
+        if args.json {
+            println!(
+                "{{\"verdict\": \"no-endpoint\", \"reason\": {}}}",
+                serde_json_quote(&why)
+            );
+        }
+        // No endpoint is NOT a codec failure — but CI's loopback legs
+        // MUST have the virtual device present, so surface exit 1.
+        return 1;
+    }
+    // 4. Play for --seconds, sampling the clock slot.
+    let deadline = Instant::now() + Duration::from_secs_f64(args.seconds);
+    let mut clock_samples = Vec::new();
+    let slot = engine.clock_slot();
+    let mut last_seq = 0u64;
+    while Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+        if let Some((sample, seq)) = slot.sample() {
+            if seq != last_seq {
+                last_seq = seq;
+                clock_samples.push(sample);
+            }
+        }
+        if producer_done.load(Ordering::Relaxed) && ring.occupancy() == 0 {
+            break;
+        }
+    }
+    let stats = {
+        let mut wire = [0u8; 96];
+        // SAFETY: valid stack buffer.
+        unsafe { ring_export::streamify_ring_stats_wire(wire.as_mut_ptr(), wire.len()) };
+        ring.stats()
+    };
+    producer_done.store(true, Ordering::Relaxed);
+    engine.stop_stream();
+    let events = events.drain();
+    let underruns = stats.underrun_events + engine.underrun_frames();
+    // 5. The verdict.
+    let drift_ok = match validate_drift_window(&clock_samples) {
+        Ok((ppm, sync_ns)) => ppm.abs() <= 100.0 && sync_ns < 5_000_000,
+        Err(why) => {
+            eprintln!("clock window unusable: {why}");
+            false
+        }
+    };
+    let verdict = underruns == 0 && drift_ok;
+    if args.json {
+        let (ppm, sync_ns) = validate_drift_window(&clock_samples)
+            .unwrap_or((f64::NAN, 0));
+        println!(
+            "{{\"verdict\": \"{}\", \"device\": {}, \"frames\": {}, \"underruns\": {}, \"clock_ppm\": {}, \"clock_sync_ns\": {}, \"events\": {}}}",
+            if verdict { "pass" } else { "fail" },
+            serde_json_quote(engine.active_device().unwrap_or("none")),
+            stats.frames_written,
+            underruns,
+            ppm,
+            sync_ns,
+            serde_json_quote(&format!("{events:?}")),
+        );
+    } else {
+        eprintln!(
+            "device={} frames_written={} underruns={} clock_samples={} drift_ok={drift_ok}",
+            engine.active_device().unwrap_or("none"),
+            stats.frames_written,
+            underruns,
+            clock_samples.len(),
+        );
+    }
+    ring_export::clear();
+    if verdict {
+        0
+    } else {
+        1
+    }
+}
+
+/// Minimal JSON string quoting (no serde dependency in the binary).
+fn serde_json_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+// Silence the unused-RingSink import warning (the ring is used through
+// ring_export + SpscAudioRing directly; RingSink remains the documented
+// producer-side handle).
+#[allow(dead_code)]
+fn _ring_sink_marker() -> Option<RingSink> {
+    None
+}

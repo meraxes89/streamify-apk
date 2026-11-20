@@ -124,6 +124,44 @@ jobs:
             --profile ci \
             -p streamify-playback --tests
 
+      # ── Sovereign HAL Phase 1 (D5): the codec + zero-alloc gate ──
+      # The REAL codec fixtures through the production chain:
+      #   * Opus itag 251 (Ogg-Opus AND the server's raw #225 framing)
+      #     through BOTH tiers (libopus primary, symphonia-opus fallback)
+      #     with FFT-verified 440 Hz (L) / 880 Hz (R) peaks and
+      #     tier-level agreement;
+      #   * AAC-LC itag 140 (44.1 kHz) decoding + rubato resampling;
+      #   * the 48 kHz rubato-bypass pin (itag 251 never resamples);
+      #   * the ebur128 LUFS oracle (lufs.rs within ±0.1 LUFS);
+      #   * the streamify-hal engine units (device ranking, clock
+      #     windows, drift validation).
+      - name: "Phase 1 codec gate: Opus + AAC fixtures, dual-tier parity, ebur128 oracle"
+        run: |
+          cargo nextest run \
+            --manifest-path rust/Cargo.toml \
+            --config-file rust/.config/nextest.toml \
+            --profile ci \
+            -p streamify-playback --test test_opus_aac
+
+      - name: "Phase 1 HAL engine units (device hygiene, clock windows)"
+        run: |
+          cargo nextest run \
+            --manifest-path rust/Cargo.toml \
+            --config-file rust/.config/nextest.toml \
+            --profile ci \
+            -p streamify-hal --lib
+
+      # D5's hard-RT proof: the cpal callback sequence (ring read →
+      # zero-fill → clock publish) runs under a counting allocator —
+      # zero allocations, both the served and the underrun arms.
+      - name: "Phase 1 zero-alloc gate: the cpal callback path"
+        run: |
+          cargo nextest run \
+            --manifest-path rust/Cargo.toml \
+            --config-file rust/.config/nextest.toml \
+            --profile ci \
+            -p streamify-hal --test test_zero_alloc_callback
+
       - name: Compile the loopback smoke binary
         run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke
 
@@ -271,7 +309,7 @@ jobs:
   loopback-windows:
     name: "Gate 4.1: Windows WASAPI loopback"
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Set up Rust toolchain
@@ -279,25 +317,48 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "rust -> rust/target"
-          shared-key: sovereign-hal-loopback-win
-      - name: Build the smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke --release
-      # Phase 0 scaffold: WASAPI loopback capture needs the IAudioCaptureClient
-      # harness (Phase 1's wasapi_pull_adapter bracket). The scaffold proves
-      # the binary runs and self-verifies its ring accounting; the OS capture
-      # leg is reported as pending.
-      - name: "Producer self-verdict (WASAPI capture leg — Phase 1)"
+          shared-key: sovereign-hal-p1-win
+      - name: Build the cpal loopback binary (codec -> DSP -> ring -> cpal WASAPI)
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_loopback --release
+      # Phase 1 D5: the full end-to-end leg. The runner's virtual render
+      # endpoint (the RDP audio device, present on windows-latest) plays
+      # the REAL Opus fixture through cpal's WASAPI shared mode while the
+      # WASAPI LOOPBACK harness captures the OS-mixed output, and the
+      # shared Python verifier FFT-proves the 440 Hz (L) / 880 Hz (R)
+      # peaks + noise-floor separation. The binary self-verifies the
+      # zero-underrun and ±100 ppm DAC-clock gates (its exit code).
+      - name: "Play + capture through WASAPI loopback (IAudioCaptureClient)"
         shell: pwsh
         run: |
-          $bin = "rust\target\release\sovereign_loopback_smoke.exe"
-          & $bin --seconds 1.0 --json
+          $bin = "rust\target\release\sovereign_cpal_loopback.exe"
+          # Start the player (cpal WASAPI) in the background.
+          $player = Start-Process -FilePath $bin -ArgumentList "--file","fixtures/audio/opus_dual_tone_48k.raw_opus","--seconds","6","--json" -PassThru -RedirectStandardOutput "player.json" -RedirectStandardError "player.log"
+          # Give cpal a moment to open the endpoint, then run the loopback
+          # capture harness (IAudioCaptureClient AUDCLNT_STREAMFLAGS_LOOPBACK
+          # on the default render endpoint).
+          Start-Sleep -Seconds 2
+          pwsh -NoProfile -File scripts/sovereign_wasapi_loopback_capture.ps1 -Seconds 4 -OutFile capture.wav
+          $player | Wait-Process -Timeout 30
+          Get-Content player.json
+          Get-Content player.log -ErrorAction SilentlyContinue | Select-Object -Last 5
+          if ($player.ExitCode -ne 0) {
+            Write-Output "::error::cpal loopback player failed (exit $($player.ExitCode))"
+            exit 1
+          }
+          if (-not (Test-Path capture.wav)) {
+            Write-Output "::error::WASAPI loopback capture produced no file"
+            exit 1
+          }
+      - name: FFT-verify the captured OS audio
+        shell: pwsh
+        run: |
+          python scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          Write-Output "::warning::Phase 0 scaffold: WASAPI IAudioCaptureClient loopback capture mounts in Phase 1 — this run proves the producer + ring accounting only."
 
   loopback-macos:
     name: "Gate 4.2: macOS blackhole-2ch loopback"
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Set up Rust toolchain
@@ -305,26 +366,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "rust -> rust/target"
-          shared-key: sovereign-hal-loopback-mac
-      - name: Build the smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke --release
-      - name: Check for BlackHole-2ch (the loopback driver)
-        id: blackhole
+          shared-key: sovereign-hal-p1-mac
+      - name: Build the cpal loopback binary (codec -> DSP -> ring -> cpal CoreAudio)
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_loopback --release
+      # Phase 1 D5: install BlackHole-2ch (the virtual loopback driver),
+      # make it the system output, play the REAL Opus fixture through
+      # cpal's CoreAudio backend, record BlackHole's input, FFT-verify.
+      - name: Install BlackHole-2ch + switchaudio-osx
         run: |
-          if system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole"; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Producer self-verdict + optional BlackHole capture
+          brew install --cask blackhole-2ch switchaudio-osx || {
+            echo "::warning::BlackHole install failed — the capture leg will be reported pending."
+            exit 0
+          }
+          SwitchAudioSource -t output -s "BlackHole 2ch" || true
+          # Give CoreAudio a beat to re-route.
+          sleep 3
+      - name: "Play through cpal CoreAudio + record BlackHole 2ch"
         run: |
-          BIN=rust/target/release/sovereign_loopback_smoke
-          $BIN --seconds 1.0 --json
-          if [ "${{ steps.blackhole.outputs.available }}" = "true" ]; then
-            echo "BlackHole-2ch present — Phase 1 wires the full capture + verifier leg here."
-          else
-            echo "::warning::Phase 0 scaffold: BlackHole-2ch not installed on this runner — producer + ring accounting proven; the OS capture leg mounts in Phase 1."
-          fi
+          BIN=rust/target/release/sovereign_cpal_loopback
+          # The player: Opus fixture through the real chain -> cpal CoreAudio.
+          $BIN --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
+          PLAYER=$!
+          sleep 2
+          # The capture: BlackHole 2ch's INPUT records everything the
+          # system plays (the loopback). sox/ffmpeg via brew:
+          brew install sox || true
+          timeout 5 sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log || \
+            ffmpeg -y -f avfoundation -i ":BlackHole 2ch" -t 5 -c:a pcm_f32le capture.wav 2>> capture.log
+          wait $PLAYER; PC=$?
+          cat player.json; tail -5 player.log
+          [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
+          [ -s capture.wav ] || { echo "::error::no BlackHole capture"; cat capture.log; exit 1; }
+      - name: FFT-verify the captured OS audio
+        run: |
+          python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
 
   loopback-linux:
     name: "Gate 4.3: Linux PipeWire null-sink loopback"
@@ -337,27 +412,54 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "rust -> rust/target"
-          shared-key: sovereign-hal-loopback-linux
-      - name: Build the smoke binary
-        run: cargo build --manifest-path rust/Cargo.toml -p streamify-playback --bin sovereign_loopback_smoke --release
-      - name: Install PipeWire + pulseaudio-utils (the null-sink monitor path)
+          shared-key: sovereign-hal-p1-linux
+      - name: Build the cpal loopback binary (codec -> DSP -> ring -> cpal ALSA/PipeWire)
+        run: cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_loopback --release
+      # Phase 1 D5: headless dbus session + pipewire + wireplumber, a
+      # null-sink (ci_sink), the player routed through cpal, the sink's
+      # MONITOR recorded, FFT-verified by the shared Python verifier.
+      - name: Bring up headless PipeWire + the ci_sink null-sink
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pipewire pipewire-audio pulseaudio-utils || {
-            echo "::warning::PipeWire packages unavailable — the null-sink capture leg is reported pending (Phase 1)."
-            exit 0
-          }
-      - name: Producer self-verdict + PipeWire null-sink scaffold
+          sudo apt-get install -y --no-install-recommends pipewire pipewire-audio pulseaudio-utils wireplumber
+          # A user dbus session for the duration of this step block.
+          echo 'eval "$(dbus-launch --sh-syntax)"' >> ~/.pipewire_env
+          echo 'pipewire & sleep 2; wireplumber & sleep 4' >> ~/.pipewire_env
+          echo 'pactl load-module module-null-sink sink_name=ci_sink sink_properties=device.description=ci_sink' >> ~/.pipewire_env
+          echo 'pactl set-default-sink ci_sink' >> ~/.pipewire_env
+          echo 'pactl info | head -5' >> ~/.pipewire_env
+          . ~/.pipewire_env
+      - name: "Play through cpal + record the ci_sink monitor"
         run: |
-          BIN=rust/target/release/sovereign_loopback_smoke
-          $BIN --seconds 1.0 --json
-          # Scaffold: create the null-sink + monitor source when the daemon runs.
-          if timeout 5 pactl info >/dev/null 2>&1; then
-            pactl load-module module-null-sink sink_name=sovereign_loopback sink_properties=device.description=SovereignLoopback || true
-            echo "PipeWire null-sink loaded — Phase 1 pipes the monitor into the shared verifier here."
-          else
-            echo "::warning::Phase 0 scaffold: no PulseAudio/PipeWire daemon on this runner — producer + ring accounting proven; the null-sink capture leg mounts in Phase 1."
-          fi
+          . ~/.pipewire_env
+          BIN=rust/target/release/sovereign_cpal_loopback
+          # The cpal engine's Linux hygiene prefers the pipewire/pulse
+          # ALSA bridge devices; the ci_sink is the system default.
+          $BIN --file fixtures/audio/opus_dual_tone_48k.raw_opus --seconds 6 --json > player.json 2> player.log &
+          PLAYER=$!
+          sleep 2
+          # The monitor of the null-sink records everything mixed into it.
+          timeout 5 pw-cat --record -d ci_sink.monitor -r 48000 -c 2 -f f32 --raw capture.raw 2> capture.log || \
+            timeout 5 parec -d ci_sink.monitor --file-format=raw capture.raw 2>> capture.log
+          wait $PLAYER; PC=$?
+          cat player.json; tail -5 player.log
+          [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
+          [ -s capture.raw ] || { echo "::error::no monitor capture"; cat capture.log; exit 1; }
+          # raw f32le -> wav for the shared verifier.
+          python3 - <<'PY'
+          import struct, wave
+          raw = open("capture.raw","rb").read()
+          n = len(raw)//4
+          samples = struct.unpack(f"<{n}f", raw[:n*4])
+          with wave.open("capture.wav","wb") as w:
+              w.setnchannels(2); w.setsampwidth(4); w.setframerate(48000)
+              w.setcomptype("NONE","not compressed")
+              w.writeframes(raw)
+          print(f"capture.wav: {n} samples")
+          PY
+      - name: FFT-verify the captured OS audio
+        run: |
+          python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
 
   loopback-android:
     name: "Gate 4.4 — Android emulator AudioFlinger wav capture (API ${{ matrix.api }})"
