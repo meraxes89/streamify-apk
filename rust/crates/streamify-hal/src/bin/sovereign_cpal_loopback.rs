@@ -24,6 +24,7 @@
 //! Exit codes: 0 = played cleanly (underruns 0, ring stats healthy,
 //! clock drift within ±100 ppm); 1 = verification failed; 2 = usage.
 
+use cpal::traits::HostTrait;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
