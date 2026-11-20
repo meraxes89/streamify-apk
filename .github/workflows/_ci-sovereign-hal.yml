@@ -439,6 +439,12 @@ jobs:
           SwitchAudioSource -t output -s "BlackHole 2ch" || true
           # Give CoreAudio a beat to re-route.
           sleep 3
+      - name: cpal-only probe (is the one-callback mystery ours or cpal's?)
+        run: |
+          cargo build --manifest-path rust/Cargo.toml -p streamify-hal --bin sovereign_cpal_probe --release
+          rust/target/release/sovereign_cpal_probe --device "BlackHole 2ch" --seconds 3 || true
+          rust/target/release/sovereign_cpal_probe --seconds 3 || true
+
       - name: "Play through cpal CoreAudio + record BlackHole 2ch"
         run: |
           set +e
