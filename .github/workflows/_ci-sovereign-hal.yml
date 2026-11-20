@@ -102,6 +102,15 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      # Phase 1: cpal's alsa-sys build script needs pkg-config + the
+      # ALSA headers even for the pure-Rust test suites (the streamify-hal
+      # dependency tree pulls it in on Linux).
+      - name: Install ALSA dev packages (alsa-sys build script)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          pkg-config --exists alsa && echo "alsa.pc OK"
+
       # nextest (process-per-test) is the house engine-lane convention
       # (rust/.config/nextest.toml, GOV-04): the zero-allocation proofs
       # register #[global_allocator] counters per PROCESS — under plain
@@ -380,12 +389,11 @@ jobs:
       # Phase 1 D5: install BlackHole-2ch (the virtual loopback driver),
       # make it the system output, play the REAL Opus fixture through
       # cpal's CoreAudio backend, record BlackHole's input, FFT-verify.
-      - name: Install BlackHole-2ch + switchaudio-osx
+      - name: Install BlackHole-2ch + switchaudio-osx + coreutils
         run: |
-          brew install --cask blackhole-2ch switchaudio-osx || {
-            echo "::warning::BlackHole install failed — the capture leg will be reported pending."
-            exit 0
-          }
+          brew install --cask blackhole-2ch
+          brew install switchaudio-osx coreutils
+          # Route system output to BlackHole 2ch (the loopback driver).
           SwitchAudioSource -t output -s "BlackHole 2ch" || true
           # Give CoreAudio a beat to re-route.
           sleep 3
@@ -398,8 +406,9 @@ jobs:
           sleep 2
           # The capture: BlackHole 2ch's INPUT records everything the
           # system plays (the loopback). sox/ffmpeg via brew:
-          brew install sox || true
-          timeout 5 sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log || \
+          command -v sox >/dev/null || brew install sox
+          # macOS has no `timeout`; coreutils provides gtimeout.
+          gtimeout 5 sox -d -r 48000 -c 2 -e floating-point -b 32 capture.wav 2> capture.log || \
             ffmpeg -y -f avfoundation -i ":BlackHole 2ch" -t 5 -c:a pcm_f32le capture.wav 2>> capture.log
           wait $PLAYER; PC=$?
           cat player.json; tail -5 player.log

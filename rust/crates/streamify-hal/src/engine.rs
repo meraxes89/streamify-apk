@@ -233,22 +233,30 @@ impl OutputEngine {
         // device's default config (still 48 kHz stereo when supported).
         let mut configs = cpal::traits::DeviceTrait::supported_output_configs(&device)
             .map_err(|e| e.to_string())?;
-        let base = configs
+        // The canonical request: 48 kHz stereo, deterministic
+        // Fixed(1024) sizing when the device's range contains it.
+        let buffer = configs
             .find(|c| {
                 // cpal 0.18: SampleRate is a plain u32 alias.
                 c.channels() == CANONICAL_CHANNELS
                     && c.min_sample_rate() <= CANONICAL_RATE_HZ
                     && c.max_sample_rate() >= CANONICAL_RATE_HZ
             })
-            .ok_or_else(|| format!("device {name} lacks 48 kHz stereo"))?;
-        let buffer = match base.buffer_size() {
-            cpal::SupportedBufferSize::Range { min, max }
-                if *min <= CALLBACK_FRAMES && *max >= CALLBACK_FRAMES =>
-            {
-                BufferSize::Fixed(CALLBACK_FRAMES)
-            }
-            _ => BufferSize::Default,
-        };
+            .and_then(|c| match c.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, max }
+                    if *min <= CALLBACK_FRAMES && *max >= CALLBACK_FRAMES =>
+                {
+                    Some(BufferSize::Fixed(CALLBACK_FRAMES))
+                }
+                _ => None,
+            })
+            .unwrap_or(BufferSize::Default);
+        // Device sanity: ANY output config means the endpoint is usable.
+        // (Windows RDP endpoints sometimes report no 48 kHz RANGE while
+        // still accepting a 48 kHz stream — the shared-mode mix format
+        // resamples; Default sizing rides that path.)
+        let _ = cpal::traits::DeviceTrait::default_output_config(&device)
+            .map_err(|e| format!("device {name} has no output config: {e}"))?;
         let config = StreamConfig {
             channels: CANONICAL_CHANNELS,
             sample_rate: CANONICAL_RATE_HZ, // cpal 0.18: plain u32
