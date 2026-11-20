@@ -120,7 +120,7 @@ jobs:
 
       - name: Smoke run — the producer's own verdict (host stand-in consumer)
         run: |
-          BIN=rust/target/debug/sovereign-loopback-smoke
+          BIN=rust/target/debug/sovereign_loopback_smoke
           $BIN --seconds 1.0 --json
           $BIN --seconds 1.0 --mode silence --json || { echo "::error::silence control must exit clean"; exit 1; }
 
@@ -153,16 +153,26 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}-armv7
           save-if: ${{ github.ref == 'refs/heads/feat/sovereign-hal' }}
 
-      - name: Install the armhf cross toolchain + QEMU user-mode
+      - name: Install the armhf cross toolchain + QEMU user-mode (binfmt-registered)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            qemu-user qemu-user-binfmt libc6-armhf-cross
+            qemu-user qemu-user-static binfmt-support qemu-user-binfmt libc6-armhf-cross
+          # Register the armhf interpreter with the kernel (the static
+          # build self-registers via update-binfmts when the runners'
+          # container policy allows it; --enable is idempotent).
+          sudo update-binfmts --enable qemu-arm || true
+          # The armhf dynamic loader must exist at the path the test
+          # binary's PT_INTERP requests. libc6-armhf-cross installs it
+          # under /usr/arm-linux-gnueabihf; QEMU_LD_PREFIX points QEMU's
+          # ELF loader there for direct (non-binfmt) invocations.
+          ls -la /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3 || true
 
       - name: Rust conformance suite under QEMU (armv7 + NEON, ILP32)
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          QEMU_LD_PREFIX: /usr/arm-linux-gnueabihf
         run: |
           cargo test --manifest-path rust/Cargo.toml \
             -p streamify-playback --test test_ring_abi_conformance \
@@ -236,9 +246,9 @@ jobs:
           ./gradlew :streamify-sovereign-player:jvmTest \
             --parallel --build-cache --stacktrace
 
-      - name: "composeApp Android compile (the wrapper's consumer surface)"
+      - name: "Android compile (the wrapper's consumer surface)"
         run: |
-          ./gradlew :composeApp:compileDebugKotlinAndroid \
+          ./gradlew :androidApp:compileDebugKotlin \
             -PskipExternalNativeBuild=true \
             --parallel --build-cache --stacktrace
 
