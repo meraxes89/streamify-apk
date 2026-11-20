@@ -45,6 +45,10 @@ struct Args {
     /// device directly (the CI legs' contract — the virtual loopback
     /// device IS the system default by the time the player runs).
     any_device: bool,
+    /// Open a specific named device (the macOS leg's contract: the
+    /// system default may be a DIFFERENT virtual device — BlackHole
+    /// must be targeted by name).
+    device: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -64,6 +68,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--json" => json = true,
             "--any-device" => any_device = true,
+            "--device" => device = args.next(),
             _ => return Err(format!("unknown arg {a}")),
         }
     }
@@ -72,6 +77,7 @@ fn parse_args() -> Result<Args, String> {
         seconds: seconds.clamp(0.5, 60.0),
         json,
         any_device,
+        device,
     })
 }
 
@@ -183,7 +189,9 @@ fn run() -> i32 {
     }
 
     let (mut engine, events) = OutputEngine::new(16);
-    let route = if args.any_device {
+    let route = if let Some(name) = args.device.as_deref() {
+        RouteOption::Named(name.to_string())
+    } else if args.any_device {
         RouteOption::Default
     } else {
         RouteOption::Auto
