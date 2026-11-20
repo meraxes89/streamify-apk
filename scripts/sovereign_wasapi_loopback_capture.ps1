@@ -73,11 +73,16 @@ $eRender = 0; $eConsole = 0
 
 [void][SovereignLoopback.Wasapi]::CoInitializeEx([IntPtr]::Zero, 0x2)  # COINIT_MULTITHREADED
 
-$enumIid = [SovereignLoopback.Wasapi]::IID_IMMDeviceEnumerator
-$clsid = [SovereignLoopback.Wasapi]::CLSID_MMDeviceEnumerator
-$enumerator = $null
-$hr = [SovereignLoopback.Wasapi]::CoCreateInstance([ref]$clsid, [IntPtr]::Zero, 0x17, [ref]$enumIid, [ref]$enumerator)
-if ($hr -ne 0) { throw "CoCreateInstance(MMDeviceEnumerator) failed: 0x$($hr.ToString('X8'))" }
+# PowerShell cannot marshal a raw P/Invoke `out object` (the round-16
+# 'Specified OLE variant is invalid'): the RCW comes from
+# Activator::CreateInstance(GetTypeFromCLSID), and casting to the
+# ComImport interface makes the CLR perform the QI.
+$clsid = [SovereignLoopback.Wasapi]::CLSID_MM_DEVICE_ENUMERATOR
+$enumType = [Type]::GetTypeFromCLSID($clsid)
+if ($null -eq $enumType) { throw "GetTypeFromCLSID(MMDeviceEnumerator) failed" }
+$enumeratorObj = [Activator]::CreateInstance($enumType)
+if ($null -eq $enumeratorObj) { throw "Activator::CreateInstance(MMDeviceEnumerator) failed" }
+$enumerator = [SovereignLoopback.Wasapi.IMMDeviceEnumerator]$enumeratorObj
 
 $device = $null
 $enumerator.GetDefaultAudioEndpoint($eRender, $eConsole, [ref]$device) | Out-Null
