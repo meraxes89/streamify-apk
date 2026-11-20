@@ -103,13 +103,15 @@ if (streamifyDir.exists()) {
         ":streamify-media-hal",
         ":streamify-lyrics-slyr",
         ":streamify-supabase",
-        ":streamify-jam"
+        ":streamify-jam",
+        ":streamify-ffmpeg-compat-shim"
     )
     project(":streamify-core-bridge").projectDir = File(streamifyDir, "core-bridge")
     project(":streamify-media-hal").projectDir = File(streamifyDir, "media-hal")
     project(":streamify-lyrics-slyr").projectDir = File(streamifyDir, "lyrics-slyr")
     project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")
     project(":streamify-jam").projectDir = File(streamifyDir, "jam")
+    project(":streamify-ffmpeg-compat-shim").projectDir = File(streamifyDir, "ffmpeg-compat-shim")
 }
 
 // Legacy modules preservation (archived for git history and reference; not built in CMP)
