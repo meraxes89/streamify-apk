@@ -251,6 +251,11 @@ fn run() -> i32 {
     let events = events.drain();
     let underruns = stats.underrun_events + engine.underrun_frames();
     // 5. The verdict.
+    eprintln!(
+        "engine: callback_count={} clock_samples={}",
+        engine.callback_count(),
+        clock_samples.len()
+    );
     let drift_ok = match validate_drift_window(&clock_samples) {
         Ok((ppm, sync_ns)) => ppm.abs() <= 100.0 && sync_ns < 5_000_000,
         Err(why) => {

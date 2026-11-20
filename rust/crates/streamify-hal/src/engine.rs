@@ -103,6 +103,7 @@ pub(crate) struct EngineRt {
     /// (the presented-frame counter feeding the DAC clock).
     frames_counter: AtomicU64,
     first_callback_done: AtomicBool,
+    callback_count: AtomicU64,
     stop: StopFlag,
 }
 
@@ -136,6 +137,7 @@ impl OutputEngine {
                 underrun_frames: AtomicU64::new(0),
                 frames_counter: AtomicU64::new(0),
             first_callback_done: AtomicBool::new(false),
+            callback_count: AtomicU64::new(0),
                 stop: StopFlag::default(),
             }),
             stream: None,
@@ -153,6 +155,14 @@ impl OutputEngine {
     /// Whether the output callback has fired at least once (the
     /// player's diagnostics poll this — the RT callback itself never
     /// prints).
+    /// Total output-callback invocations (diagnostics: distinguishes
+    /// 'the host stopped calling' from 'the clock publish failed').
+    pub fn callback_count(&self) -> u64 {
+        self.rt
+            .callback_count
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn callback_fired(&self) -> bool {
         self.rt
             .first_callback_done
@@ -332,7 +342,10 @@ impl OutputEngine {
                     // stream: stderr's lock on the audio thread blocked
                     // the host's IO loop; the cpal-only probe without it
                     // sustained 283 callbacks / 3 s on the same device).
-                    let _ = rt.first_callback_done.swap(true, std::sync::atomic::Ordering::Relaxed);
+                    rt.callback_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let _ = rt
+                        .first_callback_done
+                        .swap(true, std::sync::atomic::Ordering::Relaxed);
                     let _ = info;
                     let frames = data.len() / CANONICAL_CHANNELS as usize;
                     if frames == 0 {
