@@ -1,7 +1,6 @@
 package com.streamify.supabase
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -35,7 +34,7 @@ object SupabaseClient {
     val accessToken: StateFlow<String?> = _accessToken.asStateFlow()
 
     val httpClient: HttpClient by lazy {
-        HttpClient(CIO) {
+        HttpClient {
             install(ContentNegotiation) {
                 json(Json {
                     ignoreUnknownKeys = true
@@ -83,7 +82,7 @@ object SupabaseClient {
      * Signs in with a Google ID Token (issued by Google Credential Manager One-Tap)
      * via Supabase Auth's id_token grant.
      */
-    suspend fun signInWithGoogleIdToken(idToken: String): Result<UserProfile> = withContext(Dispatchers.IO) {
+    suspend fun signInWithGoogleIdToken(idToken: String): Result<UserProfile> = withContext(ioDispatcher) {
         try {
             val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=id_token"
             val response = httpClient.post(url) {
@@ -134,7 +133,7 @@ object SupabaseClient {
     /**
      * SEC-09/SEC-10: resolve the admin claim from the server via get_my_admin_status() RPC.
      */
-    internal suspend fun fetchServerIsAdmin(userId: String): Boolean = withContext(Dispatchers.IO) {
+    internal suspend fun fetchServerIsAdmin(userId: String): Boolean = withContext(ioDispatcher) {
         try {
             val url = "${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/get_my_admin_status"
             val resp = httpClient.post(url) {
@@ -154,7 +153,7 @@ object SupabaseClient {
     /**
      * Ensures user profile exists in `profiles` table.
      */
-    suspend fun ensureProfile(user: UserProfile) = withContext(Dispatchers.IO) {
+    suspend fun ensureProfile(user: UserProfile) = withContext(ioDispatcher) {
         try {
             val url = "${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles?on_conflict=id"
             val jsonPayload = """

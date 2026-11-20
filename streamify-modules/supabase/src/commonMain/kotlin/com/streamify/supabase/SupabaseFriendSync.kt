@@ -10,7 +10,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -44,7 +43,7 @@ object SupabaseFriendSync {
         isPlaying: Boolean = true,
         currentHour: Int = 12,
         userId: String? = null
-    ): Result<Boolean> = withContext(Dispatchers.IO) {
+    ): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val user = SupabaseClient.currentUser.value
             val targetUserId = userId ?: user?.id ?: SupabaseConfig.DEFAULT_USER.id
@@ -117,7 +116,7 @@ object SupabaseFriendSync {
     /**
      * Fetches live friend activity by querying active listening_sessions and user profiles.
      */
-    suspend fun fetchLiveFriendActivity(): List<FriendActivityItem> = withContext(Dispatchers.IO) {
+    suspend fun fetchLiveFriendActivity(): List<FriendActivityItem> = withContext(ioDispatcher) {
         try {
             // 1. Fetch active listening sessions
             val sessionsResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {

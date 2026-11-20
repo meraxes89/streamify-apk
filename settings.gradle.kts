@@ -2,7 +2,6 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://repo1.maven.org/maven2/") }
         gradlePluginPortal()
         maven { setUrl("https://jitpack.io") }
         maven("https://jogamp.org/deployment/maven")
@@ -16,7 +15,7 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         google()
         mavenCentral()
@@ -65,12 +64,14 @@ include(
     ":discord",
     ":listenTogether",
     ":loginSync",
+    ":room-wasm-stub",
 )
 
 // core modules
 project(":common").projectDir = File(coreDir, "common")
 project(":data").projectDir = File(coreDir, "data")
 project(":domain").projectDir = File(coreDir, "domain")
+project(":room-wasm-stub").projectDir = File(rootDir, "room-wasm-stub")
 
 // service modules
 project(":ktorExt").projectDir = File(serviceDir, "ktorExt")

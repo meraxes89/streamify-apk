@@ -83,3 +83,13 @@ reports/
 *.log
 !docs/*.md
 test_lyrics_benchmark/
+
+# Termux server & local runtime
+server/node_modules/
+server/public/
+.streamify.pid
+tools/gsf/.clasp.json
+
+
+server/compose-dist/
+server/public-feishin/

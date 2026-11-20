@@ -1,9 +1,10 @@
-@file:OptIn(ExperimentalKotlinGradlePluginApi::class)
+@file:OptIn(ExperimentalKotlinGradlePluginApi::class, ExperimentalWasmDsl::class)
 
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.INT
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
 import org.gradle.api.file.RelativePath
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 import java.security.MessageDigest
@@ -70,6 +71,15 @@ kotlin {
 
     jvm()
 
+    wasmJs {
+        browser {
+            commonWebpackConfig {
+                outputFileName = "composeApp.js"
+            }
+        }
+        binaries.executable()
+    }
+
     sourceSets {
         dependencies {
             val composeBom = project.dependencies.platform(libs.compose.bom)
@@ -109,6 +119,7 @@ kotlin {
 
             // Login WebViews: startUpWebView moves Chromium startup off the main thread
             implementation(libs.androidx.webkit)
+            implementation(libs.datastore.preferences)
         }
         commonMain.dependencies {
             implementation(libs.runtime)
@@ -163,9 +174,6 @@ kotlin {
             implementation(libs.materialkolor)
             implementation(libs.ktor.client.cio)
 
-            // DataStore
-            implementation(libs.datastore.preferences)
-
             // Lottie
 
             // Paging 3
@@ -212,6 +220,11 @@ kotlin {
             implementation(libs.jna)
             // Login sync QR code
             implementation(libs.zxing.core)
+            implementation(libs.datastore.preferences)
+        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
+            implementation(project(":room-wasm-stub"))
         }
     }
 }
@@ -977,4 +990,20 @@ afterEvaluate {
         .configureEach {
             dependsOn("generateBuildKonfig")
         }
+}
+
+configurations.matching { it.name.contains("wasmJs", ignoreCase = true) }.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(project(":data")).using(project(":room-wasm-stub"))
+        substitute(module("co.touchlab:kermit-io")).using(project(":room-wasm-stub"))
+        substitute(module("androidx.room:room-runtime")).using(project(":room-wasm-stub"))
+        substitute(module("com.kmpalette:kmpalette-core")).using(project(":room-wasm-stub"))
+        substitute(module("com.kmpalette:extensions-network")).using(project(":room-wasm-stub"))
+        substitute(module("androidx.compose.ui:ui-tooling-preview")).using(project(":room-wasm-stub"))
+        substitute(module("androidx.datastore:datastore-preferences")).using(project(":room-wasm-stub"))
+        substitute(module("androidx.datastore:datastore-core")).using(project(":room-wasm-stub"))
+        substitute(module("androidx.datastore:datastore-preferences-core")).using(project(":room-wasm-stub"))
+        substitute(module("io.ktor:ktor-client-cio")).using(project(":room-wasm-stub"))
+        substitute(module("io.coil-kt.coil3:coil-network-okhttp")).using(module("io.coil-kt.coil3:coil-network-ktor3:3.6.3"))
+    }
 }

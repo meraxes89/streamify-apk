@@ -12,7 +12,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -30,9 +29,9 @@ object SupabaseAdminClient {
         coerceInputValues = true
     }
 
-    suspend fun getAdminTelemetry(): Result<AdminTelemetry> = withContext(Dispatchers.IO) {
+    suspend fun getAdminTelemetry(): Result<AdminTelemetry> = withContext(ioDispatcher) {
         if (!SupabaseClient.isAdmin) {
-            return@withContext Result.failure(SecurityException("Admin privileges required"))
+            return@withContext Result.failure(IllegalStateException("Admin privileges required"))
         }
 
         try {
@@ -135,7 +134,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun getUsers(): Result<List<UserProfile>> = withContext(Dispatchers.IO) {
+    suspend fun getUsers(): Result<List<UserProfile>> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
                 parameter("select", "id,email,display_name,avatar_url,bio,is_admin,total_plays,listening_seconds,favorite_genre,top_track,last_active_at")
@@ -154,7 +153,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun setUserAdminRole(userId: String, isAdmin: Boolean): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun setUserAdminRole(userId: String, isAdmin: Boolean): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val body = buildJsonObject {
                 put("is_admin", isAdmin)
@@ -173,7 +172,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun getJamSessions(): Result<List<CloudListeningSession>> = withContext(Dispatchers.IO) {
+    suspend fun getJamSessions(): Result<List<CloudListeningSession>> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
                 parameter("select", "id,session_code,host_user_id,current_track_id,position_ms,is_playing,current_track_json,updated_at")
@@ -193,7 +192,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun terminateJamSession(sessionId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun terminateJamSession(sessionId: String): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
                 parameter("id", "eq.$sessionId")
@@ -206,7 +205,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun getRecentComments(limit: Int = 50): Result<List<AdminCommentItem>> = withContext(Dispatchers.IO) {
+    suspend fun getRecentComments(limit: Int = 50): Result<List<AdminCommentItem>> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/track_comments") {
                 parameter("select", "id,track_id,user_id,user_name,user_avatar,comment_text,timestamp_ms,created_at")
@@ -226,7 +225,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun deleteComment(commentId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun deleteComment(commentId: String): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/track_comments") {
                 parameter("id", "eq.$commentId")
@@ -239,7 +238,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun getBroadcasts(): Result<List<AdminBroadcastItem>> = withContext(Dispatchers.IO) {
+    suspend fun getBroadcasts(): Result<List<AdminBroadcastItem>> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/admin_broadcasts") {
                 parameter("select", "id,message,author_email,is_active,created_at")
@@ -259,7 +258,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun createBroadcast(message: String): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun createBroadcast(message: String): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val user = SupabaseClient.currentUser.value
             val authorEmail = user?.email ?: SupabaseConfig.DEFAULT_USER.email
@@ -282,7 +281,7 @@ object SupabaseAdminClient {
         }
     }
 
-    suspend fun getTopSongs(limit: Int = 30): Result<List<CloudTrack>> = withContext(Dispatchers.IO) {
+    suspend fun getTopSongs(limit: Int = 30): Result<List<CloudTrack>> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
                 parameter("select", "id,title,artist,album,duration_sec,cover_url,stream_url,bpm,key_signature,play_count,like_count")

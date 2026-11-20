@@ -11,7 +11,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -43,7 +42,7 @@ object SupabaseLibrarySync {
         durationSec: Int = 0,
         isLiked: Boolean,
         userId: String? = null
-    ): Result<Boolean> = withContext(Dispatchers.IO) {
+    ): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val user = SupabaseClient.currentUser.value
             val targetUserId = userId ?: user?.id ?: SupabaseConfig.DEFAULT_USER.id
@@ -100,7 +99,7 @@ object SupabaseLibrarySync {
     /**
      * Fetches all cloud-liked track IDs for this user to enable cross-device synchronization.
      */
-    suspend fun fetchCloudLikes(userId: String? = null): List<String> = withContext(Dispatchers.IO) {
+    suspend fun fetchCloudLikes(userId: String? = null): List<String> = withContext(ioDispatcher) {
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
@@ -124,7 +123,7 @@ object SupabaseLibrarySync {
      * Fetches full CloudTrack metadata for all liked songs of this user.
      * Batches requests in chunks of 40 IDs to avoid query string truncation.
      */
-    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> = withContext(Dispatchers.IO) {
+    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> = withContext(ioDispatcher) {
         try {
             val likedIds = fetchCloudLikes(userId)
             if (likedIds.isEmpty()) return@withContext emptyList()
@@ -152,7 +151,7 @@ object SupabaseLibrarySync {
     /**
      * Fetches favorited artist or album IDs from user_item_favorites.
      */
-    suspend fun fetchCloudItemFavorites(itemType: String, userId: String? = null): List<String> = withContext(Dispatchers.IO) {
+    suspend fun fetchCloudItemFavorites(itemType: String, userId: String? = null): List<String> = withContext(ioDispatcher) {
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_item_favorites") {
@@ -181,7 +180,7 @@ object SupabaseLibrarySync {
         itemId: String,
         isFavorited: Boolean,
         userId: String? = null
-    ): Result<Boolean> = withContext(Dispatchers.IO) {
+    ): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             if (isFavorited) {
@@ -225,7 +224,7 @@ object SupabaseLibrarySync {
         trackIds: List<String> = emptyList(),
         isPublic: Boolean = true,
         userId: String? = null
-    ): Result<Boolean> = withContext(Dispatchers.IO) {
+    ): Result<Boolean> = withContext(ioDispatcher) {
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
 
@@ -272,7 +271,7 @@ object SupabaseLibrarySync {
     /**
      * Fetches playlists saved in Supabase for this user.
      */
-    suspend fun fetchCloudPlaylists(userId: String? = null): List<CloudPlaylist> = withContext(Dispatchers.IO) {
+    suspend fun fetchCloudPlaylists(userId: String? = null): List<CloudPlaylist> = withContext(ioDispatcher) {
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlists") {
