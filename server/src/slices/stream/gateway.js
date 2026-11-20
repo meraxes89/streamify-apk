@@ -1,11 +1,13 @@
 import { parseRange } from '../../lib/range.js';
 import { StreamSemaphore } from '../../lib/semaphore.js';
+import { StreamPacer } from './pacer.js';
 
 export class StreamGateway {
-  constructor({ resolver, cache, semaphore = new StreamSemaphore() } = {}) {
+  constructor({ resolver, cache, semaphore = new StreamSemaphore(), pacer = new StreamPacer() } = {}) {
     this.resolver = resolver;
     this.cache = cache;
     this.semaphore = semaphore;
+    this.pacer = pacer;
   }
 
   async handleRequest(req, reply) {
@@ -115,13 +117,23 @@ export class StreamGateway {
     }
 
     // P0 Sparse Block Engine: Single upstream fetch with zero-copy page cache read-while-write multiplexing
-    const stream = this.cache.createRangeStream(
+    const rawStream = this.cache.createRangeStream(
       desc,
       start,
       actualEnd,
       req.raw.signal || req.raw
     );
 
-    return reply.send(stream);
+    // P1 Wi-Fi Bufferbloat Pacing: Bypass probes <= 256 KiB; pace large/open streams with 2-phase token bucket
+    const isProbeOrSmallRange = actualLength !== undefined && actualLength <= 256 * 1024;
+    if (isProbeOrSmallRange || !this.pacer) {
+      return reply.send(rawStream);
+    }
+
+    const pacedStream = this.pacer.pace(rawStream, {
+      bitrateBps: desc.bitrateBps || 160_000,
+      signal: req.raw.signal || req.raw,
+    });
+    return reply.send(pacedStream);
   }
 }

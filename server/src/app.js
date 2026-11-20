@@ -59,6 +59,7 @@ import { thumbRoutes } from './slices/thumb/routes.js';
 import { StreamResolver } from './slices/stream/resolver.js';
 import { SparseBlockCache } from './slices/stream/sparse-block-cache.js';
 import { WriteThroughCache } from './slices/stream/write-through-cache.js';
+import { StreamPacer, PacingWheel } from './slices/stream/pacer.js';
 import { StreamGateway } from './slices/stream/gateway.js';
 import { streamRoutes } from './slices/stream/routes.js';
 import { PrefetchCoordinator } from './slices/stream/prefetch.js';
@@ -73,8 +74,14 @@ export async function createApp({
   thumbService = new ThumbService(),
   streamResolver = new StreamResolver(),
   streamSemaphore = new StreamSemaphore({ maxGlobal: profile.maxStreams, maxPerIp: 4 }),
+  streamPacer = new StreamPacer(),
   writeThroughCache = new SparseBlockCache({ streamsDir: dataDir.streams, maxCacheMb: profile.diskCacheMb }),
-  streamGateway = new StreamGateway({ resolver: streamResolver, cache: writeThroughCache, semaphore: streamSemaphore }),
+  streamGateway = new StreamGateway({
+    resolver: streamResolver,
+    cache: writeThroughCache,
+    semaphore: streamSemaphore,
+    pacer: streamPacer,
+  }),
   prefetchCoordinator = new PrefetchCoordinator({
     resolver: streamResolver,
     cache: writeThroughCache,
