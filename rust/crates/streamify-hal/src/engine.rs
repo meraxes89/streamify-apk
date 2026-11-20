@@ -265,24 +265,17 @@ impl OutputEngine {
         // device's default config (still 48 kHz stereo when supported).
         let mut configs = cpal::traits::DeviceTrait::supported_output_configs(&device)
             .map_err(|e| e.to_string())?;
-        // The canonical request: 48 kHz stereo, deterministic
-        // Fixed(1024) sizing when the device's range contains it.
-        let buffer = configs
-            .find(|c| {
-                // cpal 0.18: SampleRate is a plain u32 alias.
-                c.channels() == CANONICAL_CHANNELS
-                    && c.min_sample_rate() <= CANONICAL_RATE_HZ
-                    && c.max_sample_rate() >= CANONICAL_RATE_HZ
-            })
-            .and_then(|c| match c.buffer_size() {
-                cpal::SupportedBufferSize::Range { min, max }
-                    if *min <= CALLBACK_FRAMES && *max >= CALLBACK_FRAMES =>
-                {
-                    Some(BufferSize::Fixed(CALLBACK_FRAMES))
-                }
-                _ => None,
-            })
-            .unwrap_or(BufferSize::Default);
+        // The canonical request: 48 kHz stereo. Sizing: Default —
+        // cpal 0.18.2's Fixed(N) output paths die on virtual devices
+        // (RustAudio/cpal#487 'output stream dies with small buffer
+        // size', #1422 'ring three periods for BufferSize::Fixed': the
+        // ALSA host rings exactly three periods for a Fixed request and
+        // the CoreAudio host keeps stale fixed sizes — the CI loopback
+        // legs' virtual devices deliver exactly ONE callback then go
+        // silent). The deterministic Fixed(1024) preference returns
+        // with a fixed cpal (0.19+) or a PipeWire-native path.
+        let buffer = BufferSize::Default;
+        let _ = configs; // consumed by the capability audit below
         // Device sanity: ANY output config means the endpoint is usable.
         // (Windows RDP endpoints sometimes report no 48 kHz RANGE while
         // still accepting a 48 kHz stream — the shared-mode mix format
