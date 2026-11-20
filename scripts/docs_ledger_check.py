@@ -235,7 +235,7 @@ def check_checked_boxes(path: str, lines: list[str], findings: list[str]) -> Non
             if not _is_repo_path(candidate):
                 continue
             if candidate.startswith(("docs/", "scripts/", "app/", "rust/", "native/",
-                                     "shared/", "desktop/", "supabase/",
+                                     "legacy/", "shared/", "desktop/", "supabase/",
                                      "fixtures/", "tools/", ".github/", "gradle")):
                 if not (REPO_ROOT / candidate).exists():
                     findings.append(

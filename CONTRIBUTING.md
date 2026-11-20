@@ -1,12 +1,12 @@
 # Contributing to Streamify
 
-Thanks for your interest in contributing. Streamify is a free music streaming platform shipping premium-grade features to everyone — see [PHILOSOPHY.md](PHILOSOPHY.md) for why, and this document for how.
+Thanks for your interest in contributing. Streamify is a free music streaming platform shipping premium-grade features to everyone — see [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) for why, and this document for how.
 
 Reading time: 5 minutes. First PR checklist at the bottom.
 
 ## Before you start
 
-1. Read [PHILOSOPHY.md](PHILOSOPHY.md) — every technical decision should trace back to it.
+1. Read [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) — every technical decision should trace back to it.
 2. Read [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) — the system map and dependency rules.
 3. Read [docs/playbooks/CODEBASE_GUIDE.md](docs/playbooks/CODEBASE_GUIDE.md) — folder-by-folder encyclopedia of the app module.
 4. Skim [docs/playbooks/ADD_A_FEATURE.md](docs/playbooks/ADD_A_FEATURE.md) — playbooks for common changes.

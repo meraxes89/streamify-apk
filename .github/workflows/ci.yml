@@ -195,8 +195,8 @@ jobs:
             --config rust/crates/streamify-contract/uniffi.toml
           # Apply the uniffi-rs 0.28.3 Kotlin codegen defect shim (rename `message` to `errorMessage`)
           sed -i 's/`message`/`errorMessage`/g' /tmp/uniffi-drift/uniffi/streamify/streamify.kt
-          if ! diff -u shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt /tmp/uniffi-drift/uniffi/streamify/streamify.kt; then
-            echo "::error::UniFFI bindings in shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt are out of sync with streamify.udl!"
+          if ! diff -u legacy/shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt /tmp/uniffi-drift/uniffi/streamify/streamify.kt; then
+            echo "::error::UniFFI bindings in legacy/shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt are out of sync with streamify.udl!"
             echo "::error::Run gradle with UNIFFI_REGENERATE=1 or update the checked-in bindings."
             exit 1
           fi

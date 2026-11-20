@@ -8,7 +8,7 @@
 [![C++](https://img.shields.io/badge/C%2B%2B-20%20%7C%20ARM%20NEON%20SIMD-orange.svg)](https://isocpp.org)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22%20%7C%20Compose-purple.svg)](https://kotlinlang.org)
 
-**Streamify is a free, high-fidelity music streaming engine with every flagship feature unlocked by default** — zero paywalls, studio-grade DSP volume normalization, gapless playback, synchronized syllable-accurate lyrics, distributed lockstep jam sessions, and offline playback. Read our founding principles in [PHILOSOPHY.md](PHILOSOPHY.md).
+**Streamify is a free, high-fidelity music streaming engine with every flagship feature unlocked by default** — zero paywalls, studio-grade DSP volume normalization, gapless playback, synchronized syllable-accurate lyrics, distributed lockstep jam sessions, and offline playback. Read our founding principles in [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md).
 
 Technically, Streamify is engineered on a **Sovereign Multiplatform Core**: all business logic, audio decoding, network transport, cryptographic consensus, and DSP processing live in **Rust** and **C++20**, bound directly to native platform shells via zero-overhead UniFFI contracts and hardware-aligned lock-free ringbuffers.
 
@@ -95,7 +95,7 @@ All in-depth systems documentation, engineering specifications, and architectura
 | **[Feature Playbook](docs/playbooks/ADD_A_FEATURE.md)** | **Step-by-step developer recipes**: Standard playbooks for adding screens, modifying DSP, and expanding network resolvers. |
 | **[CI & Chaos Testing Guide](docs/playbooks/CI_TESTING_GUIDE.md)** | **Automated quality verification**: hub-and-spoke CI DAG with one blocking `ci-gate`, build-once native fan-out, C++20 LibFuzzer nightly lane, native ABI verification, and a nightly KVM Android emulator suite. |
 | **[Distributed Jam Specification](docs/architecture/JAM_ENGINE_SPEC.md)** | **Byzantine consensus & PTP audio sync**: Mathematical and architectural design of multi-device synchronized listening. |
-| **[Project Philosophy](PHILOSOPHY.md)** | **Mission statement**: Our manifesto on open software, uncompromised audio quality, and zero-paywall music. |
+| **[Project Philosophy](docs/PHILOSOPHY.md)** | **Mission statement**: Our manifesto on open software, uncompromised audio quality, and zero-paywall music. |
 
 ---
 
