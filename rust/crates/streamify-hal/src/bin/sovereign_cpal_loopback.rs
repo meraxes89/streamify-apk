@@ -158,23 +158,23 @@ fn run() -> i32 {
                 break;
             }
         }
-        // Paced feed, occupancy-aware (round-40: the fixed 512f/8ms
-        // tick under-fed BlackHole's bursty pulls — 164k underrun
-        // frames in 6 s). The producer now tops the ring up toward a
-        // 16384-frame cushion in 2048-frame quanta and paces itself
-        // against the 48 kHz realtime drain: it only sleeps when the
-        // cushion is full, so bursts are absorbed by the 65536-frame
-        // capacity instead of underrunning.
-        const CUSHION_FRAMES: usize = 16_384;
-        const FEED_QUANTUM: usize = 2_048 * 2; // interleaved samples
+        // Keep-full feed (round-41: even the cushion-paced producer
+        // starved BlackHole's bursts — the callback under-served nearly
+        // every quantum; the runner's thread scheduling makes any
+        // sleep-based pacing unreliable against a realtime device
+        // thread). The producer now writes WHATEVER is free each pass
+        // and only sleeps when the ring is completely full. The 65536-
+        // frame capacity (1.37 s) IS the jitter absorber; the fixture
+        // (144k frames = 3 s) is fully consumed by the callback at
+        // realtime pace, so the producer only needs to stay ahead of
+        // 48 kHz — trivial for a busy loop with full-ring parking.
         while pos < producer_pcm.len() && !producer_done.load(Ordering::Relaxed) {
-            let room = CUSHION_FRAMES.saturating_sub(ring.occupancy());
-            if room == 0 {
-                std::thread::sleep(Duration::from_millis(4));
+            let free = ring.capacity() - ring.occupancy();
+            if free == 0 {
+                std::thread::sleep(Duration::from_millis(2));
                 continue;
             }
-            let want_frames = room.min(FEED_QUANTUM / 2);
-            let take = (want_frames * 2).min(producer_pcm.len() - pos);
+            let take = (free * 2).min(producer_pcm.len() - pos);
             let wrote = ring.write_frames(&producer_pcm[pos..pos + take]);
             pos += wrote;
             if wrote == 0 {
