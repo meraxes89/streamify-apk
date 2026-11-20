@@ -1,10 +1,13 @@
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { LruCache } from '../../lib/cache.js';
 import { SingleFlight } from '../../lib/single-flight.js';
+import { ClientHealthManager } from './health.js';
 
 const GAPI_ENDPOINT =
   'https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false';
 
-const CLIENTS = [
+const DEFAULT_CLIENTS = [
   {
     name: 'ANDROID',
     number: '3',
@@ -94,9 +97,57 @@ async function getVisitorData() {
 }
 
 export class StreamResolver {
-  constructor({ cache = new LruCache({ maxItems: 500 }) } = {}) {
+  /**
+   * @param {Object} [options]
+   * @param {LruCache} [options.cache]
+   * @param {ClientHealthManager} [options.healthManager]
+   * @param {string} [options.ladderPath]
+   */
+  constructor({
+    cache = new LruCache({ maxItems: 500 }),
+    healthManager = new ClientHealthManager(),
+    ladderPath = null,
+  } = {}) {
     this.cache = cache;
+    this.healthManager = healthManager;
     this.singleFlight = new SingleFlight();
+    this.clients = DEFAULT_CLIENTS;
+
+    this.ladderPath = ladderPath || fileURLToPath(new URL('./ladder.json', import.meta.url));
+    this.loadLadder();
+    this.watchLadder();
+  }
+
+  loadLadder() {
+    try {
+      if (fs.existsSync(this.ladderPath)) {
+        const raw = fs.readFileSync(this.ladderPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.clients) && parsed.clients.length > 0) {
+          this.clients = parsed.clients;
+        }
+      }
+    } catch {}
+  }
+
+  watchLadder() {
+    try {
+      if (fs.existsSync(this.ladderPath)) {
+        this.watcher = fs.watch(this.ladderPath, () => {
+          this.loadLadder();
+        });
+        if (typeof this.watcher?.unref === 'function') {
+          this.watcher.unref();
+        }
+      }
+    } catch {}
+  }
+
+  close() {
+    if (this.watcher) {
+      this.watcher.close();
+      this.watcher = null;
+    }
   }
 
   async resolve(videoId) {
@@ -113,7 +164,10 @@ export class StreamResolver {
       let lastError = null;
       const visitorData = await getVisitorData();
 
-      for (const spec of CLIENTS) {
+      // Get clients ranked by EWMA health score (comm9.1.md Phase 1)
+      const rankedClients = this.healthManager.getRankedClients(this.clients);
+
+      for (const spec of rankedClients) {
         try {
           const clientContext = {
             clientName: spec.name,
@@ -153,10 +207,15 @@ export class StreamResolver {
           });
           const t1 = performance.now();
 
-          if (!res.ok) continue;
+          if (!res.ok) {
+            this.healthManager.recordError(spec.name, res.status);
+            continue;
+          }
+
           const data = await res.json();
           const playability = data.playabilityStatus?.status;
           if (playability !== 'OK') {
+            this.healthManager.recordError(spec.name, 403);
             lastError = new Error(data.playabilityStatus?.reason || `Playability ${playability}`);
             continue;
           }
@@ -194,10 +253,13 @@ export class StreamResolver {
               expiresAt: Date.now() + 5 * 3600 * 1000, // 5 hours
             };
 
+            // Promotion on successful resolution
+            this.healthManager.recordSuccess(spec.name, descriptor.timingMs);
             this.cache.set(videoId, descriptor, 5 * 3600 * 1000);
             return descriptor;
           }
         } catch (err) {
+          this.healthManager.recordError(spec.name, 500);
           lastError = err;
         }
       }
