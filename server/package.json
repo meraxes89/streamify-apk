@@ -1,0 +1,25 @@
+{
+  "name": "streamify-relay",
+  "version": "3.0.0",
+  "description": "Architecture v3 Stream Relay & Multi-Profile Resolver for Streamify",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bin/streamify-server.mjs",
+    "start:v2": "node bin/streamify-server.mjs",
+    "start:legacy": "node index.js",
+    "test:contract": "node --test test/contract/api-contract.test.js",
+    "test:unit": "node --test test/unit/*.test.js",
+    "test": "npm run test:unit && npm run test:contract"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.4.3",
+    "@fastify/static": "^10.1.12",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "fastify": "^5.12.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
