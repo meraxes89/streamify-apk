@@ -57,6 +57,7 @@ fn parse_args() -> Result<Args, String> {
     let mut seconds = 4.0f64;
     let mut json = false;
     let mut any_device = false;
+    let mut device: Option<String> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--file" => file = args.next(),
