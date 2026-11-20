@@ -1,5 +1,7 @@
 package com.maxrave.simpmusic.di
 
+import com.maxrave.common.QUALITY
+import com.maxrave.common.VIDEO_QUALITY
 import com.maxrave.domain.data.model.discord.DiscordSession
 import com.maxrave.domain.data.model.network.ProxyConfiguration
 import com.maxrave.domain.data.player.EightDDirection
@@ -33,7 +35,16 @@ class FakeDataStoreManager : DataStoreManager {
     private fun getOrInitString(key: String, default: String): MutableStateFlow<String> {
         return stringFlows.getOrPut(key) {
             val stored = getStorage(key)
-            MutableStateFlow(stored ?: default)
+            val initial = if (key == "quality" || key == "downloadQuality") {
+                if (stored.isNullOrEmpty() || stored == "HIGH" || stored == "high" || stored.contains("Low")) {
+                    default
+                } else {
+                    QUALITY.normalize(stored)
+                }
+            } else {
+                stored ?: default
+            }
+            MutableStateFlow(initial)
         }
     }
 
@@ -101,13 +112,13 @@ class FakeDataStoreManager : DataStoreManager {
     override val location: Flow<String> get() = getOrInitString("location", "IN")
     override suspend fun setLocation(location: String) { setStoredString("location", location) }
 
-    override val quality: Flow<String> get() = getOrInitString("quality", "HIGH")
+    override val quality: Flow<String> get() = getOrInitString("quality", QUALITY.items[2].toString())
     override suspend fun setQuality(quality: String) { setStoredString("quality", quality) }
 
-    override val downloadQuality: Flow<String> get() = getOrInitString("downloadQuality", "HIGH")
+    override val downloadQuality: Flow<String> get() = getOrInitString("downloadQuality", QUALITY.items[2].toString())
     override suspend fun setDownloadQuality(quality: String) { setStoredString("downloadQuality", quality) }
 
-    override val videoDownloadQuality: Flow<String> get() = getOrInitString("videoDownloadQuality", "720p")
+    override val videoDownloadQuality: Flow<String> get() = getOrInitString("videoDownloadQuality", VIDEO_QUALITY.items[0].toString())
     override suspend fun setVideoDownloadQuality(quality: String) { setStoredString("videoDownloadQuality", quality) }
 
     override val language: Flow<String> get() = getOrInitString("language", "en")
@@ -209,7 +220,7 @@ class FakeDataStoreManager : DataStoreManager {
     override val playerVolume: Flow<Float> get() = getOrInitFloat("playerVolume", 1.0f)
     override suspend fun setPlayerVolume(volume: Float) { setStoredFloat("playerVolume", volume) }
 
-    override val videoQuality: Flow<String> get() = getOrInitString("videoQuality", "720p")
+    override val videoQuality: Flow<String> get() = getOrInitString("videoQuality", VIDEO_QUALITY.items[0].toString())
     override suspend fun setVideoQuality(quality: String) { setStoredString("videoQuality", quality) }
 
     override val spdc: Flow<String> get() = getOrInitString("spdc", "")
