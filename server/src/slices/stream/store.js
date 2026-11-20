@@ -46,6 +46,8 @@ export class StreamStore {
         contentLength INTEGER,
         title TEXT,
         artist TEXT,
+        plane TEXT,
+        isSabr INTEGER DEFAULT 0,
         createdAt INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_resolved_expires ON resolved_urls(expiresAt);
@@ -79,6 +81,14 @@ export class StreamStore {
       );
       CREATE INDEX IF NOT EXISTS idx_po_expires ON po_tokens(expiresAt);
     `);
+
+    // Migration: ensure plane and isSabr columns exist on existing databases
+    try {
+      this.db.exec('ALTER TABLE resolved_urls ADD COLUMN plane TEXT DEFAULT "fast";');
+    } catch {}
+    try {
+      this.db.exec('ALTER TABLE resolved_urls ADD COLUMN isSabr INTEGER DEFAULT 0;');
+    } catch {}
   }
 
   prepareStatements() {
@@ -86,8 +96,8 @@ export class StreamStore {
       // resolved_urls
       getResolved: this.db.prepare('SELECT * FROM resolved_urls WHERE videoId = ?'),
       upsertResolved: this.db.prepare(`
-        INSERT INTO resolved_urls (videoId, itag, targetUrl, expiresAt, client, mimeType, durationMs, contentLength, title, artist, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO resolved_urls (videoId, itag, targetUrl, expiresAt, client, mimeType, durationMs, contentLength, title, artist, plane, isSabr, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(videoId) DO UPDATE SET
           itag=excluded.itag,
           targetUrl=excluded.targetUrl,
@@ -98,6 +108,8 @@ export class StreamStore {
           contentLength=excluded.contentLength,
           title=excluded.title,
           artist=excluded.artist,
+          plane=excluded.plane,
+          isSabr=excluded.isSabr,
           createdAt=excluded.createdAt
       `),
       deleteResolved: this.db.prepare('DELETE FROM resolved_urls WHERE videoId = ?'),
@@ -186,6 +198,9 @@ export class StreamStore {
         contentLength: row.contentLength,
         title: row.title,
         artist: row.artist,
+        plane: row.plane || 'fast',
+        isSabr: Boolean(row.isSabr),
+        serverAbrStreamingUrl: row.isSabr ? row.targetUrl : undefined,
         cached: true,
         cachedAt: row.createdAt,
       };
@@ -214,6 +229,8 @@ export class StreamStore {
         desc.contentLength || null,
         desc.title || null,
         desc.artist || null,
+        desc.plane || 'fast',
+        desc.isSabr ? 1 : 0,
         now
       );
     } catch (err) {
