@@ -347,10 +347,20 @@ jobs:
       - name: Start Audiosrv (the Windows audio service) + probe the endpoint
         shell: pwsh
         run: |
+          # Both services must run: AudioEndpointBuilder creates the
+          # endpoint enumerator's device collection; Audiosrv runs the
+          # engine. Restart Builder AFTER Audiosrv so the endpoint
+          # collection re-enumerates (the headless image sometimes
+          # starts Builder before the engine, yielding an empty
+          # collection until re-enumeration).
           Set-Service -Name Audiosrv -StartupType Manual
+          Set-Service -Name AudioEndpointBuilder -StartupType Manual
+          Start-Service -Name AudioEndpointBuilder
           Start-Service -Name Audiosrv
-          Start-Sleep -Seconds 5
-          Get-Service Audiosrv | Format-List Name, Status
+          Start-Sleep -Seconds 3
+          Restart-Service -Name AudioEndpointBuilder -Force
+          Start-Sleep -Seconds 3
+          Get-Service Audiosrv, AudioEndpointBuilder | Format-List Name, Status
           # Enumerate what the audio endpoint enumerator sees (diagnostics
           # for the cpal no-default-device case).
           Get-CimInstance -Namespace root/cimv2 -ClassName Win32_SoundDevice -ErrorAction SilentlyContinue | Format-List Name, Status
