@@ -426,7 +426,7 @@ impl SymphoniaDecoder {
                         Ok(Some(packet)) => {
                             // Estimate the packet's frame count without
                             // decoding: use the demuxer's dur field.
-                            skipped += u64::from(packet.dur.max(1));
+                            skipped += packet.dur.0.max(1);
                         }
                         Ok(None) => break,
                         Err(SymphoniaError::IoError(ref e))

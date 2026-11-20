@@ -220,6 +220,12 @@ jobs:
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           QEMU_LD_PREFIX: /usr/arm-linux-gnueabihf
+          # Phase 1 (D3): libopus builds via cc with NEON enabled on
+          # armv7-a (the directive's '+neon'); without the march/mfpu
+          # flags the armhf headers' always_inline NEON intrinsics fail
+          # ('target specific option mismatch').
+          CFLAGS_armv7_unknown_linux_gnueabihf: "-march=armv7-a -mfpu=neon -mfloat-abi=hard -O2"
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS: "-C target-feature=+neon"
         run: |
           cargo test --manifest-path rust/Cargo.toml \
             -p streamify-playback --test test_ring_abi_conformance \
@@ -228,6 +234,8 @@ jobs:
       - name: Compile-time ABI pins under the 32-bit target (compile_error! guards)
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CFLAGS_armv7_unknown_linux_gnueabihf: "-march=armv7-a -mfpu=neon -mfloat-abi=hard -O2"
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS: "-C target-feature=+neon"
         run: |
           cargo check --manifest-path rust/Cargo.toml \
             -p streamify-playback --lib --target armv7-unknown-linux-gnueabihf

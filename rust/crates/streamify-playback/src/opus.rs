@@ -38,7 +38,7 @@
 use symphonia::core::audio::Audio;
 use streamify_core::{AudioErrorKind, EngineError};
 
-use crate::decode::{DecoderGeometry, SymphoniaDecoder};
+use crate::decode::DecoderGeometry;
 use crate::frame_buf::FrameBuf;
 use crate::TrackDecoder;
 
