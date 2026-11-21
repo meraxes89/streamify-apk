@@ -3,6 +3,17 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1-beta] — 2026-11-21: The Sovereign Music Engine Inaugural Beta
+
+The initial public beta release of Streamify — high-fidelity multiplatform music streaming powered by a Sovereign Rust core, real-time C++20 DSP audio engine, Room ↔ Supabase hybrid synchronization, and a modern Compose Multiplatform UI across Android, Desktop, and Web.
+
+### Key Highlights
+- **Sovereign Engine Core**: Rust-powered stream resolver (YouTube Innertube, adaptive bitrates), lock-free zero-allocation C++20 ringbuffer, and soft-knee LUFS loudness normalization.
+- **Compose Multiplatform UI Elevation**: Redesigned Home, Search, Library, and Player screens with responsive grid layouts, milled-glass surfaces, dynamic theme palettes, and stable Compose keys across all lazy lists.
+- **High-Performance Search & Queue**: Memoized Room flow collection, coalesced keystroke debouncing, index-anchored queue stability, and full-width item row interactions.
+- **Hybrid Data Synchronization**: 3-phase hybrid sync between local SQLite Room database and cloud Supabase store with echo suppression and conflict resolution.
+- **Multiplatform Packaging**: Universal 2-ABI Android APK (arm64-v8a + x86_64), Desktop installers (.AppImage, .deb, .msi), and Web Wasm distributions.
+
 ## [Unreleased] — P2-A: the playback spine (app stream) — the dual react-player engine wired
 
 The fork half of the spine. Zero resolution logic: the fork imports `getStreamUrl` from a
