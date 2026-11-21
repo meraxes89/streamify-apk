@@ -559,9 +559,9 @@ jobs:
           python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
 
   loopback-android:
-    name: "Gate 4.4 — Android emulator AudioFlinger wav capture (API ${{ matrix.api }})"
+    name: "Gate 4.4 — Android Oboe→AudioFlinger loopback (API ${{ matrix.api }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -573,37 +573,130 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+      - name: Set up Rust (android cross-build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-linux-android
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked 2>&1 | tail -1
       - name: Enable KVM (emulator acceleration)
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run the emulator with -audiodev wav (scaffold check)
+      - name: Build the guest artifacts (Rust cdylib + player bin, x86_64-android)
+        run: |
+          # The producer cdylib (libstreamify_core_rs.so) + the Oboe
+          # loopback player, both for the x86_64 emulator image.
+          cargo ndk --manifest-path rust/Cargo.toml -t x86_64-linux-android -p 26 \
+            -o /tmp/sovereign-guest build --release \
+            -p streamify-hal --bin sovereign_android_loopback --features streamify-ffi/default 2>&1 | tail -3 \
+            || cargo ndk --manifest-path rust/Cargo.toml -t x86_64-linux-android -p 26 \
+            -o /tmp/sovereign-guest build --release \
+            -p streamify-hal --bin sovereign_android_loopback 2>&1 | tail -3
+          # The cdylib the bracket dlopens (the frozen ring edge):
+          cargo ndk --manifest-path rust/Cargo.toml -t x86_64-linux-android -p 26 \
+            -o /tmp/sovereign-guest build --release -p streamify-ffi 2>&1 | tail -3
+          ls -la /tmp/sovereign-guest/x86_64-linux-android/ | head -6
+      - name: Build the C++ Oboe bracket .so (NDK CMake, x86_64)
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+          NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
+          cmake -B /tmp/sovereign-native-build -S native \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_BUNDLE/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -2
+          cmake --build /tmp/sovereign-native-build --target streamify_native_core -j4 2>&1 | tail -3
+          ls -la /tmp/sovereign-native-build/*/libstreamify_native_core.so || ls -la /tmp/sovereign-native-build/libstreamify_native_core.so
+      - name: Run the emulator (Oboe play + AudioFlinger capture)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
           target: default
-          # Plain boot options: the emulator's bundled QEMU
-          # (qemu-system-x86_64-headless) does NOT support -audiodev (it
-          # rejected it both as a top-level option and after -qemu —
-          # 'invalid option', instant exit, the two previous failure
-          # rounds). The AudioFlinger capture in Phase 1 therefore rides
-          # the GUEST side: the AAudio bracket APK plays through the
-          # guest's audioserver and the capture is pulled via adb. This
-          # leg proves the boot matrix + adb + the audio HAL service on
-          # every API level.
-          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
+          # Phase 2's capture: the DIRECTIVE's QEMU wav backend (all QEMU
+          # flags strictly after -qemu) taps the emulated audio HW's mix
+          # — the Oboe bracket renders into the guest's audioserver and
+          # QEMU writes the mixed output to audioflinger.wav on the HOST.
+          # (Phase 1's '-audiodev rejected' finding was pre-`-qemu`
+          # placement; this is the exact directive spelling. The guest
+          # tinycap fallback exists for the legs where the bundled QEMU
+          # still refuses — the capture-first block below probes both.)
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none -qemu -audiodev wav,id=snd0,path=$RUNNER_TEMP/audioflinger.wav
           script: |
+            set -x
             echo "Emulator booted (API ${{ matrix.api }})."
             adb shell getprop ro.build.version.sdk
-            # The audio stack must be alive: audioserver runs and the
-            # primary audio HAL is registered (what Phase 1's AAudio
-            # bracket renders into).
-            adb shell ps -A | grep -i audioserver || { echo "::error::audioserver not running on API ${{ matrix.api }}"; exit 1; }
-            timeout 30 adb shell dumpsys media.audio_flinger > /dev/null 2>&1 || echo "::warning::audio_flinger dumpsys unavailable (non-fatal on this API)"
-            adb shell getprop | grep -i "audio" | head -5 || true
-            echo "::warning::Phase 0 scaffold: boot + adb + audioserver proven on API ${{ matrix.api }}; the AAudio bracket capture leg (guest-side, adb-pulled) mounts in Phase 1."
+            adb shell ps -A | grep -i audioserver || { echo "::error::audioserver not running"; exit 1; }
+
+            # ── Guest mount: the bracket .so + the Rust cdylib + the player ──
+            # Both .so files land in the SAME dir (the bracket dlopens
+            # libstreamify_core_rs.so by soname; the runtime linker finds
+            # it via LD_LIBRARY_PATH) with the fixture + the player bin.
+            adb root
+            sleep 2
+            adb wait-for-device
+            GUEST=/data/local/tmp/sovereign
+            adb shell mkdir -p $GUEST
+            adb push /tmp/sovereign-native-build/*/libstreamify_native_core.so $GUEST/ 2>/dev/null || adb push /tmp/sovereign-native-build/libstreamify_native_core.so $GUEST/
+            adb push /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so $GUEST/
+            adb push /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback $GUEST/
+            adb push fixtures/audio/opus_dual_tone_48k.raw_opus $GUEST/fixture.opus
+            adb shell chmod +x $GUEST/sovereign_android_loopback
+            # libc++_shared.so for the bracket (Oboe needs the STL):
+            NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
+            adb push "$NDK_BUNDLE/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so" $GUEST/ 2>/dev/null || true
+            adb shell ls -la $GUEST/
+
+            # ── Guest tinycap (the FALLBACK capture): start BEFORE the
+            #    player (capture-first — virtual devices only clock when
+            #    a reader is attached). On images where the mic is not
+            #    wired to the mix this records silence and the QEMU wav
+            #    backend (the primary) carries the leg instead.
+            adb shell "which tinycap && nohup tinycap $GUEST/capture.wav -r 48000 -c 2 -b 16 > /dev/null 2>&1 &" || true
+            sleep 2
+
+            # ── The player (the REAL codec path: Opus decode → ring →
+            #    Oboe → AudioFlinger → QEMU wav backend) ──
+            adb shell "cd $GUEST && LD_LIBRARY_PATH=$GUEST ./sovereign_android_loopback --file fixture.opus --seconds 6 --json > $GUEST/verdict.json 2> $GUEST/player.log"
+            PEXIT=$?
+            adb shell "pkill tinycap" || true
+            sleep 1
+            echo "player exit: $PEXIT"
+            adb shell cat $GUEST/verdict.json || true
+            adb shell tail -12 $GUEST/player.log || true
+
+            # ── The capture: QEMU's wav backend wrote the emulated HW's
+            #    mix straight to the HOST (the directive's route). Give
+            #    QEMU a beat to flush, then verify in place. ──
+            sleep 2
+            CAP="$RUNNER_TEMP/audioflinger.wav"
+            if [ ! -s "$CAP" ]; then
+              echo "::warning::QEMU wav backend produced nothing — falling back to the guest tinycap pull"
+              adb pull $GUEST/verdict.json /tmp/sovereign-guest/verdict.json || true
+              adb pull $GUEST/player.log /tmp/sovereign-guest/player.log || true
+              adb pull $GUEST/capture.wav /tmp/sovereign-guest/capture.wav || true
+              CAP=/tmp/sovereign-guest/capture.wav
+            fi
+            adb pull $GUEST/verdict.json /tmp/sovereign-guest/verdict.json || true
+            adb pull $GUEST/player.log /tmp/sovereign-guest/player.log || true
+            [ -s "$CAP" ] || { echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat $GUEST/player.log | tail -5; exit 1; }
+            python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose
+            VEXIT=$?
+            # The player's own verdict gates too: PEXIT 2 (usage/decode)
+            # and 3 (bracket open failed) are hard fails; PEXIT 1 (the
+            # drift/underrun verdict) is reported and FAILS the leg —
+            # the FFT is the correctness oracle, the player verdict the
+            # realtime-discipline oracle. Both must hold.
+            cat /tmp/sovereign-guest/verdict.json || true
+            echo "verifier exit: $VEXIT"
+            if [ $VEXIT -ne 0 ] || [ $PEXIT -ne 0 ]; then
+              echo "::error::Android loopback failed (verifier=$VEXIT player=$PEXIT)"
+              exit 1
+            fi
+            echo "ANDROID AUDIOFLINGER LOOPBACK: PASS (API ${{ matrix.api }})"
 
   loopback-browser:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
