@@ -146,12 +146,18 @@ const withTimeout = (p, ms, label) => Promise.race([p, sleep(ms).then(() => { th
 // main thread asks for. Pool: decoded PCM arrives as fresh Float32Arrays;
 // the worker accepts returned buffers back into a bounded pool for reuse
 // as transfer scratch (steady-state allocation → 0 after warmup).
+// The glue URL is computed in the PAGE and injected: a module Worker
+// created from a Blob has location.href = the blob URL, so resolving
+// relative imports INSIDE the worker lands on dead blob:... paths (the
+// r2 "wasm decode watchdog" failure). The glue resolves the .wasm
+// itself via its import.meta.url once given its own absolute URL.
+const GLUE_URL = new URL("streamify_web.js", location.href).href;
 const WORKER_SRC = `
-import init, { decode_opus } from "${'$'}{new URL("streamify_web.js", location.href).href}";
+import init, { decode_opus } from "__SOVEREIGN_GLUE_URL__";
 self.onmessage = async (e) => {
   const msg = e.data;
   if (msg.cmd === "start") {
-    await init(new URL("streamify_web_bg.wasm", location.href));
+    await init();
     const bytes = new Uint8Array(await (await fetch(msg.fixtureUrl)).arrayBuffer());
     const pcm = decode_opus(bytes);
     if (!pcm.length) { postMessage({ type: "error", error: "wasm decode empty" }); return; }
@@ -171,7 +177,8 @@ self.onmessage = async (e) => {
 `;
 
 function makeWorker() {
-  const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
+  const src = WORKER_SRC.replace("__SOVEREIGN_GLUE_URL__", GLUE_URL);
+  const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
   return new Worker(url, { type: "module" });
 }
 
