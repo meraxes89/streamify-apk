@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +43,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.maxrave.common.Config
+import com.maxrave.domain.data.entities.AlbumEntity
 import com.maxrave.domain.data.entities.ArtistEntity
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.extension.now
@@ -58,6 +60,7 @@ import com.maxrave.simpmusic.ui.component.SearchBarExit
 import com.maxrave.simpmusic.ui.component.SearchBarEnter
 import com.maxrave.simpmusic.ui.component.AddToPlaylistModalBottomSheet
 import com.maxrave.simpmusic.ui.component.ArtistFullWidthItems
+import com.maxrave.simpmusic.ui.component.Chip
 import com.maxrave.simpmusic.ui.component.EndOfPage
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
 import com.maxrave.simpmusic.ui.component.PlaylistFullWidthItems
@@ -98,6 +101,7 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.album_length
+import simpmusic.composeapp.generated.resources.albums
 import simpmusic.composeapp.generated.resources.artists
 import simpmusic.composeapp.generated.resources.cached
 import simpmusic.composeapp.generated.resources.downloaded
@@ -107,9 +111,11 @@ import simpmusic.composeapp.generated.resources.liked_songs
 import simpmusic.composeapp.generated.resources.liked_songs_count
 import simpmusic.composeapp.generated.resources.lower_plays
 import simpmusic.composeapp.generated.resources.most_played
+import simpmusic.composeapp.generated.resources.no_album
 import simpmusic.composeapp.generated.resources.remove_download
 import simpmusic.composeapp.generated.resources.search
 import simpmusic.composeapp.generated.resources.seconds
+import simpmusic.composeapp.generated.resources.songs
 import simpmusic.composeapp.generated.resources.wrapped
 import simpmusic.composeapp.generated.resources.wrapped_recap_month
 import simpmusic.composeapp.generated.resources.wrapped_recap_month_year
@@ -117,6 +123,11 @@ import simpmusic.composeapp.generated.resources.wrapped_recap_subtitle
 import simpmusic.composeapp.generated.resources.your_top_albums
 import simpmusic.composeapp.generated.resources.your_top_artists
 import simpmusic.composeapp.generated.resources.your_top_tracks
+
+enum class FavoriteTab {
+    Songs,
+    Albums,
+}
 
 @Composable
 @ExperimentalMaterial3Api
@@ -142,6 +153,9 @@ fun LibraryDynamicPlaylistScreen(
 
     val favorite by viewModel.listFavoriteSong.collectAsStateWithLifecycle()
     var tempFavorite by remember { mutableStateOf(emptyList<SongEntity>()) }
+    val favoriteAlbums by viewModel.listFavoriteAlbums.collectAsStateWithLifecycle()
+    var tempFavoriteAlbums by remember { mutableStateOf(emptyList<AlbumEntity>()) }
+    var selectedFavoriteTab by rememberSaveable { mutableStateOf(FavoriteTab.Songs) }
     val followed by viewModel.listFollowedArtist.collectAsStateWithLifecycle()
     var tempFollowed by remember { mutableStateOf(emptyList<ArtistEntity>()) }
     val mostPlayed by viewModel.listMostPlayedSong.collectAsStateWithLifecycle()
@@ -186,8 +200,13 @@ fun LibraryDynamicPlaylistScreen(
 
     // Keyed on the downloaded list as well: a download removed while searching has to leave the
     // filtered list too, not only the full one.
-    LaunchedEffect(query, downloaded) {
+    LaunchedEffect(query, downloaded, favoriteAlbums) {
         tempFavorite = favorite.filter { it.matches(query) }
+        tempFavoriteAlbums =
+            favoriteAlbums.filter { album ->
+                album.title.contains(query, ignoreCase = true) ||
+                    album.artistName?.any { it.contains(query, ignoreCase = true) } == true
+            }
         tempFollowed = followed.filter { it.name.contains(query, ignoreCase = true) }
         tempMostPlayed = mostPlayed.filter { it.matches(query) }
         tempDownloaded = downloaded.filter { it.matches(query) }
@@ -220,6 +239,11 @@ fun LibraryDynamicPlaylistScreen(
         item {
             AnimatedVisibility(showSearchBar) {
                 Spacer(Modifier.height(55.dp))
+            }
+        }
+        if (LibraryDynamicPlaylistType.toType(type) == LibraryDynamicPlaylistType.Favorite) {
+            item {
+                Spacer(Modifier.height(48.dp))
             }
         }
         val type = LibraryDynamicPlaylistType.toType(type)
@@ -391,6 +415,39 @@ fun LibraryDynamicPlaylistScreen(
                 }
 
                 else -> {}
+            }
+        } else if (type == LibraryDynamicPlaylistType.Favorite && selectedFavoriteTab == FavoriteTab.Albums) {
+            val displayAlbums = if (query.isNotEmpty() && showSearchBar) tempFavoriteAlbums else favoriteAlbums
+            if (displayAlbums.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(Res.string.no_album),
+                            style = typo().bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        )
+                    }
+                }
+            } else {
+                items(
+                    displayAlbums,
+                    key = { it.browseId },
+                ) { album ->
+                    PlaylistFullWidthItems(
+                        data = album,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClickListener = {
+                            navController.navigate(
+                                AlbumDestination(
+                                    browseId = album.browseId,
+                                ),
+                            )
+                        },
+                    )
+                }
             }
         } else {
             items(
@@ -579,7 +636,11 @@ fun LibraryDynamicPlaylistScreen(
         val subtitle =
             when (type) {
                 LibraryDynamicPlaylistType.Favorite ->
-                    stringResource(Res.string.album_length, favorite.size.toString(), "")
+                    if (selectedFavoriteTab == FavoriteTab.Songs) {
+                        stringResource(Res.string.album_length, favorite.size.toString(), "")
+                    } else {
+                        "${favoriteAlbums.size} ${stringResource(Res.string.albums)}"
+                    }
                 LibraryDynamicPlaylistType.MostPlayed ->
                     stringResource(Res.string.album_length, mostPlayed.size.toString(), "")
                 LibraryDynamicPlaylistType.Downloaded ->
@@ -635,7 +696,7 @@ fun LibraryDynamicPlaylistScreen(
                     }
                 },
                 actions = {
-                    if (isSongType) {
+                    if (isSongType && (type != LibraryDynamicPlaylistType.Favorite || selectedFavoriteTab == FavoriteTab.Songs)) {
                         RippleIconButton(
                             SimpIcons.PlayCircle,
                             Modifier
@@ -799,6 +860,30 @@ fun LibraryDynamicPlaylistScreen(
                 onExpandedChange = {},
                 windowInsets = WindowInsets(0, 0, 0, 0),
             ) {
+            }
+        }
+        if (type == LibraryDynamicPlaylistType.Favorite) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .hazeBlur(HazeInput.Sources(hazeState), ultraThinBarStyle())
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Chip(
+                    isSelected = selectedFavoriteTab == FavoriteTab.Songs,
+                    text = stringResource(Res.string.songs),
+                ) {
+                    selectedFavoriteTab = FavoriteTab.Songs
+                }
+                Chip(
+                    isSelected = selectedFavoriteTab == FavoriteTab.Albums,
+                    text = stringResource(Res.string.albums),
+                ) {
+                    selectedFavoriteTab = FavoriteTab.Albums
+                }
             }
         }
     }
