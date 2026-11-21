@@ -166,12 +166,24 @@ def nm_exports(so_files: list[Path], nm_bin: str) -> set[str]:
 
 
 def check_forward(declared: dict[str, list[str]], exports: set[str]) -> list[str]:
-    """Kotlin external funs with no matching native export."""
+    """Kotlin external funs with no matching native export.
+
+    An fun name containing `_` mangles to `_1` per the JNI spec
+    (Sovereign HAL Phase 2: the Oboe seam's sovereign_oboe_* surface),
+    so BOTH spellings — the raw name and the JNI-escaped one — satisfy
+    forward parity.
+    """
     missing = []
     for name, bases in sorted(declared.items()):
+        escaped = _jni_escape_segment(name)
         ok = any(
-            any(sym == b + name or sym.startswith(b + name + "__")
-                for sym in exports)
+            any(
+                sym == b + name
+                or sym == b + escaped
+                or sym.startswith(b + name + "__")
+                or sym.startswith(b + escaped + "__")
+                for sym in exports
+            )
             for b in bases
         )
         if not ok:

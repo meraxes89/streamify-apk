@@ -97,6 +97,14 @@ add_library(streamify_native_core SHARED
     # WS-C (C1): the 7-symbol JNI sink bridge over the frozen contract
     # (streamify_audio_sinks.h) — the Android mounting bracket.
     src/jni_bridge_audio_sinks.cpp
+    # Sovereign HAL Phase 2 (Step 1): the Google Oboe 1.11.0 output
+    # bracket — onAudioReady drains the frozen Rust ring edge
+    # (dlopen'd libstreamify_core_rs.so; wait-free read, clean zero-fill
+    # underrun, getTimestamp polled on a controller thread).
+    src/oboe_output_bracket.cpp
+    # The JNI wrappers over the bracket's C ABI (SovereignOboeJni seam,
+    # sovereign-player androidMain).
+    src/jni_bridge_oboe.cpp
     # Phase-4: companion WearOS frame packetizer & rate-limiting compressor.
     src/wear_audio_encoder.cpp
     engine/TaskOrchestrator.cc
@@ -137,6 +145,14 @@ target_link_libraries(streamify_native_core
     android
     log
 )
+
+# Sovereign HAL Phase 2 (Step 1): Google Oboe 1.11.0 (Apache-2.0),
+# vendored under third_party/oboe (samples/apps/tests/docs trimmed).
+# Oboe negotiates AAudio (API 27+) vs OpenSL ES (API 26 / OEM quirk
+# fallback) itself; our bracket only sets the builder + the frozen ring
+# read. add_subdirectory brings oboe's own CMake targets.
+add_subdirectory(third_party/oboe EXCLUDE_FROM_ALL)
+target_link_libraries(streamify_native_core oboe)
 endif()  # NOT ENABLE_ASAN (Android packaging library)
 
 # --- STANDALONE TEST TARGETS (Host C++20 with ASan / UBSan) ---

@@ -37,3 +37,14 @@ wasapi_exclusive = []
 # The ebur128 CI oracle (Phase 1 D3): cross-checks the golden-pinned
 # lufs.rs integrated loudness within ±0.1 LUFS on reference vectors.
 ebur128 = "0.1"
+
+# ── Sovereign HAL Phase 2 (Step 1): the Android Oboe loopback player ────────
+# Guest-side binary for the AudioFlinger gates (API 26/29/34/35): decodes
+# the real fixture, installs the frozen ring, drives the C++ Oboe bracket
+# (libstreamify_native_core.so) through its C ABI. Android-only — the
+# extern block resolves against the bracket's exports, which only exist
+# in the NDK-built .so; desktop CI never compiles this target.
+[[bin]]
+name = "sovereign_android_loopback"
+path = "src/bin/sovereign_android_loopback.rs"
+required-features = []
