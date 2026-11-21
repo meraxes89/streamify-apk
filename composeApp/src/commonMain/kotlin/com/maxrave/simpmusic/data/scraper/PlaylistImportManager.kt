@@ -1,13 +1,14 @@
 package com.maxrave.simpmusic.data.scraper
 
-import com.maxrave.common.Resource
-import com.maxrave.domain.data.model.LocalPlaylistEntity
-import com.maxrave.domain.data.model.SongEntity
+import com.maxrave.domain.data.entities.LocalPlaylistEntity
+import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.repository.SearchRepository
 import com.maxrave.domain.repository.SongRepository
-import com.maxrave.kotlinytmusicscraper.YouTube
+import com.maxrave.domain.utils.Resource
+import com.maxrave.domain.utils.toSongEntity
+import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -103,17 +104,7 @@ class PlaylistImportManager(
         val videoIds = mutableListOf<String>()
         for (track in tracks) {
             videoIds.add(track.videoId)
-            val songEntity = SongEntity(
-                videoId = track.videoId,
-                title = track.title,
-                artistId = track.artists.firstOrNull()?.id,
-                artistName = track.artists.map { it.name },
-                duration = track.duration,
-                durationSeconds = track.durationSeconds,
-                thumbnails = track.thumbnails?.lastOrNull()?.url,
-                albumId = track.album?.id,
-                albumName = track.album?.name,
-            )
+            val songEntity = track.toSongEntity()
             songRepository.insertSong(songEntity).lastOrNull()
         }
 
@@ -169,22 +160,13 @@ class PlaylistImportManager(
                                 ),
                             )
 
-                            val searchFlow = searchRepository.search(query, YouTube.SearchFilter.FILTER_SONG)
+                            val searchFlow = searchRepository.getSearchDataSong(query)
                             val searchResult = searchFlow.firstOrNull()
-                            val topSong = searchResult?.data?.items?.firstOrNull()
+                            val topSong = (searchResult as? Resource.Success)?.data?.firstOrNull()
 
                             if (topSong != null) {
-                                resolvedVideoIds[index] = topSong.id
-                                val songEntity = SongEntity(
-                                    videoId = topSong.id,
-                                    title = topSong.title,
-                                    artistId = topSong.artists.firstOrNull()?.id,
-                                    artistName = topSong.artists.map { it.name },
-                                    duration = topSong.duration.toString(),
-                                    thumbnails = topSong.thumbnails.lastOrNull()?.url,
-                                    albumId = topSong.album?.id,
-                                    albumName = topSong.album?.name,
-                                )
+                                resolvedVideoIds[index] = topSong.videoId
+                                val songEntity = topSong.toTrack().toSongEntity()
                                 songRepository.insertSong(songEntity).lastOrNull()
                             }
                         }
