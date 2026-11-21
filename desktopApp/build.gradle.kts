@@ -43,7 +43,7 @@ plugins {
 version =
     libs.versions.version.name
         .get()
-        .removeSuffix("-hf")
+        .substringBefore('-')
 
 kotlin {
     // 21 matches :media-jvm-ui (requires 21+).
@@ -212,7 +212,7 @@ compose.desktop {
                 packageVersion =
                     libs.versions.version.name
                         .get()
-                        .removeSuffix("-hf")
+                        .substringBefore('-')
                 iconFile.set(rootDir.resolve("composeApp/icon/circle_app_icon.ico"))
             }
             linux {
@@ -220,7 +220,7 @@ compose.desktop {
                 packageVersion =
                     libs.versions.version.name
                         .get()
-                        .removeSuffix("-hf")
+                        .substringBefore('-')
                 iconFile.set(rootDir.resolve("composeApp/icon/circle_app_icon.png"))
             }
         }
