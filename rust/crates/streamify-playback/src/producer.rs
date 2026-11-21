@@ -55,6 +55,7 @@ use streamify_core::{AudioErrorKind, EngineError};
 use crate::decode::{DecoderGeometry, SymphoniaDecoder, TrackDecoder};
 use crate::fetch::RangeFetcher;
 use crate::frame_buf::FrameBuf;
+use crate::opus::{OpusTier, OpusTrackDecoder};
 use crate::sink::AudioSink;
 
 /// Default segmented-range window (the buffering budget granularity —
@@ -254,7 +255,13 @@ pub struct StreamProducer;
 /// One decode/render session (built per `Play`; dropped on skip).
 struct Session {
     intent: PlayIntent,
-    decoder: SymphoniaDecoder,
+    /// The codec route for this session (Phase 3 / Step 2): Opus
+    /// sources (OggS or the server's raw #225 OpusHead framing —
+    /// itag 251) ride [`OpusTrackDecoder`]; everything else (AAC in
+    /// ADTS/M4A, WAV fixtures — itag 140 and the self-test lanes)
+    /// rides [`SymphoniaDecoder`]. Both implement [`TrackDecoder`],
+    /// so the session body stays codec-agnostic.
+    decoder: Box<dyn TrackDecoder>,
     /// Built lazily once the decoder's geometry is discovered.
     src: Option<CanonicalSrc>,
     /// Input geometry of the resample stage (guards rebuilds).
@@ -293,9 +300,10 @@ impl Session {
         // generous geometry — reallocations happen only during the
         // first rounds, never in steady state.
         let staging_frames = (config.segment_bytes as usize / 8).max(4096);
+        let decoder = Self::route_decoder(&intent.source_url)?;
         Ok(Self {
             intent,
-            decoder: SymphoniaDecoder::new()?,
+            decoder,
             src: None,
             src_geometry: None,
             normalizer: LufsNormalizer::new(config.target_lufs)?,
@@ -312,6 +320,30 @@ impl Session {
             render_mono_upmix: false,
             write_cursor: 0,
         })
+    }
+
+    /// Route the decode backend by the source's URL signature.
+    ///
+    /// `OpusTrackDecoder` itself sniffs the BYTE framing (OggS vs raw
+    /// OpusHead) on the first pushed range, but symphonia fails CLOSED
+    /// on an Opus container (no Opus codec in the default registry —
+    /// the §5.2 decision record), so the producer must never hand an
+    /// Opus source to the plain `SymphoniaDecoder`. The routing key is
+    /// the resolver's URL grammar: itag 251/250/249 are Opus
+    /// (WebM/Opus streams), everything else rides symphonia. The
+    /// `sovereign-opus` fixture scheme keeps the E2E harness on the
+    /// same route as production.
+    fn route_decoder(source_url: &str) -> Result<Box<dyn TrackDecoder>, EngineError> {
+        let lower = source_url.to_ascii_lowercase();
+        let is_opus = lower.contains("itag=251")
+            || lower.contains("itag=250")
+            || lower.contains("itag=249")
+            || lower.contains("opus");
+        if is_opus {
+            Ok(Box::new(OpusTrackDecoder::new(OpusTier::Primary)))
+        } else {
+            Ok(Box::new(SymphoniaDecoder::new()?))
+        }
     }
 
     /// The render buffer's length in interleaved samples.
