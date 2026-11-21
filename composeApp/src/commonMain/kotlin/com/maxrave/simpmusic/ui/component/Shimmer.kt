@@ -138,8 +138,8 @@ fun QuickPicksShimmer() {
                 ).clip(RoundedCornerShape(10))
                 .shimmer(),
         )
-        LazyColumn(userScrollEnabled = false) {
-            items(4) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            repeat(4) {
                 QuickPicksShimmerItem()
             }
         }
@@ -150,10 +150,11 @@ fun QuickPicksShimmer() {
 fun HomeShimmer() {
     Column(
         Modifier.padding(horizontal = 15.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         QuickPicksShimmer()
-        LazyColumn(userScrollEnabled = false) {
-            items(10) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            repeat(3) {
                 HomeItemShimmer()
             }
         }

@@ -3,17 +3,20 @@ package com.maxrave.simpmusic.ui.component
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -121,6 +125,7 @@ import com.maxrave.simpmusic.ui.icon.PlayArrow
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LocalForceDarkText
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.HomeViewModel
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
@@ -446,17 +451,27 @@ private fun cardTextBlockFloor(): Dp {
 internal fun rememberCardHover(enabled: Boolean): Pair<Modifier, Boolean> {
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
+    val pressed by source.collectIsPressedAsState()
     var focused by remember { mutableStateOf(false) }
     val active = enabled && (hovered || focused)
     val tint by animateColorAsState(
         targetValue = if (active) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f) else Color.Transparent,
         label = "cardHoverTint",
     )
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+        label = "cardPressScale",
+    )
     val modifier =
         Modifier
             .onFocusChanged { focused = it.isFocused }
             .hoverable(source)
-            .drawBehind { drawRoundRect(color = tint, cornerRadius = CornerRadius(8.dp.toPx())) }
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .drawBehind { drawRoundRect(color = tint, cornerRadius = CornerRadius(12.dp.toPx())) }
     return modifier to active
 }
 
@@ -505,7 +520,7 @@ internal fun BoxScope.HoverPlayButton(
             imageVector = SimpIcons.PlayArrow,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(24.dp).offset(x = 1.5.dp),
         )
     }
 }
@@ -709,6 +724,11 @@ fun HomeItemContentPlaylist(
                     modifier =
                         (if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.size(thumbSize))
                             .aspectRatio(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                shape = ArtworkShape,
+                            )
                             .clip(
                                 ArtworkShape,
                             ).hoverZoom(hovered),
@@ -845,14 +865,30 @@ fun QuickPicksItem(
     data: Content,
 ) {
     val tag = "QuickPicksItem"
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+        label = "quickPicksPressScale",
+    )
+    val isDark = LocalIsDarkTheme.current
+    val rimColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
+
     Box(
         modifier =
             Modifier
                 .wrapContentHeight()
-                .width(widthDp - 30.dp)
+                .width(widthDp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
                 .focusable(true)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .combinedClickable(
+                    interactionSource = source,
+                    indication = null,
                     onClick = onClick,
                     onLongClick = onLongClick,
                 ),
@@ -880,6 +916,7 @@ fun QuickPicksItem(
                     Modifier
                         .align(Alignment.CenterVertically)
                         .size(44.dp)
+                        .border(width = 1.dp, color = rimColor, shape = ArtworkShape)
                         .clip(
                             ArtworkShape,
                         ),
@@ -1013,6 +1050,11 @@ fun HomeItemSong(
                     modifier =
                         Modifier
                             .then(if (fillMaxWidth) Modifier.fillMaxWidth().aspectRatio(1f) else Modifier.size(160.dp))
+                            .border(
+                                width = 1.dp,
+                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                shape = ArtworkShape,
+                            )
                             .clip(
                                 ArtworkShape,
                             ).hoverZoom(hovered),
@@ -1118,6 +1160,11 @@ fun HomeItemVideo(
                         Modifier
                             .then(if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.height(160.dp))
                             .aspectRatio(16f / 9f)
+                            .border(
+                                width = 1.dp,
+                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                shape = ArtworkShape,
+                            )
                             .clip(
                                 ArtworkShape,
                             ).hoverZoom(hovered),
@@ -1235,6 +1282,11 @@ fun HomeItemArtist(
                     Modifier
                         .align(Alignment.CenterHorizontally)
                         .then(if (fillMaxWidth) Modifier.fillMaxWidth().aspectRatio(1f) else Modifier.size(160.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                            shape = CircleShape,
+                        )
                         .clip(
                             CircleShape,
                         ),

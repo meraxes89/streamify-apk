@@ -88,7 +88,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -780,7 +782,11 @@ fun HomeScreen(
                 )
             },
         ) {
-            Crossfade(targetState = loading, label = "Home Shimmer") { loading ->
+            Crossfade(
+                targetState = loading,
+                animationSpec = tween(350),
+                label = "Home Shimmer",
+            ) { loading ->
                 if (!loading) {
                     if (homeData.isEmpty()) {
                         OfflineErrorState(
@@ -1095,76 +1101,84 @@ fun HomeScreen(
                         onSettings = { navController.navigate(SettingsDestination) },
                     )
                 }
+                val accountName = accountInfo?.first
+                val signedIn = !accountName.isNullOrBlank()
+                val displayName = if (signedIn) accountName.orEmpty() else stringResource(Res.string.guest)
+                val hour = remember { now().time.hour }
+                val greeting =
+                    stringResource(
+                        when (hour) {
+                            in 6..12 -> Res.string.good_morning
+                            in 13..17 -> Res.string.good_afternoon
+                            in 18..23 -> Res.string.good_evening
+                            else -> Res.string.good_night
+                        },
+                    )
+
+                // Row 1: Personalized Top Bar with Avatar, Greeting & Actions
                 Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(56.dp),
+                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(start = 16.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        HomeAccountButton(
-                            accountName = accountInfo?.first,
-                            thumbnailUrl = accountInfo?.second,
-                            navController = navController,
+                    HomeAccountButton(
+                        accountName = accountInfo?.first,
+                        thumbnailUrl = accountInfo?.second,
+                        navController = navController,
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = greeting,
+                            style = typo().labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            maxLines = 1,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        SireenBrandingBadge()
+                        Text(
+                            text = displayName,
+                            style = typo().titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    BoxWithConstraints(
+                    SireenBrandingBadge()
+                    Spacer(modifier = Modifier.width(8.dp))
+                    createActions()
+                }
+
+                // Row 2: Direct Horizontal Mood Carousel
+                Row(
+                    modifier =
                         Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxWidth()
+                            .chipStripEdgeFades(24.dp, start = { chipHeadFade }, end = { chipTailFade })
+                            .mouseDragScroll(chipRowState)
+                            .horizontalScroll(chipRowState)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Chip(
+                        isAnimated = loading,
+                        isSelected = params == null,
+                        text = stringResource(Res.string.all),
+                        backdrop = chipBackdrop,
                     ) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxHeight()
-                                    .chipStripEdgeFades(32.dp, start = { chipHeadFade }, end = { chipTailFade })
-                                    .mouseDragScroll(chipRowState)
-                                    .horizontalScroll(chipRowState)
-                                    .widthIn(min = maxWidth)
-                                    .padding(end = if (createPinned) 0.dp else 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Chip(
-                                    isAnimated = loading,
-                                    isSelected = params == null && !moodExpanded,
-                                    text = stringResource(Res.string.all),
-                                    backdrop = chipBackdrop,
-                                ) {
-                                    moodExpanded = false
-                                    viewModel.setParams(null)
-                                }
-                                ExpandableChip(
-                                    text = stringResource(Res.string.mood),
-                                    options = homeMoods.map { stringResource(it.first) },
-                                    selectedIndex = homeMoods.indexOfFirst { it.second == params }.takeIf { it >= 0 },
-                                    expanded = moodExpanded,
-                                    onExpandedChange = { moodExpanded = it },
-                                    onSelect = { index ->
-                                        moodExpanded = false
-                                        viewModel.setParams(homeMoods[index].second)
-                                    },
-                                    isAnimated = loading,
-                                    backdrop = chipBackdrop,
-                                )
-                            }
-                            if (!createPinned) {
-                                Box(Modifier.padding(start = 8.dp)) { createActions() }
-                            }
-                        }
+                        viewModel.setParams(null)
                     }
-                    if (createPinned) {
-                        Box(Modifier.padding(start = 8.dp, end = 16.dp)) { createActions() }
+                    homeMoods.forEach { mood ->
+                        val isSelected = params == mood.second
+                        Chip(
+                            isAnimated = loading,
+                            isSelected = isSelected,
+                            text = stringResource(mood.first),
+                            backdrop = chipBackdrop,
+                        ) {
+                            viewModel.setParams(if (isSelected) null else mood.second)
+                        }
                     }
                 }
             }
@@ -1467,7 +1481,7 @@ fun QuickPicks(
                             bottomSheetShow = true
                         },
                         data = it,
-                        widthDp = if (isPortrait) widthDp else minOf(widthDp, LandscapeGridItemMaxWidth + 30.dp),
+                        widthDp = if (isPortrait) (widthDp * 0.84f).coerceAtMost(320.dp) else minOf(widthDp, LandscapeGridItemMaxWidth + 30.dp),
                     )
                 }
             }
