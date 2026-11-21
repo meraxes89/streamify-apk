@@ -70,6 +70,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SharedViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
@@ -393,7 +394,7 @@ fun CreateLocalPlaylistSheet(
                         text = {
                             Text(
                                 text = "New Playlist",
-                                style = typo.titleSmall,
+                                style = typo().titleSmall,
                                 color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
@@ -404,7 +405,7 @@ fun CreateLocalPlaylistSheet(
                         text = {
                             Text(
                                 text = "Import Link",
-                                style = typo.titleSmall,
+                                style = typo().titleSmall,
                                 color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
@@ -489,7 +490,7 @@ fun CreateLocalPlaylistSheet(
                             }
                             Text(
                                 text = statusText,
-                                style = typo.bodySmall,
+                                style = typo().bodySmall,
                                 color = if (progress.stage == ImportStage.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
