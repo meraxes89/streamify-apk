@@ -108,13 +108,13 @@ import com.maxrave.common.CHART_SUPPORTED_COUNTRY
 import com.maxrave.common.Config
 import com.maxrave.domain.data.model.browse.album.Track
 import com.maxrave.domain.data.model.home.HomeItem
-import com.maxrave.domain.data.model.home.isQuickPicksShelf
-import com.maxrave.domain.data.model.home.pinQuickPicksToTop
 import com.maxrave.domain.data.model.home.chart.Chart
 import com.maxrave.domain.data.model.intent.GenericIntent
 import com.maxrave.domain.data.model.mood.Mood
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.manager.DataStoreManager.Values.TRUE
+import com.maxrave.simpmusic.utils.isQuickPicksShelf
+import com.maxrave.simpmusic.utils.pinQuickPicksToTop
 import com.maxrave.domain.mediaservice.handler.PlaylistType
 import com.maxrave.domain.mediaservice.handler.QueueData
 import com.maxrave.domain.utils.toSongEntity

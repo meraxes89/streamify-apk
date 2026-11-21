@@ -293,7 +293,7 @@ fun SongFullWidthItems(
                                     .fillMaxSize()
                                     .clip(ArtworkShape),
                         )
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = isPlaying,
                             enter = fadeIn(),
                             exit = fadeOut(),
@@ -479,7 +479,7 @@ fun SuggestItems(
                             .fillMaxSize()
                             .clip(ArtworkShape),
                 )
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = isPlaying,
                     enter = fadeIn(),
                     exit = fadeOut(),

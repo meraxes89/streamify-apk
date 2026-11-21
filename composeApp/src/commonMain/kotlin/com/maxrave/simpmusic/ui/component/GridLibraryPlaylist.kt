@@ -125,7 +125,7 @@ internal fun extractLibraryItemTitle(item: Any?): String = when (item) {
     is LocalPlaylistEntity -> item.title
     is PlaylistsResult -> item.title
     is PodcastsEntity -> item.title
-    is ChartItem -> item.playlistName
+    is ChartItem -> item.name
     is MonthlyRecapItem -> "Recap ${item.year}-${item.month}"
     else -> ""
 }

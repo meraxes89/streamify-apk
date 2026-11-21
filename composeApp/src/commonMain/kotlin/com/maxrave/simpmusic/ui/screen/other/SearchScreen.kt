@@ -1750,9 +1750,9 @@ fun TopResultHeroCard(
             onClick = { onTrackClick(result.toTrack()) }
         }
         is VideosResult -> {
-            thumb = result.thumbnails.lastOrNull()?.url
-            title = result.title
-            subtitle = result.artists.mapNotNull { it.name }.joinToString(", ")
+            thumb = result.thumbnails?.lastOrNull()?.url
+            title = result.title ?: ""
+            subtitle = result.artists?.mapNotNull { it.name }?.joinToString(", ") ?: ""
             categoryTag = "VIDEO"
             isCircular = false
             onClick = { onTrackClick(result.toTrack()) }
