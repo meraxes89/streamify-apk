@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
 // Koin — so the suite runs on every target the module builds for.
 // ─────────────────────────────────────────────────────────────────────────────
 
-private class RecordingHandler : MediaPlayerHandler {
+internal class RecordingHandler : MediaPlayerHandler {
     var onPlayerEventCalls = 0
     var releaseCalls = 0
     var lastEvent: PlayerEvent? = null
@@ -138,7 +138,7 @@ private class RecordingHandler : MediaPlayerHandler {
     }
 }
 
-private object NoopPlayer : MediaPlayerInterface {
+internal object NoopPlayer : MediaPlayerInterface {
     override fun play() {}
     override fun pause() {}
     override fun stop() {}

@@ -293,6 +293,17 @@ jobs:
           $PG -f supabase/sql/tests/01_grants.sql
           $PG -f supabase/sql/tests/rls_test.sql
 
+  # Sovereign HAL Phase 3 (Step 4): the 5-platform OS-audio loopback
+  # matrix + the frozen-ABI gates + the real-track Fastify E2E parity
+  # suite run on EVERY PR into main — a future feature PR cannot
+  # regress real audio output unnoticed. Reusable-workflow dispatch
+  # (the same hub-and-spoke shape as the platform shards above).
+  sovereign-hal:
+    name: "Sovereign HAL Gates (5-platform loopback + ABI + Fastify E2E)"
+    needs: preflight
+    if: always() && needs.preflight.result == 'success'
+    uses: ./.github/workflows/_ci-sovereign-hal.yml
+
   # =========================================================================
   # TIER 3: The Single Blocking Merge Gate
   # =========================================================================
@@ -304,7 +315,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, supabase-rls]
+    needs: [preflight, clippy, engine_dsp, android, desktop, supabase-rls, sovereign-hal]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)
