@@ -24,6 +24,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -78,6 +79,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
@@ -273,13 +275,20 @@ fun MiniPlayer(
         // visible one.
         val miniPlayerShape = CircleShape
         // Without glass the card follows the theme, not the playing artwork.
+        // Elevated to surfaceContainerHigh to guarantee physical separation from the page canvas and cards.
         val cardColor =
             if (isLiquidGlassEnabled == DataStoreManager.TRUE) {
                 Color.Transparent
             } else {
-                // Same opaque surface as the bottom bar capsule, so the two floating surfaces read as one set.
-                MaterialTheme.colorScheme.surfaceContainer
+                MaterialTheme.colorScheme.surfaceContainerHigh
             }
+        val nonGlassBorderColor =
+            if (isDarkTheme) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+        val nonGlassSpotColor =
+            if (isDarkTheme) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.12f)
+        val nonGlassAmbientColor =
+            if (isDarkTheme) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.08f)
+
         // The flat (default) card: round artwork and controls sitting in filled circles. Glass keeps its own look.
         val isFlat = isLiquidGlassEnabled != DataStoreManager.TRUE
         Card(
@@ -296,6 +305,18 @@ fun MiniPlayer(
                             Modifier.liquidGlass(backdrop, layer, luminance, RoundedCornerShape(16.dp))
                         } else {
                             Modifier
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = miniPlayerShape,
+                                    clip = false,
+                                    spotColor = nonGlassSpotColor,
+                                    ambientColor = nonGlassAmbientColor,
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = nonGlassBorderColor,
+                                    shape = miniPlayerShape,
+                                )
                         },
                     ).then(
                         Modifier
@@ -650,13 +671,33 @@ fun MiniPlayer(
         // instead gives a dark smear rather than a floating pill.
         val capsuleShape = RoundedCornerShape(50)
         val density = LocalDensity.current
+        val nonGlassBorderColor =
+            if (isDarkTheme) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+        val nonGlassSpotColor =
+            if (isDarkTheme) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.12f)
+        val nonGlassAmbientColor =
+            if (isDarkTheme) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.08f)
+
         Box(
             modifier
                 .then(
                     if (useGlassSurface) {
                         Modifier.liquidGlass(backdrop, layer, luminance, capsuleShape, blurScale = 1.2f)
                     } else {
-                        Modifier.background(MaterialTheme.colorScheme.surfaceContainer, capsuleShape)
+                        Modifier
+                            .shadow(
+                                elevation = 8.dp,
+                                shape = capsuleShape,
+                                clip = false,
+                                spotColor = nonGlassSpotColor,
+                                ambientColor = nonGlassAmbientColor,
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = nonGlassBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, capsuleShape)
                     },
                 ).clip(capsuleShape)
                 .clickable {

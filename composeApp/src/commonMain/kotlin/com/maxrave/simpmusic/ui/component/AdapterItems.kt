@@ -3,17 +3,20 @@ package com.maxrave.simpmusic.ui.component
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +50,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -121,6 +126,7 @@ import com.maxrave.simpmusic.ui.icon.PlayArrow
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LocalForceDarkText
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.HomeViewModel
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
@@ -300,18 +306,32 @@ fun SectionHeaderButton(
     text: String,
     onClick: () -> Unit,
 ) {
+    val isPlayAll = text == stringResource(Res.string.play_all)
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-        TextButton(
-            onClick = onClick,
-            // Any non-zero minimum here keeps TextButton's own 40dp minimum height from applying.
-            modifier = Modifier.defaultMinSize(minHeight = 1.dp),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-            colors =
-                ButtonDefaults
-                    .textButtonColors()
-                    .copy(contentColor = MaterialTheme.colorScheme.onSurface),
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+            modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
         ) {
-            Text(text, style = typo().bodySmall)
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (isPlayAll) {
+                    Icon(
+                        imageVector = SimpIcons.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = text,
+                    style = typo().labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }
@@ -446,17 +466,27 @@ private fun cardTextBlockFloor(): Dp {
 internal fun rememberCardHover(enabled: Boolean): Pair<Modifier, Boolean> {
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
+    val pressed by source.collectIsPressedAsState()
     var focused by remember { mutableStateOf(false) }
     val active = enabled && (hovered || focused)
     val tint by animateColorAsState(
         targetValue = if (active) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f) else Color.Transparent,
         label = "cardHoverTint",
     )
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+        label = "cardPressScale",
+    )
     val modifier =
         Modifier
             .onFocusChanged { focused = it.isFocused }
             .hoverable(source)
-            .drawBehind { drawRoundRect(color = tint, cornerRadius = CornerRadius(8.dp.toPx())) }
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .drawBehind { drawRoundRect(color = tint, cornerRadius = CornerRadius(14.dp.toPx())) }
     return modifier to active
 }
 
@@ -505,7 +535,7 @@ internal fun BoxScope.HoverPlayButton(
             imageVector = SimpIcons.PlayArrow,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(24.dp).offset(x = 1.5.dp),
         )
     }
 }
@@ -583,13 +613,13 @@ fun HomeItemContentPlaylist(
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(thumbSize)
-    val (hoverModifier, hovered) = rememberCardHover(enabled = onPlay != null)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         Modifier
             .then(hoverModifier)
             .wrapContentSize()
             .focusable(true)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable {
                 onClick()
             },
@@ -709,6 +739,11 @@ fun HomeItemContentPlaylist(
                     modifier =
                         (if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.size(thumbSize))
                             .aspectRatio(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                shape = ArtworkShape,
+                            )
                             .clip(
                                 ArtworkShape,
                             ).hoverZoom(hovered),
@@ -845,13 +880,18 @@ fun QuickPicksItem(
     data: Content,
 ) {
     val tag = "QuickPicksItem"
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
+    val isDark = LocalIsDarkTheme.current
+    val rimColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
+
     Box(
         modifier =
             Modifier
                 .wrapContentHeight()
-                .width(widthDp - 30.dp)
+                .width(widthDp)
+                .then(hoverModifier)
                 .focusable(true)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
@@ -880,6 +920,7 @@ fun QuickPicksItem(
                     Modifier
                         .align(Alignment.CenterVertically)
                         .size(44.dp)
+                        .border(width = 1.dp, color = rimColor, shape = ArtworkShape)
                         .clip(
                             ArtworkShape,
                         ),
@@ -969,14 +1010,14 @@ fun HomeItemSong(
     onPlay: (() -> Unit)? = null,
 ) {
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(160.dp)
-    val (hoverModifier, hovered) = rememberCardHover(enabled = onPlay != null)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         modifier =
             Modifier
                 .then(hoverModifier)
                 .fillMaxSize()
                 .focusable(true)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
@@ -1013,6 +1054,11 @@ fun HomeItemSong(
                     modifier =
                         Modifier
                             .then(if (fillMaxWidth) Modifier.fillMaxWidth().aspectRatio(1f) else Modifier.size(160.dp))
+                            .border(
+                                width = 1.dp,
+                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                shape = ArtworkShape,
+                            )
                             .clip(
                                 ArtworkShape,
                             ).hoverZoom(hovered),
@@ -1081,13 +1127,13 @@ fun HomeItemVideo(
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(284.5.dp)
-    val (hoverModifier, hovered) = rememberCardHover(enabled = onPlay != null)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         Modifier
             .then(hoverModifier)
             .fillMaxSize()
             .focusable(true)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
@@ -1118,6 +1164,11 @@ fun HomeItemVideo(
                         Modifier
                             .then(if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.height(160.dp))
                             .aspectRatio(16f / 9f)
+                            .border(
+                                width = 1.dp,
+                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                shape = ArtworkShape,
+                            )
                             .clip(
                                 ArtworkShape,
                             ).hoverZoom(hovered),
@@ -1202,11 +1253,13 @@ fun HomeItemArtist(
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(160.dp)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         Modifier
+            .then(hoverModifier)
             .fillMaxSize()
             .focusable(true)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable {
                 onClick()
             },
@@ -1235,6 +1288,11 @@ fun HomeItemArtist(
                     Modifier
                         .align(Alignment.CenterHorizontally)
                         .then(if (fillMaxWidth) Modifier.fillMaxWidth().aspectRatio(1f) else Modifier.size(160.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                            shape = CircleShape,
+                        )
                         .clip(
                             CircleShape,
                         ),

@@ -105,6 +105,9 @@ class SearchViewModel(
     private val _searchHistory: MutableStateFlow<List<String>> = MutableStateFlow(emptyList())
     val searchHistory: StateFlow<List<String>> get() = _searchHistory.asStateFlow()
 
+    private val _lastPlayedSearchTracks = MutableStateFlow<List<Track>>(emptyList())
+    val lastPlayedSearchTracks: StateFlow<List<Track>> get() = _lastPlayedSearchTracks.asStateFlow()
+
     private val _lastPlayedSearchTrack = MutableStateFlow<Track?>(null)
     val lastPlayedSearchTrack: StateFlow<Track?> get() = _lastPlayedSearchTrack.asStateFlow()
 
@@ -198,25 +201,50 @@ class SearchViewModel(
         viewModelScope.launch {
             dataStoreManager.getString(LAST_PLAYED_SEARCH_TRACK_KEY).collectLatest { json ->
                 if (!json.isNullOrBlank()) {
-                    runCatching {
-                        val track = searchJson.decodeFromString<Track>(json)
-                        _lastPlayedSearchTrack.value = track
-                    }.onFailure {
-                        Logger.e(tag, "Failed to decode last played search track: $it")
-                    }
+                    val tracks =
+                        runCatching {
+                            searchJson.decodeFromString<List<Track>>(json)
+                        }.getOrElse {
+                            // Backward compatibility: migration from single Track object
+                            runCatching {
+                                listOf(searchJson.decodeFromString<Track>(json))
+                            }.getOrDefault(emptyList())
+                        }
+                    _lastPlayedSearchTracks.value = tracks
+                    _lastPlayedSearchTrack.value = tracks.firstOrNull()
+                } else {
+                    _lastPlayedSearchTracks.value = emptyList()
+                    _lastPlayedSearchTrack.value = null
                 }
             }
         }
     }
 
     fun setLastPlayedSearchTrack(track: Track) {
+        val current = _lastPlayedSearchTracks.value.filterNot { it.videoId == track.videoId }
+        val updated = listOf(track) + current.take(9)
+        _lastPlayedSearchTracks.value = updated
         _lastPlayedSearchTrack.value = track
         viewModelScope.launch {
             runCatching {
-                val json = searchJson.encodeToString(track)
+                val json = searchJson.encodeToString(updated)
                 dataStoreManager.putString(LAST_PLAYED_SEARCH_TRACK_KEY, json)
             }.onFailure {
-                Logger.e(tag, "Failed to encode last played search track: $it")
+                Logger.e(tag, "Failed to encode last played search tracks: $it")
+            }
+        }
+    }
+
+    fun addLastPlayedSearchTrack(track: Track) = setLastPlayedSearchTrack(track)
+
+    fun clearLastPlayedSearchTracks() {
+        _lastPlayedSearchTracks.value = emptyList()
+        _lastPlayedSearchTrack.value = null
+        viewModelScope.launch {
+            runCatching {
+                dataStoreManager.putString(LAST_PLAYED_SEARCH_TRACK_KEY, "")
+            }.onFailure {
+                Logger.e(tag, "Failed to clear last played search tracks: $it")
             }
         }
     }

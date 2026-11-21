@@ -205,7 +205,7 @@ fun SearchScreen(
     val searchHistory by searchViewModel.searchHistory.collectAsStateWithLifecycle()
     val moodAndGenres by searchViewModel.moodAndGenres.collectAsStateWithLifecycle()
     val moodArtwork by searchViewModel.moodArtwork.collectAsStateWithLifecycle()
-    val lastPlayedSearchTrack by searchViewModel.lastPlayedSearchTrack.collectAsStateWithLifecycle()
+    val lastPlayedSearchTracks by searchViewModel.lastPlayedSearchTracks.collectAsStateWithLifecycle()
 
     var searchUIType by rememberSaveable { mutableStateOf(SearchUIType.EMPTY) }
     var searchText by rememberSaveable { mutableStateOf("") }
@@ -581,59 +581,62 @@ fun SearchScreen(
                             state = historyState,
                             contentPadding = PaddingValues(top = searchBarHeight, bottom = 10.dp),
                         ) {
-                            lastPlayedSearchTrack?.let { track ->
+                            if (lastPlayedSearchTracks.isNotEmpty()) {
                                 item {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                    ) {
-                                        Text(
-                                            text = stringResource(Res.string.last_played_from_search),
-                                            style = typo().titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
-                                        )
-                                        SongFullWidthItems(
-                                            track = track,
-                                            isPlaying = track.videoId == currentVideoId,
-                                            modifier = Modifier,
-                                            onMoreClickListener = {
-                                                onMoreClick(track.toSongEntity())
-                                            },
-                                            onLongClick = {
-                                                onMoreClick(track.toSongEntity())
-                                            },
-                                            onClickListener = {
-                                                focusManager.clearFocus()
-                                                searchViewModel.setQueueData(
-                                                    QueueData.Data(
-                                                        listTracks = arrayListOf(track),
-                                                        firstPlayedTrack = track,
-                                                        playlistId = "RDAMVM${track.videoId}",
-                                                        playlistName =
-                                                            "\"${track.title}\" ${
-                                                                getStringBlocking(
-                                                                    Res.string.in_search,
-                                                                )
-                                                            }",
-                                                        playlistType = PlaylistType.RADIO,
-                                                        continuation = null,
-                                                    ),
-                                                )
-                                                searchViewModel.loadMediaItem(track, Config.SONG_CLICK)
-                                            },
-                                            onAddToQueue = {
-                                                sharedViewModel.addListToQueue(
-                                                    arrayListOf(track),
-                                                )
-                                            },
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 4.dp),
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                                        )
-                                    }
+                                    Text(
+                                        text = stringResource(Res.string.last_played_from_search),
+                                        style = typo().titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
+                                    )
+                                }
+                                items(
+                                    items = lastPlayedSearchTracks,
+                                    key = { "history_${it.videoId}" },
+                                ) { track ->
+                                    SongFullWidthItems(
+                                        track = track,
+                                        isPlaying = track.videoId == currentVideoId,
+                                        modifier = Modifier,
+                                        onMoreClickListener = {
+                                            onMoreClick(track.toSongEntity())
+                                        },
+                                        onLongClick = {
+                                            onMoreClick(track.toSongEntity())
+                                        },
+                                        onClickListener = {
+                                            focusManager.clearFocus()
+                                            searchViewModel.setQueueData(
+                                                QueueData.Data(
+                                                    listTracks = arrayListOf(track),
+                                                    firstPlayedTrack = track,
+                                                    playlistId = "RDAMVM${track.videoId}",
+                                                    playlistName =
+                                                        "\"${track.title}\" ${
+                                                            getStringBlocking(
+                                                                Res.string.in_search,
+                                                            )
+                                                        }",
+                                                    playlistType = PlaylistType.RADIO,
+                                                    continuation = null,
+                                                ),
+                                            )
+                                            searchViewModel.loadMediaItem(track, Config.SONG_CLICK)
+                                        },
+                                        onAddToQueue = {
+                                            sharedViewModel.addListToQueue(
+                                                arrayListOf(track),
+                                            )
+                                        },
+                                    )
+                                }
+                                item {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                    )
                                 }
                             }
                             stickyHeader {
@@ -757,60 +760,61 @@ fun SearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            lastPlayedSearchTrack?.let { track ->
+                            if (lastPlayedSearchTracks.isNotEmpty()) {
                                 item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Column(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 16.dp, bottom = 4.dp),
-                                    ) {
-                                        Text(
-                                            text = stringResource(Res.string.last_played_from_search),
-                                            style = typo().titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                                        )
-                                        SongFullWidthItems(
-                                            track = track,
-                                            isPlaying = track.videoId == currentVideoId,
-                                            modifier = Modifier,
-                                            onMoreClickListener = {
-                                                onMoreClick(track.toSongEntity())
-                                            },
-                                            onLongClick = {
-                                                onMoreClick(track.toSongEntity())
-                                            },
-                                            onClickListener = {
-                                                searchViewModel.setQueueData(
-                                                    QueueData.Data(
-                                                        listTracks = arrayListOf(track),
-                                                        firstPlayedTrack = track,
-                                                        playlistId = "RDAMVM${track.videoId}",
-                                                        playlistName =
-                                                            "\"${track.title}\" ${
-                                                                getStringBlocking(
-                                                                    Res.string.in_search,
-                                                                )
-                                                            }",
-                                                        playlistType = PlaylistType.RADIO,
-                                                        continuation = null,
-                                                    ),
-                                                )
-                                                searchViewModel.loadMediaItem(track, Config.SONG_CLICK)
-                                            },
-                                            onAddToQueue = {
-                                                sharedViewModel.addListToQueue(
-                                                    arrayListOf(track),
-                                                )
-                                            },
-                                        )
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(top = 12.dp),
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                                        )
-                                    }
+                                    Text(
+                                        text = stringResource(Res.string.last_played_from_search),
+                                        style = typo().titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(start = 4.dp, top = 16.dp, bottom = 4.dp),
+                                    )
+                                }
+                                items(
+                                    items = lastPlayedSearchTracks,
+                                    key = { "empty_${it.videoId}" },
+                                    span = { GridItemSpan(maxLineSpan) },
+                                ) { track ->
+                                    SongFullWidthItems(
+                                        track = track,
+                                        isPlaying = track.videoId == currentVideoId,
+                                        modifier = Modifier,
+                                        onMoreClickListener = {
+                                            onMoreClick(track.toSongEntity())
+                                        },
+                                        onLongClick = {
+                                            onMoreClick(track.toSongEntity())
+                                        },
+                                        onClickListener = {
+                                            searchViewModel.setQueueData(
+                                                QueueData.Data(
+                                                    listTracks = arrayListOf(track),
+                                                    firstPlayedTrack = track,
+                                                    playlistId = "RDAMVM${track.videoId}",
+                                                    playlistName =
+                                                        "\"${track.title}\" ${
+                                                            getStringBlocking(
+                                                                Res.string.in_search,
+                                                            )
+                                                        }",
+                                                    playlistType = PlaylistType.RADIO,
+                                                    continuation = null,
+                                                ),
+                                            )
+                                            searchViewModel.loadMediaItem(track, Config.SONG_CLICK)
+                                        },
+                                        onAddToQueue = {
+                                            sharedViewModel.addListToQueue(
+                                                arrayListOf(track),
+                                            )
+                                        },
+                                    )
+                                }
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(top = 12.dp),
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                    )
                                 }
                             }
                             item(span = { GridItemSpan(maxLineSpan) }) {
