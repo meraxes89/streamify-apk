@@ -165,6 +165,7 @@ import com.maxrave.simpmusic.ui.component.homeCardAspectRatio
 import com.maxrave.simpmusic.ui.component.rememberHolderPainter
 import com.maxrave.simpmusic.ui.icon.Notifications
 import com.maxrave.simpmusic.ui.icon.Person
+import com.maxrave.simpmusic.ui.icon.Radio
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.navigation.destination.home.HomeDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.MoodDestination
@@ -803,7 +804,7 @@ fun HomeScreen(
                     }
                     LazyColumn(
                         state = scrollState,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
                         itemsIndexed(homeShelves, key = { _, item ->
                             item.hashCode().toString() + (mainHomeThumbnail ?: "nothumb")
@@ -1424,10 +1425,22 @@ fun QuickPicks(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(Res.string.let_s_start_with_a_radio),
-                    style = typo().bodySmall,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        imageVector = SimpIcons.Radio,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        text = stringResource(Res.string.let_s_start_with_a_radio),
+                        style = typo().bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = stringResource(Res.string.quick_picks),
                     style = typo().headlineMedium,
@@ -1436,7 +1449,7 @@ fun QuickPicks(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = if (compact) 0.dp else 5.dp),
+                            .padding(vertical = if (compact) 0.dp else 4.dp),
                 )
             }
             if (homeItem.playAllEndpoint != null) {

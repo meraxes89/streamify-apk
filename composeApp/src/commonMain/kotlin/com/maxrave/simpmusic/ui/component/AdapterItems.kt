@@ -50,6 +50,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -305,18 +306,32 @@ fun SectionHeaderButton(
     text: String,
     onClick: () -> Unit,
 ) {
+    val isPlayAll = text == stringResource(Res.string.play_all)
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-        TextButton(
-            onClick = onClick,
-            // Any non-zero minimum here keeps TextButton's own 40dp minimum height from applying.
-            modifier = Modifier.defaultMinSize(minHeight = 1.dp),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-            colors =
-                ButtonDefaults
-                    .textButtonColors()
-                    .copy(contentColor = MaterialTheme.colorScheme.onSurface),
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+            modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
         ) {
-            Text(text, style = typo().bodySmall)
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (isPlayAll) {
+                    Icon(
+                        imageVector = SimpIcons.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = text,
+                    style = typo().labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }
@@ -471,7 +486,7 @@ internal fun rememberCardHover(enabled: Boolean): Pair<Modifier, Boolean> {
                 scaleX = pressScale
                 scaleY = pressScale
             }
-            .drawBehind { drawRoundRect(color = tint, cornerRadius = CornerRadius(12.dp.toPx())) }
+            .drawBehind { drawRoundRect(color = tint, cornerRadius = CornerRadius(14.dp.toPx())) }
     return modifier to active
 }
 
@@ -598,13 +613,13 @@ fun HomeItemContentPlaylist(
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(thumbSize)
-    val (hoverModifier, hovered) = rememberCardHover(enabled = onPlay != null)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         Modifier
             .then(hoverModifier)
             .wrapContentSize()
             .focusable(true)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable {
                 onClick()
             },
@@ -865,13 +880,7 @@ fun QuickPicksItem(
     data: Content,
 ) {
     val tag = "QuickPicksItem"
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
-        label = "quickPicksPressScale",
-    )
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     val isDark = LocalIsDarkTheme.current
     val rimColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
 
@@ -880,15 +889,10 @@ fun QuickPicksItem(
             Modifier
                 .wrapContentHeight()
                 .width(widthDp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
+                .then(hoverModifier)
                 .focusable(true)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .combinedClickable(
-                    interactionSource = source,
-                    indication = null,
                     onClick = onClick,
                     onLongClick = onLongClick,
                 ),
@@ -1006,14 +1010,14 @@ fun HomeItemSong(
     onPlay: (() -> Unit)? = null,
 ) {
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(160.dp)
-    val (hoverModifier, hovered) = rememberCardHover(enabled = onPlay != null)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         modifier =
             Modifier
                 .then(hoverModifier)
                 .fillMaxSize()
                 .focusable(true)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
@@ -1123,13 +1127,13 @@ fun HomeItemVideo(
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(284.5.dp)
-    val (hoverModifier, hovered) = rememberCardHover(enabled = onPlay != null)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         Modifier
             .then(hoverModifier)
             .fillMaxSize()
             .focusable(true)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
@@ -1249,11 +1253,13 @@ fun HomeItemArtist(
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(160.dp)
+    val (hoverModifier, hovered) = rememberCardHover(enabled = true)
     Box(
         Modifier
+            .then(hoverModifier)
             .fillMaxSize()
             .focusable(true)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable {
                 onClick()
             },
