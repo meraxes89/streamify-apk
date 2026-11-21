@@ -1,6 +1,8 @@
 package com.maxrave.simpmusic.data.scraper
 
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.getPlatform
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -12,6 +14,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,11 +36,71 @@ class ExternalPlaylistScraper(
 
     suspend fun scrape(rawUrl: String): ScrapedPlaylist = withContext(Dispatchers.IO) {
         val url = rawUrl.trim()
+        if (getPlatform() == Platform.Web) {
+            return@withContext scrapeViaServer(url)
+        }
         when {
             url.contains("spotify.com") || url.startsWith("spotify:") -> scrapeSpotify(url)
             url.contains("music.apple.com") -> scrapeAppleMusic(url)
             else -> throw IllegalArgumentException("Unsupported playlist URL. Please provide a Spotify or Apple Music link.")
         }
+    }
+
+    private suspend fun scrapeViaServer(url: String): ScrapedPlaylist {
+        val encodedUrl = buildString {
+            for (ch in url) {
+                if (ch.isLetterOrDigit() || ch in "-_.~") {
+                    append(ch)
+                } else if (ch == ' ') {
+                    append("+")
+                } else {
+                    append('%')
+                    val hex = ch.code.toString(16).uppercase()
+                    if (hex.length == 1) append('0')
+                    append(hex)
+                }
+            }
+        }
+        val response = client.get("/api/playlist/scrape?url=$encodedUrl")
+        val jsonStr = response.bodyAsText()
+        val root = jsonParser.parseToJsonElement(jsonStr).jsonObject
+        val error = root["error"]?.jsonPrimitive?.contentOrNull
+        if (!error.isNullOrBlank()) {
+            throw IllegalStateException(error)
+        }
+
+        val name = root["name"]?.jsonPrimitive?.contentOrNull ?: "Imported Playlist"
+        val sourceStr = root["source"]?.jsonPrimitive?.contentOrNull ?: "SPOTIFY"
+        val source = when (sourceStr.uppercase()) {
+            "APPLE_MUSIC" -> PlaylistSource.APPLE_MUSIC
+            else -> PlaylistSource.SPOTIFY
+        }
+
+        val tracks = mutableListOf<ScrapedTrack>()
+        val tracksArray = root["tracks"]?.jsonArray
+        if (tracksArray != null) {
+            for (elem in tracksArray) {
+                val tObj = elem.jsonObject
+                val title = tObj["title"]?.jsonPrimitive?.contentOrNull ?: ""
+                val artist = tObj["artist"]?.jsonPrimitive?.contentOrNull ?: "Unknown Artist"
+                val durationSec = tObj["durationSec"]?.jsonPrimitive?.intOrNull ?: 0
+                if (title.isNotBlank()) {
+                    tracks.add(
+                        ScrapedTrack(
+                            title = title,
+                            artist = artist,
+                            durationSec = durationSec,
+                        ),
+                    )
+                }
+            }
+        }
+
+        if (tracks.isEmpty()) {
+            throw IllegalStateException("Failed to extract tracks from playlist link.")
+        }
+
+        return ScrapedPlaylist(name = name, tracks = tracks, source = source)
     }
 
     suspend fun scrapeSpotify(url: String): ScrapedPlaylist {

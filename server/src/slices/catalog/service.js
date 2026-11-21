@@ -7,11 +7,13 @@ import {
 } from './mappers.js';
 import { LruCache } from '../../lib/cache.js';
 import { SingleFlight } from '../../lib/single-flight.js';
+import { PlaylistScraperService } from './playlist-scraper.js';
 
 export class CatalogService {
-  constructor({ ytmClient = new YtmClient(), cache = new LruCache({ maxItems: 1000 }) } = {}) {
+  constructor({ ytmClient = new YtmClient(), cache = new LruCache({ maxItems: 1000 }), playlistScraper = new PlaylistScraperService() } = {}) {
     this.client = ytmClient;
     this.cache = cache;
+    this.playlistScraper = playlistScraper;
     this.singleFlight = new SingleFlight();
     /** @type {Map<string, AbortController>} */
     this.suggestWarmControllers = new Map();
@@ -162,5 +164,12 @@ export class CatalogService {
           this.suggestWarmControllers.delete(clientIp);
         }
       });
+  }
+
+  /**
+   * Scrapes external playlists (Spotify, Apple Music) and caches results.
+   */
+  async scrapePlaylist(url, { signal = null } = {}) {
+    return this.playlistScraper.scrape(url, { signal });
   }
 }
