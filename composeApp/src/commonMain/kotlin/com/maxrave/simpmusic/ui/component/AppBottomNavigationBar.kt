@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -24,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
@@ -38,6 +40,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.extension.greyScale
 import com.maxrave.simpmusic.ui.navigation.destination.home.AnalyticsDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.HomeDestination
@@ -169,7 +172,7 @@ internal fun FlatTabBar(
     modifier: Modifier = Modifier,
     collapsedContent: (@Composable () -> Unit)? = null,
 ) {
-    val capsuleColor = MaterialTheme.colorScheme.surfaceContainer
+    val capsuleColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val indicatorColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val tabWidth = flatTabWidth(tabs.size, availableWidth)
     val fullWidth = tabWidth * tabs.size + CapsuleInset * 2
@@ -185,13 +188,34 @@ internal fun FlatTabBar(
     // The tab under the indicator lights up as it is dragged across.
     val activePosition = dragPosition?.roundToInt() ?: selectedPosition
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val isDark = LocalIsDarkTheme.current
+    val barShape = RoundedCornerShape(FlatBarHeight / 2)
+    val nonGlassBorderColor =
+        if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+    val nonGlassSpotColor =
+        if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.12f)
+    val nonGlassAmbientColor =
+        if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.08f)
+
     Box(
         modifier =
             modifier
                 .height(FlatBarHeight)
                 .width(fullWidth)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = barShape,
+                    clip = false,
+                    spotColor = nonGlassSpotColor,
+                    ambientColor = nonGlassAmbientColor,
+                )
+                .border(
+                    width = 1.dp,
+                    color = nonGlassBorderColor,
+                    shape = barShape,
+                )
                 // Also what cuts the full-width tabs down to the surface while the bar is folding.
-                .clip(RoundedCornerShape(FlatBarHeight / 2))
+                .clip(barShape)
                 .background(capsuleColor),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -284,16 +308,36 @@ internal fun FlatSearchButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = LocalIsDarkTheme.current
+    val nonGlassBorderColor =
+        if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+    val nonGlassSpotColor =
+        if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.12f)
+    val nonGlassAmbientColor =
+        if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.08f)
+
     Box(
         modifier =
             modifier
                 .size(FlatIndicatorHeight)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = CircleShape,
+                    clip = false,
+                    spotColor = nonGlassSpotColor,
+                    ambientColor = nonGlassAmbientColor,
+                )
+                .border(
+                    width = 1.dp,
+                    color = nonGlassBorderColor,
+                    shape = CircleShape,
+                )
                 .clip(CircleShape)
                 .background(
                     if (selected) {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     } else {
-                        MaterialTheme.colorScheme.surfaceContainer
+                        MaterialTheme.colorScheme.surfaceContainerHigh
                     },
                 ).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
