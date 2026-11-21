@@ -159,3 +159,91 @@ pub unsafe extern "C" fn streamify_ring_stats_wire(out: *mut u8, out_len: usize)
         0
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADDITIVE producer edge (Sovereign HAL Phase 2 / r20) — v1 surface unchanged.
+//
+// The frozen four symbols above are the CONSUMER edge and stay byte-for-byte
+// identical. The Android loopback player (`sovereign_android_loopback`, a
+// standalone BIN) plays through the SAME process as the C++ Oboe bracket, but
+// the bracket reads the ring via the CDYLIB's `streamify_ring_read_f32` —
+// while a bin calling the Rust `install()` would store into ITS OWN copy of
+// `CURRENT_RING` (two `static`s: one per DSO). The ring never crossed the
+// DSO boundary and the bracket served silence (the r19 signature:
+// frames_written=0 with 608 callbacks served).
+//
+// The fix is these three ADDITIVE symbols (the freeze policy allows additive
+// exports with a layout-version note; the four v1 symbols are untouched).
+// The bin dlsym's THEM from the cdylib — exactly the way the bracket dlsym's
+// the consumer edge — so producer and consumer share the cdylib's single
+// `CURRENT_RING`:
+//
+// ```c
+// int32_t  streamify_ring_producer_install(uint32_t capacity_frames,
+//                                           uint32_t channels,
+//                                           uint32_t rate_in_hz,
+//                                           uint32_t rate_out_hz);   // 1 ok / 0 err
+// size_t   streamify_ring_producer_write(const float* src, size_t samples);
+// void     streamify_ring_producer_clear(void);
+// ```
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Additive (r20): install a fresh ring INSIDE this DSO's export slot and
+/// return a producer view of it. The BIN must NOT use its own
+/// `ring_export::install` — the bracket reads this DSO's slot. Returns 1 on
+/// success, 0 on invalid geometry (the `SpscAudioRing::new` domain:
+/// capacity/channels/rate bounds).
+#[no_mangle]
+pub unsafe extern "C" fn streamify_ring_producer_install(
+    capacity_frames: u32,
+    channels: u32,
+    rate_in_hz: u32,
+    rate_out_hz: u32,
+) -> i32 {
+    match SpscAudioRing::new(
+        capacity_frames as usize,
+        channels as usize,
+        rate_in_hz,
+        rate_out_hz,
+    ) {
+        Ok(ring) => {
+            install(Arc::new(ring));
+            1
+        }
+        Err(_) => 0,
+    }
+}
+
+/// Additive (r20): producer write through THIS DSO's export slot. `src` is
+/// interleaved f32 SAMPLES; returns the SAMPLE count accepted (a short
+/// return means the ring is at capacity — sleep and retry, the keep-full
+/// discipline). Returns 0 while detached or on a null/degenerate buffer.
+///
+/// 32-bit hardening mirrors the consumer edge: `samples` is an
+/// attacker-controlled `usize` on ILP32 targets, so the slice length is
+/// bounds-checked against `isize::MAX` rather than trusted.
+#[no_mangle]
+pub unsafe extern "C" fn streamify_ring_producer_write(
+    src: *const f32,
+    samples: usize,
+) -> usize {
+    let Some(ring) = current() else { return 0 };
+    if src.is_null() || samples == 0 {
+        return 0;
+    }
+    if samples > (isize::MAX as usize / std::mem::size_of::<f32>()) {
+        return 0;
+    }
+    // SAFETY: caller guarantees the buffer's extent for this call; the
+    // view never escapes `write_frames`.
+    let view = unsafe { std::slice::from_raw_parts(src, samples) };
+    ring.write_frames(view)
+}
+
+/// Additive (r20): clear THIS DSO's export slot from the producer side (the
+/// bin's teardown path — it cannot reach the Rust `clear()` across the DSO
+/// boundary either). Subsequent reads serve silence until the next install.
+#[no_mangle]
+pub extern "C" fn streamify_ring_producer_clear() {
+    clear();
+}

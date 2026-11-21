@@ -47,10 +47,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use streamify_core::{AudioErrorKind, EngineError};
-use streamify_playback::ring_export;
 use streamify_playback::{
-    FrameBuf, OpusTier, OpusTrackDecoder, SpscAudioRing, SymphoniaDecoder, TrackDecoder,
+    FrameBuf, OpusTier, OpusTrackDecoder, SymphoniaDecoder, TrackDecoder,
 };
+// r20: ring_export and SpscAudioRing are deliberately NOT used here — the
+// ring lives inside the cdylib (its additive producer edge), so the bin's
+// own module state must stay untouched on the android path.
 
 struct Args {
     file: String,
@@ -120,13 +122,23 @@ fn decode_fixture(path: &str) -> Result<Vec<f32>, EngineError> {
 //
 // r15: the player links NOTHING against libstreamify_native_core.so. Every
 // route through the wrappers failed CI (r11 RUSTFLAGS silently dropped by
-// cargo-ndk; r12 `--` passthrough rejected by its clap; r13/r14
-// build.rs `cargo:rustc-link-lib` fired but never reached the link line
-// under cargo-ndk). The bracket itself already resolves the Rust edge the
-// same way (dlopen + dlsym — the jni_bridge_audio_sinks discipline), so the
-// player mirrors it: dlopen("libstreamify_native_core.so") with
-// LD_LIBRARY_PATH pointing at the guest dir, dlsym the 8 exports once.
-// Zero link-time coupling = the CI build order stops mattering entirely.
+// cargo-ndk; r12 `--` passthrough rejected by its clap; r13/r14 build.rs
+// link-lib fired but never reached the link line under cargo-ndk). The
+// bracket itself already resolves the Rust edge the same way (dlopen +
+// dlsym — the jni_bridge_audio_sinks discipline), so the player mirrors
+// it: dlopen("libstreamify_native_core.so") with LD_LIBRARY_PATH pointing
+// at the guest dir, dlsym the 8 exports once. Zero link-time coupling =
+// the CI build order stops mattering entirely.
+//
+// r20: the RING also lives in the cdylib. The bracket reads
+// streamify_ring_read_f32 from libstreamify_core_rs.so; a bin-side
+// ring_export::install() would store into the BIN's own static (one
+// CURRENT_RING per DSO — the r19 failure: frames_written=0 while 608
+// callbacks zero-filled). The bin therefore drives the ring through the
+// cdylib's ADDITIVE producer edge (streamify_ring_producer_install/
+// _write/_clear, also dlsym'd from libstreamify_core_rs.so): one ring,
+// one DSO, producer and consumer finally see the same slot. The bin's
+// own ring_export module is deliberately UNUSED on android.
 #[repr(C)]
 struct DacClockSample {
     frame: u64,
@@ -145,13 +157,20 @@ struct Bracket {
         unsafe extern "C" fn(frame: *mut u64, rate: *mut u32, ns: *mut u64) -> i32,
     sovereign_oboe_stats_wire: unsafe extern "C" fn(dst: *mut u8, dst_bytes: i32) -> i32,
     sovereign_oboe_api_route: unsafe extern "C" fn() -> i32,
+    // r20: the cdylib's additive producer edge (same DSO the bracket
+    // reads from — one CURRENT_RING for producer AND consumer).
+    streamify_ring_producer_install:
+        unsafe extern "C" fn(cap: u32, ch: u32, rate_in: u32, rate_out: u32) -> i32,
+    streamify_ring_producer_write:
+        unsafe extern "C" fn(src: *const f32, samples: usize) -> usize,
+    streamify_ring_producer_clear: unsafe extern "C" fn(),
 }
 
 fn load_bracket() -> Option<Bracket> {
     use std::ffi::c_void;
-    let lib = unsafe { dlopen(b"libstreamify_native_core.so\0".as_ptr().cast(), RTLD_NOW | RTLD_LOCAL) };
+    let lib = unsafe { dlopen(b"libstreamify_core_rs.so\0".as_ptr().cast(), RTLD_NOW | RTLD_LOCAL) };
     if lib.is_null() {
-        eprintln!("dlopen(libstreamify_native_core.so) failed: {}", unsafe {
+        eprintln!("dlopen(libstreamify_core_rs.so) failed: {}", unsafe {
             std::ffi::CStr::from_ptr(dlerror()).to_string_lossy()
         });
         return None;
@@ -175,6 +194,9 @@ fn load_bracket() -> Option<Bracket> {
         sovereign_oboe_dac_clock: sym!("sovereign_oboe_dac_clock"),
         sovereign_oboe_stats_wire: sym!("sovereign_oboe_stats_wire"),
         sovereign_oboe_api_route: sym!("sovereign_oboe_api_route"),
+        streamify_ring_producer_install: sym!("streamify_ring_producer_install"),
+        streamify_ring_producer_write: sym!("streamify_ring_producer_write"),
+        streamify_ring_producer_clear: sym!("streamify_ring_producer_clear"),
     })
 }
 
@@ -277,39 +299,10 @@ fn run() -> i32 {
         }
         eprintln!("fixture looped ×{loops} to cover {} s", args.seconds);
     }
-    // 3. Install the ring + keep-full producer (the r41 discipline:
-    //    write whatever is free; sleep only when full).
-    let ring = match SpscAudioRing::new(65_536, 2, 48_000, 48_000) {
-        Ok(r) => Arc::new(r),
-        Err(e) => {
-            eprintln!("ring init failed: {e:?}");
-            return 2;
-        }
-    };
-    ring_export::install(Arc::clone(&ring));
-    let done = Arc::new(AtomicBool::new(false));
-    let producer_done = Arc::clone(&done);
-    let p_ring = Arc::clone(&ring);
-    let producer = std::thread::spawn(move || {
-        let mut pos = 0usize;
-        while pos < pcm.len() && !producer_done.load(Ordering::Relaxed) {
-            let free = p_ring.capacity() - p_ring.occupancy();
-            if free == 0 {
-                std::thread::sleep(Duration::from_millis(2));
-                continue;
-            }
-            let take = (free * 2).min(pcm.len() - pos);
-            let wrote = p_ring.write_frames(&pcm[pos..pos + take]);
-            pos += wrote;
-            if wrote == 0 {
-                std::thread::sleep(Duration::from_millis(2));
-            }
-        }
-    });
-    // 4. Open the Oboe bracket (the ladder: AAudio first, OpenSL on
-    //    explicit request — the caller walks the rungs). The bracket
-    //    resolves at RUNTIME (r15: dlopen + dlsym — no link-time
-    //    coupling; the guest's LD_LIBRARY_PATH carries both .so files).
+    // 3. Load the bracket + the cdylib's producer edge FIRST (r20: the
+    //    ring is installed INSIDE the cdylib — the bracket's dlsym'd
+    //    consumer edge and the bin's producer writes must share the
+    //    cdylib's single CURRENT_RING slot, not the bin's own static).
     let Some(b) = load_bracket() else {
         eprintln!("oboe bracket library not loadable (dlopen/dlsym failed)");
         if args.json {
@@ -317,6 +310,43 @@ fn run() -> i32 {
         }
         return 3;
     };
+    if unsafe {
+        (b.streamify_ring_producer_install)(65_536, 2, 48_000, 48_000)
+    } != 1
+    {
+        eprintln!("cdylib ring install failed (geometry rejected)");
+        if args.json {
+            println!("{{\"verdict\": \"no-endpoint\", \"reason\": \"ring install rejected\"}}");
+        }
+        return 2;
+    }
+    // Keep-full producer (the r41 discipline: write whatever is free;
+    // sleep only when full) — through the CDYLIB's producer edge.
+    let done = Arc::new(AtomicBool::new(false));
+    let producer_done = Arc::clone(&done);
+    let pcm = Arc::new(pcm);
+    let producer = std::thread::spawn(move || {
+        let mut pos = 0usize;
+        while pos < pcm.len() && !producer_done.load(Ordering::Relaxed) {
+            // The cdylib's occupancy view (the SAME slot the bracket
+            // reads — b.sovereign_oboe_ring_occupancy delegates to it).
+            let free = 65_536usize - unsafe { (b.sovereign_oboe_ring_occupancy)() } as usize;
+            if free == 0 {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
+            }
+            let take = (free * 2).min(pcm.len() - pos);
+            let wrote = unsafe {
+                (b.streamify_ring_producer_write)(pcm[pos..].as_ptr(), take)
+            };
+            pos += wrote;
+            if wrote == 0 {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+    });
+    // 4. Open the Oboe bracket (the ladder: AAudio first, OpenSL on
+    //    explicit request — the caller walks the rungs).
     let open = unsafe { (b.sovereign_oboe_open)(args.api as i32) };
     if open != 0 {
         eprintln!("oboe bracket open failed (code {open})");
@@ -353,7 +383,9 @@ fn run() -> i32 {
             clock_count.fetch_add(1, Ordering::Relaxed);
             clock_points.push(ClockPoint { frame, ns });
         }
-        if done.load(Ordering::Relaxed) && ring.occupancy() == 0 {
+        if done.load(Ordering::Relaxed)
+            && unsafe { (b.sovereign_oboe_ring_occupancy)() } == 0
+        {
             break;
         }
     }
@@ -365,7 +397,9 @@ fn run() -> i32 {
     let mut wire = [0u8; 96];
     let wire_ok = unsafe { (b.sovereign_oboe_stats_wire)(wire.as_mut_ptr(), 96) } == 1;
     unsafe { (b.sovereign_oboe_close)() };
-    ring_export::clear();
+    // Clear the ring INSIDE the cdylib (the bin's own ring_export state
+    // was never touched — r20: one slot, one DSO).
+    unsafe { (b.streamify_ring_producer_clear)() };
     // The 96-byte wire: magic u32 LE at offset 0 (0x51AB0001) +
     // frames_written u64 LE at 32 + frames_read u64 LE at 40 +
     // underrun_events u32 LE at 60 (the frozen layout, sink.rs).
