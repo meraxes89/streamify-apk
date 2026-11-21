@@ -590,8 +590,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-linux-android
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked 2>&1 | tail -1
       - name: Enable KVM (emulator acceleration)
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -639,28 +637,23 @@ jobs:
           # CMake step now runs before this one); link against it and
           # record the needed soname.
           cd rust
-          # r15: the player resolves the bracket at RUNTIME (dlopen +
-          # dlsym inside the bin — the same discipline the bracket uses
-          # for the Rust edge). NO link-time coupling survives: every
-          # wrapper route failed CI (r11 RUSTFLAGS dropped, r12 `--`
-          # rejected by clap, r13/r14 build.rs link-lib fired but never
-          # reached the link line under cargo-ndk). The guest's
-          # LD_LIBRARY_PATH carries both .so files at run time.
-          cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
-            build --release --bin sovereign_android_loopback -p streamify-hal
-          # r16: the cdylib via PLAIN cargo — cargo-ndk 4.x refuses a
-          # lib-only invocation ("No usable artifacts ... set the
-          # crate-type to cdylib" — r15) even though streamify-ffi is
-          # [cdylib, rlib, staticlib]. The NDK toolchain is fully wired
-          # by then (AR/linker env from the first invocation's profile);
-          # spell the target + linker explicitly and copy the .so out.
-          export TARGET=x86_64-linux-android
-          export AR_x86_64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
-          export CC_x86_64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang"
-          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang"
+          # r17: cargo-ndk dropped entirely — its 4.x copy phase demands
+          # a cdylib from EVERY invocation (r15: the lib-only build;
+          # r16: the BIN-only build — 'No usable artifacts produced by
+          # cargo'). Plain cargo with the NDK toolchain env (spelled
+          # below) builds both; the r15 dlopen route already removed the
+          # link-time coupling, so no wrapper is needed at all.
+          export ANDROID_LLVM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export AR_x86_64_linux_android="$ANDROID_LLVM/llvm-ar"
+          export CC_x86_64_linux_android="$ANDROID_LLVM/x86_64-linux-android26-clang"
+          export CXX_x86_64_linux_android="$ANDROID_LLVM/x86_64-linux-android26-clang++"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$ANDROID_LLVM/x86_64-linux-android26-clang"
+          cargo build --release --target x86_64-linux-android \
+            --bin sovereign_android_loopback -p streamify-hal
           cargo build --release --target x86_64-linux-android -p streamify-ffi
           mkdir -p /tmp/sovereign-guest/x86_64-linux-android
-          cp target/x86_64-linux-android/release/libstreamify_core_rs.so \
+          cp target/x86_64-linux-android/release/sovereign_android_loopback \
+             target/x86_64-linux-android/release/libstreamify_core_rs.so \
              /tmp/sovereign-guest/x86_64-linux-android/
           cd ..
           # HARD artifact checks — a silent miss fails the leg here,
