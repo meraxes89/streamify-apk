@@ -271,7 +271,10 @@ async function runLane2(ctx) {
   }, 100);
 
   await withTimeout(done, WATCHDOG_MS, "lane2 schedule");
-  await sleep(400);
+  // Read the analyser IMMEDIATELY: its 16384-sample window is 341 ms;
+  // the last onended means the tail is in the window NOW (the r3 bug
+  // sampled 400 ms later — an all-zero window, mag 0.0).
+  await sleep(30);
   clearInterval(clockIv); clearInterval(feeder);
   worker.terminate();
   const buf = new Float32Array(analyser.fftSize);
@@ -280,9 +283,12 @@ async function runLane2(ctx) {
   // Clock drift: contextTime should advance 1:1 with performanceTime.
   let ppm = null;
   if (clockSamples.length >= 2) {
+    // contextTime is in SECONDS (AudioTimestamp spec) — convert to
+    // frames before comparing with the nominal rate (the r3 bug: the
+    // raw seconds value next to RATE 48000 produced ppm ≈ -999979).
     const a = clockSamples[0], b = clockSamples[clockSamples.length - 1];
     const dt = (b.performanceTime - a.performanceTime) / 1000;
-    if (dt > 0.2) ppm = ((b.contextTime - a.contextTime) / dt - RATE) / RATE * 1e6;
+    if (dt > 0.2) ppm = ((b.contextTime - a.contextTime) * RATE / dt - RATE) / RATE * 1e6;
   }
   return { fft, stats: { scheduled, schedulingGaps, poolReturned, clockSamples: clockSamples.length, ppm }, mediaSession: wireMediaSession(clockSamples) };
 }
