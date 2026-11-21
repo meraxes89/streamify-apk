@@ -184,7 +184,7 @@ fn drift_ppm(samples: &[ClockPoint], nominal_rate: u32) -> Option<(f64, f64)> {
     Some((ppm, sync_ns))
 }
 
-fn main() {
+pub(crate) fn main() {
     let code = run();
     std::process::exit(code);
 }
