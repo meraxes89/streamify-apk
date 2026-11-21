@@ -232,8 +232,12 @@ async function runLane2(ctx) {
       const chunk = chunksReady.shift();
       const frames = chunk.length / 2;
       const buf = ctx.createBuffer(CHANNELS, frames, RATE);
-      buf.copyToChannel(chunk.subarray(0, frames * 2), 0);       // interleaved → L
-      buf.copyToChannel(chunk.subarray(0, frames * 2), 1);       // and R (dual tone both)
+      // DE-INTERLEAVE (the r4 bug: copyToChannel of the interleaved
+      // stream writes [L0,R0,L1,R1..] as one channel's samples — the
+      // channel then plays a time-stretched mix; the analyser saw 440
+      // at mag ~497 and 880 gone). Per-channel fill, like the worklet.
+      const L = buf.getChannelData(0), R = buf.getChannelData(1);
+      for (let i = 0; i < frames; i++) { L[i] = chunk[i * 2]; R[i] = chunk[i * 2 + 1]; }
       const src = ctx.createBufferSource();
       src.buffer = buf; src.connect(analyser);
       // GAPLESS: never before the running schedule; never in the past.
