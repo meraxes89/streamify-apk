@@ -265,12 +265,16 @@ case "${ACTION}" in
     status)
         show_status
         ;;
+    update-wasm|sync-wasm|update)
+        echo -e "${C_CYAN}[*] Checking for latest signed WebAssembly bundle...${C_RESET}"
+        node "${DIR}/server/scripts/update-bundle.mjs" --force
+        ;;
     run|foreground|"")
         start_foreground
         ;;
     help|--help|-h)
         echo "Streamify Termux Runner"
-        echo "Usage: $0 [run|start|stop|restart|status]"
+        echo "Usage: $0 [run|start|stop|restart|status|update-wasm]"
         ;;
     *)
         echo -e "${C_RED}Unknown command: ${ACTION}${C_RESET}"

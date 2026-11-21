@@ -31,6 +31,20 @@ const app = await createApp({
 try {
   const address = await app.listen({ host, port });
   console.log(`Streamify Modular Fastify Server listening on ${address} [Profile: ${profile.name}]`);
+
+  // P0 Elite Delivery: Spawn non-blocking background bundle updater (zero delay on boot)
+  if (process.env.STREAMIFY_DISABLE_AUTO_UPDATE !== '1') {
+    import('../scripts/update-bundle.mjs')
+      .then(({ runBundleUpdate }) => {
+        // Run after 3-second settling delay to ensure server startup latency is 0ms
+        setTimeout(() => {
+          runBundleUpdate().catch((err) => {
+            console.warn(`[bundle-updater] Background check notice: ${err.message}`);
+          });
+        }, 3000).unref();
+      })
+      .catch(() => {});
+  }
 } catch (err) {
   console.error('[streamify-server] Failed to start:', err);
   releaseWakeLock();
