@@ -1105,7 +1105,12 @@ fun PlaylistScreen(
                                         },
                                         selectionMode = selectionState.isActive,
                                         isSelected = selectionState.isSelected(item.videoId),
-                                        onLongClick = { selectionState.start(it) },
+                                        onLongClick =
+                                            if (selectionState.isActive) {
+                                                { selectionState.toggle(it) }
+                                            } else {
+                                                { onItemMoreClick(it) }
+                                            },
                                         onSelectToggle = { selectionState.toggle(it) },
                                         modifier = Modifier,
                                     )
@@ -1126,7 +1131,12 @@ fun PlaylistScreen(
                                         },
                                         selectionMode = selectionState.isActive,
                                         isSelected = selectionState.isSelected(item.videoId),
-                                        onLongClick = { selectionState.start(it) },
+                                        onLongClick =
+                                            if (selectionState.isActive) {
+                                                { selectionState.toggle(it) }
+                                            } else {
+                                                { onItemMoreClick(it) }
+                                            },
                                         onSelectToggle = { selectionState.toggle(it) },
                                         modifier = Modifier,
                                     )

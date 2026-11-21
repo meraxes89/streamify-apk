@@ -883,7 +883,15 @@ fun AlbumScreen(
                                     },
                                     selectionMode = selectionState.isActive,
                                     isSelected = selectionState.isSelected(item.videoId),
-                                    onLongClick = { selectionState.start(it) },
+                                    onLongClick =
+                                        if (selectionState.isActive) {
+                                            { selectionState.toggle(it) }
+                                        } else {
+                                            {
+                                                chosenSong = item
+                                                showBottomSheet = true
+                                            }
+                                        },
                                     onSelectToggle = { selectionState.toggle(it) },
                                     modifier = Modifier,
                                 )

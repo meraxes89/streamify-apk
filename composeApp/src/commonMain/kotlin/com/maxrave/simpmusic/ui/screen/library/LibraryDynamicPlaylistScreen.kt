@@ -361,7 +361,15 @@ fun LibraryDynamicPlaylistScreen(
                             },
                             selectionMode = selectionState.isActive,
                             isSelected = selectionState.isSelected(song.second.videoId),
-                            onLongClick = { selectionState.start(it) },
+                            onLongClick =
+                                if (selectionState.isActive) {
+                                    { selectionState.toggle(it) }
+                                } else {
+                                    {
+                                        chosenSong = song.second
+                                        showBottomSheet = true
+                                    }
+                                },
                             onSelectToggle = { selectionState.toggle(it) },
                             rightView = {
                                 Column(
@@ -459,7 +467,15 @@ fun LibraryDynamicPlaylistScreen(
                     },
                     selectionMode = selectionState.isActive,
                     isSelected = selectionState.isSelected(song.videoId),
-                    onLongClick = { selectionState.start(it) },
+                    onLongClick =
+                        if (selectionState.isActive) {
+                            { selectionState.toggle(it) }
+                        } else {
+                            {
+                                chosenSong = song
+                                showBottomSheet = true
+                            }
+                        },
                     onSelectToggle = { selectionState.toggle(it) },
                 )
             }

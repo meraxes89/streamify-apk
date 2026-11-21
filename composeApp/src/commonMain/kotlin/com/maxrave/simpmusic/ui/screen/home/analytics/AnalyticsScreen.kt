@@ -1417,7 +1417,12 @@ private fun SongRow(
         onAddToQueue = { sharedViewModel.addListToQueue(arrayListOf(song)) },
         selectionMode = selectionState.isActive,
         isSelected = selectionState.isSelected(song.videoId),
-        onLongClick = { selectionState.start(it) },
+        onLongClick =
+            if (selectionState.isActive) {
+                { selectionState.toggle(it) }
+            } else {
+                { onItemMoreClick(pair) }
+            },
         onSelectToggle = { selectionState.toggle(it) },
         rightView = {
             Box(Modifier.wrapContentHeight()) { rightView() }

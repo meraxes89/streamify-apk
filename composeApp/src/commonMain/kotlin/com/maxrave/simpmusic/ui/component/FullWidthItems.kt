@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.flowOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -143,9 +144,15 @@ fun SongFullWidthItems(
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
     val songRepository: SongRepository = koinInject<SongRepository>()
-    val storedSong by songRepository
-        .getSongAsFlow(songEntity?.videoId ?: track?.videoId ?: "")
-        .collectAsState(initial = null)
+    val videoId = songEntity?.videoId ?: track?.videoId ?: ""
+    val songFlow = remember(videoId, songRepository) {
+        if (videoId.isNotEmpty()) {
+            songRepository.getSongAsFlow(videoId)
+        } else {
+            flowOf(null)
+        }
+    }
+    val storedSong by songFlow.collectAsState(initial = null)
     val downloadState = storedSong?.downloadState ?: DownloadState.STATE_NOT_DOWNLOADED
     // The list's own model says what its source said; the stored row adds what playback learned
     // since, which is the only way a queue row is marked — the queue response shows no LIVE chip.
@@ -292,43 +299,65 @@ fun SongFullWidthItems(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Crossfade(isPlaying) {
-                        if (it) {
-                            AudioPlayingIndicator(
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        } else if (index == null) {
-                            val thumb = track?.thumbnails?.lastOrNull()?.url ?: songEntity?.thumbnails
-                            AsyncImage(
-                                model =
-                                    ImageRequest
-                                        .Builder(LocalPlatformContext.current)
-                                        .data(thumb)
-                                        .diskCachePolicy(CachePolicy.ENABLED)
-                                        .diskCacheKey(thumb)
-                                        .crossfade(true)
-                                        .build(),
-                                placeholder = rememberHolderPainter(),
-                                error = rememberHolderPainter(),
-                                contentDescription = null,
-                                contentScale = ContentScale.FillWidth,
+                    if (index == null) {
+                        val thumb = track?.thumbnails?.lastOrNull()?.url ?: songEntity?.thumbnails
+                        AsyncImage(
+                            model =
+                                ImageRequest
+                                    .Builder(LocalPlatformContext.current)
+                                    .data(thumb)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .diskCacheKey(thumb)
+                                    .crossfade(true)
+                                    .build(),
+                            placeholder = rememberHolderPainter(),
+                            error = rememberHolderPainter(),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillWidth,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                        shape = ArtworkShape,
+                                    )
+                                    .clip(ArtworkShape),
+                        )
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = isPlaying,
+                            enter = fadeIn(),
+                            exit = fadeOut(),
+                        ) {
+                            Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
-                                            shape = ArtworkShape,
-                                        )
-                                        .clip(ArtworkShape),
-                            )
-                        } else {
-                            Text(
-                                text = (index + 1).toString(),
-                                color = contentColor,
-                                style = typo().titleMedium,
-                                modifier = Modifier.align(Alignment.Center),
-                            )
+                                        .clip(ArtworkShape)
+                                        .background(Color.Black.copy(alpha = 0.55f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                AudioPlayingIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    } else {
+                        Crossfade(isPlaying) { playing ->
+                            if (playing) {
+                                AudioPlayingIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else {
+                                Text(
+                                    text = (index + 1).toString(),
+                                    color = contentColor,
+                                    style = typo().titleMedium,
+                                    modifier = Modifier.align(Alignment.Center),
+                                )
+                            }
                         }
                     }
                 }
@@ -343,7 +372,7 @@ fun SongFullWidthItems(
                         text = track?.title ?: songEntity?.title ?: "",
                         style = typo().titleSmall,
                         maxLines = 1,
-                        color = contentColor,
+                        color = if (isPlaying) MaterialTheme.colorScheme.primary else contentColor,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -458,32 +487,45 @@ fun SuggestItems(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(modifier = Modifier.size(40.dp)) {
-                Crossfade(isPlaying) {
-                    if (it) {
+            Box(
+                modifier = Modifier.size(40.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val thumb = track.thumbnails?.lastOrNull()?.url
+                AsyncImage(
+                    model =
+                        ImageRequest
+                            .Builder(LocalPlatformContext.current)
+                            .data(thumb)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .diskCacheKey(thumb)
+                            .crossfade(true)
+                            .build(),
+                    placeholder = rememberHolderPainter(),
+                    error = rememberHolderPainter(),
+                    contentDescription = null,
+                    contentScale = ContentScale.FillWidth,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clip(ArtworkShape),
+                )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isPlaying,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .clip(ArtworkShape)
+                                .background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         AudioPlayingIndicator(
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        val thumb = track.thumbnails?.lastOrNull()?.url
-                        AsyncImage(
-                            model =
-                                ImageRequest
-                                    .Builder(LocalPlatformContext.current)
-                                    .data(thumb)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .diskCacheKey(thumb)
-                                    .crossfade(true)
-                                    .build(),
-                            placeholder = rememberHolderPainter(),
-                            error = rememberHolderPainter(),
-                            contentDescription = null,
-                            contentScale = ContentScale.FillWidth,
-                            modifier =
-                                Modifier
-                                    .wrapContentHeight()
-                                    .fillMaxWidth()
-                                    .clip(ArtworkShape),
+                            modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
@@ -498,7 +540,7 @@ fun SuggestItems(
                     text = track.title,
                     style = typo().titleSmall,
                     maxLines = 1,
-                    color = contentColor,
+                    color = if (isPlaying) MaterialTheme.colorScheme.primary else contentColor,
                     modifier =
                         Modifier
                             .fillMaxWidth()

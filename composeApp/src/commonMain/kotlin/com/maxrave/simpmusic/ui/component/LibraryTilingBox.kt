@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -147,6 +148,7 @@ private fun FavoriteCard(
         modifier = Modifier.fillMaxWidth().height(132.dp),
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = container),
+        border = BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp).height(132.dp),
@@ -203,6 +205,7 @@ private fun CollectionCard(
         modifier = modifier.height(118.dp),
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = container),
+        border = BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     ) {
         Box(Modifier.fillMaxWidth().height(118.dp)) {
             SleeveFan(
@@ -267,6 +270,7 @@ private fun SleeveFan(
                 Modifier.size(sleeve).graphicsLayer {
                     translationX = (spread * step).toPx()
                     rotationZ = tilt * step
+                    shadowElevation = (i * 2.5f)
                 }
             if (covers.isEmpty()) {
                 EmptySleeve(shape, placed)

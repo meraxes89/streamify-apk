@@ -115,6 +115,8 @@ import com.maxrave.domain.data.model.intent.GenericIntent
 import com.maxrave.domain.data.model.mood.Mood
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.manager.DataStoreManager.Values.TRUE
+import com.maxrave.simpmusic.utils.isQuickPicksShelf
+import com.maxrave.simpmusic.utils.pinQuickPicksToTop
 import com.maxrave.domain.mediaservice.handler.PlaylistType
 import com.maxrave.domain.mediaservice.handler.QueueData
 import com.maxrave.domain.utils.toSongEntity
@@ -305,15 +307,7 @@ fun HomeScreen(
                         if (it.subtitle.equals(accountName, ignoreCase = true)) it.copy(thumbnail = null) else it
                     }
                 }
-            val qpIndex = mapped.indexOfFirst { it.isQuickPicksShelf(quickPicksTitle) }
-            if (qpIndex > 0) {
-                val list = mapped.toMutableList()
-                val qp = list.removeAt(qpIndex)
-                list.add(0, qp)
-                list
-            } else {
-                mapped
-            }
+            mapped.pinQuickPicksToTop(quickPicksTitle)
         }
     val newRelease by viewModel.newRelease.collectAsStateWithLifecycle()
     val chart by viewModel.chart.collectAsStateWithLifecycle()
@@ -940,7 +934,7 @@ fun HomeScreen(
                             }
                         }
                         if (homeListState == ListState.PAGINATION_EXHAUST) {
-                            items(newRelease, key = { it.hashCode() }) {
+                            items(newRelease, key = { it.title.ifEmpty { "new_release_${it.hashCode()}" } }) {
                                 AnimatedVisibility(
                                     visible = newRelease.isNotEmpty(),
                                 ) {
@@ -1375,11 +1369,6 @@ private val LandscapeGridItemMaxWidth = 400.dp
 // A card shelf of songs only that leads to no page of its own ("Your daily discover"). List shelves
 // (Quick picks, Heard in Shorts) carry itemsPerColumn and keep their own look; a shelf with a More
 // page (Listen again can be all songs) keeps its cards; videos draw as wide cards, so never match.
-private fun HomeItem.isQuickPicksShelf(quickPicksTitle: String): Boolean =
-    itemsPerColumn == 4 ||
-        title.equals(quickPicksTitle, ignoreCase = true) ||
-        title.equals("Quick picks", ignoreCase = true)
-
 private fun HomeItem.isSongCardShelf(): Boolean =
     itemsPerColumn == null &&
         moreEndpoint == null &&
@@ -1628,7 +1617,7 @@ fun ChartData(
             ) {
                 items(item.playlists.size, key = { index ->
                     val data = item.playlists[index]
-                    data.id + data.title + index
+                    data.id.ifEmpty { "${data.title}_$index" }
                 }) {
                     HomeItemContentPlaylist(
                         onClick = {
@@ -1662,7 +1651,7 @@ fun ChartData(
         ) {
             items(chart.artists.itemArtists.size, key = { index ->
                 val item = chart.artists.itemArtists[index]
-                item.title + item.browseId + index
+                item.browseId.ifEmpty { "${item.title}_$index" }
             }) {
                 val data = chart.artists.itemArtists[it]
                 ItemArtistChart(
@@ -1704,7 +1693,7 @@ fun ChartData(
                 state = podcastGridState,
                 flingBehavior = podcastFlingBehavior,
             ) {
-                items(podcasts.shows.size, key = { index -> podcasts.shows[index].browseId + index }) {
+                items(podcasts.shows.size, key = { index -> podcasts.shows[index].browseId.ifEmpty { "podcast_$index" } }) {
                     val data = podcasts.shows[it]
                     ItemArtistChart(
                         onClick = { navController.navigate(PodcastDestination(podcastId = data.browseId)) },

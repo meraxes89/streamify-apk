@@ -54,6 +54,7 @@ jobs:
       run_engine: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_wasm: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.wasm == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
@@ -92,6 +93,18 @@ jobs:
               - 'core/**'
               - 'streamify-modules/**'
               - 'conveyor.conf'
+            wasm:
+              - 'composeApp/**'
+              - 'core/**'
+              - 'streamify-modules/**'
+              - 'room-wasm-stub/**'
+              - 'lastfm/**'
+              - 'lastfm-empty/**'
+              - 'core.patch'
+              - 'gradle/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - '.github/workflows/_ci-wasm.yml'
             supabase:
               - 'supabase/**'
               - 'streamify-modules/supabase/**'
@@ -243,6 +256,17 @@ jobs:
     with:
       package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
 
+  wasm:
+    name: "Web Wasm Matrix"
+    needs: preflight
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.run_wasm == 'true'
+    uses: ./.github/workflows/_ci-wasm.yml
+    with:
+      release_mode: false
+
   # SEC-10 gate: the Supabase RLS hardening suite runs the schema +
   # regression assertions against a real Postgres+pgvector service
   # container. Every assertion FAILS if a pre-SEC-10 permissive policy
@@ -293,7 +317,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, supabase-rls]
+    needs: [preflight, clippy, engine_dsp, android, desktop, wasm, supabase-rls]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)
