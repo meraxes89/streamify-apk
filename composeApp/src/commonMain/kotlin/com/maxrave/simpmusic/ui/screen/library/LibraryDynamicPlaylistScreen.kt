@@ -416,125 +416,129 @@ fun LibraryDynamicPlaylistScreen(
 
                 else -> {}
             }
-        } else if (type == LibraryDynamicPlaylistType.Favorite && selectedFavoriteTab == FavoriteTab.Albums) {
-            val displayAlbums = if (query.isNotEmpty() && showSearchBar) tempFavoriteAlbums else favoriteAlbums
-            if (displayAlbums.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = stringResource(Res.string.no_album),
-                            style = typo().bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+        } else {
+            if (type == LibraryDynamicPlaylistType.Favorite && selectedFavoriteTab == FavoriteTab.Albums) {
+                val displayAlbums = if (query.isNotEmpty() && showSearchBar) tempFavoriteAlbums else favoriteAlbums
+                if (displayAlbums.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.no_album),
+                                style = typo().bodyMedium,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                            )
+                        }
+                    }
+                } else {
+                    items(
+                        displayAlbums,
+                        key = { it.browseId },
+                    ) { album ->
+                        PlaylistFullWidthItems(
+                            data = album,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClickListener = {
+                                navController.navigate(
+                                    AlbumDestination(
+                                        browseId = album.browseId,
+                                    ),
+                                )
+                            },
                         )
                     }
                 }
             } else {
                 items(
-                    displayAlbums,
-                    key = { it.browseId },
-                ) { album ->
-                    PlaylistFullWidthItems(
-                        data = album,
+                    when (type) {
+                        LibraryDynamicPlaylistType.Downloaded -> {
+                            if (query.isNotEmpty() && showSearchBar) {
+                                tempDownloaded
+                            } else {
+                                downloaded
+                            }
+                        }
+
+                        LibraryDynamicPlaylistType.Cached -> {
+                            if (query.isNotEmpty() && showSearchBar) {
+                                tempCached
+                            } else {
+                                cached
+                            }
+                        }
+
+                        LibraryDynamicPlaylistType.Favorite -> {
+                            if (query.isNotEmpty() && showSearchBar) {
+                                tempFavorite
+                            } else {
+                                favorite
+                            }
+                        }
+
+                        LibraryDynamicPlaylistType.MostPlayed -> {
+                            if (query.isNotEmpty() && showSearchBar) {
+                                tempMostPlayed
+                            } else {
+                                mostPlayed
+                            }
+                        }
+
+                        // Kept as an explicit branch rather than an `else`: the three cases above are
+                        // reachable only because the `if` chain around this block has already ruled
+                        // out every other object, and an `else` here would silently swallow the next
+                        // case someone adds to the sealed class.
+                        is LibraryDynamicPlaylistType.MonthlyRecap -> {
+                            if (query.isNotEmpty() && showSearchBar) {
+                                tempMonthlyRecap
+                            } else {
+                                monthlyRecap
+                            }
+                        }
+
+                        is LibraryDynamicPlaylistType.ArtistLiked -> {
+                            if (query.isNotEmpty() && showSearchBar) {
+                                tempArtistLiked
+                            } else {
+                                artistLiked
+                            }
+                        }
+
+                        else -> emptyList()
+                    },
+                    key = { it.hashCode() },
+                ) { song ->
+                    SongFullWidthItems(
+                        songEntity = song,
+                        isPlaying = song.videoId == nowPlayingVideoId,
                         modifier = Modifier.fillMaxWidth(),
-                        onClickListener = {
-                            navController.navigate(
-                                AlbumDestination(
-                                    browseId = album.browseId,
-                                ),
+                        onMoreClickListener = {
+                            chosenSong = song
+                            showBottomSheet = true
+                        },
+                        onClickListener = { videoId ->
+                            viewModel.playSong(videoId, type = type)
+                        },
+                        onAddToQueue = {
+                            sharedViewModel.addListToQueue(
+                                arrayListOf(song.toTrack()),
                             )
                         },
+                        selectionMode = selectionState.isActive,
+                        isSelected = selectionState.isSelected(song.videoId),
+                        onLongClick =
+                            if (selectionState.isActive) {
+                                { selectionState.toggle(it) }
+                            } else {
+                                {
+                                    chosenSong = song
+                                    showBottomSheet = true
+                                }
+                            },
+                        onSelectToggle = { selectionState.toggle(it) },
                     )
                 }
-            }
-        } else {
-            items(
-                when (type) {
-                    LibraryDynamicPlaylistType.Downloaded -> {
-                        if (query.isNotEmpty() && showSearchBar) {
-                            tempDownloaded
-                        } else {
-                            downloaded
-                        }
-                    }
-
-                    LibraryDynamicPlaylistType.Cached -> {
-                        if (query.isNotEmpty() && showSearchBar) {
-                            tempCached
-                        } else {
-                            cached
-                        }
-                    }
-
-                    LibraryDynamicPlaylistType.Favorite -> {
-                        if (query.isNotEmpty() && showSearchBar) {
-                            tempFavorite
-                        } else {
-                            favorite
-                        }
-                    }
-
-                    LibraryDynamicPlaylistType.MostPlayed -> {
-                        if (query.isNotEmpty() && showSearchBar) {
-                            tempMostPlayed
-                        } else {
-                            mostPlayed
-                        }
-                    }
-
-                    // Kept as an explicit branch rather than an `else`: the three cases above are
-                    // reachable only because the `if` chain around this block has already ruled
-                    // out every other object, and an `else` here would silently swallow the next
-                    // case someone adds to the sealed class.
-                    is LibraryDynamicPlaylistType.MonthlyRecap -> {
-                        if (query.isNotEmpty() && showSearchBar) {
-                            tempMonthlyRecap
-                        } else {
-                            monthlyRecap
-                        }
-                    }
-
-                    is LibraryDynamicPlaylistType.ArtistLiked -> {
-                        if (query.isNotEmpty() && showSearchBar) {
-                            tempArtistLiked
-                        } else {
-                            artistLiked
-                        }
-                    }
-                },
-                key = { it.hashCode() },
-            ) { song ->
-                SongFullWidthItems(
-                    songEntity = song,
-                    isPlaying = song.videoId == nowPlayingVideoId,
-                    modifier = Modifier.fillMaxWidth(),
-                    onMoreClickListener = {
-                        chosenSong = song
-                        showBottomSheet = true
-                    },
-                    onClickListener = { videoId ->
-                        viewModel.playSong(videoId, type = type)
-                    },
-                    onAddToQueue = {
-                        sharedViewModel.addListToQueue(
-                            arrayListOf(song.toTrack()),
-                        )
-                    },
-                    selectionMode = selectionState.isActive,
-                    isSelected = selectionState.isSelected(song.videoId),
-                    onLongClick =
-                        if (selectionState.isActive) {
-                            { selectionState.toggle(it) }
-                        } else {
-                            {
-                                chosenSong = song
-                                showBottomSheet = true
-                            }
-                        },
-                    onSelectToggle = { selectionState.toggle(it) },
-                )
             }
         }
         item {
