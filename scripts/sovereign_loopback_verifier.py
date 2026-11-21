@@ -62,6 +62,23 @@ def read_wav_f32(path: Path) -> tuple[list[float], int, int]:
         rate = w.getframerate()
         sampwidth = w.getsampwidth()
         nframes = w.getnframes()
+        # Streamed-wav hardening (r20f): piped writers (ffmpeg to stdout,
+        # QEMU's flush) cannot seek back to patch the RIFF sizes and leave
+        # placeholder headers — nframes can read as 0x3FFFFFFF. Reading a
+        # placeholder-sized frame buffer then MemoryErrors. Cap the read at
+        # the file's ACTUAL size instead of trusting the header (w._file is
+        # a wave._Chunk wrapper — walk to the underlying stream).
+        import os
+        f = w._file
+        while hasattr(f, "file") and not hasattr(f, "fileno"):
+            f = f.file
+        frame_bytes = nch * sampwidth
+        try:
+            remaining = max(0, os.fstat(f.fileno()).st_size - 44)
+        except (AttributeError, OSError):
+            remaining = None
+        if remaining is not None and frame_bytes:
+            nframes = min(nframes, remaining // frame_bytes)
         raw = w.readframes(nframes)
 
     def deinterleave(fmt: str, size: int, scale: float) -> list[float]:
@@ -193,7 +210,20 @@ def verify(
     expect: str,
     verbose: bool,
 ) -> tuple[bool, dict]:
-    left = samples[0::channels]
+    # Mono mixdown (L+R)/2 — the fixtures are CHANNEL-SEPARATED dual
+    # tones (opus_dual_tone_48k: 440 Hz lives in L, 880 Hz in R; the
+    # Phase 1 commit that added them says "440 Hz (L) / 880 Hz (R)").
+    # The r20e API-34 finding: analyzing LEFT ONLY made the 880 Hz bin
+    # structurally invisible (mag 0.03 = pure spectral leakage), and
+    # three legs passed only because their noisier capture chains
+    # happened to raise the median floor under the leakage. A mixdown
+    # shows BOTH tones on every capture chain.
+    if channels >= 2:
+        frames = len(samples) // channels
+        left = [(samples[i * channels] + samples[i * channels + 1]) / 2.0
+                for i in range(frames)]
+    else:
+        left = list(samples)
     # Drop leading zeros (capture pipelines often start with a quiet ramp).
     first_nonzero = next((i for i, s in enumerate(left) if abs(s) > 1e-4), 0)
     left = left[first_nonzero:]
