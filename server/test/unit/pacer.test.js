@@ -1,4 +1,15 @@
 import test from 'node:test';
+
+// Node 22 runner compatibility: PacingWheel's timer is deliberately
+// unref'd (production: the server's listener socket owns the loop),
+// but node:test on Node < 23 treats a drained event loop as "promise
+// still pending" and CANCELS the in-flight paced-stream tests
+// (cancelledByParent — the Phase 4 Gate 4.6 regression on Node 22
+// runners). Holding ONE ref'd keep-alive handle for the file's
+// duration keeps the loop alive exactly like the production listener
+// does; unref'd again at file end for a prompt exit.
+import { setInterval as __keepAlive } from 'node:timers';
+const __loopHolder = __keepAlive(() => {}, 250);
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import {
@@ -92,4 +103,8 @@ test('PacedStreamTransform: Abort signal cleans up stream and unregisters from w
   assert.equal(wheel.streams.size, 0, 'Must unregister from wheel on abort');
 
   wheel.close();
+});
+test.after(() => {
+  // Release the keep-alive handle so the runner exits promptly.
+  __loopHolder.unref();
 });

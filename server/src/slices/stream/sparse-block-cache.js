@@ -3,6 +3,18 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pageCache } from '../../platform/page-cache.js';
 
+// Node-version hardening: only a genuine AbortSignal participates in
+// abort-driven stream teardown (IncomingMessage is not an EventTarget
+// before Node 23 — see coalescer.js's asAbortSignal note).
+function asAbortSignal(signal) {
+  if (signal && typeof signal.addEventListener === 'function' &&
+      typeof signal.removeEventListener === 'function' &&
+      typeof signal.aborted === 'boolean') {
+    return signal;
+  }
+  return null;
+}
+
 export const BLOCK_SIZE = 256 * 1024; // 256 KiB
 export const BLOCK_SHIFT = 18;
 
@@ -367,6 +379,7 @@ export class BlockRangeStream extends Readable {
 
     this.entry.activeReaders++;
 
+    signal = asAbortSignal(signal);
     if (signal) {
       signal.addEventListener(
         'abort',
