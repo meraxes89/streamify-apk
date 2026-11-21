@@ -1,6 +1,7 @@
 package com.maxrave.simpmusic.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,9 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -25,6 +28,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toUpperCase
@@ -145,28 +149,58 @@ fun SettingItem(
 /**
  * One group of the Settings screen, laid out the way Apple Music groups its settings: a small
  * header above, the rows on one rounded card, and an optional note under the card ([footer]).
+ * Displays a clean vector icon badge when [icon] is supplied.
  */
 @Composable
 fun SettingGroup(
     title: String,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    iconTint: Color? = null,
     footer: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val cardColor = settingGroupColor()
+    val isDark = LocalIsDarkTheme.current
+    val rimBorderColor = if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.04f)
     Column(modifier.fillMaxWidth().padding(top = 24.dp)) {
-        Text(
-            text = title.toUpperCase(Locale.current),
-            // The headers' size from before the groups; only the weight drops, so they step back.
-            style = typo().labelMedium.copy(fontWeight = FontWeight.Normal),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = SettingRowPaddingHorizontal, end = SettingRowPaddingHorizontal, bottom = 8.dp),
-        )
+        ) {
+            if (icon != null) {
+                val badgeTint = iconTint ?: MaterialTheme.colorScheme.primary
+                Box(
+                    modifier =
+                        Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(badgeTint.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = badgeTint,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+            }
+            Text(
+                text = title.toUpperCase(Locale.current),
+                // The headers' size from before the groups; semibold with high contrast for rapid scanning
+                style = typo().labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .border(width = 1.dp, color = rimBorderColor, shape = SettingGroupShape)
                     .clip(SettingGroupShape)
-                    .background(cardColor.copy(alpha = 0.5f))
+                    .background(cardColor.copy(alpha = 0.65f))
                     .drawWithContent {
                         // The first row's hairline would sit on the card's own edge, so that strip is
                         // left undrawn. Clipped rather than painted over: the card is translucent.
