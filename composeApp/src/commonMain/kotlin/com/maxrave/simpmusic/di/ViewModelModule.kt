@@ -34,6 +34,8 @@ import com.maxrave.simpmusic.viewModel.SharedViewModel
 import com.maxrave.simpmusic.viewModel.SongSelectionViewModel
 import com.maxrave.domain.repository.UpdateRepository
 import com.maxrave.simpmusic.data.StreamifyUpdateRepositoryImpl
+import com.maxrave.simpmusic.data.scraper.ExternalPlaylistScraper
+import com.maxrave.simpmusic.data.scraper.PlaylistImportManager
 import com.maxrave.simpmusic.viewModel.TasteViewModel
 import com.maxrave.simpmusic.viewModel.WrappedViewModel
 import org.koin.core.module.dsl.viewModel
@@ -43,6 +45,18 @@ val viewModelModule =
     module {
         single<UpdateRepository> {
             StreamifyUpdateRepositoryImpl()
+        }
+        single {
+            ExternalPlaylistScraper()
+        }
+        single {
+            PlaylistImportManager(
+                externalScraper = get(),
+                playlistRepository = get(),
+                searchRepository = get(),
+                songRepository = get(),
+                localPlaylistRepository = get(),
+            )
         }
         single {
             SharedViewModel(

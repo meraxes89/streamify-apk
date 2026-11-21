@@ -51,6 +51,14 @@ import androidx.navigation.NavController
 import com.kyant.backdrop.highlight.Highlight
 import com.maxrave.domain.repository.ListenTogetherRepository
 import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import com.maxrave.simpmusic.data.scraper.ImportStage
+import com.maxrave.simpmusic.data.scraper.PlaylistImportManager
+import com.maxrave.simpmusic.data.scraper.PlaylistImportProgress
 import com.maxrave.simpmusic.ui.icon.Add
 import com.maxrave.simpmusic.ui.icon.Groups
 import com.maxrave.simpmusic.ui.icon.PlaylistAdd
@@ -62,6 +70,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SharedViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
@@ -325,19 +334,27 @@ private fun SheetHandle() {
     }
 }
 
-/** Name a new local playlist. Shared by Library's create tile and the Create sheet. */
+/** Name a new local playlist or import from Spotify / Apple Music / YouTube link. Shared by Library's create tile and the Create sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateLocalPlaylistSheet(
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit,
     sharedViewModel: SharedViewModel = koinInject(),
+    playlistImportManager: PlaylistImportManager = koinInject(),
 ) {
     val coroutineScope = rememberCoroutineScope()
+    var selectedTab by remember { mutableStateOf(0) }
     var newTitle by remember { mutableStateOf("") }
+    var importUrl by remember { mutableStateOf("") }
+    var importProgress by remember { mutableStateOf<PlaylistImportProgress?>(null) }
+    var isImporting by remember { mutableStateOf(false) }
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!isImporting) onDismiss()
+        },
         sheetState = sheetState,
         containerColor = Color.Transparent,
         contentColor = Color.Transparent,
@@ -355,41 +372,162 @@ fun CreateLocalPlaylistSheet(
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                // The sheet is handed no insets, so nothing else lifts the field above the keyboard.
-                // Navigation bars are left out: EndOfModalBottomSheet already pads for them.
                 modifier = Modifier.windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars)),
             ) {
                 SheetHandle()
-                OutlinedTextField(
-                    value = newTitle,
-                    onValueChange = { s -> newTitle = s },
-                    label = {
-                        Text(text = stringResource(Res.string.playlist_name))
+
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                )
-                Spacer(modifier = Modifier.height(5.dp))
-                TextButton(
-                    onClick = {
-                        if (newTitle.isBlank()) {
-                            coroutineScope.launch { sharedViewModel.makeToast(getString(Res.string.playlist_name_cannot_be_empty)) }
-                        } else {
-                            onCreate(newTitle)
-                            coroutineScope.launch {
-                                sheetState.hide()
-                                onDismiss()
-                            }
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.CenterHorizontally),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 ) {
-                    Text(text = stringResource(Res.string.create))
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { if (!isImporting) selectedTab = 0 },
+                        text = {
+                            Text(
+                                text = "New Playlist",
+                                style = typo().titleSmall,
+                                color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { if (!isImporting) selectedTab = 1 },
+                        text = {
+                            Text(
+                                text = "Import Link",
+                                style = typo().titleSmall,
+                                color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (selectedTab == 0) {
+                    OutlinedTextField(
+                        value = newTitle,
+                        onValueChange = { s -> newTitle = s },
+                        label = {
+                            Text(text = stringResource(Res.string.playlist_name))
+                        },
+                        singleLine = true,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = {
+                            if (newTitle.isBlank()) {
+                                coroutineScope.launch { sharedViewModel.makeToast(getString(Res.string.playlist_name_cannot_be_empty)) }
+                            } else {
+                                onCreate(newTitle)
+                                coroutineScope.launch {
+                                    sheetState.hide()
+                                    onDismiss()
+                                }
+                            }
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                    ) {
+                        Text(text = stringResource(Res.string.create))
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = importUrl,
+                        onValueChange = { s -> importUrl = s },
+                        label = {
+                            Text(text = "Spotify, YouTube, or Apple Music link")
+                        },
+                        singleLine = true,
+                        enabled = !isImporting,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val progress = importProgress
+                    if (progress != null) {
+                        val statusText = when (progress.stage) {
+                            ImportStage.SCRAPING -> "Scraping playlist metadata..."
+                            ImportStage.RESOLVING -> "Matching audio (${progress.resolvedTracks}/${progress.totalTracks}): ${progress.currentTrackTitle}"
+                            ImportStage.SAVING -> "Saving playlist to library..."
+                            ImportStage.COMPLETED -> "Import complete! (${progress.resolvedTracks} tracks added)"
+                            ImportStage.ERROR -> progress.errorMessage ?: "Import failed"
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                        ) {
+                            if (isImporting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                            Text(
+                                text = statusText,
+                                style = typo().bodySmall,
+                                color = if (progress.stage == ImportStage.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    TextButton(
+                        onClick = {
+                            if (importUrl.isBlank()) {
+                                coroutineScope.launch { sharedViewModel.makeToast("Please paste a playlist URL") }
+                                return@TextButton
+                            }
+                            isImporting = true
+                            coroutineScope.launch {
+                                playlistImportManager.importPlaylistFromUrl(importUrl).collect { update ->
+                                    importProgress = update
+                                    if (update.stage == ImportStage.COMPLETED) {
+                                        isImporting = false
+                                        sharedViewModel.makeToast("Playlist imported to library")
+                                        delay(1000)
+                                        sheetState.hide()
+                                        onDismiss()
+                                    } else if (update.stage == ImportStage.ERROR) {
+                                        isImporting = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isImporting && importUrl.isNotBlank(),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                    ) {
+                        Text(text = if (isImporting) "Importing..." else "Import to Library")
+                    }
                 }
                 EndOfModalBottomSheet()
             }
