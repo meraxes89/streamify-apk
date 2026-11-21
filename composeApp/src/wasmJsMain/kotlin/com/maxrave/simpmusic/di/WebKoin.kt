@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.Json
 import org.koin.core.context.loadKoinModules
+import org.koin.ext.getKoin
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
@@ -213,5 +214,13 @@ fun initWebKoin() {
     }
     // Sovereign HAL Phase 0 (D2): wrap the registered HTMLAudioElement
     // handler with the Sovereign wrapper (flag-off = 1:1 delegation).
+    // Sovereign HAL Phase 2 (Step 4): the browser actuals (the probe +
+    // telemetry lane over the dual-transport JS bracket), loaded BEFORE
+    // the wrapper install; HTMLAudioElement stays the delegate.
+    com.streamify.sovereign.player.web.di.loadWebSovereignModule {
+        getKoin().get(
+            com.streamify.sovereign.player.di.LegacyMediaPlayerHandler,
+        )
+    }
     com.streamify.sovereign.player.di.installSovereignMediaPlayerHandler()
 }

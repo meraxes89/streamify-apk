@@ -806,3 +806,95 @@ jobs:
             results.plain.path + '/isolated=' + results.isolated.path + ')');
           RUNNER
           node /tmp/sovereign-hal-browser/run.mjs scripts/sovereign_hal_browser_harness.html
+      - name: "Phase 2: wasm32 producer dual-transport harness (Gate 4.5 P2)"
+        run: |
+          set -e
+          # 1. Build the wasm32 producer + wasm-bindgen glue.
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked 2>&1 | tail -1 || true
+          cargo build --manifest-path rust/Cargo.toml -p streamify-web \
+            --target wasm32-unknown-unknown --release
+          rm -rf /tmp/sovereign-hal-browser/p2 && mkdir -p /tmp/sovereign-hal-browser/p2
+          wasm-bindgen --target web --out-dir /tmp/sovereign-hal-browser/p2 \
+            rust/target/wasm32-unknown-unknown/release/streamify_web.wasm
+          cp scripts/sovereign_hal_browser_harness_p2.html /tmp/sovereign-hal-browser/p2/index.html
+          cp fixtures/audio/opus_dual_tone_48k.raw_opus /tmp/sovereign-hal-browser/p2/fixture.opus
+          # 2. Serve BOTH shapes: isolated (COOP/COEP) + plain, with the wasm assets.
+          cat > /tmp/sovereign-hal-browser/run-p2.mjs <<'RUNNER'
+          import { chromium } from 'playwright';
+          import http from 'node:http';
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const root = process.argv[2];
+          const port = 8933;
+          const types = { '.html': 'text/html', '.js': 'application/javascript', '.wasm': 'application/wasm', '.opus': 'application/octet-stream' };
+          const server = http.createServer((req, res) => {
+            const isolated = req.url.startsWith('/isolated');
+            const p = path.join(root, req.url.replace(/^\/isolated|^\/plain/, '') || '/index.html');
+            try {
+              const data = fs.readFileSync(p === root ? path.join(root, 'index.html') : p);
+              res.writeHead(200, {
+                'content-type': types[path.extname(p)] || 'application/octet-stream',
+                ...(isolated ? {
+                  'cross-origin-opener-policy': 'same-origin',
+                  'cross-origin-embedder-policy': 'require-corp',
+                } : {}),
+              });
+              res.end(data);
+            } catch {
+              res.writeHead(404); res.end('nf');
+            }
+          });
+          await new Promise((r) => server.listen(port, r));
+
+          const browser = await chromium.launch({
+            args: ['--autoplay-policy=no-user-gesture-required'],
+          });
+          const results = {};
+          for (const [label, url] of [
+            ['plain', `http://127.0.0.1:${port}/plain/index.html`],
+            ['isolated', `http://127.0.0.1:${port}/isolated/index.html`],
+          ]) {
+            const page = await browser.newPage();
+            page.on('console', (m) => console.log(`[${label}]`, m.text()));
+            page.on('pageerror', (e) => console.log(`[${label}] PAGE ERROR:`, e.message));
+            await page.goto(url);
+            let r;
+            try {
+              await page.waitForFunction(() => window.__sovereignHalP2Result?.done === true, null, { timeout: 150_000 });
+              r = await page.evaluate(() => window.__sovereignHalP2Result);
+            } catch {
+              r = await page.evaluate(() => ({ ...window.__sovereignHalP2Result, partial: true })).catch(() => ({ done: false }));
+              console.log(`[${label}] TIMEOUT — partial:`, JSON.stringify(r));
+            }
+            results[label] = r;
+            await page.close();
+          }
+          await browser.close(); server.close();
+          console.log('P2 RESULTS:', JSON.stringify(results, null, 2));
+          // Lane 2 MUST pass on BOTH origins (the every-browser contract).
+          for (const label of ['plain', 'isolated']) {
+            if (results[label]?.modes?.lane2?.pass !== true) {
+              console.error(`P2 ${label} lane2 (AudioBufferSourceNode + pooled MessagePort) FAILED`);
+              process.exit(1);
+            }
+          }
+          // Lane 1 (SAB) must PASS on the isolated origin (or be reported skipped).
+          const l1 = results.isolated?.modes?.lane1;
+          if (l1 && l1.skipped) {
+            console.error('::warning::P2 SAB lane skipped: COOP/COEP did not take effect');
+          } else if (l1?.pass !== true) {
+            console.error('P2 ISOLATED lane1 (SAB AudioWorklet) FAILED');
+            process.exit(1);
+          }
+          // mediaSession verified on the plain origin (headless Chromium
+          // supports the API surface).
+          const ms = results.plain?.mediaSession;
+          if (!ms || ms.hasMetadata !== true || ms.playbackState !== 'playing') {
+            console.error('P2 mediaSession check FAILED: ' + JSON.stringify(ms));
+            process.exit(1);
+          }
+          console.log('P2 DUAL-TRANSPORT VERDICT: PASS');
+          RUNNER
+          node /tmp/sovereign-hal-browser/run-p2.mjs /tmp/sovereign-hal-browser/p2

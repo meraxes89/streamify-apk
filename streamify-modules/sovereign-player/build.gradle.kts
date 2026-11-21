@@ -64,5 +64,12 @@ kotlin {
                 // android.util.Log (framework).
             }
         }
+        // Sovereign HAL Phase 2 (Step 4): the browser lane. The bracket
+        // itself is JS (the harness + the app's web player); the lane
+        // carries only the probe + telemetry surface.
+        wasmJsMain {
+            dependencies {
+            }
+        }
     }
 }
