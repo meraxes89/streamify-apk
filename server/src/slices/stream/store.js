@@ -29,6 +29,9 @@ export class StreamStore {
     if (!this.inMemory) {
       this.db.exec('PRAGMA journal_mode = WAL;');
       this.db.exec('PRAGMA synchronous = NORMAL;');
+      this.db.exec('PRAGMA wal_autocheckpoint = 256;');
+      this.db.exec('PRAGMA busy_timeout = 3000;');
+      this.db.exec('PRAGMA cache_size = -8000;');
     }
     this.db.exec('PRAGMA temp_store = MEMORY;');
   }
@@ -347,8 +350,15 @@ export class StreamStore {
     }
   }
 
+  checkpoint(mode = 'PASSIVE') {
+    try {
+      this.db.exec(`PRAGMA wal_checkpoint(${mode});`);
+    } catch {}
+  }
+
   close() {
     try {
+      this.checkpoint('PASSIVE');
       this.db.close();
     } catch {}
   }

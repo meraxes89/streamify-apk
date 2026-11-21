@@ -6,6 +6,8 @@ import { ClientHealthManager } from './health.js';
 import { StreamStore } from './store.js';
 import { CipherClient } from './cipher-client.js';
 import { AttestClient } from './attest-client.js';
+import { ParserClient } from './parser-client.js';
+import { getYoutubeiPool } from '../../platform/upstream-pool.js';
 
 const GAPI_ENDPOINT =
   'https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false';
@@ -95,6 +97,7 @@ export class StreamResolver {
     store = null,
     cipherClient = null,
     attestClient = null,
+    parserClient = null,
     healthManager = new ClientHealthManager(),
     ladderPath = null,
   } = {}) {
@@ -102,6 +105,7 @@ export class StreamResolver {
     this.store = store || new StreamStore();
     this.cipherClient = cipherClient || new CipherClient();
     this.attestClient = attestClient || new AttestClient();
+    this.parserClient = parserClient || new ParserClient();
     this.healthManager = healthManager;
     this.singleFlight = new SingleFlight();
     this.clients = DEFAULT_CLIENTS;
@@ -141,38 +145,12 @@ export class StreamResolver {
   }
 
   async getVisitorData() {
-    // 1. Check SQLite store
+    // 1. Check SQLite store (comm13.md: visitorData is long-lived and persisted)
     const stored = this.store.getVisitor('default');
     if (stored) return stored;
 
-    try {
-      const res = await fetch(
-        'https://youtubei.googleapis.com/youtubei/v1/visitor_id?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk',
-        {
-          body: JSON.stringify({
-            context: {
-              client: {
-                clientName: 'WEB',
-                clientVersion: '2.20240101.01.00',
-                gl: 'IN',
-                hl: 'en',
-              },
-            },
-          }),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-          signal: AbortSignal.timeout(5000),
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const vd = data.responseContext?.visitorData;
-        if (vd) {
-          this.store.setVisitor('default', vd, 24 * 3600 * 1000);
-          return vd;
-        }
-      }
-    } catch {}
+    // Never block serially on /visitor_id if not present; return fallback token
+    // visitorData will be extracted opportunistically from the first player response
     return null;
   }
 
@@ -262,30 +240,55 @@ export class StreamResolver {
           }
 
           const t0 = performance.now();
-          const res = await fetch(GAPI_ENDPOINT, {
-            body: JSON.stringify(body),
-            headers,
-            method: 'POST',
-            signal: AbortSignal.timeout(8000),
-          });
+          let rawText;
+          const pool = getYoutubeiPool();
+          if (pool) {
+            const poolRes = await pool.request({
+              path: '/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false',
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+              signal: AbortSignal.timeout(8000),
+            });
+            if (poolRes.statusCode < 200 || poolRes.statusCode >= 300) {
+              this.healthManager.recordError(spec.name, poolRes.statusCode);
+              await poolRes.body.dump();
+              continue;
+            }
+            rawText = await poolRes.body.text();
+          } else {
+            const res = await fetch(GAPI_ENDPOINT, {
+              body: JSON.stringify(body),
+              headers,
+              method: 'POST',
+              signal: AbortSignal.timeout(8000),
+            });
+            if (!res.ok) {
+              this.healthManager.recordError(spec.name, res.status);
+              continue;
+            }
+            rawText = await res.text();
+          }
           const t1 = performance.now();
 
-          if (!res.ok) {
-            this.healthManager.recordError(spec.name, res.status);
-            continue;
+          // Selective JSON extraction via worker client (comm13.md L4)
+          const extracted = await this.parserClient.extractPlayer(rawText);
+
+          // Opportunistic visitorData persistence (comm13.md L0/L4: delete serial /visitor_id)
+          if (extracted.visitorData) {
+            this.store.setVisitor('default', extracted.visitorData, 24 * 3600 * 1000);
           }
 
-          const data = await res.json();
-          const playability = data.playabilityStatus?.status;
+          const playability = extracted.playabilityStatus?.status;
           if (playability !== 'OK') {
             this.healthManager.recordError(spec.name, 403);
-            lastError = new Error(data.playabilityStatus?.reason || `Playability ${playability}`);
+            lastError = new Error(extracted.playabilityStatus?.reason || `Playability ${playability}`);
             continue;
           }
 
           const formats = [
-            ...(data.streamingData?.adaptiveFormats || []),
-            ...(data.streamingData?.formats || []),
+            ...(extracted.streamingData?.adaptiveFormats || []),
+            ...(extracted.streamingData?.formats || []),
           ];
 
           // Strict audio-only format policy: Opus (251) -> AAC (140) -> audio/*
@@ -294,7 +297,7 @@ export class StreamResolver {
           if (!selected) selected = formats.find((f) => (f.mimeType || '').startsWith('audio/') && f.url);
 
           if (selected?.url) {
-            return this._buildAndStoreDescriptor(data, selected, spec, t1 - t0, 'fast');
+            return this._buildAndStoreDescriptor(extracted, selected, spec, t1 - t0, 'fast');
           }
         } catch (err) {
           this.healthManager.recordError(spec.name, 500);
@@ -354,20 +357,44 @@ export class StreamResolver {
           }
 
           const t0 = performance.now();
-          const res = await fetch(GAPI_ENDPOINT, {
-            body: JSON.stringify(body),
-            headers,
-            method: 'POST',
-            signal: AbortSignal.timeout(9000),
-          });
+          let rawText;
+          const pool = getYoutubeiPool();
+          if (pool) {
+            const poolRes = await pool.request({
+              path: '/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false',
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+              signal: AbortSignal.timeout(9000),
+            });
+            if (poolRes.statusCode < 200 || poolRes.statusCode >= 300) {
+              this.healthManager.recordError(spec.name, poolRes.statusCode);
+              await poolRes.body.dump();
+              continue;
+            }
+            rawText = await poolRes.body.text();
+          } else {
+            const res = await fetch(GAPI_ENDPOINT, {
+              body: JSON.stringify(body),
+              headers,
+              method: 'POST',
+              signal: AbortSignal.timeout(9000),
+            });
+            if (!res.ok) {
+              this.healthManager.recordError(spec.name, res.status);
+              continue;
+            }
+            rawText = await res.text();
+          }
           const t1 = performance.now();
 
-          if (!res.ok) {
-            this.healthManager.recordError(spec.name, res.status);
-            continue;
+          // Selective JSON extraction via worker client (comm13.md L4)
+          const data = await this.parserClient.extractPlayer(rawText);
+
+          if (data.visitorData) {
+            this.store.setVisitor('default', data.visitorData, 24 * 3600 * 1000);
           }
 
-          const data = await res.json();
           const playability = data.playabilityStatus?.status;
           if (playability !== 'OK') {
             this.healthManager.recordError(spec.name, 403);

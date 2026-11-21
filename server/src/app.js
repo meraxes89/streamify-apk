@@ -63,13 +63,15 @@ import { StreamPacer, PacingWheel } from './slices/stream/pacer.js';
 import { StreamGateway } from './slices/stream/gateway.js';
 import { streamRoutes } from './slices/stream/routes.js';
 import { PrefetchCoordinator } from './slices/stream/prefetch.js';
+import { AsyncAdmission } from './slices/stream/admission.js';
+import { StreamCoalescer } from './slices/stream/coalescer.js';
 import { StreamSemaphore } from './lib/semaphore.js';
 import { RoomManager } from './slices/room/broadcaster.js';
 import { roomRoutes } from './slices/room/routes.js';
 import { authPlugin } from './slices/auth/routes.js';
 import { ProcessSurvival } from './platform/survival.js';
 import { getDefaultBufferPool } from './lib/buffer-pool.js';
-import { configureGlobalUpstreamPool, getUpstreamPoolStatus, closeUpstreamPool } from './platform/upstream-pool.js';
+import { configureGlobalUpstreamPool, prewarmUpstreamTransport, getUpstreamPoolStatus, closeUpstreamPool } from './platform/upstream-pool.js';
 import { pageCache } from './platform/page-cache.js';
 import { pal } from './platform/pal/index.js';
 import { TierGovernor, getTierConfig } from './platform/tier/index.js';
@@ -81,20 +83,22 @@ export async function createApp({
   lyricsService = new LyricsService(),
   thumbService = new ThumbService(),
   streamResolver = new StreamResolver(),
-  streamSemaphore = new StreamSemaphore({ maxGlobal: profile.maxStreams, maxPerIp: 4 }),
+  streamAdmission = new AsyncAdmission({ globalMax: profile.maxStreams, perIpMax: 4 }),
   streamPacer = new StreamPacer(),
   writeThroughCache = new SparseBlockCache({ streamsDir: dataDir.streams, maxCacheMb: profile.diskCacheMb }),
+  streamCoalescer = new StreamCoalescer({ cache: writeThroughCache, admission: streamAdmission }),
   roomManager = new RoomManager({ cache: writeThroughCache }),
   streamGateway = new StreamGateway({
     resolver: streamResolver,
     cache: writeThroughCache,
-    semaphore: streamSemaphore,
+    admission: streamAdmission,
+    coalescer: streamCoalescer,
     pacer: streamPacer,
   }),
   prefetchCoordinator = new PrefetchCoordinator({
     resolver: streamResolver,
     cache: writeThroughCache,
-    liveSemaphore: streamSemaphore,
+    liveSemaphore: streamAdmission,
     eventLoopLagMonitor,
   }),
   processSurvival = new ProcessSurvival(),
@@ -114,8 +118,9 @@ export async function createApp({
   });
   governor.start();
 
-  // L3 Warm Upstream Connection Pool & DNS Pinning (comm10.1.md Frontier 3)
+  // L3 Warm Upstream Connection Pool & DNS Pinning (comm10.1.md Frontier 3 & comm13.md)
   configureGlobalUpstreamPool();
+  prewarmUpstreamTransport();
 
   const app = Fastify({
     logger,
@@ -163,8 +168,10 @@ export async function createApp({
       },
       streams: {
         active: streamGateway.semaphore.globalCount,
-        maxGlobal: streamGateway.semaphore.maxGlobal,
+        maxGlobal: streamGateway.semaphore.globalMax || streamGateway.semaphore.maxGlobal,
       },
+      admission: streamGateway.admission?.getMetrics ? streamGateway.admission.getMetrics() : null,
+      coalescer: streamGateway.coalescer?.getMetrics ? streamGateway.coalescer.getMetrics() : null,
       cache: {
         prefetched: prefetchCoordinator.prefetchedCount,
         resolved: streamResolver.cache.size,
