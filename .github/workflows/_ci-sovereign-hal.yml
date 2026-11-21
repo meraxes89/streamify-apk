@@ -571,9 +571,14 @@ jobs:
     # QEMU write every guest audio stream to QEMU_WAV_PATH. The modern
     # '-qemu -audiodev wav,...' spelling KILLS the bundled headless QEMU
     # at launch (the r5 boot timeout; Phase 1's finding, re-confirmed).
+    # NOTE: the `runner` context is NOT available in job-level env
+    # (actionlint: contexts are github/inputs/matrix/needs/secrets/
+    # strategy/vars only — the r6 0-jobs instant-failure). The ubuntu
+    # runner.temp is stable at /home/runner/work/_temp; the script
+    # falls back to $RUNNER_TEMP (valid INSIDE steps) if that moves.
     env:
       QEMU_AUDIO_DRV: wav
-      QEMU_WAV_PATH: ${{ runner.temp }}/audioflinger.wav
+      QEMU_WAV_PATH: /home/runner/work/_temp/audioflinger.wav
     steps:
       - uses: actions/checkout@v7
       - name: Set up JDK 21
