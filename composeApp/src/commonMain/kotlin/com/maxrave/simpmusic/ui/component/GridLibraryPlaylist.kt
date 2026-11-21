@@ -3,6 +3,7 @@ package com.maxrave.simpmusic.ui.component
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -186,23 +188,29 @@ internal inline fun <reified T> GridLibraryPlaylist(
                                         Modifier
                                             .fillMaxWidth()
                                             .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .angledGradientBackground(
-                                                colors =
-                                                    listOf(
-                                                        seed,
-                                                        Color.White.copy(alpha = 0.8f),
-                                                    ),
-                                                degrees = 45f,
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                            .border(
+                                                width = 1.dp,
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f),
+                                                shape = RoundedCornerShape(12.dp),
                                             ),
                                         Alignment.Center,
                                     ) {
-                                        Icon(
-                                            modifier = Modifier.size(84.dp),
-                                            imageVector = SimpIcons.Add,
-                                            tint = Color.White,
-                                            contentDescription = null,
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                modifier = Modifier.size(28.dp),
+                                                imageVector = SimpIcons.Add,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                contentDescription = null,
+                                            )
+                                        }
                                     }
                                     Text(
                                         text = stringResource(Res.string.create),
