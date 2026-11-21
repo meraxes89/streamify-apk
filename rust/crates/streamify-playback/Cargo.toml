@@ -50,7 +50,20 @@ symphonia = { version = "0.6", default-features = false, features = [
     "pcm",
     "wav",
 ] }
+# Sovereign HAL Phase 1 (D3): YouTube Music's primary audio codecs.
+# `opus` statically builds libopus (BSD-3-Clause) via cc — the
+# production decoder for itag 251 (NOT the abandoned audiopus).
+# symphonia-opus (pure Rust, #![forbid(unsafe_code)], 120/120 IETF
+# conformance) rides as the Tier::Fallback decoder so both paths are
+# exercised and CI-verified.
+opus = { workspace = true }
+symphonia-opus = { workspace = true }
 # Incremental SHA-256 over every fetched byte (the downloader.rs integrity
 # discipline, streaming).
 sha2 = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+# Phase 1 D3: the loudness oracle — lufs.rs integrated loudness must
+# match ebur128 within ±0.1 LUFS on reference vectors.
+ebur128 = { workspace = true }

@@ -42,6 +42,7 @@
 //! runtime, no database, no HTTP client — the network edge is a trait.
 
 pub mod decode;
+pub mod opus;
 pub mod fetch;
 pub mod frame_buf;
 pub mod producer;
@@ -49,6 +50,7 @@ pub mod ring_export;
 pub mod sink;
 
 pub use decode::{DecoderGeometry, SymphoniaDecoder, TrackDecoder};
+pub use opus::{is_raw_opus_head_framing, parse_opus_head, LibOpusDecoder, OpusTier, OpusTrackDecoder};
 pub use fetch::{LossyFixtureFetcher, MemoryRangeFetcher, RangeFetcher};
 pub use frame_buf::FrameBuf;
 pub use producer::{

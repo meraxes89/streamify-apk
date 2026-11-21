@@ -215,6 +215,15 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
         // Sovereign HAL Phase 0 (D2): wrap the registered libmpv handler
         // with the Sovereign wrapper (flag-off = 1:1 delegation).
         com.streamify.sovereign.player.di.installSovereignMediaPlayerHandler()
+        // Sovereign HAL Phase 1 (D4): overlay the DESKTOP actuals (the
+        // JNA probe + telemetry lane over the frozen ring/stats edge).
+        // libmpv stays the automatic fallback inside SovereignRoutePolicy
+        // whenever the probe is unhealthy (zero-deletion policy).
+        com.streamify.sovereign.player.desktop.di.loadDesktopSovereignModule {
+            getKoin().get(
+                com.streamify.sovereign.player.di.LegacyMediaPlayerHandler,
+            )
+        }
     }
 
     val dataStoreManager = getKoin().get<DataStoreManager>()

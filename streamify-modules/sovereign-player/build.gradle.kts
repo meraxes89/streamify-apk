@@ -44,5 +44,14 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
             }
         }
+        jvmMain {
+            dependencies {
+                // Sovereign HAL Phase 1 (D4): the desktop JVM bridge rides
+                // JNA against the Rust engine's exported C ABI (the same
+                // frozen ring/stats edge the CI brackets use — 96-byte
+                // stats wire, magic 0x51AB0001).
+                implementation(libs.jna)
+            }
+        }
     }
 }

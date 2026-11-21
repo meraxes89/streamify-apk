@@ -1,0 +1,39 @@
+[package]
+name = "streamify-hal"
+version = "0.1.0"
+edition = "2021"
+description = "Sovereign HAL Phase 1: the unified cpal cross-platform output engine, hardware DAC presentation-clock shims, and the raw-WinAPI WASAPI-exclusive bracket."
+license = "GPL-3.0"
+
+[dependencies]
+streamify-core = { workspace = true }
+streamify-playback = { workspace = true }
+tracing = { workspace = true }
+
+# The unified output backend (Phase 1 D1). cpal 0.18 is the pinned
+# battle-tested HAL: WASAPI (shared) on Windows, CoreAudio on macOS/iOS,
+# ALSA/PipeWire/Pulse/JACK on Linux, Oboe on Android. Platform features
+# are additive so the same crate compiles for every workspace target.
+cpal = "0.18"
+
+# The WASAPI-EXCLUSIVE bracket (Phase 1 D1, Windows-only): implemented
+# with RAW WinAPI COM FFI (audioclient.h/mmdeviceapi.h — see
+# src/exclusive.rs). NO third-party binding crate: the `miniaudio` crate
+# pulls `ep-miniaudio-sys` → bindgen 0.54 → clang-sys 0.29, which
+# collides with the workspace's clang-sys 1.x (via rustypipe-botguard's
+# v8): two `links = "clang"` packages in one graph is unresolvable —
+# the Phase 1 CI round-1 finding. The raw surface is small and the
+# Windows COM ABI is frozen, so the exclusive bracket carries ZERO
+# extra dependency-graph weight. (The directive's "miniaudio 0.11.26"
+# also does not exist on crates.io — max is 0.10.0, verified 2026-11.)
+
+[features]
+default = []
+# Windows x86_64 only: the raw-WinAPI WASAPI-exclusive step-down
+# bracket (zero extra dependencies — see the comment above).
+wasapi_exclusive = []
+
+[dev-dependencies]
+# The ebur128 CI oracle (Phase 1 D3): cross-checks the golden-pinned
+# lufs.rs integrated loudness within ±0.1 LUFS on reference vectors.
+ebur128 = "0.1"

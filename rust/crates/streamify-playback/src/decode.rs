@@ -209,6 +209,10 @@ pub struct SymphoniaDecoder {
     feed: Arc<Mutex<FeedState>>,
     format: Option<Box<dyn FormatReader>>,
     decoder: Option<Box<dyn AudioDecoder>>,
+    /// The codec registry the session resolves decoders through — `None`
+    /// uses symphonia's default (no Opus); `Some` carries the Opus
+    /// fallback registry (Phase 1 D3).
+    codecs: Option<Arc<symphonia::core::codecs::registry::CodecRegistry>>,
     track_id: u32,
     geometry: Option<DecoderGeometry>,
     /// Frames emitted so far — the rewind checkpoint.
@@ -239,12 +243,37 @@ impl SymphoniaDecoder {
             feed: Arc::new(Mutex::new(FeedState::default())),
             format: None,
             decoder: None,
+            codecs: None,
             track_id: 0,
             geometry: None,
             frames_emitted: 0,
             scratch: Vec::new(),
             eos: false,
         })
+    }
+
+    /// Start a session whose codec registry ALSO carries symphonia-opus
+    /// at [`Tier::Fallback`] (Sovereign HAL Phase 1 / D3: the pure-Rust
+    /// Opus path — a future first-party symphonia Opus release would
+    /// supersede it automatically, the tier's documented semantics).
+    ///
+    /// The registry is stored in the session and used for BOTH the
+    /// initial probe and every rewind re-probe (the packet decode path
+    /// resolves through `self.codecs`, never the global default).
+    pub fn with_opus_fallback() -> Result<Self, EngineError> {
+        let mut session = Self::new()?;
+        session.codecs = Some(Self::opus_fallback_registry());
+        Ok(session)
+    }
+
+    /// The default codecs + symphonia-opus at Tier::Fallback.
+    fn opus_fallback_registry() -> Arc<symphonia::core::codecs::registry::CodecRegistry> {
+        let mut registry = symphonia::core::codecs::registry::CodecRegistry::new();
+        symphonia::default::register_enabled_codecs(&mut registry);
+        registry.register_audio_decoder_at_tier::<symphonia_opus::OpusDecoder>(
+            symphonia::core::common::Tier::Fallback,
+        );
+        Arc::new(registry)
     }
 
     /// True when the accumulated source is complete and drained.
@@ -309,9 +338,14 @@ impl SymphoniaDecoder {
                         "container geometry outside the canonical pipeline envelope",
                     ));
                 }
-                let decoder = symphonia::default::get_codecs()
-                    .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
-                    .map_err(|e| unsupported(&format!("codec unavailable: {e}")))?;
+                let decoder = match &self.codecs {
+                    Some(registry) => registry
+                        .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
+                        .map_err(|e| unsupported(&format!("codec unavailable: {e}")))?,
+                    None => symphonia::default::get_codecs()
+                        .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
+                        .map_err(|e| unsupported(&format!("codec unavailable: {e}")))?,
+                };
                 self.decoder = Some(decoder);
                 self.geometry = Some(DecoderGeometry {
                     sample_rate_hz: sample_rate,
@@ -351,21 +385,65 @@ impl SymphoniaDecoder {
             feed.frontier_hit = false;
         }
         self.try_probe()?;
-        // Jump the fresh reader to the checkpoint (packet-boundary
-        // aligned by the demuxer's own alignment discipline).
+        // Jump the fresh reader past the already-emitted packets. The
+        // Phase 1 finding: OGG-Opus (and isomp4) reject the accurate
+        // timestamp seek when the accumulated source ends mid-atom /
+        // mid-page ("source frontier reached mid-packet" /
+        // "no atom pending read") — the seek itself re-scans forward.
+        // The bulletproof protocol: coarse seek first; on ANY seek
+        // error, linear packet skip (decode-and-discard) — OGG/ADTS
+        // derive packets statelessly so the skip always realigns.
         if self.frames_emitted > 0 {
-            let Some(format) = self.format.as_mut() else {
-                return Ok(());
-            };
-            let seek = format.seek(
-                SeekMode::Accurate,
-                SeekTo::Timestamp {
-                    ts: Timestamp::new(self.frames_emitted as i64),
-                    track_id: self.track_id,
-                },
-            );
-            if let Err(e) = seek {
-                return Err(unsupported(&format!("checkpoint seek failed: {e}")));
+            let target_frames = self.frames_emitted;
+            let mut seeked_ok = false;
+            if let Some(format) = self.format.as_mut() {
+                // Coarse mode: the demuxer skips whole pages/atoms
+                // without scanning their payload.
+                if format
+                    .seek(
+                        SeekMode::Coarse,
+                        SeekTo::Timestamp {
+                            ts: Timestamp::new(target_frames as i64),
+                            track_id: self.track_id,
+                        },
+                    )
+                    .is_ok()
+                {
+                    seeked_ok = true;
+                }
+            }
+            if !seeked_ok {
+                // Linear skip: decode-and-discard until the checkpoint.
+                // A frontier hit during the skip just waits for the
+                // next range (the next pump call resumes here — see
+                // the frames_emitted guard below).
+                let Some(format) = self.format.as_mut() else {
+                    return Ok(());
+                };
+                let mut skipped = 0u64;
+                while skipped < target_frames {
+                    match format.next_packet() {
+                        Ok(Some(packet)) => {
+                            // Estimate the packet's frame count without
+                            // decoding: use the demuxer's dur field.
+                            skipped += packet.dur.get().max(1);
+                        }
+                        Ok(None) => break,
+                        Err(SymphoniaError::IoError(ref e))
+                            if e.kind() == std::io::ErrorKind::UnexpectedEof
+                                || e.kind() == std::io::ErrorKind::WouldBlock =>
+                        {
+                            // Frontier mid-skip: the next range resumes.
+                            break;
+                        }
+                        Err(SymphoniaError::ResetRequired) => break,
+                        Err(_) => {
+                            // Unreadable during skip: keep the checkpoint
+                            // semantics (the next pump re-tries).
+                            break;
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -459,7 +537,23 @@ impl SymphoniaDecoder {
                     self.rewind_to_checkpoint()?;
                     return Ok(());
                 }
-                Err(e) => return Err(unsupported(&format!("demux failed: {e}"))),
+                Err(e) => {
+                    // isomp4 frontier shape: the stateful atom reader
+                    // errors "no atom pending read" when the accumulated
+                    // source ends mid-atom instead of WouldBlock — the
+                    // same frontier condition, recoverable by waiting
+                    // for the next range (rewind re-parses the fuller
+                    // buffer). Only treat it as a frontier hit while the
+                    // source is still growing.
+                    let msg = format!("{e}");
+                    if !self.source_finished()
+                        && msg.contains("no atom pending read")
+                    {
+                        self.rewind_to_checkpoint()?;
+                        return Ok(());
+                    }
+                    return Err(unsupported(&format!("demux failed: {msg}")));
+                }
             }
         }
     }

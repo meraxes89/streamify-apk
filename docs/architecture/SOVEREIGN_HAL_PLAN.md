@@ -126,11 +126,11 @@ targets. The shared machinery (Phase 0 deliverables):
   both-tone presence, noise-floor ratio, the silence negative control; self-tested).
 - **Ladder**: `_ci-sovereign-hal.yml` Gate 4 — five jobs, one per target.
 
-| # | Target | Capture pipeline | Phase 0 state |
+| # | Target | Capture pipeline | Phase 1 state |
 |---|---|---|---|
-| 4.1 | **Windows** | `wasapi_pull_adapter.cpp` → `IAudioCaptureClient` loopback | Scaffold: producer self-verdict green; the capture leg mounts in Phase 1 (reported warning, never a silent skip) |
-| 4.2 | **macOS** | `CoreAudioRenderCore` → BlackHole-2ch | Scaffold + BlackHole presence probe |
-| 4.3 | **Linux** | `pipewire_driver.cpp` → headless PipeWire `module-null-sink` monitor | Scaffold: null-sink loaded when a daemon runs |
+| 4.1 | **Windows** | `sovereign_cpal_loopback` (cpal WASAPI shared) plays the REAL Opus fixture → `scripts/sovereign_wasapi_loopback_capture.ps1` (`IAudioCaptureClient` `AUDCLNT_STREAMFLAGS_LOOPBACK` on the default render endpoint) → the shared FFT verifier | Full end-to-end: codec → ring → cpal → OS mix → loopback capture → 440/880 Hz FFT gate + the binary's zero-underrun + ±100 ppm DAC-clock verdicts |
+| 4.2 | **macOS** | `sovereign_cpal_loopback` (cpal CoreAudio) → BlackHole-2ch (brew cask, `SwitchAudioSource` routes system output) → `sox`/`ffmpeg` records the BlackHole input → the shared FFT verifier | Full end-to-end (Phase 1 D5): same gates as 4.1 (FFT + zero underruns + ±100 ppm clock) |
+| 4.3 | **Linux** | `sovereign_cpal_loopback` (cpal ALSA→PipeWire/Pulse bridge, sound-server hygiene in `device::prefer_sound_server`) → headless dbus PipeWire + wireplumber `module-null-sink` (`ci_sink`) → `pw-cat --record -d ci_sink.monitor` → the shared FFT verifier | Full end-to-end (Phase 1 D5): same gates as 4.1 |
 | 4.4 | **Android** | Emulator matrix — **APIs 26, 29, 34, 35** (`x86_64`), audio stack verified live (`audioserver` + audio HAL running) on every level; the `armeabi-v7a` lane carried by Gate 2b (QEMU user-mode cross-test of the ring/DSP suites). NOTE: the emulator's bundled QEMU rejects `-audiodev` (both top-level and post-`-qemu`) — Phase 1's AudioFlinger capture therefore rides the GUEST side (AAudio bracket APK renders through the guest audioserver; capture adb-pulled) | Green: boot + adb + audioserver + audio HAL proven on all 4 API levels |
 | 4.5 | **Browser** | `AudioWorklet` bracket — **dual mode** (below) | Green: live path on both origins — plain-origin MessagePort mode AND isolated-origin SAB + MessagePort modes, real 440/880 Hz FFT verification (mag 18.1 vs median 0.004), zero underruns |
 
@@ -192,6 +192,9 @@ a P1, not tolerated as process cost.
 | The loopback verifier is not vacuous | `scripts/sovereign_loopback_verifier_test.py` — the silence control FAILS signal mode |
 | The browser dual-mode contract | `scripts/sovereign_hal_browser_harness.html` — GREEN in CI on both origins (live path, real FFT); `scripts/browser_harness_sim.js` (Gate 1) pins its FFT + transports under Node (caught the missing bit-reversal that would have made the verdict vacuous) |
 | Phase 0 CI, end to end | `_ci-sovereign-hal.yml`: **12/12 checks green** on the PR head — Gates 1, 2a, 2b (armv7 QEMU), 3, 4.1–4.5 incl. all four Android API levels |
+| Phase 1 — the unified output HAL | `rust/crates/streamify-hal/`: the cpal 0.18 output engine (lock-free/wait-free/zero-alloc RT callback — pinned by `tests/test_zero_alloc_callback.rs` under the counting allocator), device enumeration + hot-swap events, Linux sound-server hygiene (`BufferSize::Fixed(1024)`), and the feature-gated Windows WASAPI-exclusive bracket (miniaudio; SPEC NOTE: the directive's "miniaudio 0.11.26" does not exist on crates.io — pinned to the real 0.10.0) |
+| Phase 1 — Opus + AAC TrackDecoder | `streamify-playback/src/opus.rs`: libopus (`opus` 0.4, Tier::Primary) + symphonia-opus (0.1.3, Tier::Fallback, registry-registered) behind BOTH framings — standard Ogg-Opus AND the server's raw #225 EBML framing (19-byte OpusHead + UInt16BE length-prefixed packets). 48 kHz Opus pins `CanonicalSrc`'s rubato bypass; 44.1 kHz AAC (itag 140) keeps rubato. `tests/test_opus_aac.rs`: dual-tier FFT-verified decode + the ebur128 LUFS oracle (±0.1 LUFS) |
+| Phase 1 — desktop JVM wiring | `sovereign-player` jvmMain: the JNA bridge over the frozen 96-byte stats wire (`SovereignHalJnaBridge.kt`), `DesktopSovereignHalProbe` (engine-library + ring-edge health), `DesktopSovereignLane` (telemetry surface) — overlaid via `loadDesktopSovereignModule` in `DesktopApp`; libmpv stays the automatic fallback (zero-deletion policy) |
 | The 4-gate ladder | `.github/workflows/_ci-sovereign-hal.yml` (9 jobs, YAML-validated) |
 
 ---
