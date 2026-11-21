@@ -147,19 +147,17 @@ const withTimeout = (p, ms, label) => Promise.race([p, sleep(ms).then(() => { th
 // the worker accepts returned buffers back into a bounded pool for reuse
 // as transfer scratch (steady-state allocation → 0 after warmup).
 const WORKER_SRC = `
-import init, { decode_opus } from "${new URL("streamify_web.js", location.href).href}";
+import init, { decode_opus } from "${'$'}{new URL("streamify_web.js", location.href).href}";
 self.onmessage = async (e) => {
   const msg = e.data;
   if (msg.cmd === "start") {
     await init(new URL("streamify_web_bg.wasm", location.href));
     const bytes = new Uint8Array(await (await fetch(msg.fixtureUrl)).arrayBuffer());
-    const pcm = decode_opus(bytes);           // the REAL codec path (symphonia tier)
+    const pcm = decode_opus(bytes);
     if (!pcm.length) { postMessage({ type: "error", error: "wasm decode empty" }); return; }
     postMessage({ type: "decoded", frames: pcm.length / 2 });
     self.pcm = pcm; self.pos = 0; self.pool = [];
   } else if (msg.cmd === "next") {
-    // Serve up to `frames` frames; reuse pooled buffers when available
-    // (bounded: never more than msg.inFlight + 2 live at once).
     const frames = Math.min(msg.frames, Math.floor(self.pcm.length / 2) - self.pos);
     const chunk = new Float32Array(Math.max(0, frames) * 2);
     if (frames > 0) chunk.set(self.pcm.subarray(self.pos * 2, (self.pos + frames) * 2));
@@ -167,8 +165,6 @@ self.onmessage = async (e) => {
     const eos = self.pos >= Math.floor(self.pcm.length / 2);
     postMessage({ type: "chunk", chunk, eos }, [chunk.buffer]);
   } else if (msg.cmd === "recycle") {
-    // The scheduler's onended hands the neutered buffer back; re-attach
-    // it to the pool (bounded by the scheduler's in-flight window).
     if (msg.buf && self.pool.length < 16) self.pool.push(new Float32Array(msg.buf));
   }
 };
