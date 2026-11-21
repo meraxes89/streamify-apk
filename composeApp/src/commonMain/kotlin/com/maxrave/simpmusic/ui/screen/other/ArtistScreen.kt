@@ -5,6 +5,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,6 +18,8 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -638,7 +641,7 @@ fun ArtistScreen(
                                                 .size(48.dp)
                                                 .clip(CircleShape)
                                                 .border(1.5.dp, artistAccent, CircleShape)
-                                                .clickable {
+                                                .bouncingClickable {
                                                     val param = state.data.radioParam
                                                     if (param != null) {
                                                         viewModel.onRadioClick(param)
@@ -664,7 +667,7 @@ fun ArtistScreen(
                                                 .size(64.dp)
                                                 .clip(CircleShape)
                                                 .background(artistAccent)
-                                                .clickable {
+                                                .bouncingClickable {
                                                     val param = state.data.shuffleParam
                                                     if (param != null) {
                                                         viewModel.onShuffleClick(param)
@@ -692,7 +695,7 @@ fun ArtistScreen(
                                                 .clip(CircleShape)
                                                 .background(if (isFollowed) artistAccent else Color.Transparent)
                                                 .border(1.5.dp, artistAccent, CircleShape)
-                                                .clickable {
+                                                .bouncingClickable {
                                                     viewModel.updateFollowed(
                                                         if (isFollowed) 0 else 1,
                                                         state.data.channelId ?: return@clickable,
@@ -1435,4 +1438,28 @@ private fun LikedSongsSection(
             }
         }
     }
+}
+
+@Composable
+private fun Modifier.bouncingClickable(
+    scaleDown: Float = 0.95f,
+    onClick: () -> Unit,
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) scaleDown else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+        label = "heroButtonScale",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick,
+        )
 }
