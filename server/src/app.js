@@ -111,6 +111,11 @@ export async function createApp({
   // Add Private-Network-Access header for modern browser fetch
   app.addHook('onSend', async (request, reply) => {
     reply.header('Access-Control-Allow-Private-Network', 'true');
+    // Sovereign HAL Phase 2 (Step 3): COOP/COEP unlock crossOriginIsolated
+    // on localhost/HTTPS — the SAB AudioWorklet lane. Plain LAN HTTP falls
+    // back to AudioBufferSourceNode + pooled MessagePort.
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+    reply.header('Cross-Origin-Embedder-Policy', 'require-corp');
   });
 
   // Optional Room PIN Authentication

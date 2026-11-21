@@ -62,6 +62,7 @@ members = [
     "crates/streamify-resolver",
     "crates/streamify-contract",
     "crates/streamify-ffi",
+    "crates/streamify-web",
 ]
 default-members = [
     "crates/streamify-core",
@@ -75,6 +76,7 @@ default-members = [
     "crates/streamify-resolver",
     "crates/streamify-contract",
     "crates/streamify-ffi",
+    "crates/streamify-web",
 ]
 
 [workspace.package]
@@ -93,6 +95,8 @@ streamify-jam-crdt = { path = "crates/streamify-jam-crdt" }
 streamify-radio-scorer = { path = "crates/streamify-radio-scorer" }
 streamify-audio = { path = "crates/streamify-audio" }
 streamify-playback = { path = "crates/streamify-playback" }
+# Sovereign HAL Phase 2 (Step 3): the wasm32 browser producer surface.
+streamify-web = { path = "crates/streamify-web" }
 streamify-storage = { path = "crates/streamify-storage" }
 streamify-jam = { path = "crates/streamify-jam" }
 streamify-resolver = { path = "crates/streamify-resolver" }

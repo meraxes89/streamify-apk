@@ -1,0 +1,30 @@
+# streamify-web — the wasm32 browser producer surface (Sovereign HAL
+# Phase 2 / Step 3).
+#
+# Compiles streamify-playback (+ core DSP closure) to
+# wasm32-unknown-unknown for the DEDICATED WEB WORKER:
+#   * decode_opus / decode_aac — the TrackDecoder chain (symphonia
+#     tier on wasm32; libopus is a cmake C library and cannot
+#     cross-build for the browser target);
+#   * ring install/read/stats over a SharedArrayBuffer-mirrored SPSC
+#     ring — the SAME release/acquire cursor protocol as the frozen C
+#     ABI (ring_export.rs), laid out identically so the AudioWorklet
+#     pull callback and the Rust producer agree byte-for-byte.
+#
+# NO cdylib here: the compose wasmJs app consumes this crate through
+# the Kotlin/Native wasm bridge; the CI harness consumes the raw
+# bindings output (wasm-bindgen --target web) from the Worker script.
+[package]
+name = "streamify-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "wasm32 browser producer surface: TrackDecoder + SAB SPSC ring for the Worker"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+streamify-playback = { workspace = true }
+streamify-core = { workspace = true }

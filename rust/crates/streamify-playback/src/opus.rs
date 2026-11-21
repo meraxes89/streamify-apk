@@ -114,7 +114,10 @@ pub const RAW_FRAME_PREFIX: usize = 2;
 /// The packet-backend for the raw framing scanner: which engine
 /// decodes one framed Opus packet.
 enum PacketBackend {
-    /// libopus via the `opus` crate (Tier::Primary).
+    /// libopus via the `opus` crate (Tier::Primary). Absent on
+    /// wasm32 (the C library cannot cross-build there — the browser
+    /// Worker's producer rides symphonia-opus alone).
+    #[cfg(not(target_arch = "wasm32"))]
     LibOpus(opus::Decoder),
     /// symphonia-opus (Tier::Fallback), instantiated through its
     /// registry and driven packet-by-packet via the AudioDecoder trait.
@@ -126,6 +129,7 @@ impl PacketBackend {
     /// returning the FRAME count.
     fn decode(&mut self, packet: &[u8], pcm: &mut [f32], channels: usize) -> Result<usize, String> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             PacketBackend::LibOpus(dec) => {
                 // opus 0.4: decode_float(&[u8], &mut [f32], fec) — the
                 // f32 output the canonical pipeline speaks natively.
@@ -198,60 +202,81 @@ pub struct LibOpusDecoder {
     pcm: Vec<f32>,
 }
 
+/// The symphonia-opus backend constructor (Tier::Fallback on native
+/// targets; the ONLY backend on wasm32 — the pure-Rust path closes the
+/// browser Worker's dependency closure). Registry-mediated
+/// instantiation, the documented integration: build the OpusHead extra
+/// data, register at Tier::Fallback, instantiate through the registry.
+fn build_symphonia_backend(
+    channels: usize,
+    pre_skip: usize,
+) -> Result<PacketBackend, EngineError> {
+    let mut head = Vec::with_capacity(OPUS_HEAD_MIN_LEN);
+    head.extend_from_slice(b"OpusHead");
+    head.push(1u8); // version
+    head.push(channels as u8);
+    head.extend_from_slice(&(pre_skip as u16).to_le_bytes());
+    head.extend_from_slice(&48_000u32.to_le_bytes()); // declared rate (informational)
+    head.extend_from_slice(&0i16.to_le_bytes()); // gain
+    head.push(0); // mapping family 0 (mono/stereo)
+    let mut params = symphonia::core::codecs::audio::AudioCodecParameters::new();
+    params
+        .for_codec(symphonia::core::codecs::audio::well_known::CODEC_ID_OPUS)
+        .with_extra_data(head.into_boxed_slice());
+    let mut registry =
+        symphonia::core::codecs::registry::CodecRegistry::new();
+    registry.register_audio_decoder_at_tier::<symphonia_opus::OpusDecoder>(
+        symphonia::core::common::Tier::Fallback,
+    );
+    let dec = registry
+        .make_audio_decoder(&params, &Default::default())
+        .map_err(|e| EngineError::Audio {
+            kind: AudioErrorKind::Init,
+            device_id: Some(format!("symphonia-opus init failed: {e}")),
+        })?;
+    Ok(PacketBackend::SymphoniaOpus(dec))
+}
+
 impl LibOpusDecoder {
     /// Build the scanner + the tier's backend from the parsed OpusHead
     /// fields.
     pub fn new(tier: OpusTier, channels: usize, pre_skip: usize) -> Result<Self, EngineError> {
+        if !matches!(channels, 1..=2) {
+            return Err(EngineError::Audio {
+                kind: AudioErrorKind::FormatUnsupported,
+                device_id: Some(format!("Opus channels {channels} outside 1..=2")),
+            });
+        }
+        // libopus's Channels enum only exists on the non-wasm32 dep
+        // closure; the mode construction is gated with the backend.
+        #[cfg(not(target_arch = "wasm32"))]
+        #[allow(unused_variables)]
         let mode = match channels {
             1 => opus::Channels::Mono,
             2 => opus::Channels::Stereo,
-            _ => {
-                return Err(EngineError::Audio {
-                    kind: AudioErrorKind::FormatUnsupported,
-                    device_id: Some(format!("Opus channels {channels} outside 1..=2")),
-                })
-            }
+            _ => unreachable!("channels bounds checked above"),
         };
-        let backend = match (tier, channels) {
-            (OpusTier::Primary, _) => PacketBackend::LibOpus(
-                // opus 0.4: Decoder::new(sample_rate: u32, channels) —
-                // Opus ALWAYS decodes at 48 kHz (RFC 6716 §2).
-                opus::Decoder::new(48_000, mode).map_err(|e| EngineError::Audio {
-                    kind: AudioErrorKind::Init,
-                    device_id: Some(format!("libopus init failed: {e}")),
-                })?,
-            ),
-            (OpusTier::Fallback, _) => {
-                // symphonia-opus is registry-mediated (RegisterableAudio
-                // Decoder::try_registry_new): build the OpusHead extra
-                // data, register at Tier::Fallback, instantiate through
-                // the registry — exactly the documented integration.
-                let mut head = Vec::with_capacity(OPUS_HEAD_MIN_LEN);
-                head.extend_from_slice(b"OpusHead");
-                head.push(1u8); // version
-                head.push(channels as u8);
-                head.extend_from_slice(&(pre_skip as u16).to_le_bytes());
-                head.extend_from_slice(&48_000u32.to_le_bytes()); // declared rate (informational)
-                head.extend_from_slice(&0i16.to_le_bytes()); // gain
-                head.push(0); // mapping family 0 (mono/stereo)
-                let mut params = symphonia::core::codecs::audio::AudioCodecParameters::new();
-                params
-                    .for_codec(symphonia::core::codecs::audio::well_known::CODEC_ID_OPUS)
-                    .with_extra_data(head.into_boxed_slice());
-                let mut registry =
-                    symphonia::core::codecs::registry::CodecRegistry::new();
-                registry.register_audio_decoder_at_tier::<symphonia_opus::OpusDecoder>(
-                    symphonia::core::common::Tier::Fallback,
-                );
-                let dec = registry
-                    .make_audio_decoder(&params, &Default::default())
-                    .map_err(|e| EngineError::Audio {
+        // wasm32 has no libopus: every tier request resolves to the
+        // symphonia-opus backend (the pure-Rust path).
+        #[cfg(target_arch = "wasm32")]
+        let _ = tier;
+        #[cfg(not(target_arch = "wasm32"))]
+        let backend = {
+            let _ = &mode;  // libopus mode consumed by the Primary arm
+            match (tier, channels) {
+                (OpusTier::Primary, _) => PacketBackend::LibOpus(
+                    // opus 0.4: Decoder::new(sample_rate: u32, channels) —
+                    // Opus ALWAYS decodes at 48 kHz (RFC 6716 §2).
+                    opus::Decoder::new(48_000, mode).map_err(|e| EngineError::Audio {
                         kind: AudioErrorKind::Init,
-                        device_id: Some(format!("symphonia-opus init failed: {e}")),
-                    })?;
-                PacketBackend::SymphoniaOpus(dec)
+                        device_id: Some(format!("libopus init failed: {e}")),
+                    })?,
+                ),
+                (OpusTier::Fallback, _) => build_symphonia_backend(channels, pre_skip)?,
             }
         };
+        #[cfg(target_arch = "wasm32")]
+        let backend = build_symphonia_backend(channels, pre_skip)?;
         Ok(Self {
             backend,
             channels,
