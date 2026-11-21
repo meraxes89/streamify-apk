@@ -1,21 +1,49 @@
 import { parseRange } from '../../lib/range.js';
-import { StreamSemaphore } from '../../lib/semaphore.js';
+import { AsyncAdmission, SaturatedError, TimeoutError, AbortError, PRIORITY } from './admission.js';
+import { StreamCoalescer } from './coalescer.js';
 import { StreamPacer } from './pacer.js';
 import { StreamWatchdog } from './watchdog.js';
 import { SabrEngine } from './sabr-engine.js';
 
 export class StreamGateway {
+  /**
+   * @param {Object} options
+   * @param {Object} options.resolver
+   * @param {Object} options.cache
+   * @param {Object} [options.admission] - L3 Admission Gate (defaults to AsyncAdmission)
+   * @param {Object} [options.semaphore] - Backward-compatible alias for admission/semaphore
+   * @param {Object} [options.coalescer] - L2 Request Coalescer
+   * @param {Object} [options.pacer]
+   * @param {Object} [options.watchdog]
+   * @param {Object} [options.sabrEngine]
+   */
   constructor({
     resolver,
     cache,
-    semaphore = new StreamSemaphore(),
+    admission,
+    semaphore,
+    coalescer,
     pacer = new StreamPacer(),
     watchdog = new StreamWatchdog({ healthManager: resolver?.healthManager }),
     sabrEngine = new SabrEngine(),
   } = {}) {
     this.resolver = resolver;
     this.cache = cache;
-    this.semaphore = semaphore;
+
+    // Use AsyncAdmission (or wrap / adapt legacy StreamSemaphore if provided)
+    if (admission) {
+      this.admission = admission;
+    } else if (semaphore && typeof semaphore.acquire === 'function' && semaphore.globalMax !== undefined) {
+      this.admission = semaphore;
+    } else {
+      this.admission = new AsyncAdmission({ globalMax: semaphore?.maxGlobal || 24, perIpMax: semaphore?.maxPerIp || 4 });
+    }
+
+    // Retain this.semaphore accessor for telemetry & legacy contract tests
+    this.semaphore = this.admission;
+
+    // L2 Request Coalescer
+    this.coalescer = coalescer || (cache ? new StreamCoalescer({ cache: this.cache, admission: this.admission }) : null);
     this.pacer = pacer;
     this.watchdog = watchdog;
     this.sabrEngine = sabrEngine;
@@ -30,6 +58,24 @@ export class StreamGateway {
     }
   }
 
+  /**
+   * Classifies request intent for priority admission
+   * 0: playback, 1: seek, 2: segment, 3: prefetch
+   */
+  _classifyIntent(req, range) {
+    if (req.headers && (req.headers['x-purpose'] === 'prefetch' || req.query?.prefetch === '1')) {
+      return PRIORITY.PREFETCH;
+    }
+    const url = req.url || req.raw?.url || '';
+    if (url.endsWith('.m4s') || url.includes('/segment/')) {
+      return PRIORITY.SEGMENT;
+    }
+    if (range && range.start > 0) {
+      return PRIORITY.SEEK;
+    }
+    return PRIORITY.PLAYBACK;
+  }
+
   async handleRequest(req, reply) {
     const videoId = req.params.videoId || req.query.id || req.query.videoId;
     if (!videoId) {
@@ -37,19 +83,9 @@ export class StreamGateway {
       return reply.send('videoId required');
     }
 
-    // Acquire stream concurrency slot
-    const clientIp = req.headers['x-forwarded-for'] || req.ip || '127.0.0.1';
-    const permit = this.semaphore.acquire(String(clientIp));
-    if (!permit.allowed) {
-      reply.header('Retry-After', permit.retryAfter);
-      reply.status(503);
-      return reply.send('Maximum concurrent audio streams exceeded');
-    }
+    const clientIp = String(req.headers['x-forwarded-for'] || req.ip || '127.0.0.1');
 
-    req.raw.on('close', () => {
-      permit.release();
-    });
-
+    // 1. Resolve descriptor (coalesced via SingleFlight inside resolver)
     let desc;
     try {
       desc = await this.resolver.resolve(videoId);
@@ -110,7 +146,7 @@ export class StreamGateway {
       .header('Access-Control-Allow-Origin', '*')
       .header('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
 
-    // Handle HEAD request
+    // Handle HEAD request (ZERO upstream work, instant reply)
     if (req.method === 'HEAD') {
       if (totalLength) {
         reply.header('Content-Length', totalLength);
@@ -134,7 +170,7 @@ export class StreamGateway {
     const actualEnd = end !== undefined ? end : totalLength ? totalLength - 1 : undefined;
     const actualLength = actualEnd !== undefined ? actualEnd - start + 1 : undefined;
 
-    // Response headers for 206 Partial Content or 200
+    // Response status and headers
     if (actualLength !== undefined) {
       reply.header('Content-Length', actualLength);
     }
@@ -145,22 +181,95 @@ export class StreamGateway {
       reply.status(200);
     }
 
-    // P1 Slab Optimization: Direct read for small ranges <= 256 KiB if blocks are already PRESENT on disk/cache
-    if (
-      actualLength !== undefined &&
-      actualLength <= 256 * 1024 &&
-      this.cache.hasRange(desc.videoId, desc.itag, start, actualEnd)
-    ) {
-      const buf = await this.cache.readDirect(desc, start, actualLength);
-      return reply.send(buf);
+    // =========================================================================
+    // L1: CACHE HIT? (comm12.md)
+    // Check if the requested range is already PRESENT in the cache.
+    // Cache hits consume ZERO admission permits and trigger ZERO upstream fetches.
+    // =========================================================================
+    const isCacheHit = this.cache && this.cache.hasRange(desc.videoId, desc.itag || 251, start, actualEnd);
+
+    if (isCacheHit) {
+      // Slab Optimization: Direct synchronous read for small ranges <= 256 KiB
+      if (actualLength !== undefined && actualLength <= 256 * 1024) {
+        const buf = await this.cache.readDirect(desc, start, actualLength);
+        return reply.send(buf);
+      }
+
+      // Independent cache read stream (client has its OWN fs stream & backpressure)
+      const cachedStream = this.cache.createRangeStream(
+        desc,
+        start,
+        actualEnd,
+        req.raw.signal || req.raw
+      );
+      return reply.send(cachedStream);
     }
 
-    // P0 Sparse Block Engine: Single upstream fetch with zero-copy page cache read-while-write multiplexing
+    // =========================================================================
+    // L2 COALESCER & L3 ADMISSION GATE (comm12.md)
+    // For cold misses, coordinate through the coalescer.
+    // Followers attach to the leader's block readiness and consume NO admission permit.
+    // Only the unique cold leader acquires an admission slot in L3.
+    // =========================================================================
+    const startBlock = Math.floor(start / (256 * 1024));
+    const intent = this._classifyIntent(req, range);
+    const clientSignal = req.raw.signal || req.raw;
+
+    if (this.coalescer) {
+      try {
+        const coalEntry = this.coalescer.join(desc, startBlock, {
+          priority: intent,
+          clientIp,
+          signal: clientSignal,
+        });
+
+        // Wait until Block 0 (or target block) lands in cache
+        await coalEntry.ready;
+      } catch (err) {
+        if (err instanceof SaturatedError) {
+          reply.header('Retry-After', this.admission.retryAfter || 2);
+          reply.status(503);
+          return reply.send('Upstream admission queue saturated');
+        }
+        if (err instanceof TimeoutError) {
+          reply.status(504);
+          return reply.send('Gateway timeout waiting for upstream admission');
+        }
+        if (err instanceof AbortError) {
+          return; // Client disconnected
+        }
+        // Fallback / upstream error
+        reply.status(502);
+        return reply.send(`Upstream streaming error: ${err.message}`);
+      }
+    } else {
+      // Direct admission fallback if no coalescer configured
+      let releaseAdmission = null;
+      try {
+        releaseAdmission = await this.admission.acquire(clientIp, intent, clientSignal);
+        req.raw.on('close', () => {
+          if (releaseAdmission) releaseAdmission();
+        });
+      } catch (err) {
+        if (err instanceof SaturatedError) {
+          reply.header('Retry-After', 2);
+          reply.status(503);
+          return reply.send('Maximum concurrent audio streams exceeded');
+        }
+        throw err;
+      }
+    }
+
+    // =========================================================================
+    // L4: SERVE RANGE FROM CACHE (comm12.md)
+    // Every client (leader or follower) reads independently from the block cache.
+    // Each client gets its own backpressure and its own fs read stream.
+    // =========================================================================
     const rawStream = this.cache.createRangeStream(
       desc,
       start,
       actualEnd,
-      req.raw.signal || req.raw
+      clientSignal
     );
 
     // P1 Attestation Watchdog: Monitor real-time streaming bytes to detect ~50 kbps throttling
@@ -179,7 +288,7 @@ export class StreamGateway {
 
     const pacedStream = this.pacer.pace(rawStream, {
       bitrateBps: desc.bitrateBps || 160_000,
-      signal: req.raw.signal || req.raw,
+      signal: clientSignal,
     });
     return reply.send(pacedStream);
   }

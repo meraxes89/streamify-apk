@@ -96,6 +96,12 @@ export const symbols = {
 
     try {
       const posix_fadvise = libc.func('int posix_fadvise(int fd, int64 off, int64 len, int advice)');
+      let sendfile = null;
+      try {
+        // ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
+        sendfile = libc.func('intptr_t sendfile(int out_fd, int in_fd, _Inout_ int64 *offset, size_t count)');
+      } catch {}
+
       let sync_file_range = null;
       let sync_file_range_async = null;
       try {
@@ -111,6 +117,7 @@ export const symbols = {
       return {
         libc,
         posix_fadvise,
+        sendfile,
         sync_file_range,
         sync_file_range_async
       };

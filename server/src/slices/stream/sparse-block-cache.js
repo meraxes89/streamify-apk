@@ -615,20 +615,53 @@ export class SparseBlockCache {
     }
   }
 
+  /**
+   * Value-Based Segmented LRU Eviction with Water-Level Hysteresis (comm14.md Option 1):
+   * - High-water trigger: 85% of maxCacheBytes
+   * - Evict down to low-water target: 70% of maxCacheBytes (prevents thrashing)
+   * - Active playhead/readers pinned (never evicted)
+   * - Tier 1: Cold Partial tracks (<80% complete, no active readers)
+   * - Tier 2: Cold Complete tracks (LRU order)
+   * - Warm partial tracks >80% are preserved for opportunistic completion
+   */
   evictOverBudget() {
     let totalCachedBytes = 0;
     for (const entry of this.entries.values()) {
       totalCachedBytes += entry.presentBlocksCount() * BLOCK_SIZE;
     }
 
-    if (totalCachedBytes <= this.maxCacheBytes) return;
+    const highWater = this.maxCacheBytes * 0.85;
+    const lowWater = this.maxCacheBytes * 0.70;
 
-    // Sort entries by lastAccessed ascending
-    const sorted = Array.from(this.entries.values()).sort((a, b) => a.lastAccessed - b.lastAccessed);
+    if (totalCachedBytes <= highWater) return;
 
-    for (const entry of sorted) {
+    // Segment candidates into Tier 1 (Partial cold) and Tier 2 (Complete cold)
+    const tier1PartialCold = [];
+    const tier2CompleteCold = [];
+
+    for (const entry of this.entries.values()) {
+      // PINNED: Active readers or ongoing fetches are NEVER evicted
       if (entry.activeReaders > 0 || entry.activeFetches.size > 0) continue;
 
+      const totalBlocks = entry.numBlocks || 1;
+      const presentBlocks = entry.presentBlocksCount();
+      const completionRatio = presentBlocks / totalBlocks;
+
+      if (entry.isComplete() || completionRatio >= 0.8) {
+        tier2CompleteCold.push(entry);
+      } else {
+        tier1PartialCold.push(entry);
+      }
+    }
+
+    // Sort both tiers by lastAccessed ascending (LRU)
+    tier1PartialCold.sort((a, b) => a.lastAccessed - b.lastAccessed);
+    tier2CompleteCold.sort((a, b) => a.lastAccessed - b.lastAccessed);
+
+    const candidates = [...tier1PartialCold, ...tier2CompleteCold];
+
+    for (const entry of candidates) {
+      const freedBytes = entry.presentBlocksCount() * BLOCK_SIZE;
       entry.close().catch(() => {});
       try {
         if (fs.existsSync(entry.datPath)) fs.unlinkSync(entry.datPath);
@@ -636,8 +669,10 @@ export class SparseBlockCache {
       } catch {}
 
       this.entries.delete(entry.key);
-      totalCachedBytes -= entry.presentBlocksCount() * BLOCK_SIZE;
-      if (totalCachedBytes <= this.maxCacheBytes) break;
+      totalCachedBytes -= freedBytes;
+
+      // Stop once we've reached low-water mark (hysteresis)
+      if (totalCachedBytes <= lowWater) break;
     }
   }
 
