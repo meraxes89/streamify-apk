@@ -1,14 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
    Backup rules for API <= 30.
-   Prevents backing up plaintext YouTube cookies, database files, and sensitive credentials
-   to Google Drive or ADB backups, matching the policy in data_extraction_rules.xml.
+   When an include element is specified, only the specified resources are backed up.
+   Datastore is included, while everything else (cookies, database, root) is excluded by default.
 -->
 <full-backup-content>
-    <include domain="file" path="datastore/." />
-    <!-- Explicitly exclude sensitive credentials and databases -->
-    <exclude domain="file" path="ytdlp-cookie.txt" />
-    <exclude domain="database" path="." />
-    <exclude domain="sharedpref" path="." />
-    <exclude domain="root" path="." />
+    <include domain="file" path="datastore" />
 </full-backup-content>
