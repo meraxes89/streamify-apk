@@ -124,6 +124,7 @@ import simpmusic.composeapp.generated.resources.favorite_playlists
 import simpmusic.composeapp.generated.resources.favorite_podcasts
 import simpmusic.composeapp.generated.resources.library
 import simpmusic.composeapp.generated.resources.mix_for_you
+import simpmusic.composeapp.generated.resources.more
 import simpmusic.composeapp.generated.resources.no_YouTube_playlists
 import simpmusic.composeapp.generated.resources.no_charts_found
 import simpmusic.composeapp.generated.resources.no_favorite_playlists
