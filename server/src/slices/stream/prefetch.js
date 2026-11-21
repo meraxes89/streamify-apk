@@ -167,6 +167,36 @@ export class PrefetchCoordinator {
   }
 
   /**
+   * Pre-warms a window of tracks in the queue (Deep Lookahead, comm13.md L2).
+   * @param {Array<string>} videoIds
+   * @param {Object} [options]
+   * @param {number} [options.lookahead=3]
+   * @returns {Promise<Array<Object>>}
+   */
+  async prefetchQueueWindow(videoIds = [], { lookahead = 3 } = {}) {
+    if (!Array.isArray(videoIds) || videoIds.length === 0) return [];
+    const window = videoIds.slice(0, lookahead);
+    const results = [];
+
+    for (let i = 0; i < window.length; i++) {
+      const vid = window[i];
+      if (this.shouldPreempt()) break;
+
+      // First item in lookahead gets full two-stage prefetch (descriptor + 256 KiB)
+      // Subsequent items in lookahead get stage 1 (descriptor only)
+      if (i === 0) {
+        const res = await this.prefetchBytes(vid);
+        results.push(res);
+      } else {
+        const res = await this.prefetchDescriptor(vid);
+        results.push(res);
+      }
+    }
+
+    return results;
+  }
+
+  /**
    * Preempts and cancels any active or in-flight prefetch for a video (or all if omitted).
    * Used immediately on client skip storms or queue mutations.
    * @param {string} [videoId]
