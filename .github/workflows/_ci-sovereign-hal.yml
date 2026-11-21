@@ -639,16 +639,15 @@ jobs:
           # CMake step now runs before this one); link against it and
           # record the needed soname.
           cd rust
-          # r12: RUSTFLAGS never reached the linker through cargo-ndk
-          # (verified locally: the flags vanish from the link line —
-          # cargo-ndk sanitizes/overrides the env). The cargo-native
-          # passthrough DOES work: args after `--` go to rustc, and a
-          # direct `rustc -l <lib> -L <dir>` links the extern refs
-          # cleanly (the r11 -l: spelling also relied on RUSTFLAGS).
-          # The bin needs the bracket; the cdylib does not.
+          # r13: the bracket link now rides the hal crate's build.rs
+          # (cargo:rustc-link-lib/-search emitted when
+          # SOVEREIGN_BRACKET_LIB_DIR is set) — immune to cargo-ndk's
+          # arg parsing (r11: RUSTFLAGS silently dropped; r12: the `--`
+          # passthrough rejected by clap). The cdylib build leaves the
+          # env unset — only the player bin links the bracket.
+          SOVEREIGN_BRACKET_LIB_DIR=/tmp/sovereign-native-out \
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
-            build --release --bin sovereign_android_loopback -p streamify-hal \
-            -- -lstreamify_native_core -L/tmp/sovereign-native-out
+            build --release --bin sovereign_android_loopback -p streamify-hal
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
             build --release -p streamify-ffi
           cd ..
