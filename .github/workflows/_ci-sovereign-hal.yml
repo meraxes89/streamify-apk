@@ -559,13 +559,26 @@ jobs:
           python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
 
   loopback-android:
-    name: "Gate 4.4 — Android emulator AudioFlinger wav capture (API ${{ matrix.api }})"
+    name: "Gate 4.4 — Android Oboe→AudioFlinger loopback (API ${{ matrix.api }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         api: [26, 29, 34, 35]
+    # Phase 2 r6: the emulator's documented audio-dump mechanism is the
+    # LEGACY QEMU audio env — QEMU_AUDIO_DRV=wav makes the emulator's
+    # QEMU write every guest audio stream to QEMU_WAV_PATH. The modern
+    # '-qemu -audiodev wav,...' spelling KILLS the bundled headless QEMU
+    # at launch (the r5 boot timeout; Phase 1's finding, re-confirmed).
+    # NOTE: the `runner` context is NOT available in job-level env
+    # (actionlint: contexts are github/inputs/matrix/needs/secrets/
+    # strategy/vars only — the r6 0-jobs instant-failure). The ubuntu
+    # runner.temp is stable at /home/runner/work/_temp; the script
+    # falls back to $RUNNER_TEMP (valid INSIDE steps) if that moves.
+    env:
+      QEMU_AUDIO_DRV: wav
+      QEMU_WAV_PATH: /home/runner/work/_temp/audioflinger.wav
     steps:
       - uses: actions/checkout@v7
       - name: Set up JDK 21
@@ -573,37 +586,133 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+      - name: Set up Rust (android cross-build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-linux-android
       - name: Enable KVM (emulator acceleration)
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run the emulator with -audiodev wav (scaffold check)
+      - name: Install the Android NDK (before cargo-ndk needs it)
+        run: |
+          # r8: cargo-ndk PANICKED (exit 101) in r7 because no NDK was
+          # on disk yet — the sdkmanager install used to live in the
+          # CMake step BELOW the Rust build. Install FIRST and export
+          # the home (cargo-ndk discovers via ANDROID_NDK_HOME /
+          # ANDROID_SDK_ROOT/ndk/<ver>).
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
+          test -d "$ANDROID_HOME/ndk/26.1.10909125"
+      - name: Build the C++ Oboe bracket .so (NDK CMake, x86_64)
+        run: |
+          # NDK + cmake installed in the earlier step (r8 ordering).
+          NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
+          mkdir -p /tmp/sovereign-native-out
+          cmake -B /tmp/sovereign-native-build -S native \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_BUNDLE/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/tmp/sovereign-native-out
+          cmake --build /tmp/sovereign-native-build --target streamify_native_core -j4
+          # HARD check (the r5 lesson: pipes hid failures). The .so
+          # lands in /tmp/sovereign-native-out (CMAKE_LIBRARY_OUTPUT_
+          # DIRECTORY) so the Rust link step's -L path is stable.
+          BRACKET_SO=/tmp/sovereign-native-out/libstreamify_native_core.so
+          test -s "$BRACKET_SO"
+          # The STL the bracket needs at runtime (pushed with it):
+          cp "$NDK_BUNDLE/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so" /tmp/sovereign-native-out/ || true
+          echo "bracket .so: $BRACKET_SO"
+      - name: Build the guest artifacts (Rust cdylib + player bin, x86_64-android)
+        run: |
+          set -euo pipefail
+          # r11: the Rust player's extern "C" block is a LINK-TIME
+          # reference to the bracket's exports (r10's 7 undefined
+          # sovereign_oboe_* symbols — dlopen at runtime does not
+          # satisfy the linker). The bracket .so is built FIRST (the
+          # CMake step now runs before this one); link against it and
+          # record the needed soname.
+          cd rust
+          # r17: cargo-ndk dropped entirely — its 4.x copy phase demands
+          # a cdylib from EVERY invocation (r15: the lib-only build;
+          # r16: the BIN-only build — 'No usable artifacts produced by
+          # cargo'). Plain cargo with the NDK toolchain env (spelled
+          # below) builds both; the r15 dlopen route already removed the
+          # link-time coupling, so no wrapper is needed at all.
+          export ANDROID_LLVM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export AR_x86_64_linux_android="$ANDROID_LLVM/llvm-ar"
+          export CC_x86_64_linux_android="$ANDROID_LLVM/x86_64-linux-android26-clang"
+          export CXX_x86_64_linux_android="$ANDROID_LLVM/x86_64-linux-android26-clang++"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$ANDROID_LLVM/x86_64-linux-android26-clang"
+          # r18: rquickjs-sys's `bindgen` feature (mandatory on android —
+          # the shipped pregenerated bindings skip the triple) parses
+          # HOST /usr/include headers by default and died on the runner's
+          # missing glibc-multiarch bits/libc-header-start.h. Point
+          # bindgen at the NDK sysroot (bionic headers for the triple) —
+          # its clang then stays inside the sysroot.
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot -I$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include -I$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/x86_64-linux-android"
+          cargo build --release --target x86_64-linux-android \
+            --bin sovereign_android_loopback -p streamify-hal
+          cargo build --release --target x86_64-linux-android -p streamify-ffi
+          mkdir -p /tmp/sovereign-guest/x86_64-linux-android
+          cp target/x86_64-linux-android/release/sovereign_android_loopback \
+             target/x86_64-linux-android/release/libstreamify_core_rs.so \
+             /tmp/sovereign-guest/x86_64-linux-android/
+          cd ..
+          # HARD artifact checks — a silent miss fails the leg here,
+          # not 10 minutes later inside the emulator step.
+          test -s /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback
+          test -s /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so
+          ls -la /tmp/sovereign-guest/x86_64-linux-android/
+      - name: Run the emulator (Oboe play + AudioFlinger capture)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
           target: default
-          # Plain boot options: the emulator's bundled QEMU
-          # (qemu-system-x86_64-headless) does NOT support -audiodev (it
-          # rejected it both as a top-level option and after -qemu —
-          # 'invalid option', instant exit, the two previous failure
-          # rounds). The AudioFlinger capture in Phase 1 therefore rides
-          # the GUEST side: the AAudio bracket APK plays through the
-          # guest's audioserver and the capture is pulled via adb. This
-          # leg proves the boot matrix + adb + the audio HAL service on
-          # every API level.
+          # Phase 2 r6: PLAIN boot options. The audio tap rides the
+          # QEMU_AUDIO_DRV=wav / QEMU_WAV_PATH job env (the emulator's
+          # documented legacy mechanism — '-qemu -audiodev' is not
+          # compiled into the bundled headless QEMU and killed boot on
+          # r5). The guest tinycap pull stays as the fallback capture.
           emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
           script: |
-            echo "Emulator booted (API ${{ matrix.api }})."
+            # r19: the action runs EACH LINE as a separate sh -c — shell
+            # variables do NOT cross lines (r18: GUEST=/data/local/tmp/
+            # sovereign assigned fine, then `mkdir -p $GUEST` saw "").
+            # Every line below is fully self-contained (inline paths,
+            # multi-step sequences on one line).
             adb shell getprop ro.build.version.sdk
-            # The audio stack must be alive: audioserver runs and the
-            # primary audio HAL is registered (what Phase 1's AAudio
-            # bracket renders into).
-            adb shell ps -A | grep -i audioserver || { echo "::error::audioserver not running on API ${{ matrix.api }}"; exit 1; }
-            timeout 30 adb shell dumpsys media.audio_flinger > /dev/null 2>&1 || echo "::warning::audio_flinger dumpsys unavailable (non-fatal on this API)"
-            adb shell getprop | grep -i "audio" | head -5 || true
-            echo "::warning::Phase 0 scaffold: boot + adb + audioserver proven on API ${{ matrix.api }}; the AAudio bracket capture leg (guest-side, adb-pulled) mounts in Phase 1."
+            adb shell ps -A | grep -i audioserver || { echo "::error::audioserver not running"; exit 1; }
+            adb root && sleep 2 && adb wait-for-device
+            adb shell mkdir -p /data/local/tmp/sovereign
+            adb push /tmp/sovereign-native-out/libstreamify_native_core.so /data/local/tmp/sovereign/ && adb push /tmp/sovereign-native-out/libc++_shared.so /data/local/tmp/sovereign/ && adb push /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so /data/local/tmp/sovereign/ && adb push /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback /data/local/tmp/sovereign/ && adb push fixtures/audio/opus_dual_tone_48k.raw_opus /data/local/tmp/sovereign/fixture.opus && adb shell chmod +x /data/local/tmp/sovereign/sovereign_android_loopback && adb shell ls -la /data/local/tmp/sovereign/
+            # The fallback capture, started before the player (capture-first).
+            adb shell "which tinycap && nohup tinycap /data/local/tmp/sovereign/capture.wav -r 48000 -c 2 -b 16 > /dev/null 2>&1 &" || true
+            sleep 2
+            # The player: the REAL codec path (Opus decode → frozen ring →
+            # Oboe → audioserver). LD_LIBRARY_PATH carries both .so files.
+            adb shell "cd /data/local/tmp/sovereign && LD_LIBRARY_PATH=/data/local/tmp/sovereign ./sovereign_android_loopback --file fixture.opus --seconds 6 --json > verdict.json 2> player.log"; echo "player exit: $?"
+            adb shell "pkill tinycap" || true
+            sleep 1
+            adb shell cat /data/local/tmp/sovereign/verdict.json || true
+            adb shell tail -12 /data/local/tmp/sovereign/player.log || true
+            sleep 2
+            # The capture: QEMU's wav backend (QEMU_AUDIO_DRV=wav job env)
+            # wrote the emulated audio HW's output on the HOST. Pull the
+            # guest artifacts, then verify with the shared FFT verifier.
+            mkdir -p /tmp/sovereign-guest && adb pull /data/local/tmp/sovereign/verdict.json /tmp/sovereign-guest/verdict.json || true; adb pull /data/local/tmp/sovereign/player.log /tmp/sovereign-guest/player.log || true; adb pull /data/local/tmp/sovereign/capture.wav /tmp/sovereign-guest/capture.wav || true
+            # r20c: the CAP/VEXIT lines below were TWO-line state — the
+            # action runs each line as its own sh -c, so CAP and VEXIT
+            # never crossed (the r19 GUEST lesson, reintroduced by me in
+            # r19's own probe). The whole probe+verify is ONE line now:
+            # pick the first non-empty capture, run the FFT verifier,
+            # echo the verdict JSON, fail the leg inline on either miss.
+            ls -la "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/ 2>&1 || true; CAP=""; for f in "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/capture.wav; do if [ -s "$f" ]; then CAP="$f"; break; fi; done; if [ -z "$CAP" ]; then echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat /data/local/tmp/sovereign/player.log 2>/dev/null | tail -5; exit 1; fi; echo "captured: $CAP"; cat /tmp/sovereign-guest/verdict.json || true; if ! python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose; then echo "::error::Android loopback FFT failed"; exit 1; fi; echo "ANDROID AUDIOFLINGER LOOPBACK: FFT PASS (API ${{ matrix.api }})"
 
   loopback-browser:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
@@ -713,3 +822,95 @@ jobs:
             results.plain.path + '/isolated=' + results.isolated.path + ')');
           RUNNER
           node /tmp/sovereign-hal-browser/run.mjs scripts/sovereign_hal_browser_harness.html
+      - name: "Phase 2: wasm32 producer dual-transport harness (Gate 4.5 P2)"
+        run: |
+          set -e
+          # 1. Build the wasm32 producer + wasm-bindgen glue.
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked 2>&1 | tail -1 || true
+          cargo build --manifest-path rust/Cargo.toml -p streamify-web \
+            --target wasm32-unknown-unknown --release
+          rm -rf /tmp/sovereign-hal-browser/p2 && mkdir -p /tmp/sovereign-hal-browser/p2
+          wasm-bindgen --target web --out-dir /tmp/sovereign-hal-browser/p2 \
+            rust/target/wasm32-unknown-unknown/release/streamify_web.wasm
+          cp scripts/sovereign_hal_browser_harness_p2.html /tmp/sovereign-hal-browser/p2/index.html
+          cp fixtures/audio/opus_dual_tone_48k.raw_opus /tmp/sovereign-hal-browser/p2/fixture.opus
+          # 2. Serve BOTH shapes: isolated (COOP/COEP) + plain, with the wasm assets.
+          cat > /tmp/sovereign-hal-browser/run-p2.mjs <<'RUNNER'
+          import { chromium } from 'playwright';
+          import http from 'node:http';
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const root = process.argv[2];
+          const port = 8933;
+          const types = { '.html': 'text/html', '.js': 'application/javascript', '.wasm': 'application/wasm', '.opus': 'application/octet-stream' };
+          const server = http.createServer((req, res) => {
+            const isolated = req.url.startsWith('/isolated');
+            const p = path.join(root, req.url.replace(/^\/isolated|^\/plain/, '') || '/index.html');
+            try {
+              const data = fs.readFileSync(p === root ? path.join(root, 'index.html') : p);
+              res.writeHead(200, {
+                'content-type': types[path.extname(p)] || 'application/octet-stream',
+                ...(isolated ? {
+                  'cross-origin-opener-policy': 'same-origin',
+                  'cross-origin-embedder-policy': 'require-corp',
+                } : {}),
+              });
+              res.end(data);
+            } catch {
+              res.writeHead(404); res.end('nf');
+            }
+          });
+          await new Promise((r) => server.listen(port, r));
+
+          const browser = await chromium.launch({
+            args: ['--autoplay-policy=no-user-gesture-required'],
+          });
+          const results = {};
+          for (const [label, url] of [
+            ['plain', `http://127.0.0.1:${port}/plain/index.html`],
+            ['isolated', `http://127.0.0.1:${port}/isolated/index.html`],
+          ]) {
+            const page = await browser.newPage();
+            page.on('console', (m) => console.log(`[${label}]`, m.text()));
+            page.on('pageerror', (e) => console.log(`[${label}] PAGE ERROR:`, e.message));
+            await page.goto(url);
+            let r;
+            try {
+              await page.waitForFunction(() => window.__sovereignHalP2Result?.done === true, null, { timeout: 150_000 });
+              r = await page.evaluate(() => window.__sovereignHalP2Result);
+            } catch {
+              r = await page.evaluate(() => ({ ...window.__sovereignHalP2Result, partial: true })).catch(() => ({ done: false }));
+              console.log(`[${label}] TIMEOUT — partial:`, JSON.stringify(r));
+            }
+            results[label] = r;
+            await page.close();
+          }
+          await browser.close(); server.close();
+          console.log('P2 RESULTS:', JSON.stringify(results, null, 2));
+          // Lane 2 MUST pass on BOTH origins (the every-browser contract).
+          for (const label of ['plain', 'isolated']) {
+            if (results[label]?.modes?.lane2?.pass !== true) {
+              console.error(`P2 ${label} lane2 (AudioBufferSourceNode + pooled MessagePort) FAILED`);
+              process.exit(1);
+            }
+          }
+          // Lane 1 (SAB) must PASS on the isolated origin (or be reported skipped).
+          const l1 = results.isolated?.modes?.lane1;
+          if (l1 && l1.skipped) {
+            console.error('::warning::P2 SAB lane skipped: COOP/COEP did not take effect');
+          } else if (l1?.pass !== true) {
+            console.error('P2 ISOLATED lane1 (SAB AudioWorklet) FAILED');
+            process.exit(1);
+          }
+          // mediaSession verified on the plain origin (headless Chromium
+          // supports the API surface).
+          const ms = results.plain?.mediaSession;
+          if (!ms || ms.hasMetadata !== true || ms.playbackState !== 'playing') {
+            console.error('P2 mediaSession check FAILED: ' + JSON.stringify(ms));
+            process.exit(1);
+          }
+          console.log('P2 DUAL-TRANSPORT VERDICT: PASS');
+          RUNNER
+          node /tmp/sovereign-hal-browser/run-p2.mjs /tmp/sovereign-hal-browser/p2

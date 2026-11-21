@@ -62,6 +62,23 @@ def read_wav_f32(path: Path) -> tuple[list[float], int, int]:
         rate = w.getframerate()
         sampwidth = w.getsampwidth()
         nframes = w.getnframes()
+        # Streamed-wav hardening (r20f): piped writers (ffmpeg to stdout,
+        # QEMU's flush) cannot seek back to patch the RIFF sizes and leave
+        # placeholder headers — nframes can read as 0x3FFFFFFF. Reading a
+        # placeholder-sized frame buffer then MemoryErrors. Cap the read at
+        # the file's ACTUAL size instead of trusting the header (w._file is
+        # a wave._Chunk wrapper — walk to the underlying stream).
+        import os
+        f = w._file
+        while hasattr(f, "file") and not hasattr(f, "fileno"):
+            f = f.file
+        frame_bytes = nch * sampwidth
+        try:
+            remaining = max(0, os.fstat(f.fileno()).st_size - 44)
+        except (AttributeError, OSError):
+            remaining = None
+        if remaining is not None and frame_bytes:
+            nframes = min(nframes, remaining // frame_bytes)
         raw = w.readframes(nframes)
 
     def deinterleave(fmt: str, size: int, scale: float) -> list[float]:
@@ -91,6 +108,26 @@ def read_wav_f32(path: Path) -> tuple[list[float], int, int]:
             out.append(v / float(1 << 23))
         return out, rate, nch
     raise ValueError(f"unsupported sample width: {sampwidth} bytes")
+
+
+def read_raw_pcm16_f32(path: Path, rate: int) -> tuple[list[float], int, int]:
+    """Read a HEADERLESS PCM16 s16le stereo dump → (samples, rate, 2).
+
+    The QEMU wav backend's mid-write shape: `QEMU_AUDIO_DRV=wav` streams raw
+    frames to QEMU_WAV_PATH and only writes the 44-byte RIFF header on
+    close/flush — a capture read while the emulator still runs has no header
+    (the r20c 'not a WAVE file' on a healthy capture).
+
+    The stream RATE is genuinely unknown too: the backend records at the
+    rate the guest HAL negotiated (44.1 kHz on the emulator's OpenSL legs,
+    48 kHz on AAudio legs), so the caller passes the rate to TRY and owns
+    the detection (main() tries 48k then 44.1k and keeps whichever
+    verifies — the r20d finding: the 440 tone appeared at 478.9 Hz because
+    a 44.1 kHz capture was decoded as 48 kHz).
+    """
+    raw = path.read_bytes()
+    count = len(raw) // 2
+    return [v / 32768.0 for v in struct.unpack(f"<{count}h", raw[: count * 2])], rate, 2
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -173,7 +210,20 @@ def verify(
     expect: str,
     verbose: bool,
 ) -> tuple[bool, dict]:
-    left = samples[0::channels]
+    # Mono mixdown (L+R)/2 — the fixtures are CHANNEL-SEPARATED dual
+    # tones (opus_dual_tone_48k: 440 Hz lives in L, 880 Hz in R; the
+    # Phase 1 commit that added them says "440 Hz (L) / 880 Hz (R)").
+    # The r20e API-34 finding: analyzing LEFT ONLY made the 880 Hz bin
+    # structurally invisible (mag 0.03 = pure spectral leakage), and
+    # three legs passed only because their noisier capture chains
+    # happened to raise the median floor under the leakage. A mixdown
+    # shows BOTH tones on every capture chain.
+    if channels >= 2:
+        frames = len(samples) // channels
+        left = [(samples[i * channels] + samples[i * channels + 1]) / 2.0
+                for i in range(frames)]
+    else:
+        left = list(samples)
     # Drop leading zeros (capture pipelines often start with a quiet ramp).
     first_nonzero = next((i for i, s in enumerate(left) if abs(s) > 1e-4), 0)
     left = left[first_nonzero:]
@@ -262,16 +312,39 @@ def main() -> int:
         print(f"sovereign-verifier: capture file not found: {args.capture}", file=sys.stderr)
         return 2
 
+    # Decode: RIFF wav first; on a headerless stream (QEMU's wav backend
+    # mid-write — it only writes the 44-byte RIFF header on close/flush)
+    # fall back to RAW PCM16 s16le stereo with the rate UNKNOWN (the
+    # guest HAL negotiates 44.1k or 48k per route): try both and keep
+    # whichever verifies (r20d: the OpenSL legs' 440 Hz tone landed at
+    # 478.9 Hz under a 48k read).
+    ok: bool = False
+    report: dict = {}
     try:
         samples, rate, channels = read_wav_f32(args.capture)
+    except (wave.Error, EOFError, struct.error):
+        if args.verbose:
+            print(
+                "sovereign-verifier: not a RIFF wave — RAW PCM16 s16le stereo; "
+                "trying 48000 Hz then 44100 Hz (QEMU wav mid-write)",
+                file=sys.stderr,
+            )
+        for try_rate in (48_000, 44_100):
+            s, r, c = read_raw_pcm16_f32(args.capture, try_rate)
+            ok, report = verify(
+                s, r, c, args.freq_a, args.freq_b, args.tolerance_hz,
+                args.expect, args.verbose,
+            )
+            if ok:
+                break
     except Exception as e:  # noqa: BLE001 — report any decode failure cleanly
         print(f"sovereign-verifier: capture decode failed: {e}", file=sys.stderr)
         return 2
-
-    ok, report = verify(
-        samples, rate, channels,
-        args.freq_a, args.freq_b, args.tolerance_hz, args.expect, args.verbose,
-    )
+    else:
+        ok, report = verify(
+            samples, rate, channels,
+            args.freq_a, args.freq_b, args.tolerance_hz, args.expect, args.verbose,
+        )
 
     if args.json:
         print(json.dumps(report, indent=2))

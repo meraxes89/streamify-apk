@@ -77,6 +77,16 @@ class SimpMusicApplication :
             )
             loadKoinModules(viewModelModule)
             loadKoinModules(com.streamify.jam.di.streamifyAllModules)
+            // Sovereign HAL Phase 2 (Step 1): the Android Oboe actuals —
+            // probe + lane over libstreamify_native_core.so's bracket
+            // (loaded BEFORE the wrapper install so the wrapper's Koin
+            // resolution picks the real bindings; media3 stays the
+            // delegate — the zero-deletion policy).
+            com.streamify.sovereign.player.android.di.loadAndroidSovereignModule {
+                org.koin.core.context.GlobalContext.get().get(
+                    com.streamify.sovereign.player.di.LegacyMediaPlayerHandler,
+                )
+            }
             // Sovereign HAL Phase 0 (D2): wrap the registered media3 handler
             // with the Sovereign wrapper AFTER loadAllModules() bound it
             // (installSovereignMediaPlayerHandler captures the current

@@ -53,5 +53,23 @@ kotlin {
                 implementation(libs.jna)
             }
         }
+        // Sovereign HAL Phase 2 (Step 1): the Android Oboe lane. The
+        // seam resolves against libstreamify_native_core.so (the NDK
+        // CMake umbrella — src/oboe_output_bracket.cpp) through plain
+        // System.loadLibrary; no extra Gradle dependency carries it.
+        androidMain {
+            dependencies {
+                // kotlinx-coroutines is already commonMain; the bracket
+                // seam needs nothing platform-side beyond the JDK's
+                // android.util.Log (framework).
+            }
+        }
+        // Sovereign HAL Phase 2 (Step 4): the browser lane. The bracket
+        // itself is JS (the harness + the app's web player); the lane
+        // carries only the probe + telemetry surface.
+        wasmJsMain {
+            dependencies {
+            }
+        }
     }
 }

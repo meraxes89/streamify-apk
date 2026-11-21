@@ -4241,6 +4241,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "streamify-web"
+version = "1.0.0"
+dependencies = [
+ "streamify-core",
+ "streamify-playback",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "strength_reduce"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

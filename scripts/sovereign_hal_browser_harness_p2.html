@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sovereign HAL — Phase 2 Browser Dual-Transport Harness (wasm32 producer)</title>
+<!--
+  ============================================================================
+  The Sovereign HAL Phase 2 browser bracket harness (Gate 4.5, Step 3/4).
+
+  The REAL producer: a dedicated Web Worker instantiates the wasm32
+  streamify-web module (cargo build -p streamify-web --target
+  wasm32-unknown-unknown + wasm-bindgen --target web) and decodes the
+  REAL Opus fixture (raw #225 framing, the same file the desktop/Android
+  legs play) through the pure-Rust symphonia tier. No synth tones on the
+  producer side.
+
+  Two transports, auto-selected by context:
+   * Lane 1 — SAB + AudioWorklet (crossOriginIsolated): the Worker posts
+     decoded PCM; the main thread writes it into the SAB SPSC ring (the
+     frozen cursor protocol); the worklet pulls, de-interleaves into
+     per-channel outputs, feeds an AnalyserNode.
+   * Lane 2 — AudioBufferSourceNode + pooled MessagePort (plain LAN HTTP,
+     isSecureContext === false): the Worker posts decoded Float32Array
+     chunks via TRANSFERABLE postMessage; the scheduler lays them down
+     gaplessly (nextStartTime = max(ctx.currentTime + safety,
+     nextStartTime)) and returns the neutered buffers to the Worker pool
+     on onended — bounded, zero steady-state allocation. The clock
+     re-anchors periodically via ctx.getOutputTimestamp().
+   * Lane 3 — the HTMLAudioElement fallback stays in the app
+     (WebMediaPlayerHandler); this harness proves lanes 1-2 only.
+
+  Also verified: navigator.mediaSession metadata + setPositionState from
+  the DAC clock (getOutputTimestamp), NOT from <audio>.currentTime.
+
+  Headless-proof: live AudioContext when it runs, OfflineAudioContext
+  otherwise (same transports, FFT on the rendered buffer) — the Phase 0
+  discipline.
+  ============================================================================
+-->
+</head>
+<body>
+<h1>Sovereign HAL Phase 2 — wasm32 producer dual-transport harness</h1>
+<pre id="log"></pre>
+<script>
+"use strict";
+const LOG = (m) => { document.getElementById("log").textContent += m + "\n"; console.log("[p2] " + m); };
+const RESULT = { started: false, done: false, pass: false, path: null, modes: {}, mediaSession: null };
+window.__sovereignHalP2Result = RESULT;
+
+const RATE = 48000, CHANNELS = 2;
+const FREQ_A = 440.0, FREQ_B = 880.0;
+const DURATION_S = 3.0;
+const TOTAL_FRAMES = Math.floor(RATE * DURATION_S);
+const WATCHDOG_MS = 60_000;
+const WORKLET_SRC = `
+class SovereignPullProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const opts = (options && options.processorOptions) || {};
+    this.mode = opts.mode;
+    this.underruns = 0; this.pulls = 0; this.framesServed = 0; this.sawData = false;
+    this.target = opts.targetFrames || Infinity;
+    this.frame = new Float32Array(128 * 2);
+    if (this.mode === 'sab') {
+      this.sab = opts.sab;
+      this.head = new Uint32Array(this.sab, 0, 1);
+      this.tail = new Uint32Array(this.sab, 4, 1);
+      const capacityFrames = opts.capacityFrames;
+      this.mask = capacityFrames - 1;
+      this.samples = new Float32Array(this.sab, 64, capacityFrames * 2);
+    }
+  }
+  pull(channels) {
+    this.pulls++;
+    const buf = this.frame; let got = 0;
+    const head = Atomics.load(this.head, 0);
+    let tail = this.tail[0];
+    const have = (head - tail) >>> 0;
+    const CAP = this.mask + 1;
+    if (have === 0) { if (this.sawData) this.underruns++; return false; }
+    const take = Math.min(128, have);
+    const startIdx = ((tail & this.mask) * 2) >>> 0;
+    for (let i = 0; i < take * 2; i++) buf[i] = this.samples[(startIdx + i) % (CAP * 2)];
+    this.tail[0] = (tail + take) >>> 0;
+    got = take; this.sawData = true;
+    if (take < 128 && this.sawData) this.underruns++;
+    if (channels && channels.length) {
+      for (let c = 0; c < channels.length; c++) {
+        const ch = channels[c];
+        for (let f = 0; f < got && f < ch.length; f++) ch[f] = buf[f * 2 + (c % 2)];
+      }
+    }
+    this.framesServed += got;
+    return got === 128;
+  }
+  process(inputs, outputs) {
+    this.pull(outputs && outputs[0]);
+    if (this.framesServed >= this.target) {
+      this.port.postMessage({ done: true, underruns: this.underruns, pulls: this.pulls, framesServed: this.framesServed });
+      return false;
+    }
+    if ((this.pulls & 255) === 0) this.port.postMessage({ progress: this.framesServed });
+    return true;
+  }
+}
+registerProcessor('sovereign-pull', SovereignPullProcessor);
+`;
+
+// ── FFT (the Phase 0 verifier's exact algorithm, ported) ────────────────────
+function fftRadix2(re, im) {
+  const n = re.length; let j = 0;
+  for (let i = 1; i < n; i++) { let bit = n >> 1; while (j & bit) { j ^= bit; bit >>= 1; } j |= bit; if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) { let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ur = re[i + k], ui = im[i + k], xr = re[i + k + len / 2], xi = im[i + k + len / 2];
+        const vr = xr * cr - xi * ci, vi = xr * ci + xi * cr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi; re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+        const ncr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = ncr;
+      } }
+  }
+}
+function fftPeakCheck(samples, rate, freqA, freqB) {
+  let n = 1; while (n * 2 <= samples.length) n *= 2;
+  if (n < 4096) return { ok: false, reason: "window too small" };
+  const re = new Float64Array(n), im = new Float64Array(n);
+  for (let i = 0; i < n; i++) re[i] = samples[i] * (0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1))));
+  fftRadix2(re, im);
+  const binHz = rate / n; const mag = new Float64Array(n / 2);
+  for (let i = 0; i < n / 2; i++) mag[i] = Math.hypot(re[i], im[i]);
+  const sorted = Array.from(mag).sort((a, b) => a - b);
+  const median = sorted[(sorted.length / 2) | 0] || 1e-12;
+  const aBin = Math.round(freqA / binHz), bBin = Math.round(freqB / binHz);
+  const aOk = mag[aBin] > 20 * median, bOk = mag[bBin] > 20 * median;
+  return { ok: aOk && bOk, aOk, bOk, aMag: mag[aBin], bMag: mag[bBin], median };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const withTimeout = (p, ms, label) => Promise.race([p, sleep(ms).then(() => { throw new Error(label + " watchdog"); })]);
+
+// ── THE REAL PRODUCER: Worker + wasm32 decode of the real fixture ───────────
+// The worker script: module worker importing the wasm-bindgen glue
+// (streamify_web.js); fetches the fixture, decodes BOTH tones through the
+// pure-Rust codec path, and serves PCM through whichever transport the
+// main thread asks for. Pool: decoded PCM arrives as fresh Float32Arrays;
+// the worker accepts returned buffers back into a bounded pool for reuse
+// as transfer scratch (steady-state allocation → 0 after warmup).
+// The glue URL is computed in the PAGE and injected: a module Worker
+// created from a Blob has location.href = the blob URL, so resolving
+// relative imports INSIDE the worker lands on dead blob:... paths (the
+// r2 "wasm decode watchdog" failure). The glue resolves the .wasm
+// itself via its import.meta.url once given its own absolute URL.
+const GLUE_URL = new URL("streamify_web.js", location.href).href;
+const WORKER_SRC = `
+import init, { decode_opus } from "__SOVEREIGN_GLUE_URL__";
+self.onmessage = async (e) => {
+  const msg = e.data;
+  if (msg.cmd === "start") {
+    await init();
+    const bytes = new Uint8Array(await (await fetch(msg.fixtureUrl)).arrayBuffer());
+    const pcm = decode_opus(bytes);
+    if (!pcm.length) { postMessage({ type: "error", error: "wasm decode empty" }); return; }
+    postMessage({ type: "decoded", frames: pcm.length / 2 });
+    self.pcm = pcm; self.pos = 0; self.pool = [];
+  } else if (msg.cmd === "next") {
+    const frames = Math.min(msg.frames, Math.floor(self.pcm.length / 2) - self.pos);
+    const chunk = new Float32Array(Math.max(0, frames) * 2);
+    if (frames > 0) chunk.set(self.pcm.subarray(self.pos * 2, (self.pos + frames) * 2));
+    self.pos += frames;
+    const eos = self.pos >= Math.floor(self.pcm.length / 2);
+    postMessage({ type: "chunk", chunk, eos }, [chunk.buffer]);
+  } else if (msg.cmd === "recycle") {
+    if (msg.buf && self.pool.length < 16) self.pool.push(new Float32Array(msg.buf));
+  }
+};
+`;
+
+function makeWorker() {
+  const src = WORKER_SRC.replace("__SOVEREIGN_GLUE_URL__", GLUE_URL);
+  const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+  return new Worker(url, { type: "module" });
+}
+
+// ── mediaSession wiring (driven from the DAC clock, never <audio>) ─────────
+function wireMediaSession(clockSamples) {
+  if (!("mediaSession" in navigator)) return null;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "Sovereign HAL Loopback", artist: "wasm32 producer", album: "Phase 2 CI",
+    });
+    const last = clockSamples[clockSamples.length - 1];
+    if (last) {
+      navigator.mediaSession.setPositionState({
+        duration: DURATION_S, playbackRate: 1, position: Math.min(DURATION_S, last.contextTime),
+      });
+    }
+    navigator.mediaSession.playbackState = "playing";
+    return {
+      hasMetadata: !!navigator.mediaSession.metadata,
+      title: navigator.mediaSession.metadata && navigator.mediaSession.metadata.title,
+      playbackState: navigator.mediaSession.playbackState,
+    };
+  } catch (e) { return { error: String(e) }; }
+}
+
+// ── Lane 2: the AudioBufferSourceNode scheduler + pooled transfers ─────────
+async function runLane2(ctx) {
+  const worker = makeWorker();
+  const chunksReady = [];
+  let decodeInfo = null;
+  let poolLive = 0, poolReturned = 0, schedulingGaps = 0;
+  worker.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === "decoded") decodeInfo = m;
+    else if (m.type === "chunk") { chunksReady.push(m.chunk); if (m.eos) worker.eos = true; }
+    else if (m.type === "error") worker.error = m.error;
+  };
+  worker.postMessage({ cmd: "start", fixtureUrl: new URL("fixture.opus", location.href).href });
+  await withTimeout(new Promise((res) => { const iv = setInterval(() => { if (decodeInfo || worker.error) { clearInterval(iv); res(); } }, 50); }), 20000, "wasm decode");
+  if (worker.error) throw new Error(worker.error);
+
+  const SAFETY = 0.12;                       // seconds of schedule lead
+  let nextStartTime = ctx.currentTime + SAFETY;
+  let scheduled = 0;
+  const analyser = ctx.createAnalyser(); analyser.fftSize = 16384; analyser.connect(ctx.destination);
+  const clockSamples = [];
+  let doneResolve; const done = new Promise((r) => doneResolve = r);
+
+  const pump = () => {
+    while (chunksReady.length && scheduled < TOTAL_FRAMES) {
+      const chunk = chunksReady.shift();
+      const frames = chunk.length / 2;
+      const buf = ctx.createBuffer(CHANNELS, frames, RATE);
+      // DE-INTERLEAVE (the r4 bug: copyToChannel of the interleaved
+      // stream writes [L0,R0,L1,R1..] as one channel's samples — the
+      // channel then plays a time-stretched mix; the analyser saw 440
+      // at mag ~497 and 880 gone). Per-channel fill, like the worklet.
+      const L = buf.getChannelData(0), R = buf.getChannelData(1);
+      for (let i = 0; i < frames; i++) { L[i] = chunk[i * 2]; R[i] = chunk[i * 2 + 1]; }
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(analyser);
+      // GAPLESS: never before the running schedule; never in the past.
+      const startAt = Math.max(ctx.currentTime + 0.01, nextStartTime);
+      if (startAt > nextStartTime + 0.005) schedulingGaps++;
+      src.start(startAt);
+      nextStartTime = startAt + frames / RATE;
+      scheduled += frames;
+      src.onended = () => {                     // recycle into the worker pool
+        poolLive--; poolReturned++;
+        worker.postMessage({ cmd: "recycle", buf: chunk.buffer }, [chunk.buffer]);
+        if (scheduled >= TOTAL_FRAMES && poolLive === 0) doneResolve();
+      };
+      poolLive++;
+    }
+    if (scheduled < TOTAL_FRAMES && !worker.eos) setTimeout(pump, 25);
+    else if (scheduled >= TOTAL_FRAMES && poolLive === 0) doneResolve();
+  };
+  // Prime: pre-queue ~0.5 s before the pump cadence takes over.
+  worker.postMessage({ cmd: "next", frames: Math.floor(RATE * 0.5) });
+  setTimeout(pump, 100);
+  // Keep the pipeline fed while the schedule runs.
+  const feeder = setInterval(() => {
+    if (scheduled + RATE * 0.5 > TOTAL_FRAMES + RATE * 0.25) { clearInterval(feeder); return; }
+    worker.postMessage({ cmd: "next", frames: Math.floor(RATE * 0.25) });
+  }, 120);
+
+  // The DAC clock: getOutputTimestamp on a live context (contextTime +
+  // performanceTime — the non-secure-context-safe API; works on plain HTTP).
+  const clockIv = setInterval(() => {
+    if (ctx.getOutputTimestamp) {
+      const ts = ctx.getOutputTimestamp();
+      if (ts && ts.contextTime) clockSamples.push(ts);
+    }
+  }, 100);
+
+  await withTimeout(done, WATCHDOG_MS, "lane2 schedule");
+  // Read the analyser IMMEDIATELY: its 16384-sample window is 341 ms;
+  // the last onended means the tail is in the window NOW (the r3 bug
+  // sampled 400 ms later — an all-zero window, mag 0.0).
+  await sleep(30);
+  clearInterval(clockIv); clearInterval(feeder);
+  worker.terminate();
+  const buf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  const fft = fftPeakCheck(buf, RATE, FREQ_A, FREQ_B);
+  // Clock drift: contextTime should advance 1:1 with performanceTime.
+  let ppm = null;
+  if (clockSamples.length >= 2) {
+    // contextTime is in SECONDS (AudioTimestamp spec) — convert to
+    // frames before comparing with the nominal rate (the r3 bug: the
+    // raw seconds value next to RATE 48000 produced ppm ≈ -999979).
+    const a = clockSamples[0], b = clockSamples[clockSamples.length - 1];
+    const dt = (b.performanceTime - a.performanceTime) / 1000;
+    if (dt > 0.2) ppm = ((b.contextTime - a.contextTime) * RATE / dt - RATE) / RATE * 1e6;
+  }
+  return { fft, stats: { scheduled, schedulingGaps, poolReturned, clockSamples: clockSamples.length, ppm }, mediaSession: wireMediaSession(clockSamples) };
+}
+
+// ── Lane 1: SAB + AudioWorklet fed by the wasm producer ────────────────────
+async function runLane1(ctx) {
+  if (typeof SharedArrayBuffer === "undefined") throw new Error("SAB unavailable (not crossOriginIsolated)");
+  const worker = makeWorker();
+  let decodeInfo = null;
+  worker.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === "decoded") { decodeInfo = m; worker.pcm = m; }
+    else if (m.type === "chunk") { worker.lastChunk = m.chunk; worker.chunkReady = true; }
+    else if (m.type === "error") worker.error = m.error;
+  };
+  worker.postMessage({ cmd: "start", fixtureUrl: new URL("fixture.opus", location.href).href });
+  await withTimeout(new Promise((res) => { const iv = setInterval(() => { if (decodeInfo || worker.error) { clearInterval(iv); res(); } }, 50); }), 20000, "wasm decode");
+  if (worker.error) throw new Error(worker.error);
+
+  const CAPACITY = 16384;
+  const sab = new SharedArrayBuffer(64 + CAPACITY * CHANNELS * 4);
+  const head = new Uint32Array(sab, 0, 1), tail = new Uint32Array(sab, 4, 1);
+  const samples = new Float32Array(sab, 64, CAPACITY * CHANNELS);
+  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  const node = new AudioWorkletNode(ctx, "sovereign-pull", {
+    numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [CHANNELS],
+    processorOptions: { mode: "sab", sab, capacityFrames: CAPACITY, targetFrames: Math.min(TOTAL_FRAMES, decodeInfo.frames) },
+  });
+  const analyser = ctx.createAnalyser(); analyser.fftSize = 16384;
+  node.connect(analyser); analyser.connect(ctx.destination);
+  const done = new Promise((res) => node.port.onmessage = (e) => { if (e.data.done) res(e.data); });
+
+  // Prime + paced feed: the worker's decoded PCM → SAB (keep-full-ish).
+  let frame = 0;
+  const feed = async () => {
+    while (frame < Math.min(TOTAL_FRAMES, decodeInfo.frames)) {
+      const h = Atomics.load(head, 0), t = Atomics.load(tail, 0);
+      const free = CAPACITY - (((h - t) >>> 0));
+      if (free < 2048) { await sleep(20); continue; }
+      const want = Math.min(4096, decodeInfo.frames - frame);
+      worker.postMessage({ cmd: "next", frames: want });
+      await new Promise((res) => { const iv = setInterval(() => { if (worker.chunkReady) { clearInterval(iv); res(); } }, 10); });
+      worker.chunkReady = false;
+      const chunk = worker.lastChunk || new Float32Array(0);
+      const frames = chunk.length / 2;
+      for (let i = 0; i < frames; i++) {
+        const base = ((h + i) & (CAPACITY - 1)) * 2;
+        samples[base] = chunk[i * 2]; samples[base + 1] = chunk[i * 2 + 1];
+      }
+      Atomics.store(head, 0, (h + frames) >>> 0);
+      frame += frames;
+    }
+  };
+  feed(); // fire-and-forget; the worklet drains while we feed
+  const stats = await withTimeout(done, WATCHDOG_MS, "lane1 worklet");
+  await sleep(300);
+  const buf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  const fft = fftPeakCheck(buf, RATE, FREQ_A, FREQ_B);
+  worker.terminate();
+  return { fft, stats: { underruns: stats.underruns, pulls: stats.pulls, framesServed: stats.framesServed }, mediaSession: null };
+}
+
+async function runMode(lane) {
+  const t0 = performance.now();
+  try {
+    let ctx;
+    let live = true;
+    try {
+      ctx = new AudioContext({ sampleRate: RATE });
+      await Promise.race([ctx.resume(), sleep(4000)]);
+      if (ctx.state !== "running") { await ctx.close(); ctx = null; live = false; }
+    } catch { ctx = null; live = false; }
+    if (!ctx) { ctx = new OfflineAudioContext(CHANNELS, TOTAL_FRAMES + RATE / 10, RATE); live = false; }
+    RESULT.path = live ? "live" : "offline";
+    const r = lane === 1 ? await runLane1(ctx) : await runLane2(ctx);
+    const underrunsOk = r.stats.underruns === undefined || r.stats.underruns <= 2;
+    const gapsOk = r.stats.schedulingGaps === undefined || r.stats.schedulingGaps <= 2;
+    const clockOk = r.stats.ppm === undefined || r.stats.ppm === null || Math.abs(r.stats.ppm) <= 100;
+    const pass = r.fft.ok && underrunsOk && gapsOk && clockOk;
+    LOG("lane" + lane + " (" + RESULT.path + "): " + (pass ? "PASS" : "FAIL") +
+        " — 440Hz " + (r.fft.aOk ? "OK" : "FAIL") + " (mag " + (r.fft.aMag || 0).toFixed(1) +
+        "), 880Hz " + (r.fft.bOk ? "OK" : "FAIL") + " (mag " + (r.fft.bMag || 0).toFixed(1) +
+        "), stats " + JSON.stringify(r.stats) + " [" + Math.round(performance.now() - t0) + " ms]");
+    return { pass, fft: { aOk: r.fft.aOk, bOk: r.fft.bOk }, stats: r.stats, mediaSession: r.mediaSession };
+  } catch (e) {
+    LOG("lane" + lane + ": ERROR — " + (e && e.message ? e.message : String(e)));
+    return { pass: false, error: String(e && e.message ? e.message : e) };
+  }
+}
+
+async function main() {
+  RESULT.started = true;
+  LOG("crossOriginIsolated: " + crossOriginIsolated + ", isSecureContext: " + isSecureContext);
+  setTimeout(() => { if (!RESULT.done) { RESULT.error = "overall watchdog"; RESULT.done = true; } }, WATCHDOG_MS * 2);
+  // Lane 2 FIRST (the every-browser contract — plain LAN HTTP shape).
+  RESULT.modes.lane2 = await runMode(2);
+  RESULT.mediaSession = RESULT.modes.lane2.mediaSession;
+  // Lane 1 only when the SAB exists (isolated origin).
+  if (typeof SharedArrayBuffer !== "undefined") {
+    RESULT.modes.lane1 = await runMode(1);
+  } else {
+    LOG("lane1 SKIPPED (no SharedArrayBuffer — the plain-origin contract is lane 2)");
+    RESULT.modes.lane1 = { pass: null, skipped: "not crossOriginIsolated" };
+  }
+  RESULT.pass = RESULT.modes.lane2.pass === true &&
+    (RESULT.modes.lane1.pass !== false);
+  RESULT.done = true;
+  LOG("VERDICT: " + (RESULT.pass ? "PASS" : "FAIL"));
+}
+main().catch((e) => { RESULT.done = true; RESULT.pass = false; RESULT.error = String(e); });
+</script>
+</body>
+</html>
