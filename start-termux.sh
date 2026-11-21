@@ -70,10 +70,25 @@ check_prerequisites() {
         echo -e "${C_GREEN}[✓] Dependencies installed.${C_RESET}"
     fi
 
-    if [ ! -f "${DIR}/server/public/index.html" ]; then
-        echo -e "${C_YELLOW}[!] Warning: server/public/index.html not found.${C_RESET}"
-        echo "    The API relay will run, but the Web UI may not be served."
+    # P0 Gate: Enforce WASM bundle validity before server boot
+    echo -e "${C_CYAN}[*] Verifying WebAssembly client bundle integrity...${C_RESET}"
+    if ! node -e '
+        import("./server/src/platform/bundle-gate.mjs")
+          .then(({ enforceBundleGate }) => {
+            enforceBundleGate();
+            process.exit(0);
+          })
+          .catch((err) => {
+            console.error(err.message);
+            process.exit(1);
+          });
+    '; then
+        echo -e "${C_RED}[FATAL] Web UI WASM bundle verification failed.${C_RESET}"
+        echo "    The server cannot start without a valid WebAssembly client."
+        echo "    Please verify that a valid bundle exists in server/bundles/ or server/public/."
+        exit 1
     fi
+    echo -e "${C_GREEN}[✓] WASM bundle verified and atomically mounted.${C_RESET}"
 
     # Streamify Skin (mobile YTM shell) is injected into the GENERATED
     # server/public/settings.js, which is gitignored. On a fresh checkout that
