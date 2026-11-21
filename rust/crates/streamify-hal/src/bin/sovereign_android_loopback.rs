@@ -136,9 +136,15 @@ fn decode_fixture(path: &str) -> Result<Vec<f32>, EngineError> {
 // CURRENT_RING per DSO — the r19 failure: frames_written=0 while 608
 // callbacks zero-filled). The bin therefore drives the ring through the
 // cdylib's ADDITIVE producer edge (streamify_ring_producer_install/
-// _write/_clear, also dlsym'd from libstreamify_core_rs.so): one ring,
-// one DSO, producer and consumer finally see the same slot. The bin's
-// own ring_export module is deliberately UNUSED on android.
+// _write/_clear), so producer and consumer share the cdylib's single
+// CURRENT_RING.
+//
+// r20b: TWO handles, not one. The 8 sovereign_oboe_* symbols live in
+// libstreamify_native_core.so (the C++ bracket); the producer edge lives
+// in libstreamify_core_rs.so (the Rust cdylib). The r20 build dlsym'd
+// everything against the cdylib and died on the first bracket symbol
+// (dlsym(sovereign_oboe_open) failed). Each DSO is opened with its own
+// handle and resolves only its own symbols.
 #[repr(C)]
 struct DacClockSample {
     frame: u64,
@@ -148,6 +154,7 @@ struct DacClockSample {
 
 #[allow(non_snake_case)]
 struct Bracket {
+    // ── from libstreamify_native_core.so (the C++ Oboe bracket) ──
     sovereign_oboe_open: unsafe extern "C" fn(audio_api: i32) -> i32,
     sovereign_oboe_close: unsafe extern "C" fn(),
     sovereign_oboe_callbacks: unsafe extern "C" fn() -> u64,
@@ -157,8 +164,7 @@ struct Bracket {
         unsafe extern "C" fn(frame: *mut u64, rate: *mut u32, ns: *mut u64) -> i32,
     sovereign_oboe_stats_wire: unsafe extern "C" fn(dst: *mut u8, dst_bytes: i32) -> i32,
     sovereign_oboe_api_route: unsafe extern "C" fn() -> i32,
-    // r20: the cdylib's additive producer edge (same DSO the bracket
-    // reads from — one CURRENT_RING for producer AND consumer).
+    // ── from libstreamify_core_rs.so (the Rust cdylib's producer edge) ──
     streamify_ring_producer_install:
         unsafe extern "C" fn(cap: u32, ch: u32, rate_in: u32, rate_out: u32) -> i32,
     streamify_ring_producer_write:
@@ -168,16 +174,25 @@ struct Bracket {
 
 fn load_bracket() -> Option<Bracket> {
     use std::ffi::c_void;
-    let lib = unsafe { dlopen(b"libstreamify_core_rs.so\0".as_ptr().cast(), RTLD_NOW | RTLD_LOCAL) };
-    if lib.is_null() {
-        eprintln!("dlopen(libstreamify_core_rs.so) failed: {}", unsafe {
-            std::ffi::CStr::from_ptr(dlerror()).to_string_lossy()
-        });
+    let open_lib = |name: &[u8]| unsafe {
+        let lib = dlopen(name.as_ptr().cast(), RTLD_NOW | RTLD_LOCAL);
+        if lib.is_null() {
+            eprintln!(
+                "dlopen({}) failed: {}",
+                String::from_utf8_lossy(&name[..name.len() - 1]),
+                std::ffi::CStr::from_ptr(dlerror()).to_string_lossy()
+            );
+        }
+        lib
+    };
+    let cpp = open_lib(b"libstreamify_native_core.so\0");
+    let cdylib = open_lib(b"libstreamify_core_rs.so\0");
+    if cpp.is_null() || cdylib.is_null() {
         return None;
     }
     macro_rules! sym {
-        ($name:literal) => {{
-            let ptr = unsafe { dlsym(lib, concat!($name, "\0").as_ptr().cast()) };
+        ($lib:ident, $name:literal) => {{
+            let ptr = unsafe { dlsym($lib, concat!($name, "\0").as_ptr().cast()) };
             if ptr.is_null() {
                 eprintln!("dlsym({}) failed", $name);
                 return None;
@@ -186,17 +201,17 @@ fn load_bracket() -> Option<Bracket> {
         }};
     }
     Some(Bracket {
-        sovereign_oboe_open: sym!("sovereign_oboe_open"),
-        sovereign_oboe_close: sym!("sovereign_oboe_close"),
-        sovereign_oboe_callbacks: sym!("sovereign_oboe_callbacks"),
-        sovereign_oboe_underrun_frames: sym!("sovereign_oboe_underrun_frames"),
-        sovereign_oboe_ring_occupancy: sym!("sovereign_oboe_ring_occupancy"),
-        sovereign_oboe_dac_clock: sym!("sovereign_oboe_dac_clock"),
-        sovereign_oboe_stats_wire: sym!("sovereign_oboe_stats_wire"),
-        sovereign_oboe_api_route: sym!("sovereign_oboe_api_route"),
-        streamify_ring_producer_install: sym!("streamify_ring_producer_install"),
-        streamify_ring_producer_write: sym!("streamify_ring_producer_write"),
-        streamify_ring_producer_clear: sym!("streamify_ring_producer_clear"),
+        sovereign_oboe_open: sym!(cpp, "sovereign_oboe_open"),
+        sovereign_oboe_close: sym!(cpp, "sovereign_oboe_close"),
+        sovereign_oboe_callbacks: sym!(cpp, "sovereign_oboe_callbacks"),
+        sovereign_oboe_underrun_frames: sym!(cpp, "sovereign_oboe_underrun_frames"),
+        sovereign_oboe_ring_occupancy: sym!(cpp, "sovereign_oboe_ring_occupancy"),
+        sovereign_oboe_dac_clock: sym!(cpp, "sovereign_oboe_dac_clock"),
+        sovereign_oboe_stats_wire: sym!(cpp, "sovereign_oboe_stats_wire"),
+        sovereign_oboe_api_route: sym!(cpp, "sovereign_oboe_api_route"),
+        streamify_ring_producer_install: sym!(cdylib, "streamify_ring_producer_install"),
+        streamify_ring_producer_write: sym!(cdylib, "streamify_ring_producer_write"),
+        streamify_ring_producer_clear: sym!(cdylib, "streamify_ring_producer_clear"),
     })
 }
 
@@ -455,7 +470,6 @@ fn run() -> i32 {
 }
 
 }
-
 
 #[cfg(target_os = "android")]
 fn main() {
