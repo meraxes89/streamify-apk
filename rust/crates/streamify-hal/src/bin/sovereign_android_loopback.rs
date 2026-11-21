@@ -116,7 +116,17 @@ fn decode_fixture(path: &str) -> Result<Vec<f32>, EngineError> {
     Ok(out.as_slice().to_vec())
 }
 
-// ── The C++ bracket's C ABI (oboe_output_bracket.cpp) ───────────────────────
+// ── The C++ bracket's C ABI (oboe_output_bracket.cpp), resolved at RUNTIME ──
+//
+// r15: the player links NOTHING against libstreamify_native_core.so. Every
+// route through the wrappers failed CI (r11 RUSTFLAGS silently dropped by
+// cargo-ndk; r12 `--` passthrough rejected by its clap; r13/r14
+// build.rs `cargo:rustc-link-lib` fired but never reached the link line
+// under cargo-ndk). The bracket itself already resolves the Rust edge the
+// same way (dlopen + dlsym — the jni_bridge_audio_sinks discipline), so the
+// player mirrors it: dlopen("libstreamify_native_core.so") with
+// LD_LIBRARY_PATH pointing at the guest dir, dlsym the 8 exports once.
+// Zero link-time coupling = the CI build order stops mattering entirely.
 #[repr(C)]
 struct DacClockSample {
     frame: u64,
@@ -124,16 +134,60 @@ struct DacClockSample {
     monotonic_ns: u64,
 }
 
-extern "C" {
-    fn sovereign_oboe_open(audio_api: i32) -> i32;
-    fn sovereign_oboe_close();
-    fn sovereign_oboe_callbacks() -> u64;
-    fn sovereign_oboe_underrun_frames() -> u64;
-    fn sovereign_oboe_ring_occupancy() -> u64;
-    fn sovereign_oboe_dac_clock(frame: *mut u64, rate: *mut u32, ns: *mut u64) -> i32;
-    fn sovereign_oboe_stats_wire(dst: *mut u8, dst_bytes: i32) -> i32;
-    fn sovereign_oboe_api_route() -> i32;
+#[allow(non_snake_case)]
+struct Bracket {
+    sovereign_oboe_open: unsafe extern "C" fn(audio_api: i32) -> i32,
+    sovereign_oboe_close: unsafe extern "C" fn(),
+    sovereign_oboe_callbacks: unsafe extern "C" fn() -> u64,
+    sovereign_oboe_underrun_frames: unsafe extern "C" fn() -> u64,
+    sovereign_oboe_ring_occupancy: unsafe extern "C" fn() -> u64,
+    sovereign_oboe_dac_clock:
+        unsafe extern "C" fn(frame: *mut u64, rate: *mut u32, ns: *mut u64) -> i32,
+    sovereign_oboe_stats_wire: unsafe extern "C" fn(dst: *mut u8, dst_bytes: i32) -> i32,
+    sovereign_oboe_api_route: unsafe extern "C" fn() -> i32,
 }
+
+fn load_bracket() -> Option<Bracket> {
+    use std::ffi::c_void;
+    let lib = unsafe { dlopen(b"libstreamify_native_core.so\0".as_ptr().cast(), RTLD_NOW | RTLD_LOCAL) };
+    if lib.is_null() {
+        eprintln!("dlopen(libstreamify_native_core.so) failed: {}", unsafe {
+            std::ffi::CStr::from_ptr(dlerror()).to_string_lossy()
+        });
+        return None;
+    }
+    macro_rules! sym {
+        ($name:literal) => {{
+            let ptr = unsafe { dlsym(lib, concat!($name, "\0").as_ptr().cast()) };
+            if ptr.is_null() {
+                eprintln!("dlsym({}) failed", $name);
+                return None;
+            }
+            unsafe { std::mem::transmute::<*mut c_void, _>(ptr) }
+        }};
+    }
+    Some(Bracket {
+        sovereign_oboe_open: sym!("sovereign_oboe_open"),
+        sovereign_oboe_close: sym!("sovereign_oboe_close"),
+        sovereign_oboe_callbacks: sym!("sovereign_oboe_callbacks"),
+        sovereign_oboe_underrun_frames: sym!("sovereign_oboe_underrun_frames"),
+        sovereign_oboe_ring_occupancy: sym!("sovereign_oboe_ring_occupancy"),
+        sovereign_oboe_dac_clock: sym!("sovereign_oboe_dac_clock"),
+        sovereign_oboe_stats_wire: sym!("sovereign_oboe_stats_wire"),
+        sovereign_oboe_api_route: sym!("sovereign_oboe_api_route"),
+    })
+}
+
+extern "C" {
+    fn dlopen(filename: *const i8, flags: i32) -> *mut c_void_alias;
+    fn dlsym(handle: *mut c_void_alias, symbol: *const i8) -> *mut c_void_alias;
+    fn dlerror() -> *const i8;
+}
+// bionic's dlopen returns void*; spell the alias to keep the extern block honest.
+#[allow(non_camel_case_types)]
+type c_void_alias = std::ffi::c_void;
+const RTLD_NOW: i32 = 2;
+const RTLD_LOCAL: i32 = 0;
 
 /// One (frame_position, monotonic_ns) pair from the bracket's clock
 /// mailbox — the `record_dac_clock` sample shape (DacPresentationClock
@@ -253,8 +307,17 @@ fn run() -> i32 {
         }
     });
     // 4. Open the Oboe bracket (the ladder: AAudio first, OpenSL on
-    //    explicit request — the caller walks the rungs).
-    let open = unsafe { sovereign_oboe_open(args.api as i32) };
+    //    explicit request — the caller walks the rungs). The bracket
+    //    resolves at RUNTIME (r15: dlopen + dlsym — no link-time
+    //    coupling; the guest's LD_LIBRARY_PATH carries both .so files).
+    let Some(b) = load_bracket() else {
+        eprintln!("oboe bracket library not loadable (dlopen/dlsym failed)");
+        if args.json {
+            println!("{{\"verdict\": \"no-endpoint\", \"reason\": \"bracket .so not loadable\"}}");
+        }
+        return 3;
+    };
+    let open = unsafe { (b.sovereign_oboe_open)(args.api as i32) };
     if open != 0 {
         eprintln!("oboe bracket open failed (code {open})");
         if args.json {
@@ -262,7 +325,7 @@ fn run() -> i32 {
         }
         return 3;
     }
-    let route = unsafe { sovereign_oboe_api_route() };
+    let route = unsafe { (b.sovereign_oboe_api_route)() };
     eprintln!(
         "oboe bracket open: route={}",
         match route {
@@ -283,7 +346,7 @@ fn run() -> i32 {
         let mut frame = 0u64;
         let mut rate = 0u32;
         let mut ns = 0u64;
-        if unsafe { sovereign_oboe_dac_clock(&mut frame, &mut rate, &mut ns) } == 1
+        if unsafe { (b.sovereign_oboe_dac_clock)(&mut frame, &mut rate, &mut ns) } == 1
             && frame != last_frame
         {
             last_frame = frame;
@@ -297,11 +360,11 @@ fn run() -> i32 {
     // 6. Tear down + collect the verdict inputs.
     done.store(true, Ordering::Relaxed);
     let _ = producer.join();
-    let callbacks = unsafe { sovereign_oboe_callbacks() };
-    let underrun_frames = unsafe { sovereign_oboe_underrun_frames() };
+    let callbacks = unsafe { (b.sovereign_oboe_callbacks)() };
+    let underrun_frames = unsafe { (b.sovereign_oboe_underrun_frames)() };
     let mut wire = [0u8; 96];
-    let wire_ok = unsafe { sovereign_oboe_stats_wire(wire.as_mut_ptr(), 96) } == 1;
-    unsafe { sovereign_oboe_close() };
+    let wire_ok = unsafe { (b.sovereign_oboe_stats_wire)(wire.as_mut_ptr(), 96) } == 1;
+    unsafe { (b.sovereign_oboe_close)() };
     ring_export::clear();
     // The 96-byte wire: magic u32 LE at offset 0 (0x51AB0001) +
     // frames_written u64 LE at 32 + frames_read u64 LE at 40 +

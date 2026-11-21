@@ -639,13 +639,13 @@ jobs:
           # CMake step now runs before this one); link against it and
           # record the needed soname.
           cd rust
-          # r13: the bracket link now rides the hal crate's build.rs
-          # (cargo:rustc-link-lib/-search emitted when
-          # SOVEREIGN_BRACKET_LIB_DIR is set) — immune to cargo-ndk's
-          # arg parsing (r11: RUSTFLAGS silently dropped; r12: the `--`
-          # passthrough rejected by clap). The cdylib build leaves the
-          # env unset — only the player bin links the bracket.
-          SOVEREIGN_BRACKET_LIB_DIR=/tmp/sovereign-native-out \
+          # r15: the player resolves the bracket at RUNTIME (dlopen +
+          # dlsym inside the bin — the same discipline the bracket uses
+          # for the Rust edge). NO link-time coupling survives: every
+          # wrapper route failed CI (r11 RUSTFLAGS dropped, r12 `--`
+          # rejected by clap, r13/r14 build.rs link-lib fired but never
+          # reached the link line under cargo-ndk). The guest's
+          # LD_LIBRARY_PATH carries both .so files at run time.
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
             build --release --bin sovereign_android_loopback -p streamify-hal
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
