@@ -220,14 +220,49 @@ export class PacedStreamTransform extends Transform {
 }
 
 /**
- * StreamPacer provides gateway integration helper
+ * StreamPacer provides gateway integration helper with media-aware pacing bypass
+ * (comm11.md Pillar D: Audio exempt from pacing; pacing reserved for bulk/video over Wi-Fi/cellular).
  */
 export class StreamPacer {
-  constructor({ wheel = new PacingWheel() } = {}) {
+  constructor({ wheel = new PacingWheel(), defaultPolicy = 'standard' } = {}) {
     this.wheel = wheel;
+    this.defaultPolicy = defaultPolicy;
   }
 
-  pace(readableStream, { bitrateBps = 160_000, signal } = {}) {
+  /**
+   * Determine whether pacing is required based on media class and bulk payload flag.
+   * @param {object} options
+   * @param {string} [options.media] - 'wired' | 'wifi' | 'cellular' | 'loopback'
+   * @param {boolean} [options.isBulk=false] - True for video/downloads; false for audio streams
+   * @param {string} [options.pacingPolicy] - 'off' | 'standard' | 'aggressive'
+   * @param {boolean} [options.forcePacing] - Explicit override
+   * @returns {boolean}
+   */
+  shouldPace({ media, isBulk = false, pacingPolicy, forcePacing } = {}) {
+    if (forcePacing) return true;
+    const policy = pacingPolicy || this.defaultPolicy;
+    if (policy === 'off') return false;
+    if (media === 'loopback' || media === 'wired') return false;
+
+    // Per comm11.md Section 0 item 6:
+    // Pacing is overkill for audio (~16-20 KB/s); reserve for bulk/video on Wi-Fi/cellular.
+    if (isBulk !== undefined && !isBulk) return false;
+
+    return true;
+  }
+
+  /**
+   * Conditionally apply bitrate pacing.
+   * Bypasses transform when pacing is unnecessary (line-rate zero-delay pass-through).
+   * @param {import('node:stream').Readable} readableStream
+   * @param {object} [options]
+   */
+  pace(readableStream, { bitrateBps = 160_000, signal, media, isBulk, pacingPolicy, forcePacing = true } = {}) {
+    // Default forcePacing=true preserves exact behavior for existing streaming endpoints unless opt-out is passed
+    if (!this.shouldPace({ media, isBulk, pacingPolicy, forcePacing })) {
+      return readableStream;
+    }
+
     const transform = new PacedStreamTransform({
       wheel: this.wheel,
       bitrateBps,

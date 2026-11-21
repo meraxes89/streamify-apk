@@ -67,6 +67,12 @@ import { StreamSemaphore } from './lib/semaphore.js';
 import { RoomManager } from './slices/room/broadcaster.js';
 import { roomRoutes } from './slices/room/routes.js';
 import { authPlugin } from './slices/auth/routes.js';
+import { ProcessSurvival } from './platform/survival.js';
+import { getDefaultBufferPool } from './lib/buffer-pool.js';
+import { configureGlobalUpstreamPool, getUpstreamPoolStatus, closeUpstreamPool } from './platform/upstream-pool.js';
+import { pageCache } from './platform/page-cache.js';
+import { pal } from './platform/pal/index.js';
+import { TierGovernor, getTierConfig } from './platform/tier/index.js';
 
 export async function createApp({
   profile = resolveProfile(),
@@ -91,8 +97,26 @@ export async function createApp({
     liveSemaphore: streamSemaphore,
     eventLoopLagMonitor,
   }),
+  processSurvival = new ProcessSurvival(),
+  bufferPool = getDefaultBufferPool(),
+  palInstance = pal,
+  tierGovernor,
   logger = false,
 } = {}) {
+  // L0 Survival Shell initialization (wake lock + oom_score_adj tuning)
+  processSurvival.init();
+
+  // Elastic Tier Governor (comm11.md Stage 3)
+  const governor = tierGovernor || new TierGovernor({
+    pal: palInstance,
+    tierConfig: getTierConfig(),
+    bufferPool,
+  });
+  governor.start();
+
+  // L3 Warm Upstream Connection Pool & DNS Pinning (comm10.1.md Frontier 3)
+  configureGlobalUpstreamPool();
+
   const app = Fastify({
     logger,
     exposeHeadRoutes: false,
@@ -143,6 +167,13 @@ export async function createApp({
       searchTelemetry: catalogService.client?.latestSearchTelemetry || null,
       clientHealth: streamResolver.healthManager?.getTelemetry() || {},
       watchdogThrottles: streamGateway.watchdog?.totalThrottlesDetected || 0,
+      survival: processSurvival.getStatus(),
+      allocationPool: bufferPool.getStatus(),
+      upstreamPool: getUpstreamPoolStatus(),
+      pageCache: pageCache.getStatus(),
+      sabr: streamGateway.sabrEngine?.getStatus() || {},
+      tier: governor.getStatus(),
+      pal: palInstance.capabilities,
     };
   });
 
@@ -169,12 +200,25 @@ export async function createApp({
         'sqlite-store',
         'worker-cipher',
         'attest-pot',
+        'survival-shell',
+        'allocation-governance',
+        'warm-upstream-pool',
+        'page-cache-hygiene',
+        'sabr-stream',
+        'platform-abstraction-layer',
+        'elastic-tier-governor',
+        'universal-bootstrap',
       ],
     };
   });
 
   app.addHook('onClose', async () => {
+    governor?.stop?.();
     streamResolver?.close?.();
+    processSurvival?.releaseLock?.();
+    streamGateway.sabrEngine?.close?.();
+    await palInstance.lifecycle.triggerShutdown();
+    await closeUpstreamPool();
   });
 
   // Room broadcast slice

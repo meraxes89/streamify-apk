@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { pageCache } from '../../platform/page-cache.js';
 
 export const BLOCK_SIZE = 256 * 1024; // 256 KiB
 export const BLOCK_SHIFT = 18;
@@ -163,11 +164,14 @@ export class TrackEntry {
   async getHandle() {
     this.lastAccessed = Date.now();
     if (!this.fileHandlePromise) {
-      this.fileHandlePromise = fs.promises.open(
-        this.datPath,
-        fs.constants.O_RDWR | fs.constants.O_CREAT,
-        0o666
-      );
+      this.fileHandlePromise = fs.promises
+        .open(this.datPath, fs.constants.O_RDWR | fs.constants.O_CREAT, 0o666)
+        .then((fh) => {
+          if (typeof fh?.fd === 'number') {
+            pageCache.adviseSequential(fh.fd);
+          }
+          return fh;
+        });
     }
     return this.fileHandlePromise;
   }
@@ -338,6 +342,9 @@ export class TrackEntry {
       try {
         const fh = await this.fileHandlePromise;
         this.fileHandlePromise = null;
+        if (typeof fh?.fd === 'number') {
+          pageCache.adviseDontNeed(fh.fd, 0, this.totalLength || 0, true);
+        }
         await fh.close();
       } catch {}
     }
@@ -570,6 +577,12 @@ export class SparseBlockCache {
   async warmBlock(desc, blockIdx = 0, signal) {
     const entry = this.getEntry(desc);
     if (entry.blockState[blockIdx] === BLOCK_PRESENT) {
+      // L2 Page-Cache: pre-fault block into RAM asynchronously
+      entry.getHandle().then((fh) => {
+        if (typeof fh?.fd === 'number') {
+          pageCache.adviseWillNeed(fh.fd, blockIdx * BLOCK_SIZE, BLOCK_SIZE);
+        }
+      }).catch(() => {});
       return { status: 'already_cached', bytesWarmed: BLOCK_SIZE };
     }
 
