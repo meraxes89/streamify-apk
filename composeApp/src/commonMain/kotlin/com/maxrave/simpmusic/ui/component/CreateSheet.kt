@@ -79,7 +79,7 @@ import simpmusic.composeapp.generated.resources.search
 import simpmusic.composeapp.generated.resources.settings
 
 /**
- * Unified Header Actions: Milled-Glass Control Island [ 🔍 | ＋ | ⚙️ ]
+ * Unified Header Actions: Milled-Glass Control Island [ Search | Create | Settings ]
  *
  * Encapsulates Search, Create, and Settings into a unified, zero-CPU hardware-accelerated
  * glass capsule with distinct touch sectors and subtle hairline dividers.
