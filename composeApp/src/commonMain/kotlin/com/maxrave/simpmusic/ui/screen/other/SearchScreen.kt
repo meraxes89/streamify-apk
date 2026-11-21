@@ -324,6 +324,7 @@ fun SearchScreen(
             isExpanded = true
         }
         if (searchText.isNotEmpty() && isFocused) {
+            delay(150L)
             searchViewModel.suggestQuery(searchText)
         }
     }
@@ -460,7 +461,7 @@ fun SearchScreen(
                         state = suggestionsState,
                         contentPadding = PaddingValues(top = searchBarHeight, bottom = 10.dp),
                     ) {
-                        items(searchScreenState.suggestYTItems) { item ->
+                        items(searchScreenState.suggestYTItems, key = { it.stableKey() }) { item ->
                             SuggestItemRow(
                                 searchResult = item,
                                 onItemClick = { item ->
@@ -509,7 +510,7 @@ fun SearchScreen(
                                 },
                             )
                         }
-                        items(searchScreenState.suggestQueries) { suggestion ->
+                        items(searchScreenState.suggestQueries, key = { "query_$it" }) { suggestion ->
                             Row(
                                 modifier =
                                     Modifier
@@ -669,7 +670,7 @@ fun SearchScreen(
                                     }
                                 }
                             }
-                            items(searchHistory) { historyItem ->
+                            items(searchHistory, key = { "history_$it" }) { historyItem ->
                                 Row(
                                     modifier =
                                         Modifier
@@ -985,7 +986,7 @@ fun SearchScreen(
                                                             state = resultsGridState,
                                                             modifier = Modifier.fillMaxSize(),
                                                         ) {
-                                                            items(currentResults) { result ->
+                                                            items(currentResults, key = { it.stableKey() }) { result ->
                                                                 Box(modifier = Modifier.animateItem()) {
                                                                     when (result) {
                                                                         is AlbumsResult -> {
@@ -1123,19 +1124,20 @@ fun SearchScreen(
                                                                 }
                                                             }
 
-                                                            items(remainingResults) { result ->
+                                                            items(remainingResults, key = { it.stableKey() }) { result ->
                                                                 Box(modifier = Modifier.animateItem()) {
                                                                     when (result) {
                                                                         is SongsResult -> {
+                                                                            val track = remember(result) { result.toTrack() }
                                                                             SongFullWidthItems(
-                                                                                track = result.toTrack(),
+                                                                                track = track,
                                                                                 isPlaying = result.videoId == currentVideoId,
                                                                                 modifier = Modifier,
                                                                                 onMoreClickListener = {
-                                                                                    onMoreClick(result.toTrack().toSongEntity())
+                                                                                    onMoreClick(track.toSongEntity())
                                                                                 },
                                                                                 onClickListener = {
-                                                                                    val firstTrack = result.toTrack()
+                                                                                    val firstTrack = track
                                                                                     searchViewModel.setLastPlayedSearchTrack(firstTrack)
                                                                                     searchViewModel.insertSearchHistory(firstTrack.title)
                                                                                     if (searchText.isNotBlank() && searchText.trim() != firstTrack.title) {
@@ -1160,7 +1162,7 @@ fun SearchScreen(
                                                                                 },
                                                                                 onAddToQueue = {
                                                                                     sharedViewModel.addListToQueue(
-                                                                                        arrayListOf(result.toTrack()),
+                                                                                        arrayListOf(track),
                                                                                     )
                                                                                 },
                                                                                 selectionMode = selectionState.isActive,
@@ -1169,22 +1171,23 @@ fun SearchScreen(
                                                                                     if (selectionState.isActive) {
                                                                                         { selectionState.toggle(it) }
                                                                                     } else {
-                                                                                        { onMoreClick(result.toTrack().toSongEntity()) }
+                                                                                        { onMoreClick(track.toSongEntity()) }
                                                                                     },
                                                                                 onSelectToggle = { selectionState.toggle(it) },
                                                                             )
                                                                         }
 
                                                                         is VideosResult -> {
+                                                                            val track = remember(result) { result.toTrack() }
                                                                             SongFullWidthItems(
-                                                                                track = result.toTrack(),
+                                                                                track = track,
                                                                                 isPlaying = result.videoId == currentVideoId,
                                                                                 modifier = Modifier,
                                                                                 onMoreClickListener = {
-                                                                                    onMoreClick(result.toTrack().toSongEntity())
+                                                                                    onMoreClick(track.toSongEntity())
                                                                                 },
                                                                                 onClickListener = {
-                                                                                    val firstTrack = result.toTrack()
+                                                                                    val firstTrack = track
                                                                                     searchViewModel.setLastPlayedSearchTrack(firstTrack)
                                                                                     searchViewModel.insertSearchHistory(firstTrack.title)
                                                                                     if (searchText.isNotBlank() && searchText.trim() != firstTrack.title) {
@@ -1209,7 +1212,7 @@ fun SearchScreen(
                                                                                 },
                                                                                 onAddToQueue = {
                                                                                     sharedViewModel.addListToQueue(
-                                                                                        arrayListOf(result.toTrack()),
+                                                                                        arrayListOf(track),
                                                                                     )
                                                                                 },
                                                                                 selectionMode = selectionState.isActive,
@@ -1218,7 +1221,7 @@ fun SearchScreen(
                                                                                     if (selectionState.isActive) {
                                                                                         { selectionState.toggle(it) }
                                                                                     } else {
-                                                                                        { onMoreClick(result.toTrack().toSongEntity()) }
+                                                                                        { onMoreClick(track.toSongEntity()) }
                                                                                     },
                                                                                 onSelectToggle = { selectionState.toggle(it) },
                                                                             )
@@ -1572,31 +1575,45 @@ fun SuggestItemRow(
                 .padding(vertical = 8.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val context = LocalPlatformContext.current
         val url =
-            when (searchResult) {
-                is SongsResult -> {
-                    searchResult.thumbnails?.lastOrNull()?.url
-                }
+            remember(searchResult) {
+                when (searchResult) {
+                    is SongsResult -> {
+                        searchResult.thumbnails?.lastOrNull()?.url
+                    }
 
-                is AlbumsResult -> {
-                    searchResult.thumbnails.lastOrNull()?.url
-                }
+                    is AlbumsResult -> {
+                        searchResult.thumbnails.lastOrNull()?.url
+                    }
 
-                is ArtistsResult -> {
-                    searchResult.thumbnails.lastOrNull()?.url
-                }
+                    is ArtistsResult -> {
+                        searchResult.thumbnails.lastOrNull()?.url
+                    }
 
-                is PlaylistsResult -> {
-                    searchResult.thumbnails.lastOrNull()?.url
-                }
+                    is PlaylistsResult -> {
+                        searchResult.thumbnails.lastOrNull()?.url
+                    }
 
-                is VideosResult -> {
-                    searchResult.thumbnails?.lastOrNull()?.url
-                }
+                    is VideosResult -> {
+                        searchResult.thumbnails?.lastOrNull()?.url
+                    }
 
-                else -> {
-                    null
+                    else -> {
+                        null
+                    }
                 }
+            }
+
+        val imageRequest =
+            remember(url, context) {
+                ImageRequest
+                    .Builder(context)
+                    .data(url)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .diskCacheKey(url)
+                    .crossfade(true)
+                    .build()
             }
 
         Box(
@@ -1606,14 +1623,7 @@ fun SuggestItemRow(
                     .clip(RoundedCornerShape(4.dp)),
         ) {
             AsyncImage(
-                model =
-                    ImageRequest
-                        .Builder(LocalPlatformContext.current)
-                        .data(url)
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .diskCacheKey(url)
-                        .crossfade(true)
-                        .build(),
+                model = imageRequest,
                 placeholder = rememberHolderPainter(),
                 error = rememberHolderPainter(),
                 contentDescription = null,
@@ -1669,15 +1679,18 @@ fun SuggestItemRow(
             )
             Spacer(modifier = Modifier.height(2.dp))
 
+            val artistsString = stringResource(Res.string.artists)
             val subtitle =
-                when (searchResult) {
-                    is SongsResult -> searchResult.artists?.map { it.name }?.connectArtists()
-                    is AlbumsResult -> searchResult.artists.map { it.name }.connectArtists()
-                    is PlaylistsResult -> searchResult.author.ifEmpty { "YouTube Music" }
-                    is ArtistsResult -> stringResource(Res.string.artists)
-                    is VideosResult -> searchResult.artists?.map { it.name }?.connectArtists()
-                    else -> null
-                } ?: "Unknown"
+                remember(searchResult, artistsString) {
+                    when (searchResult) {
+                        is SongsResult -> searchResult.artists?.map { it.name }?.connectArtists()
+                        is AlbumsResult -> searchResult.artists.map { it.name }.connectArtists()
+                        is PlaylistsResult -> searchResult.author.ifEmpty { "YouTube Music" }
+                        is ArtistsResult -> artistsString
+                        is VideosResult -> searchResult.artists?.map { it.name }?.connectArtists()
+                        else -> null
+                    } ?: "Unknown"
+                }
 
             if (subtitle.isNotEmpty()) {
                 Text(
@@ -1819,6 +1832,15 @@ fun TopResultHeroCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                val context = LocalPlatformContext.current
+                val imageRequest = remember(thumb, context) {
+                    ImageRequest.Builder(context)
+                        .data(thumb)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .diskCacheKey(thumb)
+                        .crossfade(true)
+                        .build()
+                }
                 // Hero Image / Avatar
                 Box(
                     modifier = Modifier
@@ -1827,12 +1849,7 @@ fun TopResultHeroCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalPlatformContext.current)
-                            .data(thumb)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .diskCacheKey(thumb)
-                            .crossfade(true)
-                            .build(),
+                        model = imageRequest,
                         placeholder = rememberHolderPainter(),
                         error = rememberHolderPainter(),
                         contentDescription = title,
@@ -1918,6 +1935,15 @@ fun SearchAlbumGridCard(
             .padding(4.dp),
     ) {
         val thumb = album.thumbnails.lastOrNull()?.url
+        val context = LocalPlatformContext.current
+        val imageRequest = remember(thumb, context) {
+            ImageRequest.Builder(context)
+                .data(thumb)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .diskCacheKey(thumb)
+                .crossfade(true)
+                .build()
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1925,12 +1951,7 @@ fun SearchAlbumGridCard(
                 .clip(RoundedCornerShape(12.dp)),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(thumb)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCacheKey(thumb)
-                    .crossfade(true)
-                    .build(),
+                model = imageRequest,
                 placeholder = rememberHolderPainter(),
                 error = rememberHolderPainter(),
                 contentDescription = album.title,
@@ -1979,6 +2000,15 @@ fun SearchArtistGridCard(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val thumb = artist.thumbnails.lastOrNull()?.url
+        val context = LocalPlatformContext.current
+        val imageRequest = remember(thumb, context) {
+            ImageRequest.Builder(context)
+                .data(thumb)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .diskCacheKey(thumb)
+                .crossfade(true)
+                .build()
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.88f)
@@ -1986,12 +2016,7 @@ fun SearchArtistGridCard(
                 .clip(CircleShape),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(thumb)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCacheKey(thumb)
-                    .crossfade(true)
-                    .build(),
+                model = imageRequest,
                 placeholder = rememberHolderPainter(),
                 error = rememberHolderPainter(),
                 contentDescription = artist.artist,
@@ -2037,6 +2062,15 @@ fun SearchPlaylistGridCard(
             .padding(4.dp),
     ) {
         val thumb = playlist.thumbnails.lastOrNull()?.url
+        val context = LocalPlatformContext.current
+        val imageRequest = remember(thumb, context) {
+            ImageRequest.Builder(context)
+                .data(thumb)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .diskCacheKey(thumb)
+                .crossfade(true)
+                .build()
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2044,12 +2078,7 @@ fun SearchPlaylistGridCard(
                 .clip(RoundedCornerShape(12.dp)),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(thumb)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCacheKey(thumb)
-                    .crossfade(true)
-                    .build(),
+                model = imageRequest,
                 placeholder = rememberHolderPainter(),
                 error = rememberHolderPainter(),
                 contentDescription = playlist.title,
@@ -2076,4 +2105,13 @@ fun SearchPlaylistGridCard(
             )
         }
     }
+}
+
+private fun SearchResultType.stableKey(): String = when (this) {
+    is SongsResult -> "song_${videoId}"
+    is VideosResult -> "video_${videoId}"
+    is AlbumsResult -> "album_${browseId}"
+    is ArtistsResult -> "artist_${browseId}"
+    is PlaylistsResult -> "playlist_${browseId}"
+    else -> "${this::class.simpleName}_${hashCode()}"
 }

@@ -927,7 +927,7 @@ fun HomeScreen(
                             }
                         }
                         if (homeListState == ListState.PAGINATION_EXHAUST) {
-                            items(newRelease, key = { it.hashCode() }) {
+                            items(newRelease, key = { it.title.ifEmpty { "new_release_${it.hashCode()}" } }) {
                                 AnimatedVisibility(
                                     visible = newRelease.isNotEmpty(),
                                 ) {
@@ -1590,7 +1590,7 @@ fun ChartData(
             ) {
                 items(item.playlists.size, key = { index ->
                     val data = item.playlists[index]
-                    data.id + data.title + index
+                    data.id.ifEmpty { "${data.title}_$index" }
                 }) {
                     HomeItemContentPlaylist(
                         onClick = {
@@ -1624,7 +1624,7 @@ fun ChartData(
         ) {
             items(chart.artists.itemArtists.size, key = { index ->
                 val item = chart.artists.itemArtists[index]
-                item.title + item.browseId + index
+                item.browseId.ifEmpty { "${item.title}_$index" }
             }) {
                 val data = chart.artists.itemArtists[it]
                 ItemArtistChart(
@@ -1666,7 +1666,7 @@ fun ChartData(
                 state = podcastGridState,
                 flingBehavior = podcastFlingBehavior,
             ) {
-                items(podcasts.shows.size, key = { index -> podcasts.shows[index].browseId + index }) {
+                items(podcasts.shows.size, key = { index -> podcasts.shows[index].browseId.ifEmpty { "podcast_$index" } }) {
                     val data = podcasts.shows[it]
                     ItemArtistChart(
                         onClick = { navController.navigate(PodcastDestination(podcastId = data.browseId)) },
