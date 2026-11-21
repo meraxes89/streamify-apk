@@ -648,8 +648,20 @@ jobs:
           # LD_LIBRARY_PATH carries both .so files at run time.
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
             build --release --bin sovereign_android_loopback -p streamify-hal
-          cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
-            build --release -p streamify-ffi
+          # r16: the cdylib via PLAIN cargo — cargo-ndk 4.x refuses a
+          # lib-only invocation ("No usable artifacts ... set the
+          # crate-type to cdylib" — r15) even though streamify-ffi is
+          # [cdylib, rlib, staticlib]. The NDK toolchain is fully wired
+          # by then (AR/linker env from the first invocation's profile);
+          # spell the target + linker explicitly and copy the .so out.
+          export TARGET=x86_64-linux-android
+          export AR_x86_64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          export CC_x86_64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang"
+          cargo build --release --target x86_64-linux-android -p streamify-ffi
+          mkdir -p /tmp/sovereign-guest/x86_64-linux-android
+          cp target/x86_64-linux-android/release/libstreamify_core_rs.so \
+             /tmp/sovereign-guest/x86_64-linux-android/
           cd ..
           # HARD artifact checks — a silent miss fails the leg here,
           # not 10 minutes later inside the emulator step.
