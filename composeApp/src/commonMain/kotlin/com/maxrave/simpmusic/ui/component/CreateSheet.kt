@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -77,12 +79,10 @@ import simpmusic.composeapp.generated.resources.search
 import simpmusic.composeapp.generated.resources.settings
 
 /**
- * The top-bar "+" (Spotify's Create): a local playlist or a Listen Together room.
+ * Unified Header Actions: Milled-Glass Control Island [ 🔍 | ＋ | ⚙️ ]
  *
- * With liquid glass on it is a glass pill, shared with Settings when [onSettings] is given, like the
- * like/search/more pill on the playlist screens; [backdrop] must be a sibling of this, never an
- * ancestor. With glass off the "+" gets a grey fill and a border so it reads as the special one, and
- * Settings stays a plain icon.
+ * Encapsulates Search, Create, and Settings into a unified, zero-CPU hardware-accelerated
+ * glass capsule with distinct touch sectors and subtle hairline dividers.
  */
 @Composable
 fun CreateActions(
@@ -96,44 +96,80 @@ fun CreateActions(
     var showPlaylistName by remember { mutableStateOf(false) }
     val tint = MaterialTheme.colorScheme.onBackground
 
-    val createButton: @Composable () -> Unit = {
-        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-            if (LocalLiquidGlassEnabled.current) {
-                IconButton(onClick = { showCreate = true }) {
-                    Icon(SimpIcons.Add, contentDescription = stringResource(Res.string.create), tint = tint)
-                }
-            } else {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                            .clickable { showCreate = true },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(SimpIcons.Add, contentDescription = stringResource(Res.string.create), tint = tint)
-                }
-            }
-            // Listen Together moved into the sheet, so its live-room dot moved onto this button.
-            if (room.inRoom) LiveRoomDot()
-        }
-    }
     val searchButton: @Composable () -> Unit = {
         IconButton(
             onClick = {
                 navController.navigate(SearchDestination) { launchSingleTop = true }
             },
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(38.dp),
         ) {
-            Icon(SimpIcons.Search, contentDescription = stringResource(Res.string.search), tint = tint)
+            Icon(
+                SimpIcons.Search,
+                contentDescription = stringResource(Res.string.search),
+                tint = tint,
+                modifier = Modifier.size(19.dp),
+            )
         }
     }
+
+    val createButton: @Composable () -> Unit = {
+        Box(
+            modifier = Modifier.size(38.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            IconButton(
+                onClick = { showCreate = true },
+                modifier = Modifier.size(38.dp),
+            ) {
+                Icon(
+                    SimpIcons.Add,
+                    contentDescription = stringResource(Res.string.create),
+                    tint = tint,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            // Listen Together active live-room indicator
+            if (room.inRoom) LiveRoomDot()
+        }
+    }
+
     val settingsButton: @Composable () -> Unit = {
         if (onSettings != null) {
-            IconButton(onClick = onSettings, modifier = Modifier.size(44.dp)) {
-                Icon(SimpIcons.Settings, contentDescription = stringResource(Res.string.settings), tint = tint)
+            IconButton(
+                onClick = onSettings,
+                modifier = Modifier.size(38.dp),
+            ) {
+                Icon(
+                    SimpIcons.Settings,
+                    contentDescription = stringResource(Res.string.settings),
+                    tint = tint,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        }
+    }
+
+    val divider: @Composable () -> Unit = {
+        Box(
+            modifier =
+                Modifier
+                    .width(0.75.dp)
+                    .height(16.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f)),
+        )
+    }
+
+    val islandContent: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier.padding(horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            searchButton()
+            divider()
+            createButton()
+            if (onSettings != null) {
+                divider()
+                settingsButton()
             }
         }
     }
@@ -142,25 +178,24 @@ fun CreateActions(
         Row(
             modifier =
                 Modifier
-                    // 44dp, the Home avatar's size: Apple sizes a bar's avatar and glass buttons alike.
-                    .height(44.dp)
+                    .height(40.dp)
                     .liquidGlass(
                         backdrop,
-                        RoundedCornerShape(24.dp),
-                        // Alone, the "+" is a small circle, which the directional default rim misses.
+                        RoundedCornerShape(20.dp),
                         highlight = if (onSettings == null) Highlight(width = 1.dp) else Highlight.Default,
                     ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            searchButton()
-            createButton()
-            settingsButton()
+            islandContent()
         }
     } else {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            searchButton()
-            createButton()
-            settingsButton()
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f)),
+            modifier = Modifier.height(40.dp),
+        ) {
+            islandContent()
         }
     }
 
