@@ -93,6 +93,19 @@ def read_wav_f32(path: Path) -> tuple[list[float], int, int]:
     raise ValueError(f"unsupported sample width: {sampwidth} bytes")
 
 
+def read_raw_pcm16_f32(path: Path) -> tuple[list[float], int, int]:
+    """Read a HEADERLESS PCM16 s16le 48 kHz stereo dump → (samples, 48000, 2).
+
+    The QEMU wav backend's mid-write shape: `QEMU_AUDIO_DRV=wav` streams raw
+    frames to QEMU_WAV_PATH and only writes the 44-byte RIFF header on
+    close/flush — a capture read while the emulator still runs has no header
+    (the r20c 'not a WAVE file' on a healthy capture).
+    """
+    raw = path.read_bytes()
+    count = len(raw) // 2
+    return [v / 32768.0 for v in struct.unpack(f"<{count}h", raw[: count * 2])], 48_000, 2
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # The FFT (Hann window, iterative radix-2 — the A5 harness's discipline).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +276,22 @@ def main() -> int:
         return 2
 
     try:
-        samples, rate, channels = read_wav_f32(args.capture)
+        try:
+            samples, rate, channels = read_wav_f32(args.capture)
+        except (wave.Error, EOFError, struct.error):
+            # The Android emulator's QEMU wav backend (QEMU_AUDIO_DRV=wav)
+            # writes the 44-byte RIFF header on CLOSE/flush — a capture
+            # read while the emulator still runs is a RAW PCM16 stereo
+            # stream with no header (the r20c finding: 'not a WAVE file'
+            # on a healthy 1.5 MB capture). Fall back to raw mode with
+            # the backend's fixed geometry: 48 kHz / 2ch / s16le.
+            samples, rate, channels = read_raw_pcm16_f32(args.capture)
+            if args.verbose:
+                print(
+                    "sovereign-verifier: not a RIFF wave — decoded as RAW "
+                    "PCM16 s16le 48000 Hz stereo (QEMU wav mid-write)",
+                    file=sys.stderr,
+                )
     except Exception as e:  # noqa: BLE001 — report any decode failure cleanly
         print(f"sovereign-verifier: capture decode failed: {e}", file=sys.stderr)
         return 2
