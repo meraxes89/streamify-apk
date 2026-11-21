@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -49,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -81,6 +83,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -120,6 +123,7 @@ import com.maxrave.simpmusic.ui.component.rememberHolderPainter
 import com.maxrave.simpmusic.extension.getStringBlocking
 import com.maxrave.simpmusic.extension.toAppDeepLinkOrNull
 import com.maxrave.simpmusic.ui.component.ArtistFullWidthItems
+import com.maxrave.simpmusic.ui.component.AudioPlayingIndicator
 import com.maxrave.simpmusic.ui.component.Chip
 import com.maxrave.simpmusic.ui.component.EndOfPage
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
@@ -135,7 +139,9 @@ import com.maxrave.simpmusic.ui.icon.ArrowOutward
 import com.maxrave.simpmusic.ui.icon.Close
 import com.maxrave.simpmusic.ui.icon.GraphicEq
 import com.maxrave.simpmusic.ui.icon.History
+import com.maxrave.simpmusic.ui.icon.PlayArrow
 import com.maxrave.simpmusic.ui.icon.Search
+import com.maxrave.simpmusic.ui.icon.Shuffle
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.navigation.destination.home.MoodDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.AlbumDestination
@@ -172,6 +178,7 @@ import simpmusic.composeapp.generated.resources.last_played_from_search
 import simpmusic.composeapp.generated.resources.no_results_found
 import simpmusic.composeapp.generated.resources.playlists
 import simpmusic.composeapp.generated.resources.podcasts
+import simpmusic.composeapp.generated.resources.recents
 import simpmusic.composeapp.generated.resources.recognize_song
 import simpmusic.composeapp.generated.resources.retry
 import simpmusic.composeapp.generated.resources.search_for
@@ -627,14 +634,25 @@ fun SearchScreen(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .background(MaterialTheme.colorScheme.background),
+                                                    .background(MaterialTheme.colorScheme.background)
+                                                    .padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
+                                            Text(
+                                                text = stringResource(Res.string.recents),
+                                                style = typo().titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
                                             TextButton(
                                                 onClick = { searchViewModel.deleteSearchHistory() },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                             ) {
                                                 Text(
                                                     text = stringResource(Res.string.clear_search_history),
-                                                    color = MaterialTheme.colorScheme.onBackground,
+                                                    style = typo().labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary,
                                                 )
                                             }
                                         }
@@ -935,6 +953,10 @@ fun SearchScreen(
 
                                             Crossfade(targetState = currentResults.isNotEmpty()) {
                                                 if (it) {
+                                                    val isAllSearch = searchScreenState.searchType == SearchType.ALL
+                                                    val topResult = if (isAllSearch) currentResults.firstOrNull() else null
+                                                    val remainingResults = if (topResult != null) currentResults.drop(1) else currentResults
+
                                                     LazyColumn(
                                                         contentPadding =
                                                             PaddingValues(
@@ -945,7 +967,77 @@ fun SearchScreen(
                                                             ),
                                                         state = resultsState,
                                                     ) {
-                                                        items(currentResults) { result ->
+                                                        if (topResult != null) {
+                                                            item(key = "top_result_hero") {
+                                                                TopResultHeroCard(
+                                                                    result = topResult,
+                                                                    isPlaying =
+                                                                        when (topResult) {
+                                                                            is SongsResult -> topResult.videoId == currentVideoId
+                                                                            is VideosResult -> topResult.videoId == currentVideoId
+                                                                            else -> false
+                                                                        },
+                                                                    onArtistClick = { browseId ->
+                                                                        navController.navigate(
+                                                                            ArtistDestination(browseId),
+                                                                        )
+                                                                    },
+                                                                    onAlbumClick = { browseId ->
+                                                                        navController.navigate(
+                                                                            AlbumDestination(browseId),
+                                                                        )
+                                                                    },
+                                                                    onPlaylistClick = { playlist ->
+                                                                        if (playlist.resultType == "Podcast") {
+                                                                            navController.navigate(
+                                                                                PodcastDestination(playlist.browseId),
+                                                                            )
+                                                                        } else {
+                                                                            navController.navigate(
+                                                                                PlaylistDestination(playlist.browseId),
+                                                                            )
+                                                                        }
+                                                                    },
+                                                                    onTrackClick = { firstTrack ->
+                                                                        searchViewModel.setLastPlayedSearchTrack(firstTrack)
+                                                                        searchViewModel.insertSearchHistory(firstTrack.title)
+                                                                        if (searchText.isNotBlank() && searchText.trim() != firstTrack.title) {
+                                                                            searchViewModel.insertSearchHistory(searchText.trim())
+                                                                        }
+                                                                        searchViewModel.setQueueData(
+                                                                            QueueData.Data(
+                                                                                listTracks = arrayListOf(firstTrack),
+                                                                                firstPlayedTrack = firstTrack,
+                                                                                playlistId = "RDAMVM${firstTrack.videoId}",
+                                                                                playlistName =
+                                                                                    "\"${searchText}\" ${
+                                                                                        getStringBlocking(
+                                                                                            Res.string.in_search,
+                                                                                        )
+                                                                                    }",
+                                                                                playlistType = PlaylistType.RADIO,
+                                                                                continuation = null,
+                                                                            ),
+                                                                        )
+                                                                        searchViewModel.loadMediaItem(firstTrack, Config.SONG_CLICK)
+                                                                    },
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                                )
+                                                            }
+                                                            if (remainingResults.isNotEmpty()) {
+                                                                item(key = "more_results_header") {
+                                                                    Text(
+                                                                        text = stringResource(Res.string.everything_you_need),
+                                                                        style = typo().titleSmall,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                                        modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 6.dp),
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        items(remainingResults) { result ->
                                                             when (result) {
                                                                 is SongsResult -> {
                                                                     SongFullWidthItems(
@@ -1332,7 +1424,7 @@ fun SearchScreen(
                     .onFocusChanged {
                         isFocused = it.isFocused
                     }.padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(22.dp),
             // See the note on SongSelectionTopAppBar above — the Column owns the status-bar inset.
             windowInsets = WindowInsets(0),
             content = {},
@@ -1346,11 +1438,12 @@ fun SearchScreen(
                             Modifier
                                 .horizontalScroll(chipRowState)
                                 .padding(top = 10.dp)
-                                .padding(horizontal = 12.dp),
+                                .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         SearchType.entries.forEach { id ->
                             val isSelected = id == searchScreenState.searchType
-                            Spacer(modifier = Modifier.width(4.dp))
                             Chip(
                                 isAnimated = uiState is SearchScreenUIState.Loading,
                                 isSelected = isSelected,
@@ -1359,7 +1452,6 @@ fun SearchScreen(
                             ) {
                                 searchViewModel.setSearchType(id)
                             }
-                            Spacer(modifier = Modifier.width(4.dp))
                         }
                     }
                 }
@@ -1506,4 +1598,202 @@ enum class SearchUIType {
     SEARCH_HISTORY,
     SEARCH_SUGGESTIONS,
     SEARCH_RESULTS,
+}
+
+/**
+ * TopResultHeroCard — Spotify-style elevated showcase card for the #1 search match.
+ *
+ * Displays artist avatar with verified badge, or album/track with rich artwork,
+ * category pill, and primary play/shuffle action.
+ */
+@Composable
+fun TopResultHeroCard(
+    result: SearchResultType,
+    isPlaying: Boolean,
+    onArtistClick: (String) -> Unit,
+    onAlbumClick: (String) -> Unit,
+    onPlaylistClick: (PlaylistsResult) -> Unit,
+    onTrackClick: (Track) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val thumb: String?
+    val title: String
+    val subtitle: String
+    val categoryTag: String
+    val isCircular: Boolean
+    val onClick: () -> Unit
+
+    when (result) {
+        is ArtistsResult -> {
+            thumb = result.thumbnails.lastOrNull()?.url
+            title = result.artist
+            subtitle = result.category.ifBlank { stringResource(Res.string.artists) }
+            categoryTag = "ARTIST"
+            isCircular = true
+            onClick = { onArtistClick(result.browseId) }
+        }
+        is AlbumsResult -> {
+            thumb = result.thumbnails.lastOrNull()?.url
+            title = result.title
+            val artistName = result.artists.firstOrNull()?.name ?: ""
+            subtitle = if (result.year.isNotBlank()) "$artistName • ${result.year}" else artistName
+            categoryTag = "ALBUM"
+            isCircular = false
+            onClick = { onAlbumClick(result.browseId) }
+        }
+        is SongsResult -> {
+            thumb = result.thumbnails?.lastOrNull()?.url
+            title = result.title ?: ""
+            subtitle = result.artists?.mapNotNull { it.name }?.joinToString(", ") ?: ""
+            categoryTag = "SONG"
+            isCircular = false
+            onClick = { onTrackClick(result.toTrack()) }
+        }
+        is VideosResult -> {
+            thumb = result.thumbnails.lastOrNull()?.url
+            title = result.title
+            subtitle = result.artists.mapNotNull { it.name }.joinToString(", ")
+            categoryTag = "VIDEO"
+            isCircular = false
+            onClick = { onTrackClick(result.toTrack()) }
+        }
+        is PlaylistsResult -> {
+            thumb = result.thumbnails.lastOrNull()?.url
+            title = result.title
+            subtitle = result.author
+            categoryTag = if (result.resultType == "Podcast") "PODCAST" else "PLAYLIST"
+            isCircular = false
+            onClick = { onPlaylistClick(result) }
+        }
+        else -> return
+    }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "TOP RESULT",
+                    style = typo().labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.8.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                // Category Pill Badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = categoryTag,
+                        style = typo().labelSmall,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                // Hero Image / Avatar
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(if (isCircular) CircleShape else RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalPlatformContext.current)
+                            .data(thumb)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .diskCacheKey(thumb)
+                            .crossfade(true)
+                            .build(),
+                        placeholder = rememberHolderPainter(),
+                        error = rememberHolderPainter(),
+                        contentDescription = title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (isPlaying) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.55f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AudioPlayingIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+
+                // Title & Subtitle Info
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = typo().titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = typo().bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                // Play / Action Floating Button
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (result is ArtistsResult) SimpIcons.Shuffle else SimpIcons.PlayArrow,
+                        contentDescription = "Play",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+    }
 }
