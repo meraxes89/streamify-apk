@@ -48,6 +48,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -78,6 +79,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -125,6 +127,7 @@ import com.maxrave.simpmusic.ui.component.HomeItemContentPlaylist
 import com.maxrave.simpmusic.ui.component.HomeItemVideo
 import com.maxrave.simpmusic.ui.component.LiquidGlassIconButton
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
+import com.maxrave.simpmusic.ui.component.SectionHeaderButton
 import com.maxrave.simpmusic.ui.component.SongFullWidthItems
 import com.maxrave.simpmusic.ui.component.liquidGlass
 import com.maxrave.simpmusic.ui.component.selection.SelectedSongsBottomSheet
@@ -764,6 +767,45 @@ fun ArtistScreen(
                                     }
                                 }
                             },
+                            actions = {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = artistAccent,
+                                    modifier =
+                                        Modifier
+                                            .padding(end = 4.dp)
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                val param = state.data.shuffleParam
+                                                if (param != null) {
+                                                    viewModel.onShuffleClick(param)
+                                                } else {
+                                                    viewModel.makeToast(runBlocking { getString(Res.string.error) })
+                                                }
+                                            },
+                                ) {
+                                    val onAccent = if (artistAccent.luminance() > 0.5f) Color.Black else Color.White
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = SimpIcons.Shuffle,
+                                            contentDescription = "Shuffle",
+                                            tint = if (isDark) mutedPaletteBg else onAccent,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { shareUrl(shareTitle, "https://music.youtube.com/channel/$channelId") },
+                                ) {
+                                    Icon(
+                                        SimpIcons.IosShare,
+                                        contentDescription = shareTitle,
+                                        tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            },
                             colors =
                                 TopAppBarDefaults.topAppBarColors(
                                     containerColor = Color.Transparent,
@@ -895,15 +937,16 @@ private fun ArtistSections(
             Column {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 ) {
                     Text(
                         text = stringResource(Res.string.popular),
-                        style = typo().labelMedium,
+                        style = typo().titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    SectionHeaderButton(
+                        text = stringResource(Res.string.more),
                         onClick = {
                             val id = state.data.listSongParam
                             if (id != null) {
@@ -912,15 +955,7 @@ private fun ArtistSections(
                                 viewModel.makeToast(runBlocking { getString(Res.string.error) })
                             }
                         },
-                        colors =
-                            ButtonDefaults
-                                .textButtonColors()
-                                .copy(
-                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
-                                ),
-                    ) {
-                        Text(stringResource(Res.string.more), style = typo().bodySmall)
-                    }
+                    )
                 }
                 state.data.popularSongs.forEach { song ->
                     SongFullWidthItems(
@@ -972,15 +1007,16 @@ private fun ArtistSections(
             Column {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 ) {
                     Text(
                         text = stringResource(Res.string.singles),
-                        style = typo().labelMedium,
+                        style = typo().titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    SectionHeaderButton(
+                        text = stringResource(Res.string.more),
                         onClick = {
                             if (state.data.channelId != null) {
                                 val id = "MPAD${state.data.channelId}"
@@ -994,15 +1030,7 @@ private fun ArtistSections(
                                 viewModel.makeToast(getStringBlocking(Res.string.error))
                             }
                         },
-                        colors =
-                            ButtonDefaults
-                                .textButtonColors()
-                                .copy(
-                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
-                                ),
-                    ) {
-                        Text(stringResource(Res.string.more), style = typo().bodySmall)
-                    }
+                    )
                 }
                 val singlesRowState = rememberLazyListState()
                 LazyRow(
@@ -1044,15 +1072,16 @@ private fun ArtistSections(
             Column {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 ) {
                     Text(
                         text = stringResource(Res.string.albums),
-                        style = typo().labelMedium,
+                        style = typo().titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    SectionHeaderButton(
+                        text = stringResource(Res.string.more),
                         onClick = {
                             if (state.data.channelId != null) {
                                 val id = "MPAD${state.data.channelId}"
@@ -1066,15 +1095,7 @@ private fun ArtistSections(
                                 viewModel.makeToast(getStringBlocking(Res.string.error))
                             }
                         },
-                        colors =
-                            ButtonDefaults
-                                .textButtonColors()
-                                .copy(
-                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
-                                ),
-                    ) {
-                        Text(stringResource(Res.string.more), style = typo().bodySmall)
-                    }
+                    )
                 }
                 val albumsRowState = rememberLazyListState()
                 LazyRow(
@@ -1115,15 +1136,16 @@ private fun ArtistSections(
             Column {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 ) {
                     Text(
                         text = stringResource(Res.string.videos),
-                        style = typo().labelMedium,
+                        style = typo().titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    SectionHeaderButton(
+                        text = stringResource(Res.string.more),
                         onClick = {
                             val videoListParam = state.data.video?.videoListParam
                             if (videoListParam != null) {
@@ -1136,15 +1158,7 @@ private fun ArtistSections(
                                 viewModel.makeToast(getStringBlocking(Res.string.error))
                             }
                         },
-                        colors =
-                            ButtonDefaults
-                                .textButtonColors()
-                                .copy(
-                                    contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
-                                ),
-                    ) {
-                        Text(stringResource(Res.string.more), style = typo().bodySmall)
-                    }
+                    )
                 }
                 val videosRowState = rememberLazyListState()
                 LazyRow(

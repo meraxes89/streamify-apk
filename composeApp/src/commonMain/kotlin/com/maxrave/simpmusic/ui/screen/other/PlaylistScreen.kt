@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,6 +49,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -605,6 +608,11 @@ fun PlaylistScreen(
                                                             modifier =
                                                                 Modifier
                                                                     .size(280.dp)
+                                                                    .border(
+                                                                        width = 1.dp,
+                                                                        color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                                                        shape = ArtworkShape,
+                                                                    )
                                                                     .clip(ArtworkShape),
                                                         )
                                                         Column(
@@ -700,7 +708,7 @@ fun PlaylistScreen(
                                                                                 if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
                                                                             contentDescription = null,
                                                                             tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
-                                                                            modifier = Modifier.size(22.dp),
+                                                                            modifier = Modifier.size(22.dp).then(if (!isThisPlaying) Modifier.offset(x = 1.5.dp) else Modifier),
                                                                         )
                                                                         Spacer(modifier = Modifier.width(4.dp))
                                                                         Text(
@@ -915,7 +923,7 @@ fun PlaylistScreen(
                                                                         if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
                                                                     contentDescription = null,
                                                                     tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
-                                                                    modifier = Modifier.size(22.dp),
+                                                                    modifier = Modifier.size(22.dp).then(if (!isThisPlaying) Modifier.offset(x = 1.5.dp) else Modifier),
                                                                 )
                                                                 Spacer(modifier = Modifier.width(4.dp))
                                                                 Text(
@@ -1369,6 +1377,32 @@ fun PlaylistScreen(
                             }
                         },
                         actions = {
+                            val isThisPlaying = isPlaying && playingPlaylistId == data.id
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
+                                modifier =
+                                    Modifier
+                                        .padding(end = 4.dp)
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            if (isThisPlaying) {
+                                                sharedViewModel.onUIEvent(UIEvent.PlayPause)
+                                            } else {
+                                                viewModel.onUIEvent(PlaylistUIEvent.PlayAll)
+                                            }
+                                        },
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
+                                        contentDescription = if (isThisPlaying) "Pause" else "Play",
+                                        tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(18.dp).then(if (!isThisPlaying) Modifier.offset(x = 1.dp) else Modifier),
+                                    )
+                                }
+                            }
                             IconButton(
                                 onClick = {
                                     showSearchBar = !showSearchBar
