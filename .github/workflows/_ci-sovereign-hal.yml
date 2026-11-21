@@ -689,7 +689,13 @@ jobs:
             #    mix straight to the HOST (the directive's route). Give
             #    QEMU a beat to flush, then verify in place. ──
             sleep 2
+            # QEMU_WAV_PATH is pinned to /home/runner/work/_temp (the
+            # job env cannot use the runner context); RUNNER_TEMP should
+            # match, but honor both spellings before falling back.
             CAP="$RUNNER_TEMP/audioflinger.wav"
+            if [ ! -s "$CAP" ] && [ -s /home/runner/work/_temp/audioflinger.wav ]; then
+              CAP=/home/runner/work/_temp/audioflinger.wav
+            fi
             if [ ! -s "$CAP" ]; then
               echo "::warning::QEMU wav backend produced nothing — falling back to the guest tinycap pull"
               adb pull $GUEST/verdict.json /tmp/sovereign-guest/verdict.json || true
