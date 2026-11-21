@@ -13,6 +13,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.WindowInsets
@@ -598,6 +599,9 @@ fun SearchScreen(
                                             onMoreClickListener = {
                                                 onMoreClick(track.toSongEntity())
                                             },
+                                            onLongClick = {
+                                                onMoreClick(track.toSongEntity())
+                                            },
                                             onClickListener = {
                                                 focusManager.clearFocus()
                                                 searchViewModel.setQueueData(
@@ -772,6 +776,9 @@ fun SearchScreen(
                                             isPlaying = track.videoId == currentVideoId,
                                             modifier = Modifier,
                                             onMoreClickListener = {
+                                                onMoreClick(track.toSongEntity())
+                                            },
+                                            onLongClick = {
                                                 onMoreClick(track.toSongEntity())
                                             },
                                             onClickListener = {
@@ -1095,6 +1102,12 @@ fun SearchScreen(
                                                                             searchViewModel.loadMediaItem(firstTrack, Config.SONG_CLICK)
                                                                         },
                                                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                                        onLongClick =
+                                                                            when (topResult) {
+                                                                                is SongsResult -> ({ onMoreClick(topResult.toTrack().toSongEntity()) })
+                                                                                is VideosResult -> ({ onMoreClick(topResult.toTrack().toSongEntity()) })
+                                                                                else -> null
+                                                                            },
                                                                     )
                                                                 }
                                                                 if (remainingResults.isNotEmpty()) {
@@ -1152,7 +1165,12 @@ fun SearchScreen(
                                                                                 },
                                                                                 selectionMode = selectionState.isActive,
                                                                                 isSelected = selectionState.isSelected(result.videoId),
-                                                                                onLongClick = { selectionState.start(it) },
+                                                                                onLongClick =
+                                                                                    if (selectionState.isActive) {
+                                                                                        { selectionState.toggle(it) }
+                                                                                    } else {
+                                                                                        { onMoreClick(result.toTrack().toSongEntity()) }
+                                                                                    },
                                                                                 onSelectToggle = { selectionState.toggle(it) },
                                                                             )
                                                                         }
@@ -1196,7 +1214,12 @@ fun SearchScreen(
                                                                                 },
                                                                                 selectionMode = selectionState.isActive,
                                                                                 isSelected = selectionState.isSelected(result.videoId),
-                                                                                onLongClick = { selectionState.start(it) },
+                                                                                onLongClick =
+                                                                                    if (selectionState.isActive) {
+                                                                                        { selectionState.toggle(it) }
+                                                                                    } else {
+                                                                                        { onMoreClick(result.toTrack().toSongEntity()) }
+                                                                                    },
                                                                                 onSelectToggle = { selectionState.toggle(it) },
                                                                             )
                                                                         }
@@ -1691,6 +1714,7 @@ fun TopResultHeroCard(
     onPlaylistClick: (PlaylistsResult) -> Unit,
     onTrackClick: (Track) -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val thumb: String?
     val title: String
@@ -1751,7 +1775,10 @@ fun TopResultHeroCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

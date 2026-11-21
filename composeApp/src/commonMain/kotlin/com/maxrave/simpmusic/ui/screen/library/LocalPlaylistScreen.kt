@@ -1369,7 +1369,14 @@ fun LocalPlaylistScreen(
                             selectionMode = selectionState.isActive,
                             isSelected = selectionState.isSelected(item.videoId),
                             // No long press while reordering: that gesture already belongs to drag.
-                            onLongClick = if (changingOrder) null else ({ selectionState.start(it) }),
+                            onLongClick =
+                                if (changingOrder) {
+                                    null
+                                } else if (selectionState.isActive) {
+                                    { selectionState.toggle(it) }
+                                } else {
+                                    { onItemMoreClick(it) }
+                                },
                             onSelectToggle = { selectionState.toggle(it) },
                             modifier = mod,
                         )
@@ -1392,7 +1399,14 @@ fun LocalPlaylistScreen(
                             selectionMode = selectionState.isActive,
                             isSelected = selectionState.isSelected(item.videoId),
                             // No long press while reordering: that gesture already belongs to drag.
-                            onLongClick = if (changingOrder) null else ({ selectionState.start(it) }),
+                            onLongClick =
+                                if (changingOrder) {
+                                    null
+                                } else if (selectionState.isActive) {
+                                    { selectionState.toggle(it) }
+                                } else {
+                                    { onItemMoreClick(it) }
+                                },
                             onSelectToggle = { selectionState.toggle(it) },
                             modifier = mod,
                         )
@@ -1701,7 +1715,12 @@ fun LocalPlaylistScreen(
                         onAddToQueue = { sharedViewModel.addListToQueue(arrayListOf(song.toTrack())) },
                         selectionMode = selectionState.isActive,
                         isSelected = selectionState.isSelected(song.videoId),
-                        onLongClick = { selectionState.start(it) },
+                        onLongClick =
+                            if (selectionState.isActive) {
+                                { selectionState.toggle(it) }
+                            } else {
+                                { onItemMoreClick(it) }
+                            },
                         onSelectToggle = { selectionState.toggle(it) },
                         // Required, no default — the paged list passes it down through `mod`.
                         modifier = Modifier,
