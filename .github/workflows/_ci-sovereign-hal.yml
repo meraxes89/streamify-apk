@@ -613,15 +613,16 @@ jobs:
       - name: Build the guest artifacts (Rust cdylib + player bin, x86_64-android)
         run: |
           set -euo pipefail
-          # r6: cargo-ndk runs `cargo metadata` in the CWD — invoke it
-          # FROM rust/ (the r5 failure: --manifest-path from the repo
-          # root left metadata CWD-less, and the `| tail` pipe hid the
-          # non-zero exit, so the step looked green with no artifacts).
-          # One invocation builds both the player bin and the cdylib.
+          # r9: cargo-ndk 4.x spells the Android API floor --platform
+          # (-p is the PACKAGE flag — the r8 panic "unknown package: 26"
+          # at cli/mod.rs:523). Two invocations: the player bin, then the
+          # cdylib (a --bin + a lib-only crate cannot share one command
+          # in 4.x). CWD is rust/ (cargo metadata needs it — the r5 fix).
           cd rust
-          cargo ndk -t x86_64-linux-android -p 26 -o /tmp/sovereign-guest \
-            build --release -p streamify-hal -p streamify-ffi \
-            --bin sovereign_android_loopback
+          cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
+            build --release --bin sovereign_android_loopback -p streamify-hal
+          cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
+            build --release -p streamify-ffi
           cd ..
           # HARD artifact checks — a silent miss fails the leg here,
           # not 10 minutes later inside the emulator step.
