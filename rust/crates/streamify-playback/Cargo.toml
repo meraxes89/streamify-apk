@@ -36,6 +36,11 @@ crate-type = ["rlib"]
 [dependencies]
 streamify-core = { workspace = true }
 streamify-audio = { workspace = true }
+# Phase 5 / Pillar 1 (RFC Phase B): the RT allocation trap. OPTIONAL +
+# feature-gated — the production dependency graph is unchanged; the
+# `rt-alloc-trap` CI feature arms AllocDisabler in the trap test binary
+# and wraps the producer write edge + ring export read edge.
+assert_no_alloc = { workspace = true, optional = true }
 # Decode backend (RFC §5.2 decision record — see the PR description for the
 # full rationale). Pure Rust, MPL-2.0, decode-only. Features are the
 # minimal YouTube-audio set: AAC in ADTS/M4A containers (the resolver's
@@ -73,6 +78,14 @@ symphonia-opus = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 symphonia-opus = { workspace = true }
+
+[features]
+default = []
+# Phase 5 / Pillar 1 (RFC Phase B): arm the real-time allocation trap
+# (AllocDisabler global allocator in the test binary; any alloc/dealloc
+# inside rt_trap::assert_no_alloc(..) aborts the test). CI/test-only —
+# never enable in production builds.
+rt-alloc-trap = ["dep:assert_no_alloc"]
 
 [dev-dependencies]
 # Phase 1 D3: the loudness oracle — lufs.rs integrated loudness must

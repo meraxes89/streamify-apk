@@ -375,6 +375,13 @@ impl OutputEngine {
                 (*config).clone(), // cpal takes the config by value
                 move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
                     // ── THE RT PATH (zero alloc / lock / syscall) ──
+                    // Phase 5 / Pillar 1: the whole body runs inside the
+                    // allocation trap when the crate under test is built
+                    // with `rt-alloc-trap` (assert_no_alloc — any
+                    // Box::new/Vec::push/format!/malloc on the audio
+                    // thread aborts the test); production builds compile
+                    // the pass-through closure (zero cost, zero deps).
+                    streamify_playback::rt_trap::assert_no_alloc(|| {
                     // First-callback mark ONLY (an atomic swap — the
                     // round-34 eprintln inside the callback stalled the
                     // stream: stderr's lock on the audio thread blocked
@@ -435,6 +442,7 @@ impl OutputEngine {
                         monotonic_ns,
                     };
                     rt.clock.publish(&sample);
+                    }) // rt_trap::assert_no_alloc — end of the guarded RT window
                 },
                 move |err| {
                     // Runs on cpal's event thread, NOT the RT callback:

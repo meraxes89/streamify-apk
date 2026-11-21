@@ -64,6 +64,9 @@
 #include <thread>
 
 #include "oboe/Oboe.h"
+// Phase 5 / Pillar 1: the C++ RT allocation guard (no-op unless the TU
+// is compiled with -DSTREAMIFY_RT_ALLOC_GUARD — test builds only).
+#include "RtAllocGuard.h"
 
 #define LOG_TAG "sovereign-oboe"
 #define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -164,6 +167,12 @@ public:
         // counters are relaxed atomics on cached lines (the Phase 1
         // eprintln-stall lesson: nothing but the read + the copy runs
         // on this thread).
+        //
+        // Phase 5 / Pillar 1: the whole body runs under the C++ RT
+        // allocation guard in test builds (-DSTREAMIFY_RT_ALLOC_GUARD —
+        // RtAllocGuard.h counts operator new/delete + aborts on any
+        // allocation on this thread); production compiles it away.
+        STREAMIFY_RT_GUARD("oboe::onAudioReady");
         g_rt.callbacks.fetch_add(1, std::memory_order_relaxed);
         bool expected = false;
         if (g_rt.first_callback_done.compare_exchange_strong(expected, true,

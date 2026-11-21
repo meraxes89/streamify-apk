@@ -19,9 +19,14 @@ def write_pcm16(path: Path, samples: list[float], rate: int, channels: int) -> N
         w.setnchannels(channels)
         w.setsampwidth(2)
         w.setframerate(rate)
+        # round-to-nearest (Phase 5 / tri-profile calibration: the old
+        # int() truncation correlates the quantization error with the
+        # signal — −83.9 dB THD+N on a 2 s capture, above the −85 bar —
+        # a writer artifact, not a capture-chain floor; real chains
+        # round/dither, measuring −85.7 dB @ 2 s).
         w.writeframes(struct.pack(
             f"<{len(samples)}h",
-            *[max(-32768, min(32767, int(s * 32767))) for s in samples],
+            *[max(-32768, min(32767, int(round(s * 32767)))) for s in samples],
         ))
 
 

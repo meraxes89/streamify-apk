@@ -33,6 +33,20 @@ tracing = { workspace = true }
 # Multiplatform Phase 3 (MP-C11): producer-side polyphase sinc SRC to the
 # canonical 48 kHz f32 rate (rubato SincFixedOut on the decode thread).
 rubato = { workspace = true }
+# Phase 5 / Pillar 1 (RFC Phase B): the RT allocation trap. OPTIONAL +
+# feature-gated: the production dependency graph stays EXACTLY
+# { streamify-core, tracing, rubato } — `cargo tree -p streamify-audio`
+# (the RT-boundary audit) never sees assert_no_alloc unless the
+# `rt-alloc-trap` CI feature is on.
+assert_no_alloc = { workspace = true, optional = true }
+
+[features]
+default = []
+# CI/test-only: arm the real-time allocation trap (AllocDisabler global
+# allocator in the test binary; any alloc/dealloc inside
+# rt_trap::assert_no_alloc(..) aborts the test). Never enable in
+# production builds.
+rt-alloc-trap = ["dep:assert_no_alloc"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

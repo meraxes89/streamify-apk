@@ -79,6 +79,9 @@
 #include <cstring>
 
 #include "audio_sink_ringbuffer.h"
+// Phase 5 / Pillar 1: the C++ RT allocation guard (no-op unless the TU
+// is compiled with -DSTREAMIFY_RT_ALLOC_GUARD — test builds only).
+#include "RtAllocGuard.h"
 
 namespace streamify {
 namespace hal {
@@ -143,6 +146,8 @@ public:
     // REAL frames pulled (frames minus the starved tail). No allocation,
     // no locks, no syscalls — audited by AllocGuard on the host lanes.
     uint32_t PullFrames(uint32_t frames, float* dst) noexcept {
+        // Phase 5 / Pillar 1: the RT allocation trap (test builds only).
+        STREAMIFY_RT_GUARD("wasapi::PullFrames");
         pull_count_.fetch_add(1, std::memory_order_relaxed);
         sink::AudioSink* s = sink_.load(std::memory_order_acquire);
         uint32_t got = 0;

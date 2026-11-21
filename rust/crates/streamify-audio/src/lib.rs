@@ -28,6 +28,9 @@ pub mod embedding_producer;
 pub mod lufs;
 pub mod normalizer;
 pub mod seek_guard;
+// Phase 5 / Pillar 1: the real-time allocation trap (CI-only feature
+// `rt-alloc-trap`; a pass-through module when the feature is off).
+pub mod rt_trap;
 pub mod tick_matrix;
 pub mod virtual_hal;
 pub mod waveform_indexer;
