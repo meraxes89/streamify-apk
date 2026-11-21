@@ -566,6 +566,14 @@ jobs:
       fail-fast: false
       matrix:
         api: [26, 29, 34, 35]
+    # Phase 2 r6: the emulator's documented audio-dump mechanism is the
+    # LEGACY QEMU audio env — QEMU_AUDIO_DRV=wav makes the emulator's
+    # QEMU write every guest audio stream to QEMU_WAV_PATH. The modern
+    # '-qemu -audiodev wav,...' spelling KILLS the bundled headless QEMU
+    # at launch (the r5 boot timeout; Phase 1's finding, re-confirmed).
+    env:
+      QEMU_AUDIO_DRV: wav
+      QEMU_WAV_PATH: ${{ runner.temp }}/audioflinger.wav
     steps:
       - uses: actions/checkout@v7
       - name: Set up JDK 21
@@ -586,18 +594,22 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build the guest artifacts (Rust cdylib + player bin, x86_64-android)
         run: |
-          # The producer cdylib (libstreamify_core_rs.so) + the Oboe
-          # loopback player, both for the x86_64 emulator image.
-          cargo ndk --manifest-path rust/Cargo.toml -t x86_64-linux-android -p 26 \
-            -o /tmp/sovereign-guest build --release \
-            -p streamify-hal --bin sovereign_android_loopback --features streamify-ffi/default 2>&1 | tail -3 \
-            || cargo ndk --manifest-path rust/Cargo.toml -t x86_64-linux-android -p 26 \
-            -o /tmp/sovereign-guest build --release \
-            -p streamify-hal --bin sovereign_android_loopback 2>&1 | tail -3
-          # The cdylib the bracket dlopens (the frozen ring edge):
-          cargo ndk --manifest-path rust/Cargo.toml -t x86_64-linux-android -p 26 \
-            -o /tmp/sovereign-guest build --release -p streamify-ffi 2>&1 | tail -3
-          ls -la /tmp/sovereign-guest/x86_64-linux-android/ | head -6
+          set -euo pipefail
+          # r6: cargo-ndk runs `cargo metadata` in the CWD — invoke it
+          # FROM rust/ (the r5 failure: --manifest-path from the repo
+          # root left metadata CWD-less, and the `| tail` pipe hid the
+          # non-zero exit, so the step looked green with no artifacts).
+          # One invocation builds both the player bin and the cdylib.
+          cd rust
+          cargo ndk -t x86_64-linux-android -p 26 -o /tmp/sovereign-guest \
+            build --release -p streamify-hal -p streamify-ffi \
+            --bin sovereign_android_loopback
+          cd ..
+          # HARD artifact checks — a silent miss fails the leg here,
+          # not 10 minutes later inside the emulator step.
+          test -s /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback
+          test -s /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so
+          ls -la /tmp/sovereign-guest/x86_64-linux-android/
       - name: Build the C++ Oboe bracket .so (NDK CMake, x86_64)
         run: |
           SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
@@ -608,23 +620,23 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$NDK_BUNDLE/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-26 \
             -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -2
-          cmake --build /tmp/sovereign-native-build --target streamify_native_core -j4 2>&1 | tail -3
-          ls -la /tmp/sovereign-native-build/*/libstreamify_native_core.so || ls -la /tmp/sovereign-native-build/libstreamify_native_core.so
+          cmake --build /tmp/sovereign-native-build --target streamify_native_core -j4
+          # HARD check (the r5 lesson: pipes hid failures).
+          BRACKET_SO="$(ls /tmp/sovereign-native-build/*/libstreamify_native_core.so 2>/dev/null || ls /tmp/sovereign-native-build/libstreamify_native_core.so 2>/dev/null || true)"
+          test -s "$BRACKET_SO"
+          echo "bracket .so: $BRACKET_SO"
       - name: Run the emulator (Oboe play + AudioFlinger capture)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
           target: default
-          # Phase 2's capture: the DIRECTIVE's QEMU wav backend (all QEMU
-          # flags strictly after -qemu) taps the emulated audio HW's mix
-          # — the Oboe bracket renders into the guest's audioserver and
-          # QEMU writes the mixed output to audioflinger.wav on the HOST.
-          # (Phase 1's '-audiodev rejected' finding was pre-`-qemu`
-          # placement; this is the exact directive spelling. The guest
-          # tinycap fallback exists for the legs where the bundled QEMU
-          # still refuses — the capture-first block below probes both.)
-          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none -qemu -audiodev wav,id=snd0,path=$RUNNER_TEMP/audioflinger.wav
+          # Phase 2 r6: PLAIN boot options. The audio tap rides the
+          # QEMU_AUDIO_DRV=wav / QEMU_WAV_PATH job env (the emulator's
+          # documented legacy mechanism — '-qemu -audiodev' is not
+          # compiled into the bundled headless QEMU and killed boot on
+          # r5). The guest tinycap pull stays as the fallback capture.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
           script: |
             set -x
             echo "Emulator booted (API ${{ matrix.api }})."
