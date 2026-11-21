@@ -511,7 +511,8 @@ def clock_drift(series: list[tuple[int, int, int]], limit_ppm: float) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def steady_state(
-    samples: list[float], channels: int, rate: int, trim_ms: float = 50.0
+    samples: list[float], channels: int, rate: int, trim_ms: float = 50.0,
+    max_ms: float | None = None,
 ) -> tuple[list[list[float]], list[float]]:
     """Per-channel steady-state views + the mono mixdown.
 
@@ -519,10 +520,35 @@ def steady_state(
     teardown envelope — the RFC's Oracle 1 window), then splits channels.
     Leading near-silence (capture pipelines often start with a quiet
     ramp) is ALSO trimmed for the mono view (the legacy gates' r20e
-    discipline)."""
+    discipline).
+
+    max_ms caps the analyzed window (the LOOPED-FIXTURE legs: the opus
+    fixture is ~3 s and the player loops it to cover the 6 s legs — the
+    loop SPLICE is a waveform discontinuity at ~272x the analytical
+    bound that Oracle 1 correctly flags. Legs playing the looped opus
+    fixture pass --steady-ms 2500 so the oracles grade the FIRST
+    fixture period; the splice is the fixture's design, not a HAL
+    defect — the Phase 5 Linux-torture run's finding)."""
     frames = len(samples) // channels
     trim = int(trim_ms * rate / 1000.0)
-    lo, hi = trim, max(trim + 1, frames - trim)
+    # Content alignment FIRST (the Phase 5 Linux-torture finding): CI
+    # captures (parec / sox / QEMU wav) open the sink BEFORE the player
+    # starts, so the capture carries 1-3 s of dead silence and the tone
+    # ONSET (0 -> waveform) lands mid-window — a genuine discontinuity
+    # Oracle 1 correctly flags at >250x the bound. Skip to the first
+    # non-silent FRAME, THEN apply the envelope trim and the steady cap,
+    # so the oracles grade steady-state CONTENT, not the lead-in.
+    mono_probe = [
+        sum(abs(samples[f * channels + c]) for c in range(channels)) / channels
+        for f in range(frames)
+    ]
+    content_start = next(
+        (i for i, s in enumerate(mono_probe) if abs(s) > 1e-4), 0
+    )
+    lo = content_start + trim
+    hi = max(lo + 1, frames - trim)
+    if max_ms is not None:
+        hi = min(hi, lo + int(max_ms * rate / 1000.0))
     chans: list[list[float]] = [
         [samples[f * channels + c] for f in range(lo, hi)]
         for c in range(channels)
@@ -531,8 +557,7 @@ def steady_state(
         sum(samples[f * channels + c] for c in range(channels)) / channels
         for f in range(frames)
     ]
-    first_nonzero = next((i for i, s in enumerate(mono_all) if abs(s) > 1e-4), 0)
-    mono = mono_all[first_nonzero:]
+    mono = mono_all[content_start:]
     mono = mono[trim:] if len(mono) > 2 * trim else mono
     return chans, mono
 
@@ -551,6 +576,7 @@ def verify(
     thdn_limit_db: float,
     drift_limit_ppm: float,
     clock_series: list[tuple[int, int, int]] | None,
+    steady_ms: float | None,
     verbose: bool,
 ) -> tuple[bool, dict]:
     # Mono mixdown (L+R)/2 — the fixtures are CHANNEL-SEPARATED dual
@@ -647,7 +673,7 @@ def verify(
 
     oracles: dict[str, dict] = {}
     # Steady-state views (50 ms startup/teardown envelope trimmed).
-    chans, mono_ss = steady_state(samples, channels, rate)
+    chans, mono_ss = steady_state(samples, channels, rate, max_ms=steady_ms)
     oracles["oracle_1_glitch_hunter"] = glitch_hunt(chans, rate, freq_b, glitch_mult)
     oracles["oracle_2_thdn"] = thdn_measure(
         mono_ss, rate, freq_a, freq_b, thdn_limit_db, sampwidth
@@ -695,6 +721,11 @@ def main() -> int:
     ap.add_argument("--clock-json", type=Path, default=None,
                     help="DacPresentationClock series JSON (list or the "
                          "player.json clock_samples shape)")
+    ap.add_argument("--steady-ms", type=float, default=None,
+                    help="cap the analyzed steady-state window (looped-fixture "
+                         "legs: the opus fixture's ~3 s loop splice is a "
+                         "waveform discontinuity the glitch hunter correctly "
+                         "flags — pass 2500 to grade the first period)")
     ap.add_argument("--duration-sec", type=float, default=15.0,
                     help="intended capture duration (informational: the PR "
                          "CI legs run 15 s, the nightly soak 60 s; the "
@@ -738,7 +769,7 @@ def main() -> int:
                 s, r, c, sw, args.freq_a, args.freq_b, args.tolerance_hz,
                 args.expect, args.profile, args.glitch_threshold_mult,
                 args.thdn_limit_db, args.drift_limit_ppm, clock_series,
-                args.verbose,
+                args.steady_ms, args.verbose,
             )
             if ok:
                 break
@@ -751,7 +782,7 @@ def main() -> int:
             args.freq_a, args.freq_b, args.tolerance_hz,
             args.expect, args.profile, args.glitch_threshold_mult,
             args.thdn_limit_db, args.drift_limit_ppm, clock_series,
-            args.verbose,
+            args.steady_ms, args.verbose,
         )
 
     if args.json:

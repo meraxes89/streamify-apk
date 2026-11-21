@@ -157,6 +157,32 @@ impl RangeFetcher for BlockingHttpFetcher {
         start: u64,
         len: u64,
     ) -> Result<Vec<u8>, streamify_core::EngineError> {
+        // Phase 5 / Pillar 4: the netem chaos lane drops 3% of packets —
+        // a single-attempt TCP GET dies on the first dropped segment.
+        // The production HTTP lane retries (the downloader discipline);
+        // this test fetcher now does too (bounded: 6 attempts, 50 ms
+        // backoff — far under the producer's segment deadline).
+        let mut last_err = None;
+        for attempt in 0..6 {
+            match Self::fetch_range_once(url, start, len) {
+                Ok(v) => return Ok(v),
+                Err(e) => {
+                    eprintln!("fetch_range attempt {} failed: {e:?} (retrying)", attempt + 1);
+                    last_err = Some(e);
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            }
+        }
+        Err(last_err.expect("at least one attempt"))
+    }
+}
+
+impl BlockingHttpFetcher {
+    fn fetch_range_once(
+        url: &str,
+        start: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, streamify_core::EngineError> {
         use std::io::Write;
         use std::net::TcpStream;
 

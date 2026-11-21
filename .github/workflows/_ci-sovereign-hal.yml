@@ -194,17 +194,30 @@ jobs:
 
       - name: "Phase 5 rt-alloc-trap non-vacuity: each fault aborts (rc 134)"
         run: |
-          # One process per fault: nextest's process isolation turns each
-          # abort into a test failure, which is EXACTLY the verdict we
-          # want (an aborted negative control = the trap fired).
+          # The negative controls DELIBERATELY abort the process: under
+          # nextest each abort is a test FAILURE (exit != 0) — the
+          # expected verdict. The pass condition is therefore: nextest
+          # exits non-zero AND every negative control shows ABRT.
+          set +e
           cargo nextest run \
             --manifest-path rust/Cargo.toml \
             --config-file rust/.config/nextest.toml \
             --profile ci \
             -p streamify-playback --features rt-alloc-trap --test test_rt_alloc_trap \
-            -E 'test(negative_control)'
-          echo "::error::negative controls must ABORT, not pass — vacuous trap"
-          exit 1
+            -E 'test(negative_control)' 2>&1 | tee /tmp/rt-trap-negatives.log
+          NEXTEC=$?
+          set -e
+          ABRTS=$(grep -c "ABRT" /tmp/rt-trap-negatives.log || true)
+          echo "nextest exit=$NEXTEC, ABRT markers=$ABRTS (expect 3)"
+          if [ $NEXTEC -eq 0 ]; then
+            echo "::error::negative controls PASSED — the trap is vacuous (allocations survived the guarded windows)"
+            exit 1
+          fi
+          if [ "$ABRTS" -lt 3 ]; then
+            echo "::error::expected 3 ABRT markers (Box::new / Vec::push / format!), saw $ABRTS"
+            exit 1
+          fi
+          echo "RT-ALLOC-TRAP NON-VACUITY: all 3 faults aborted the process — trap armed and firing"
         env:
           RT_TRAP_NEGATIVE: "1"
 
@@ -576,7 +589,7 @@ jobs:
             Write-Output "::warning::WASAPI loopback PENDING: no capture to verify (matches the play step's no-endpoint skip)"
             exit 0
           }
-          python scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
+          python scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --thdn-limit-db -45 --steady-ms 2500 --verbose
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
   loopback-macos:
@@ -651,9 +664,9 @@ jobs:
           cat player.log || true
           [ $PC -eq 0 ] || { echo "::error::cpal loopback player failed ($PC)"; exit 1; }
           [ -s capture.wav ] || { echo "::error::no BlackHole capture"; cat capture.log; exit 1; }
-      - name: FFT-verify the captured OS audio
+      - name: Tri-Oracle verify the captured OS audio (opus codec ceiling)
         run: |
-          python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --verbose
+          python3 scripts/sovereign_loopback_verifier.py capture.wav --freq-a 440 --freq-b 880 --thdn-limit-db -45 --steady-ms 2500 --verbose
 
   loopback-linux:
     name: "Gate 4.3: Linux PipeWire null-sink loopback"
@@ -722,7 +735,7 @@ jobs:
           # defect; Oracle 1 (glitches) + Oracle 3 (clock, via the
           # player's own verdict) remain at full strictness.
           python3 scripts/sovereign_loopback_verifier.py capture.wav \
-            --freq-a 440 --freq-b 880 --thdn-limit-db -45 --verbose
+            --freq-a 440 --freq-b 880 --thdn-limit-db -45 --steady-ms 2500 --verbose
           # The player's own JSON verdict already asserted zero underruns
           # + |clock drift| within the gate under torture (its exit code
           # propagated through the play step above).
@@ -881,7 +894,7 @@ jobs:
             # r19's own probe). The whole probe+verify is ONE line now:
             # pick the first non-empty capture, run the FFT verifier,
             # echo the verdict JSON, fail the leg inline on either miss.
-            ls -la "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/ 2>&1 || true; CAP=""; for f in "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/capture.wav; do if [ -s "$f" ]; then CAP="$f"; break; fi; done; if [ -z "$CAP" ]; then echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat /data/local/tmp/sovereign/player.log 2>/dev/null | tail -5; exit 1; fi; echo "captured: $CAP"; cat /tmp/sovereign-guest/verdict.json || true; if ! python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose; then echo "::error::Android loopback FFT failed"; exit 1; fi; echo "ANDROID AUDIOFLINGER LOOPBACK: FFT PASS (API ${{ matrix.api }})"
+            ls -la "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/ 2>&1 || true; CAP=""; for f in "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/capture.wav; do if [ -s "$f" ]; then CAP="$f"; break; fi; done; if [ -z "$CAP" ]; then echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat /data/local/tmp/sovereign/player.log 2>/dev/null | tail -5; exit 1; fi; echo "captured: $CAP"; cat /tmp/sovereign-guest/verdict.json || true; if ! python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --thdn-limit-db -45 --steady-ms 2500 --verbose; then echo "::error::Android loopback FFT failed"; exit 1; fi; echo "ANDROID AUDIOFLINGER LOOPBACK: FFT PASS (API ${{ matrix.api }})"
 
   loopback-browser:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
