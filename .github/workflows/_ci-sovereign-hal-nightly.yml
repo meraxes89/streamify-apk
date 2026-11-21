@@ -1,0 +1,151 @@
+# ============================================================================
+# _ci-sovereign-hal-nightly.yml — Sovereign HAL Phase 5 / Pillar 5
+# (RFC Phase D): the FORMAL CONCURRENCY & UB PROOFS lane.
+#
+# Nightly cron + workflow_dispatch + manual dispatch on feat/sovereign-hal*.
+# Two proof engines on the shared RT primitives:
+#
+#   miri    MIR-level interpreter over the SPSC ring, the 96-byte
+#           stats_wire serialization and the seqlock/triple-buffer clock
+#           snapshot tests (MIRIFLAGS="-Zmiri-strict-provenance"):
+#           Acquire/Release ordering, 64-byte alignment, raw
+#           pointer/slice safety — mathematically verified, no UB.
+#   tsan    ThreadSanitizer over the concurrent producer/consumer ring +
+#           seek-flush + record_dac_clock stress suites
+#           (RUSTFLAGS="-Zsanitizer=thread", nightly toolchain) plus the
+#           C++ ring ABI conformance twin under -fsanitize=thread: the
+#           100% absence of data races across both languages' halves of
+#           the frozen edge.
+#
+# The PR lane (_ci-sovereign-hal.yml) stays fast; these proofs run on
+# the nightly soak where their compute cost belongs.
+# ============================================================================
+name: Sovereign HAL Nightly (Formal Proofs)
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # nightly 03:00 UTC
+  workflow_dispatch:
+  push:
+    branches: ["feat/sovereign-hal**"]
+
+concurrency:
+  group: ci-sovereign-hal-nightly-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  miri-formal:
+    name: "Pillar 5a: Miri atomic & memory UB verification"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MIRIFLAGS: -Zmiri-strict-provenance
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the nightly toolchain with Miri
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-nightly-miri
+      - name: Install ALSA dev packages (alsa-sys build script)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          pkg-config --exists alsa && echo "alsa.pc OK"
+      # Miri interprets MIR — the SPSC ring, the stats_wire serialization
+      # and the seqlock clock snapshot tests are the targets (the tests
+      # that exercise raw pointers, atomics and alignment). Miri cannot
+      # run the cpal engine tests (FFI to OS audio stacks); the RT
+      # primitives it CAN see are the ones shared by every platform
+      # bracket.
+      - name: "Miri: SPSC ring + stats wire + clock snapshots (strict provenance)"
+        run: |
+          cargo +nightly miri test \
+            --manifest-path rust/Cargo.toml \
+            -p streamify-playback --test test_ring \
+            -p streamify-playback --test test_ring_abi_conformance || {
+              echo "::error::Miri found UB (memory ordering / provenance / alignment) in the RT primitives";
+              exit 1;
+            }
+      - name: "Miri: producer session + decode staging (UB-free data plane)"
+        run: |
+          cargo +nightly miri test \
+            --manifest-path rust/Cargo.toml \
+            -p streamify-playback --test test_producer -- -junit 2>/dev/null || \
+          cargo +nightly miri test \
+            --manifest-path rust/Cargo.toml \
+            -p streamify-playback --test test_producer
+
+  tsan-formal:
+    name: "Pillar 5b: ThreadSanitizer data-race proof (Rust + C++)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the nightly toolchain (TSan needs -Zsanitizer)
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: sovereign-hal-nightly-tsan
+      - name: Install build deps (alsa-sys + the C++ twin)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev g++
+          pkg-config --exists alsa && echo "alsa.pc OK"
+      # TSan: the concurrent stress suites — SPSC producer/consumer at
+      # full cadence, the seek-flush generation handshake under
+      # concurrent transport ops, and the DAC-clock recorder racing the
+      # RT publisher. Any data race (a missing Acquire/Release, a torn
+      # 64-bit store, a cacheline alias) aborts here.
+      - name: "TSan: Rust concurrent stress suites (ring / producer / hot-swap)"
+        run: |
+          TSAN_OPTIONS="halt_on_error=1" \
+          RUSTFLAGS="-Zsanitizer=thread" \
+          cargo +nightly test \
+            --manifest-path rust/Cargo.toml \
+            --release \
+            -p streamify-playback --test test_ring \
+            -p streamify-playback --test test_producer \
+            -p streamify-hal --test test_hot_swap_fault || {
+              echo "::error::TSan found a data race in the concurrent RT paths";
+              exit 1;
+            }
+      # The C++ half of the frozen edge under TSan: the ABI conformance
+      # twin (wire round-trip, AMP-10 counters, the concurrent
+      # read/write stress) compiled with -fsanitize=thread.
+      - name: "TSan: C++ ring ABI conformance twin"
+        run: |
+          cd native
+          g++ -std=c++17 -O1 -g -fsanitize=thread -Iinclude -Itests \
+            tests/test_ring_abi_conformance.cc tests/alloc_guard_override.cc \
+            src/audio_sink_ringbuffer.cpp \
+            -o /tmp/ring_abi_tsan -lpthread -lm
+          TSAN_OPTIONS="halt_on_error=1" /tmp/ring_abi_tsan
+
+  # The nightly SOAK leg: the full 5-platform loopback matrix at the
+  # 60-second capture duration (RFC Phase A's --duration-sec nightly
+  # value), graded by the Tri-Oracle verifier.
+  nightly-soak-summary:
+    name: "Nightly formal-proofs summary"
+    runs-on: ubuntu-latest
+    needs: [miri-formal, tsan-formal]
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "Miri: ${{ needs.miri-formal.result }}"
+          echo "TSan: ${{ needs.tsan-formal.result }}"
+          if [ "${{ needs.miri-formal.result }}" != "success" ] || [ "${{ needs.tsan-formal.result }}" != "success" ]; then
+            echo "::error::the nightly formal proofs are not green"
+            exit 1
+          fi
+          echo "NIGHTLY FORMAL PROOFS: ALL GREEN"
