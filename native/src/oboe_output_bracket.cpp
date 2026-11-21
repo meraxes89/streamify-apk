@@ -70,6 +70,18 @@
 #define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+// The umbrella CMake sets -fvisibility=hidden globally (the -O3/-ffast-math
+// block); plain extern "C" exports therefore land as HIDDEN symbols and the
+// Rust player's link against libstreamify_native_core.so fails with 7
+// undefined sovereign_oboe_* references (the r13 finding — the Java_* JNI
+// exports survived only because JNIEXPORT carries default visibility).
+// Every bracket export below must be default-visibility explicitly.
+#if defined(__GNUC__)
+#define SOVEREIGN_OBOE_EXPORT extern "C" __attribute__((visibility("default")))
+#else
+#define SOVEREIGN_OBOE_EXPORT extern "C"
+#endif
+
 // ── The frozen C edge (ring_export.rs — byte-frozen since Phase 0) ─────────
 // Signature discipline mirrors streamify_audio_sinks.h's ABI rules: the
 // read edge returns FRAMES (not samples); occupancy/channels report the
@@ -306,7 +318,7 @@ extern "C" {
 // Opens the bracket against the installed frozen ring. audio_api: 1 =
 // AAudio-first (Oboe negotiates), 2 = force OpenSL ES. Returns 0 on
 // success; negative = the error code (the ladder walks on failure).
-int32_t sovereign_oboe_open(int32_t audio_api) {
+SOVEREIGN_OBOE_EXPORT int32_t sovereign_oboe_open(int32_t audio_api) {
     if (g_state) return 0;  // idempotent
     if (!g_edge.resolve()) return -1;  // SOVEREIGN_OBOE_ERR_NO_RING
     auto* st = new SovereignOboeState();
@@ -326,7 +338,7 @@ int32_t sovereign_oboe_open(int32_t audio_api) {
 }
 
 // Closes + joins (the ownership discipline: the caller drives lifecycle).
-void sovereign_oboe_close() {
+SOVEREIGN_OBOE_EXPORT void sovereign_oboe_close() {
     if (!g_state) return;
     SovereignOboeState* st = g_state;
     g_state = nullptr;
@@ -336,19 +348,19 @@ void sovereign_oboe_close() {
 }
 
 // The live counters (callback count / underrun frames / ring occupancy).
-uint64_t sovereign_oboe_callbacks() {
+SOVEREIGN_OBOE_EXPORT uint64_t sovereign_oboe_callbacks() {
     return g_state ? g_rt.callbacks.load(std::memory_order_relaxed) : 0;
 }
-uint64_t sovereign_oboe_underrun_frames() {
+SOVEREIGN_OBOE_EXPORT uint64_t sovereign_oboe_underrun_frames() {
     return g_state ? g_rt.underrun_frames.load(std::memory_order_relaxed) : 0;
 }
-uint64_t sovereign_oboe_ring_occupancy() {
+SOVEREIGN_OBOE_EXPORT uint64_t sovereign_oboe_ring_occupancy() {
     return g_edge.occupancy ? g_edge.occupancy() : 0;
 }
 
 // The latest DAC clock sample (the record_dac_clock bridge). Returns 0
 // while no sample exists; writes the three fields + seq otherwise.
-int32_t sovereign_oboe_dac_clock(uint64_t* frame, uint32_t* rate,
+SOVEREIGN_OBOE_EXPORT int32_t sovereign_oboe_dac_clock(uint64_t* frame, uint32_t* rate,
                                  uint64_t* monotonic_ns) {
     const uint64_t seq = g_clock.seq.load(std::memory_order_acquire);
     if (seq == 0) return 0;
@@ -360,14 +372,14 @@ int32_t sovereign_oboe_dac_clock(uint64_t* frame, uint32_t* rate,
 
 // Serializes the ring's 96-byte stats wire (the frozen image; returns
 // 1 when a ring is attached, 0 otherwise — ring_export semantics).
-int32_t sovereign_oboe_stats_wire(uint8_t* dst, int32_t dst_bytes) {
+SOVEREIGN_OBOE_EXPORT int32_t sovereign_oboe_stats_wire(uint8_t* dst, int32_t dst_bytes) {
     if (!g_edge.stats_wire || dst_bytes < SINK_STATS_WIRE_BYTES) return 0;
     return static_cast<int32_t>(g_edge.stats_wire(dst, SINK_STATS_WIRE_BYTES));
 }
 
 // The stream's Oboe backend actually in use (1 = AAudio, 2 = OpenSL
 // ES, 0 = none) — the route telemetry the SettingScreen surfaces.
-int32_t sovereign_oboe_api_route() {
+SOVEREIGN_OBOE_EXPORT int32_t sovereign_oboe_api_route() {
     if (!g_state || !g_state->stream) return 0;
     return g_state->stream->getAudioApi() == oboe::AudioApi::AAudio ? 1 : 2;
 }
