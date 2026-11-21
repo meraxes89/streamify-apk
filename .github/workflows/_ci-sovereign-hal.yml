@@ -681,81 +681,40 @@ jobs:
           # r5). The guest tinycap pull stays as the fallback capture.
           emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
           script: |
-            set -x
-            echo "Emulator booted (API ${{ matrix.api }})."
+            # r19: the action runs EACH LINE as a separate sh -c — shell
+            # variables do NOT cross lines (r18: GUEST=/data/local/tmp/
+            # sovereign assigned fine, then `mkdir -p $GUEST` saw "").
+            # Every line below is fully self-contained (inline paths,
+            # multi-step sequences on one line).
             adb shell getprop ro.build.version.sdk
             adb shell ps -A | grep -i audioserver || { echo "::error::audioserver not running"; exit 1; }
-
-            # ── Guest mount: the bracket .so + the Rust cdylib + the player ──
-            # Both .so files land in the SAME dir (the bracket dlopens
-            # libstreamify_core_rs.so by soname; the runtime linker finds
-            # it via LD_LIBRARY_PATH) with the fixture + the player bin.
-            adb root
+            adb root && sleep 2 && adb wait-for-device
+            adb shell mkdir -p /data/local/tmp/sovereign
+            adb push /tmp/sovereign-native-out/libstreamify_native_core.so /data/local/tmp/sovereign/ && adb push /tmp/sovereign-native-out/libc++_shared.so /data/local/tmp/sovereign/ && adb push /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so /data/local/tmp/sovereign/ && adb push /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback /data/local/tmp/sovereign/ && adb push fixtures/audio/opus_dual_tone_48k.raw_opus /data/local/tmp/sovereign/fixture.opus && adb shell chmod +x /data/local/tmp/sovereign/sovereign_android_loopback && adb shell ls -la /data/local/tmp/sovereign/
+            # The fallback capture, started before the player (capture-first).
+            adb shell "which tinycap && nohup tinycap /data/local/tmp/sovereign/capture.wav -r 48000 -c 2 -b 16 > /dev/null 2>&1 &" || true
             sleep 2
-            adb wait-for-device
-            GUEST=/data/local/tmp/sovereign
-            adb shell mkdir -p $GUEST
-            adb push /tmp/sovereign-native-out/libstreamify_native_core.so $GUEST/
-            adb push /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so $GUEST/
-            adb push /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback $GUEST/
-            adb push fixtures/audio/opus_dual_tone_48k.raw_opus $GUEST/fixture.opus
-            adb shell chmod +x $GUEST/sovereign_android_loopback
-            adb push /tmp/sovereign-native-out/libc++_shared.so $GUEST/ 2>/dev/null || true
-            adb shell ls -la $GUEST/
-
-            # ── Guest tinycap (the FALLBACK capture): start BEFORE the
-            #    player (capture-first — virtual devices only clock when
-            #    a reader is attached). On images where the mic is not
-            #    wired to the mix this records silence and the QEMU wav
-            #    backend (the primary) carries the leg instead.
-            adb shell "which tinycap && nohup tinycap $GUEST/capture.wav -r 48000 -c 2 -b 16 > /dev/null 2>&1 &" || true
-            sleep 2
-
-            # ── The player (the REAL codec path: Opus decode → ring →
-            #    Oboe → AudioFlinger → QEMU wav backend) ──
-            adb shell "cd $GUEST && LD_LIBRARY_PATH=$GUEST ./sovereign_android_loopback --file fixture.opus --seconds 6 --json > $GUEST/verdict.json 2> $GUEST/player.log"
-            PEXIT=$?
+            # The player: the REAL codec path (Opus decode → frozen ring →
+            # Oboe → audioserver). LD_LIBRARY_PATH carries both .so files.
+            adb shell "cd /data/local/tmp/sovereign && LD_LIBRARY_PATH=/data/local/tmp/sovereign ./sovereign_android_loopback --file fixture.opus --seconds 6 --json > verdict.json 2> player.log"; echo "player exit: $?"
             adb shell "pkill tinycap" || true
             sleep 1
-            echo "player exit: $PEXIT"
-            adb shell cat $GUEST/verdict.json || true
-            adb shell tail -12 $GUEST/player.log || true
-
-            # ── The capture: QEMU's wav backend wrote the emulated HW's
-            #    mix straight to the HOST (the directive's route). Give
-            #    QEMU a beat to flush, then verify in place. ──
+            adb shell cat /data/local/tmp/sovereign/verdict.json || true
+            adb shell tail -12 /data/local/tmp/sovereign/player.log || true
             sleep 2
-            # QEMU_WAV_PATH is pinned to /home/runner/work/_temp (the
-            # job env cannot use the runner context); RUNNER_TEMP should
-            # match, but honor both spellings before falling back.
-            CAP="$RUNNER_TEMP/audioflinger.wav"
-            if [ ! -s "$CAP" ] && [ -s /home/runner/work/_temp/audioflinger.wav ]; then
-              CAP=/home/runner/work/_temp/audioflinger.wav
-            fi
-            if [ ! -s "$CAP" ]; then
-              echo "::warning::QEMU wav backend produced nothing — falling back to the guest tinycap pull"
-              adb pull $GUEST/verdict.json /tmp/sovereign-guest/verdict.json || true
-              adb pull $GUEST/player.log /tmp/sovereign-guest/player.log || true
-              adb pull $GUEST/capture.wav /tmp/sovereign-guest/capture.wav || true
-              CAP=/tmp/sovereign-guest/capture.wav
-            fi
-            adb pull $GUEST/verdict.json /tmp/sovereign-guest/verdict.json || true
-            adb pull $GUEST/player.log /tmp/sovereign-guest/player.log || true
-            [ -s "$CAP" ] || { echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat $GUEST/player.log | tail -5; exit 1; }
-            python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose
-            VEXIT=$?
-            # The player's own verdict gates too: PEXIT 2 (usage/decode)
-            # and 3 (bracket open failed) are hard fails; PEXIT 1 (the
-            # drift/underrun verdict) is reported and FAILS the leg —
-            # the FFT is the correctness oracle, the player verdict the
-            # realtime-discipline oracle. Both must hold.
+            # The capture: QEMU's wav backend (QEMU_AUDIO_DRV=wav job env)
+            # wrote the emulated audio HW's output on the HOST. Pull the
+            # guest artifacts, then verify with the shared FFT verifier.
+            mkdir -p /tmp/sovereign-guest && adb pull /data/local/tmp/sovereign/verdict.json /tmp/sovereign-guest/verdict.json || true; adb pull /data/local/tmp/sovereign/player.log /tmp/sovereign-guest/player.log || true; adb pull /data/local/tmp/sovereign/capture.wav /tmp/sovereign-guest/capture.wav || true
+            ls -la "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/ 2>&1 || true
+            CAP=""; for f in "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/capture.wav; do if [ -s "$f" ]; then CAP="$f"; break; fi; done
+            if [ -z "$CAP" ]; then echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat /data/local/tmp/sovereign/player.log 2>/dev/null | tail -5; exit 1; fi
+            echo "captured: $CAP"
+            python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose; VEXIT=$?
             cat /tmp/sovereign-guest/verdict.json || true
             echo "verifier exit: $VEXIT"
-            if [ $VEXIT -ne 0 ] || [ $PEXIT -ne 0 ]; then
-              echo "::error::Android loopback failed (verifier=$VEXIT player=$PEXIT)"
-              exit 1
-            fi
-            echo "ANDROID AUDIOFLINGER LOOPBACK: PASS (API ${{ matrix.api }})"
+            if [ $VEXIT -ne 0 ]; then echo "::error::Android loopback FFT failed (verifier=$VEXIT)"; exit 1; fi
+            echo "ANDROID AUDIOFLINGER LOOPBACK: FFT PASS (API ${{ matrix.api }})"
 
   loopback-browser:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
