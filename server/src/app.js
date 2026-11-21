@@ -71,7 +71,7 @@ import { roomRoutes } from './slices/room/routes.js';
 import { authPlugin } from './slices/auth/routes.js';
 import { ProcessSurvival } from './platform/survival.js';
 import { getDefaultBufferPool } from './lib/buffer-pool.js';
-import { configureGlobalUpstreamPool, getUpstreamPoolStatus, closeUpstreamPool } from './platform/upstream-pool.js';
+import { configureGlobalUpstreamPool, prewarmUpstreamTransport, getUpstreamPoolStatus, closeUpstreamPool } from './platform/upstream-pool.js';
 import { pageCache } from './platform/page-cache.js';
 import { pal } from './platform/pal/index.js';
 import { TierGovernor, getTierConfig } from './platform/tier/index.js';
@@ -118,8 +118,9 @@ export async function createApp({
   });
   governor.start();
 
-  // L3 Warm Upstream Connection Pool & DNS Pinning (comm10.1.md Frontier 3)
+  // L3 Warm Upstream Connection Pool & DNS Pinning (comm10.1.md Frontier 3 & comm13.md)
   configureGlobalUpstreamPool();
+  prewarmUpstreamTransport();
 
   const app = Fastify({
     logger,
