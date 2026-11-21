@@ -1,5 +1,11 @@
 package com.maxrave.simpmusic.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +26,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +38,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale
@@ -37,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import com.maxrave.simpmusic.Platform
 import com.maxrave.simpmusic.extension.greyScale
 import com.maxrave.simpmusic.getPlatform
+import com.maxrave.simpmusic.ui.icon.KeyboardArrowDown
+import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.typo
 
@@ -149,7 +162,8 @@ fun SettingItem(
 /**
  * One group of the Settings screen, laid out the way Apple Music groups its settings: a small
  * header above, the rows on one rounded card, and an optional note under the card ([footer]).
- * Displays a clean vector icon badge when [icon] is supplied.
+ * Displays a clean vector icon badge when [icon] is supplied, and supports collapsible accordion
+ * tiering with smooth [AnimatedVisibility].
  */
 @Composable
 fun SettingGroup(
@@ -157,16 +171,39 @@ fun SettingGroup(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     iconTint: Color? = null,
+    collapsible: Boolean = false,
+    initiallyExpanded: Boolean = true,
+    forceExpanded: Boolean = false,
+    summary: String? = null,
     footer: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val cardColor = settingGroupColor()
     val isDark = LocalIsDarkTheme.current
     val rimBorderColor = if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.04f)
+    var isExpanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
+    val effectiveExpanded = forceExpanded || !collapsible || isExpanded
+
     Column(modifier.fillMaxWidth().padding(top = 24.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = SettingRowPaddingHorizontal, end = SettingRowPaddingHorizontal, bottom = 8.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .then(
+                        if (collapsible) {
+                            Modifier.clickable { isExpanded = !isExpanded }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(
+                        start = SettingRowPaddingHorizontal,
+                        end = SettingRowPaddingHorizontal,
+                        top = if (collapsible) 6.dp else 0.dp,
+                        bottom = if (collapsible) 6.dp else 8.dp,
+                    ),
         ) {
             if (icon != null) {
                 val badgeTint = iconTint ?: MaterialTheme.colorScheme.primary
@@ -187,28 +224,56 @@ fun SettingGroup(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
             }
-            Text(
-                text = title.toUpperCase(Locale.current),
-                // The headers' size from before the groups; semibold with high contrast for rapid scanning
-                style = typo().labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title.toUpperCase(Locale.current),
+                    // The headers' size from before the groups; semibold with high contrast for rapid scanning
+                    style = typo().labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (summary != null && (!effectiveExpanded || collapsible)) {
+                    Text(
+                        text = summary,
+                        style = typo().bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+            }
+            if (collapsible) {
+                val rotation by animateFloatAsState(targetValue = if (effectiveExpanded) 180f else 0f)
+                Icon(
+                    imageVector = SimpIcons.KeyboardArrowDown,
+                    contentDescription = if (effectiveExpanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier =
+                        Modifier
+                            .size(20.dp)
+                            .graphicsLayer { rotationZ = rotation },
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = effectiveExpanded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (collapsible) 4.dp else 0.dp)
+                        .border(width = 1.dp, color = rimBorderColor, shape = SettingGroupShape)
+                        .clip(SettingGroupShape)
+                        .background(cardColor.copy(alpha = 0.65f))
+                        .drawWithContent {
+                            // The first row's hairline would sit on the card's own edge, so that strip is
+                            // left undrawn. Clipped rather than painted over: the card is translucent.
+                            clipRect(top = SettingDividerThickness.toPx()) { this@drawWithContent.drawContent() }
+                        },
+                content = content,
             )
         }
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .border(width = 1.dp, color = rimBorderColor, shape = SettingGroupShape)
-                    .clip(SettingGroupShape)
-                    .background(cardColor.copy(alpha = 0.65f))
-                    .drawWithContent {
-                        // The first row's hairline would sit on the card's own edge, so that strip is
-                        // left undrawn. Clipped rather than painted over: the card is translucent.
-                        clipRect(top = SettingDividerThickness.toPx()) { this@drawWithContent.drawContent() }
-                    },
-            content = content,
-        )
-        if (footer != null) {
+        if (footer != null && effectiveExpanded) {
             Box(Modifier.padding(start = SettingRowPaddingHorizontal, end = SettingRowPaddingHorizontal, top = 8.dp)) {
                 footer()
             }
