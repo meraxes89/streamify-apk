@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
@@ -71,6 +72,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.layout
@@ -82,6 +84,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
@@ -141,12 +144,7 @@ import com.maxrave.simpmusic.ui.component.LoadingDialog
 import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.component.SettingGroup
 import com.maxrave.simpmusic.ui.component.SettingItem
-import com.maxrave.simpmusic.ui.icon.ArrowBackIosNew
-import com.maxrave.simpmusic.ui.icon.Close
-import com.maxrave.simpmusic.ui.icon.Error
-import com.maxrave.simpmusic.ui.icon.PeopleAlt
-import com.maxrave.simpmusic.ui.icon.PlaylistAdd
-import com.maxrave.simpmusic.ui.icon.SimpIcons
+import com.maxrave.simpmusic.ui.icon.*
 import com.maxrave.simpmusic.ui.navigation.destination.home.AdminDashboardDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.AppLogDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.CreditDestination
@@ -476,6 +474,99 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+private data class SettingNavCategory(
+    val id: String,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val hubKeys: Set<String>,
+)
+
+private val settingsNavCategories = listOf(
+    SettingNavCategory(
+        id = "all",
+        label = "All",
+        icon = SimpIcons.Tune,
+        hubKeys = emptySet(),
+    ),
+    SettingNavCategory(
+        id = "sound",
+        label = "Sound",
+        icon = SimpIcons.GraphicEq,
+        hubKeys = setOf("audio", "playback"),
+    ),
+    SettingNavCategory(
+        id = "interface",
+        label = "Appearance",
+        icon = SimpIcons.AutoGraph,
+        hubKeys = setOf("user_interface"),
+    ),
+    SettingNavCategory(
+        id = "accounts",
+        label = "Accounts & Sync",
+        icon = SimpIcons.Sync,
+        hubKeys = setOf("login_sync_section", "streamify_account", "spotify", "discord", "lastfm"),
+    ),
+    SettingNavCategory(
+        id = "content",
+        label = "Content",
+        icon = SimpIcons.LibraryMusic,
+        hubKeys = setOf("content", "listening_history", "lyrics"),
+    ),
+    SettingNavCategory(
+        id = "storage",
+        label = "Storage",
+        icon = SimpIcons.DownloadForOffline,
+        hubKeys = setOf("storage", "backup"),
+    ),
+    SettingNavCategory(
+        id = "tools",
+        label = "Tools",
+        icon = SimpIcons.TipsAndUpdates,
+        hubKeys = setOf("AI", "sponsor_block", "developer_option", "admin_command_center"),
+    ),
+    SettingNavCategory(
+        id = "about",
+        label = "About",
+        icon = SimpIcons.Info,
+        hubKeys = setOf("about_us"),
+    ),
+)
+
+private fun isGroupVisible(key: String, query: String, activeCategory: String): Boolean {
+    if (!isGroupMatch(key, query)) return false
+    if (query.isNotBlank()) return true
+    if (activeCategory == "all") return true
+    val hub = settingsNavCategories.firstOrNull { it.id == activeCategory }
+    return hub?.hubKeys?.contains(key) == true
+}
+
+private fun isGroupMatch(key: String, query: String): Boolean {
+    if (query.isBlank()) return true
+    val q = query.trim().lowercase()
+    val keywords = when (key) {
+        "login_sync_section" -> "sync device pair account library local network login peer"
+        "user_interface" -> "interface theme dark light color dynamic accent liquid glass appearance font now playing lyrics style desktop window amoled"
+        "content" -> "content language location explicit country region stream video audio track filter search"
+        "audio" -> "audio quality high opus 256kbps dolby atmos equalizer graphic eq delay reverb 8d spatial sound bit depth"
+        "playback" -> "playback volume normalize skip silent silence crossfade dj mode gapless fade kill service state cast"
+        "listening_history" -> "history tracking clear listening stats recent"
+        "lyrics" -> "lyrics provider offset sync romanization japanese dictionary translation subtitle lrc genius"
+        "AI" -> "ai artificial intelligence openai translation provider api key model gpt claude"
+        "spotify" -> "spotify login canvas lyrics connect link account"
+        "discord" -> "discord rich presence status rpc"
+        "lastfm" -> "lastfm scrobble scrobbling login track"
+        "sponsor_block" -> "sponsorblock sponsor skip segments adblock music video intros"
+        "storage" -> "storage cache download downloaded clear disk space free offline limit"
+        "backup" -> "backup restore export import playlist file cloud drive"
+        "about_us" -> "about version update check update channel github telegram discord license source contributor credit"
+        "developer_option" -> "developer proxy debug log network port host test"
+        "streamify_account" -> "streamify account profile user auth login logout session"
+        "admin_command_center" -> "admin dashboard broadcast metrics"
+        else -> key.lowercase()
+    }
+    return keywords.contains(q) || key.lowercase().contains(q)
+}
+
 @OptIn(
     ExperimentalMaterial3Api::class,
     ExperimentalCoilApi::class,
@@ -670,6 +761,10 @@ fun SettingScreen(
     }
 
     val settingListState = rememberLazyListState()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearching by rememberSaveable { mutableStateOf(false) }
+    var selectedCategoryId by rememberSaveable { mutableStateOf("all") }
+    val forceExpandGroups = searchQuery.isNotBlank() || selectedCategoryId != "all"
     // The toolbar is part of the list and scrolls away with it; a pinned, frosted copy takes over
     // once the Devices group has gone under it — Playlist's and Artist's way. The group's height
     // (top padding, header, card) is the scroll that carries it fully under the bar.
@@ -717,6 +812,10 @@ fun SettingScreen(
                 // where the pinned copy appears; the list's top padding already clears the status bar.
                 SettingTopBar(
                     onBack = { navController.navigateUp() },
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    isSearching = isSearching,
+                    onToggleSearch = { isSearching = it },
                     windowInsets = WindowInsets(0),
                     modifier =
                         Modifier.layout { measurable, constraints ->
@@ -726,54 +825,116 @@ fun SettingScreen(
                             layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
                         },
                 )
+                if (!isSearching) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        items(settingsNavCategories) { cat ->
+                            val isSelected = selectedCategoryId == cat.id
+                            val chipBg =
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHigh
+                                }
+                            val chipContentColor =
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier =
+                                    Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(chipBg)
+                                        .clickable {
+                                            selectedCategoryId = cat.id
+                                            coroutineScope.launch {
+                                                settingListState.animateScrollToItem(0)
+                                            }
+                                        }.padding(horizontal = 12.dp, vertical = 6.dp),
+                            ) {
+                                Icon(
+                                    imageVector = cat.icon,
+                                    contentDescription = null,
+                                    tint = chipContentColor,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = cat.label,
+                                    style = typo().labelMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium),
+                                    color = chipContentColor,
+                                )
+                            }
+                        }
+                    }
+                }
                 // Above every section, and inside item 0 rather than an item of its own, for the
                 // glow reason above.
-                SettingGroup(
-                    title = stringResource(Res.string.login_sync_section),
-                    modifier = Modifier.onSizeChanged { devicesGroupHeightPx = it.height },
-                ) {
-                    val syncPeer = librarySyncState.peers.firstOrNull()
-                    SettingItem(
-                        title =
-                            stringResource(
-                                if (getPlatform() == Platform.Android) Res.string.login_sync_android_title else Res.string.login_sync_desktop_title,
-                            ),
-                        subtitle =
-                            when {
-                                getPlatform() != Platform.Android -> stringResource(Res.string.login_sync_desktop_description)
-                                syncPeer != null -> stringResource(Res.string.library_sync_send_logins_paired, syncPeer.name)
-                                else -> stringResource(Res.string.login_sync_android_description)
-                            },
-                        onClick = { showLoginSyncDialog = true },
-                    )
-                    SettingItem(
-                        title = stringResource(Res.string.library_sync_title),
-                        subtitle =
-                            when {
-                                librarySyncState.problem == LibrarySyncProblem.WINDOWS_PUBLIC_NETWORK -> {
-                                    stringResource(Res.string.library_sync_windows_public)
-                                }
+                if (isGroupVisible("login_sync_section", searchQuery, selectedCategoryId)) {
+                    SettingGroup(
+                        title = stringResource(Res.string.login_sync_section),
+                        icon = SimpIcons.Sync,
+                        iconTint = Color(0xFF00BCD4),
+                        collapsible = true,
+                        initiallyExpanded = false,
+                        forceExpanded = forceExpandGroups,
+                        summary = stringResource(Res.string.library_sync_title),
+                        modifier = Modifier.onSizeChanged { devicesGroupHeightPx = it.height },
+                    ) {
+                        val syncPeer = librarySyncState.peers.firstOrNull()
+                        SettingItem(
+                            title =
+                                stringResource(
+                                    if (getPlatform() == Platform.Android) Res.string.login_sync_android_title else Res.string.login_sync_desktop_title,
+                                ),
+                            subtitle =
+                                when {
+                                    getPlatform() != Platform.Android -> stringResource(Res.string.login_sync_desktop_description)
+                                    syncPeer != null -> stringResource(Res.string.library_sync_send_logins_paired, syncPeer.name)
+                                    else -> stringResource(Res.string.login_sync_android_description)
+                                },
+                            onClick = { showLoginSyncDialog = true },
+                        )
+                        SettingItem(
+                            title = stringResource(Res.string.library_sync_title),
+                            subtitle =
+                                when {
+                                    librarySyncState.problem == LibrarySyncProblem.WINDOWS_PUBLIC_NETWORK -> {
+                                        stringResource(Res.string.library_sync_windows_public)
+                                    }
 
-                                syncPeer == null -> {
-                                    stringResource(
-                                        if (getPlatform() == Platform.Android) {
-                                            Res.string.library_sync_not_paired_android
-                                        } else {
-                                            Res.string.library_sync_not_paired_desktop
-                                        },
-                                    )
-                                }
+                                    syncPeer == null -> {
+                                        stringResource(
+                                            if (getPlatform() == Platform.Android) {
+                                                Res.string.library_sync_not_paired_android
+                                            } else {
+                                                Res.string.library_sync_not_paired_desktop
+                                            },
+                                        )
+                                    }
 
-                                else -> {
-                                    val names = librarySyncState.peers.joinToString { it.name }
-                                    librarySyncState.lastSyncAt?.let { stringResource(Res.string.library_sync_peer_synced, names, syncedAgo(it)) }
-                                        ?: stringResource(Res.string.library_sync_peer_not_synced, names)
-                                }
-                            },
-                        onClick = { showLibrarySyncDialog = true },
-                    )
+                                    else -> {
+                                        val names = librarySyncState.peers.joinToString { it.name }
+                                        librarySyncState.lastSyncAt?.let { stringResource(Res.string.library_sync_peer_synced, names, syncedAgo(it)) }
+                                            ?: stringResource(Res.string.library_sync_peer_not_synced, names)
+                                    }
+                                },
+                            onClick = { showLibrarySyncDialog = true },
+                        )
+                    }
                 }
-                SettingGroup(title = stringResource(Res.string.user_interface)) {
+                if (isGroupVisible("user_interface", searchQuery, selectedCategoryId)) {
+                    SettingGroup(
+                        title = stringResource(Res.string.user_interface),
+                        icon = SimpIcons.Tune,
+                        iconTint = Color(0xFF9C27B0),
+                    ) {
                     val themeModeLabels =
                         listOf(
                             DataStoreManager.THEME_MODE_SYSTEM to stringResource(Res.string.theme_mode_system),
@@ -1002,10 +1163,16 @@ fun SettingScreen(
                         switch = (enableLiquidGlass to { viewModel.setEnableLiquidGlass(it) }),
                     )
                 }
+                }
             }
         }
-        item(key = "content") {
-            SettingGroup(title = stringResource(Res.string.content)) {
+        if (isGroupVisible("content", searchQuery, selectedCategoryId)) {
+            item(key = "content") {
+                SettingGroup(
+                    title = stringResource(Res.string.content),
+                    icon = SimpIcons.LibraryMusic,
+                    iconTint = Color(0xFF3F51B5),
+                ) {
                 SettingItem(
                     title = stringResource(Res.string.youtube_account),
                     subtitle = stringResource(Res.string.manage_your_youtube_accounts),
@@ -1465,9 +1632,14 @@ fun SettingScreen(
                 }
             }
         }
-        if (getPlatform() == Platform.Android) {
+        }
+        if (getPlatform() == Platform.Android && isGroupVisible("audio", searchQuery, selectedCategoryId)) {
             item(key = "audio") {
-                SettingGroup(title = stringResource(Res.string.audio)) {
+                SettingGroup(
+                    title = stringResource(Res.string.audio),
+                    icon = SimpIcons.GraphicEq,
+                    iconTint = Color(0xFFFF9800),
+                ) {
                     DolbyAtmosCard(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -1529,8 +1701,13 @@ fun SettingScreen(
                 }
             }
         }
-        item(key = "playback") {
-            SettingGroup(title = stringResource(Res.string.playback)) {
+        if (isGroupVisible("playback", searchQuery, selectedCategoryId)) {
+            item(key = "playback") {
+                SettingGroup(
+                    title = stringResource(Res.string.playback),
+                    icon = SimpIcons.Headphones,
+                    iconTint = Color(0xFFE91E63),
+                ) {
                 // Under Playback rather than Audio because that whole group sits inside an
                 // Android-only branch — "Open system equalizer" is an Android feature — and this
                 // one is on both platforms: mpv's `af` chain on Desktop, an AudioProcessor in the
@@ -1711,11 +1888,21 @@ fun SettingScreen(
                 }
             }
         }
+        }
         // Deliberately not part of "storage" further down, which is Android-only: tracking and the
         // rows it leaves behind exist on Desktop just the same. The switch that produces the history
         // and the button that erases it belong together.
-        item(key = "listening_history") {
-            SettingGroup(title = stringResource(Res.string.listening_history)) {
+        if (isGroupVisible("listening_history", searchQuery, selectedCategoryId)) {
+            item(key = "listening_history") {
+                SettingGroup(
+                    title = stringResource(Res.string.listening_history),
+                    icon = SimpIcons.History,
+                    iconTint = Color(0xFF673AB7),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = stringResource(Res.string.local_tracking_title),
+                ) {
                 SettingItem(
                     title = stringResource(Res.string.local_tracking_title),
                     subtitle = stringResource(Res.string.local_tracking_description),
@@ -1744,8 +1931,18 @@ fun SettingScreen(
                 )
             }
         }
-        item(key = "lyrics") {
-            SettingGroup(title = stringResource(Res.string.lyrics)) {
+        }
+        if (isGroupVisible("lyrics", searchQuery, selectedCategoryId)) {
+            item(key = "lyrics") {
+                SettingGroup(
+                    title = stringResource(Res.string.lyrics),
+                    icon = SimpIcons.Lyrics,
+                    iconTint = Color(0xFF2196F3),
+                    collapsible = true,
+                    initiallyExpanded = true,
+                    forceExpanded = forceExpandGroups,
+                    summary = stringResource(Res.string.main_lyrics_provider),
+                ) {
                 SettingItem(
                     title = stringResource(Res.string.main_lyrics_provider),
                     subtitle =
@@ -1944,8 +2141,18 @@ fun SettingScreen(
                 )
             }
         }
-        item(key = "AI") {
-            SettingGroup(title = stringResource(Res.string.ai)) {
+        }
+        if (isGroupVisible("AI", searchQuery, selectedCategoryId)) {
+            item(key = "AI") {
+                SettingGroup(
+                    title = stringResource(Res.string.ai),
+                    icon = SimpIcons.TipsAndUpdates,
+                    iconTint = Color(0xFF009688),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = stringResource(Res.string.ai_provider),
+                ) {
                 SettingItem(
                     title = stringResource(Res.string.ai_provider),
                     subtitle =
@@ -2127,8 +2334,18 @@ fun SettingScreen(
                 )
             }
         }
-        item(key = "spotify") {
-            SettingGroup(title = stringResource(Res.string.spotify)) {
+        }
+        if (isGroupVisible("spotify", searchQuery, selectedCategoryId)) {
+            item(key = "spotify") {
+                SettingGroup(
+                    title = stringResource(Res.string.spotify),
+                    icon = SimpIcons.MusicNote,
+                    iconTint = Color(0xFF1DB954),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = if (spotifyLoggedIn) stringResource(Res.string.logged_in) else stringResource(Res.string.log_in_to_spotify),
+                ) {
                 SettingItem(
                     // The title follows the state: a row that still reads "Log in" while logged in
                     // gives no clue that tapping it signs you out.
@@ -2176,8 +2393,18 @@ fun SettingScreen(
                 )
             }
         }
-        item(key = "discord") {
-            SettingGroup(title = stringResource(Res.string.discord_integration)) {
+        }
+        if (isGroupVisible("discord", searchQuery, selectedCategoryId)) {
+            item(key = "discord") {
+                SettingGroup(
+                    title = stringResource(Res.string.discord_integration),
+                    icon = SimpIcons.PeopleAlt,
+                    iconTint = Color(0xFF5865F2),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = if (discordLoggedIn) stringResource(Res.string.logged_in) else stringResource(Res.string.log_in_to_discord),
+                ) {
                 SettingItem(
                     title =
                         if (discordLoggedIn) {
@@ -2209,11 +2436,20 @@ fun SettingScreen(
                 )
             }
         }
+        }
         // Hidden entirely when the build carries no Last.fm credentials — a FOSS build, or a full
         // build whose local.properties has no key.
-        if (viewModel.lastfmAvailable) {
+        if (viewModel.lastfmAvailable && isGroupVisible("lastfm", searchQuery, selectedCategoryId)) {
             item(key = "lastfm") {
-                SettingGroup(title = stringResource(Res.string.lastfm_integration)) {
+                SettingGroup(
+                    title = stringResource(Res.string.lastfm_integration),
+                    icon = SimpIcons.RssFeed,
+                    iconTint = Color(0xFFD51007),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = if (lastfmLoggedIn) stringResource(Res.string.logged_in_as, lastfmUsername) else stringResource(Res.string.log_in_to_lastfm),
+                ) {
                     SettingItem(
                         title =
                             if (lastfmLoggedIn) {
@@ -2246,11 +2482,18 @@ fun SettingScreen(
                 }
             }
         }
-        item(key = "sponsor_block") {
-            SettingGroup(
-                title = stringResource(Res.string.sponsorBlock),
-                // The project's note sits under the card, where a grouped list keeps its explanations.
-                footer = {
+        if (isGroupVisible("sponsor_block", searchQuery, selectedCategoryId)) {
+            item(key = "sponsor_block") {
+                SettingGroup(
+                    title = stringResource(Res.string.sponsorBlock),
+                    icon = SimpIcons.AvTimer,
+                    iconTint = Color(0xFFFF5722),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = stringResource(Res.string.skip_sponsor_part_of_video),
+                    // The project's note sits under the card, where a grouped list keeps its explanations.
+                    footer = {
                     val beforeUrl = stringResource(Res.string.sponsor_block_intro).substringBefore("https://sponsor.ajay.app/")
                     val afterUrl = stringResource(Res.string.sponsor_block_intro).substringAfter("https://sponsor.ajay.app/")
                     Text(
@@ -2321,9 +2564,18 @@ fun SettingScreen(
                 )
             }
         }
-        if (getPlatform() == Platform.Android) {
+        }
+        if (getPlatform() == Platform.Android && isGroupVisible("storage", searchQuery, selectedCategoryId)) {
             item(key = "storage") {
-                SettingGroup(title = stringResource(Res.string.storage)) {
+                SettingGroup(
+                    title = stringResource(Res.string.storage),
+                    icon = SimpIcons.DownloadForOffline,
+                    iconTint = Color(0xFF4CAF50),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = "${playerCache.bytesToMB()} MB cache used",
+                ) {
                     SettingItem(
                         title = stringResource(Res.string.player_cache),
                         subtitle = "${playerCache.bytesToMB()} MB",
@@ -2628,10 +2880,17 @@ fun SettingScreen(
                 }
             }
         }
-        item(key = "backup") {
-            SettingGroup(
-                title = stringResource(Res.string.backup),
-                footer = {
+        if (isGroupVisible("backup", searchQuery, selectedCategoryId)) {
+            item(key = "backup") {
+                SettingGroup(
+                    title = stringResource(Res.string.backup),
+                    icon = SimpIcons.RestartAlt,
+                    iconTint = Color(0xFF607D8B),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = stringResource(Res.string.backup),
+                    footer = {
                     val beforeUrl = stringResource(Res.string.import_data_intro).substringBefore("https://www.simpmusic.org/tools")
                     val afterUrl = stringResource(Res.string.import_data_intro).substringAfter("https://www.simpmusic.org/tools")
                     Text(
@@ -2792,8 +3051,18 @@ fun SettingScreen(
                 )
             }
         }
-        item(key = "about_us") {
-            SettingGroup(title = stringResource(Res.string.about_us)) {
+        }
+        if (isGroupVisible("about_us", searchQuery, selectedCategoryId)) {
+            item(key = "about_us") {
+                SettingGroup(
+                    title = stringResource(Res.string.about_us),
+                    icon = SimpIcons.Info,
+                    iconTint = Color(0xFF03A9F4),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = "Version ${VersionManager.getVersionName()}",
+                ) {
                 SettingItem(
                     title = stringResource(Res.string.version),
                     subtitle = stringResource(Res.string.version_format, VersionManager.getVersionName()),
@@ -2892,46 +3161,112 @@ fun SettingScreen(
                 )
             }
         }
-        item(key = "developer_option") {
-            SettingGroup(title = stringResource(Res.string.developer_option)) {
-                SettingItem(
-                    title = stringResource(Res.string.app_log),
-                    subtitle = stringResource(Res.string.app_log_description),
-                    onClick = {
-                        navController.navigate(AppLogDestination)
-                    },
-                )
-            }
         }
-        item(key = "streamify_account") {
-            val streamifyUser by SupabaseClient.currentUser.collectAsStateWithLifecycle()
-            val platformCtx = rememberPlatformContext()
-            if (streamifyUser != null && streamifyUser?.id?.isNotEmpty() == true) {
-                SettingGroup(title = "Streamify Account") {
+        if (isGroupVisible("developer_option", searchQuery, selectedCategoryId)) {
+            item(key = "developer_option") {
+                SettingGroup(
+                    title = stringResource(Res.string.developer_option),
+                    icon = SimpIcons.LogoDev,
+                    iconTint = Color(0xFF795548),
+                    collapsible = true,
+                    initiallyExpanded = false,
+                    forceExpanded = forceExpandGroups,
+                    summary = stringResource(Res.string.app_log),
+                ) {
                     SettingItem(
-                        title = streamifyUser?.displayName ?: "Streamify Listener",
-                        subtitle = "${streamifyUser?.email} · Tap to log out",
+                        title = stringResource(Res.string.app_log),
+                        subtitle = stringResource(Res.string.app_log_description),
                         onClick = {
-                            StreamifyAuthManager.signOut(platformCtx)
-                        },
-                    )
-                    SettingItem(
-                        title = "Sync Library with Cloud",
-                        subtitle = "Sync liked songs, playlists, and artists with Streamify Cloud",
-                        onClick = {
-                            com.streamify.sync.StreamifySyncEngine.triggerSync(streamifyUser?.id)
+                            navController.navigate(AppLogDestination)
                         },
                     )
                 }
             }
         }
-        item(key = "admin_command_center") {
-            AdminCommandCenterCard(
-                onNavigateToAdmin = {
-                    navController.navigate(AdminDashboardDestination)
-                },
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+        if (isGroupVisible("streamify_account", searchQuery, selectedCategoryId)) {
+            item(key = "streamify_account") {
+                val streamifyUser by SupabaseClient.currentUser.collectAsStateWithLifecycle()
+                val platformCtx = rememberPlatformContext()
+                if (streamifyUser != null && streamifyUser?.id?.isNotEmpty() == true) {
+                    SettingGroup(
+                        title = "Streamify Account",
+                        icon = SimpIcons.Person,
+                        iconTint = Color(0xFF6200EE),
+                        collapsible = true,
+                        initiallyExpanded = false,
+                        forceExpanded = forceExpandGroups,
+                        summary = streamifyUser?.email ?: "Cloud Sync",
+                    ) {
+                        SettingItem(
+                            title = streamifyUser?.displayName ?: "Streamify Listener",
+                            subtitle = "${streamifyUser?.email} · Tap to log out",
+                            onClick = {
+                                StreamifyAuthManager.signOut(platformCtx)
+                            },
+                        )
+                        SettingItem(
+                            title = "Sync Library with Cloud",
+                            subtitle = "Sync liked songs, playlists, and artists with Streamify Cloud",
+                            onClick = {
+                                com.streamify.sync.StreamifySyncEngine.triggerSync(streamifyUser?.id)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (isGroupVisible("admin_command_center", searchQuery, selectedCategoryId)) {
+            item(key = "admin_command_center") {
+                AdminCommandCenterCard(
+                    onNavigateToAdmin = {
+                        navController.navigate(AdminDashboardDestination)
+                    },
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+        }
+        val allSettingKeys = listOf(
+            "login_sync_section", "user_interface", "content", "audio", "playback",
+            "listening_history", "lyrics", "AI", "spotify", "discord", "lastfm",
+            "sponsor_block", "storage", "backup", "about_us", "developer_option",
+            "streamify_account", "admin_command_center"
+        )
+        if (allSettingKeys.none { isGroupVisible(it, searchQuery, selectedCategoryId) }) {
+            item(key = "no_search_results") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 48.dp, horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = SimpIcons.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "No settings found" else "No settings in this category",
+                        style = typo().titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "No results matching \"$searchQuery\"" else "Try selecting another category or 'All'",
+                        style = typo().bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
         item(key = "end") {
             EndOfPage()
@@ -3552,6 +3887,10 @@ fun SettingScreen(
     ) {
         SettingTopBar(
             onBack = { navController.navigateUp() },
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            isSearching = isSearching,
+            onToggleSearch = { isSearching = it },
             // The house recipe from AlbumScreen's bars, thinned: ultraThin's built-in tint stacked
             // on this page's dark ground read as a solid lid. 0.3 keeps the blur doing the work and
             // the tint only settling legibility.
@@ -3570,13 +3909,65 @@ private fun SettingTopBar(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     windowInsets: WindowInsets = TopAppBarDefaults.windowInsets,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    isSearching: Boolean = false,
+    onToggleSearch: (Boolean) -> Unit = {},
 ) {
     TopAppBar(
         title = {
-            Text(
-                text = stringResource(Res.string.settings),
-                style = typo().titleMedium,
-            )
+            if (isSearching) {
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    singleLine = true,
+                    textStyle = typo().bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { innerTextField ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                        ) {
+                            Icon(
+                                imageVector = SimpIcons.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search settings...",
+                                        style = typo().bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    )
+                                }
+                                innerTextField()
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { onSearchQueryChange("") },
+                                    modifier = Modifier.size(24.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = SimpIcons.Close,
+                                        contentDescription = "Clear",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    text = stringResource(Res.string.settings),
+                    style = typo().titleMedium,
+                )
+            }
         },
         navigationIcon = {
             Box(Modifier.padding(horizontal = 5.dp)) {
@@ -3586,7 +3977,36 @@ private fun SettingTopBar(
                     true,
                     tint = MaterialTheme.colorScheme.onSurface,
                 ) {
-                    onBack()
+                    if (isSearching) {
+                        onToggleSearch(false)
+                        onSearchQueryChange("")
+                    } else {
+                        onBack()
+                    }
+                }
+            }
+        },
+        actions = {
+            if (!isSearching) {
+                IconButton(onClick = { onToggleSearch(true) }) {
+                    Icon(
+                        imageVector = SimpIcons.Search,
+                        contentDescription = "Search settings",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            } else {
+                IconButton(onClick = {
+                    onToggleSearch(false)
+                    onSearchQueryChange("")
+                }) {
+                    Icon(
+                        imageVector = SimpIcons.Close,
+                        contentDescription = "Close search",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
             }
         },

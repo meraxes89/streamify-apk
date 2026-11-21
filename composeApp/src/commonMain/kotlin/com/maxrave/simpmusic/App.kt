@@ -45,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -591,54 +593,76 @@ fun App(
                         // On Android both materials go through the folding bar, which draws the mini
                         // player itself. Desktop keeps the always-open flat bar under its own one.
                         val useFoldingBar = getPlatform() == Platform.Android || isLiquidGlassEnabled == TRUE
-                        Column {
-                            AnimatedVisibility(
-                                isShowMiniPlayer && !useFoldingBar && isLiquidGlassEnabled == DataStoreManager.FALSE,
-                                enter = fadeIn() + slideInHorizontally(),
-                                exit = fadeOut(),
-                            ) {
-                                MiniPlayer(
-                                    Modifier
-                                        // 56dp card + the 4dp gap below.
-                                        .height(60.dp)
-                                        .fillMaxWidth()
-                                        .padding(
-                                            // The bottom bar's own 16dp, so both edges line up.
-                                            horizontal = 16.dp,
-                                        ).padding(
-                                            bottom = 4.dp,
-                                        ),
-                                    backdrop = backdrop,
-                                    navController = navController,
-                                    onClick = {
-                                        isShowNowPlaylistScreen = true
-                                    },
-                                    onClose = {
-                                        viewModel.stopPlayer()
-                                        viewModel.isServiceRunning = false
-                                    },
+                        Box(
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            // Under-scrim bottom dissolve: softly fades feed items before they slide behind the player bar
+                            if (isLiquidGlassEnabled != TRUE) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .matchParentSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        Color.Transparent,
+                                                        MaterialTheme.colorScheme.background.copy(alpha = 0.65f),
+                                                        MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                                                    ),
+                                                ),
+                                            ),
                                 )
                             }
-                            if (useFoldingBar) {
-                                LiquidGlassAppBottomNavigationBar(
-                                    navController = navController,
-                                    backdrop = backdrop,
-                                    viewModel = viewModel,
-                                    onOpenNowPlaying = { isShowNowPlaylistScreen = true },
-                                    isScrolledToTop = isScrolledToTop,
-                                    showAnalyticsTab = showAnalyticsTab,
-                                    showMixForYouTab = showMixForYouTab,
-                                    liquidGlass = isLiquidGlassEnabled == TRUE,
-                                ) { klass ->
-                                    viewModel.reloadDestination(klass)
+                            Column {
+                                AnimatedVisibility(
+                                    isShowMiniPlayer && !useFoldingBar && isLiquidGlassEnabled == DataStoreManager.FALSE,
+                                    enter = fadeIn() + slideInHorizontally(),
+                                    exit = fadeOut(),
+                                ) {
+                                    MiniPlayer(
+                                        Modifier
+                                            // 56dp card + the 4dp gap below.
+                                            .height(60.dp)
+                                            .fillMaxWidth()
+                                            .padding(
+                                                // The bottom bar's own 16dp, so both edges line up.
+                                                horizontal = 16.dp,
+                                            ).padding(
+                                                bottom = 4.dp,
+                                            ),
+                                        backdrop = backdrop,
+                                        navController = navController,
+                                        onClick = {
+                                            isShowNowPlaylistScreen = true
+                                        },
+                                        onClose = {
+                                            viewModel.stopPlayer()
+                                            viewModel.isServiceRunning = false
+                                        },
+                                    )
                                 }
-                            } else {
-                                AppBottomNavigationBar(
-                                    navController = navController,
-                                    showAnalyticsTab = showAnalyticsTab,
-                                    showMixForYouTab = showMixForYouTab,
-                                ) { klass ->
-                                    viewModel.reloadDestination(klass)
+                                if (useFoldingBar) {
+                                    LiquidGlassAppBottomNavigationBar(
+                                        navController = navController,
+                                        backdrop = backdrop,
+                                        viewModel = viewModel,
+                                        onOpenNowPlaying = { isShowNowPlaylistScreen = true },
+                                        isScrolledToTop = isScrolledToTop,
+                                        showAnalyticsTab = showAnalyticsTab,
+                                        showMixForYouTab = showMixForYouTab,
+                                        liquidGlass = isLiquidGlassEnabled == TRUE,
+                                    ) { klass ->
+                                        viewModel.reloadDestination(klass)
+                                    }
+                                } else {
+                                    AppBottomNavigationBar(
+                                        navController = navController,
+                                        showAnalyticsTab = showAnalyticsTab,
+                                        showMixForYouTab = showMixForYouTab,
+                                    ) { klass ->
+                                        viewModel.reloadDestination(klass)
+                                    }
                                 }
                             }
                         }

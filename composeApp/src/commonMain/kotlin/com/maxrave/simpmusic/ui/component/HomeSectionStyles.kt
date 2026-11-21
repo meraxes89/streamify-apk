@@ -2,6 +2,7 @@ package com.maxrave.simpmusic.ui.component
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +50,7 @@ import com.maxrave.simpmusic.extension.mouseDragScroll
 import com.maxrave.simpmusic.extension.smoothScrimBrush
 import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.ui.theme.ForceDarkContent
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.HomeViewModel
 import kotlinx.coroutines.launch
@@ -111,11 +114,14 @@ fun HomeDiscoverSection(
                     if (info.isHero()) song.playRadio(homeViewModel) else scope.launch { state.animateScrollToItem(index) }
                 }
                 val (hoverModifier, hovered) = rememberCardHover(enabled = true)
+                val isDark = LocalIsDarkTheme.current
+                val rimColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
                 Box(
                     Modifier
                         .fillMaxSize()
                         .then(hoverModifier)
                         .maskClip(RoundedCornerShape(28.dp))
+                        .border(width = 1.dp, color = rimColor, shape = RoundedCornerShape(28.dp))
                         .combinedClickable(
                             onClick = play,
                             onLongClick = { sheetTrack = song.toTrack() },
@@ -180,7 +186,10 @@ fun HomeDiscoverSection(
                             )
                         }
                     }
-                    HoverPlayButton(visible = hovered && info.isHero(), onClick = play)
+                    HoverPlayButton(
+                        visible = (hovered || getPlatform() != Platform.Desktop) && info.isHero(),
+                        onClick = play,
+                    )
                 }
             }
         }

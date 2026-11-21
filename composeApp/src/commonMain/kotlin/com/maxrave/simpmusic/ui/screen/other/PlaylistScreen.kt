@@ -2,16 +2,24 @@ package com.maxrave.simpmusic.ui.screen.other
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +34,7 @@ import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,6 +56,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,6 +78,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -376,8 +387,12 @@ fun PlaylistScreen(
                             .hazeSource(hazeState),
                     state = lazyState,
                 ) {
-                    if (!showSearchBar) {
-                        item(contentType = "header") {
+                    item(contentType = "header") {
+                        AnimatedVisibility(
+                            visible = !showSearchBar,
+                            enter = fadeIn(tween(250)) + expandVertically(),
+                            exit = fadeOut(tween(200)) + shrinkVertically(),
+                        ) {
                             Box(
                                 modifier =
                                     Modifier
@@ -483,14 +498,22 @@ fun PlaylistScreen(
                                                             }
                                                         }
                                                         Spacer(modifier = Modifier.height(2.dp))
+                                                        val trackCountText =
+                                                            if (data.isRadio) {
+                                                                stringResource(Res.string.unlimited)
+                                                            } else if (data.trackCount > 0) {
+                                                                stringResource(Res.string.album_length, data.trackCount.toString(), "").trim()
+                                                            } else {
+                                                                null
+                                                            }
+                                                        val metaText =
+                                                            listOfNotNull(
+                                                                if (data.isRadio) stringResource(Res.string.radio) else stringResource(Res.string.playlist),
+                                                                data.year.takeIf { it.isNotBlank() },
+                                                                trackCountText,
+                                                            ).joinToString(" • ")
                                                         Text(
-                                                            text = "${
-                                                                if (data.isRadio) {
-                                                                    stringResource(Res.string.radio)
-                                                                } else {
-                                                                    stringResource(Res.string.playlist)
-                                                                }
-                                                            } • ${data.year}",
+                                                            text = metaText,
                                                             style = typo().bodyMedium,
                                                             color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                                             textAlign = TextAlign.Center,
@@ -605,6 +628,11 @@ fun PlaylistScreen(
                                                             modifier =
                                                                 Modifier
                                                                     .size(280.dp)
+                                                                    .border(
+                                                                        width = 1.dp,
+                                                                        color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                                                        shape = ArtworkShape,
+                                                                    )
                                                                     .clip(ArtworkShape),
                                                         )
                                                         Column(
@@ -635,14 +663,22 @@ fun PlaylistScreen(
                                                                     },
                                                             )
                                                             Spacer(modifier = Modifier.height(6.dp))
+                                                            val trackCountText =
+                                                                if (data.isRadio) {
+                                                                    stringResource(Res.string.unlimited)
+                                                                } else if (data.trackCount > 0) {
+                                                                    stringResource(Res.string.album_length, data.trackCount.toString(), "").trim()
+                                                                } else {
+                                                                    null
+                                                                }
+                                                            val metaText =
+                                                                listOfNotNull(
+                                                                    if (data.isRadio) stringResource(Res.string.radio) else stringResource(Res.string.playlist),
+                                                                    data.year.takeIf { it.isNotBlank() },
+                                                                    trackCountText,
+                                                                ).joinToString(" • ")
                                                             Text(
-                                                                text = "${
-                                                                    if (data.isRadio) {
-                                                                        stringResource(Res.string.radio)
-                                                                    } else {
-                                                                        stringResource(Res.string.playlist)
-                                                                    }
-                                                                } • ${data.year}",
+                                                                text = metaText,
                                                                 style = typo().labelMedium,
                                                                 color = if (isDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant,
                                                             )
@@ -665,7 +701,7 @@ fun PlaylistScreen(
                                                                                 .size(48.dp)
                                                                                 .clip(CircleShape)
                                                                                 .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
-                                                                                .clickable {
+                                                                                .bouncingClickable {
                                                                                     viewModel.onUIEvent(PlaylistUIEvent.Shuffle)
                                                                                 },
                                                                         contentAlignment = Alignment.Center,
@@ -685,7 +721,7 @@ fun PlaylistScreen(
                                                                             .widthIn(min = 110.dp)
                                                                             .clip(CircleShape)
                                                                             .background(if (isDark) Color.White else MaterialTheme.colorScheme.primary)
-                                                                            .clickable {
+                                                                            .bouncingClickable {
                                                                                 if (isThisPlaying) {
                                                                                     sharedViewModel.onUIEvent(UIEvent.PlayPause)
                                                                                 } else {
@@ -700,7 +736,7 @@ fun PlaylistScreen(
                                                                                 if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
                                                                             contentDescription = null,
                                                                             tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
-                                                                            modifier = Modifier.size(22.dp),
+                                                                            modifier = Modifier.size(22.dp).then(if (!isThisPlaying) Modifier.offset(x = 1.5.dp) else Modifier),
                                                                         )
                                                                         Spacer(modifier = Modifier.width(4.dp))
                                                                         Text(
@@ -880,7 +916,7 @@ fun PlaylistScreen(
                                                                         .size(48.dp)
                                                                         .clip(CircleShape)
                                                                         .background(if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHighest)
-                                                                        .clickable {
+                                                                        .bouncingClickable {
                                                                             viewModel.onUIEvent(PlaylistUIEvent.Shuffle)
                                                                         },
                                                                 contentAlignment = Alignment.Center,
@@ -900,7 +936,7 @@ fun PlaylistScreen(
                                                                     .widthIn(min = 110.dp)
                                                                     .clip(CircleShape)
                                                                     .background(if (isDark) Color.White else MaterialTheme.colorScheme.primary)
-                                                                    .clickable {
+                                                                    .bouncingClickable {
                                                                         if (isThisPlaying) {
                                                                             sharedViewModel.onUIEvent(UIEvent.PlayPause)
                                                                         } else {
@@ -915,7 +951,7 @@ fun PlaylistScreen(
                                                                         if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
                                                                     contentDescription = null,
                                                                     tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
-                                                                    modifier = Modifier.size(22.dp),
+                                                                    modifier = Modifier.size(22.dp).then(if (!isThisPlaying) Modifier.offset(x = 1.5.dp) else Modifier),
                                                                 )
                                                                 Spacer(modifier = Modifier.width(4.dp))
                                                                 Text(
@@ -1024,29 +1060,19 @@ fun PlaylistScreen(
                                                         uriHandler.openUri(url)
                                                     },
                                                 )
-                                                Text(
-                                                    text =
-                                                        if (data.isRadio) {
-                                                            stringResource(Res.string.unlimited)
-                                                        } else {
-                                                            stringResource(
-                                                                Res.string.album_length,
-                                                                (data.trackCount).toString(),
-                                                                "",
-                                                            )
-                                                        },
-                                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    style = typo().bodyMedium,
-                                                    modifier = Modifier.padding(vertical = 8.dp),
-                                                )
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    } else {
-                        item {
+                    }
+                    item(contentType = "search_spacer") {
+                        AnimatedVisibility(
+                            visible = showSearchBar,
+                            enter = fadeIn(tween(250)) + expandVertically(),
+                            exit = fadeOut(tween(200)) + shrinkVertically(),
+                        ) {
                             val density = LocalDensity.current
                             Spacer(
                                 Modifier.height(
@@ -1369,6 +1395,32 @@ fun PlaylistScreen(
                             }
                         },
                         actions = {
+                            val isThisPlaying = isPlaying && playingPlaylistId == data.id
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isDark) Color.White else MaterialTheme.colorScheme.primary,
+                                modifier =
+                                    Modifier
+                                        .padding(end = 4.dp)
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            if (isThisPlaying) {
+                                                sharedViewModel.onUIEvent(UIEvent.PlayPause)
+                                            } else {
+                                                viewModel.onUIEvent(PlaylistUIEvent.PlayAll)
+                                            }
+                                        },
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isThisPlaying) SimpIcons.Pause else SimpIcons.PlayArrow,
+                                        contentDescription = if (isThisPlaying) "Pause" else "Play",
+                                        tint = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(18.dp).then(if (!isThisPlaying) Modifier.offset(x = 1.dp) else Modifier),
+                                    )
+                                }
+                            }
                             IconButton(
                                 onClick = {
                                     showSearchBar = !showSearchBar
@@ -1404,4 +1456,28 @@ fun PlaylistScreen(
             }
         }
     }
+}
+
+@Composable
+private fun Modifier.bouncingClickable(
+    scaleDown: Float = 0.95f,
+    onClick: () -> Unit,
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) scaleDown else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+        label = "heroButtonScale",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick,
+        )
 }
