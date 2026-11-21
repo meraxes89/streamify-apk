@@ -108,6 +108,8 @@ import com.maxrave.common.CHART_SUPPORTED_COUNTRY
 import com.maxrave.common.Config
 import com.maxrave.domain.data.model.browse.album.Track
 import com.maxrave.domain.data.model.home.HomeItem
+import com.maxrave.domain.data.model.home.isQuickPicksShelf
+import com.maxrave.domain.data.model.home.pinQuickPicksToTop
 import com.maxrave.domain.data.model.home.chart.Chart
 import com.maxrave.domain.data.model.intent.GenericIntent
 import com.maxrave.domain.data.model.mood.Mood
@@ -302,15 +304,7 @@ fun HomeScreen(
                         if (it.subtitle.equals(accountName, ignoreCase = true)) it.copy(thumbnail = null) else it
                     }
                 }
-            val qpIndex = mapped.indexOfFirst { it.isQuickPicksShelf(quickPicksTitle) }
-            if (qpIndex > 0) {
-                val list = mapped.toMutableList()
-                val qp = list.removeAt(qpIndex)
-                list.add(0, qp)
-                list
-            } else {
-                mapped
-            }
+            mapped.pinQuickPicksToTop(quickPicksTitle)
         }
     val newRelease by viewModel.newRelease.collectAsStateWithLifecycle()
     val chart by viewModel.chart.collectAsStateWithLifecycle()
@@ -1360,11 +1354,6 @@ private val LandscapeGridItemMaxWidth = 400.dp
 // A card shelf of songs only that leads to no page of its own ("Your daily discover"). List shelves
 // (Quick picks, Heard in Shorts) carry itemsPerColumn and keep their own look; a shelf with a More
 // page (Listen again can be all songs) keeps its cards; videos draw as wide cards, so never match.
-private fun HomeItem.isQuickPicksShelf(quickPicksTitle: String): Boolean =
-    itemsPerColumn == 4 ||
-        title.equals(quickPicksTitle, ignoreCase = true) ||
-        title.equals("Quick picks", ignoreCase = true)
-
 private fun HomeItem.isSongCardShelf(): Boolean =
     itemsPerColumn == null &&
         moreEndpoint == null &&

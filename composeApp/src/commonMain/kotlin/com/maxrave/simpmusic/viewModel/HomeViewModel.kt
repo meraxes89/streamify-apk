@@ -6,6 +6,7 @@ import com.maxrave.common.SUPPORTED_LANGUAGE
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.data.model.home.HomeDataCombine
 import com.maxrave.domain.data.model.home.HomeItem
+import com.maxrave.domain.data.model.home.pinQuickPicksToTop
 import com.maxrave.domain.data.model.home.chart.Chart
 import com.maxrave.domain.data.model.mood.Mood
 import com.maxrave.domain.manager.DataStoreManager
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -115,7 +117,7 @@ class HomeViewModel(
             //  refresh when region change
             val job1 =
                 launch {
-                    dataStoreManager.location.distinctUntilChanged().collect {
+                    dataStoreManager.location.distinctUntilChanged().drop(1).collect {
                         regionCode = it
                         getHomeItemList(params.value)
                     }
@@ -123,7 +125,7 @@ class HomeViewModel(
             //  refresh when language change
             val job2 =
                 launch {
-                    dataStoreManager.language.distinctUntilChanged().collect {
+                    dataStoreManager.language.distinctUntilChanged().drop(1).collect {
                         language = it
                         getHomeItemList(params.value)
                     }
@@ -131,7 +133,6 @@ class HomeViewModel(
             val job3 =
                 launch {
                     dataStoreManager.cookie.distinctUntilChanged().collect {
-                        getHomeItemList(params.value)
                         _accountInfo.emit(
                             Pair(
                                 dataStoreManager.getString("AccountName").first(),
@@ -145,20 +146,6 @@ class HomeViewModel(
                     params.collectLatest {
                         getHomeItemList(it)
                     }
-                }
-            val job5 =
-                launch {
-                    dataStoreManager
-                        .cookie
-                        .distinctUntilChanged()
-                        .collectLatest {
-                            if (it.isNotEmpty()) {
-                                Logger.w(tag, "Cookie changed, refreshing home")
-                                loading.value = true
-                                delay(1000) // To wait for the cookie to be saved properly
-                                getHomeItemList(params.value)
-                            }
-                        }
                 }
             val job6 =
                 launch {
@@ -177,7 +164,6 @@ class HomeViewModel(
             job2.join()
             job3.join()
             job4.join()
-            job5.join()
             job6.join()
         }
     }
@@ -226,7 +212,7 @@ class HomeViewModel(
                     when (home) {
                         is Resource.Success -> {
                             _continuation.value = home.data?.first
-                            _homeItemList.value = home.data?.second ?: listOf()
+                            _homeItemList.value = (home.data?.second ?: listOf()).pinQuickPicksToTop()
                             _homeBackground.value = home.data?.third
                         }
 
@@ -318,7 +304,7 @@ class HomeViewModel(
                             is Resource.Success -> {
                                 _continuation.value = home.data?.first
                                 val newItems = home.data?.second ?: listOf()
-                                _homeItemList.update { it + newItems }
+                                _homeItemList.update { (it + newItems).pinQuickPicksToTop() }
                                 if (home.data?.first.isNullOrEmpty()) {
                                     _homeListState.value = ListState.PAGINATION_EXHAUST
                                 } else {
