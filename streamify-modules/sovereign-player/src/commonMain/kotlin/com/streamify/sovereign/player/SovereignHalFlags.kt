@@ -20,12 +20,16 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object SovereignHalFlags {
     /**
-     * The shipped default: the Sovereign ring lane is opt-in until a
-     * platform's loopback + soak evidence flips it in a Phase PR.
-     * Platform-specific defaults live in the `sovereignPlayerModule`
-     * actuals; this is the global kill-switch beneath them.
+     * The shipped default since Sovereign HAL Phase 3 (Step 4): the
+     * Sovereign ring lane is ON — the 5-platform loopback matrix
+     * (Gate 4.1-4.5) plus the real-track Fastify E2E parity gates
+     * (Gate 4.6) are green in CI. Every platform's legacy engine
+     * (media3 / libmpv / HTMLAudioElement) stays wired as the live
+     * AudioRoutePolicy fallback (the zero-deletion policy); an
+     * unhealthy probe degrades per-command, never a crash. The
+     * developer panel keeps this runtime switch for field diagnosis.
      */
-    const val DEFAULT_ENABLED: Boolean = false
+    const val DEFAULT_ENABLED: Boolean = true
 
     private val _enabled = MutableStateFlow(DEFAULT_ENABLED)
 
