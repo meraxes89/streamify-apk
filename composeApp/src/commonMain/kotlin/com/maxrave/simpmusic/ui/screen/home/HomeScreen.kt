@@ -76,7 +76,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -135,7 +137,6 @@ import com.maxrave.simpmusic.extension.getScreenSizeInfo
 import com.maxrave.simpmusic.extension.isScrollingUp
 import com.maxrave.simpmusic.extension.mouseDragScroll
 import com.maxrave.simpmusic.extension.rgbFactor
-import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.ui.component.BlogPromoDialog
 import com.maxrave.simpmusic.ui.component.CenterLoadingBox
@@ -180,6 +181,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.login.LoginDestination
 import com.maxrave.simpmusic.ui.screen.library.LibraryDynamicPlaylistType
 import com.maxrave.simpmusic.ui.theme.ArtworkShape
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.desktopPanelDark
 import com.maxrave.simpmusic.ui.theme.typo
@@ -200,10 +202,6 @@ import com.maxrave.simpmusic.viewModel.HomeViewModel.Companion.HOME_PARAMS_SLEEP
 import com.maxrave.simpmusic.viewModel.HomeViewModel.Companion.HOME_PARAMS_WORKOUT
 import com.maxrave.simpmusic.viewModel.ListState
 import com.maxrave.simpmusic.viewModel.SharedViewModel
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.http.Url
@@ -420,8 +418,6 @@ fun HomeScreen(
     val atTop by remember {
         derivedStateOf { scrollState.firstVisibleItemIndex == 0 && scrollState.firstVisibleItemScrollOffset == 0 }
     }
-    val hazeState =
-        rememberHazeState()
     // The floating chip row refracts the page scrolling under it, so the page is the glass source and
     // the row its sibling (nesting the row inside the source is the RuntimeShader feedback loop).
     val chipBackdrop = rememberBackdrop(MaterialTheme.colorScheme.background)
@@ -753,8 +749,7 @@ fun HomeScreen(
         PullToRefreshBox(
             modifier =
                 Modifier
-                    .then(if (LocalLiquidGlassEnabled.current) Modifier.layerBackdrop(chipBackdrop) else Modifier)
-                    .hazeSource(hazeState),
+                    .then(if (LocalLiquidGlassEnabled.current) Modifier.layerBackdrop(chipBackdrop) else Modifier),
             state = pullToRefreshState,
             onRefresh = onRefresh,
             isRefreshing = isRefreshing,
@@ -1047,30 +1042,52 @@ fun HomeScreen(
                 }
             }
         }
-        // Spotify's header: the avatar, the chips and Create on one row, with no app bar. At the
-        // top of the page it sits straight on the artwork glow; once the page scrolls under it, the blurred
-        // bar fades in behind it.
-        AnimatedContent(
-            targetState = atTop,
-            transitionSpec = {
-                fadeIn(tween(300)).togetherWith(fadeOut(tween(300)))
-            },
-        ) { target ->
-            Column(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .then(
-                            if (target) {
-                                Modifier.background(Color.Transparent)
+        // Spotify / Apple Music flagship translucent top bar:
+        // Pure transparent when resting at the top to let hero artwork/glow shine through;
+        // transitions smoothly to a hardware-accelerated specular frosted scrim on scroll.
+        val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
+        val surfaceColor = MaterialTheme.colorScheme.surface
+        val containerColor = MaterialTheme.colorScheme.surfaceContainer
+        val scrimAlpha by animateFloatAsState(
+            targetValue = if (atTop) 0f else 1f,
+            animationSpec = tween(durationMillis = 240),
+            label = "home_top_bar_scrim",
+        )
+
+        Column(
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .drawBehind {
+                        if (scrimAlpha > 0.005f) {
+                            // 1. Hardware-accelerated specular translucent gradient scrim
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        containerColor.copy(alpha = (if (isDark) 0.95f else 0.96f) * scrimAlpha),
+                                        surfaceColor.copy(alpha = (if (isDark) 0.88f else 0.90f) * scrimAlpha),
+                                    ),
+                                ),
+                            )
+                            // 2. Micro-hairline bottom specular rim (0.75dp)
+                            val rimWidth = 0.75.dp.toPx()
+                            val rimColor = if (isDark) {
+                                Color.White.copy(alpha = 0.08f * scrimAlpha)
                             } else {
-                                Modifier
-                                    .hazeBlur(HazeInput.Sources(hazeState), ultraThinBarStyle())
-                            },
-                        ).onGloballyPositioned { coordinates ->
-                            topAppBarHeightPx = coordinates.size.height
-                        },
-            ) {
+                                Color.Black.copy(alpha = 0.06f * scrimAlpha)
+                            }
+                            drawLine(
+                                color = rimColor,
+                                start = Offset(0f, size.height - rimWidth / 2f),
+                                end = Offset(size.width, size.height - rimWidth / 2f),
+                                strokeWidth = rimWidth,
+                            )
+                        }
+                    }.onGloballyPositioned { coordinates ->
+                        topAppBarHeightPx = coordinates.size.height
+                    },
+        ) {
                 Spacer(
                     modifier =
                         Modifier
@@ -1177,7 +1194,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }
     }
 }
 
