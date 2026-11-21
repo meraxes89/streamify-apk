@@ -597,6 +597,19 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Install the Android NDK (before cargo-ndk needs it)
+        run: |
+          # r8: cargo-ndk PANICKED (exit 101) in r7 because no NDK was
+          # on disk yet — the sdkmanager install used to live in the
+          # CMake step BELOW the Rust build. Install FIRST and export
+          # the home (cargo-ndk discovers via ANDROID_NDK_HOME /
+          # ANDROID_SDK_ROOT/ndk/<ver>).
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
+          test -d "$ANDROID_HOME/ndk/26.1.10909125"
       - name: Build the guest artifacts (Rust cdylib + player bin, x86_64-android)
         run: |
           set -euo pipefail
@@ -617,9 +630,7 @@ jobs:
           ls -la /tmp/sovereign-guest/x86_64-linux-android/
       - name: Build the C++ Oboe bracket .so (NDK CMake, x86_64)
         run: |
-          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
-          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+          # NDK + cmake installed in the earlier step (r8 ordering).
           NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
           cmake -B /tmp/sovereign-native-build -S native \
             -DCMAKE_TOOLCHAIN_FILE="$NDK_BUNDLE/build/cmake/android.toolchain.cmake" \
