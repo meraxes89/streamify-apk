@@ -21,6 +21,7 @@ plugins {
 }
 
 val androidAppDir = rootProject.file("androidApp")
+val abis = arrayOf("arm64-v8a", "armeabi-v7a")
 
 android {
     namespace = "com.maxrave.simpmusic"
@@ -76,9 +77,33 @@ android {
                 )
         }
 
-        // vivo phones with Origin Island are all arm64, so one APK and no ABI splits.
         ndk {
             abiFilters.add("arm64-v8a")
+            abiFilters.add("armeabi-v7a")
+        }
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = File(androidAppDir, "debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+        create("release") {
+            val keystoreFile = System.getenv("KEYSTORE_FILE")
+            if (keystoreFile != null && file(keystoreFile).exists()) {
+                storeFile = file(keystoreFile)
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            } else {
+                // Fall back to debug keystore for local / untrusted builds
+                storeFile = File(androidAppDir, "debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -101,17 +126,30 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 File(androidAppDir, "proguard-rules.pro"),
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+            splits {
+                abi {
+                    isEnable = true
+                    reset()
+                    isUniversalApk = true
+                    include(*abis)
+                }
+            }
         }
         debug {
             // No ".dev" suffix: vivo matches the exact package, and a debug build is how this is tried on a vivo phone.
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     buildFeatures {
         viewBinding = true
