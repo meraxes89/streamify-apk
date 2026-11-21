@@ -365,6 +365,16 @@ jobs:
             --jobs 1 \
             -p streamify-playback --test test_fastify_e2e
 
+      - name: "Phase 4 DSP gates: EQ/LUFS live, gapless chain, offline, seek-storm"
+        run: |
+          cargo nextest run \
+            --manifest-path rust/Cargo.toml \
+            --config-file rust/.config/nextest.toml \
+            --profile ci \
+            --jobs 1 \
+            -p streamify-playback --test test_dsp_gapless_offline \
+            -p streamify-playback --lib
+
   loopback-windows:
     name: "Gate 4.1: Windows WASAPI loopback"
     runs-on: windows-2022

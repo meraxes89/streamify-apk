@@ -42,6 +42,8 @@
 //! runtime, no database, no HTTP client — the network edge is a trait.
 
 pub mod decode;
+pub mod dsp_controls;
+pub mod dsp_export;
 pub mod opus;
 pub mod fetch;
 pub mod frame_buf;
@@ -50,6 +52,8 @@ pub mod ring_export;
 pub mod sink;
 
 pub use decode::{DecoderGeometry, SymphoniaDecoder, TrackDecoder};
+pub use dsp_controls::{clamp_eq_gain, DspControls, DspParams, EqPreset, LufsMode, EQ_GAIN_CLAMP_DB};
+pub use dsp_export::shared as shared_dsp_controls;
 pub use opus::{is_raw_opus_head_framing, parse_opus_head, LibOpusDecoder, OpusTier, OpusTrackDecoder};
 pub use fetch::{LossyFixtureFetcher, MemoryRangeFetcher, RangeFetcher};
 pub use frame_buf::FrameBuf;
