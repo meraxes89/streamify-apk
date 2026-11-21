@@ -533,6 +533,7 @@ fun App(
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
+            com.maxrave.simpmusic.data.RemoteGreetingManager.syncRemoteConfig()
         }
         val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
         LaunchedEffect(streamifyAuthState) {

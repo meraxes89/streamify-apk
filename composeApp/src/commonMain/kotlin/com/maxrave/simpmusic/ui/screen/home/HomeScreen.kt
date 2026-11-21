@@ -125,6 +125,7 @@ import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.data.RemoteGreetingManager
 import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
 import com.maxrave.simpmusic.expect.ui.HorizontalScrollBar
@@ -222,10 +223,6 @@ import simpmusic.composeapp.generated.resources.energize
 import simpmusic.composeapp.generated.resources.feel_good
 import simpmusic.composeapp.generated.resources.focus
 import simpmusic.composeapp.generated.resources.go_to_log_in_page
-import simpmusic.composeapp.generated.resources.good_afternoon
-import simpmusic.composeapp.generated.resources.good_evening
-import simpmusic.composeapp.generated.resources.good_morning
-import simpmusic.composeapp.generated.resources.good_night
 import simpmusic.composeapp.generated.resources.guest
 import simpmusic.composeapp.generated.resources.let_s_pick_a_playlist_for_you
 import simpmusic.composeapp.generated.resources.let_s_start_with_a_radio
@@ -1116,16 +1113,8 @@ fun HomeScreen(
                 val accountName = accountInfo?.first
                 val signedIn = !accountName.isNullOrBlank()
                 val displayName = if (signedIn) accountName.orEmpty() else stringResource(Res.string.guest)
-                val hour = remember { now().time.hour }
-                val greeting =
-                    stringResource(
-                        when (hour) {
-                            in 6..12 -> Res.string.good_morning
-                            in 13..17 -> Res.string.good_afternoon
-                            in 18..23 -> Res.string.good_evening
-                            else -> Res.string.good_night
-                        },
-                    )
+                val hour = now().time.hour
+                val greeting = RemoteGreetingManager.getGreeting(hour)
 
                 // Row 1: Personalized Top Bar with Avatar, Greeting & Actions
                 Row(
@@ -1261,16 +1250,8 @@ private fun HomeAccountButton(
     // Sign-out blanks the stored account name, so a blank name is the signed-out state.
     val signedIn = !accountName.isNullOrBlank()
     val displayName = if (signedIn) accountName.orEmpty() else stringResource(Res.string.guest)
-    val hour = remember { now().time.hour }
-    val greeting =
-        stringResource(
-            when (hour) {
-                in 6..12 -> Res.string.good_morning
-                in 13..17 -> Res.string.good_afternoon
-                in 18..23 -> Res.string.good_evening
-                else -> Res.string.good_night
-            },
-        )
+    val hour = now().time.hour
+    val greeting = RemoteGreetingManager.getGreeting(hour)
     Box {
         AccountAvatar(
             signedIn = signedIn,
