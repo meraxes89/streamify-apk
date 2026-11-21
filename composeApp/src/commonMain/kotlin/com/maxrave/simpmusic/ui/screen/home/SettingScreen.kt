@@ -2889,7 +2889,7 @@ fun SettingScreen(
                     collapsible = true,
                     initiallyExpanded = false,
                     forceExpanded = forceExpandGroups,
-                    summary = stringResource(Res.string.backup_your_data),
+                    summary = stringResource(Res.string.backup),
                     footer = {
                     val beforeUrl = stringResource(Res.string.import_data_intro).substringBefore("https://www.simpmusic.org/tools")
                     val afterUrl = stringResource(Res.string.import_data_intro).substringAfter("https://www.simpmusic.org/tools")
