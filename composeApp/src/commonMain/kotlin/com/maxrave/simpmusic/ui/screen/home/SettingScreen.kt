@@ -84,6 +84,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
@@ -2888,7 +2889,7 @@ fun SettingScreen(
                     collapsible = true,
                     initiallyExpanded = false,
                     forceExpanded = forceExpandGroups,
-                    summary = stringResource(Res.string.backup_and_restore),
+                    summary = stringResource(Res.string.backup_your_data),
                     footer = {
                     val beforeUrl = stringResource(Res.string.import_data_intro).substringBefore("https://www.simpmusic.org/tools")
                     val afterUrl = stringResource(Res.string.import_data_intro).substringAfter("https://www.simpmusic.org/tools")

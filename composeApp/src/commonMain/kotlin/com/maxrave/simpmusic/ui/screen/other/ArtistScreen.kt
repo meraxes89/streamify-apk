@@ -696,9 +696,10 @@ fun ArtistScreen(
                                                 .background(if (isFollowed) artistAccent else Color.Transparent)
                                                 .border(1.5.dp, artistAccent, CircleShape)
                                                 .bouncingClickable {
+                                                    val channelId = state.data.channelId ?: return@bouncingClickable
                                                     viewModel.updateFollowed(
                                                         if (isFollowed) 0 else 1,
-                                                        state.data.channelId ?: return@clickable,
+                                                        channelId,
                                                     )
                                                 },
                                         contentAlignment = Alignment.Center,
