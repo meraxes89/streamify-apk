@@ -84,7 +84,7 @@ val SimpIcons.GridView: ImageVector
             close()
           }
         }
-        .build()
+        .buildSimpIcon()
     return _GridView!!
   }
 
