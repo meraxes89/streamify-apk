@@ -47,7 +47,7 @@ import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.launch
 
 /**
- * High-Performance Glassy Shimmering Brand Badge: "DEVELOPED BY SIREEN // STUDIO CORE"
+ * High-Performance Glassy Shimmering Brand Badge: "ENGINEERED BY SIREEN // STUDIO CORE"
  *
  * Combines an active micro-spectrum acoustic instrument beacon with an industrial milled-glass
  * pill and non-linear chromatic laser shimmer sweep across the glyphs.
@@ -55,6 +55,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SireenBrandingBadge(
     modifier: Modifier = Modifier,
+    prefix: String = "ENGINEERED BY ",
+    author: String = "SIREEN",
     tagline: String = "STUDIO CORE",
     onBadgeClick: (() -> Unit)? = null,
 ) {
@@ -119,7 +121,7 @@ fun SireenBrandingBadge(
     val secondaryText = if (isDark) Color(0xFFAAAAAA) else Color(0xFF666666)
 
     val annotatedText =
-        remember(prefixColor, primaryColor, tagline, isDark) {
+        remember(prefix, author, prefixColor, primaryColor, tagline, isDark) {
             buildAnnotatedString {
                 withStyle(
                     SpanStyle(
@@ -129,7 +131,7 @@ fun SireenBrandingBadge(
                         letterSpacing = 1.4.sp,
                     ),
                 ) {
-                    append("DEVELOPED BY ")
+                    append(prefix)
                 }
                 withStyle(
                     SpanStyle(
@@ -139,7 +141,7 @@ fun SireenBrandingBadge(
                         letterSpacing = 2.0.sp,
                     ),
                 ) {
-                    append("SIREEN")
+                    append(author)
                 }
                 withStyle(
                     SpanStyle(
