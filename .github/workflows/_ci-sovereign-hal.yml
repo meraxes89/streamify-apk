@@ -355,10 +355,14 @@ jobs:
         working-directory: server
       - name: "Rust E2E: producer over real HTTP (loudness / true-peak / seek-flush / DAC clock)"
         run: |
+          # --jobs 1: the four E2E gates are timing-paced (realtime HAL
+          # cadence pulls); parallel processes on one runner create load
+          # spikes that flake the ±10% clock windows. Serialized: ~30 s.
           cargo nextest run \
             --manifest-path rust/Cargo.toml \
             --config-file rust/.config/nextest.toml \
             --profile ci \
+            --jobs 1 \
             -p streamify-playback --test test_fastify_e2e
 
   loopback-windows:
