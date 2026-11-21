@@ -93,17 +93,24 @@ def read_wav_f32(path: Path) -> tuple[list[float], int, int]:
     raise ValueError(f"unsupported sample width: {sampwidth} bytes")
 
 
-def read_raw_pcm16_f32(path: Path) -> tuple[list[float], int, int]:
-    """Read a HEADERLESS PCM16 s16le 48 kHz stereo dump → (samples, 48000, 2).
+def read_raw_pcm16_f32(path: Path, rate: int) -> tuple[list[float], int, int]:
+    """Read a HEADERLESS PCM16 s16le stereo dump → (samples, rate, 2).
 
     The QEMU wav backend's mid-write shape: `QEMU_AUDIO_DRV=wav` streams raw
     frames to QEMU_WAV_PATH and only writes the 44-byte RIFF header on
     close/flush — a capture read while the emulator still runs has no header
     (the r20c 'not a WAVE file' on a healthy capture).
+
+    The stream RATE is genuinely unknown too: the backend records at the
+    rate the guest HAL negotiated (44.1 kHz on the emulator's OpenSL legs,
+    48 kHz on AAudio legs), so the caller passes the rate to TRY and owns
+    the detection (main() tries 48k then 44.1k and keeps whichever
+    verifies — the r20d finding: the 440 tone appeared at 478.9 Hz because
+    a 44.1 kHz capture was decoded as 48 kHz).
     """
     raw = path.read_bytes()
     count = len(raw) // 2
-    return [v / 32768.0 for v in struct.unpack(f"<{count}h", raw[: count * 2])], 48_000, 2
+    return [v / 32768.0 for v in struct.unpack(f"<{count}h", raw[: count * 2])], rate, 2
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -275,31 +282,39 @@ def main() -> int:
         print(f"sovereign-verifier: capture file not found: {args.capture}", file=sys.stderr)
         return 2
 
+    # Decode: RIFF wav first; on a headerless stream (QEMU's wav backend
+    # mid-write — it only writes the 44-byte RIFF header on close/flush)
+    # fall back to RAW PCM16 s16le stereo with the rate UNKNOWN (the
+    # guest HAL negotiates 44.1k or 48k per route): try both and keep
+    # whichever verifies (r20d: the OpenSL legs' 440 Hz tone landed at
+    # 478.9 Hz under a 48k read).
+    ok: bool = False
+    report: dict = {}
     try:
-        try:
-            samples, rate, channels = read_wav_f32(args.capture)
-        except (wave.Error, EOFError, struct.error):
-            # The Android emulator's QEMU wav backend (QEMU_AUDIO_DRV=wav)
-            # writes the 44-byte RIFF header on CLOSE/flush — a capture
-            # read while the emulator still runs is a RAW PCM16 stereo
-            # stream with no header (the r20c finding: 'not a WAVE file'
-            # on a healthy 1.5 MB capture). Fall back to raw mode with
-            # the backend's fixed geometry: 48 kHz / 2ch / s16le.
-            samples, rate, channels = read_raw_pcm16_f32(args.capture)
-            if args.verbose:
-                print(
-                    "sovereign-verifier: not a RIFF wave — decoded as RAW "
-                    "PCM16 s16le 48000 Hz stereo (QEMU wav mid-write)",
-                    file=sys.stderr,
-                )
+        samples, rate, channels = read_wav_f32(args.capture)
+    except (wave.Error, EOFError, struct.error):
+        if args.verbose:
+            print(
+                "sovereign-verifier: not a RIFF wave — RAW PCM16 s16le stereo; "
+                "trying 48000 Hz then 44100 Hz (QEMU wav mid-write)",
+                file=sys.stderr,
+            )
+        for try_rate in (48_000, 44_100):
+            s, r, c = read_raw_pcm16_f32(args.capture, try_rate)
+            ok, report = verify(
+                s, r, c, args.freq_a, args.freq_b, args.tolerance_hz,
+                args.expect, args.verbose,
+            )
+            if ok:
+                break
     except Exception as e:  # noqa: BLE001 — report any decode failure cleanly
         print(f"sovereign-verifier: capture decode failed: {e}", file=sys.stderr)
         return 2
-
-    ok, report = verify(
-        samples, rate, channels,
-        args.freq_a, args.freq_b, args.tolerance_hz, args.expect, args.verbose,
-    )
+    else:
+        ok, report = verify(
+            samples, rate, channels,
+            args.freq_a, args.freq_b, args.tolerance_hz, args.expect, args.verbose,
+        )
 
     if args.json:
         print(json.dumps(report, indent=2))
