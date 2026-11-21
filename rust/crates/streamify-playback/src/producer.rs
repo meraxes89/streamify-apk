@@ -49,7 +49,9 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use streamify_audio::lufs::LufsNormalizer;
-use streamify_audio::CanonicalSrc;
+use streamify_audio::{CanonicalSrc, StudioEqualizer};
+
+use crate::dsp_controls::{DspControls, DspParams, LufsMode};
 use streamify_core::{AudioErrorKind, EngineError};
 
 use crate::decode::{DecoderGeometry, SymphoniaDecoder, TrackDecoder};
@@ -103,6 +105,13 @@ pub enum ProducerCommand {
     Resume,
     /// Drop the session and flush the sink's stale tail.
     Stop,
+    /// Phase 4 / Step 2: stage the NEXT queue track while the current
+    /// one plays (gapless pre-buffering). The producer decodes the
+    /// next track into its own staging (NOT the ring) and, when the
+    /// current session completes, chains IMMEDIATELY — zero silent
+    /// frames between tracks. A `Play` supersedes any staged advance
+    /// (a manual skip wins over the queue's tail).
+    QueueAdvance(PlayIntent),
     /// Tear the thread down (deterministic join).
     Shutdown,
 }
@@ -179,10 +188,16 @@ pub struct ProducerConfig {
     pub segment_bytes: u64,
     /// Bounded retries for a transient range failure.
     pub fetch_retries: u32,
-    /// Loudness target (LUFS).
+    /// Loudness target (LUFS) — the config-time default; the LIVE
+    /// value rides the [`DspControls`] (Phase 4's live toggles).
     pub target_lufs: f64,
     /// Hard cap on the accumulated source bytes.
     pub max_source_bytes: usize,
+    /// The Phase 4 live DSP control plane (EQ / LUFS mode / limiter /
+    /// crossfade). `None` = the DspParams::default() behavior (flat
+    /// EQ, normalize to `target_lufs`, −1 dBTP ceiling, no crossfade)
+    /// — every pre-Phase-4 caller stays byte-identical.
+    pub dsp: Option<Arc<DspControls>>,
 }
 
 impl Default for ProducerConfig {
@@ -192,6 +207,22 @@ impl Default for ProducerConfig {
             fetch_retries: DEFAULT_FETCH_RETRIES,
             target_lufs: DEFAULT_TARGET_LUFS,
             max_source_bytes: MAX_SOURCE_BYTES,
+            dsp: None,
+        }
+    }
+}
+
+impl ProducerConfig {
+    /// The effective DSP parameters for one render round: the live
+    /// control plane's snapshot when wired, else the config defaults
+    /// (allocation-free; a small stack copy).
+    fn dsp_snapshot(&self) -> DspParams {
+        match &self.dsp {
+            Some(controls) => controls.snapshot(),
+            None => DspParams {
+                target_lufs: self.target_lufs,
+                ..DspParams::default()
+            },
         }
     }
 }
@@ -222,6 +253,11 @@ impl ProducerHandle {
     }
 
     /// Drop the session and flush the sink.
+    /// Stage the next queue track for a gapless transition (Phase 4).
+    pub fn queue_advance(&self, intent: PlayIntent) {
+        let _ = self.tx.send(ProducerCommand::QueueAdvance(intent));
+    }
+
     pub fn stop(&self) {
         let _ = self.tx.send(ProducerCommand::Stop);
     }
@@ -267,6 +303,17 @@ struct Session {
     /// Input geometry of the resample stage (guards rebuilds).
     src_geometry: Option<DecoderGeometry>,
     normalizer: LufsNormalizer,
+    /// Phase 4: the 10-band EQ (lazily built at the first render round
+    /// with canonical geometry; reconfigured per round from the live
+    /// control plane — allocation-free coefficient updates).
+    eq: Option<StudioEqualizer>,
+    /// Phase 4: the normalizer's last applied gain (dB) — the bypass
+    /// toggle's undo reference.
+    last_normalizer_gain_db: f64,
+    /// Phase 4: the anti-zipper correction state (dB) — how much of
+    /// the normalizer's gain is currently being CANCELLED (0 = none,
+    /// last_normalizer_gain_db = fully bypassed).
+    bypass_cancel_db: f64,
     hasher: Sha256,
     /// Byte frontier of the fetch stage.
     fetch_offset: u64,
@@ -307,6 +354,9 @@ impl Session {
             src: None,
             src_geometry: None,
             normalizer: LufsNormalizer::new(config.target_lufs)?,
+            eq: None,
+            last_normalizer_gain_db: 0.0,
+            bypass_cancel_db: 0.0,
             hasher: Sha256::new(),
             fetch_offset: 0,
             source_exhausted: false,
@@ -356,6 +406,74 @@ impl Session {
     }
 }
 
+/// Run ONE stage round of the live session (fetch → decode → … → write
+/// edge), absorbing the outcome: completion chains a staged gapless
+/// advance (Phase 4 / Step 2 — zero silent frames), suspension re-
+/// stashes the session, an error records and drops it.
+fn run_one_round(
+    ctx: &mut ThreadCtx,
+    sink: &mut dyn AudioSink,
+    fetcher: &dyn RangeFetcher,
+    config: &ProducerConfig,
+    progress_sink: &dyn ProgressSink,
+    progress: &std::sync::Arc<ProgressState>,
+) {
+    let Some(mut session) = ctx.session.take() else { return };
+    let outcome = {
+        let mut stage = StageCtx {
+            sink,
+            fetcher,
+            config,
+            progress_sink,
+            progress,
+        };
+        run_session(&mut session, ctx.session_id, &mut stage, ctx)
+    };
+    match outcome {
+        Ok(SessionOutcome::Completed) => {
+            // Phase 4 / Step 2 — the gapless chain: a staged next
+            // session takes over IMMEDIATELY (no flush, no idle
+            // window — zero silent frames between tracks). A
+            // QueueAdvance absorbed by poll_urgent MID-session sits
+            // in staged_advance — promote it NOW (completion is the
+            // chain's trigger; an advance that arrived any time
+            // before completion fires).
+            if ctx.next_session.is_none() {
+                if let Some(intent) = ctx.take_staged_advance() {
+                    ctx.next_session = match Session::new(intent, config) {
+                        Ok(s) => Some(s),
+                        Err(e) => {
+                            eprintln!(
+                                "sovereign-producer: staged advance build failed at chain-in: {e:?}"
+                            );
+                            None
+                        }
+                    };
+                }
+            }
+            if let Some(next) = ctx.next_session.take() {
+                ctx.session_id += 1;
+                progress.session.store(ctx.session_id, Ordering::Release);
+                progress.eos.store(false, Ordering::Release);
+                ctx.session = Some(next);
+            } else {
+                // No staged advance: the ring drains and EOS holds
+                // (the queue owner drives the next Play).
+                progress.eos.store(true, Ordering::Release);
+            }
+        }
+        Ok(SessionOutcome::Suspended) => {
+            ctx.session = Some(session);
+        }
+        Err(e) => {
+            *progress
+                .last_error
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(e);
+        }
+    }
+}
+
 /// Why the session runner returned control to the command loop.
 enum SessionOutcome {
     /// EOS reached: the final frame is committed; the ring drains.
@@ -395,10 +513,52 @@ impl StreamProducer {
                     rx,
                     pending: None,
                     parked: false,
+                    next_session: None,
+                    staged_advance: None,
                     session: None,
                     session_id: 0,
                 };
-                while let Some(cmd) = ctx.take_pending().or_else(|| ctx.recv_blocking()) {
+                loop {
+                    // Command intake: pending first, then the staged
+                    // gapless advance, then the channel. A LIVE session
+                    // (or a fresh chain-in) must keep cycling WITHOUT a
+                    // command — the Phase 4 chain-in takes over at the
+                    // previous session's completion and runs its own
+                    // stage rounds; the channel wait degrades to a
+                    // short poll so the stage loop below stays live.
+                    let cmd = ctx
+                        .take_pending()
+                        .or_else(|| ctx.take_staged_advance().map(ProducerCommand::QueueAdvance))
+                        .or_else(|| {
+                            if ctx.session.is_some() {
+                                match ctx.rx.recv_timeout(Duration::from_millis(5)) {
+                                    Ok(cmd) => Some(cmd),
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                        Some(ProducerCommand::Shutdown)
+                                    }
+                                }
+                            } else {
+                                ctx.recv_blocking()
+                            }
+                        });
+                    if cmd.is_none() && ctx.session.is_none() {
+                        continue; // idle: back to blocking recv
+                    }
+                    let Some(cmd) = cmd else {
+                        // No command, live session: run the stage round
+                        // directly (the session parks at its high
+                        // watermark; poll_urgent inside stays live).
+                        run_one_round(
+                            &mut ctx,
+                            sink.as_mut(),
+                            fetcher.as_ref(),
+                            &config,
+                            progress_sink.as_ref(),
+                            &thread_progress,
+                        );
+                        continue;
+                    };
                     match cmd {
                         ProducerCommand::Shutdown => break,
                         ProducerCommand::Stop => {
@@ -409,7 +569,48 @@ impl StreamProducer {
                         }
                         ProducerCommand::Park => ctx.parked = true,
                         ProducerCommand::Resume => ctx.parked = false,
+                        ProducerCommand::QueueAdvance(intent) => {
+                            // Gapless pre-buffering: build the next
+                            // session NOW (fetch + decode warm-up on
+                            // the producer thread). Failure is
+                            // non-fatal — the chain-in just won't fire
+                            // and the queue's owner learns via EOS.
+                            ctx.next_session = match Session::new(intent, &config) {
+                                Ok(s) => Some(s),
+                                Err(e) => {
+                                    eprintln!("sovereign-producer: queue_advance staging failed: {e:?}");
+                                    None
+                                }
+                            };
+                            // The ALREADY-DRAINED edge case: the live
+                            // session completed BEFORE this advance
+                            // arrived (the consumer outran the queue's
+                            // staging). There is nothing to chain onto
+                            // — start the staged session NOW (the
+                            // "gapless" contract degenerates to
+                            // immediate play, which is exactly what
+                            // the queue owner meant).
+                            if ctx.session.is_none() {
+                                if let Some(next) = ctx.next_session.take() {
+                                    if !thread_progress
+                                        .eos
+                                        .swap(false, Ordering::Release)
+                                    {
+                                        // EOS was already false: a
+                                        // fresh sequence anyway.
+                                    }
+                                    ctx.session_id += 1;
+                                    thread_progress
+                                        .session
+                                        .store(ctx.session_id, Ordering::Release);
+                                    thread_progress.eos.store(false, Ordering::Release);
+                                    ctx.session = Some(next);
+                                }
+                            }
+                        }
                         ProducerCommand::Play(intent) => {
+                            // A manual Play supersedes any staged advance.
+                            ctx.next_session = None;
                             // The skip path: cooperative flush at the
                             // stage boundary, then re-stage.
                             if ctx.session.is_some() {
@@ -436,34 +637,14 @@ impl StreamProducer {
                     }
                     // ── stage loop (one session run per command pass) ──
                     if ctx.session.is_some() {
-                        // Take the session out so the runner can borrow
-                        // the command context mutably alongside it.
-                        let mut session = ctx.session.take().expect("checked above");
-                        let outcome = {
-                            let mut stage = StageCtx {
-                                sink: sink.as_mut(),
-                                fetcher: fetcher.as_ref(),
-                                config: &config,
-                                progress_sink: progress_sink.as_ref(),
-                                progress: &thread_progress,
-                            };
-                            run_session(&mut session, ctx.session_id, &mut stage, &mut ctx)
-                        };
-                        match outcome {
-                            Ok(SessionOutcome::Completed) => {
-                                // The session is consumed; the ring drains.
-                                thread_progress.eos.store(true, Ordering::Release);
-                            }
-                            Ok(SessionOutcome::Suspended) => {
-                                ctx.session = Some(session);
-                            }
-                            Err(e) => {
-                                *thread_progress
-                                    .last_error
-                                    .lock()
-                                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(e);
-                            }
-                        }
+                        run_one_round(
+                            &mut ctx,
+                            sink.as_mut(),
+                            fetcher.as_ref(),
+                            &config,
+                            progress_sink.as_ref(),
+                            &thread_progress,
+                        );
                     }
                 }
                 thread_progress.live.store(false, Ordering::Release);
@@ -486,11 +667,23 @@ struct ThreadCtx {
     parked: bool,
     session: Option<Session>,
     session_id: u64,
+    /// Phase 4 / Step 2: the gapless chain-in candidate (staged by
+    /// `QueueAdvance`, consumed when the live session completes).
+    next_session: Option<Session>,
+    /// A QueueAdvance observed by poll_urgent mid-session (handed to
+    /// the main loop at the next command pass; never preempts).
+    staged_advance: Option<PlayIntent>,
 }
 
 impl ThreadCtx {
     fn take_pending(&mut self) -> Option<ProducerCommand> {
         self.pending.take()
+    }
+
+    /// The staged gapless-advance intent (set by poll_urgent's benign
+    /// absorption of QueueAdvance; consumed by the main loop).
+    fn take_staged_advance(&mut self) -> Option<PlayIntent> {
+        self.staged_advance.take()
     }
 
     fn recv_blocking(&mut self) -> Option<ProducerCommand> {
@@ -514,6 +707,17 @@ impl ThreadCtx {
             match cmd {
                 ProducerCommand::Park => self.parked = true,
                 ProducerCommand::Resume => self.parked = false,
+                // BENIGN: staging the gapless advance never interrupts
+                // the live session (it only fills next_session; the
+                // chain-in fires at the live session's completion).
+                ProducerCommand::QueueAdvance(intent) => {
+                    if let Some(cmd) = self.pending.take() {
+                        // Preserve the preemption contract: an urgent
+                        // command stashed earlier stays stashed.
+                        self.pending = Some(cmd);
+                    }
+                    self.staged_advance = Some(intent);
+                }
                 urgent @ (ProducerCommand::Play(_) | ProducerCommand::Stop | ProducerCommand::Shutdown) => {
                     self.pending = Some(urgent);
                     return true;
@@ -672,7 +876,7 @@ fn run_session(
         // Stage 4: stereo upmix (mono sources) + the loudness chain.
         let channels = geometry.map(|g| g.channels).unwrap_or(2);
         session.render_mono_upmix = channels == 1;
-        if session.render_mono_upmix {
+        let report = if session.render_mono_upmix {
             session.upmix.clear();
             session.upmix.reserve(session.canonical.len());
             for s in session.canonical.iter() {
@@ -681,11 +885,81 @@ fn run_session(
             }
             session
                 .normalizer
-                .process_interleaved(&mut session.upmix);
+                .process_interleaved(&mut session.upmix)
         } else {
             session
                 .normalizer
-                .process_interleaved(&mut session.canonical);
+                .process_interleaved(&mut session.canonical)
+        };
+        session.last_normalizer_gain_db = report.applied_gain_db;
+
+        // ── Phase 4 / Step 2: the LIVE DSP chain on the render buffer ──
+        // Order: loudness → EQ (+limiter ceiling guard) → write edge.
+        // All stages are producer-thread (never the audio callback) and
+        // allocation-free in steady state (biquads reconfigure in
+        // place; the buffers were allocated at session construction).
+        let dsp = config.dsp_snapshot();
+        let render: &mut Vec<f32> = if session.render_mono_upmix {
+            &mut session.upmix
+        } else {
+            &mut session.canonical
+        };
+        if dsp.lufs_mode == LufsMode::Bypass {
+            // The bypass toggle: undo the normalizer's gain with an
+            // EASED inverse (the anti-zipper ramp — a hard unity reset
+            // would click). The cancel state ramps from 0 (fully
+            // normalized) toward the applied gain (fully bypassed) in
+            // ≤6 dB rounds; the normalizer's own measurement keeps
+            // running (its state stays warm for the switch back).
+            session.bypass_cancel_db = DspControls::ramp_gain(
+                session.bypass_cancel_db,
+                session.last_normalizer_gain_db,
+            );
+            let correction = 10f64.powf(-session.bypass_cancel_db / 20.0);
+            for s in render.iter_mut() {
+                *s = (*s as f64 * correction) as f32;
+            }
+        } else {
+            // Back on Normalize: ease the cancel back OUT the same way.
+            if session.bypass_cancel_db != 0.0 {
+                session.bypass_cancel_db =
+                    DspControls::ramp_gain(session.bypass_cancel_db, 0.0);
+                let correction = 10f64.powf(-session.bypass_cancel_db / 20.0);
+                for s in render.iter_mut() {
+                    *s = (*s as f64 * correction) as f32;
+                }
+            }
+            // Normalize mode: the normalizer already applied its gain
+            // toward target_lufs. If the LIVE target differs from the
+            // session's constructor target, ease the delta (bounded
+            // ±6 dB per round — no zipper on target changes).
+            let delta_db = dsp.target_lufs - config.target_lufs;
+            if delta_db != 0.0 {
+                let eased = DspControls::ramp_gain(0.0, delta_db);
+                let factor = 10f64.powf(eased / 20.0);
+                for s in render.iter_mut() {
+                    *s = (*s as f64 * factor) as f32;
+                }
+            }
+        }
+        // The EQ (+ its built-in tanh saturation guard): flat curve is
+        // a structural no-op path? No — the biquads at 0 dB are unity
+        // filters; running them costs a few mul-adds and keeps the
+        // coefficient warm. Build lazily at the first round.
+        if session.eq.is_none() {
+            session.eq = Some(StudioEqualizer::new(48_000.0));
+        }
+        if let Some(eq) = session.eq.as_mut() {
+            match &config.dsp {
+                Some(controls) => controls.apply_eq(eq),
+                None => {
+                    // No live control plane: flat (the default curve).
+                    for band in 0..10 {
+                        eq.set_band_gain(band, 0.0);
+                    }
+                }
+            }
+            eq.process_buffer_interleaved(render, 2);
         }
 
         // Stage 5 setup: the seek anchor decides where writing starts.

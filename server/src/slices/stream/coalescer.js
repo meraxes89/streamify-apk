@@ -1,6 +1,27 @@
 import { PRIORITY } from './admission.js';
 
 /**
+ * Normalize a caller-provided "signal" into a genuine AbortSignal (or
+ * null). The gateway historically passes `req.raw.signal || req.raw`:
+ * on Node < 23 the IncomingMessage is NOT an EventTarget and has no
+ * `.signal`, so the fallback `req.raw` reaches the coalescer and
+ * `signal.addEventListener` throws (`TypeError: signal.addEventListener
+ * is not a function` → the gateway's 502 path — the Phase 4 CI
+ * regression on Node 22 runners). Only a real AbortSignal (with the
+ * EventTarget surface) is honored; anything else degrades to "no
+ * client-abort tracking" (the fetch still completes; the refcount
+ * releases via the request's own lifecycle downstream).
+ */
+export function asAbortSignal(signal) {
+  if (signal && typeof signal.addEventListener === 'function' &&
+      typeof signal.removeEventListener === 'function' &&
+      typeof signal.aborted === 'boolean') {
+    return signal;
+  }
+  return null;
+}
+
+/**
  * L2 Upstream Coalescer (comm12.md)
  * 
  * - Ensures that multiple concurrent client requests for the same content window
@@ -59,6 +80,9 @@ export class StreamCoalescer {
 
     entry.refcount++;
 
+    // Node-version hardening (see asAbortSignal): only a genuine
+    // AbortSignal participates in the refcounted client-abort path.
+    signal = asAbortSignal(signal);
     if (signal) {
       const onAbort = () => {
         entry.refcount--;

@@ -1,5 +1,6 @@
 import { parseRange } from '../../lib/range.js';
 import { AsyncAdmission, SaturatedError, TimeoutError, AbortError, PRIORITY } from './admission.js';
+import { asAbortSignal } from './coalescer.js';
 import { StreamCoalescer } from './coalescer.js';
 import { StreamPacer } from './pacer.js';
 import { StreamWatchdog } from './watchdog.js';
@@ -154,6 +155,11 @@ export class StreamGateway {
       return reply.status(200).send();
     }
 
+    // Node-version hardening: IncomingMessage is not an EventTarget
+    // before Node 23 — normalize once, before every consumer below
+    // (the cache-hit path, the coalescer, admission, the range stream).
+    const clientSignal = asAbortSignal(req.raw.signal) || asAbortSignal(req.raw);
+
     const rangeHeader = req.headers.range;
     let range = null;
 
@@ -200,7 +206,7 @@ export class StreamGateway {
         desc,
         start,
         actualEnd,
-        req.raw.signal || req.raw
+        clientSignal
       );
       return reply.send(cachedStream);
     }
@@ -213,7 +219,6 @@ export class StreamGateway {
     // =========================================================================
     const startBlock = Math.floor(start / (256 * 1024));
     const intent = this._classifyIntent(req, range);
-    const clientSignal = req.raw.signal || req.raw;
 
     if (this.coalescer) {
       try {
