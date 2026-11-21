@@ -154,11 +154,13 @@ jobs:
           pattern: jniLibs-*
           path: staged-jni
 
-      - name: Stage prebuilt .so into androidApp/src/main/jniLibs
+      - name: Stage prebuilt .so into androidApp and vivoAndroidApp jniLibs
         run: |
           for ABI in arm64-v8a x86_64; do
             mkdir -p androidApp/src/main/jniLibs/$ABI
+            mkdir -p vivoAndroidApp/src/main/jniLibs/$ABI
             find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} androidApp/src/main/jniLibs/$ABI/ \;
+            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} vivoAndroidApp/src/main/jniLibs/$ABI/ \;
           done
           echo "Staged JNI libraries:"
           ls -lR androidApp/src/main/jniLibs
@@ -201,7 +203,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
-          ./gradlew :androidApp:assembleRelease \
+          ./gradlew :androidApp:assembleRelease :vivoAndroidApp:assembleRelease \
             -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/androidApp/src/main/jniLibs" \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache \
@@ -278,6 +280,15 @@ jobs:
             UNIV=$(echo "$APKS" | head -n 1)
           fi
           cp -v "$UNIV" "Streamify-${TAG_CLEAN}.apk"
+
+          # Stage vivo release APKs
+          VIVO_APKS=$(find vivoAndroidApp/build/outputs/apk/release -name "*.apk" 2>/dev/null)
+          for APK in $VIVO_APKS; do
+            BASE=$(basename "$APK" .apk)
+            TARGET="Streamify-vivo-${TAG_CLEAN}-${BASE}.apk"
+            cp -v "$APK" "$TARGET"
+          done
+
           ls -la Streamify-*.apk
 
       - name: Upload release APK artifact
