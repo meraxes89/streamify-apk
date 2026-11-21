@@ -102,6 +102,14 @@ streamify-jam = { path = "crates/streamify-jam" }
 streamify-resolver = { path = "crates/streamify-resolver" }
 streamify-contract = { path = "crates/streamify-contract" }
 streamify-hal = { path = "crates/streamify-hal" }
+# Sovereign HAL Phase 5 (Pillar 1 / RFC Phase B): the real-time
+# allocation trap. MIT OR Apache-2.0. Default features OFF — the
+# crate's `disable_release` default would neuter the trap in release
+# builds. The rt-alloc-trap feature of streamify-audio/-playback pulls
+# it (dev/test only), and the trap test registers AllocDisabler as its
+# #[global_allocator] so any Box::new / Vec::push / format! inside the
+# guarded RT window aborts the test immediately.
+assert_no_alloc = { version = "1.1", default-features = false }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

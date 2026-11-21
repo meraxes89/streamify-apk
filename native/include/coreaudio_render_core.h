@@ -56,6 +56,9 @@
 #include <cstring>
 
 #include "audio_sink_ringbuffer.h"
+// Phase 5 / Pillar 1: the C++ RT allocation guard (no-op unless the TU
+// is compiled with -DSTREAMIFY_RT_ALLOC_GUARD — test builds only).
+#include "RtAllocGuard.h"
 
 namespace streamify {
 namespace hal {
@@ -181,6 +184,9 @@ public:
     void Render(uint32_t nframes, float* dst, uint64_t sample_time_frames,
                 uint64_t host_time_ns,
                 bool publish_clock = true) noexcept {
+        // Phase 5 / Pillar 1: the RT allocation trap (test builds compile
+        // this TU with -DSTREAMIFY_RT_ALLOC_GUARD; production: no-op).
+        STREAMIFY_RT_GUARD("coreaudio::Render");
         callback_count_.fetch_add(1, std::memory_order_relaxed);
         RenderFrameSource* s = source_.load(std::memory_order_acquire);
         size_t got = 0;

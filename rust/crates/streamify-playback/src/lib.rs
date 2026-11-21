@@ -50,6 +50,9 @@ pub mod frame_buf;
 pub mod producer;
 pub mod ring_export;
 pub mod sink;
+// Phase 5 / Pillar 1: the real-time allocation trap (CI-only feature
+// `rt-alloc-trap`; an empty pass-through module when the feature is off).
+pub mod rt_trap;
 
 pub use decode::{DecoderGeometry, SymphoniaDecoder, TrackDecoder};
 pub use dsp_controls::{clamp_eq_gain, DspControls, DspParams, EqPreset, LufsMode, EQ_GAIN_CLAMP_DB};

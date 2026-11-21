@@ -91,6 +91,9 @@
 #include <cstring>
 
 #include "audio_sink_ringbuffer.h"
+// Phase 5 / Pillar 1: the C++ RT allocation guard (no-op unless the TU
+// is compiled with -DSTREAMIFY_RT_ALLOC_GUARD — test builds only).
+#include "RtAllocGuard.h"
 
 namespace streamify {
 namespace hal {
@@ -153,6 +156,9 @@ public:
     // allocation, no locks, no syscalls — audited by AllocGuard on the
     // host lanes.
     uint32_t FillProcessBuffer(uint32_t frames, float* dst) noexcept {
+        // Phase 5 / Pillar 1: the RT allocation trap (test builds compile
+        // this TU with -DSTREAMIFY_RT_ALLOC_GUARD; production: no-op).
+        STREAMIFY_RT_GUARD("pipewire::FillProcessBuffer");
         callback_count_.fetch_add(1, std::memory_order_relaxed);
         sink::AudioSink* s = sink_.load(std::memory_order_acquire);
         uint32_t got = 0;

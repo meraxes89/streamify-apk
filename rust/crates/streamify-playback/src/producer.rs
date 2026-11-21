@@ -774,7 +774,11 @@ fn run_session(
             };
             let chunk = &render[*write_cursor..];
             let offered_frames = chunk.len() / 2;
-            let accepted = sink.write_float(chunk)?;
+            // Phase 5 / Pillar 1: the WRITE EDGE runs inside the
+            // allocation trap (rt-alloc-trap builds); production compiles
+            // the pass-through closure. This is the producer-thread RT
+            // window — SpscAudioRing::write_float must never allocate.
+            let accepted = crate::rt_trap::assert_no_alloc(|| sink.write_float(chunk))?;
             *write_cursor += accepted * 2;
             *emitted_frames += accepted as u64;
             if accepted < offered_frames {
