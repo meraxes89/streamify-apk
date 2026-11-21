@@ -648,6 +648,13 @@ jobs:
           export CC_x86_64_linux_android="$ANDROID_LLVM/x86_64-linux-android26-clang"
           export CXX_x86_64_linux_android="$ANDROID_LLVM/x86_64-linux-android26-clang++"
           export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$ANDROID_LLVM/x86_64-linux-android26-clang"
+          # r18: rquickjs-sys's `bindgen` feature (mandatory on android —
+          # the shipped pregenerated bindings skip the triple) parses
+          # HOST /usr/include headers by default and died on the runner's
+          # missing glibc-multiarch bits/libc-header-start.h. Point
+          # bindgen at the NDK sysroot (bionic headers for the triple) —
+          # its clang then stays inside the sysroot.
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot -I$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include -I$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/x86_64-linux-android"
           cargo build --release --target x86_64-linux-android \
             --bin sovereign_android_loopback -p streamify-hal
           cargo build --release --target x86_64-linux-android -p streamify-ffi
