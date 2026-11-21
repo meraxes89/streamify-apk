@@ -9,9 +9,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -229,6 +231,8 @@ fun MiniPlayer(
 
     val offsetX = remember { Animatable(initialValue = 0f) }
     val offsetY = remember { Animatable(0f) }
+    var isSwipeNext by remember { mutableStateOf(true) }
+    val density = LocalDensity.current
 
     var loading by rememberSaveable {
         mutableStateOf(true)
@@ -332,23 +336,36 @@ fun MiniPlayer(
                                         if (offsetY.value + dragAmount > 0) {
                                             coroutineScope.launch {
                                                 change.consume()
-                                                offsetY.animateTo(offsetY.value + 2 * dragAmount)
+                                                offsetY.snapTo(offsetY.value + dragAmount)
                                                 Logger.w("MiniPlayer", "Dragged ${offsetY.value}")
                                             }
                                         }
                                     },
                                     onDragCancel = {
                                         coroutineScope.launch {
-                                            offsetY.animateTo(0f)
+                                            offsetY.animateTo(
+                                                targetValue = 0f,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            )
                                         }
                                     },
                                     onDragEnd = {
                                         Logger.w("MiniPlayer", "Drag Ended")
                                         coroutineScope.launch {
-                                            if (offsetY.value > 70) {
+                                            val thresholdPx = with(density) { 56.dp.toPx() }
+                                            if (offsetY.value > thresholdPx) {
                                                 onClose()
                                             }
-                                            offsetY.animateTo(0f)
+                                            offsetY.animateTo(
+                                                targetValue = 0f,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            )
                                         }
                                     },
                                 )
@@ -369,39 +386,66 @@ fun MiniPlayer(
                                 Modifier
                                     .offset { IntOffset(offsetX.value.roundToInt(), 0) }
                                     .pointerInput(Unit) {
+                                        var dragVelocity = 0f
+                                        var lastDragTime = 0L
+
                                         detectHorizontalDragGestures(
                                             onDragStart = {
+                                                dragVelocity = 0f
+                                                lastDragTime = 0L
                                             },
-                                            onHorizontalDrag = {
-                                                change: PointerInputChange,
-                                                dragAmount: Float,
-                                                ->
+                                            onHorizontalDrag = { change: PointerInputChange, dragAmount: Float ->
+                                                change.consume()
+                                                val now = change.uptimeMillis
+                                                if (lastDragTime > 0L) {
+                                                    val dt = (now - lastDragTime).coerceAtLeast(1L)
+                                                    val currentVelocity = (dragAmount / dt) * 1000f
+                                                    dragVelocity = dragVelocity * 0.6f + currentVelocity * 0.4f
+                                                }
+                                                lastDragTime = now
                                                 coroutineScope.launch {
-                                                    change.consume()
-                                                    offsetX.animateTo(offsetX.value + dragAmount * 2)
-                                                    Logger.w("MiniPlayer", "Dragged ${offsetX.value}")
+                                                    offsetX.snapTo(offsetX.value + dragAmount)
                                                 }
                                             },
                                             onDragCancel = {
                                                 Logger.w("MiniPlayer", "Drag Cancelled")
                                                 coroutineScope.launch {
-                                                    if (offsetX.value > 200) {
-                                                        sharedViewModel.onUIEvent(UIEvent.Previous)
-                                                    } else if (offsetX.value < -120) {
-                                                        sharedViewModel.onUIEvent(UIEvent.Next)
-                                                    }
-                                                    offsetX.animateTo(0f)
+                                                    offsetX.animateTo(
+                                                        targetValue = 0f,
+                                                        animationSpec = spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness = Spring.StiffnessMediumLow,
+                                                        ),
+                                                    )
                                                 }
                                             },
                                             onDragEnd = {
                                                 Logger.w("MiniPlayer", "Drag Ended")
+                                                val currentOffset = offsetX.value
+                                                val thresholdPx = with(density) { 48.dp.toPx() }
+                                                val velocityThresholdPx = with(density) { 300.dp.toPx() }
+
+                                                val isFlickNext = (currentOffset < -thresholdPx * 0.35f) && (dragVelocity < -velocityThresholdPx)
+                                                val isDragNext = currentOffset < -thresholdPx
+
+                                                val isFlickPrev = (currentOffset > thresholdPx * 0.35f) && (dragVelocity > velocityThresholdPx)
+                                                val isDragPrev = currentOffset > thresholdPx
+
                                                 coroutineScope.launch {
-                                                    if (offsetX.value > 200) {
-                                                        sharedViewModel.onUIEvent(UIEvent.Previous)
-                                                    } else if (offsetX.value < -120) {
+                                                    if (isFlickNext || isDragNext) {
+                                                        isSwipeNext = true
                                                         sharedViewModel.onUIEvent(UIEvent.Next)
+                                                    } else if (isFlickPrev || isDragPrev) {
+                                                        isSwipeNext = false
+                                                        sharedViewModel.onUIEvent(UIEvent.Previous)
                                                     }
-                                                    offsetX.animateTo(0f)
+                                                    offsetX.animateTo(
+                                                        targetValue = 0f,
+                                                        animationSpec = spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness = Spring.StiffnessMediumLow,
+                                                        ),
+                                                    )
                                                 }
                                             },
                                         )
@@ -453,30 +497,39 @@ fun MiniPlayer(
                                 modifier = Modifier.weight(1F).fillMaxHeight(),
                                 contentAlignment = Alignment.CenterStart,
                                 transitionSpec = {
-                                    // Compare the incoming number with the previous number.
-                                    if (targetState != initialState) {
-                                        // If the target number is larger, it slides up and fades in
-                                        // while the initial (smaller) number slides up and fades out.
+                                    if (isSwipeNext) {
                                         (
-                                            slideInHorizontally { width ->
-                                                width
-                                            } + fadeIn()
+                                            slideInHorizontally(
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            ) { width -> width } + fadeIn(animationSpec = tween(220))
                                         ).togetherWith(
-                                            slideOutHorizontally { width -> +width } + fadeOut(),
+                                            slideOutHorizontally(
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            ) { width -> -width } + fadeOut(animationSpec = tween(220)),
                                         )
                                     } else {
-                                        // If the target number is smaller, it slides down and fades in
-                                        // while the initial number slides down and fades out.
                                         (
-                                            slideInHorizontally { width ->
-                                                +width
-                                            } + fadeIn()
+                                            slideInHorizontally(
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            ) { width -> -width } + fadeIn(animationSpec = tween(220))
                                         ).togetherWith(
-                                            slideOutHorizontally { width -> width } + fadeOut(),
+                                            slideOutHorizontally(
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            ) { width -> width } + fadeOut(animationSpec = tween(220)),
                                         )
                                     }.using(
-                                        // Disable clipping since the faded slide-in/out should
-                                        // be displayed out of bounds.
                                         SizeTransform(clip = false),
                                     )
                                 },
