@@ -114,9 +114,11 @@ DENY_RULES: list[tuple[str, str]] = [
 #                        (submodule 8413a257), all byte-reviewed as
 #                        playback-free; their BODIES remain token-scanned
 #                        by rule B:
+#                          Config.kt            default quality enum normalization (PR #232)
 #                          DatabaseDao.kt       ambiguous-variable rename
 #                                               (shouldContinue →
 #                                               shouldContinuePlaylist)
+#                          DataStoreManagerImpl.kt default quality preference (PR #232)
 #                          DatabaseModule.kt    hot-column SQLite indexes +
 #                                               Koin createdAtStart timing
 #                          RepositoryModule.kt  Koin createdAtStart timing
@@ -137,8 +139,10 @@ ALLOWED_EXACT: set[str] = {
     "service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt",
     # [wasm parity fix] — default-dispatcher migration for wasmJs.
     "domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt",
-    # [verified upstream fixes] — quality/security, playback-free (see header).
+    # [verified upstream fixes] — quality/security/config, playback-free (see header).
+    "common/src/commonMain/kotlin/com/maxrave/common/Config.kt",
     "data/src/commonMain/kotlin/DatabaseDao.kt",
+    "data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt",
     "data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt",
     "data/src/commonMain/kotlin/com/maxrave/data/di/RepositoryModule.kt",
     "service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt",

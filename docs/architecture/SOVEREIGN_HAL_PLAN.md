@@ -70,9 +70,10 @@ textual conflict, so its surface is frozen by `scripts/check_core_patch.py` (wir
 `ci.yml` preflight AND `_ci-sovereign-hal.yml` Gate 1):
 
 - **Allowlist** (recorded in the script, byte-reviewed): the wasmJs Gradle targets, the
-  wasmJsMain `expect/actual` shims, the `Resource.kt` Dispatchers parity fix, and the
-  four verified upstream quality/security fixes (`DatabaseDao` rename, `DatabaseModule`
-  indexes + DI timing, `RepositoryModule` timing, `Ytmusic` log redaction).
+  wasmJsMain `expect/actual` shims, the `Resource.kt` Dispatchers parity fix, the
+  verified upstream quality/security fixes (`DatabaseDao` rename, `DatabaseModule`
+  indexes + DI timing, `RepositoryModule` timing, `Ytmusic` log redaction), and the
+  upstream DataStore quality defaults (`Config.kt`, `DataStoreManagerImpl.kt` via PR #232).
 - **Hard deny**: any hunk touching Media3/ExoPlayer internals, media-jvm/libmpv routing,
   audio sink/processor behavior, `MediaPlayerHandler` implementations, or playback
   control semantics — including tokens smuggled inside allowed files (the body scan).
