@@ -610,17 +610,39 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
           test -d "$ANDROID_HOME/ndk/26.1.10909125"
+      - name: Build the C++ Oboe bracket .so (NDK CMake, x86_64)
+        run: |
+          # NDK + cmake installed in the earlier step (r8 ordering).
+          NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
+          mkdir -p /tmp/sovereign-native-out
+          cmake -B /tmp/sovereign-native-build -S native \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_BUNDLE/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/tmp/sovereign-native-out
+          cmake --build /tmp/sovereign-native-build --target streamify_native_core -j4
+          # HARD check (the r5 lesson: pipes hid failures). The .so
+          # lands in /tmp/sovereign-native-out (CMAKE_LIBRARY_OUTPUT_
+          # DIRECTORY) so the Rust link step's -L path is stable.
+          BRACKET_SO=/tmp/sovereign-native-out/libstreamify_native_core.so
+          test -s "$BRACKET_SO"
+          # The STL the bracket needs at runtime (pushed with it):
+          cp "$NDK_BUNDLE/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so" /tmp/sovereign-native-out/ || true
+          echo "bracket .so: $BRACKET_SO"
       - name: Build the guest artifacts (Rust cdylib + player bin, x86_64-android)
         run: |
           set -euo pipefail
-          # r9: cargo-ndk 4.x spells the Android API floor --platform
-          # (-p is the PACKAGE flag — the r8 panic "unknown package: 26"
-          # at cli/mod.rs:523). Two invocations: the player bin, then the
-          # cdylib (a --bin + a lib-only crate cannot share one command
-          # in 4.x). CWD is rust/ (cargo metadata needs it — the r5 fix).
+          # r11: the Rust player's extern "C" block is a LINK-TIME
+          # reference to the bracket's exports (r10's 7 undefined
+          # sovereign_oboe_* symbols — dlopen at runtime does not
+          # satisfy the linker). The bracket .so is built FIRST (the
+          # CMake step now runs before this one); link against it and
+          # record the needed soname.
           cd rust
+          export RUSTFLAGS="-L /tmp/sovereign-native-out -C link-arg=-l:libstreamify_native_core.so"
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
             build --release --bin sovereign_android_loopback -p streamify-hal
+          unset RUSTFLAGS
           cargo ndk -t x86_64-linux-android --platform 26 -o /tmp/sovereign-guest \
             build --release -p streamify-ffi
           cd ..
@@ -629,19 +651,6 @@ jobs:
           test -s /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback
           test -s /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so
           ls -la /tmp/sovereign-guest/x86_64-linux-android/
-      - name: Build the C++ Oboe bracket .so (NDK CMake, x86_64)
-        run: |
-          # NDK + cmake installed in the earlier step (r8 ordering).
-          NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
-          cmake -B /tmp/sovereign-native-build -S native \
-            -DCMAKE_TOOLCHAIN_FILE="$NDK_BUNDLE/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -2
-          cmake --build /tmp/sovereign-native-build --target streamify_native_core -j4
-          # HARD check (the r5 lesson: pipes hid failures).
-          BRACKET_SO="$(ls /tmp/sovereign-native-build/*/libstreamify_native_core.so 2>/dev/null || ls /tmp/sovereign-native-build/libstreamify_native_core.so 2>/dev/null || true)"
-          test -s "$BRACKET_SO"
-          echo "bracket .so: $BRACKET_SO"
       - name: Run the emulator (Oboe play + AudioFlinger capture)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -669,14 +678,12 @@ jobs:
             adb wait-for-device
             GUEST=/data/local/tmp/sovereign
             adb shell mkdir -p $GUEST
-            adb push /tmp/sovereign-native-build/*/libstreamify_native_core.so $GUEST/ 2>/dev/null || adb push /tmp/sovereign-native-build/libstreamify_native_core.so $GUEST/
+            adb push /tmp/sovereign-native-out/libstreamify_native_core.so $GUEST/
             adb push /tmp/sovereign-guest/x86_64-linux-android/libstreamify_core_rs.so $GUEST/
             adb push /tmp/sovereign-guest/x86_64-linux-android/sovereign_android_loopback $GUEST/
             adb push fixtures/audio/opus_dual_tone_48k.raw_opus $GUEST/fixture.opus
             adb shell chmod +x $GUEST/sovereign_android_loopback
-            # libc++_shared.so for the bracket (Oboe needs the STL):
-            NDK_BUNDLE="$ANDROID_HOME/ndk/26.1.10909125"
-            adb push "$NDK_BUNDLE/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so" $GUEST/ 2>/dev/null || true
+            adb push /tmp/sovereign-native-out/libc++_shared.so $GUEST/ 2>/dev/null || true
             adb shell ls -la $GUEST/
 
             # ── Guest tinycap (the FALLBACK capture): start BEFORE the
