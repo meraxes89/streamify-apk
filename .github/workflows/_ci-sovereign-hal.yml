@@ -706,15 +706,13 @@ jobs:
             # wrote the emulated audio HW's output on the HOST. Pull the
             # guest artifacts, then verify with the shared FFT verifier.
             mkdir -p /tmp/sovereign-guest && adb pull /data/local/tmp/sovereign/verdict.json /tmp/sovereign-guest/verdict.json || true; adb pull /data/local/tmp/sovereign/player.log /tmp/sovereign-guest/player.log || true; adb pull /data/local/tmp/sovereign/capture.wav /tmp/sovereign-guest/capture.wav || true
-            ls -la "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/ 2>&1 || true
-            CAP=""; for f in "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/capture.wav; do if [ -s "$f" ]; then CAP="$f"; break; fi; done
-            if [ -z "$CAP" ]; then echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat /data/local/tmp/sovereign/player.log 2>/dev/null | tail -5; exit 1; fi
-            echo "captured: $CAP"
-            python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose; VEXIT=$?
-            cat /tmp/sovereign-guest/verdict.json || true
-            echo "verifier exit: $VEXIT"
-            if [ $VEXIT -ne 0 ]; then echo "::error::Android loopback FFT failed (verifier=$VEXIT)"; exit 1; fi
-            echo "ANDROID AUDIOFLINGER LOOPBACK: FFT PASS (API ${{ matrix.api }})"
+            # r20c: the CAP/VEXIT lines below were TWO-line state — the
+            # action runs each line as its own sh -c, so CAP and VEXIT
+            # never crossed (the r19 GUEST lesson, reintroduced by me in
+            # r19's own probe). The whole probe+verify is ONE line now:
+            # pick the first non-empty capture, run the FFT verifier,
+            # echo the verdict JSON, fail the leg inline on either miss.
+            ls -la "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/ 2>&1 || true; CAP=""; for f in "$RUNNER_TEMP/audioflinger.wav" /home/runner/work/_temp/audioflinger.wav /tmp/sovereign-guest/capture.wav; do if [ -s "$f" ]; then CAP="$f"; break; fi; done; if [ -z "$CAP" ]; then echo "::error::no AudioFlinger capture (QEMU wav + tinycap fallback both empty)"; adb shell cat /data/local/tmp/sovereign/player.log 2>/dev/null | tail -5; exit 1; fi; echo "captured: $CAP"; cat /tmp/sovereign-guest/verdict.json || true; if ! python3 scripts/sovereign_loopback_verifier.py "$CAP" --freq-a 440 --freq-b 880 --verbose; then echo "::error::Android loopback FFT failed"; exit 1; fi; echo "ANDROID AUDIOFLINGER LOOPBACK: FFT PASS (API ${{ matrix.api }})"
 
   loopback-browser:
     name: "Gate 4.5: Browser AudioWorklet (SAB + MessagePort dual mode)"
