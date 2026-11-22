@@ -72,7 +72,7 @@ An autonomous, anonymous, on-device Amazon Music metadata and streaming engine d
    * **`verifyLinkReachability(url)`** - live Range probe of any solved CDN URL with honest
      byte-level evidence (HTTP status, content-type, total bytes, first-bytes hex).
    * **Zero-dependency MPD parser** speaking the Amazon dialect: `SupplementalProperty
-     schemeIdUri="amz-music:bitDepth" (16/24), `"amz-music:trackType"` (UHD/HD/SD), CENC
+     schemeIdUri="amz-music:bitDepth"` (16/24), `"amz-music:trackType"` (UHD/HD/SD), CENC
      `ContentProtection` with `cenc:default_KID` + `cenc:pssh`, codec vocabulary `flac`/`opus`/
      `mp4a.40.2`/`mp4a.40.5`/`ec-3`.
    * **Credential layer** (production auth vectors): cookie mode (the player's default:
