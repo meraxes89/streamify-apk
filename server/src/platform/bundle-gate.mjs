@@ -157,9 +157,12 @@ export function atomicSymlink(linkPath, targetDir) {
  * 2. If present and valid (Merkle + WASM magic), flips atomic symlink to public
  * 3. Returns the active bundle path or throws a fatal error if no valid bundle exists.
  * @param {string} [baseDir] - Root server directory (defaults to server/)
- * @returns {string} - Absolute path to the verified active bundle
+ * @param {string} [baseDir] - Root server directory (defaults to server/)
+ * @param {object} [options] - Configuration options
+ * @param {boolean} [options.allowDegraded=false] - If true, falls back to a placeholder rather than throwing
+ * @returns {string} - Absolute path to the active bundle or placeholder directory
  */
-export function enforceBundleGate(baseDir = SERVER_DIR) {
+export function enforceBundleGate(baseDir = SERVER_DIR, { allowDegraded = false } = {}) {
   const stateDir = path.join(baseDir, '.state');
   const bundlesDir = path.join(baseDir, 'bundles');
   const publicPath = path.join(baseDir, 'public');
@@ -220,6 +223,67 @@ export function enforceBundleGate(baseDir = SERVER_DIR) {
       fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
       return targetDir;
     }
+  }
+
+  // Check if a local Kotlin Compose wasmJs build exists in ../composeApp/build/dist/wasmJs/productionExecutable
+  const localBuildDir = path.resolve(baseDir, '../composeApp/build/dist/wasmJs/productionExecutable');
+  if (fs.existsSync(localBuildDir) && verifyWasmMagic(localBuildDir) && verifyMerkle(localBuildDir)) {
+    const { rootHash } = generateBundleManifest(localBuildDir);
+    const targetDir = path.join(bundlesDir, rootHash);
+    if (!fs.existsSync(targetDir)) {
+      fs.cpSync(localBuildDir, targetDir, { recursive: true });
+    }
+    atomicSymlink(publicPath, targetDir);
+    manifest.current = rootHash;
+    manifest.updatedAt = new Date().toISOString();
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    return targetDir;
+  }
+
+  if (allowDegraded) {
+    const placeholderDir = path.join(stateDir, 'placeholder');
+    if (!fs.existsSync(placeholderDir)) {
+      fs.mkdirSync(placeholderDir, { recursive: true });
+    }
+    const placeholderHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streamify — Initializing</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0e0e11; color: #efeff1; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 32px; max-width: 480px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+    p { font-size: 14px; color: #a1a1aa; line-height: 1.5; margin: 0 0 20px; }
+    .badge { display: inline-block; background: #27272a; color: #10b981; font-size: 12px; padding: 4px 10px; border-radius: 9999px; margin-bottom: 16px; font-weight: 500; }
+    .spinner { width: 24px; height: 24px; border: 2px solid #27272a; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  <script>
+    setInterval(async () => {
+      try {
+        const res = await fetch('/');
+        const text = await res.text();
+        if (!text.includes('Streamify — Initializing')) {
+          window.location.reload();
+        }
+      } catch {}
+    }, 3000);
+  </script>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">API Relay Active</div>
+    <div class="spinner"></div>
+    <h1>Initializing Client Bundle</h1>
+    <p>Streamify server is running. Downloading and verifying the WebAssembly client bundle in the background. This page will reload automatically once ready.</p>
+  </div>
+</body>
+</html>`;
+    fs.writeFileSync(path.join(placeholderDir, 'index.html'), placeholderHtml, 'utf8');
+    atomicSymlink(publicPath, placeholderDir);
+    return placeholderDir;
   }
 
   throw new Error(

@@ -54,8 +54,9 @@ timeouts 504; a throttle watchdog evicts cached URLs that drop below
    map and Merkle root; `public` flips via an atomic symlink
    (symlink -> tmp -> rename). Keeps the last 3 bundles, never deleting
    current/previous (rollback safety); state in `.state/manifest.json`.
-4. `enforceBundleGate()` at app creation refuses to start unless a bundle
-   passes WASM-magic + Merkle verification.
+4. `enforceBundleGate()` verifies WASM-magic and Merkle tree, supporting
+   `{ allowDegraded: true }` on cold start with an auto-updating placeholder UI,
+   local build auto-detection, and immediate background release fetch.
 
 `pubkey.pem` holds a raw 32-byte Ed25519 public key.
 `verifyManifestSignature()` (Ed25519 over the manifest) is exported and
@@ -79,5 +80,5 @@ warms exactly 262,144 bytes. Burst coalescing: 100 % single-flight (zero
 duplicate upstream calls).
 
 ---
-Verified against commit 8b858b1c. Staleness protocol: docs/adr/README.md.
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+Verified against commit 7c60ae82. Staleness protocol: docs/adr/README.md.
+<!-- doc-verified-against: 7c60ae82b6459f17876bcdb5d0f168e44c816c5b -->

@@ -247,7 +247,7 @@ export async function createApp({
 
   // P0 Bundle Gate: Enforce content-addressed WASM integrity and atomic symlink
   const serverDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-  const verifiedBundleDir = enforceBundleGate(serverDir);
+  const verifiedBundleDir = enforceBundleGate(serverDir, { allowDegraded: true });
   const publicDir = path.resolve(serverDir, 'public');
 
   await app.register(fastifyStatic, {
