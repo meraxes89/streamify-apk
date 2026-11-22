@@ -93,6 +93,7 @@ class PlaylistViewModel(
     private var playlistEntityJob: Job? = null
     private var newUpdateJob: Job? = null
     private var checkDownloadedPlaylist: Job? = null
+    private var playJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -435,59 +436,73 @@ class PlaylistViewModel(
         val data = uiState.value.data ?: return
         when (event) {
             is PlaylistUIEvent.ItemClick -> {
+                playJob?.cancel()
                 val videoId = event.videoId
-                val loadedList = tracks.value
-                val clickedSong = loadedList.first { it.videoId == videoId }
-                val index = loadedList.indexOf(clickedSong)
-                setQueueData(
-                    QueueData.Data(
-                        listTracks = loadedList.toCollection(arrayListOf<Track>()),
-                        firstPlayedTrack = clickedSong,
-                        playlistId = data.id,
-                        playlistName = "${
-                            getString(
-                                Res.string.playlist,
-                            )
-                        } \"${data.title}\"",
-                        playlistType = PlaylistType.PLAYLIST,
-                        continuation = continuation.value,
-                    ),
-                )
-                loadMediaItem(
-                    clickedSong,
-                    Config.PLAYLIST_CLICK,
-                    index,
-                )
+                val id = data.id
+                val title = data.title
+                playJob =
+                    viewModelScope.launch {
+                        // If tracks are not yet loaded, await the first non-empty emissions or loading completion
+                        if (tracks.value.isEmpty()) {
+                            tracks.firstOrNull { it.isNotEmpty() }
+                        }
+                        val loadedList = tracks.value
+                        if (loadedList.isEmpty()) {
+                            makeToast(getString(Res.string.playlist_is_empty))
+                            return@launch
+                        }
+                        val clickedSong = loadedList.firstOrNull { it.videoId == videoId } ?: loadedList.first()
+                        val index = loadedList.indexOf(clickedSong).coerceAtLeast(0)
+                        setQueueData(
+                            QueueData.Data(
+                                listTracks = loadedList.toCollection(arrayListOf<Track>()),
+                                firstPlayedTrack = clickedSong,
+                                playlistId = id,
+                                playlistName = "${getString(Res.string.playlist)} \"$title\"",
+                                playlistType = PlaylistType.PLAYLIST,
+                                continuation = continuation.value,
+                            ),
+                        )
+                        loadMediaItem(
+                            clickedSong,
+                            Config.PLAYLIST_CLICK,
+                            index,
+                        )
+                    }
             }
 
             PlaylistUIEvent.PlayAll -> {
-                val loadedList = tracks.value
-                if (loadedList.isEmpty()) {
-                    makeToast(
-                        getString(Res.string.playlist_is_empty),
-                    )
-                    return
-                }
-                val clickedSong = loadedList.first()
-                setQueueData(
-                    QueueData.Data(
-                        listTracks = loadedList.toCollection(arrayListOf<Track>()),
-                        firstPlayedTrack = clickedSong,
-                        playlistId = data.id,
-                        playlistName = "${
-                            getString(
-                                Res.string.playlist,
-                            )
-                        } \"${data.title}\"",
-                        playlistType = PlaylistType.PLAYLIST,
-                        continuation = continuation.value,
-                    ),
-                )
-                loadMediaItem(
-                    clickedSong,
-                    Config.PLAYLIST_CLICK,
-                    0,
-                )
+                playJob?.cancel()
+                val id = data.id
+                val title = data.title
+                playJob =
+                    viewModelScope.launch {
+                        // Await in-flight tracks if not yet loaded
+                        if (tracks.value.isEmpty()) {
+                            tracks.firstOrNull { it.isNotEmpty() }
+                        }
+                        val loadedList = tracks.value
+                        if (loadedList.isEmpty()) {
+                            makeToast(getString(Res.string.playlist_is_empty))
+                            return@launch
+                        }
+                        val clickedSong = loadedList.first()
+                        setQueueData(
+                            QueueData.Data(
+                                listTracks = loadedList.toCollection(arrayListOf<Track>()),
+                                firstPlayedTrack = clickedSong,
+                                playlistId = id,
+                                playlistName = "${getString(Res.string.playlist)} \"$title\"",
+                                playlistType = PlaylistType.PLAYLIST,
+                                continuation = continuation.value,
+                            ),
+                        )
+                        loadMediaItem(
+                            clickedSong,
+                            Config.PLAYLIST_CLICK,
+                            0,
+                        )
+                    }
             }
 
             PlaylistUIEvent.Shuffle -> {
