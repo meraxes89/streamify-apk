@@ -291,12 +291,10 @@ export class StreamResolver {
             ...(extracted.streamingData?.formats || []),
           ];
 
-          // Format policy: Opus (251) -> AAC (140) -> audio/* -> itag 18 / 22 (universal progressive MP4 fallback)
+          // Strict elite audio-only policy: Opus 160 kbps (251) -> AAC 128 kbps (140) -> pure audio/*
           let selected = formats.find((f) => f.itag === 251 && f.url);
           if (!selected) selected = formats.find((f) => f.itag === 140 && f.url);
           if (!selected) selected = formats.find((f) => (f.mimeType || '').startsWith('audio/') && f.url);
-          if (!selected) selected = formats.find((f) => f.itag === 18 && f.url);
-          if (!selected) selected = formats.find((f) => f.itag === 22 && f.url);
 
           if (selected?.url) {
             return this._buildAndStoreDescriptor(extracted, selected, spec, t1 - t0, 'fast');
@@ -409,12 +407,10 @@ export class StreamResolver {
             ...(data.streamingData?.formats || []),
           ];
 
-          // Select audio format (direct or signatureCipher)
+          // Select elite audio format (direct or signatureCipher)
           let selected = formats.find((f) => f.itag === 251);
           if (!selected) selected = formats.find((f) => f.itag === 140);
           if (!selected) selected = formats.find((f) => (f.mimeType || '').startsWith('audio/'));
-          if (!selected) selected = formats.find((f) => f.itag === 18);
-          if (!selected) selected = formats.find((f) => f.itag === 22);
 
           if (selected) {
             let targetUrl = selected.url;
