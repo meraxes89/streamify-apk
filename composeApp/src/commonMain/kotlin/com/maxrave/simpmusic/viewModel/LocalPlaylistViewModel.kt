@@ -38,6 +38,7 @@ import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.LogLevel
 import com.maxrave.logger.Logger
+import kotlinx.coroutines.CancellationException
 import com.maxrave.simpmusic.pagination.PagingActions
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.singleOrNull
@@ -237,6 +239,7 @@ class LocalPlaylistViewModel(
                 }
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val lazyTrackPagingItems: MutableStateFlow<LazyPagingItems<Pair<SongEntity, PairSongLocalPlaylist>>?> = MutableStateFlow(null)
+    private var playJob: Job? = null
 
     fun setLazyTrackPagingItems(lazyPagingItems: LazyPagingItems<Pair<SongEntity, PairSongLocalPlaylist>>) {
         lazyTrackPagingItems.value = lazyPagingItems
@@ -785,49 +788,51 @@ class LocalPlaylistViewModel(
             }
 
             is LocalPlaylistUIEvent.ItemClick -> {
-                val loadedList = lazyTrackPagingItems.value?.itemSnapshotList?.toList() ?: return
-                val clickedSong = loadedList.find { it?.first?.videoId == ev.videoId }?.first ?: return
-
-                setQueueData(
-                    QueueData.Data(
-                        listTracks = loadedList.mapNotNull { it?.first }.toArrayListTrack(),
-                        firstPlayedTrack = clickedSong.toTrack(),
-                        playlistId = LOCAL_PLAYLIST_ID + uiState.value.id,
-                        playlistName = "${
-                            getString(
-                                Res.string.playlist,
-                            )
-                        } \"${uiState.value.title}\"",
-                        playlistType = PlaylistType.LOCAL_PLAYLIST,
-                        continuation =
-                            if (offset.value > 0) {
-                                when (uiState.value.filterState) {
-                                    FilterState.OlderFirst -> {
-                                        ASC + converter.dateToTimestamp(loadedList.lastOrNull()?.second?.inPlaylist)
-                                    }
-
-                                    FilterState.NewerFirst -> {
-                                        DESC + converter.dateToTimestamp(loadedList.lastOrNull()?.second?.inPlaylist)
-                                    }
-
-                                    FilterState.CustomOrder -> {
-                                        CUSTOM_ORDER + offset.value.toString()
-                                    }
-
-                                    FilterState.Title -> {
-                                        TITLE + offset.value.toString()
-                                    }
-                                }
+                playJob?.cancel()
+                val id = uiState.value.id
+                val title = uiState.value.title
+                val clickedVideoId = ev.videoId
+                playJob =
+                    viewModelScope.launch {
+                        val fullTracks =
+                            try {
+                                localPlaylistRepository.getFullPlaylistTracks(id)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Throwable) {
+                                Logger.e(tag, "Failed to load full tracks for local playlist $id", e)
+                                emptyList()
+                            }
+                        if (fullTracks.isEmpty()) {
+                            makeToast(getString(Res.string.playlist_is_empty))
+                            return@launch
+                        }
+                        val tracksList = fullTracks.toArrayListTrack()
+                        val clickedSongIndex = tracksList.indexOfFirst { it.videoId == clickedVideoId }
+                        val firstPlayedTrack =
+                            if (clickedSongIndex != -1) {
+                                tracksList[clickedSongIndex]
                             } else {
-                                null
-                            },
-                    ),
-                )
-                loadMediaItem(
-                    clickedSong,
-                    Config.PLAYLIST_CLICK,
-                    loadedList.map { it?.first }.indexOf(clickedSong),
-                )
+                                songRepository.getSongById(clickedVideoId).firstOrNull()?.toTrack() ?: tracksList.first()
+                            }
+                        val playIndex = if (clickedSongIndex != -1) clickedSongIndex else 0
+
+                        setQueueData(
+                            QueueData.Data(
+                                listTracks = tracksList,
+                                firstPlayedTrack = firstPlayedTrack,
+                                playlistId = LOCAL_PLAYLIST_ID + id,
+                                playlistName = "${getString(Res.string.playlist)} \"$title\"",
+                                playlistType = PlaylistType.LOCAL_PLAYLIST,
+                                continuation = null,
+                            ),
+                        )
+                        loadMediaItem(
+                            firstPlayedTrack,
+                            Config.PLAYLIST_CLICK,
+                            playIndex,
+                        )
+                    }
             }
 
             is LocalPlaylistUIEvent.SuggestionsItemClick -> {
@@ -858,87 +863,72 @@ class LocalPlaylistViewModel(
             }
 
             is LocalPlaylistUIEvent.PlayClick -> {
-                val loadedList =
-                    lazyTrackPagingItems.value?.itemSnapshotList?.toList() ?: run {
-                        makeToast(getString(Res.string.playlist_is_empty))
-                        return
+                playJob?.cancel()
+                val id = uiState.value.id
+                val title = uiState.value.title
+                playJob =
+                    viewModelScope.launch {
+                        val fullTracks =
+                            try {
+                                localPlaylistRepository.getFullPlaylistTracks(id)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Throwable) {
+                                Logger.e(tag, "Failed to load full tracks for local playlist $id", e)
+                                emptyList()
+                            }
+                        if (fullTracks.isEmpty()) {
+                            makeToast(getString(Res.string.playlist_is_empty))
+                            return@launch
+                        }
+                        val tracksList = fullTracks.toArrayListTrack()
+                        val firstPlayTrack = tracksList.first()
+                        setQueueData(
+                            QueueData.Data(
+                                listTracks = tracksList,
+                                firstPlayedTrack = firstPlayTrack,
+                                playlistId = LOCAL_PLAYLIST_ID + id,
+                                playlistName = "${getString(Res.string.playlist)} \"$title\"",
+                                playlistType = PlaylistType.LOCAL_PLAYLIST,
+                                continuation = null,
+                            ),
+                        )
+                        loadMediaItem(
+                            firstPlayTrack,
+                            Config.PLAYLIST_CLICK,
+                            0,
+                        )
                     }
-
-                val firstPlayTrack = loadedList.firstOrNull()?.first?.toTrack()
-                setQueueData(
-                    QueueData.Data(
-                        listTracks = loadedList.mapNotNull { it?.first }.toArrayListTrack(),
-                        firstPlayedTrack = firstPlayTrack,
-                        playlistId = LOCAL_PLAYLIST_ID + uiState.value.id,
-                        playlistName = "${
-                            getString(
-                                Res.string.playlist,
-                            )
-                        } \"${uiState.value.title}\"",
-                        playlistType = PlaylistType.LOCAL_PLAYLIST,
-                        continuation =
-                            if (offset.value > 0) {
-                                if (offset.value > 0) {
-                                    when (uiState.value.filterState) {
-                                        FilterState.OlderFirst -> {
-                                            ASC + converter.dateToTimestamp(loadedList.lastOrNull()?.second?.inPlaylist)
-                                        }
-
-                                        FilterState.NewerFirst -> {
-                                            DESC + converter.dateToTimestamp(loadedList.lastOrNull()?.second?.inPlaylist)
-                                        }
-
-                                        FilterState.CustomOrder -> {
-                                            CUSTOM_ORDER + offset.value.toString()
-                                        }
-
-                                        FilterState.Title -> {
-                                            TITLE + offset.value.toString()
-                                        }
-                                    }
-                                } else {
-                                    null
-                                }
-                            } else {
-                                null
-                            },
-                    ),
-                )
-                loadMediaItem(
-                    firstPlayTrack,
-                    Config.PLAYLIST_CLICK,
-                    0,
-                )
             }
 
             is LocalPlaylistUIEvent.ShuffleClick -> {
-                viewModelScope.launch {
-                    val listVideoId = localPlaylistRepository.getListTrackVideoId(uiState.value.id)
-                    log("ShuffleClick: uiState id ${uiState.value.id}")
-                    log("ShuffleClick: $listVideoId")
-                    if (listVideoId.isEmpty()) {
-                        makeToast(getString(Res.string.playlist_is_empty))
-                        return@launch
+                playJob?.cancel()
+                val id = uiState.value.id
+                val title = uiState.value.title
+                playJob =
+                    viewModelScope.launch {
+                        val listVideoId = localPlaylistRepository.getListTrackVideoId(id)
+                        log("ShuffleClick: uiState id $id")
+                        log("ShuffleClick: $listVideoId")
+                        if (listVideoId.isEmpty()) {
+                            makeToast(getString(Res.string.playlist_is_empty))
+                            return@launch
+                        }
+                        val random = listVideoId.random()
+                        val randomIndex = listVideoId.indexOf(random)
+                        val firstPlayedTrack = songRepository.getSongById(random).singleOrNull()?.toTrack() ?: return@launch
+                        setQueueData(
+                            QueueData.Data(
+                                listTracks = arrayListOf(firstPlayedTrack),
+                                firstPlayedTrack = firstPlayedTrack,
+                                playlistId = LOCAL_PLAYLIST_ID + id,
+                                playlistName = "${getString(Res.string.playlist)} \"$title\"",
+                                playlistType = PlaylistType.LOCAL_PLAYLIST,
+                                continuation = "",
+                            ),
+                        )
+                        shufflePlaylist(randomIndex)
                     }
-                    val random = listVideoId.random()
-                    val randomIndex = listVideoId.indexOf(random)
-                    val firstPlayedTrack = songRepository.getSongById(random).singleOrNull()?.toTrack() ?: return@launch
-                    setQueueData(
-                        QueueData.Data(
-                            listTracks = arrayListOf(firstPlayedTrack),
-                            firstPlayedTrack = firstPlayedTrack,
-                            playlistId = LOCAL_PLAYLIST_ID + uiState.value.id,
-                            playlistName = "${
-                                getString(
-                                    Res.string.playlist,
-                                )
-                            } \"${uiState.value.title}\"",
-                            playlistType = PlaylistType.LOCAL_PLAYLIST,
-                            continuation = "",
-                        ),
-                    )
-                    shufflePlaylist(randomIndex)
-                }
             }
         }
     }
