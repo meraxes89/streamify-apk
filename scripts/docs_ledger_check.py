@@ -55,13 +55,13 @@ CURATED_DOCS = [
     "SECURITY.md",
     "docs/playbooks/CI_TESTING_GUIDE.md",
     "docs/architecture/ARCHITECTURE.md",
-    "docs/architecture/MULTIPLATFORM_CHECKBOX.MD",
+    "docs/archive/MULTIPLATFORM_CHECKBOX.MD",
     ".github/ISSUE_TEMPLATE/config.yml",
 ]
 
 # Ledger files whose CHECKED boxes get the file-claim audit (check 5).
 LEDGER_FILES = [
-    "docs/architecture/MULTIPLATFORM_CHECKBOX.MD",
+    "docs/archive/MULTIPLATFORM_CHECKBOX.MD",
     "docs/architecture/A_Checkbox.md",
 ]
 

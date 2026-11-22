@@ -1,65 +1,69 @@
-# `docs/` — Engineering Documentation & Architecture Hub
+# Engineering documentation
 
-Welcome to the Streamify engineering documentation portal. This directory is organized into three distinct tiers:
+This directory holds the authoritative systems documentation. Every
+authoritative document carries a `doc-verified-against` pin (the commit whose
+tree it was verified against). `scripts/verify_docs.py` checks each pin with
+`git merge-base --is-ancestor` against `origin/main` and fails when a pin is
+not an ancestor (bogus pin) or when main has advanced past it (stale document).
+
+## Structure
 
 ```
 docs/
-├── architecture/   # System blueprints, master plans, invariants & 12 engine deep-dives
-├── playbooks/      # Developer workflows, codebase tour & CI testing manuals
-└── archive/        # Historical lineage mergers, post-mortems & superseded logs
+├── README.md            This index
+├── architecture/        System map, engine deep-dives, technical plans
+│   ├── ARCHITECTURE.md  Master layer map (authoritative)
+│   └── engines/         13 subsystem deep-dives
+├── adr/                 Architecture Decision Records (MADR/Nygard format)
+├── playbooks/           Developer workflows and runbooks
+└── archive/             Retired planning docs, status ledgers, merger logs
 ```
 
----
+## Architecture
 
-## 🏛️ 1. Architecture & System Design (`docs/architecture/`)
-
-Start here for system maps, core invariants, and subsystem deep-dives:
-
-| Document | Purpose / Scope |
+| Document | Scope |
 |---|---|
-| [`architecture/ARCHITECTURE.md`](architecture/ARCHITECTURE.md) | **System Map** — High-level architecture, module dependencies, and boundaries. |
-| [`architecture/A_TIER_PLAN_26_10.MD`](architecture/A_TIER_PLAN_26_10.MD) | **Master Plan** — The A+ Tier overhaul roadmap (Security, Amputation, UniFFI). |
-| [`architecture/A_Checkbox.md`](architecture/A_Checkbox.md) | **Consensus Ledger** — Approved architectural decisions & task tracking checklist. |
-| [`architecture/JAM_ENGINE_SPEC.md`](architecture/JAM_ENGINE_SPEC.md) | P2P CRDT Jam engine architecture, Merkle state sync, and wire protocols. |
-| [`architecture/rust_integration_deep_dive.md`](architecture/rust_integration_deep_dive.md) | Rust core engine, JNI boundary semantics, and memory safety analysis. |
+| [ARCHITECTURE.md](architecture/ARCHITECTURE.md) | Master map: Compose UI -> Koin -> Rust core -> C++20 ringbuffer -> platform HALs; hybrid SQLite/Supabase sync; measured invariants |
+| [JAM_ENGINE_SPEC.md](architecture/JAM_ENGINE_SPEC.md) | CRDT jam engine, Merkle state sync, wire protocols |
+| [CRYPTO_SPEC.md](architecture/CRYPTO_SPEC.md) | ChaCha20-Poly1305 vault and cache cipher (SEC-06) |
+| [acoustic_embedding_contract_v1.md](architecture/acoustic_embedding_contract_v1.md) | 128-dim acoustic embedding contract (Rust + UDL) |
+| [MULTIPLATFORM_PLAN_27_10.MD](architecture/MULTIPLATFORM_PLAN_27_10.MD) | Multiplatform master plan: sovereign core law, dual UniFFI codegen, DacPresentationClock invariant |
+| [A_TIER_PLAN_26_10.MD](architecture/A_TIER_PLAN_26_10.MD) | A+ tier plan: contract-first UniFFI, RT audio isolation, DSP retention, parity invariants |
+| [engines/](architecture/engines/) | 13 numbered subsystem deep-dives (stream resolution, DSP, lyrics alignment, jam, storage, CI security, playback dataplane) |
 
-### Subsystem Engine Deep-Dives (`docs/architecture/engines/`)
-1. [`01_stream_resolution.md`](architecture/engines/01_stream_resolution.md) — Multi-tier streaming pipeline, candidate deduplication, and resolution fallback.
-2. [`02_dsp_acoustic.md`](architecture/engines/02_dsp_acoustic.md) — Float PCM mastering, LUFS normalization, and true-peak limiting.
-3. [`03_lyrics_alignment.md`](architecture/engines/03_lyrics_alignment.md) — Neural lyrics synchronization, phonetic drift correction, and token matching.
-4. [`04_neural_continuum.md`](architecture/engines/04_neural_continuum.md) — Predictive pre-caching, circadian transition curves, and offline pre-fetching.
-5. [`05_mesh_airdrop.md`](architecture/engines/05_mesh_airdrop.md) — Wi-Fi Direct & BLE zero-configuration transport mesh.
-6. [`06_jam_distributed.md`](architecture/engines/06_jam_distributed.md) — 32-node democratic voting CRDT, LWW registers, and vector clocks.
-7. [`07_database_storage.md`](architecture/engines/07_database_storage.md) — Path-keyed SQLite connection pools and WAL-mode transaction lanes.
-8. [`08_ingestion_scraper.md`](architecture/engines/08_ingestion_scraper.md) — Track metadata scraping, ISRC matching, and fuzzy resolution.
-9. [`09_search_graph.md`](architecture/engines/09_search_graph.md) — Local search index, multi-tier ranking, and fuzzy token scoring.
-10. [`10_telemetry_profiler.md`](architecture/engines/10_telemetry_profiler.md) — Real-time performance monitors, frame pacing counters, and battery diagnostics.
-11. [`11_playback_ui.md`](architecture/engines/11_playback_ui.md) — 120Hz liquid sheet morphing, predictive back, and haptic feedback.
-12. [`12_server_security.md`](architecture/engines/12_server_security.md) — Security boundaries, token rotation, and supply chain attestation.
-13. [`13_playback_dataplane.md`](architecture/engines/13_playback_dataplane.md) — The sovereign drivetrain: producer → `AudioSink` write edge → platform HAL; transport semantics (A2), panic-policy decision record (A6), and the A3–A5 build spec.
+## Architecture Decision Records
 
----
+Decisions are recorded in [adr/](adr/) using the MADR template with Nygard
+context sections. Current records:
 
-## 🛠️ 2. Developer Playbooks & Reference (`docs/playbooks/`)
+- [ADR-001: Sovereign Rust/C++ core separation](adr/ADR-001-sovereign-rust-cpp-core-separation.md)
+- [ADR-002: Lock-free SPSC ringbuffer over the JVM heap](adr/ADR-002-lock-free-spsc-ringbuffer.md)
+- [ADR-003: Hybrid SQLite WAL + Supabase sync](adr/ADR-003-hybrid-sqlite-supabase-sync.md)
+- [ADR-004: Inversion of control via streamify-modules](adr/ADR-004-ioc-streamify-modules.md)
 
-Practical how-to guides for daily development and test workflows:
+## Playbooks
 
-| Playbook | Purpose / Scope |
+| Playbook | Scope |
 |---|---|
-| [`playbooks/ADD_A_FEATURE.md`](playbooks/ADD_A_FEATURE.md) | Step-by-step cookbook for adding new features without breaking ABI or JNI boundaries. |
-| [`playbooks/BACKEND_DB_SYNC.md`](playbooks/BACKEND_DB_SYNC.md) | Live Supabase ↔ repo reconciliation runbook, app backend wiring, and the 2026-11-10 sync record (incl. the `top_track` and guard-trigger fixes). |
-| [`playbooks/CODEBASE_GUIDE.md`](playbooks/CODEBASE_GUIDE.md) | File-by-file and folder-by-folder codebase tour with LOC counts. |
-| [`playbooks/CI_TESTING_GUIDE.md`](playbooks/CI_TESTING_GUIDE.md) | How the Extreme Test Matrix works, shard topologies, and log inspection. |
-| [`playbooks/TODO.md`](playbooks/TODO.md) | Authoring tracker for ongoing documentation and spec updates. |
+| [ADD_A_FEATURE.md](playbooks/ADD_A_FEATURE.md) | Adding features without breaking ABI or JNI boundaries |
+| [CI_TESTING_GUIDE.md](playbooks/CI_TESTING_GUIDE.md) | Hub-and-spoke CI DAG, shards, log inspection |
+| [CODEBASE_GUIDE.md](playbooks/CODEBASE_GUIDE.md) | Folder-by-folder codebase tour |
+| [BACKEND_DB_SYNC.md](playbooks/BACKEND_DB_SYNC.md) | Supabase to repo reconciliation runbook |
+| [ANDROID_RUST_AUDIO_CUTOVER.md](playbooks/ANDROID_RUST_AUDIO_CUTOVER.md) | Android to Rust audio path cutover |
+| [gate4_fluidity_runbook.md](playbooks/gate4_fluidity_runbook.md) | Fluidity gate runbook |
+
+## Archive
+
+`archive/` preserves records for lineage and audit; nothing in it is
+authoritative. In November 2026 the phased-roadmap and status-ledger documents
+were retired there: `ROADMAP_PHASES.md`, `AHEAD.md`, `BEHIND.md`,
+`A_Checkbox.md`, `MULTIPLATFORM_CHECKBOX.MD`, `SWIFT_MIGRATION_PLAN.MD`, the
+external review narratives (`resp5_architect_review.md`,
+`resp6_ci_review.md`), the Feishin adoption audit, the pre-multiplatform Rust
+integration analysis (`rust_integration_deep_dive.md`), and the legacy
+detailed manual (`README_DETAILED.MD`). Historical merger logs and build logs
+were already archived there. Current architecture truth lives in
+[architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) and the ADRs.
 
 ---
-
-## 📦 3. Archive & Historical Logs (`docs/archive/`)
-
-Historical records preserved for lineage and audit trails:
-- [`archive/MASTER-STREAM-RESOLUTION.md`](archive/MASTER-STREAM-RESOLUTION.md) — Pre-v1 unified stream resolution specification (194KB).
-- [`archive/PR-jamv3-streamify-lineage-merge.md`](archive/PR-jamv3-streamify-lineage-merge.md) — Lineage merge documentation for Jam v3.
-- [`archive/RELEASE-adblog-merge.md`](archive/RELEASE-adblog-merge.md) — ADB debug log merge records.
-- [`archive/why_we_removed_python.md`](archive/why_we_removed_python.md) — Historical rationale on migrating off embedded Python runtime.
-- [`archive/GOALS_v1.md`](archive/GOALS_v1.md) — Original product roadmap goals.
-- [`archive/DIAGNOSTIC-v1.0.1.md`](archive/DIAGNOSTIC-v1.0.1.md) — Historical diagnostic run.
+<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->

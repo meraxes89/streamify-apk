@@ -1,181 +1,203 @@
-# Streamify — Architecture
+# Streamify architecture
 
-> **Start here.** This document is the map of the whole system: what
-> lives where, what depends on what, and which rules keep it
-> maintainable. For "where do I put my change", jump to
-> [ADD_A_FEATURE.md](../playbooks/ADD_A_FEATURE.md). For file-by-file detail, see
-> [CODEBASE_GUIDE.md](../playbooks/CODEBASE_GUIDE.md).
+This is the authoritative system map. Statements of fact reference the
+source files they were derived from; all numbers below were read out of the
+tree at the pinned commit. Speculation is confined to the final section and
+labeled as interpretation.
+
+Layer map:
+
+```
+Compose UI (composeApp, KMP: Android/JVM/wasmJs)
+  |  Koin DI: core loadAllModules -> viewModelModule -> streamifyAllModules
+  v
+Native bridge: JNI (System.loadLibrary: streamify_core_rs, streamify_native_core)
+               + UniFFI contract v2 (package uniffi.streamify)
+  v
+Sovereign Rust core (rust/, 10 crates, libstreamify_core_rs)
+  Tokio resolver / playback producer thread / jam consensus
+  |  f32 interleaved stereo, canonical 48 kHz, SPSC write edge
+  v
+C++20 real-time layer (native/)
+  AudioSink SPSC ringbuffer -> MasterChain (LUFS -> balance/mono -> limiter)
+  v
+Platform HAL
+  Android: Media3 renderer -> JNI -> AudioSink -> feeder -> AudioTrack (PCM float)
+  Windows: WASAPI (IAudioClient3, event-driven)   Linux: PipeWire (dlopen), ALSA fallback
+  macOS/iOS: CoreAudio AUHAL / RemoteIO
+
+Side planes: Room SQLite (WAL, core submodule) <-> Supabase Postgres (RLS, LWW)
+             server/ Fastify relay + content-addressed web bundle
+```
+
+## 1. UI layer
+
+`composeApp` is the Kotlin Multiplatform UI module (namespace
+`com.maxrave.simpmusic`): Compose screens, about 28 typed navigation
+destinations, ViewModels, and the Koin graph. `androidApp` is the thin
+Android shell hosting `App(viewModel)` from `MainActivity`; the Media3
+`MediaSessionService` (`com.maxrave.media3.service.SimpleMediaService`,
+`foregroundServiceType="mediaPlayback"`) is declared in the manifest and
+implemented in the `core` submodule. `desktopApp` contributes `main()` and
+delegates to `runDesktopApp` in `composeApp/src/jvmMain`. The browser target
+is `composeApp` wasmJs backed by the `room-wasm-stub` shims. See
+[composeApp/README.md](../../composeApp/README.md) and
+[androidApp/README.md](../../androidApp/README.md).
+
+Koin loading order (observed in `SimpMusicApplication.kt` and
+`DesktopApp.kt`): upstream `loadAllModules(...)` from the core submodule,
+then `viewModelModule`, then `loadKoinModules(streamifyAllModules)` from
+`streamify-modules`. The extension suite registers only new
+`com.streamify.*` types; it does not redefine upstream beans (ADR-004).
+
+## 2. Native bridge
+
+Two parallel contracts cross the JVM boundary:
+
+- **UniFFI contract v2** (`rust/crates/streamify-contract/src/streamify.udl`,
+  956 lines; `contract_version()` pinned to 2). Kotlin package
+  `uniffi.streamify`, cdylib `streamify_core_rs`. Exposes `StreamifyEngine`,
+  `TasteEngine`, `OsMediaIntegration`, callback interfaces
+  `EngineEventListener` (monotonic `rev` coalescing on a dedicated
+  dispatcher thread) and `SecureStoreDelegate`, and
+  `[Error] interface EngineError`. Every method is panic-shielded
+  (`catch_unwind` to `EngineError::Internal`).
+- **Frozen JNI surface** (C++ `native/jni/jni_bridge.cc`, 86
+  `Java_com_streamify_*` entry points, every export inside `JNI_SHIELD`) and
+  the 7-symbol audio sink bridge
+  (`nativeCreateSink/WriteFloat/ReadDirect/ReadFramesF32/GetStats/Flush/Destroy`).
+  Kotlin declares these in `streamify-modules/core-bridge`
+  (`NativeBridge.kt`, `NativeAudioSink.kt`); package names are ABI, enforced
+  by `scripts/jni_parity_check.py` in `--source` and `--nm` CI gates.
+
+## 3. Sovereign Rust core
+
+Ten workspace crates under `rust/crates/` (about 45.7 kLOC of source):
+`streamify-core`, `-audio`, `-playback`, `-storage`, `-jam`, `-jam-crdt`,
+`-radio-scorer`, `-resolver`, `-contract`, `-ffi`. The async runtime is a
+shared multi-thread Tokio runtime, `worker_threads =
+available_parallelism().clamp(4, 8)`, held in a `OnceLock`
+(`streamify-resolver/src/resolver.rs`); the P2P mesh lane builds a dedicated
+2-worker runtime on `nativeP2pStart` (documented exception). The audio
+render path uses no Tokio: the producer runs on a plain OS thread
+(`streamify-playback/src/producer.rs`): fetch (64 KiB ranges, 3 retries) ->
+decode (symphonia: AAC, ISO-MP4, OGG, PCM, WAV; no Opus) -> resample
+(`rubato::SincFixedOut`, 256-tap sinc, canonical 48 kHz) -> LUFS -> SPSC
+write. See [rust/README.md](../../rust/README.md).
+
+The resolver is a multi-tier YouTube Innertube client: anonymous
+`ANDROID_VR` 1.65.10 primary, authenticated `WEB_REMIX` fallback, legacy
+client cascade, with RustyPipe as a parallel tier. Signature and
+n-parameter transforms run in an embedded QuickJS; PO tokens come from an
+optional botguard companion binary; deobfuscation transforms persist in a
+SQLite cache; CDN format TTL is 60 s to 6 h.
+
+Jam: PTP estimation with `theta = ((t1-t0)+(t2-t3))/2` and
+`delta = ((t3-t0)-(t2-t1))/2`, adaptive EMA filtering, a 1D Kalman PLL
+(Q_POS 4.0, Q_VEL 0.05, R_MEAS 36.0; closure within ±2 % speed for errors
+<= 150 ms, hard seek above), voting CRDT with floor(n/2)+1 promotion quorum,
+Ed25519 governance with epoch fencing, BLAKE3 state hashing, 48-byte
+little-endian op wire.
+
+## 4. C++20 real-time layer
+
+`AudioSink` (`native/include/audio_sink_ringbuffer.h`,
+`native/src/audio_sink_ringbuffer.cpp`) is an f32 SPSC ringbuffer:
+power-of-two capacity (default 8192 frames, bounds 64 to 2^22), free-running
+`uint64_t` cursors, per-cursor `alignas(kCacheLineSize)` isolation (64 bytes
+x86, 128 bytes Apple Silicon), acquire/release ordering on the head/tail
+hand-off, cooperative generational flush (100 ms ack timeout) that never
+blocks the consumer, zero heap allocation on hot paths machine-checked by
+`AllocGuard` (ADR-002).
+
+`MasterChain` order: LUFS glide gain (ITU-R BS.1770-4: 400 ms blocks, 75 %
+overlap, -70 LUFS absolute gate, -10 LU relative gate; default target
+-14 LUFS, correction clamp ±12 dB) -> mono downmix / constant-power balance
+-> true-peak soft-knee limiter (ceiling -1.0 dBFS, 4 dB knee, C1-continuous
+tanh curve, 4x-oversampled sidechain, 3 ms lookahead schedule, 80 ms
+release). The full invariants with quoted code are in
+[native/README.md](../../native/README.md).
+
+Presentation clock: HAL render cores publish
+`(dac_frame_position, sample_rate, monotonic_ns)` through single-writer
+seqlocks; `DacPresentationClock` interpolation must stay within 5 ms of
+simulated presentation time, enforced by `native/tests/test_virtual_hal.cpp`
+including a negative control that fails a deliberately broken estimator.
+
+## 5. Platform HAL
+
+Android audio output has no in-tree AAudio C++ code: the Media3 renderer
+writes f32 through JNI into the C++ `AudioSink`, and a feeder thread pulls
+into `AudioTrack` (ENCODING_PCM_FLOAT); `AudioTrack.getTimestamp()` / AAudio
+timestamps feed `HardwareLatencyProfiler` (128-anchor sliding window, 6 s
+half-life, MAD 3-sigma rejection, 5 ms clock-bridge gate). Desktop HALs are
+in-tree: WASAPI (IAudioClient3, event-driven, MMCSS "Pro Audio"), PipeWire
+via `dlopen("libpipewire-0.3.so.0")` with an ALSA fallback, CoreAudio
+AUHAL/RemoteIO. Every render core documents and tests the same invariant:
+zero allocations, zero locks, zero system calls on the pull path; underruns
+are silence-filled.
+
+## 6. Hybrid storage
+
+Local truth is Room SQLite (entities and DAOs in the `core` submodule, KMP
+Room with `BundledSQLiteDriver`; `core.patch` adds index callbacks).
+`StreamifySyncEngine` (`composeApp/src/commonMain/kotlin/com/streamify/sync/`)
+syncs liked songs, followed artists, and playlists against Supabase Postgres:
+local-first writes, echo suppression via `isSyncActive`, deterministic
+last-write-wins, batched transactions. The SQL side keeps aggregates
+monotonic with `GREATEST()` upserts; RLS policies and the realtime
+publications for `listening_sessions` and `jam_ops` are defined in
+[supabase/](../../supabase/README.md). Decision record:
+[ADR-003](../adr/ADR-003-hybrid-sqlite-supabase-sync.md).
+
+## 7. Server
+
+`server/` is a Fastify 5 relay ("streamify-relay" v3.0.0, Node 20+):
+YouTube catalog/search/lyrics/thumbnail endpoints, a stream gateway that
+only proxies hosts ending in `.googlevideo.com` with HTTP 206 range
+support, admission control and single-flight request coalescing, and
+content-addressed delivery of the Compose-wasmJs web bundle (SHA-256
+addressed `bundles/<sha256>/` behind an atomic `public` symlink, per-file
+Merkle manifest, boot gate refuses to start on an unverified bundle).
+Benchmark (2026-11-20, Android tablet host): 792.8 req/s loopback peak,
+P50 1.22 ms loopback, cold upstream resolve 128 ms versus a 30.7x warm
+speedup. See [server/README.md](../../server/README.md).
+
+## Threading model
+
+| Thread | Responsibility | Constraint |
+|---|---|---|
+| HAL render callback (per platform) | Pull frames from `AudioSink`, publish DAC clock | Zero alloc/lock/syscall; seqlock clock publish |
+| Rust producer thread | Fetch, decode, resample, LUFS, SPSC write | Not a Tokio worker; bounded retries (3) |
+| Tokio workers (4-8) | Resolver HTTP, search, Innertube | 30 s total request timeout |
+| Engine event dispatcher | `EngineEventListener` snapshots | Never the audio thread; monotonic `rev` coalescing |
+| Control threads | Koin graph, stats, flush requests, clock samplers | Never the sink's consumer thread |
+
+## Measured invariants
+
+- DAC clock interpolation error < 5 ms under adversarial callbacks
+  (`native/include/virtual_hal.h`, `test_virtual_hal.cpp`).
+- Zero heap allocations on ringbuffer hot paths, machine-checked
+  (`native/tests/AllocGuard.h`; Rust counting-allocator gate in
+  `rust/crates/streamify-playback/tests/test_ring.rs`).
+- SPSC stress: 10,000,000 frames (`test_audio_sink_ringbuffer.cpp`).
+- LUFS parity between Rust `lufs.rs` and C++ `LufsNormalizer.cc` pinned by
+  shared golden vectors (`scripts/generate_lufs_golden_vectors.py`).
+- Jam op encoding pinned byte-for-byte Kotlin to Rust
+  (`scripts/generate_jam_golden_vectors.py`).
+- JNI parity: every Kotlin `external fun` has a `Java_*` export and vice
+  versa (`scripts/jni_parity_check.py`, `--source` and `--nm` CI gates).
+
+## Interpretation (not measured)
+
+The dual JNI + UniFFI bridge exists for migration reasons: the frozen JNI
+surface predates the UniFFI contract, and the sink bridge is kept because
+its 7-symbol ABI is cheaper to freeze than to move under UniFFI callbacks.
+The jam feature currently has two implementations — the Kotlin
+`StreamifyJamCoordinator` state machine used by the UI, and the full Rust
+jam engine exposed through UniFFI; consolidating them is an open
+architectural question recorded in ADR-004's consequences.
 
 ---
-
-## 1. What Streamify is
-
-An Android music-streaming engine with a **triple-native core**:
-
-| Layer | Technology | Role |
-|---|---|---|
-| UI | Kotlin + Jetpack Compose | 120 FPS interface, zero-alloc draw paths |
-| Audio engine | C++20 (NEON) | Real-time DSP: LUFS, limiter, key/BPM, physics |
-| I/O & auth | Rust (Tokio) | Stream resolution, zero-copy JSON, PTP, tagging |
-| Backend | Supabase (PostgREST + Realtime) | Accounts, sync, jam sessions, telemetry |
-
-The repo also carries **three auxiliary systems**: a Supabase schema
-(`supabase/`), a fleet of probe/tooling scripts (`scripts/`, `tools/`),
-and the pre-Supabase backend archive (preserved on the `archive/legacy` branch; removed from `main` in #157).
-
-## 2. Repository layout
-
-```
-streamify-apk/
-├── app/                  the Android app (single Gradle module)
-│   └── src/main/java/com/streamify/app/
-│       ├── data/         data layer — 13 domain subpackages
-│       ├── media/        audio engine — playback/audio/cache/sync/ingestion/lyrics
-│       ├── jam/          distributed jam sessions
-│       ├── radio/        radio queue construction
-│       ├── di/           AppGraph (hand-rolled DI) + dispatchers
-│       ├── navigation/   Compose nav graph
-│       ├── ui/           screens, components (+yt/ kit), theme
-│       ├── viewmodel/    presentation state
-│       ├── util/         cross-cutting utils
-│       └── worker/       foreground workers
-├── native/               C++20 DSP & physics core (libstreamify_native_core.so)
-├── rust/                 Rust I/O engine (libstreamify_core_rs.so)
-├── supabase/             backend schema + migrations
-├── scripts/ tools/       verification probes & fleet ops
-└── docs/                 engine deep-dives + this architecture series
-```
-
-Every directory above has a `README.md` with its own file index.
-
-## 3. The Kotlin layer cake
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│  ui/            screens & components (Compose)                 │
-├────────────────────────────────────────────────────────────────┤
-│  navigation/    routes                                          │
-├────────────────────────────────────────────────────────────────┤
-│  viewmodel/     presentation state, coroutine owners           │
-├───────────────────────┬────────────────────────────────────────┤
-│  data/                │  media/                                 │
-│  repositories         │  playback service + queue              │
-│  persistence          │  DSP chain, spatial, equalizer          │
-│  discovery/matching   │  cache & pre-buffer policy             │
-│  network (resolve)    │  PTP sync, PLL, scheduling             │
-│  supabase/spotify/    │  background workers                    │
-│  youtube providers    │  lyric playback controllers            │
-├───────────────────────┴───────────┬────────────────────────────┤
-│  jam/  radio/  (domain engines)    │                            │
-├────────────────────────────────────┴────────────────────────────┤
-│  di/  util/  (foundation: AppGraph, SLog, haptics)               │
-└────────────────────────────────────────────────────────────────┘
-```
-
-**Dependency rules (convention, kept enforceable for a future Gradle
-module split):**
-
-1. Arrows only point **downward**: `ui → viewmodel → {data, media} → {di, util}`.
-2. `data/` and `media/` never import `ui/` types.
-3. `viewmodel/` orchestrates cross-domain flows (e.g. Spotify ingest →
-   repository → Supabase sync); providers don't call each other.
-4. `data/models/` and `ui/models/` are **ProGuard-pinned** — their
-   package paths are serialization contracts.
-5. `data/NativeBridge.kt` is **JNI-pinned** — its package is an ABI
-   contract with `rust/src/jni_bridge.rs` and `native/jni/jni_bridge.cc`.
-
-## 4. How a song plays (the 30-second tour)
-
-```
-user taps a Track
-   │
-   ▼
-PlayerViewModel (viewmodel/) ── loads via PlayerTrackLoader
-   │
-   ▼
-media/playback: PlaybackService (Media3) + QueueEngine + DynamicQueueManager
-   │                (sliding 2-track JIT lookahead)
-   ▼
-data/network: YouTubeStreamResolver → ResilientMediaRouter
-   │   (tier 0 native cache → tier 1 HTTP/2 race → tier 2 PO-token)
-   │   gated by CanonicalSeedResolver + data/discovery (CAD-ID)
-   ▼
-media/cache: AudioCacheManager + PredictivePreBufferManager
-   │                (gapless hand-off)
-   ▼
-media/audio: StreamifyAudioProcessor (native LUFS/limiter chain)
-   │
-   ▼
-device speaker ← Media3 AudioTrack
-```
-
-Failures short-circuit through `StreamifyCircuitBreaker` and
-`NegativeResultCache` so a dead CDN never stalls the queue.
-
-## 5. The native boundary
-
-```
-Kotlin                          Native
-──────                          ──────
-data/NativeBridge.kt ──JNI──▶  rust/src/jni_bridge.rs    (I/O, auth, PTP, tag)
-   ▲  140+ external funs ───▶  native/jni/jni_bridge.cc  (DSP, physics, storage)
-   │
-   └── pure-Rust RustyPipe engine (QuickJS cipher deciphering in streamify-resolver)
-```
-
-- JNI is **name-mangled**, not `RegisterNatives` — the class's package
-  is load-bearing.
-- Rust wraps every FFI crossing in `catch_unwind`; panics must never
-  cross the boundary.
-- Adding native functionality = add `external fun` in `NativeBridge` +
-  matching `Java_com_streamify_app_data_NativeBridge_<name>` symbol.
-
-## 6. CI — the Hub-and-Spoke Unified Pipeline
-
-`.github/workflows/ci.yml` is the hub of the 3-tier DAG (its retired
-monolithic predecessor lives on only in `git log`):
-
-| Tier | Job(s) | Gate? | What it does |
-|---|---|---|---|
-| 1 | `preflight` ("Tier 1: Fast-Fail & Path Filter") | ✅ | gitleaks (blocking), JNI panic-boundary convention gate, docs-vs-reality lint (`scripts/docs_ledger_check.py`, TRUTH-02), dorny/paths-filter impact analysis |
-| 2 | `Core Engine & C++ DSP` (from `_ci-engine.yml`) | ✅ | Rust core nextest matrix (split 2 shards), C++ ASan/UBSan (native-dsp / simd-physics / telemetry-storage), build-once native fan-out: Android NDK artifacts (arm64-v8a, x86_64), Linux + Windows desktop cdylibs |
-| 2 | `Rust clippy (workspace, -D warnings)` | ✅ | whole-workspace lint, zero-warning policy |
-| 2 | `Android Matrix` (from `_ci-android.yml`) | ✅ | JVM unit suite + assembleDebug APK (consumes the NDK artifacts) |
-| 2 | `Desktop Matrix (Linux, Windows)` (from `_ci-desktop.yml`) | ✅ | CMP UI smoke + JNA engine smoke suite, jpackage installers + <250 MiB size budget (packaging-gated) |
-| 2 | `Apple Unified` (from `_ci-ios.yml`) | ✅ | builds `StreamifyCore.xcframework`, **links it** (IOS-02), runs the real-lane iOS simulator tests + UniFFI contract tests, macOS SPM compile gate, macOS desktop cdylib + JNA smoke |
-| 2 | `Supabase RLS hardening suite (SEC-10)` | ✅ | 11 RLS assertions against a real Postgres+pgvector container |
-| 3 | `ci-gate` ("CI Gate (Blocking)") | ✅ | the ONE required status check in branch protection; folds every Tier-2 verdict |
-| — | `CodeQL` (`codeql.yml`) | advisory | scheduled + PR security scan (never blocking — cannot deadlock the merge queue) |
-| — | `Nightly Deep Matrix` (`nightly-deep-matrix.yml`) | nightly ✅ | deep Rust nextest profile (32-peer mesh chaos), C++ LibFuzzer hunt, KVM Android emulator connected suite (TEST-01), log aggregation to the `testing-log` branch |
-| — | `Resolver Client Canary` (`resolver-canary.yml`) | — | daily live-client probe; rotations land as reviewed PRs from `bot/fleet-rotation` (GOV-05), never direct pushes to `main` |
-
-**Releases**: `release.yml` fires only on `v*` tags and publishes from the
-protected `release` environment (GOV-05). The historical `build-N` release
-river ended at build-691. Details:
-[CI_TESTING_GUIDE.md](../playbooks/CI_TESTING_GUIDE.md).
-
-## 7. Design decisions worth knowing
-
-- **Hand-rolled DI (`AppGraph`)** over a framework: compile-time
-  visibility of the whole graph, zero reflection, trivially testable.
-- **Package-level modularization now, Gradle modules later.** The
-  v1.2.0 tree is shaped so `data/`, `media/`, `ui/` can each become a
-  Gradle module by (1) adding `build.gradle.kts`, (2) adding to
-  `settings.gradle.kts`, (3) flipping same-project references to
-  cross-module imports. The dependency rules in §3 are written to
-  survive that migration unchanged.
-- **Immutable models + explicit decode sizes + lazy-list keys** are
-  perf contracts from the v1.1.0 series — don't regress them.
-- **`SLog` everywhere** (never `printStackTrace`), and coroutine
-  lifecycles are owned by ViewModels.
-
-## 8. Glossary
-
-| Term | Meaning |
-|---|---|
-| **CAD-ID** | Duration-aware canonical identity hash — dedups songs across Spotify/YTM without collapsing remixes. |
-| **SLYR** | Binary compiled lyric timeline (Wiener-Khinchin aligned). |
-| **PO token** | YouTube BotGuard proof-of-origin token (WebView-generated). |
-| **Edge Mesh** | LAN peer sessions (discovery + Supabase registry). |
-| **Jam** | Multi-device lockstep listening (single-writer + PTP PLL). |
-| **Wrapped** | Stats analytics screens backed by `YtStatsTelemetryEngine`. |
+Verified against commit 8b858b1c. Staleness protocol: docs/adr/README.md.
+<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
