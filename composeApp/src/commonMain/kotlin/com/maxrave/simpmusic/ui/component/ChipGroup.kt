@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,6 +38,7 @@ import com.materialkolor.hct.Hct
 import com.materialkolor.ktx.toColor
 import com.materialkolor.ktx.toHct
 import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 
 @Composable
@@ -53,18 +55,50 @@ fun Chip(
     compact: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
+    val colorScheme = MaterialTheme.colorScheme
     val glassOn = LocalLiquidGlassEnabled.current
     val glassBackdrop = backdrop?.takeIf { glassOn && !isSelected }
+
+    // Adaptive border, container, and label styling so unselected chips maintain crisp pill definition
+    // in both light and dark modes instead of dissolving into light backgrounds.
+    val borderColor =
+        if (isSelected) {
+            Color.Transparent
+        } else if (isDark) {
+            if (glassBackdrop != null) Color.White.copy(alpha = 0.12f) else colorScheme.outlineVariant
+        } else {
+            // Light mode: solid 1dp boundary with comfortable contrast against white/light surfaces
+            Color.Black.copy(alpha = 0.14f)
+        }
+
+    val containerColor =
+        if (isSelected) {
+            colorScheme.primary
+        } else if (isDark) {
+            if (glassBackdrop != null) Color.Transparent else colorScheme.surfaceContainer.copy(alpha = 0.5f)
+        } else {
+            // Light mode: subtle neutral tint providing tactile presence against light backdrops
+            Color.Black.copy(alpha = 0.04f)
+        }
+
+    val labelColor =
+        if (isSelected) {
+            colorScheme.onPrimary
+        } else if (isDark) {
+            colorScheme.onSurfaceVariant
+        } else {
+            colorScheme.onSurface
+        }
+
     ChipFrame(isAnimated = isAnimated && isSelected) {
         ChipBody(
             text = text,
             selected = isSelected,
-            // The 1dp uniform rim every small glass control here carries: the default rim lights one
-            // side only, which on a chip this small does not show at all.
             modifier = if (glassBackdrop != null) Modifier.liquidGlass(glassBackdrop, highlight = Highlight(width = 1.dp)) else Modifier,
-            // outlineVariant, per M3's Aug 2024 chip update: a softer stroke than outline.
-            // Glass draws its own rim, so the outline goes.
-            borderColor = if (glassBackdrop != null) Color.Transparent else MaterialTheme.colorScheme.outlineVariant,
+            borderColor = borderColor,
+            containerColor = containerColor,
+            labelColor = labelColor,
             onClick = onClick,
             compact = compact,
         )
@@ -105,20 +139,36 @@ fun ExpandableChip(
     val colorScheme = MaterialTheme.colorScheme
     val glassOn = LocalLiquidGlassEnabled.current
     val glassBackdrop = backdrop?.takeIf { glassOn }
+    val isDark = LocalIsDarkTheme.current && colorScheme.background.luminance() <= 0.5f
+
     // A darker shade of primary: the same hue and chroma, 20 tones lower. Mixing primary with black
     // instead only greys it out, which reads as faded rather than darker.
     val primaryHct = colorScheme.primary.toHct()
     val foldedFill = Hct.from(primaryHct.hue, primaryHct.chroma, (primaryHct.tone - 20).coerceAtLeast(0.0)).toColor()
-    val fill by animateColorAsState(if (folded) foldedFill else Color.Transparent)
-    // Glass draws its own rim; without it the pill is outlined like an unselected chip until it folds.
+    val unselectedFill =
+        if (isDark) {
+            Color.Transparent
+        } else {
+            Color.Black.copy(alpha = 0.04f)
+        }
+    val fill by animateColorAsState(if (folded) foldedFill else unselectedFill)
+
+    val defaultOutline =
+        if (isDark) {
+            if (glassBackdrop != null) Color.White.copy(alpha = 0.12f) else colorScheme.outlineVariant
+        } else {
+            Color.Black.copy(alpha = 0.14f)
+        }
     val outline by animateColorAsState(
-        if (glassBackdrop == null && !folded) colorScheme.outlineVariant else Color.Transparent,
+        if (!folded) defaultOutline else Color.Transparent,
     )
     // Folded, the pill is a selected chip, and a selected chip has no rim (the All chip beside it has
     // none). The rim is drawn over the content, so the solid fill cannot hide it; it fades out instead.
     val rim by animateFloatAsState(if (folded) 0f else 1f)
     val headFill by animateColorAsState(if (active) colorScheme.primary else Color.Transparent)
-    val headLabel by animateColorAsState(if (active) colorScheme.onPrimary else colorScheme.onSurfaceVariant)
+    val headLabel by animateColorAsState(
+        if (active) colorScheme.onPrimary else if (isDark) colorScheme.onSurfaceVariant else colorScheme.onSurface,
+    )
     ChipFrame(isAnimated = isAnimated && picked != null) {
         Row(
             modifier =
@@ -158,7 +208,7 @@ fun ExpandableChip(
                             text = option,
                             selected = false,
                             containerColor = if (isPicked) colorScheme.onSurface.copy(alpha = 0.14f) else Color.Transparent,
-                            labelColor = if (isPicked) colorScheme.onSurface else colorScheme.onSurfaceVariant,
+                            labelColor = if (isPicked) colorScheme.onSurface else if (isDark) colorScheme.onSurfaceVariant else colorScheme.onSurface,
                             borderColor = Color.Transparent,
                             onClick = { onSelect(index) },
                         )

@@ -3,6 +3,7 @@ package com.maxrave.simpmusic.viewModel
 import androidx.lifecycle.viewModelScope
 import com.maxrave.common.Config
 import com.maxrave.common.Config.REMOVED_SONG_DATE_TIME
+import com.maxrave.domain.data.entities.AlbumEntity
 import com.maxrave.domain.data.entities.ArtistEntity
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.SongEntity
@@ -10,6 +11,7 @@ import com.maxrave.domain.extension.now
 import com.maxrave.domain.mediaservice.handler.DownloadHandler
 import com.maxrave.domain.mediaservice.handler.PlaylistType
 import com.maxrave.domain.mediaservice.handler.QueueData
+import com.maxrave.domain.repository.AlbumRepository
 import com.maxrave.domain.repository.AnalyticsRepository
 import com.maxrave.domain.repository.ArtistRepository
 import com.maxrave.domain.repository.CacheRepository
@@ -48,11 +50,15 @@ class LibraryDynamicPlaylistViewModel(
     private val artistRepository: ArtistRepository,
     private val analyticsRepository: AnalyticsRepository,
     private val cacheRepository: CacheRepository,
+    private val albumRepository: AlbumRepository,
 ) : BaseViewModel() {
     private val downloadUtils: DownloadHandler by inject()
 
     private val _listFavoriteSong: MutableStateFlow<List<SongEntity>> = MutableStateFlow(emptyList())
     val listFavoriteSong: StateFlow<List<SongEntity>> get() = _listFavoriteSong
+
+    private val _listFavoriteAlbums: MutableStateFlow<List<AlbumEntity>> = MutableStateFlow(emptyList())
+    val listFavoriteAlbums: StateFlow<List<AlbumEntity>> get() = _listFavoriteAlbums
 
     private val _listFollowedArtist: MutableStateFlow<List<ArtistEntity>> = MutableStateFlow(emptyList())
     val listFollowedArtist: StateFlow<List<ArtistEntity>> get() = _listFollowedArtist
@@ -104,9 +110,21 @@ class LibraryDynamicPlaylistViewModel(
 
     init {
         getFavoriteSong()
+        getFavoriteAlbums()
         getFollowedArtist()
         getMostPlayedSong()
         getDownloadedSong()
+    }
+
+    private fun getFavoriteAlbums() {
+        viewModelScope.launch {
+            albumRepository.getLikedAlbums().collectLatest { albums ->
+                _listFavoriteAlbums.value =
+                    albums.sortedByDescending {
+                        it.favoriteAt ?: it.inLibrary
+                    }
+            }
+        }
     }
 
     private fun getFavoriteSong() {

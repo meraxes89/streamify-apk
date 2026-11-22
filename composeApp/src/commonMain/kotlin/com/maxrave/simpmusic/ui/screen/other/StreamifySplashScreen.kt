@@ -53,7 +53,7 @@ import kotlin.math.sin
  * 2. Pure hardware RenderThread composition via `Modifier.graphicsLayer` transforms (portable across Android, Desktop, iOS, Web).
  * 3. Optical laser slit into anamorphic aperture bloom with concentric micro-sonar acoustic pulses.
  * 4. Architectural identity hierarchy: Logo -> STREAMIFY -> SOUND / REDEFINED -> ENGINEERED BY SIREEN badge -> PURE SIGNAL spec.
- * 5. Full dynamic dark/light theme adaptation and snappy 1.8s duration with tap-to-skip.
+ * 5. Full dynamic dark/light theme adaptation and 3.0s duration with tap-to-skip.
  */
 @Composable
 fun StreamifySplashScreen(
@@ -79,7 +79,7 @@ fun StreamifySplashScreen(
         timeline.animateTo(
             targetValue = 1f,
             animationSpec = tween(
-                durationMillis = 1800,
+                durationMillis = 3000,
                 easing = FastOutSlowInEasing,
             ),
         )
@@ -104,12 +104,12 @@ fun StreamifySplashScreen(
             val p = timeline.value
             val width = size.width
 
-            // --- Phase 1: Horizontal Laser Slit (0.0f..0.45f) ---
-            if (p in 0.0f..0.45f) {
-                val slitProg = (p / 0.30f).coerceIn(0f, 1f)
+            // --- Phase 1: Horizontal Laser Slit (0.0f..0.35f) ---
+            if (p in 0.0f..0.35f) {
+                val slitProg = (p / 0.25f).coerceIn(0f, 1f)
                 val easeSlit = 1f - (1f - slitProg).pow(3f)
                 val slitWidth = width * 0.92f * easeSlit
-                val slitAlpha = if (p < 0.28f) slitProg else (1f - ((p - 0.28f) / 0.17f)).coerceIn(0f, 1f)
+                val slitAlpha = if (p < 0.22f) slitProg else (1f - ((p - 0.22f) / 0.13f)).coerceIn(0f, 1f)
                 val halfW = slitWidth / 2f
 
                 drawLine(
@@ -126,13 +126,13 @@ fun StreamifySplashScreen(
                     ),
                     start = Offset(center.x - halfW, center.y),
                     end = Offset(center.x + halfW, center.y),
-                    strokeWidth = 2.2.dp.toPx() * (1f - (p / 0.45f) * 0.5f),
+                    strokeWidth = 2.2.dp.toPx() * (1f - (p / 0.35f) * 0.5f),
                 )
             }
 
-            // --- Phase 2: Anamorphic Aperture Bloom (0.15f..0.85f) ---
-            if (p in 0.15f..0.85f) {
-                val bloomProg = ((p - 0.15f) / 0.55f).coerceIn(0f, 1f)
+            // --- Phase 2: Anamorphic Aperture Bloom (0.12f..0.85f) ---
+            if (p in 0.12f..0.85f) {
+                val bloomProg = ((p - 0.12f) / 0.65f).coerceIn(0f, 1f)
                 val bloomAlpha = (sin(bloomProg * PI).toFloat() * (if (isDark) 0.32f else 0.16f)).coerceIn(0f, 1f)
                 val bloomRadius = (165.dp.toPx()) * (0.55f + 0.45f * bloomProg)
 
@@ -151,9 +151,9 @@ fun StreamifySplashScreen(
                 )
             }
 
-            // --- Phase 3: Concentric Acoustic Micro-Sonar Rings (0.24f..0.86f) ---
-            if (p in 0.24f..0.86f) {
-                val ringProg1 = ((p - 0.24f) / 0.52f).coerceIn(0f, 1f)
+            // --- Phase 3: Concentric Acoustic Micro-Sonar Rings (0.20f..0.85f) ---
+            if (p in 0.20f..0.85f) {
+                val ringProg1 = ((p - 0.20f) / 0.55f).coerceIn(0f, 1f)
                 val ringAlpha1 = sin(ringProg1 * PI).toFloat() * (if (isDark) 0.22f else 0.12f)
                 val radius1 = 54.dp.toPx() + (85.dp.toPx() * ringProg1)
 
@@ -164,8 +164,8 @@ fun StreamifySplashScreen(
                     style = Stroke(width = 1.dp.toPx()),
                 )
 
-                if (p >= 0.34f) {
-                    val ringProg2 = ((p - 0.34f) / 0.48f).coerceIn(0f, 1f)
+                if (p >= 0.30f) {
+                    val ringProg2 = ((p - 0.30f) / 0.50f).coerceIn(0f, 1f)
                     val ringAlpha2 = sin(ringProg2 * PI).toFloat() * (if (isDark) 0.16f else 0.08f)
                     val radius2 = 54.dp.toPx() + (125.dp.toPx() * ringProg2)
 
@@ -184,8 +184,8 @@ fun StreamifySplashScreen(
             modifier = Modifier.graphicsLayer {
                 val p = timeline.value
                 // Seamless exit transition
-                if (p > 0.84f) {
-                    val exitProg = ((p - 0.84f) / 0.16f).coerceIn(0f, 1f)
+                if (p > 0.86f) {
+                    val exitProg = ((p - 0.86f) / 0.14f).coerceIn(0f, 1f)
                     val exitEase = 1f - (1f - exitProg).pow(2f)
                     alpha = 1f - exitEase
                     scaleX = 1f + (0.04f * exitEase)
@@ -203,12 +203,12 @@ fun StreamifySplashScreen(
                     .clip(CircleShape)
                     .graphicsLayer {
                         val p = timeline.value
-                        val logoProg = ((p - 0.16f) / 0.28f).coerceIn(0f, 1f)
+                        val logoProg = ((p - 0.12f) / 0.20f).coerceIn(0f, 1f)
                         val ease = 1f - (1f - logoProg).pow(3f)
-                        val s = if (p < 0.16f) 0.60f else 0.60f + (0.40f * ease)
+                        val s = if (p < 0.12f) 0.60f else 0.60f + (0.40f * ease)
                         scaleX = s
                         scaleY = s
-                        alpha = if (p < 0.16f) 0f else logoProg
+                        alpha = if (p < 0.12f) 0f else logoProg
                     },
             )
 
@@ -226,7 +226,7 @@ fun StreamifySplashScreen(
                 ),
                 modifier = Modifier.graphicsLayer {
                     val p = timeline.value
-                    val textProg = ((p - 0.26f) / 0.24f).coerceIn(0f, 1f)
+                    val textProg = ((p - 0.20f) / 0.18f).coerceIn(0f, 1f)
                     val ease = 1f - (1f - textProg).pow(3f)
                     alpha = ease
                     translationY = (1f - ease) * 12.dp.toPx()
@@ -249,7 +249,7 @@ fun StreamifySplashScreen(
                 ),
                 modifier = Modifier.graphicsLayer {
                     val p = timeline.value
-                    val mottoProg = ((p - 0.34f) / 0.22f).coerceIn(0f, 1f)
+                    val mottoProg = ((p - 0.26f) / 0.18f).coerceIn(0f, 1f)
                     val ease = 1f - (1f - mottoProg).pow(3f)
                     alpha = ease
                     translationY = (1f - ease) * 8.dp.toPx()
@@ -262,7 +262,7 @@ fun StreamifySplashScreen(
             Box(
                 modifier = Modifier.graphicsLayer {
                     val p = timeline.value
-                    val badgeProg = ((p - 0.42f) / 0.24f).coerceIn(0f, 1f)
+                    val badgeProg = ((p - 0.32f) / 0.18f).coerceIn(0f, 1f)
                     val ease = 1f - (1f - badgeProg).pow(3f)
                     alpha = ease
                     translationY = (1f - ease) * 8.dp.toPx()
@@ -289,7 +289,7 @@ fun StreamifySplashScreen(
                 ),
                 modifier = Modifier.graphicsLayer {
                     val p = timeline.value
-                    val descProg = ((p - 0.50f) / 0.22f).coerceIn(0f, 1f)
+                    val descProg = ((p - 0.38f) / 0.16f).coerceIn(0f, 1f)
                     val ease = 1f - (1f - descProg).pow(3f)
                     alpha = ease * 0.85f
                 },
