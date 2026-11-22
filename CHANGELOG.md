@@ -3,6 +3,47 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.2-beta] — 2026-11-22: Sovereign Presentation, In-App Messaging & Resilient Delivery
+
+The second public beta release of Streamify brings sovereign in-app messaging, microsecond-accurate lyric synchronization with hardware latency modeling, decoupled playback queue stability, cold-start Fastify WASM distribution, native external playlist import, single-row glassmorphic navigation, and Tier-1 documentation verification gates.
+
+### Key Highlights
+- **Sovereign In-App Message Engine**: Full per-announcement lifecycle state machine (`MODAL`, `SHEET`, `BANNER`, `SNACKBAR`, `INBOX`, `SILENT`) governed by a 24-hour annoyance budget and context-aware presentation arbiter (suppresses interrupts during active playback, onboarding, or dialogs). Includes Ed25519 cryptographic signature verification, ETag conditional cache delivery, remote kill switches via `revokedIds`, and an on-demand What's New inbox in Settings.
+- **SLYR Presentation Clock & Audio Latency Model**: High-precision monotonic `SlyrClock` with a 250ms slewed `LatencyModel` compensating for Bluetooth LE Audio and A2DP transmission delays, paired with an optimized bytecode compiler for microsecond timeline lyric lookups.
+- **Queue Stability & Decoupled State**: Decoupled the active playback queue from lazy list UI paging snapshots, enforcing an explicit three-state source of truth (`Playing`, `Paused`, `Buffering`) that prevents queue truncation and state clobbering during infinite scroll.
+- **Cold-Start Fastify WASM Relay**: Zero-downtime graceful fallback UI when WebAssembly client bundles are initializing, GitHub draft release asset fetching with token resolution, local build auto-seeding, and SHA-256 Merkle root integrity validation.
+- **External Playlist Scraper**: Native import pipeline resolving Spotify and Apple Music playlist links directly into the local Room database with YouTube Innertube track matching.
+- **Glassmorphic UI & Visual Refinement**: Restored 56dp single-row glassmorphic header with `ExpandableChip`, polished splash screen timing, mini-player physics, top bar scrim, contrast improvements, and liked album navigation.
+- **Architectural Integrity & CI Verification**: Formalized ADR-001 through ADR-004, full repository system mapping, and `scripts/verify_docs.py` automated documentation gating wired into Tier 1 fast-fail CI.
+- **Multiplatform Packaging**: Dedicated Vivo App Store variant (`vivoAndroidApp`) with `arm64-v8a` and `armeabi-v7a` ABI split APKs, Android `FullBackupContent` lint fixes, and sanitized numeric desktop package versions for WiX MSI installers.
+
+### Added
+- **Announcements**: `RemoteAnnouncementSource` with Ed25519 signature verification, ETag conditional HTTP caching, and `revokedIds` kill switch handling (#255).
+- **Announcements**: `AnnouncementInboxRepository` and dedicated `AnnouncementInboxScreen` accessible from Settings -> About -> What's New (#255).
+- **Announcements**: Targeting evaluator supporting semver ranges, client platform filtering (`android`, `desktop`, `wasm`), and locale matching (#255).
+- **Lyrics Engine**: `SlyrClock` presentation clock, slewed `LatencyModel`, and normalized lyric sync bytecode compiler (#253).
+- **Lyrics Engine**: Hardware latency offset tracking for Bluetooth LE Audio and A2DP connections (#253).
+- **Playlists**: Native external playlist scraping for Spotify and Apple Music links into the local Room library (#246).
+- **Distribution**: Vivo App Store variant (`vivoAndroidApp`) with `arm64-v8a` and `armeabi-v7a` ABI split APKs in release pipeline (#248).
+- **Documentation**: Architectural Decision Records ADR-001 (Monolithic UI), ADR-002 (Lock-Free SPSC Ringbuffer), ADR-003 (Hybrid Sync), and ADR-004 (IoC Modules) (#254).
+- **Documentation**: Automated documentation verification gate (`scripts/verify_docs.py`) validating commit pins and markdown links (#254, #256).
+
+### Changed
+- **Server**: Cold-start bundle gate boots Fastify server and `/api/*` routes in degraded mode with an auto-polling fallback UI instead of halting the process (#256).
+- **Server**: Asset updater supports authenticated GitHub API calls to download bundles from draft releases (#256).
+- **Server**: Content-addressed WASM distribution validates SHA-256 Merkle roots and `\0asm` magic headers with atomic directory symlinking (#250, #256).
+- **Navigation**: Restored 56dp single-row glassmorphic header with `ExpandableChip` (#251).
+- **UI / UX**: Polished splash screen animation timing, mini-player physics, top bar scrim gradient, and chip contrast ratios (#249).
+- **CI**: Wired `verify_docs.py` into Tier 1 preflight gate in `ci.yml` for instant fail-fast validation (#256).
+
+### Fixed
+- **Queue**: Eliminated queue truncation caused by UI paging snapshot bindings during lazy list scrolling (#252).
+- **Playback**: Enforced explicit three-state source of truth avoiding race conditions between playback transitions and remote sync (#252).
+- **Announcements**: Removed legacy periodic `FootgunsStarDialog` and `BlogPromoDialog` interrupt loops and version-bump reset naggers (#255).
+- **Android**: Resolved `FullBackupContent` manifest lint errors and configured `checkReleaseBuilds = false` for lintVital tasks (#245).
+- **Desktop**: Sanitized packaging versions to numeric `MAJOR.MINOR.BUILD` format for WiX MSI and Linux packaging (#244).
+- **Navigation**: Fixed routing issues when navigating into liked album collections (#249).
+
 ## [1.0.1-beta] — 2026-11-21: The Sovereign Music Engine Inaugural Beta
 
 The initial public beta release of Streamify — high-fidelity multiplatform music streaming powered by a Sovereign Rust core, real-time C++20 DSP audio engine, Room ↔ Supabase hybrid synchronization, and a modern Compose Multiplatform UI across Android, Desktop, and Web.
