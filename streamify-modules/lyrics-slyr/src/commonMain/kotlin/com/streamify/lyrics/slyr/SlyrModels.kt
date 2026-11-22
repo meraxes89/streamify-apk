@@ -23,3 +23,18 @@ data class LyricsData(
     val isSynced: Boolean = true,
     val globalOffsetMs: Long = 0L
 )
+
+enum class LatencyConfidence {
+    MEASURED,
+    CODEC_PROFILE,
+    CALIBRATED,
+    DEFAULT
+}
+
+data class LatencySnapshot(
+    val halBufferMs: Long = 0L,
+    val linkMs: Long = 0L,
+    val totalDelayMs: Long = 0L,
+    val confidence: LatencyConfidence = LatencyConfidence.DEFAULT,
+    val routeName: String = "Built-in Speaker"
+)
