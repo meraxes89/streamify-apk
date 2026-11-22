@@ -458,6 +458,10 @@ fun HomeScreen(
         }
     }
 
+
+    val otherDialogOpen =
+        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || shouldShowLogInAlert || (activeAnnouncement != null)
+
     LaunchedEffect(openAppTime, otherDialogOpen) {
         val platformName = when (getPlatform()) {
             Platform.Desktop -> "desktop"
@@ -554,8 +558,6 @@ fun HomeScreen(
         )
     }
 
-    val otherDialogOpen =
-        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || shouldShowLogInAlert || (activeAnnouncement != null)
     // The launch banner, decided once per launch. It waits for Home to settle on its own dialogs (the
     // open count and the lyrics-sharing flag load just after the first frame) and for the update check
     // started at launch, however long that takes, so an update dialog comes first. Then it takes the
