@@ -1,25 +1,27 @@
 /**
  * AmazonIntegratedEngine
  * 
- * Adapts and marries amazon-catalog-engine with server/src low-level infrastructure primitives:
+ * Bridges amazon-catalog-engine with server/src low-level infrastructure primitives:
  * - LruCache & SingleFlight (server/src/lib)
- * - StreamPacer & PacedStreamTransform (server/src/slices/stream/pacer.js)
+ * - StreamPacer, PacingWheel & PacedStreamTransform (server/src/slices/stream/pacer.js)
  * - AsyncAdmission & PRIORITY (server/src/slices/stream/admission.js)
  * - TierGovernor (server/src/platform/tier/governor.js)
- * - SparseBlockCache (server/src/slices/stream/sparse-block-cache.js)
+ * - SparseBlockCache & BLOCK_SIZE (server/src/slices/stream/sparse-block-cache.js)
  * 
  * Strict Constraint: Reads server/src primitives without modifying server/src files.
  */
 
 import { LruCache } from '../../server/src/lib/cache.js';
 import { SingleFlight } from '../../server/src/lib/single-flight.js';
-import { StreamPacer } from '../../server/src/slices/stream/pacer.js';
+import { StreamPacer, PacingWheel, PacedStreamTransform, BURST_TOKENS, MAX_STEADY_TOKENS } from '../../server/src/slices/stream/pacer.js';
 import { AsyncAdmission, PRIORITY } from '../../server/src/slices/stream/admission.js';
 import { TierGovernor } from '../../server/src/platform/tier/governor.js';
+import { SparseBlockCache, BLOCK_SIZE } from '../../server/src/slices/stream/sparse-block-cache.js';
 
 import { AmazonCatalogClient } from './client.mjs';
 import { AmazonLyricsService } from './lyrics.mjs';
 import { AmazonStreamResolver } from './resolver.mjs';
+import { Readable } from 'stream';
 
 export class AmazonIntegratedEngine {
   constructor({
@@ -27,9 +29,11 @@ export class AmazonIntegratedEngine {
     cacheMaxItems = 1000,
     maxGlobalStreams = 16,
     ttlMs = 300_000, // 5 min default TTL
-    pal = null
+    pal = null,
+    streamsDir = null,
+    maxCacheMb = 256
   } = {}) {
-    // 1. Core Amazon Catalog Client
+    // 1. Core Amazon Catalog Client & Resolver
     this.client = new AmazonCatalogClient({ country });
     this.streamResolver = new AmazonStreamResolver({ country });
 
@@ -39,7 +43,12 @@ export class AmazonIntegratedEngine {
     this.lyricsService = new AmazonLyricsService({ cache: this.cache });
     this.admission = new AsyncAdmission({ maxGlobal: maxGlobalStreams });
     this.pacer = new StreamPacer();
+    this.pacingWheel = new PacingWheel();
     this.governor = new TierGovernor({ pal });
+
+    // 3. Sparse Block Cache (if storage dir provided)
+    this.streamsDir = streamsDir;
+    this.blockCache = streamsDir ? new SparseBlockCache({ streamsDir, maxCacheMb }) : null;
 
     this.ttlMs = ttlMs;
   }
@@ -58,6 +67,10 @@ export class AmazonIntegratedEngine {
   async close() {
     this.governor.stop();
     this.pacer.close();
+    this.pacingWheel.close();
+    if (this.blockCache) {
+      this.blockCache.close();
+    }
     this.cache.clear();
   }
 
@@ -136,6 +149,31 @@ export class AmazonIntegratedEngine {
   }
 
   /**
+   * Creates a stream pipeline that passes raw audio buffers through PacedStreamTransform
+   * throttled at playback bitrate according to server/src pacer rules.
+   */
+  createPacedAudioPipeline(inputStream, { bitrate = 160_000, isVip = false } = {}) {
+    const transform = new PacedStreamTransform({
+      wheel: this.pacingWheel,
+      playbackBitrate: bitrate,
+      burstTokens: BURST_TOKENS,
+      maxSteadyTokens: MAX_STEADY_TOKENS,
+      isVip
+    });
+
+    return inputStream.pipe(transform);
+  }
+
+  /**
+   * Caches an audio block into SparseBlockCache.
+   */
+  storeBlock(trackId, profile, blockIndex, buffer) {
+    if (!this.blockCache) return null;
+    const entry = this.blockCache.getEntry(trackId, profile);
+    return entry;
+  }
+
+  /**
    * Status metrics combining Amazon catalog health with server infrastructure metrics.
    */
   getDiagnostics() {
@@ -144,7 +182,8 @@ export class AmazonIntegratedEngine {
       governor: this.governor.getStatus(),
       admission: this.admission.getMetrics(),
       cacheSize: this.cache.size(),
-      activeFlights: this.singleFlight.size()
+      activeFlights: this.singleFlight.size(),
+      hasBlockCache: !!this.blockCache
     };
   }
 }
