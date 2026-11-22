@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: Triage untrusted PRs
         id: triage
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -154,7 +154,7 @@ jobs:
           BLOCK_USERS_TOKEN: ${{ secrets.BLOCK_USERS_TOKEN }}
           BLOCK_LOGIN: ${{ steps.triage.outputs.block_login }}
           BLOCK_STRIKES: ${{ steps.triage.outputs.block_strikes }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.BLOCK_USERS_TOKEN || secrets.GITHUB_TOKEN }}
           # Values cross into the script via env, never via inline ${{ }} interpolation —
