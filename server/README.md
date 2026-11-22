@@ -21,8 +21,9 @@ npm test           # unit (node --test) then contract suite
 
 | Route | Behavior |
 |---|---|
-| GET /api/health | Event-loop lag p50/p90/p99 plus admission/coalescer/cache/tier telemetry |
-| GET /api/capabilities | 25 capability strings |
+| GET /api/health | Event-loop lag p50/p90/p99 plus admission/coalescer/cache/tier/tunnel telemetry |
+| GET /api/capabilities | 26 capability strings |
+| GET /api/tunnel | Cloudflare Tunnel status, mode (quick/named), and public relay URL |
 | GET /api/room/list, /api/room/:roomId | Jam room catalog |
 | WS /api/room/:roomId/sync | Hand-rolled RFC 6455 room sync (no ws dependency) |
 | GET /api/yt/home, /search, /next, /suggest, /browse | InnerTube catalog |
@@ -63,6 +64,15 @@ timeouts 504; a throttle watchdog evicts cached URLs that drop below
 covered by unit tests (tampered-payload and corrupted-signature cases); in
 the current live path, `runBundleUpdate()` authenticates via SHA256SUMS +
 Merkle — wiring the signature check into the live path is follow-up work.
+
+## Cloudflare Relay & Remote Client Access
+
+The server can automatically host a public Cloudflare Tunnel so any remote client (mobile phone, web browser, friends) can access it without port-forwarding or public IP setup:
+
+- **Quick Tunnel (Zero-config)**: Set `STREAMIFY_TUNNEL=1`. An ephemeral `*.trycloudflare.com` public HTTPS/WSS URL is automatically provisioned and announced in server logs and `/api/tunnel`.
+- **Named Tunnel (Custom domain)**: Set `CLOUDFLARE_TUNNEL_TOKEN=<token>`. Routes your Cloudflare domain directly into the local Fastify engine.
+- Automatic binary discovery & download for Linux (x64, arm64, arm), macOS, and Windows.
+- When tunnel is active, `trustProxy: true` is automatically configured to preserve real client IPs via `CF-Connecting-IP`.
 
 ## Measured performance (BENCHMARK_REPORT.md, 2026-11-20)
 
