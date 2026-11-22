@@ -63,7 +63,7 @@ fun SireenBrandingBadge(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     backdrop: PlatformBackdrop? = null,
-    prefix: String = "ENGINEERED BY ",
+    prefix: String = "DEVELOPED BY ",
     author: String = "SIREEN",
     tagline: String = "",
     onBadgeClick: (() -> Unit)? = null,
@@ -118,6 +118,22 @@ fun SireenBrandingBadge(
 
     // Pill geometry matching CreateActions / ChipGroup
     val pillShape = CircleShape
+    val colorScheme = MaterialTheme.colorScheme
+
+    // Adaptive border and container colors matching mood pills (ChipGroup)
+    val borderColor =
+        if (isDark) {
+            if (glassOn) Color.White.copy(alpha = 0.12f) else colorScheme.outlineVariant
+        } else {
+            Color.Black.copy(alpha = 0.14f)
+        }
+
+    val containerColor =
+        if (isDark) {
+            if (glassOn) Color.Transparent else colorScheme.surfaceContainer.copy(alpha = 0.5f)
+        } else {
+            Color.Black.copy(alpha = 0.04f)
+        }
 
     // Text & Beacon Colors
     val prefixColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
@@ -133,8 +149,8 @@ fun SireenBrandingBadge(
     val badgeContent: @Composable () -> Unit = {
         Row(
             modifier = Modifier.padding(
-                horizontal = if (compact) 8.dp else 10.dp,
-                vertical = if (compact) 4.dp else 5.dp,
+                horizontal = if (compact) 9.dp else 12.dp,
+                vertical = if (compact) 5.dp else 6.5.dp,
             ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -219,38 +235,30 @@ fun SireenBrandingBadge(
         }
     }
 
-    if (glassOn && backdrop != null) {
-        Row(
-            modifier =
-                modifier
-                    .liquidGlass(
-                        backdrop = backdrop,
-                        shape = pillShape,
-                        highlight = Highlight(width = 1.dp),
-                    )
-                    .clip(pillShape)
-                    .clickable {
-                        triggerInteractiveGlint()
-                        onBadgeClick?.invoke()
-                    },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            badgeContent()
+    val shapeModifier =
+        if (glassOn && backdrop != null) {
+            Modifier.liquidGlass(
+                backdrop = backdrop,
+                shape = pillShape,
+                highlight = Highlight(width = 1.dp),
+            )
+        } else {
+            Modifier.clip(pillShape)
         }
-    } else {
-        Surface(
-            shape = pillShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-            modifier =
-                modifier
-                    .clip(pillShape)
-                    .clickable {
-                        triggerInteractiveGlint()
-                        onBadgeClick?.invoke()
-                    },
-        ) {
-            badgeContent()
-        }
+
+    Row(
+        modifier =
+            modifier
+                .then(shapeModifier)
+                .background(containerColor, pillShape)
+                .border(1.dp, borderColor, pillShape)
+                .clip(pillShape)
+                .clickable {
+                    triggerInteractiveGlint()
+                    onBadgeClick?.invoke()
+                },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        badgeContent()
     }
 }
