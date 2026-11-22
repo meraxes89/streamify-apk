@@ -233,28 +233,32 @@ describe('credentials layer', () => {
 /* ------------------------------------------------------------------ */
 
 /** Offline session manager stub: serves a fully authenticated session. */
-function stubSessionManager({ authenticated = true } = {}) {
+function stubSessionManager({ authenticated = true, entitlementList = null } = {}) {
+  const cache = {};
+  const buildSession = (territory) => (authenticated
+    ? {
+        territory, host: 'https://music.amazon.com', region: 'NA',
+        sessionId: '111-1111111-1111111', deviceId: '12345', deviceType: 'A16ZV8BU3SN1N3',
+        customerId: 'A1B2C3D4E5F6G7', authenticated: true,
+        musicTier: 'UNLIMITED', tierInferred: false,
+        entitlementList: entitlementList || ['KATANA', 'HAWKFIRE', 'SONIC_RUSH', 'ROBIN', 'NIGHTWING'],
+        marketplaceId: 'ATVPDKIKX0DER', musicTerritory: 'US',
+        csrf: { token: 'csrf' }, oAuthToken: null,
+        cookies: 'at-main=abc; session-id=1', createdAt: Date.now()
+      }
+    : {
+        territory, host: 'https://music.amazon.com', region: 'NA',
+        sessionId: '111-1111111-1111111', deviceId: '12345', deviceType: 'A16ZV8BU3SN1N3',
+        customerId: '', authenticated: false,
+        entitlementList: [], marketplaceId: 'ATVPDKIKX0DER', musicTerritory: 'US',
+        csrf: { token: 'csrf' }, cookies: 'session-id=1', createdAt: Date.now()
+      });
   return {
     protocol: { userAgent: 'TestUA', commonHeaders: { 'Content-Type': 'application/json', 'Content-Encoding': 'amz-1.0', Accept: 'application/json' } },
     async getSession(territory, { credential } = {}) {
-      return authenticated
-        ? {
-            territory, host: 'https://music.amazon.com', region: 'NA',
-            sessionId: '111-1111111-1111111', deviceId: '12345', deviceType: 'A16ZV8BU3SN1N3',
-            customerId: 'A1B2C3D4E5F6G7', authenticated: true,
-            musicTier: 'UNLIMITED', tierInferred: false,
-            entitlementList: ['KATANA', 'HAWKFIRE', 'SONIC_RUSH', 'ROBIN', 'NIGHTWING'],
-            marketplaceId: 'ATVPDKIKX0DER', musicTerritory: 'US',
-            csrf: { token: 'csrf' }, oAuthToken: null,
-            cookies: 'at-main=abc; session-id=1', createdAt: Date.now()
-          }
-        : {
-            territory, host: 'https://music.amazon.com', region: 'NA',
-            sessionId: '111-1111111-1111111', deviceId: '12345', deviceType: 'A16ZV8BU3SN1N3',
-            customerId: '', authenticated: false,
-            entitlementList: [], marketplaceId: 'ATVPDKIKX0DER', musicTerritory: 'US',
-            csrf: { token: 'csrf' }, cookies: 'session-id=1', createdAt: Date.now()
-          };
+      const key = authenticated ? 'auth' : 'guest';
+      if (!cache[key]) cache[key] = buildSession(territory);
+      return cache[key];
     },
     buildHeaders(session, target) {
       return { 'Content-Encoding': 'amz-1.0', 'Content-Type': 'application/json', 'X-Amz-Target': target || '', Cookie: session.cookies };
@@ -409,11 +413,147 @@ describe('AmazonDmlsSolver', () => {
       assert.equal(fc.url, 'https://d25tk16o50n0lf.cloudfront.net/firstchunk/B084WKYYC3.mp4');
       assert.equal(fc.cdnType, 'CLOUDFRONT');
       assert.equal(fc.drmPlaybackResource.fairplay.licenseAcquisitionURL, 'https://lic.example/fps');
-      // Production body shape
+      // Production body shape (he(), 2026-11 vinylChunk re-decode)
       assert.deepEqual(calls[0].body.contentIdList, [{ identifier: 'B084WKYYC3', identifierType: 'ASIN' }]);
-      assert.equal(calls[0].body.musicRequestIdentityContext.musicIdentities.musicAccountCid, 'A1B2C3D4E5F6G7');
       assert.deepEqual(calls[0].body.customerInfo.entitlementList, ['KATANA', 'HAWKFIRE', 'SONIC_RUSH', 'ROBIN', 'NIGHTWING']);
       assert.equal(calls[0].body.protocol, 'DASH');
+      assert.equal(calls[0].body.clientMetadata.clientId, 'WebCP', "registered web-player client id (authStore.clientId === 'WebCP')");
+      assert.ok(calls[0].body.clientMetadata.clientRequestId, 'clientRequestId short uid present');
+      assert.equal(calls[0].body.appMetadata.https, true);
+      assert.equal(calls[0].body.appMetadata.appId, 'GREENHORNET_WEB');
+      assert.equal(calls[0].body.appMetadata.appVersion, '1.196.81');
+      assert.equal(calls[0].body.musicRequestIdentityContext, undefined, 'production he() carries no musicRequestIdentityContext');
+      assert.equal(calls[0].body.bitRate, undefined, 'production he() carries no bitRate field');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('tier lossy requests the V2 bitrateTypeList manifest path (no content protection)', async () => {
+    const sm = stubSessionManager({ authenticated: true });
+    const calls = [];
+    const v2Mpd = FIXTURE_MPD.replace(
+      /<ContentProtection[\s\S]*?<\/ContentProtection>\s*/g, '');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url, headers: opts.headers, body: JSON.parse(opts.body) });
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({
+          contentResponseList: [{
+            manifest: v2Mpd, cdnType: 'CLOUDFRONT', contentResponseStatusCode: 'SUCCESS'
+          }]
+        })
+      };
+    };
+    try {
+      const solver = new AmazonDmlsSolver({ sessionManager: sm });
+      const solved = await solver.solveStreamLinks({ asin: 'B084WKYYC3', credential: CRED, tier: 'lossy' });
+
+      assert.equal(solved.status, DmlsSolveStatus.LINKS_SOLVED);
+      assert.equal(solved.dashProfile, 'v2-lossy');
+
+      const body = calls[0].body;
+      assert.deepEqual(body.musicDashVersionList, ['V2'], 'production enableFlacOpus=false path');
+      assert.deepEqual(body.bitrateTypeList, ['HIGH', 'MEDIUM', 'LOW'], 'entitled account gets the HIGH rung');
+      assert.equal(body.contentProtectionList, undefined, 'V2 lossy path requests no content protection');
+      assert.equal(body.tryAsinSubstitution, undefined);
+      assert.ok(body.appInfo.musicAgent.startsWith('Vinyl/2.0 GREENHORNET_WEB/1.196.81 ('));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('FLAC path drops tryAsinSubstitution when the account lacks HAWKFIRE/KATANA', async () => {
+    // PRIME floor: ROBIN/NIGHTWING only - no HAWKFIRE/KATANA substitution rights.
+    const sm = stubSessionManager({ authenticated: true, entitlementList: ['ROBIN', 'NIGHTWING'] });
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ body: JSON.parse(opts.body) });
+      return { ok: true, status: 200, text: async () => MANIFEST_ENVELOPE };
+    };
+    try {
+      const solver = new AmazonDmlsSolver({ sessionManager: sm });
+      await solver.solveStreamLinks({ asin: 'B084WKYYC3', credential: CRED });
+      assert.equal(calls[0].body.tryAsinSubstitution, false, 'substitution is entitlement-gated (production de())');
+      assert.deepEqual(calls[0].body.contentProtectionList, ['TRACK_PSSH']);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('solveSampleUrl: guest production shape with WebCP client + real expiration', async () => {
+    const sm = stubSessionManager({ authenticated: false });
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    const before = Math.floor(Date.now() / 1000);
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url, headers: opts.headers, body: JSON.parse(opts.body) });
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({
+          requestId: 'req-s1',
+          urls: [['https://d28julafmv4ekl.cloudfront.net/64%2F30%2F200000354418958_S64.mp3?Signature=abc']]
+        })
+      };
+    };
+    try {
+      const solver = new AmazonDmlsSolver({ sessionManager: sm });
+      const sample = await solver.solveSampleUrl({ asin: 'B086Q41M9C' });
+
+      assert.equal(sample.status, DmlsSolveStatus.LINKS_SOLVED);
+      assert.equal(sample.url, 'https://d28julafmv4ekl.cloudfront.net/64%2F30%2F200000354418958_S64.mp3?Signature=abc');
+      assert.equal(sample.operation, 'getStreamingURLsForSamples');
+
+      const body = calls[0].body;
+      assert.equal(body.clientInfo.clientId, 'WebCP', 'registered client id (unknown-client wall)');
+      assert.ok(body.expiration >= before + 3595 && body.expiration <= before + 3605, 'expiration = unix now + 3600');
+      assert.deepEqual(body.tracksInfoList, [{ asin: 'B086Q41M9C', contentFormat: 'mp3', bitrate: 64 }]);
+      assert.deepEqual(body.protocolList, ['https']);
+      assert.equal(calls[0].headers['X-Amz-Target'].endsWith('getStreamingURLsForSamples'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('solveSampleUrl: missing sample maps to CONTENT_NOT_FOUND, not a throw', async () => {
+    const sm = stubSessionManager({ authenticated: false });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({ requestId: 'req-s2', urls: [[]] })
+    });
+    try {
+      const solver = new AmazonDmlsSolver({ sessionManager: sm });
+      const sample = await solver.solveSampleUrl({ asin: 'B0ALBUMONLY' });
+      assert.equal(sample.status, DmlsSolveStatus.CONTENT_NOT_FOUND);
+      assert.equal(sample.url, null);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('verifyLinkReachability returns honest Range-probe evidence', async () => {
+    const sm = stubSessionManager({ authenticated: false });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => ({
+      ok: true, status: 206,
+      headers: {
+        get: (name) => name === 'content-type' ? 'audio/mpeg'
+          : name === 'content-range' ? 'bytes 0-1023/493511'
+          : name === 'content-length' ? '1024' : null
+      },
+      arrayBuffer: async () => new ArrayBuffer(16)
+    });
+    try {
+      const solver = new AmazonDmlsSolver({ sessionManager: sm });
+      const evidence = await solver.verifyLinkReachability('https://d28julafmv4ekl.cloudfront.net/64/30/x_S64.mp3');
+      assert.equal(evidence.reachable, true);
+      assert.equal(evidence.httpStatus, 206);
+      assert.equal(evidence.contentType, 'audio/mpeg');
+      assert.equal(evidence.totalBytes, 493511);
+      assert.equal(evidence.firstBytesHex.length, 32);
     } finally {
       globalThis.fetch = originalFetch;
     }

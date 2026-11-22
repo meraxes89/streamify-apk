@@ -42,11 +42,26 @@ describe('Amazon Lossless Full-Song Stream Resolution', () => {
   });
 
   describe('AmazonStreamResolver.resolveLossless', () => {
-    it('resolves a full song to the top-tier lossless stream descriptor', async () => {
+    it('guest ladder returns the REAL Amazon sample descriptor (never a silent bridge)', async () => {
       const resolver = new AmazonStreamResolver({ cache: new Map() });
-      resolver._searchCandidates = async () => ([
-        { videoId: 'vidLoss01', title: 'Bohemian Rhapsody', artist: 'Queen - Topic', durationSeconds: 355 },
-      ]);
+      resolver._searchCandidates = async () => {
+        throw new Error('the YouTube bridge must never run implicitly');
+      };
+      resolver.nativeDelivery = {
+        probeCapability: async () => ({
+          status: 'AUTH_REQUIRED',
+          reason: 'Guest session carries no customerId; DMLS full-song delivery is auth-walled.',
+          evidence: {},
+          wall: { __type: 'com.amazon.digitalmusiclocator#UnauthorizedException' }
+        }),
+        solver: {
+          solveSampleUrl: async () => ({
+            status: 'LINKS_SOLVED',
+            url: 'https://d28julafmv4ekl.cloudfront.net/64%2F30%2F200000354418958_S64.mp3',
+            expiresAt: Math.floor(Date.now() / 1000) + 3600
+          })
+        }
+      };
 
       const descriptor = await resolver.resolveLossless({
         asin: 'B0TEST',
@@ -55,30 +70,83 @@ describe('Amazon Lossless Full-Song Stream Resolution', () => {
         durationSeconds: 354,
       });
 
+      assert.equal(descriptor.source, 'amazon-sample-preview');
+      assert.equal(descriptor.previewOnly, true);
+      assert.equal(descriptor.ok, true);
+      assert.equal(descriptor.isLossless, false);
+      assert.equal(descriptor.codec, 'mp3');
+      assert.ok(descriptor.streamUrl.includes('cloudfront.net'));
+      assert.ok(descriptor.delivery.pipeline === 'amazon-sample-preview');
+      assert.equal(descriptor.delivery.previewOnly, true);
+      assert.equal(descriptor.native.status, 'AUTH_REQUIRED');
+      assert.ok(descriptor.native.reason.includes('customerId'));
+    });
+
+    it('authenticated ladder returns the native DMLS link graph and caches per ASIN', async () => {
+      const cache = new Map();
+      const resolver = new AmazonStreamResolver({ cache });
+      let probes = 0;
+      resolver.nativeDelivery = {
+        probeCapability: async () => {
+          probes++;
+          return {
+            status: 'LINKS_SOLVED',
+            reason: 'Real DMLS links solved',
+            selected: {
+              id: 'flac-24-96', tierLabel: 'UHD96', specLabel: '24-bit / 96 kHz FLAC (Ultra HD)',
+              codecFamily: 'flac', audioSamplingRate: 96000, bitDepth: 24,
+              links: {
+                initUrl: 'https://d25tk16o50n0lf.cloudfront.net/track/init/flac-24-96/init.mp4',
+                firstSegmentUrls: ['https://d25tk16o50n0lf.cloudfront.net/track/seg/flac-24-96/1.m4s']
+              }
+            },
+            manifest: { inline: '<MPD>...</MPD>', representationCount: 3 },
+            links: {
+              initUrl: 'https://d25tk16o50n0lf.cloudfront.net/track/init/flac-24-96/init.mp4',
+              firstSegmentUrls: ['https://d25tk16o50n0lf.cloudfront.net/track/seg/flac-24-96/1.m4s']
+            },
+            drm: { protected: false },
+            evidence: {}
+          };
+        },
+        solver: { solveSampleUrl: async () => ({ status: 'UNAVAILABLE', url: null }) }
+      };
+
+      const first = await resolver.resolveLossless({ asin: 'B0NATIVE', title: 'X', artist: 'Y' });
+      const second = await resolver.resolveLossless({ asin: 'B0NATIVE', title: 'X', artist: 'Y' });
+
+      assert.equal(probes, 1, 'second resolution is served from cache');
+      assert.equal(first, second);
+      assert.equal(first.source, 'amazon-dmls-native');
+      assert.equal(first.isLossless, true);
+      assert.equal(first.isHiRes, true);
+      assert.equal(first.streamUrl, first.links.initUrl);
+      assert.equal(first.delivery.pipeline, 'amazon-dmls-native');
+      assert.equal(first.delivery.bitPerfect, true);
+    });
+
+    it('EXPLICIT bridge still resolves the legacy YouTube descriptor (opt-in only)', async () => {
+      const resolver = new AmazonStreamResolver({ cache: new Map() });
+      resolver._searchCandidates = async () => ([
+        { videoId: 'vidLoss01', title: 'Bohemian Rhapsody', artist: 'Queen - Topic', durationSeconds: 355 },
+      ]);
+
+      const descriptor = await resolver.resolveLosslessViaBridge({
+        asin: 'B0TEST',
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        durationSeconds: 354,
+      });
+
       assert.equal(descriptor.source, 'amazon-lossless-fullsong');
+      assert.equal(descriptor.explicitBridge, true);
       assert.equal(descriptor.isLossless, true);
       assert.equal(descriptor.ok, true);
-      assert.equal(descriptor.tier, AudioTier.HD);
       assert.equal(descriptor.codec, 'flac');
       assert.equal(descriptor.videoId, 'vidLoss01');
       assert.ok(descriptor.streamUrl.startsWith('/api/stream?id='));
-      assert.ok(descriptor.manifestUrl.startsWith('/api/stream/'));
-    });
-
-    it('caches lossless resolution per ASIN', async () => {
-      const cache = new Map();
-      const resolver = new AmazonStreamResolver({ cache });
-      let searchCalls = 0;
-      resolver._searchCandidates = async () => {
-        searchCalls++;
-        return [{ videoId: 'vidLoss02', title: 'X', artist: 'Y', durationSeconds: 10 }];
-      };
-
-      const first = await resolver.resolveLossless({ asin: 'BLZCASHD', title: 'X', artist: 'Y' });
-      const second = await resolver.resolveLossless({ asin: 'BLZCASHD', title: 'X', artist: 'Y' });
-
-      assert.equal(searchCalls, 1);
-      assert.equal(first, second);
+      assert.equal(descriptor.delivery.pipeline, 'relay-bridge');
+      assert.equal(descriptor.delivery.bitPerfect, false);
     });
 
     it('requires track metadata for lossless resolution', async () => {
@@ -91,14 +159,17 @@ describe('Amazon Lossless Full-Song Stream Resolution', () => {
   describe('AmazonCatalogClient.resolveLosslessAudio', () => {
     it('delegates to the stream resolver and flags the lossless response', async () => {
       const client = new AmazonCatalogClient();
+      client.search = async () => ({
+        tracks: [{ asin: 'B0TEST', title: 'Song', artists: [{ name: 'Artist' }] }]
+      });
       client.resolver.resolveLossless = async () => ({
         videoId: 'vidLoss03',
         isLossless: true,
         tier: AudioTier.HD,
-        source: 'amazon-lossless-fullsong',
+        source: 'amazon-dmls-native',
       });
 
-      const resolved = await client.resolveLosslessAudio({ title: 'Song', artist: 'Artist' });
+      const resolved = await client.resolveLosslessAudio({ title: 'Song', artist: 'Artist' }, { tier: AudioTier.HD });
 
       assert.equal(resolved.videoId, 'vidLoss03');
       assert.equal(resolved.lossless, true);

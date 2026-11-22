@@ -67,9 +67,9 @@ export class AmazonCatalogClient {
     this.dmlsSolver = dmlsSolver || new AmazonDmlsSolver({ sessionManager: this.session });
     this.nativeDelivery = nativeDelivery ||
       new AmazonNativeDeliveryService({ sessionManager: this.session, solver: this.dmlsSolver });
-    if (!this.resolver.nativeDelivery && !streamResolver) {
-      // Wire the probe into a default-constructed resolver so lossless
-      // descriptors attach the honest native capability card.
+    if (!this.resolver.nativeDelivery) {
+      // Wire the native surface into the resolver so the Amazon-first
+      // ladder (full-song links / guest sample URL) is always armed.
       this.resolver.nativeDelivery = this.nativeDelivery;
     }
     this.audioSource = new HttpAudioSource({ baseUrl: relayBaseUrl });
@@ -354,91 +354,97 @@ export class AmazonCatalogClient {
     return this.lyrics.getLyrics(track, artist, durationSeconds);
   }
 
-  // -------------------------------------------------------------
-  // API 9: Hybrid Audio Stream Resolver (/api/stream?id=... parity)
-  // -------------------------------------------------------------
-  async resolveAudio(trackOrAsin) {
-    let track = typeof trackOrAsin === 'string'
-      ? { asin: trackOrAsin.replace('amzn:track:', ''), title: trackOrAsin }
-      : trackOrAsin;
+  /**
+   * Acquires the Amazon track ASIN for a track object via live Tenzing
+   * catalog search when missing - the Amazon-first prerequisite. Returns
+   * the track unchanged when it already carries an ASIN or search fails.
+   */
+  async _acquireAsin(track, { territory = 'US' } = {}) {
+    if (track.asin) return track;
+    const title = track.title || '';
+    const artistName = Array.isArray(track.artists)
+      ? track.artists.map(a => (typeof a === 'string' ? a : a.name)).join(' ')
+      : (track.artist || track.artistName || '');
+    const query = `${title} ${artistName}`.trim();
+    if (!query) return track;
 
-    return this.resolver.resolve(track);
+    try {
+      const results = await this.search(query, { territory, limit: 10 });
+      const tracks = results?.tracks || [];
+      if (tracks.length) {
+        const norm = (s) => String(s || '').toLowerCase().trim();
+        const best = tracks.find(t => norm(t.title) === norm(title)) || tracks[0];
+        return {
+          ...track,
+          asin: best.asin || best.id?.replace('amzn:track:', '') || null,
+          title: track.title || best.title || null,
+          artist: track.artist || track.artistName || (best.artists || []).map(a => a.name).join(', ') || null,
+          durationSeconds: track.durationSeconds || best.durationSeconds || 0,
+          artOriginal: best.artOriginal || track.artOriginal || null
+        };
+      }
+    } catch {
+      // Catalog search failure: the caller's track stays as-is; the resolver
+      // will report the loud typed failure instead of bridging silently.
+    }
+    return track;
+  }
+
+  // -------------------------------------------------------------
+  // API 9: Amazon-Native Audio Stream Resolver (/api/stream?id=... parity)
+  // -------------------------------------------------------------
+  // AMAZON-FIRST POLICY (2026-11): resolution returns Amazon-native
+  // artifacts ONLY - authenticated DMLS full-song link graph, or the REAL
+  // guest sample URL (signed CloudFront MP3) with the honest AUTH_REQUIRED
+  // full-song verdict. The legacy YouTube bridge runs EXCLUSIVELY on the
+  // explicit allowYoutubeBridge opt-in - never as a silent fallback.
+  async resolveAudio(trackOrAsin, { allowYoutubeBridge = false, territory = 'US' } = {}) {
+    let track = typeof trackOrAsin === 'string'
+      ? {
+          asin: trackOrAsin.replace('amzn:track:', ''),
+          title: /^(amzn:|[A-Z0-9]{10})$/.test(trackOrAsin) ? '' : trackOrAsin,
+          territory
+        }
+      : { ...trackOrAsin, territory: trackOrAsin.territory || territory };
+
+    track = await this._acquireAsin(track, { territory });
+    return this.resolver.resolve(track, { allowBridge: allowYoutubeBridge });
+  }
+
+  // -------------------------------------------------------------
+  // API 9-legacy: EXPLICIT YouTube bridge (opt-in only)
+  // -------------------------------------------------------------
+  async resolveAudioViaYoutubeBridge(trackOrAsin, { territory = 'US' } = {}) {
+    const track = typeof trackOrAsin === 'string'
+      ? { asin: trackOrAsin.replace('amzn:track:', ''), title: trackOrAsin, territory }
+      : { ...trackOrAsin, territory: trackOrAsin.territory || territory };
+    return this.resolver.resolveViaBridge(track);
   }
 
   // -------------------------------------------------------------
   // API 9b: Lossless Full-Song Stream Resolver (top-tier FLAC)
   // -------------------------------------------------------------
-  async resolveLosslessAudio(trackOrAsin, { territory = 'US', credential = null, tier = 'ultra' } = {}) {
+  // Amazon-first: authenticated sessions solve the REAL link graph down the
+  // tier ladder (Ultra HD FLAC -> HD FLAC -> V2 lossy manifest); guests get
+  // the REAL sample URL + the honest AUTH_REQUIRED full-song verdict.
+  // YouTube bridge only via allowYoutubeBridge.
+  async resolveLosslessAudio(trackOrAsin, { territory = 'US', credential = null, tier = 'best', allowYoutubeBridge = false } = {}) {
     let track = typeof trackOrAsin === 'string'
-      ? { asin: trackOrAsin.replace('amzn:track:', ''), title: trackOrAsin, territory }
+      ? { asin: trackOrAsin.replace('amzn:track:', ''), territory }
       : { ...trackOrAsin, territory: trackOrAsin.territory || territory };
 
-    const cred = credential || this.credential || resolveAmazonMusicCredential();
-    const asin = track.asin || null;
+    track = await this._acquireAsin(track, { territory });
+    const cred = credential || this.credential || null;
 
-    // AMAZON-FIRST: with an authenticated credential the solver returns the
-    // REAL native FLAC links (inline MPD + representation + segment URLs).
-    if (asin && cred && cred.authenticated) {
-      try {
-        const solved = await this.dmlsSolver.solveStreamLinks({
-          asin, territory, credential: cred, tier
-        });
-        if (solved.status === DmlsSolveStatus.LINKS_SOLVED ||
-            solved.status === DmlsSolveStatus.DRM_PROTECTED_LINKS) {
-          const selected = solved.selected || {};
-          return {
-            asin,
-            title: track.title || null,
-            artist: track.artist || track.artistName || null,
-            source: 'amazon-dmls-native',
-            tier: tier,
-            isLossless: true,
-            isHiRes: /UHD(96|192|48|44)/.test(selected.tierLabel || ''),
-            specLabel: selected.specLabel || null,
-            codec: selected.codec || 'flac',
-            sampleRate: selected.audioSamplingRate || null,
-            bitDepth: selected.bitDepth || null,
-            streamUrl: solved.links?.initUrl || solved.links?.firstSegmentUrls?.[0] || null,
-            manifestInline: solved.manifest?.inline || null,
-            representation: selected,
-            links: solved.links || null,
-            drm: solved.drm || { protected: false },
-            native: {
-              status: solved.status,
-              cdnType: solved.manifest?.cdnType || null,
-              substituteAsin: solved.manifest?.substituteAsin || null,
-              representationCount: solved.manifest?.representationCount || 0
-            },
-            ok: true,
-            delivery: {
-              pipeline: 'amazon-dmls-native',
-              bitPerfect: solved.drm?.protected === false && selected.codecFamily === 'flac',
-              tierLabel: selected.tierLabel || null,
-              note: solved.drm?.protected
-                ? 'Links solved; bytes are SIREN_KATANA CENC-encrypted (pssh attached; license op documented)'
-                : 'Native Amazon links; clear bytes fetchable via HttpAudioSource'
-            }
-          };
-        }
-        // Native path denied (auth/entitlement): fall through to the honest
-        // bridge with the native card attached.
-        const bridged = await this.resolver.resolveLossless(track);
-        return {
-          ...bridged,
-          requestedTier: bridged.tier || null,
-          lossless: bridged.isLossless !== false,
-          delivery: bridged.delivery || null,
-          native: { status: solved.status, reason: solved.reason || null, howToAuthenticate: solved.howToAuthenticate || null }
-        };
-      } catch {
-        // Solver failure must never break the honest bridge path
-      }
-    }
+    const resolved = await this.resolver.resolveLossless(track, {
+      allowBridge: allowYoutubeBridge,
+      credential: cred,
+      tier
+    });
 
-    const resolved = await this.resolver.resolveLossless(track);
     return {
       ...resolved,
-      requestedTier: resolved.tier || null,
+      requestedTier: tier,
       lossless: resolved.isLossless !== false,
       // Honest delivery card passthrough (actual delivered codec verdict lives here)
       delivery: resolved.delivery || null,
@@ -463,9 +469,13 @@ export class AmazonCatalogClient {
   // representation cards (FLAC UHD96/24-bit etc.), init + media segment CDN
   // URLs, optional first-chunk URL, DRM pssh + license operation.
   //
+  // tier: 'ultra'|'hd'|'best' -> FLAC/Opus SIREN_KATANA manifest path;
+  //       'lossy'|'v2'        -> V2 bitrateTypeList path (no content
+  //                              protection requested - the account's floor).
+  //
   // Guests get the live-verified AUTH_REQUIRED verdict with the exact
   // unlock recipe; authenticated credentials get real links.
-  async solveStreamLinks(trackOrAsin, { territory = 'US', tier = 'ultra', credential = null, includeFirstChunk = false, forceWire = false } = {}) {
+  async solveStreamLinks(trackOrAsin, { territory = 'US', tier = 'ultra', credential = null, includeFirstChunk = false, forceWire = false, noClearLead = false } = {}) {
     const asin = typeof trackOrAsin === 'string'
       ? trackOrAsin.replace('amzn:track:', '')
       : (trackOrAsin.asin || trackOrAsin.id || '');
@@ -474,8 +484,25 @@ export class AmazonCatalogClient {
       asin, territory, tier,
       credential: cred,
       includeFirstChunk,
+      noClearLead,
       forceWire
     });
+  }
+
+  // -------------------------------------------------------------
+  // REAL guest sample URLs (getStreamingURLsForSamples vector)
+  // -------------------------------------------------------------
+  // The one DMLS surface that serves anonymous guests: registered client
+  // 'WebCP' + real expiration -> signed CloudFront MP3 sample URLs
+  // (live-verified: audio/mpeg bytes end-to-end).
+  async getSampleStreamUrl(trackOrAsin, { territory = 'US', expirationSec = 3600 } = {}) {
+    let track = typeof trackOrAsin === 'string'
+      ? { asin: trackOrAsin.replace('amzn:track:', '') }
+      : trackOrAsin;
+    track = await this._acquireAsin(track, { territory });
+    const asin = track.asin || (track.id ? String(track.id).replace('amzn:track:', '') : null);
+    if (!asin) throw new Error('ASIN required for sample URL resolution (pass an ASIN or a searchable track)');
+    return this.dmlsSolver.solveSampleUrl({ asin, territory, expirationSec });
   }
 
   // -------------------------------------------------------------
