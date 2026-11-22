@@ -3071,6 +3071,13 @@ fun SettingScreen(
                     },
                 )
                 SettingItem(
+                    title = "What's New",
+                    subtitle = "Streamify announcements and feature updates",
+                    onClick = {
+                        navController.navigate(com.maxrave.simpmusic.ui.navigation.destination.home.AnnouncementInboxDestination)
+                    },
+                )
+                SettingItem(
                     title = stringResource(Res.string.auto_check_for_update),
                     subtitle = stringResource(Res.string.auto_check_for_update_description),
                     switch = (autoCheckUpdate to { viewModel.setAutoCheckUpdate(it) }),
