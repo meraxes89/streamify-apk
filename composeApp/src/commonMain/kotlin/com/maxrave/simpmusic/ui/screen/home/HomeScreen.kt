@@ -11,8 +11,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -130,6 +132,8 @@ import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
 import com.maxrave.simpmusic.expect.ui.HorizontalScrollBar
 import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
+import com.kyant.backdrop.highlight.Highlight
+import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
 import com.maxrave.simpmusic.extension.angledGradientBackground
@@ -153,6 +157,7 @@ import com.maxrave.simpmusic.ui.component.ItemArtistChart
 import com.maxrave.simpmusic.ui.component.LocalAppDialogOpen
 import com.maxrave.simpmusic.ui.component.LocalNowPlayingOpen
 import com.maxrave.simpmusic.ui.component.SireenBrandingBadge
+import com.maxrave.simpmusic.ui.component.liquidGlass
 import com.maxrave.simpmusic.ui.component.LocalUserStarted
 import com.maxrave.simpmusic.ui.component.MoodMomentAndGenreHomeItem
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
@@ -1107,10 +1112,12 @@ fun HomeScreen(
                             accountName = accountInfo?.first,
                             thumbnailUrl = accountInfo?.second,
                             navController = navController,
+                            backdrop = chipBackdrop,
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         SireenBrandingBadge(
                             compact = isCompactScreen && !badgeExpanded,
+                            backdrop = chipBackdrop,
                             onBadgeClick = {
                                 if (isCompactScreen) {
                                     badgeExpanded = !badgeExpanded
@@ -1234,6 +1241,7 @@ private fun HomeAccountButton(
     accountName: String?,
     thumbnailUrl: String?,
     navController: NavController,
+    backdrop: PlatformBackdrop? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     // Sign-out blanks the stored account name, so a blank name is the signed-out state.
@@ -1245,9 +1253,10 @@ private fun HomeAccountButton(
         AccountAvatar(
             signedIn = signedIn,
             thumbnailUrl = thumbnailUrl,
-            // The Create pill's height, as Apple sizes an avatar like the glass buttons beside it.
-            size = 44.dp,
+            // 40dp aligns with the CreateActions island height on the other side of the header
+            size = 40.dp,
             contentDescription = displayName,
+            backdrop = backdrop,
             modifier = Modifier.clickable { menuOpen = true },
         )
         DropdownMenu(
@@ -1310,40 +1319,93 @@ private fun AccountAvatar(
     thumbnailUrl: String?,
     size: Dp,
     contentDescription: String?,
+    backdrop: PlatformBackdrop? = null,
     modifier: Modifier = Modifier,
 ) {
-    val avatarModifier =
-        Modifier
-            .size(size)
-            .clip(CircleShape)
-            .then(modifier)
+    val glassOn = LocalLiquidGlassEnabled.current && backdrop != null
+    val avatarShape = CircleShape
+
     if (signedIn && !thumbnailUrl.isNullOrBlank()) {
-        AsyncImage(
-            model =
-                ImageRequest
-                    .Builder(LocalPlatformContext.current)
-                    .data(thumbnailUrl)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCacheKey(thumbnailUrl)
-                    .crossfade(true)
-                    .build(),
-            placeholder = rememberHolderPainter(),
-            error = rememberHolderPainter(),
-            contentDescription = contentDescription,
-            contentScale = ContentScale.Crop,
-            modifier = avatarModifier,
-        )
-    } else {
         Box(
-            modifier = avatarModifier.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            modifier =
+                Modifier
+                    .size(size)
+                    .then(
+                        if (glassOn && backdrop != null) {
+                            Modifier.liquidGlass(
+                                backdrop = backdrop,
+                                shape = avatarShape,
+                                highlight = Highlight(width = 1.dp),
+                            )
+                        } else {
+                            Modifier.border(
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                                avatarShape,
+                            )
+                        },
+                    )
+                    .clip(avatarShape)
+                    .then(modifier),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = SimpIcons.Person,
+            AsyncImage(
+                model =
+                    ImageRequest
+                        .Builder(LocalPlatformContext.current)
+                        .data(thumbnailUrl)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .diskCacheKey(thumbnailUrl)
+                        .crossfade(true)
+                        .build(),
+                placeholder = rememberHolderPainter(),
+                error = rememberHolderPainter(),
                 contentDescription = contentDescription,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size * 0.6f),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(avatarShape),
             )
+        }
+    } else {
+        if (glassOn && backdrop != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .liquidGlass(
+                            backdrop = backdrop,
+                            shape = avatarShape,
+                            highlight = Highlight(width = 1.dp),
+                        )
+                        .clip(avatarShape)
+                        .then(modifier),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = SimpIcons.Person,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(size * 0.5f),
+                )
+            }
+        } else {
+            Surface(
+                shape = avatarShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                modifier =
+                    Modifier
+                        .size(size)
+                        .clip(avatarShape)
+                        .then(modifier),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = SimpIcons.Person,
+                        contentDescription = contentDescription,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(size * 0.5f),
+                    )
+                }
+            }
         }
     }
 }
