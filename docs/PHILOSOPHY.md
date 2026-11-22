@@ -26,7 +26,7 @@ We believe access to music is not a luxury good. The business model of gating qu
 
 ## Legal note
 
-This project provides software and architecture. It does not grant rights to any copyrighted catalog. Users and downstream distributors are responsible for sourcing content lawfully in their jurisdiction. See [LICENSE](LICENSE) and [SECURITY.md](SECURITY.md).
+This project provides software and architecture. It does not grant rights to any copyrighted catalog. Users and downstream distributors are responsible for sourcing content lawfully in their jurisdiction. See [LICENSE](../LICENSE) and [SECURITY.md](../SECURITY.md).
 
 ---
 

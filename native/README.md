@@ -1,50 +1,169 @@
-# `native/` — C++20 DSP & Physics Core
+# native/ — C++20 real-time DSP layer
 
-Compiled into `libstreamify_native_core.so` via CMake
-(`app/build.gradle.kts → externalNativeBuild → ../native/CMakeLists.txt`).
+This directory holds the real-time half of the audio engine: the SPSC
+ringbuffer that carries decoded PCM to the hardware, the mastering chain, the
+desktop HAL render cores, and the JNI edge that the Android app binds to.
+Everything here is written to run on or behind an audio callback. This README
+states observed facts from the source tree; interpretation is confined to the
+last section.
 
 ## Layout
 
-| Path | What it is |
-|---|---|
-| `dsp/` | **Phase 1 (audiophile):** `LufsNormalizer` — full ITU-R BS.1770-4 (K-weighting at any rate via the De Man fit, 400 ms/75% block ladder, dual gating, ±12 dB EMA gain glide with per-sample one-pole — click-free by construction). `SoftKneeLimiter` — 4x-oversampled true-peak sidechain (two-stage halfband composite kernels), tanh soft-knee curve, slope-budgeted lookahead schedule (zero overshoot by construction), memoryless C1 ceiling guard. `ChannelOps` — constant-power balance (√2·sin/cos, unity center) + SIMD mono downmix M=(L+R)/√2. `MasterChain` — LUFS gain → mono/balance → true-peak limiter, silent-bypass for SINGLE_RENDER. KissFFT STFT, HPCP Camelot key detection, Ellis BPM. **Jam core:** `AcousticPhaseResampler` — NEON windowed-sinc fractional resampler, ±500 PPM continuous rate trim, 32.32 fixed-point phase, zero-alloc hot path, **silent PLL bypass (Gap #13)**. |
-| `dsp/kissfft/` | Vendored KissFFT. |
-| `mix/` | **Phase 1 (32-peer):** `AudioRingBuffer` — lock-free SPSC rings (power-of-two, cache-line-split indices, posix_memalign). `PeerMixPool` — 32-peer mixing pool: per-peer rings + gains, NEON FMA accumulation along the sample axis, C1 tanh saturation guard (±1.0 bound). |
-| `math/` | **Phase 2 (harmonic math):** `CandidateHasher` — XXH3-style 64-bit candidate-ID hashing (v7-safe NEON 16-byte stripe kernels, bit-exact scalar twin on every ABI) + zero-heap dedup kernels: intersection bitmasks and A-first unique union with overlap flags, stack open-addressing key tables for O(nA+nB) expected time, exact brute fallback beyond 1024 distinct keys. `HarmonicTransitionEngine` — Camelot wheel key compatibility ladder (exact 1.0 / relative 0.95 / adjacent 0.90 / same-mode energy boosts 0.85·0.80 / diagonal 0.70 / two-step 0.60 / smoothstep clash falloff → 0.10) + continuous BPM scoring (octave folding 75↔150, ±8% window) combined via clamp(0.6·key + 0.4·bpm). `CircadianCurves` — C1-continuous circular raised-cosine daypart curves (energy/acousticness/valence) for the Daylist scheduler, zero steps at slot boundaries incl. the 24h wrap. |
-| `video/` + `agsl/` | **Phase 3 (Canvas loops, Gap #45):** `CanvasLoopMath` — seamless 8-second loop core with two strategies: ping-pong triangle phase (seam-continuous by construction) and wraparound sawtooth + raised-cosine boundary crossfade to a lagged copy (C0 **and** C1 at the seam — zero-slope ramp ends). All periodic terms derive from the wrapped phase only, so `frame(t=0)` and `frame(t=period)` are **bit-identical**. `CanvasLoopRenderer` — per-surface loop clock (origin-anchored, pause/resume without phase jump, seek) + 2×3 affine Compose matrix composition. `AmbientGlowShader` — the AGSL RuntimeShader source for the Now-Playing ambient glow (dual breathing radial gradients, domain-warped fbm, YIQ hue drift, vignette, looped dither grain — every animated term exactly periodic except the crossfaded scroll layer) plus a zero-allocation per-frame uniform generator (`GlowShaderParams`, 14 uniforms / 21 floats) with NaN/Inf-hostile sanitization and a flat-float config packing for JNI. |
-| `audio/` | **Phase 3 (offline remux, Gaps #38/#44):** `OpusPacketParser` — RFC 6716 TOC/frame accounting (codes 0-3, VBR size runs with the 254/255 extension rule, padding runs, 48-frame/1275-byte limits, 48 kHz sample deltas) + TOC resync scan. `AdtsFrameParser` — ISO 14496-3 ADTS validation (syncword, layer-0, rate indices, 13-bit frame lengths, CRC detection, strict 44.1/48 kHz ladder mode) + normalized header writer. `AudioFrameRemuxer` — validated packet-stream remuxer: Opus -> real Ogg Opus (BOS OpusHead + OpusTags pages, lacing tables, granule positions, RFC 3533 CRC-32 with constexpr table, EOS page); AAC -> clean normalized ADTS with verbatim payloads and byte-exact CRC-frame passthrough. Truncated/corrupt/out-of-order packets are dropped and counted — zero heap on the per-packet path, fixed 66 KB page staging bigger than any legal Opus packet. |
-| `palette/` | **Phase 3 (custom covers, Gap #57):** `BitmapPaletteExtractor` — SIMD-accelerated dominant-color extraction: NEON 16-pixel / SSE2 4-pixel batched histogramming into a 4096-bin 4-bit RGB space with population + per-channel weighted sums (bit-exact scalar fallback, RGB565 bit-replication path), modified median cut (population-weighted max-variance axis, weighted-median counting-sort splits, 24 boxes), bounded K-means subset refinement with deterministic farthest-bin reseeding, and role scoring: vibrant/muted targets with 3-pass relaxation, WCAG relative-luminance text-contrast pick (black/white, ratio reported), and a darkened desaturated ambient-glow derivative wired for the AGSL shader. Outputs the primary/secondary/text-foreground/ambient quartet as ARGB; deterministic bit-for-bit across runs; zero heap per call (~64 KB member scratch, 1M px in ~6 ms). |
-| `include/` + `src/` | **Phase 4 (audio sinks + WearOS codec):** `AudioSink` (`audio_sink_ringbuffer.h/.cpp`) — lock-free SPSC sink ring decoupling the float producer from the AudioTrack / companion-network consumer: free-running uint64 head/tail cursors with acquire/release publication, every cursor and telemetry counter on its own `alignas(64)` cache line, power-of-two capacity with two-segment memcpy across the wrap. Vectorized Float32→PCM16 with hard clamping (NEON `vcvtnq_s32_f32`+`vqmovn_s32` on arm64, sign-biased `vcvtq_s32_f32` on v7, SSE2 `cvtps`+`packs` on x86-64, per-path rounding within 1 LSB), SIMD stereo→mono downmix, anti-aliased Blackman windowed-sinc FIR decimation (48k→24k/16k, unity DC gain), lossless non-blocking `WriteFloat` (AudioTrack#write parity), watermarks/fullness/underrun/overrun/latency-ms telemetry, and a bit-pattern finite check the production `-ffast-math` build cannot fold. `FramePacketizer` (`wear_audio_encoder.h/.cpp`) — BLE / Wi-Fi Direct MTU framing (512 B–4 KB, whole-frame chunking) with 8-byte LE header `[Magic][FrameSeq][SampleRateEnum][Flags][PayloadSize]` + IEEE CRC32 (constexpr table), 65536-wrapping sequences with continuation chaining, zero-run RLE compressor for digital silence (literal tokens capped at 254 so they can never collide with the 0xFF run marker), and a monotonic token-bucket rate limiter (bytes/s + burst, injectable clock, no-mint on clock regress) that defers packets with backpressure telemetry instead of overflowing watch Bluetooth queues. `streamify_audio_sinks.h` + `src/jni_bridge_audio_sinks.cpp` — the SEVEN frozen JNI symbols for `com.streamify.core.native_.NativeAudioSink` (nativeCreateSink / nativeWriteFloat / nativeReadDirect / nativeReadFramesF32 / nativeGetStats / nativeFlush / nativeDestroy — WS-C/C1 landed the bridge; the six Phase-4a entrypoints plus the MP-HAL05 additive f32 pull edge): opaque registry handles (never raw pointers) with mutex-guarded shared_ptr keep-alive, `GetPrimitiveArrayCritical` writes with lengths resolved before pinning, zero-copy frame-aligned DirectByteBuffer reads for AudioTrack / network pipelines, negative create sentinels on rejection, the JNI_SHIELD panic barrier on every export, and the documented 96-byte LE stats wire (magic 0x51AB0001) with change-detect sequence. |
-| `engine/` (jam core) | `PtpEngine` — IEEE-1588-style two-way sync, two-state Kalman (offset + drift) on `CLOCK_MONOTONIC_RAW`, RTT-exponentially-weighted measurement variance, wait-free seqlock readout. `HardwareLatencyProfiler` — write-head→air latency regression over `AudioTrack.getTimestamp()` anchors, MONOTONIC↔RAW bridging, per-route/codec priors. |
-| `physics/` | 6-DOF RK4 fluid dynamics (AirDrop tokens), NEON vector store. |
-| `storage/` | SQLite WAL layer, lock-free SPSC telemetry buffer, SHA-256 proof-of-compute. |
-| `ingest/` | Native ingest helpers (+ vendored miniaudio). |
-| `jni/` | `jni_bridge.cc` — 87 name-mangled JNI entry points (`Java_com_streamify_app_data_NativeBridge_*`), every export wrapped in the `JNI_SHIELD` panic barrier (WS-C/C6; `JniShield.h` mirrors the Rust catch_unwind house model — `scripts/jni_panic_boundary_check.py` enforces it across both trees). `jni_bridge_dsp.cc` — the frozen-ABI DSP/clock/latency bridge (PTP clock, fractional resampler, playout-delay calibration) with the same shielding. `SharedInstances.h` — the single resampler/profiler pair shared by both bridges (one party-mode toggle reaches both engines). The sink bridge lives at `src/jni_bridge_audio_sinks.cpp` (see the row above). C9 note: this row previously listed five bridge TUs (`jni_bridge_native_dsp_engine.cc`, `jni_bridge_harmonic_engine.cc`, `jni_bridge_media_palette.cc`, `jni_bridge_audio_remuxer.cc`, `jni_bridge_agsl_glow.cc`) and their Kotlin classes that never landed — that surface was consolidated into the two `.cc` bridges above and the Rust-side bridges (`rust/crates/streamify-ffi/src/jni_bridge*.rs`); the bi-directional JNI parity gate (`scripts/jni_parity_check.py`) is the enforcement that no phantom TU or declaration can survive. |
+```
+native/
+├── include/     audio_sink_ringbuffer.h, desktop_hal.h, {wasapi,pipewire,alsa,coreaudio}_render_core.h,
+│                virtual_hal.h, linuxhal_embedded_abi.h, streamify_audio_sinks.h (frozen sink ABI)
+├── src/         audio_sink_ringbuffer.cpp, jni_bridge_audio_sinks.cpp (7 symbols),
+│                desktop_hal_c_api.cpp, virtual_hal.cpp, palette SIMD
+├── dsp/         LufsNormalizer, SoftKneeLimiter, MasterChain, ChannelOps,
+│                AcousticPhaseResampler, LyricAligner, kissfft (vendored)
+├── audio/       wasapi_pull_adapter.cpp, pipewire_driver.cpp, coreaudio_pull_adapter.cpp,
+│                ADTS/Opus parsers, AudioFrameRemuxer
+├── engine/      PtpEngine (Kalman-Bucy), HardwareLatencyProfiler, StreamifyDB (vendored sqlite3),
+│                TelemetryEngine, VectorStore, AirDropPhysicsEngine, TaskOrchestrator
+├── jni/         jni_bridge.cc (86 Java_com_streamify_* entry points, JNI_SHIELD), JniShield.h
+├── mix/         AudioRingBuffer.h, PeerMixPool.h (32-peer SPSC fan-in, header-only)
+├── tests/       20 test files, AllocGuard.h, lufs_golden_vectors.h, fuzz harnesses
+└── ingest/      AudioPipeline (HPCP chromagram, Ellis BPM), vendored miniaudio
+```
 
-⚠️ JNI symbols are name-mangled to
-`com.streamify.app.data.NativeBridge` and
-`com.streamify.core.native_.NativeAudioSink` — those Kotlin classes'
-packages are an ABI contract (`scripts/jni_parity_check.py` enforces
-the match in both directions, including the `_1` escape the underscore
-package segment requires).
+## AudioSink: the SPSC ringbuffer
 
-**Desktop audio output status (C9):** wired in C5 — the loadable
-`streamify_desktop_hal` module (CMake target: the plain-C sink registry
-ABI from `include/desktop_hal.h` + the WASAPI / PipeWire-ALSA pull
-adapter facades) is built on the Linux and Windows desktop lanes and
-round-tripped from the JVM by `DesktopJnaEngineSmokeTest`; the engine-side
-relay onto the Rust `playback_ring()` is ENG-1's follow-up on the engine
-lane. The Windows MSVC rot lane (C4) compiles this tree with Visual
-Studio on every core PR.
+`include/audio_sink_ringbuffer.h`, `src/audio_sink_ringbuffer.cpp`,
+namespace `streamify::sink`.
 
-Tests run in CI as TWELVE sanitizer shards (WS-C/C3 switched on the seven
-previously CI-dead suites): `native-dsp` (10M-frame SPSC stress, SIMD accuracy,
-packetizer corruption ladder, registry races, zero-alloc audits),
-`native-simd-physics`, `native-telemetry-storage`, plus
-`native-dsp-phase-lock`, `native-virtual-hal`, `native-coreaudio-render-core`,
-`native-audio-sink-ringbuffer`, `native-desktop-hal-render-cores`,
-`native-capability-abi-parity`, `native-linux-hal-driver` (ALSA null PCM — no
-hardware needed), and the two WS-C lanes: `native-jni-sink-bridge` (C1: the seven
-frozen symbols through a host stub JNIEnv) and `native-lufs-parity` (C8: the C++
-BS.1770-4 path vs the canonical Rust golden vectors). All build standalone on any
-C++20 host — no NDK required:
+- Capacity: power of two, default 8192 frames, bounds 64 to 2^22; sample
+  rates 8000-192000 Hz; block granularity 256 frames; storage is f32
+  end-to-end (PCM16 conversion exists only at the legacy JNI read edge).
+- Cacheline isolation: `kCacheLineSize = 128` on Apple Silicon aarch64, 64
+  elsewhere. Every cursor and counter is `alignas(kCacheLineSize)`; the flush
+  ack lives on the consumer's line so requesters never bounce the audio
+  callback's line. (Note: `std::hardware_destructive_interference_size` is
+  deliberately not used.)
+- Memory orderings (quoted from the implementation):
+  - producer: `tail_.load(acquire)` ... `head_.store(release)`; counters relaxed
+  - consumer: `head_.load(acquire)` ... `tail_.store(release)`; counters relaxed
+  - watermarks: CAS loops, relaxed
+- Generational flush: `RequestFlush()` bumps a relaxed generation, the
+  consumer moves `tail_` to `head_` under acquire/release and acks; 100 ms
+  ack timeout then lazy apply. Flushed reads return silence and do not count
+  as underruns. Never call from the consumer thread.
+- Allocation policy: ring, scratch, and decimator history are allocated once
+  at construction (`std::align_val_t` over-aligned new); hot paths are
+  two-segment memcpy. Zero-alloc is machine-checked by `tests/AllocGuard.h`
+  (global new/delete counters linked into the suites).
+
+## Mastering chain
+
+Order is fixed in `dsp/MasterChain`: LUFS glide gain -> mono downmix and
+constant-power balance -> true-peak soft-knee limiter last. LUFS measures the
+pre-gain signal so user balance choices never contaminate normalization.
+
+**LUFS normalizer** (`dsp/LufsNormalizer`, ITU-R BS.1770-4 / EBU R128):
+400 ms blocks with 75 % overlap (100 ms hop); channel weights L/R/C = 1.0,
+surround = 1.41; absolute gate -70 LUFS, relative gate 10 LU below
+preliminary integrated loudness; `loudness = -0.691 + 10*log10(sum)`. K-weighting
+uses the exact 48 kHz spec biquads and the De Man fit for other rates
+(reproduces the 48k literals to < 2.5e-3). Default target -14 LUFS (clamp
+[-23, -11]), correction clamp ±12 dB, 25 ms per-sample glide in linear
+domain, 0.5 s setpoint EMA. Block store is fixed-capacity (65,536 blocks,
+~109 min at 48 kHz) with energy-mean compaction on overflow, bounded error
+< 0.02 LU. Rust parity is pinned by shared golden vectors
+(`tests/lufs_golden_vectors.h`, generated by
+`scripts/generate_lufs_golden_vectors.py`).
+
+**Soft-knee limiter** (`dsp/SoftKneeLimiter`): ceiling -1.0 dBFS (clamp
+[-12, 0]), knee 4 dB (clamp [0.5, 12]). Below the knee the transfer is
+bit-transparent identity; above, `sat = kneeLin + span * tanh((|x|-kneeLin)/span)`
+— C1-continuous with no fixed ratio. A memoryless tanh safety stage bounds
+output at ceiling x 1.004 regardless of ballistics. Sidechain is 4x
+oversampled (cascaded 31-tap halfband interpolators, Kaiser beta 9) for
+true-peak detection; lookahead is 144 frames (3 ms at 48 kHz) with an exact
+sliding-minimum schedule (zero overshoot by construction) and an 80 ms
+one-pole release, upward only. NaN/Inf guards use bit-pattern checks because
+production builds run `-ffast-math`.
+
+**Resampler** (`dsp/AcousticPhaseResampler`): windowed-sinc, Kaiser beta 9
+(~-85 dB stopband), 32 taps, 512-phase polyphase grid with linear
+interpolation between banks (phase noise below -140 dB), 32.32 fixed-point
+position, drift clamp ±500 PPM (~0.87 cents), 250 ms slew, silent-PLL bypass
+that is bit-exact memcpy passthrough.
+
+**SIMD**: arm64/armv7 NEON and SSE2 paths for f32-to-i16 conversion, stereo
+downmix, tap interpolation, palette histogramming, and peer mixing
+(`vld2q_f32`, `vfmaq_f32`, `_mm_cvtps_epi32`).
+
+## Threading and RT invariants
+
+One producer thread (the Media3 renderer on Android), one consumer thread
+(the HAL callback or feeder), control threads for stats/flush/clock reads —
+never the consumer. Every desktop render core header states the invariant:
+the pull path performs zero dynamic allocations, takes zero locks, makes
+zero system calls, and dereferences one atomically published sink pointer
+(CoreAudio adds: touches zero Objective-C/Swift runtime state). DAC clock
+pairs are published through single-writer seqlocks (odd mark, release fence,
+payload, even mark; readers retry at most 64 spins). Underruns silence-fill
+the starved tail; the clock is never stalled.
+
+## HAL integration
+
+- **Android**: no in-tree AAudio/Oboe C++ code. Data plane: Media3 renderer
+  -> `nativeWriteFloat` (JNI) -> AudioSink -> feeder thread pulls
+  `nativeReadFramesF32` -> Kotlin `AudioTrackPullOutput`
+  (ENCODING_PCM_FLOAT). `AudioTrack.getTimestamp()` / AAudio timestamps feed
+  `HardwareLatencyProfiler::submitTrackTimestamp` (128-anchor window,
+  6 s half-life, MAD 3-sigma rejection, 5 ms gate on clock-bridge noise).
+- **Windows (WASAPI)**: `audio/wasapi_pull_adapter.cpp` — IAudioClient3
+  shared-low-latency / shared / event-driven exclusive; render thread raised
+  to MMCSS "Pro Audio"; `IAudioClock::GetPosition` pairs published via
+  seqlock; 128-bit intermediates in tick rescaling.
+- **Linux**: `audio/pipewire_driver.cpp` — PipeWire via
+  `dlopen("libpipewire-0.3.so.0")` with frozen embedded ABI
+  (`include/linuxhal_embedded_abi.h`), ALSA fallback
+  `dlopen("libasound.so.2")`; the pw thread-loop lock is never held in the
+  process callback; clock sampled by a control-plane thread.
+- **macOS/iOS (CoreAudio)**: `audio/coreaudio_pull_adapter.cpp` — AUHAL /
+  RemoteIO render callback pulling through a `RenderFrameSource` virtual;
+  timestamps from `AudioTimeStamp` with `mach_timebase_info` cached off-thread.
+
+Clock acceptance: `DacPresentationClock` interpolation must stay within
+5 ms of simulated presentation time; `tests/test_virtual_hal.cpp` enforces
+it numerically and includes a negative control asserting a deliberately
+broken estimator exceeds 5 ms.
+
+## Build and test
+
+CMake >= 3.22.1, C++20. Android: `streamify_native_core` shared library.
+Desktop: `streamify_desktop_hal` (WASAPI links avrt/ole32; the Linux driver
+links only dl/m/pthread). Test executables include `test_audio_sink_ringbuffer`
+(10M-frame SPSC stress, flush protocol, AllocGuard),
+`desktop_hal_render_core_test_suite` (WASAPI/PipeWire/ALSA cores driven
+callback-for-callback against VirtualHAL), `linux_hal_driver_test_suite`
+(Linux only), `lufs_parity_test_suite`, `jni_sink_bridge_test_suite`
+(host JNIEnv stub), and more — 12 CTest registrations on Linux. LibFuzzer
+harnesses (`-fsanitize=fuzzer,address,undefined`) build under clang only.
+Flags: `-O3 -ffast-math -flto` in production (tests are overridden with
+`-fno-fast-math -O2`), ASAN option available, arm64-v8a adds
+`-march=armv8-a+simd+crypto`.
+
+```bash
+cmake -B build -S . -DENABLE_TESTS=ON
+cmake --build build --target test_audio_sink_ringbuffer
+cmake --build build --target desktop_hal_render_core_test_suite
+ctest --test-dir build --output-on-failure
+```
+
+## Interpretation
+
+The dual "feeder + AudioTrack" design on Android (rather than an in-tree
+AAudio callback) appears to be a migration-era artifact: the Media3 renderer
+owns the AudioTrack, so the C++ sink sits behind it and the profiler consumes
+AAudio/AudioTrack timestamps instead of driving the callback. The stale
+"17-frame input tail" comment in `SoftKneeLimiter.cc` (constant is 25) and
+the header's "1.5 ms attack one-pole" claim (the exact schedule owns the
+descent; no attack one-pole exists) are known comment drift — the code is
+authoritative.
+
+---
+Verified against commit 8b858b1c. Staleness protocol: docs/adr/README.md.
+<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->

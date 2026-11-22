@@ -2,7 +2,7 @@
 
 Step-by-step recipes for the most common changes. Each recipe lists
 the exact files to touch, in order. When in doubt about *where*
-something belongs, check [ARCHITECTURE.md](ARCHITECTURE.md) §3 rules.
+something belongs, check [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) §3 rules.
 
 ---
 
