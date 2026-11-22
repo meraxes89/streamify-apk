@@ -591,7 +591,7 @@ class FakeLocalPlaylistRepository(
             } catch (_: Throwable) {}
         }
         // Fallback to demo catalog seed playlists if storage is empty
-        val seedPls = DemoCatalogLoader.getCatalog()?.get("seedLibrary")?.jsonObject?.get("playlists")?.jsonArray
+        val seedPls = DemoCatalogLoader.getRootCatalog()?.get("seedLibrary")?.jsonObject?.get("playlists")?.jsonArray
         if (seedPls != null && seedPls.isNotEmpty()) {
             playlists.clear()
             var idCounter = 1L
@@ -764,7 +764,7 @@ class FakeSongRepository : SongRepository {
             } catch (_: Throwable) {}
         }
         // Fallback to demo catalog seed songs if storage is empty
-        val seedSongs = DemoCatalogLoader.getCatalog()?.get("seedLibrary")?.jsonObject?.get("songs")?.jsonArray
+        val seedSongs = DemoCatalogLoader.getRootCatalog()?.get("seedLibrary")?.jsonObject?.get("songs")?.jsonArray
         if (seedSongs != null && seedSongs.isNotEmpty()) {
             for (elem in seedSongs) {
                 val obj = elem.jsonObject

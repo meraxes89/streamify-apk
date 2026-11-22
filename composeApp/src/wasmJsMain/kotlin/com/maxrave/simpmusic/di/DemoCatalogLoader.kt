@@ -2,6 +2,7 @@ package com.maxrave.simpmusic.di
 
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
+import kotlinx.browser.localStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
@@ -9,6 +10,18 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+
+fun getWebLocalStorage(key: String): String? = try {
+    localStorage.getItem(key)
+} catch (_: Throwable) {
+    null
+}
+
+fun setWebLocalStorage(key: String, value: String) {
+    try {
+        localStorage.setItem(key, value)
+    } catch (_: Throwable) {}
+}
 
 object DemoCatalogLoader {
     private const val CDN_URL = "https://github.com/meraxes89/docs/releases/download/v1.0.0/demo-catalog.json"
@@ -25,7 +38,7 @@ object DemoCatalogLoader {
 
         // 1. Try local storage cache first
         try {
-            val cachedJson = getLocalStorage(STORAGE_KEY)
+            val cachedJson = getWebLocalStorage(STORAGE_KEY)
             if (!cachedJson.isNullOrBlank()) {
                 val parsed = Json.parseToJsonElement(cachedJson).jsonObject
                 _catalog.value = parsed
@@ -44,7 +57,7 @@ object DemoCatalogLoader {
                 val parsed = Json.parseToJsonElement(responseText).jsonObject
                 _catalog.value = parsed
                 isLoaded = true
-                setLocalStorage(STORAGE_KEY, responseText)
+                setWebLocalStorage(STORAGE_KEY, responseText)
                 seedLocalStorageIfEmpty(parsed)
                 println("[DemoCatalogLoader] Successfully fetched and cached demo catalog from CDN")
             }
@@ -57,17 +70,17 @@ object DemoCatalogLoader {
         val seedLib = root["seedLibrary"]?.jsonObject ?: return
 
         // Seed songs if streamify_songs is empty
-        val existingSongs = getLocalStorage("streamify_songs")
+        val existingSongs = getWebLocalStorage("streamify_songs")
         if (existingSongs.isNullOrBlank() || existingSongs == "[]") {
             val songsArr = seedLib["songs"]?.jsonArray
             if (songsArr != null && songsArr.isNotEmpty()) {
-                setLocalStorage("streamify_songs", songsArr.toString())
+                setWebLocalStorage("streamify_songs", songsArr.toString())
                 println("[DemoCatalogLoader] Seeded ${songsArr.size} songs into localStorage")
             }
         }
 
         // Seed playlists if streamify_local_playlists is empty
-        val existingPlaylists = getLocalStorage("streamify_local_playlists")
+        val existingPlaylists = getWebLocalStorage("streamify_local_playlists")
         if (existingPlaylists.isNullOrBlank() || existingPlaylists == "[]") {
             val plArr = seedLib["playlists"]?.jsonArray
             if (plArr != null && plArr.isNotEmpty()) {
@@ -87,7 +100,7 @@ object DemoCatalogLoader {
                         )
                     )
                 }
-                setLocalStorage("streamify_local_playlists", Json.encodeToString(storedPlaylists))
+                setWebLocalStorage("streamify_local_playlists", Json.encodeToString(storedPlaylists))
                 println("[DemoCatalogLoader] Seeded ${storedPlaylists.size} playlists into localStorage")
             }
         }
@@ -99,4 +112,5 @@ object DemoCatalogLoader {
     fun getBrowseItem(id: String): JsonObject? = _catalog.value?.get("browse")?.jsonObject?.get(id)?.jsonObject
     fun getPlayerItem(videoId: String): JsonObject? = _catalog.value?.get("player")?.jsonObject?.get(videoId)?.jsonObject
     fun getAnalytics(): JsonObject? = _catalog.value?.get("analytics")?.jsonObject
+    fun getRootCatalog(): JsonObject? = _catalog.value
 }
