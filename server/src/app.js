@@ -107,6 +107,7 @@ export async function createApp({
   bufferPool = getDefaultBufferPool(),
   palInstance = pal,
   tierGovernor,
+  tunnelManager = null,
   logger = false,
 } = {}) {
   // L0 Survival Shell initialization (wake lock + oom_score_adj tuning)
@@ -124,9 +125,18 @@ export async function createApp({
   configureGlobalUpstreamPool();
   prewarmUpstreamTransport();
 
+  const isTunnelEnabled = Boolean(
+    tunnelManager ||
+    process.env.STREAMIFY_TUNNEL === '1' ||
+    process.env.CLOUDFLARE_TUNNEL === '1' ||
+    process.env.CLOUDFLARE_TUNNEL_TOKEN ||
+    process.env.STREAMIFY_TRUST_PROXY === '1'
+  );
+
   const app = Fastify({
     logger,
     exposeHeadRoutes: false,
+    trustProxy: isTunnelEnabled,
   });
 
   // CORS & Private Network Access
@@ -183,6 +193,19 @@ export async function createApp({
       sabr: streamGateway.sabrEngine?.getStatus() || {},
       tier: governor.getStatus(),
       pal: palInstance.capabilities,
+      tunnel: tunnelManager ? tunnelManager.getStatus() : { enabled: isTunnelEnabled },
+    };
+  });
+
+  app.get('/api/tunnel', async () => {
+    if (tunnelManager) {
+      return tunnelManager.getStatus();
+    }
+    return {
+      enabled: isTunnelEnabled,
+      status: 'disabled',
+      url: null,
+      mode: process.env.CLOUDFLARE_TUNNEL_TOKEN ? 'named' : 'quick',
     };
   });
 
@@ -217,6 +240,7 @@ export async function createApp({
         'platform-abstraction-layer',
         'elastic-tier-governor',
         'universal-bootstrap',
+        'cloudflare-tunnel',
       ],
     };
   });
