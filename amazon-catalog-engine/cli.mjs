@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * Standalone CLI for Amazon Catalog Engine (Full Expanded Suite)
- * 
+ *
+ * AMAZON-FIRST POLICY (2026-11): stream resolution never silently bridges
+ * to YouTube. `resolve`/`lossless` return Amazon-native artifacts: the REAL
+ * DMLS full-song link graph (authenticated) or the REAL guest sample URL
+ * (signed CloudFront MP3, anonymous). The YouTube bridge is the explicit
+ * `resolve-youtube` command only.
+ *
  * Usage:
  *   node cli.mjs probe                 Run live discovery probe (API 12)
  *   node cli.mjs session [territory]   Print current session metadata
@@ -13,8 +19,10 @@
  *   node cli.mjs thumb <url> [size]    Scale artwork thumbnail (API 6)
  *   node cli.mjs scrape <url>          Scrape external playlist link (API 7)
  *   node cli.mjs lyrics <song> <band>  Fetch synced lyrics via LRCLIB (API 8)
- *   node cli.mjs resolve <title> [art] Resolve audio stream URL (API 9)
+ *   node cli.mjs resolve <title> [art] Resolve the REAL Amazon stream (native/sample)
+ *   node cli.mjs sample <asin|title>   REAL guest sample URL (signed CloudFront MP3)
  *   node cli.mjs flac-links <asin> [flags] Solve REAL Amazon DMLS stream links (FLAC Ultra HD)
+ *   node cli.mjs resolve-youtube <t> [a] EXPLICIT YouTube bridge (opt-in legacy path)
  *   node cli.mjs manifest <title>      Generate DASH MPD manifest (API 10)
  *   node cli.mjs prefetch <title>      Prefetch descriptor (API 11)
  *   node cli.mjs podcast <query>       Search and stream podcasts
@@ -145,14 +153,106 @@ async function main() {
     }
 
     case 'resolve': {
+      // AMAZON-FIRST: real DMLS links (authenticated) or the real guest
+      // sample URL. --bridge opts into the explicit YouTube path.
       const trackName = args[1];
       const artistName = args[2] || '';
       if (!trackName) {
         console.error('Error: Please provide track title.');
         process.exit(1);
       }
-      console.log(`Resolving hybrid audio stream for "${trackName}" by "${artistName}"...`);
-      const resolved = await client.resolveAudio({ title: trackName, artist: artistName });
+      const allowBridge = args.includes('--bridge');
+      console.log(`Resolving REAL Amazon audio stream for "${trackName}" by "${artistName}"...`);
+      const resolved = await client.resolveAudio({ title: trackName, artist: artistName }, { allowYoutubeBridge: allowBridge });
+
+      console.log('\n=================== AMAZON STREAM RESOLUTION ===================');
+      console.log(` Source        : ${resolved.source}${resolved.explicitBridge ? ' (EXPLICIT opt-in)' : ''}`);
+      console.log(` ASIN          : ${resolved.asin || '(none)'}`);
+      console.log(` Stream URL    : ${resolved.streamUrl || '(none)'}`);
+      if (resolved.previewOnly) {
+        console.log(` Preview scope : ~30s @ 64 kbps MP3 (expires ${new Date((resolved.expiresAt || 0) * 1000).toISOString()})`);
+        console.log(` Full song     : AUTH_REQUIRED - supply Amazon Music cookies to unlock (see recipe below)`);
+      }
+      if (resolved.representation) {
+        console.log(` Rendition     : ${resolved.specLabel} (tier=${resolved.tier}, codec=${resolved.codec})`);
+      }
+      if (resolved.drm?.protected) {
+        console.log(` DRM           : ${resolved.drm.envelope} - bytes are CENC-encrypted; engine never decrypts`);
+      }
+      if (resolved.native?.status) {
+        console.log(` Native verdict: ${resolved.native.status}`);
+        if (resolved.native.reason) console.log(`   reason      : ${String(resolved.native.reason).slice(0, 140)}`);
+        if (resolved.native.howToAuthenticate?.recipe) {
+          console.log(`   unlock     :`);
+          for (const step of resolved.native.howToAuthenticate.recipe) console.log(`     - ${step}`);
+        }
+      }
+      console.log('==================================================================\n');
+      console.log(JSON.stringify(resolved, null, 2));
+      break;
+    }
+
+    case 'sample': {
+      // The REAL guest vector: getStreamingURLsForSamples with the registered
+      // 'WebCP' client -> signed CloudFront MP3 URLs, anonymously.
+      //   node cli.mjs sample <asin|title> [artist] [--territory=US]
+      //        [--out=file.mp3] [--verify]
+      const target = args[1];
+      if (!target || target.startsWith('--')) {
+        console.error('Usage: node cli.mjs sample <asin|title> [artist] [--territory=US] [--out=file.mp3] [--verify]');
+        process.exit(1);
+      }
+      const getFlag = (name) => {
+        const f = args.find(a => a.startsWith(`--${name}=`));
+        return f ? f.split('=').slice(1).join('=') : null;
+      };
+      const hasFlag = (name) => args.includes(`--${name}`);
+      const territory = (getFlag('territory') || 'US').toUpperCase();
+      const looksLikeAsin = /^[A-Z0-9]{10}$/.test(target);
+
+      console.log(`Solving REAL Amazon sample URL (guest vector) for ${looksLikeAsin ? 'ASIN ' + target : '"' + target + '"'} [${territory}]...`);
+      const sample = looksLikeAsin
+        ? await client.dmlsSolver.solveSampleUrl({ asin: target, territory })
+        : await client.getSampleStreamUrl({ title: target, artist: args[2] || '' }, { territory });
+
+      console.log(`\n=================== AMAZON SAMPLE URL (guest) ===================`);
+      console.log(` Status   : ${sample.status}`);
+      console.log(` URL      : ${sample.url || '(none)'}`);
+      if (sample.reason) console.log(` Reason   : ${sample.reason}`);
+      if (sample.expiresAt) console.log(` Expires  : ${new Date(sample.expiresAt * 1000).toISOString()}`);
+      console.log('==================================================================\n');
+
+      if (sample.url && hasFlag('verify')) {
+        const v = await client.dmlsSolver.verifyLinkReachability(sample.url);
+        console.log(` Reachability : ${v.reachable ? 'LIVE (HTTP ' + v.httpStatus + ')' : 'DOWN'}${v.contentType ? ' | ' + v.contentType : ''}${v.totalBytes ? ' | ' + v.totalBytes + ' bytes' : ''}`);
+        if (v.firstBytesHex) console.log(` First bytes  : ${v.firstBytesHex} (ID3 detected: ${v.firstBytesHex.startsWith('494433') ? 'yes - MP3 tag' : 'no'})`);
+      }
+
+      const out = getFlag('out');
+      if (out && sample.url) {
+        const { HttpAudioSource } = await import('./src/audio-source.mjs');
+        const audio = await new HttpAudioSource().load({ streamUrl: sample.url });
+        fs.writeFileSync(out, audio.bytes);
+        console.log(`\nWrote ${audio.bytes.length} bytes -> ${out}`);
+        console.log(` Honest sniff : codec=${audio.codec.codec} lossless=${audio.codec.lossless} (${audio.codec.detail})`);
+        console.log(` Content-Type : ${audio.contentType}`);
+      }
+
+      console.log(JSON.stringify({ ...sample, track: undefined }, null, 2));
+      break;
+    }
+
+    case 'resolve-youtube': {
+      // The EXPLICIT YouTube bridge (legacy hybrid path). Opt-in only - the
+      // default `resolve` never routes here.
+      const trackName = args[1];
+      const artistName = args[2] || '';
+      if (!trackName) {
+        console.error('Error: Please provide track title.');
+        process.exit(1);
+      }
+      console.log(`Resolving via the EXPLICIT YouTube bridge (opt-in) for "${trackName}" by "${artistName}"...`);
+      const resolved = await client.resolveAudioViaYoutubeBridge({ title: trackName, artist: artistName });
       console.log(JSON.stringify(resolved, null, 2));
       break;
     }
@@ -161,17 +261,19 @@ async function main() {
       // THE REAL Amazon stream-link solver: DMLS getDashManifestsV2 (FLAC/Opus
       // path, SIREN_KATANA + TRACK_PSSH) -> inline MPD -> representation cards
       // -> init/segment CDN URLs (+ optional first-chunk URL, DRM pssh card).
+      // tier=lossy switches to the V2 bitrateTypeList manifest path (the
+      // account's lossy floor - no content protection requested).
       //
-      //   node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra]
+      //   node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra|hd|lossy|best]
       //        [--cookies-file=path] [--with-first-chunk] [--force-wire]
-      //        [--save-mpd=file]
+      //        [--no-clear-lead] [--verify] [--save-mpd=file]
       //
       // Credentials resolve from (priority): --cookies-file, env
       // AMAZON_MUSIC_COOKIES / AMAZON_MUSIC_OAUTH_TOKEN /
       // AMAZON_MUSIC_COOKIES_FILE, ~/.streamify/amazon-music.cookies.
       const asin = args[1];
       if (!asin || asin.startsWith('--')) {
-        console.error('Usage: node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra|hd|lossy|best] [--cookies-file=path] [--with-first-chunk] [--force-wire] [--save-mpd=file]');
+        console.error('Usage: node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra|hd|lossy|best] [--cookies-file=path] [--with-first-chunk] [--force-wire] [--no-clear-lead] [--verify] [--save-mpd=file]');
         process.exit(1);
       }
       const getFlag = (name) => {
@@ -183,15 +285,17 @@ async function main() {
       const tier = getFlag('tier') || 'ultra';
       const includeFirstChunk = hasFlag('with-first-chunk');
       const forceWire = hasFlag('force-wire');
+      const noClearLead = hasFlag('no-clear-lead');
+      const verify = hasFlag('verify');
 
       const { resolveAmazonMusicCredential } = await import('./src/credentials.mjs');
       const credential = resolveAmazonMusicCredential({ cookiesFile: getFlag('cookies-file') });
 
-      console.log(`Solving Amazon DMLS stream links for ASIN ${asin} [${territory}] tier=${tier} ...`);
+      console.log(`Solving Amazon DMLS stream links for ASIN ${asin} [${territory}] tier=${tier}${tier === 'lossy' ? ' (V2 bitrateTypeList path)' : ''} ...`);
       console.log(`Credential: ${credential.authenticated ? credential.toJSON().mode + ' (' + credential.source + ')' : 'anonymous guest'}`);
 
       const solved = await client.solveStreamLinks(asin, {
-        territory, tier, credential, includeFirstChunk, forceWire
+        territory, tier, credential, includeFirstChunk, forceWire, noClearLead
       });
 
       console.log('\n=================== AMAZON DMLS SOLVE ===================');
@@ -245,6 +349,20 @@ async function main() {
         if (solved.firstChunk.cdnType) console.log(`   cdn         : ${solved.firstChunk.cdnType}`);
       }
 
+      if (verify) {
+        const urls = [];
+        if (solved.links?.initUrl) urls.push(['init segment', solved.links.initUrl]);
+        for (const [i, u] of (solved.links?.firstSegmentUrls || []).slice(0, 2).entries()) urls.push([`segment #${i + 1}`, u]);
+        if (solved.firstChunk?.url) urls.push(['first chunk', solved.firstChunk.url]);
+        if (urls.length) {
+          console.log('\n LINK REACHABILITY (live Range probes):');
+          for (const [label, u] of urls) {
+            const v = await client.dmlsSolver.verifyLinkReachability(u);
+            console.log(`   ${label.padEnd(14)}: ${v.reachable ? 'LIVE (HTTP ' + v.httpStatus + ')' : 'DOWN (' + (v.reason || 'HTTP ' + v.httpStatus) + ')'}${v.totalBytes ? ' | ' + v.totalBytes + ' bytes total' : ''}${v.contentType ? ' | ' + v.contentType : ''}`);
+          }
+        }
+      }
+
       console.log('==========================================================\n');
 
       const saveMpd = getFlag('save-mpd');
@@ -283,8 +401,10 @@ async function main() {
         console.error('Error: Please provide track title.');
         process.exit(1);
       }
-      console.log(`Resolving lossless top-tier audio for "${trackName}" by "${artistName}"...`);
-      const resolved = await client.resolveLosslessAudio({ title: trackName, artist: artistName });
+      const tierArg = args.find(a => a.startsWith('--tier='));
+      const tier = (tierArg ? tierArg.split('=').slice(1).join('=') : 'best');
+      console.log(`Resolving lossless top-tier audio (Amazon-first ladder) for "${trackName}" by "${artistName}"...`);
+      const resolved = await client.resolveLosslessAudio({ title: trackName, artist: artistName }, { tier });
 
       // Native DMLS capability card (honest verdict on Amazon-side FLAC delivery)
       let native = null;
@@ -298,11 +418,12 @@ async function main() {
         console.log(` Status : ${native.status}`);
         console.log(` Reason : ${native.reason}`);
       } else {
-        console.log(' Not probed (pass --asin=<ASIN> to probe Amazon\'s native delivery surface).');
+        console.log(" Not probed (pass --asin=<ASIN> to probe Amazon's native delivery surface).");
       }
       console.log('==================================================================\n');
 
       console.log(JSON.stringify({
+        asin: resolved.asin,
         videoId: resolved.videoId,
         title: resolved.title,
         artist: resolved.artist,
@@ -310,6 +431,10 @@ async function main() {
         tier: resolved.tier,
         specLabel: resolved.specLabel,
         streamUrl: resolved.streamUrl,
+        sampleUrl: resolved.sampleUrl || null,
+        previewOnly: resolved.previewOnly || false,
+        expiresAt: resolved.expiresAt || null,
+        nativeLadder: resolved.nativeLadder || null,
         matchConfidence: resolved.matchConfidence,
         source: resolved.source,
         delivery: resolved.delivery,
@@ -515,6 +640,10 @@ async function main() {
     default: {
       console.log('Streamify Amazon Catalog Engine CLI (Complete Suite)');
       console.log('');
+      console.log('AMAZON-FIRST POLICY: stream resolution returns real Amazon artifacts only');
+      console.log('(DMLS full-song links when authenticated; the real guest sample URL otherwise).');
+      console.log('The YouTube bridge is EXPLICIT (resolve-youtube) - never a silent fallback.');
+      console.log('');
       console.log('Available Commands:');
       console.log('  node cli.mjs home [territory]      Editorial Home & Showcase');
       console.log('  node cli.mjs search <query>        Catalog Search');
@@ -524,9 +653,12 @@ async function main() {
       console.log('  node cli.mjs thumb <url> [size]    Thumbnail URL Formatter');
       console.log('  node cli.mjs scrape <url>          Scrape External Playlist');
       console.log('  node cli.mjs lyrics <song> <band>  Synchronized Lyrics');
-      console.log('  node cli.mjs resolve <song> <band> Hybrid Stream Resolver');
-      console.log('  node cli.mjs lossless <song> <band> [--asin=ASIN] Lossless Top-Tier + Native DMLS Capability Card');
+      console.log('  node cli.mjs resolve <song> <band> [--bridge] REAL Amazon stream (native/sample)');
+      console.log('  node cli.mjs sample <asin|song> [artist] [--out=f.mp3] [--verify] REAL guest sample URL');
+      console.log('  node cli.mjs lossless <song> <band> [--asin=ASIN] [--tier=best] Amazon-first lossless ladder');
       console.log('  node cli.mjs lossless-full <song> <band> [--relay=base] Whole raw full-song bytes (honest codec sniff)');
+      console.log('  node cli.mjs flac-links <asin> [--tier=ultra|hd|lossy|best] [--verify] REAL DMLS stream links');
+      console.log('  node cli.mjs resolve-youtube <song> <band>   EXPLICIT YouTube bridge (opt-in)');
       console.log('  node cli.mjs inspect <file.flac|url>       Deep FLAC introspection: frames, seek, pacing');
       console.log('  node cli.mjs manifest <song>       DASH MPD Manifest');
       console.log('  node cli.mjs prefetch <song>       Stream Prefetch Descriptor');
