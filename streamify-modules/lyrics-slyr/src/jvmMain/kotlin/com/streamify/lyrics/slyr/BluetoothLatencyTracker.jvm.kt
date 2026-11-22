@@ -8,8 +8,16 @@ actual object BluetoothLatencyTracker {
     private val _dynamicDelayMs = MutableStateFlow(0)
     actual val dynamicDelayMs: StateFlow<Int> = _dynamicDelayMs.asStateFlow()
 
+    var latencyModel: LatencyModel? = null
+
     actual fun init(context: Any?) {
-        // Desktop (JVM) audio engines generally handle hardware timestamp delay natively
+        // Desktop HAL telemetry initializes latency model
+        latencyModel?.updateLatency(
+            halBufferMs = 0L,
+            linkMs = 0L,
+            confidence = LatencyConfidence.MEASURED,
+            routeName = "Desktop Audio Sink"
+        )
     }
 
     actual fun getDelayMs(): Int = 0

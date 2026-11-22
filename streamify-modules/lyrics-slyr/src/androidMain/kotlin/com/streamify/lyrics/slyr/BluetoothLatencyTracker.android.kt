@@ -17,6 +17,7 @@ actual object BluetoothLatencyTracker {
     actual val dynamicDelayMs: StateFlow<Int> = _dynamicDelayMs.asStateFlow()
 
     private var isInitialized = false
+    var latencyModel: LatencyModel? = null
 
     actual fun init(context: Any?) {
         val ctx = context as? Context ?: return
@@ -48,20 +49,67 @@ actual object BluetoothLatencyTracker {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                val isBluetooth = devices.any { device ->
-                    when (device.type) {
-                        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                        AudioDeviceInfo.TYPE_BLE_HEADSET,
-                        AudioDeviceInfo.TYPE_BLE_SPEAKER -> true
-                        else -> false
+                var delay = SPEAKER_DEFAULT_DELAY_MS
+                var confidence = LatencyConfidence.DEFAULT
+                var route = "Speaker"
+
+                val bleDevice = devices.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET || it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+                }
+                val a2dpDevice = devices.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                }
+                val scoDevice = devices.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                }
+
+                when {
+                    bleDevice != null -> {
+                        // BLE / LC3 Audio runs ~20-60 ms (comm18: do not over-compensate with 140 ms)
+                        delay = LatencyModel.PROFILE_LE_AUDIO_MS.toInt()
+                        confidence = LatencyConfidence.CODEC_PROFILE
+                        route = "Bluetooth LE Audio"
+                    }
+                    a2dpDevice != null -> {
+                        delay = LatencyModel.PROFILE_A2DP_AAC_MS.toInt()
+                        confidence = LatencyConfidence.CODEC_PROFILE
+                        route = "Bluetooth A2DP"
+                    }
+                    scoDevice != null -> {
+                        delay = LatencyModel.PROFILE_SCO_MS.toInt()
+                        confidence = LatencyConfidence.CODEC_PROFILE
+                        route = "Bluetooth SCO"
+                    }
+                    devices.any {
+                        it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                        it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                        it.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                        it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                    } -> {
+                        delay = LatencyModel.PROFILE_WIRED_SPEAKER_MS.toInt()
+                        confidence = LatencyConfidence.MEASURED
+                        route = "Wired / USB DAC"
                     }
                 }
-                _dynamicDelayMs.value = if (isBluetooth) BLUETOOTH_A2DP_DEFAULT_DELAY_MS else SPEAKER_DEFAULT_DELAY_MS
+
+                _dynamicDelayMs.value = delay
+                latencyModel?.updateLatency(
+                    halBufferMs = 0L,
+                    linkMs = delay.toLong(),
+                    confidence = confidence,
+                    routeName = route
+                )
             } else {
                 @Suppress("DEPRECATION")
                 val isBt = audioManager.isBluetoothA2dpOn
-                _dynamicDelayMs.value = if (isBt) BLUETOOTH_A2DP_DEFAULT_DELAY_MS else SPEAKER_DEFAULT_DELAY_MS
+                val delay = if (isBt) BLUETOOTH_A2DP_DEFAULT_DELAY_MS else SPEAKER_DEFAULT_DELAY_MS
+                _dynamicDelayMs.value = delay
+                latencyModel?.updateLatency(
+                    halBufferMs = 0L,
+                    linkMs = delay.toLong(),
+                    confidence = LatencyConfidence.DEFAULT,
+                    routeName = if (isBt) "Bluetooth Legacy" else "Speaker"
+                )
             }
         } catch (_: Exception) {
             _dynamicDelayMs.value = SPEAKER_DEFAULT_DELAY_MS
