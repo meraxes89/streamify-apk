@@ -15,11 +15,28 @@ import { createApp } from '../src/app.js';
 import { resolveProfile } from '../src/platform/profile.js';
 import { resolveDataDir } from '../src/platform/data-dir.js';
 import { acquireWakeLock, releaseWakeLock } from '../src/platform/wake-lock.js';
+import { CloudflareTunnel } from '../src/platform/cloudflare-tunnel.mjs';
 
 const profile = resolveProfile();
 const dataDir = resolveDataDir();
 const host = process.env.STREAMIFY_HOST || '0.0.0.0';
 const port = parseInt(process.env.STREAMIFY_PORT || process.env.PORT || '3000', 10);
+
+const tunnelEnabled = Boolean(
+  process.env.STREAMIFY_TUNNEL === '1' ||
+  process.env.CLOUDFLARE_TUNNEL === '1' ||
+  process.env.CLOUDFLARE_TUNNEL_TOKEN
+);
+
+let tunnel = null;
+if (tunnelEnabled) {
+  tunnel = new CloudflareTunnel({
+    port,
+    host: '127.0.0.1',
+    token: process.env.CLOUDFLARE_TUNNEL_TOKEN,
+    dataDir: dataDir.root,
+  });
+}
 
 if (profile.isTermux) {
   acquireWakeLock();
@@ -28,12 +45,28 @@ if (profile.isTermux) {
 const app = await createApp({
   profile,
   dataDir,
+  tunnelManager: tunnel,
   logger: process.env.STREAMIFY_LOG === '1',
 });
 
 try {
   const address = await app.listen({ host, port });
   console.log(`Streamify Modular Fastify Server listening on ${address} [Profile: ${profile.name}]`);
+
+  if (tunnel) {
+    console.log('[streamify-server] Starting Cloudflare Tunnel...');
+    tunnel.start().then((url) => {
+      if (url) {
+        console.log(`\n============================================================`);
+        console.log(`Cloudflare Relay Active!`);
+        console.log(`Global URL: ${url}`);
+        console.log(`Connect in Streamify app: Settings -> Custom Relay Host`);
+        console.log(`============================================================\n`);
+      }
+    }).catch((err) => {
+      console.warn(`[streamify-server] Cloudflare Tunnel notice: ${err.message}`);
+    });
+  }
 
   // P0 Elite Delivery: Spawn non-blocking background bundle updater
   if (process.env.STREAMIFY_DISABLE_AUTO_UPDATE !== '1') {
@@ -70,6 +103,9 @@ try {
 const shutdown = async (signal) => {
   console.log(`\nReceived ${signal}, shutting down gracefully...`);
   releaseWakeLock();
+  if (tunnel) {
+    await tunnel.stop();
+  }
   await app.close();
   process.exit(0);
 };
