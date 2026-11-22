@@ -59,7 +59,10 @@ val viewModelModule =
             )
         }
         single {
-            com.streamify.announcements.AnnouncementEngine(get())
+            com.streamify.announcements.AnnouncementInboxRepository(get())
+        }
+        single {
+            com.streamify.announcements.AnnouncementEngine(get(), inboxRepository = get())
         }
         single {
             SharedViewModel(

@@ -7,14 +7,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Sovereign In-App Message Engine Facade (comm19).
- * Coordinates targeting, frequency governance, and safe presentation arbitration.
+ * Sovereign In-App Message Engine Facade (comm19 Phase 1 & 2).
+ * Integrates Local Defaults, Signed Remote Source, Targeting, Frequency Governance,
+ * and Persistent Inbox.
  */
 class AnnouncementEngine(
     private val dataStoreManager: DataStoreManager,
+    private val remoteSource: RemoteAnnouncementSource = RemoteAnnouncementSource(dataStoreManager),
+    private val inboxRepository: AnnouncementInboxRepository = AnnouncementInboxRepository(dataStoreManager),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) {
     private val store = AnnouncementStore(dataStoreManager)
@@ -25,6 +27,7 @@ class AnnouncementEngine(
 
     /**
      * Evaluates local candidate announcements and requests presentation if context allows.
+     * Also refreshes the remote source and updates the persistent inbox asynchronously.
      */
     fun evaluateCandidates(
         currentVersion: String,
@@ -36,7 +39,14 @@ class AnnouncementEngine(
             try {
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
 
-                val eligible = LocalAnnouncementDefaults.ALL.filter { announcement ->
+                // Fetch remote announcements (failsafe, returns cache if offline/error)
+                val remoteAnnouncements = remoteSource.fetch()
+                val combined = (LocalAnnouncementDefaults.ALL + remoteAnnouncements).distinctBy { it.id }
+
+                // Sync persistent inbox
+                inboxRepository.saveInboxAnnouncements(combined)
+
+                val eligible = combined.filter { announcement ->
                     TargetingEvaluator.isEligible(
                         announcement.targeting,
                         currentVersion,
@@ -84,6 +94,7 @@ class AnnouncementEngine(
                 arbiter.dismissActive()
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
                 frequencyGovernor.recordActed(announcement, nowEpochMs)
+                inboxRepository.markAsRead(announcement.id)
             } catch (_: Exception) {}
         }
     }
