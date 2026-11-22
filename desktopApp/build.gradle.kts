@@ -158,11 +158,18 @@ compose.desktop {
                     .isMacOsX
             ) {
                 listTarget.addAll(
-                    listOf(TargetFormat.Dmg, TargetFormat.Msi),
+                    listOf(TargetFormat.Dmg, TargetFormat.Pkg),
+                )
+            } else if (org.gradle.internal.os.OperatingSystem
+                    .current()
+                    .isWindows
+            ) {
+                listTarget.addAll(
+                    listOf(TargetFormat.Msi, TargetFormat.Exe),
                 )
             } else {
                 listTarget.addAll(
-                    listOf(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.AppImage),
+                    listOf(TargetFormat.Deb, TargetFormat.Rpm),
                 )
             }
             targetFormats(*listTarget.toTypedArray())

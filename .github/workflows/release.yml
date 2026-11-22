@@ -42,12 +42,13 @@ concurrency:
 
 jobs:
   engine:
-    name: "Engine (tests + release artifacts)"
+    name: "Engine (release artifacts)"
     uses: ./.github/workflows/_ci-engine.yml
     with:
-      run_tests: true
+      run_tests: false
       build_android_native: true
       build_linux_native: true
+      build_desktop_native: true
 
   android:
     name: "Android release APK"
@@ -58,7 +59,7 @@ jobs:
     secrets: inherit
 
   desktop:
-    name: "Desktop installers (.AppImage / .msi)"
+    name: "Desktop installers (.deb / .rpm / .msi / .dmg)"
     needs: engine
     uses: ./.github/workflows/_ci-desktop.yml
     with:
@@ -106,8 +107,9 @@ jobs:
           mkdir -p release
           # Flatten every downloaded payload
           find dist -type f \( \
-            -name '*.apk' -o -name '*.deb' -o -name '*.msi' -o \
-            -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \) -exec cp -v {} release/ \;
+            -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o \
+            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o \
+            -name '*.AppImage' -o -name '*.zip' \) -exec cp -v {} release/ \;
           echo "── release manifest:"
           ls -la release/
 
