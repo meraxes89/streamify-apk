@@ -8,6 +8,9 @@ test('CloudflareTunnel: getDownloadUrl architecture mapping', () => {
   const linuxArm64 = CloudflareTunnel.getDownloadUrl('linux', 'arm64');
   assert.ok(linuxArm64?.includes('cloudflared-linux-arm64'));
 
+  const androidArm64 = CloudflareTunnel.getDownloadUrl('android', 'arm64');
+  assert.ok(androidArm64?.includes('cloudflared-linux-arm64'));
+
   const linuxAmd64 = CloudflareTunnel.getDownloadUrl('linux', 'x64');
   assert.ok(linuxAmd64?.includes('cloudflared-linux-amd64'));
 

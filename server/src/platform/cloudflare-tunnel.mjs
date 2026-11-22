@@ -46,7 +46,7 @@ export class CloudflareTunnel extends EventEmitter {
    */
   static getDownloadUrl(platform = process.platform, arch = process.arch) {
     const base = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
-    if (platform === 'linux') {
+    if (platform === 'linux' || platform === 'android') {
       if (arch === 'arm64') return `${base}/cloudflared-linux-arm64`;
       if (arch === 'arm') return `${base}/cloudflared-linux-arm`;
       if (arch === 'x64') return `${base}/cloudflared-linux-amd64`;
@@ -68,8 +68,20 @@ export class CloudflareTunnel extends EventEmitter {
       return this.binPath;
     }
 
-    // Check system PATH
     const systemNames = process.platform === 'win32' ? ['cloudflared.exe'] : ['cloudflared'];
+
+    // Check Termux PREFIX bin ($PREFIX/bin/cloudflared)
+    if (process.env.PREFIX) {
+      const termuxBin = path.join(process.env.PREFIX, 'bin', systemNames[0]);
+      if (fs.existsSync(termuxBin)) {
+        try {
+          fs.accessSync(termuxBin, fs.constants.X_OK);
+          return termuxBin;
+        } catch {}
+      }
+    }
+
+    // Check system PATH
     const pathDirs = (process.env.PATH || '').split(path.delimiter);
     for (const p of pathDirs) {
       for (const name of systemNames) {
