@@ -32,13 +32,44 @@ An autonomous, anonymous, on-device Amazon Music metadata and streaming engine d
    * Spec-exact FLAC frame header decoding (UTF-8-coded sample numbers, blocking-strategy bit, CRC-8 validation).
    * Metadata-first remux, sample-domain frame-tile integrity, frame-aligned HTTP 206 seeks, two-phase pacing.
 10. **Native Delivery Capability Card (`src/native-delivery.mjs`):**
-   * Probes Amazon's REAL DMLS surface (`/{region}/api/dmls/`, decoded from the production web-player bundle):
-     `getDashManifestsV2` (SIREN_KATANA + TRACK_PSSH), `getStreamingURLsForSamples`, `getLicenseForPlaybackV2`.
+   * Routes Amazon's REAL DMLS surface (`/{region}/api/dmls/`, fully decoded from the production
+     web-hornet Vinyl player bundle, d5fx445wy2wpk.cloudfront.net 1.196.81):
+     `getDashManifestsV2` (FLAC/Opus path: SIREN_KATANA + TRACK_PSSH), `getStreamingURLsWithFirstChunkV2`,
+     `getStreamingURLsForSamples`, `getLicenseForPlaybackV2`.
    * Returns typed honest verdicts: `AUTH_REQUIRED` (guest sessions carry no customerId; live-verified
      `CUSTOMER_INFO_NOT_PROVIDED`), `ENTITLEMENT_REQUIRED` (needs UNLIMITED_HD HAWKFIRE+KATANA),
-     `DRM_MANIFEST` (CENC-encrypted), `AVAILABLE` (bit-perfect bytes).
+     `DRM_PROTECTED_LINKS` (links solved, CENC-wrapped), `LINKS_SOLVED` (real links, clear bytes).
    * Tier entitlement map decoded from the shipped player: AMF->NIGHTWING, PRIME->ROBIN+SONIC_RUSH,
      UNLIMITED->HAWKFIRE, UNLIMITED_HD->HAWKFIRE+KATANA.
+
+11. **The REAL Amazon Stream-Link Solver (`src/dmls-solver.mjs` + `src/dash-mpd.mjs` + `src/credentials.mjs`):**
+   * **`solveStreamLinks({ asin, tier })`** issues the production `getDashManifestsV2` FLAC/Opus request
+     and solves the ACTUAL Amazon stream links: the inline DASH MPD, per-representation quality cards
+     (FLAC UHD96/UHD192/UHD48/UHD44 24-bit, HD family, opus/aac), init + media segment CDN URLs
+     (SegmentTemplate `$RepresentationID$/$Number$` substitution against the manifest BaseURL),
+     optional first-chunk direct URL (`getStreamingURLsWithFirstChunkV2`), and the DRM card
+     (SIREN_KATANA CENC pssh list + `getLicenseForPlaybackV2` operation).
+   * **Zero-dependency MPD parser** speaking the Amazon dialect: `SupplementalProperty
+     schemeIdUri="amz-music:bitDepth"` (16/24), `"amz-music:trackType"` (UHD/HD/SD), CENC
+     `ContentProtection` with `cenc:default_KID` + `cenc:pssh`, codec vocabulary `flac`/`opus`/
+     `mp4a.40.2`/`mp4a.40.5`/`ec-3`.
+   * **Credential layer** (production auth vectors): cookie mode (the player's default:
+     `POST /config.json?clientApplication=hornet&cookieauth=true` with your signed-in jar;
+     non-empty `customerId` == authenticated) or bearer mode (`Authorization: Bearer` on Coral calls).
+     Resolve from `AMAZON_MUSIC_COOKIES` / `AMAZON_MUSIC_OAUTH_TOKEN` env,
+     `AMAZON_MUSIC_COOKIES_FILE` / `~/.streamify/amazon-music.cookies` (raw header or Netscape jar),
+     or programmatic `AmazonMusicCredential`.
+   * **Entitlement ladder decoded and encoded**: Unlimited -> [KATANA, HAWKFIRE, SONIC_RUSH, ROBIN,
+     NIGHTWING] (client-asserted; the server enforces the real account state).
+   * **CLI**: `node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra|hd|lossy|best]
+     [--cookies-file=...] [--with-first-chunk] [--force-wire] [--save-mpd=...]`.
+
+12. **The Coral Dispatcher Fix (`session.mjs` / `protocol.json`):**
+   * Every Coral RPC now carries `Content-Encoding: amz-1.0` - the production dispatcher key that
+     was missing from every call. Without it Amazon answers
+     `com.amazon.coral.service#UnknownOperationException`; with it, Tenzing catalog search
+     and DMLS delivery both reach the real services (live-verified: search returns real tracks
+     as an anonymous guest, DMLS reaches the real entitlement gate).
 
 ---
 
