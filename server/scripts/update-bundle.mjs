@@ -28,6 +28,43 @@ const PUBKEY_FILE = path.join(SERVER_DIR, 'pubkey.pem');
 const REPO_OWNER = 'meraxes89';
 const REPO_NAME = 'streamify-apk';
 const RELEASES_API = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`;
+const LATEST_DOWNLOAD_BASE = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download`;
+
+/**
+ * Parses a semantic version tag (e.g. 'v1.0.2-beta', '1.0.1').
+ */
+export function parseSemVer(tag) {
+  if (!tag) return { major: 0, minor: 0, patch: 0, prerelease: '' };
+  const clean = String(tag).trim().replace(/^v/, '');
+  const [vPart, ...preParts] = clean.split('-');
+  const [major = 0, minor = 0, patch = 0] = vPart.split('.').map((n) => parseInt(n, 10) || 0);
+  return {
+    major,
+    minor,
+    patch,
+    prerelease: preParts.join('-'),
+  };
+}
+
+/**
+ * Compares two semantic version tags. Returns > 0 if a > b, < 0 if a < b, 0 if equal.
+ * Non-prereleases rank higher than prereleases of the same major.minor.patch.
+ */
+export function compareSemVer(a, b) {
+  const vA = parseSemVer(a);
+  const vB = parseSemVer(b);
+
+  if (vA.major !== vB.major) return vA.major - vB.major;
+  if (vA.minor !== vB.minor) return vA.minor - vB.minor;
+  if (vA.patch !== vB.patch) return vA.patch - vB.patch;
+
+  if (!vA.prerelease && vB.prerelease) return 1;
+  if (vA.prerelease && !vB.prerelease) return -1;
+  if (vA.prerelease && vB.prerelease) {
+    return vA.prerelease.localeCompare(vB.prerelease, undefined, { numeric: true });
+  }
+  return 0;
+}
 
 /**
  * Single-flight concurrency control using flock semantics via exclusive file descriptor creation.
@@ -108,11 +145,16 @@ function fetchBuffer(url, headers = {}) {
           if (redirectParsed.hostname !== 'api.github.com' && redirectParsed.hostname !== 'github.com') {
             delete nextHeaders['Authorization'];
           }
-          return fetchBuffer(redirectUrl, nextHeaders).then(resolve, reject);
+          return fetchBuffer(redirectUrl, nextHeaders).then((result) => {
+            resolve({
+              ...result,
+              redirectLocations: [redirectUrl, ...(result.redirectLocations || [])],
+            });
+          }, reject);
         }
 
         if (res.statusCode === 304) {
-          return resolve({ statusCode: 304, headers: res.headers, buffer: null });
+          return resolve({ statusCode: 304, headers: res.headers, buffer: null, redirectLocations: [] });
         }
 
         if (res.statusCode !== 200) {
@@ -126,6 +168,7 @@ function fetchBuffer(url, headers = {}) {
             statusCode: 200,
             headers: res.headers,
             buffer: Buffer.concat(chunks),
+            redirectLocations: [],
           });
         });
         res.on('error', reject);
@@ -182,18 +225,110 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
       } catch (_) {}
     }
 
-    // Step 1: Probe releases from GitHub
-    const reqHeaders = {};
-    if (localManifest.etag && !force) {
-      reqHeaders['If-None-Match'] = localManifest.etag;
+    let targetReleaseTag = targetTag;
+    let expectedHash = null;
+    let downloadUrl = null;
+    let releaseEtag = null;
+    const token = resolveGitHubToken();
+
+    // Step 1: Resolve release metadata
+    // Primary path for production (targetTag === null): Zero-auth, unmetered static CDN redirect
+    if (!targetTag) {
+      try {
+        const sumsRes = await fetchBuffer(`${LATEST_DOWNLOAD_BASE}/SHA256SUMS`).catch(() => null);
+        if (sumsRes && sumsRes.statusCode === 200) {
+          const lines = sumsRes.buffer.toString('utf8').split('\n');
+          for (const line of lines) {
+            if (line.includes('web-wasm') && line.endsWith('.zip')) {
+              expectedHash = line.trim().split(/\s+/)[0];
+              break;
+            }
+          }
+
+          if (sumsRes.redirectLocations?.length) {
+            for (const loc of sumsRes.redirectLocations) {
+              const m = loc.match(/\/releases\/download\/([^/]+)\//);
+              if (m) {
+                targetReleaseTag = m[1];
+                break;
+              }
+            }
+          }
+          if (!targetReleaseTag) targetReleaseTag = 'latest';
+
+          downloadUrl = `${LATEST_DOWNLOAD_BASE}/Streamify-main-web-wasm.zip`;
+          releaseEtag = sumsRes.headers.etag || null;
+        }
+      } catch (err) {
+        console.warn(`[update-bundle] Static CDN resolution notice: ${err.message}`);
+      }
     }
 
-    const releaseRes = await fetchBuffer(RELEASES_API, reqHeaders).catch((err) => {
-      console.warn(`[update-bundle] Network probe failed (${err.message}). Maintaining offline operation.`);
-      return null;
-    });
+    // Secondary path: Query GitHub Releases API with SemVer sorting and strict draft filtering
+    if (!downloadUrl) {
+      const reqHeaders = {};
+      if (localManifest.etag && !force) {
+        reqHeaders['If-None-Match'] = localManifest.etag;
+      }
 
-    if (!releaseRes) {
+      const releaseRes = await fetchBuffer(RELEASES_API, reqHeaders).catch((err) => {
+        console.warn(`[update-bundle] Network probe failed (${err.message}). Maintaining offline operation.`);
+        return null;
+      });
+
+      if (releaseRes && releaseRes.statusCode === 304) {
+        console.log('[update-bundle] Manifest unmodified (304 Not Modified). Bundle is up to date.');
+        return { status: 'up-to-date' };
+      }
+
+      if (releaseRes && releaseRes.statusCode === 200) {
+        let releases = [];
+        try {
+          releases = JSON.parse(releaseRes.buffer.toString('utf8'));
+        } catch (_) {}
+
+        if (Array.isArray(releases) && releases.length > 0) {
+          const nonDraftReleases = releases
+            .filter((r) => !r.draft)
+            .sort((a, b) => compareSemVer(b.tag_name, a.tag_name));
+
+          const selectedRelease = targetTag
+            ? releases.find((r) => r.tag_name === targetTag)
+            : (nonDraftReleases[0] || releases[0]);
+
+          if (selectedRelease) {
+            targetReleaseTag = selectedRelease.tag_name;
+            releaseEtag = releaseRes.headers.etag || null;
+
+            const wasmAsset = selectedRelease.assets?.find(
+              (a) => a.name.includes('web-wasm') && a.name.endsWith('.zip')
+            );
+            const checksumsAsset = selectedRelease.assets?.find((a) => a.name === 'SHA256SUMS');
+
+            if (wasmAsset) {
+              downloadUrl = (token && wasmAsset.url) ? wasmAsset.url : wasmAsset.browser_download_url;
+
+              if (checksumsAsset) {
+                const checksumUrl = (token && checksumsAsset.url) ? checksumsAsset.url : checksumsAsset.browser_download_url;
+                const sumsRes = await fetchBuffer(checksumUrl, { Accept: 'application/octet-stream' }).catch(() => null);
+                if (sumsRes && sumsRes.statusCode === 200) {
+                  const lines = sumsRes.buffer.toString('utf8').split('\n');
+                  for (const line of lines) {
+                    if (line.includes(wasmAsset.name)) {
+                      expectedHash = line.trim().split(/\s+/)[0];
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Tertiary path: Local composeApp build auto-seeding if offline or no assets
+    if (!downloadUrl) {
       const localBuildDir = path.resolve(SERVER_DIR, '../composeApp/build/dist/wasmJs/productionExecutable');
       if (fs.existsSync(localBuildDir) && verifyWasmMagic(localBuildDir) && verifyMerkle(localBuildDir)) {
         console.log('[update-bundle] Auto-seeding bundle from local composeApp build...');
@@ -211,85 +346,24 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
       return { status: 'offline' };
     }
 
-    if (releaseRes.statusCode === 304) {
-      console.log('[update-bundle] Manifest unmodified (304 Not Modified). Bundle is up to date.');
-      return { status: 'up-to-date' };
-    }
-
-    const releases = JSON.parse(releaseRes.buffer.toString('utf8'));
-    if (!Array.isArray(releases) || releases.length === 0) {
-      const localBuildDir = path.resolve(SERVER_DIR, '../composeApp/build/dist/wasmJs/productionExecutable');
-      if (fs.existsSync(localBuildDir) && verifyWasmMagic(localBuildDir) && verifyMerkle(localBuildDir)) {
-        console.log('[update-bundle] Auto-seeding bundle from local composeApp build...');
-        const { rootHash } = generateBundleManifest(localBuildDir);
-        const targetDir = path.join(BUNDLES_DIR, rootHash);
-        if (!fs.existsSync(targetDir)) {
-          fs.cpSync(localBuildDir, targetDir, { recursive: true });
-        }
-        atomicSymlink(PUBLIC_LINK, targetDir);
-        localManifest.current = rootHash;
-        localManifest.updatedAt = new Date().toISOString();
-        fs.writeFileSync(MANIFEST_FILE, JSON.stringify(localManifest, null, 2), 'utf8');
-        return { status: 'seeded-local', hash: rootHash };
-      }
-      console.log('[update-bundle] No releases found in repository.');
-      return { status: 'no-release' };
-    }
-
-    const latestRelease = targetTag
-      ? releases.find((r) => r.tag_name === targetTag)
-      : releases[0];
-
-    if (!latestRelease) {
-      console.log(`[update-bundle] Target release '${targetTag}' not found.`);
-      return { status: 'not-found' };
-    }
-
-    // Locate WASM archive and SHA256SUMS
-    const wasmAsset = latestRelease.assets.find((a) => a.name.includes('web-wasm') && a.name.endsWith('.zip'));
-    const checksumsAsset = latestRelease.assets.find((a) => a.name === 'SHA256SUMS');
-
-    if (!wasmAsset) {
-      console.log('[update-bundle] Release does not contain web-wasm asset.');
-      return { status: 'no-wasm-asset' };
-    }
-
-    const token = resolveGitHubToken();
-
-    // Fetch SHA256SUMS for expected hash
-    let expectedHash = null;
-    if (checksumsAsset) {
-      const checksumUrl = (token && checksumsAsset.url) ? checksumsAsset.url : checksumsAsset.browser_download_url;
-      const sumsRes = await fetchBuffer(checksumUrl, { Accept: 'application/octet-stream' }).catch(() => null);
-      if (sumsRes && sumsRes.statusCode === 200) {
-        const lines = sumsRes.buffer.toString('utf8').split('\n');
-        for (const line of lines) {
-          if (line.includes(wasmAsset.name)) {
-            expectedHash = line.trim().split(/\s+/)[0];
-            break;
-          }
-        }
-      }
-    }
-
     // Check if we are already running this bundle
     if (!force && expectedHash && localManifest.current === expectedHash) {
       console.log(`[update-bundle] Bundle already installed and verified (${expectedHash.slice(0, 12)}).`);
       return { status: 'up-to-date', hash: expectedHash };
     }
 
-    console.log(`[update-bundle] Downloading new WASM bundle (${wasmAsset.name})...`);
+    console.log(`[update-bundle] Downloading new WASM bundle (${downloadUrl})...`);
     let zipRes = null;
-    if (token && wasmAsset.url) {
-      zipRes = await fetchBuffer(wasmAsset.url, { Accept: 'application/octet-stream' }).catch(() => null);
+    if (token && downloadUrl.includes('api.github.com')) {
+      zipRes = await fetchBuffer(downloadUrl, { Accept: 'application/octet-stream' }).catch(() => null);
     }
     if (!zipRes || zipRes.statusCode !== 200) {
-      zipRes = await fetchBuffer(wasmAsset.browser_download_url).catch((err) => {
-        throw new Error(`Failed to download WASM archive from ${wasmAsset.browser_download_url}: ${err.message}`);
+      zipRes = await fetchBuffer(downloadUrl, { Accept: 'application/octet-stream' }).catch((err) => {
+        throw new Error(`Failed to download WASM archive from ${downloadUrl}: ${err.message}`);
       });
     }
     if (!zipRes || zipRes.statusCode !== 200) {
-      throw new Error(`Failed to download WASM archive (${wasmAsset.name})`);
+      throw new Error(`Failed to download WASM archive from ${downloadUrl}`);
     }
 
     const actualZipHash = crypto.createHash('sha256').update(zipRes.buffer).digest('hex');
@@ -329,9 +403,9 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
     // Update manifest state outside served root
     localManifest.previous = localManifest.current;
     localManifest.current = bundleHash;
-    localManifest.etag = releaseRes.headers.etag || null;
+    localManifest.etag = releaseEtag || null;
     localManifest.updatedAt = new Date().toISOString();
-    localManifest.releaseTag = latestRelease.tag_name;
+    localManifest.releaseTag = targetReleaseTag;
     fs.writeFileSync(MANIFEST_FILE, JSON.stringify(localManifest, null, 2), 'utf8');
 
     console.log(`[update-bundle] Successfully updated and atomically mounted bundle: ${bundleHash.slice(0, 12)}`);
@@ -339,7 +413,7 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
     // Step 5: GC old bundles (keep 3 most recent)
     gcBundles(3);
 
-    return { status: 'updated', hash: bundleHash, tag: latestRelease.tag_name };
+    return { status: 'updated', hash: bundleHash, tag: targetReleaseTag };
   } finally {
     releaseUpdateLock(lockFd);
   }
