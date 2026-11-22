@@ -63,7 +63,10 @@ test('CloudflareTunnel: URL extraction and event handling', () => {
     '2026-11-22T17:00:00Z INF +--------------------------------------------------------------------------------------------+\n'
   );
 
-  const urlRegex = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;
+  const urlRegex = /https:\/\/(?!api\.)[a-zA-Z0-9-]+\.trycloudflare\.com/;
+  const apiMatch = 'failed Post "https://api.trycloudflare.com/tunnel": connection refused'.match(urlRegex);
+  assert.equal(apiMatch, null);
+
   const match = chunk.toString().match(urlRegex);
   assert.ok(match);
   assert.equal(match[0], 'https://stream-relay-test-42.trycloudflare.com');
