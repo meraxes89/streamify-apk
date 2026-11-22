@@ -29,6 +29,7 @@ table). Run `python3 scripts/<name>.py --help` where applicable.
 | Gate | Lane | Enforces |
 |---|---|---|
 | docs_ledger_check.py | ci.yml Tier-1 | Doc reality vs tree |
+| verify_docs.py | ci.yml Tier-1 | Markdown link targets & doc-verified-against staleness pins |
 | jni_panic_boundary_check.py | ci.yml Tier-1 | Panic shields on every JNI export |
 | check_feishin_resolver.py | ci.yml Tier-1 | Vendored resolver integrity |
 | jni_parity_check.py --source / --nm | _ci-android.yml | Kotlin/native ABI parity, fail-fast then on the built .so |
@@ -52,4 +53,5 @@ error — and (b) reports documents whose pin is older than the tip of
 `origin/main` as stale. Exit code 0 only when there are no errors.
 
 ---
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+Verified against commit 7c60ae82. Staleness protocol: docs/adr/README.md.
+<!-- doc-verified-against: 7c60ae82b6459f17876bcdb5d0f168e44c816c5b -->

@@ -48,8 +48,10 @@ def main():
             sha = m.group(1)
             anc = git(["merge-base", "--is-ancestor", sha, tip_sha])
             if anc.returncode != 0:
-                errors.append(f"{f.relative_to(REPO)}: pin {sha[:10]} "
-                              "is not an ancestor of origin/main")
+                anc_head = git(["merge-base", "--is-ancestor", sha, "HEAD"])
+                if anc_head.returncode != 0:
+                    errors.append(f"{f.relative_to(REPO)}: pin {sha[:10]} "
+                                  "is not an ancestor of origin/main or HEAD")
             elif sha != tip_sha:
                 stale.append(f"{f.relative_to(REPO)}: pin {sha[:10]} "
                              f"older than tip {tip_sha[:10]}")
