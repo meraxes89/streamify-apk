@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 /**
  * Unified presentation-time clock for all lyrics consumers.
@@ -28,22 +29,21 @@ class SlyrClock(
     private var rawPositionMs: Long = 0L
     private var userOffsetMs: Long = 0L
     private var isPlaying: Boolean = false
-    private var lastUpdateTimeMonoNs: Long = 0L
+    private var lastTimeMark: TimeSource.Monotonic.ValueTimeMark? = null
 
     init {
         scope.launch {
             while (isActive) {
                 if (isPlaying) {
-                    val nowMonoNs = getMonotonicTimeNs()
-                    val dtMs = if (lastUpdateTimeMonoNs > 0L) {
-                        (nowMonoNs - lastUpdateTimeMonoNs) / 1_000_000L
+                    val mark = lastTimeMark
+                    if (mark != null) {
+                        val elapsedMs = mark.elapsedNow().inWholeMilliseconds
+                        if (elapsedMs > 0L) {
+                            rawPositionMs += elapsedMs
+                            lastTimeMark = TimeSource.Monotonic.markNow()
+                        }
                     } else {
-                        0L
-                    }
-                    lastUpdateTimeMonoNs = nowMonoNs
-
-                    if (dtMs > 0L) {
-                        rawPositionMs += dtMs
+                        lastTimeMark = TimeSource.Monotonic.markNow()
                     }
 
                     recomputeHeardTime()
@@ -59,7 +59,7 @@ class SlyrClock(
     fun updatePosition(positionMs: Long, playing: Boolean, isSeek: Boolean = false) {
         rawPositionMs = positionMs
         isPlaying = playing
-        lastUpdateTimeMonoNs = getMonotonicTimeNs()
+        lastTimeMark = if (playing) TimeSource.Monotonic.markNow() else null
 
         if (isSeek) {
             latencyModel.snapToTarget()
@@ -90,5 +90,3 @@ class SlyrClock(
         }
     }
 }
-
-internal expect fun getMonotonicTimeNs(): Long
