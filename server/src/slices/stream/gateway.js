@@ -202,6 +202,11 @@ export class StreamGateway {
         actualEnd,
         req.raw.signal || req.raw
       );
+      cachedStream.on('error', (err) => {
+        if (err?.name !== 'AbortError' && err?.code !== 'ABORT_ERR') {
+          req.log?.warn?.({ err }, 'Cached stream reader error');
+        }
+      });
       return reply.send(cachedStream);
     }
 
@@ -271,6 +276,11 @@ export class StreamGateway {
       actualEnd,
       clientSignal
     );
+    rawStream.on('error', (err) => {
+      if (err?.name !== 'AbortError' && err?.code !== 'ABORT_ERR') {
+        req.log?.warn?.({ err }, 'Stream range reader error');
+      }
+    });
 
     // P1 Attestation Watchdog: Monitor real-time streaming bytes to detect ~50 kbps throttling
     const streamId = `${desc.videoId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -289,6 +299,11 @@ export class StreamGateway {
     const pacedStream = this.pacer.pace(rawStream, {
       bitrateBps: desc.bitrateBps || 160_000,
       signal: clientSignal,
+    });
+    pacedStream.on('error', (err) => {
+      if (err?.name !== 'AbortError' && err?.code !== 'ABORT_ERR') {
+        req.log?.warn?.({ err }, 'Paced stream reader error');
+      }
     });
     return reply.send(pacedStream);
   }

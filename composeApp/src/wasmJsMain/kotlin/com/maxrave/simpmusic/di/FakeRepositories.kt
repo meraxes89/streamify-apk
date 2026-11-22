@@ -204,10 +204,24 @@ class FakeSearchRepository : SearchRepository {
     override fun insertSearchHistory(searchHistory: SearchHistory): Flow<Long> = flowOf(0L)
     override suspend fun deleteSearchHistory() {}
     override fun getSearchDataSong(query: String): Flow<Resource<ArrayList<SongsResult>>> = flow {
-        runCatching {
+        val jsonArr = runCatching {
             val resText = webKtorClient.get("/api/yt/search?q=" + query).bodyAsText()
+            Json.parseToJsonElement(resText).jsonArray
+        }.getOrNull() ?: run {
+            val cleanQ = query.lowercase().trim()
+            val queriesObj = DemoCatalogLoader.getSearchQueries()
+            queriesObj?.get(cleanQ)?.jsonArray
+                ?: queriesObj?.keys?.firstOrNull { it.contains(cleanQ) || cleanQ.contains(it) }?.let { queriesObj[it]?.jsonArray }
+                ?: queriesObj?.values?.firstOrNull()?.jsonArray
+        }
+
+        if (jsonArr == null) {
+            emit(Resource.Error("Search failed"))
+            return@flow
+        }
+
+        try {
             val list = ArrayList<SongsResult>()
-            val jsonArr = Json.parseToJsonElement(resText).jsonArray
             for (elem in jsonArr) {
                 val obj = elem.jsonObject
                 val videoId = obj["videoId"]?.jsonPrimitive?.content ?: continue
@@ -255,7 +269,7 @@ class FakeSearchRepository : SearchRepository {
                 )
             }
             emit(Resource.Success<ArrayList<SongsResult>>(list))
-        }.onFailure { err ->
+        } catch (err: Throwable) {
             emit(Resource.Error<ArrayList<SongsResult>>(err.message ?: "Search failed"))
         }
     }
@@ -266,12 +280,21 @@ class FakeSearchRepository : SearchRepository {
     override fun getSearchDataAlbum(query: String): Flow<Resource<ArrayList<AlbumsResult>>> = flowOf(Resource.Success(ArrayList()))
     override fun getSearchDataPlaylist(query: String): Flow<Resource<ArrayList<PlaylistsResult>>> = flowOf(Resource.Success(ArrayList()))
     override fun getSuggestQuery(query: String): Flow<Resource<SearchSuggestions>> = flow {
-        runCatching {
+        val jsonArr = runCatching {
             val resText = webKtorClient.get("/api/yt/suggest?q=" + query).bodyAsText()
-            val jsonArr = Json.parseToJsonElement(resText).jsonArray
-            val queries = jsonArr.map { it.jsonPrimitive.content }
+            Json.parseToJsonElement(resText).jsonArray
+        }.getOrNull() ?: run {
+            val cleanQ = query.lowercase().trim()
+            val sugObj = DemoCatalogLoader.getSearchSuggestions()
+            sugObj?.get(cleanQ)?.jsonArray
+                ?: sugObj?.keys?.firstOrNull { it.contains(cleanQ) || cleanQ.contains(it) }?.let { sugObj[it]?.jsonArray }
+                ?: sugObj?.values?.firstOrNull()?.jsonArray
+        }
+
+        if (jsonArr != null) {
+            val queries = jsonArr.mapNotNull { it.jsonPrimitive.content }
             emit(Resource.Success(SearchSuggestions(queries = queries, recommendedItems = emptyList())))
-        }.onFailure {
+        } else {
             emit(Resource.Error("Suggest failed"))
         }
     }
@@ -279,9 +302,17 @@ class FakeSearchRepository : SearchRepository {
 
 class FakeHomeRepository : HomeRepository {
     override fun getHomeData(params: String?, viewString: String, songString: String): Flow<Resource<Triple<String?, List<HomeItem>, String?>>> = flow {
-        runCatching {
+        val rootObj = runCatching {
             val resText = webKtorClient.get("/api/yt/home").bodyAsText()
-            val rootObj = Json.parseToJsonElement(resText).jsonObject
+            Json.parseToJsonElement(resText).jsonObject
+        }.getOrNull() ?: DemoCatalogLoader.getHomeJson()
+
+        if (rootObj == null) {
+            emit(Resource.Error("Failed to fetch home"))
+            return@flow
+        }
+
+        try {
             val itemsArr = rootObj["items"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
             val continuation = rootObj["continuation"]?.jsonPrimitive?.content
             val homeItems = ArrayList<HomeItem>()
@@ -353,8 +384,8 @@ class FakeHomeRepository : HomeRepository {
                 }
             }
             emit(Resource.Success(Triple(continuation, homeItems, null)))
-        }.onFailure { err ->
-            emit(Resource.Error(err.message ?: "Failed to fetch home"))
+        } catch (err: Throwable) {
+            emit(Resource.Error(err.message ?: "Failed to parse home data"))
         }
     }
     override fun getHomeDataContinue(continueParam: String, viewString: String, songString: String): Flow<Resource<Pair<String?, List<HomeItem>>>> = flowOf(Resource.Error("None"))
@@ -427,10 +458,18 @@ class FakePlaylistRepository : PlaylistRepository {
     override fun getRadio(radioId: String, defaultDescription: String, radioString: String, viewString: String, originalTrack: SongEntity?, artist: ArtistEntity?): Flow<Resource<Pair<PlaylistBrowse, String?>>> = flowOf(Resource.Error("None"))
     override fun getRDATRadioData(radioId: String, viewString: String): Flow<Resource<Pair<PlaylistBrowse, String?>>> = flowOf(Resource.Error("None"))
     override fun getFullPlaylistData(playlistId: String, viewString: String): Flow<Resource<PlaylistBrowse>> = flow {
-        runCatching {
-            val targetId = if (playlistId.startsWith("VL") || playlistId.startsWith("PL") || playlistId.startsWith("RD")) playlistId else "VL$playlistId"
+        val targetId = if (playlistId.startsWith("VL") || playlistId.startsWith("PL") || playlistId.startsWith("RD")) playlistId else "VL$playlistId"
+        val root = runCatching {
             val resText = webKtorClient.get("/api/yt/browse?id=" + targetId).bodyAsText()
-            val root = Json.parseToJsonElement(resText).jsonObject
+            Json.parseToJsonElement(resText).jsonObject
+        }.getOrNull() ?: DemoCatalogLoader.getBrowseItem(targetId) ?: DemoCatalogLoader.getBrowseItem(playlistId)
+
+        if (root == null) {
+            emit(Resource.Error<PlaylistBrowse>("Failed to load playlist"))
+            return@flow
+        }
+
+        try {
             val title = root["title"]?.jsonPrimitive?.content ?: "Playlist"
             val desc = root["description"]?.jsonPrimitive?.content
             val subtitle = root["subtitle"]?.jsonPrimitive?.content ?: ""
@@ -507,7 +546,7 @@ class FakePlaylistRepository : PlaylistRepository {
                 year = ""
             )
             emit(Resource.Success<PlaylistBrowse>(playlistBrowse))
-        }.onFailure { err ->
+        } catch (err: Throwable) {
             emit(Resource.Error<PlaylistBrowse>(err.message ?: "Failed to load playlist"))
         }
     }
@@ -548,7 +587,22 @@ class FakeLocalPlaylistRepository(
                     playlists.add(p.toEntity())
                 }
                 _playlistsFlow.value = playlists.toList()
+                return
             } catch (_: Throwable) {}
+        }
+        // Fallback to demo catalog seed playlists if storage is empty
+        val seedPls = DemoCatalogLoader.getRootCatalog()?.get("seedLibrary")?.jsonObject?.get("playlists")?.jsonArray
+        if (seedPls != null && seedPls.isNotEmpty()) {
+            playlists.clear()
+            var idCounter = 1L
+            for (elem in seedPls) {
+                val obj = elem.jsonObject
+                val title = obj["title"]?.jsonPrimitive?.content ?: "Playlist"
+                val tracks = obj["tracks"]?.jsonArray?.mapNotNull { it.jsonObject["videoId"]?.jsonPrimitive?.content } ?: emptyList()
+                val thumb = obj["tracks"]?.jsonArray?.firstOrNull()?.jsonObject?.get("thumbnails")?.jsonPrimitive?.content
+                playlists.add(LocalPlaylistEntity(id = idCounter++, title = title, thumbnail = thumb, tracks = tracks))
+            }
+            _playlistsFlow.value = playlists.toList()
         }
     }
 
@@ -706,7 +760,37 @@ class FakeSongRepository : SongRepository {
                     songsMap[s.videoId] = s.toEntity()
                 }
                 _songsFlow.value = songsMap.values.toList()
+                return
             } catch (_: Throwable) {}
+        }
+        // Fallback to demo catalog seed songs if storage is empty
+        val seedSongs = DemoCatalogLoader.getRootCatalog()?.get("seedLibrary")?.jsonObject?.get("songs")?.jsonArray
+        if (seedSongs != null && seedSongs.isNotEmpty()) {
+            for (elem in seedSongs) {
+                val obj = elem.jsonObject
+                val vId = obj["videoId"]?.jsonPrimitive?.content ?: continue
+                val title = obj["title"]?.jsonPrimitive?.content ?: ""
+                val artName = obj["artistName"]?.jsonPrimitive?.content ?: ""
+                val albName = obj["albumName"]?.jsonPrimitive?.content ?: ""
+                val dur = obj["duration"]?.jsonPrimitive?.content ?: ""
+                val durSec = obj["durationSeconds"]?.jsonPrimitive?.intOrNull ?: 0
+                val thumb = obj["thumbnails"]?.jsonPrimitive?.content ?: ""
+                val liked = obj["liked"]?.jsonPrimitive?.booleanOrNull ?: false
+                val playTime = obj["totalPlayTime"]?.jsonPrimitive?.intOrNull?.toLong() ?: 0L
+                val song = StoredWebSong(
+                    videoId = vId,
+                    title = title,
+                    artistName = artName,
+                    albumName = albName,
+                    duration = dur,
+                    durationSeconds = durSec,
+                    thumbnails = thumb,
+                    liked = liked,
+                    totalPlayTime = playTime
+                )
+                songsMap[vId] = song.toEntity()
+            }
+            _songsFlow.value = songsMap.values.toList()
         }
     }
 
@@ -1064,8 +1148,17 @@ class FakeSongRepository : SongRepository {
 
 class FakeAlbumRepository : AlbumRepository {
     override fun getAllAlbums(limit: Int): Flow<List<AlbumEntity>> = flowOf(emptyList())
-    override fun getAlbum(id: String): Flow<AlbumEntity?> = flowOf(null)
-    override fun getAlbumAsFlow(id: String): Flow<AlbumEntity?> = flowOf(null)
+    override fun getAlbum(id: String): Flow<AlbumEntity?> = flow {
+        val root = DemoCatalogLoader.getBrowseItem(id)
+        if (root != null) {
+            val title = root["title"]?.jsonPrimitive?.content ?: "Album"
+            val thumb = root["thumbnails"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
+            emit(AlbumEntity(browseId = id, audioPlaylistId = id, description = "", duration = "", durationSeconds = 0, thumbnails = thumb, title = title, trackCount = 1, type = "Album", year = null))
+        } else {
+            emit(null)
+        }
+    }
+    override fun getAlbumAsFlow(id: String): Flow<AlbumEntity?> = getAlbum(id)
     override fun getLikedAlbums(): Flow<List<AlbumEntity>> = flowOf(emptyList())
     override fun insertAlbum(albumEntity: AlbumEntity): Flow<Long> = flowOf(0L)
     override suspend fun updateAlbumLiked(albumId: String, likeStatus: Int) {}
@@ -1076,9 +1169,17 @@ class FakeAlbumRepository : AlbumRepository {
     override suspend fun getAllFollowedArtistSingleAndAlbums(): Flow<List<FollowedArtistSingleAndAlbum>?> = flowOf(emptyList())
     override suspend fun getFollowedArtistSingleAndAlbum(channelId: String): Flow<FollowedArtistSingleAndAlbum?> = flowOf(null)
     override fun getAlbumData(browseId: String): Flow<Resource<AlbumBrowse>> = flow {
-        runCatching {
+        val root = runCatching {
             val resText = webKtorClient.get("/api/yt/browse?id=" + browseId).bodyAsText()
-            val root = Json.parseToJsonElement(resText).jsonObject
+            Json.parseToJsonElement(resText).jsonObject
+        }.getOrNull() ?: DemoCatalogLoader.getBrowseItem(browseId)
+
+        if (root == null) {
+            emit(Resource.Error<AlbumBrowse>("Failed to load album"))
+            return@flow
+        }
+
+        try {
             val title = root["title"]?.jsonPrimitive?.content ?: "Album"
             val desc = root["description"]?.jsonPrimitive?.content
             val subtitle = root["subtitle"]?.jsonPrimitive?.content ?: ""
@@ -1155,7 +1256,7 @@ class FakeAlbumRepository : AlbumRepository {
                 year = null
             )
             emit(Resource.Success<AlbumBrowse>(albumBrowse))
-        }.onFailure { err ->
+        } catch (err: Throwable) {
             emit(Resource.Error<AlbumBrowse>(err.message ?: "Failed to load album"))
         }
     }
@@ -1202,7 +1303,16 @@ class FakeListenTogetherRepository : ListenTogetherRepository {
 
 class FakeArtistRepository : ArtistRepository {
     override fun getAllArtists(limit: Int): Flow<List<ArtistEntity>> = flowOf(emptyList())
-    override fun getArtistById(id: String): Flow<ArtistEntity?> = flowOf(null)
+    override fun getArtistById(id: String): Flow<ArtistEntity?> = flow {
+        val root = DemoCatalogLoader.getBrowseItem(id)
+        if (root != null) {
+            val name = root["name"]?.jsonPrimitive?.content ?: "Artist"
+            val thumb = root["thumbnails"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
+            emit(ArtistEntity(channelId = id, name = name, thumbnails = thumb))
+        } else {
+            emit(ArtistEntity(channelId = id, name = id, thumbnails = null))
+        }
+    }
     override suspend fun insertArtist(artistEntity: ArtistEntity) {}
     override suspend fun updateArtistImage(channelId: String, thumbnail: String) {}
     override suspend fun updateArtistNameLogo(channelId: String, nameLogoUrl: String?, nameLogoColor: String?) {}
@@ -1213,9 +1323,17 @@ class FakeArtistRepository : ArtistRepository {
     override fun getFollowedArtists(): Flow<List<ArtistEntity>> = flowOf(emptyList())
     override suspend fun updateArtistInLibrary(inLibrary: LocalDateTime, channelId: String) {}
     override fun getArtistData(channelId: String): Flow<Resource<com.maxrave.domain.data.model.browse.artist.ArtistBrowse>> = flow {
-        runCatching {
+        val root = runCatching {
             val resText = webKtorClient.get("/api/yt/browse?id=" + channelId).bodyAsText()
-            val root = Json.parseToJsonElement(resText).jsonObject
+            Json.parseToJsonElement(resText).jsonObject
+        }.getOrNull() ?: DemoCatalogLoader.getBrowseItem(channelId)
+
+        if (root == null) {
+            emit(Resource.Error<com.maxrave.domain.data.model.browse.artist.ArtistBrowse>("Failed to load artist"))
+            return@flow
+        }
+
+        try {
             val name = root["name"]?.jsonPrimitive?.content ?: "Artist"
             val subs = root["subscribers"]?.jsonPrimitive?.content
             val thumbs = root["thumbnails"]?.jsonArray?.map { thumbElem ->
@@ -1283,7 +1401,7 @@ class FakeArtistRepository : ArtistRepository {
                 views = null
             )
             emit(Resource.Success<com.maxrave.domain.data.model.browse.artist.ArtistBrowse>(artistBrowse))
-        }.onFailure { err ->
+        } catch (err: Throwable) {
             emit(Resource.Error<com.maxrave.domain.data.model.browse.artist.ArtistBrowse>(err.message ?: "Failed to load artist"))
         }
     }
@@ -1367,36 +1485,113 @@ class FakeAnalyticsRepository(
     override suspend fun queryTopPlayedSongsInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedTracks>> =
         queryTopPlayedSongsLastXDays(30)
 
-    override suspend fun queryTopArtistsLastXDays(x: Int): Flow<List<TopPlayedArtist>> = flowOf(emptyList())
-    override suspend fun queryTopArtistsInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedArtist>> = flowOf(emptyList())
-    override suspend fun queryTopArtistsWithTimeInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedArtistTime>> = flowOf(emptyList())
-    override suspend fun queryTopAlbumsLastXDays(x: Int): Flow<List<TopPlayedAlbum>> = flowOf(emptyList())
-    override suspend fun queryTopAlbumsInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedAlbum>> = flowOf(emptyList())
-
-    override suspend fun getTotalPlaybackEventCount(): Flow<Long> = flow {
-        songRepository.getMostPlayedSongs().collect { songs ->
-            emit(songs.size.toLong())
+    override suspend fun queryTopArtistsLastXDays(x: Int): Flow<List<TopPlayedArtist>> = flow {
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val artistsArr = analyticsObj?.get("topArtists")?.jsonArray
+        if (artistsArr != null && artistsArr.isNotEmpty()) {
+            val list = artistsArr.mapIndexed { idx, elem ->
+                val name = elem.jsonObject["name"]?.jsonPrimitive?.content ?: "Artist"
+                TopPlayedArtist(channelId = name, playCount = 50 - (idx * 8).coerceAtMost(40))
+            }
+            emit(list)
+        } else {
+            songRepository.getMostPlayedSongs().collect { songs ->
+                val grouped = songs.groupBy { it.artistName?.firstOrNull() ?: "Unknown" }
+                    .map { (artist, sList) ->
+                        TopPlayedArtist(channelId = artist, playCount = sList.size * 5)
+                    }
+                    .sortedByDescending { it.playCount }
+                emit(grouped)
+            }
         }
     }
-    override suspend fun getTotalEventArtistCount(): Flow<Long> = flowOf(0L)
+    override suspend fun queryTopArtistsInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedArtist>> = queryTopArtistsLastXDays(30)
+    override suspend fun queryTopArtistsWithTimeInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedArtistTime>> = flow {
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val artistsArr = analyticsObj?.get("topArtists")?.jsonArray
+        if (artistsArr != null && artistsArr.isNotEmpty()) {
+            val list = artistsArr.mapIndexed { idx, elem ->
+                val name = elem.jsonObject["name"]?.jsonPrimitive?.content ?: "Artist"
+                val time = elem.jsonObject["listeningTime"]?.jsonPrimitive?.intOrNull?.toLong() ?: 3600L
+                TopPlayedArtistTime(channelId = name, playCount = 50 - (idx * 8).coerceAtMost(40), totalListeningTime = time)
+            }
+            emit(list)
+        } else {
+            songRepository.getMostPlayedSongs().collect { songs ->
+                val grouped = songs.groupBy { it.artistName?.firstOrNull() ?: "Unknown" }
+                    .map { (artist, sList) ->
+                        TopPlayedArtistTime(
+                            channelId = artist,
+                            playCount = sList.size * 5,
+                            totalListeningTime = sList.sumOf { it.totalPlayTime }
+                        )
+                    }
+                    .sortedByDescending { it.totalListeningTime }
+                emit(grouped)
+            }
+        }
+    }
+    override suspend fun queryTopAlbumsLastXDays(x: Int): Flow<List<TopPlayedAlbum>> = flow {
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val albumsArr = analyticsObj?.get("topAlbums")?.jsonArray
+        if (albumsArr != null && albumsArr.isNotEmpty()) {
+            val list = albumsArr.map { elem ->
+                val name = elem.jsonObject["name"]?.jsonPrimitive?.content ?: "Album"
+                val count = elem.jsonObject["playCount"]?.jsonPrimitive?.intOrNull ?: 10
+                TopPlayedAlbum(albumBrowseId = name, playCount = count)
+            }
+            emit(list)
+        } else {
+            songRepository.getMostPlayedSongs().collect { songs ->
+                val grouped = songs.groupBy { it.albumName ?: "Singles" }
+                    .map { (album, sList) ->
+                        TopPlayedAlbum(albumBrowseId = album, playCount = sList.size * 4)
+                    }
+                    .sortedByDescending { it.playCount }
+                emit(grouped)
+            }
+        }
+    }
+    override suspend fun queryTopAlbumsInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<List<TopPlayedAlbum>> = queryTopAlbumsLastXDays(30)
+
+    override suspend fun getTotalPlaybackEventCount(): Flow<Long> = flow {
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val total = analyticsObj?.get("totalPlaybackCount")?.jsonPrimitive?.intOrNull?.toLong()
+        if (total != null && total > 0) {
+            emit(total)
+        } else {
+            songRepository.getMostPlayedSongs().collect { songs ->
+                emit(songs.size.toLong() * 6)
+            }
+        }
+    }
+    override suspend fun getTotalEventArtistCount(): Flow<Long> = flow {
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val artistsCount = analyticsObj?.get("topArtists")?.jsonArray?.size?.toLong()
+        emit(artistsCount ?: 5L)
+    }
     override suspend fun getTotalListeningTimeInSeconds(): Flow<Long> = flow {
-        songRepository.getMostPlayedSongs().collect { songs ->
-            emit(songs.sumOf { it.totalPlayTime })
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val totalSec = analyticsObj?.get("totalListeningTimeSeconds")?.jsonPrimitive?.intOrNull?.toLong()
+        if (totalSec != null && totalSec > 0) {
+            emit(totalSec)
+        } else {
+            songRepository.getMostPlayedSongs().collect { songs ->
+                emit(songs.sumOf { it.totalPlayTime }.coerceAtLeast(7200L))
+            }
         }
     }
     override suspend fun getPlaybackEventCountInRange(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): Flow<Long> = getTotalPlaybackEventCount()
 
     override suspend fun getPeriodStats(startTimestamp: LocalDateTime, endTimestamp: LocalDateTime): AnalyticsPeriodStats {
-        var count = 0L
-        var totalSec = 0L
-        songRepository.getMostPlayedSongs().collect { songs ->
-            count = songs.size.toLong()
-            totalSec = songs.sumOf { it.totalPlayTime }
-        }
+        val analyticsObj = DemoCatalogLoader.getAnalytics()
+        val totalPlays = analyticsObj?.get("totalPlaybackCount")?.jsonPrimitive?.intOrNull?.toLong() ?: 240L
+        val totalSec = analyticsObj?.get("totalListeningTimeSeconds")?.jsonPrimitive?.intOrNull?.toLong() ?: 143500L
+        val distinct = analyticsObj?.get("topSongs")?.jsonArray?.size ?: 25
         return AnalyticsPeriodStats(
-            plays = count,
+            plays = totalPlays,
             listenedSeconds = totalSec,
-            distinctTracks = count.toInt(),
+            distinctTracks = distinct,
         )
     }
 }

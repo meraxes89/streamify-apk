@@ -100,6 +100,15 @@ try {
   process.exit(1);
 }
 
+// Suppress unhandled stream abort errors from abrupt client disconnects
+process.on('uncaughtException', (err) => {
+  if (err?.name === 'AbortError' || err?.code === 'ABORT_ERR' || err?.message?.includes('aborted')) {
+    return;
+  }
+  console.error('[streamify-server] Uncaught Exception:', err);
+  process.exit(1);
+});
+
 const shutdown = async (signal) => {
   console.log(`\nReceived ${signal}, shutting down gracefully...`);
   releaseWakeLock();

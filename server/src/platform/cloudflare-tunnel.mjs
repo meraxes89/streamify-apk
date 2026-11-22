@@ -46,7 +46,7 @@ export class CloudflareTunnel extends EventEmitter {
    */
   static getDownloadUrl(platform = process.platform, arch = process.arch) {
     const base = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
-    if (platform === 'linux') {
+    if (platform === 'linux' || platform === 'android') {
       if (arch === 'arm64') return `${base}/cloudflared-linux-arm64`;
       if (arch === 'arm') return `${base}/cloudflared-linux-arm`;
       if (arch === 'x64') return `${base}/cloudflared-linux-amd64`;
@@ -68,8 +68,20 @@ export class CloudflareTunnel extends EventEmitter {
       return this.binPath;
     }
 
-    // Check system PATH
     const systemNames = process.platform === 'win32' ? ['cloudflared.exe'] : ['cloudflared'];
+
+    // Check Termux PREFIX bin ($PREFIX/bin/cloudflared)
+    if (process.env.PREFIX) {
+      const termuxBin = path.join(process.env.PREFIX, 'bin', systemNames[0]);
+      if (fs.existsSync(termuxBin)) {
+        try {
+          fs.accessSync(termuxBin, fs.constants.X_OK);
+          return termuxBin;
+        } catch {}
+      }
+    }
+
+    // Check system PATH
     const pathDirs = (process.env.PATH || '').split(path.delimiter);
     for (const p of pathDirs) {
       for (const name of systemNames) {
@@ -100,6 +112,19 @@ export class CloudflareTunnel extends EventEmitter {
   async ensureBinary() {
     const existing = this.resolveBinary();
     if (existing) return existing;
+
+    // In Android Termux, system package manager provides DNS-compatible cloudflared
+    if (process.platform === 'android' && process.env.PREFIX) {
+      try {
+        this.logger.log('[cloudflare-tunnel] Android Termux detected. Installing cloudflared via pkg...');
+        const { execSync } = await import('node:child_process');
+        execSync('pkg install -y cloudflared', { stdio: 'ignore' });
+        const termuxBin = this.resolveBinary();
+        if (termuxBin) return termuxBin;
+      } catch (err) {
+        this.logger.warn(`[cloudflare-tunnel] Could not install cloudflared via pkg: ${err.message}. Falling back to download...`);
+      }
+    }
 
     const downloadUrl = CloudflareTunnel.getDownloadUrl();
     if (!downloadUrl) {
@@ -157,10 +182,15 @@ export class CloudflareTunnel extends EventEmitter {
 
     this.childProcess = child;
 
-    const urlRegex = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;
+    const urlRegex = /https:\/\/(?!api\.)[a-zA-Z0-9-]+\.trycloudflare\.com/;
 
+    let lastLogMessage = '';
     const handleOutput = (chunk) => {
       const text = chunk.toString();
+      const trimmed = text.trim();
+      if (trimmed) {
+        lastLogMessage = trimmed;
+      }
       if (!this.url && !this.token) {
         const match = text.match(urlRegex);
         if (match) {
@@ -194,7 +224,13 @@ export class CloudflareTunnel extends EventEmitter {
       if (!this._stopping && this.autoRestart && this.restartAttempts < this.maxRestartAttempts) {
         this.restartAttempts++;
         const backoff = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
-        this.logger.warn(`[cloudflare-tunnel] Process exited (${signal || code}). Restarting in ${backoff}ms...`);
+        if (code !== 0 && code !== null) {
+          const detail = lastLogMessage ? `: ${lastLogMessage.slice(0, 300)}` : '';
+          this.lastError = new Error(`cloudflared exited with code ${code}${detail}`);
+          this.logger.warn(`[cloudflare-tunnel] Process exited (${signal || code})${detail}. Restarting in ${backoff}ms...`);
+        } else {
+          this.logger.warn(`[cloudflare-tunnel] Process exited (${signal || code}). Restarting in ${backoff}ms...`);
+        }
         setTimeout(() => {
           if (!this._stopping) this.start();
         }, backoff).unref();

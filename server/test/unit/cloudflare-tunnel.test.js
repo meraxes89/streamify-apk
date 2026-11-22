@@ -8,6 +8,9 @@ test('CloudflareTunnel: getDownloadUrl architecture mapping', () => {
   const linuxArm64 = CloudflareTunnel.getDownloadUrl('linux', 'arm64');
   assert.ok(linuxArm64?.includes('cloudflared-linux-arm64'));
 
+  const androidArm64 = CloudflareTunnel.getDownloadUrl('android', 'arm64');
+  assert.ok(androidArm64?.includes('cloudflared-linux-arm64'));
+
   const linuxAmd64 = CloudflareTunnel.getDownloadUrl('linux', 'x64');
   assert.ok(linuxAmd64?.includes('cloudflared-linux-amd64'));
 
@@ -60,7 +63,10 @@ test('CloudflareTunnel: URL extraction and event handling', () => {
     '2026-11-22T17:00:00Z INF +--------------------------------------------------------------------------------------------+\n'
   );
 
-  const urlRegex = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;
+  const urlRegex = /https:\/\/(?!api\.)[a-zA-Z0-9-]+\.trycloudflare\.com/;
+  const apiMatch = 'failed Post "https://api.trycloudflare.com/tunnel": connection refused'.match(urlRegex);
+  assert.equal(apiMatch, null);
+
   const match = chunk.toString().match(urlRegex);
   assert.ok(match);
   assert.equal(match[0], 'https://stream-relay-test-42.trycloudflare.com');
