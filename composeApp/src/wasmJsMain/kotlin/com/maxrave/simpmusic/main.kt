@@ -3,6 +3,7 @@ package com.maxrave.simpmusic
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import com.maxrave.domain.manager.DataStoreManager
+import com.maxrave.simpmusic.di.DemoCatalogLoader
 import com.maxrave.simpmusic.di.initWebKoin
 import com.maxrave.simpmusic.utils.StreamifyDefaultsInitializer
 import kotlinx.browser.document
@@ -17,10 +18,18 @@ fun main() {
         initWebKoin()
         GlobalScope.launch {
             try {
+                // Initialize default preferences
                 val dataStoreManager: DataStoreManager = getKoin().get()
                 StreamifyDefaultsInitializer.initialize(dataStoreManager)
             } catch (e: Throwable) {
                 println("StreamifyDefaultsInitializer error: $e")
+            }
+
+            try {
+                // Pre-fetch demo catalog snapshot from CDN / cache for standalone GitHub Pages mode
+                DemoCatalogLoader.load()
+            } catch (e: Throwable) {
+                println("DemoCatalogLoader init error: $e")
             }
         }
         val loadingEl = document.getElementById("loading")
