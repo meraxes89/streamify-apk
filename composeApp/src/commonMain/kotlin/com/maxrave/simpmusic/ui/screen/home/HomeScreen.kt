@@ -1081,6 +1081,8 @@ fun HomeScreen(
                 val createPinned = getPlatform() == Platform.Desktop || getScreenSizeInfo().let { it.wDP >= it.hDP }
                 val chipHeadFade by animateFloatAsState(if (chipRowState.canScrollBackward) 1f else 0f)
                 val chipTailFade by animateFloatAsState(if (chipRowState.canScrollForward) 1f else 0f)
+                val isCompactScreen = getScreenSizeInfo().let { it.wDP < 600 }
+                var badgeExpanded by remember { mutableStateOf(false) }
                 // Notifications moved into the avatar menu, Listen Together into the Create sheet.
                 val createActions: @Composable () -> Unit = {
                     CreateActions(
@@ -1098,7 +1100,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 16.dp, end = 8.dp),
+                        modifier = Modifier.padding(start = 16.dp, end = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         HomeAccountButton(
@@ -1106,8 +1108,15 @@ fun HomeScreen(
                             thumbnailUrl = accountInfo?.second,
                             navController = navController,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        SireenBrandingBadge()
+                        Spacer(modifier = Modifier.width(6.dp))
+                        SireenBrandingBadge(
+                            compact = isCompactScreen && !badgeExpanded,
+                            onBadgeClick = {
+                                if (isCompactScreen) {
+                                    badgeExpanded = !badgeExpanded
+                                }
+                            },
+                        )
                     }
                     BoxWithConstraints(
                         Modifier
