@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // P1 Performance: Scale libuv threadpool to physical cores (min 8, max 12)
 // Must be set before any asynchronous libuv operations occur.
@@ -32,16 +35,29 @@ try {
   const address = await app.listen({ host, port });
   console.log(`Streamify Modular Fastify Server listening on ${address} [Profile: ${profile.name}]`);
 
-  // P0 Elite Delivery: Spawn non-blocking background bundle updater (zero delay on boot)
+  // P0 Elite Delivery: Spawn non-blocking background bundle updater
   if (process.env.STREAMIFY_DISABLE_AUTO_UPDATE !== '1') {
     import('../scripts/update-bundle.mjs')
       .then(({ runBundleUpdate }) => {
-        // Run after 3-second settling delay to ensure server startup latency is 0ms
+        let delay = 3000;
+        try {
+          const binDir = path.dirname(fileURLToPath(import.meta.url));
+          const publicLink = path.resolve(binDir, '../public');
+          if (!fs.existsSync(publicLink) || !fs.lstatSync(publicLink).isSymbolicLink()) {
+            delay = 0;
+          } else {
+            const target = fs.readlinkSync(publicLink);
+            if (target.includes('placeholder')) delay = 0;
+          }
+        } catch (_) {
+          delay = 0;
+        }
+
         setTimeout(() => {
           runBundleUpdate().catch((err) => {
             console.warn(`[bundle-updater] Background check notice: ${err.message}`);
           });
-        }, 3000).unref();
+        }, delay).unref();
       })
       .catch(() => {});
   }

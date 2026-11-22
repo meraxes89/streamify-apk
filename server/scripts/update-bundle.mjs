@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import http from 'node:http';
 import https from 'node:https';
 import { fileURLToPath } from 'node:url';
@@ -56,26 +57,58 @@ export function releaseUpdateLock(fd) {
 }
 
 /**
- * Downloads a URL buffer using native https with conditional ETag and timeout support.
+ * Resolves GitHub Personal Access Token from environment or GitHub CLI credentials.
+ */
+export function resolveGitHubToken() {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
+  try {
+    const homedir = os.homedir();
+    const hostsPath = path.join(homedir, '.config/gh/hosts.yml');
+    if (fs.existsSync(hostsPath)) {
+      const content = fs.readFileSync(hostsPath, 'utf8');
+      const match = content.match(/oauth_token:\s*([^\s\r\n]+)/);
+      if (match && match[1]) return match[1];
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
+ * Downloads a URL buffer using native https with conditional ETag, token auth, and timeout support.
  */
 function fetchBuffer(url, headers = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const client = parsed.protocol === 'https:' ? https : http;
 
+    const token = resolveGitHubToken();
+    const reqHeaders = {
+      'User-Agent': 'Streamify-Bundle-Updater/3.0.0',
+      Accept: 'application/octet-stream, application/json',
+      ...headers,
+    };
+
+    if (token && (parsed.hostname === 'api.github.com' || parsed.hostname === 'github.com')) {
+      if (!reqHeaders['Authorization']) {
+        reqHeaders['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
     const req = client.get(
       url,
-      {
-        headers: {
-          'User-Agent': 'Streamify-Bundle-Updater/3.0.0',
-          Accept: 'application/octet-stream, application/json',
-          ...headers,
-        },
-      },
+      { headers: reqHeaders },
       (res) => {
         // Handle 301 / 302 / 307 redirects
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return fetchBuffer(res.headers.location, headers).then(resolve, reject);
+          const redirectUrl = new URL(res.headers.location, url).toString();
+          const redirectParsed = new URL(redirectUrl);
+          const nextHeaders = { ...headers };
+          // Do not leak GitHub Authorization tokens to external redirect targets (e.g. AWS S3)
+          if (redirectParsed.hostname !== 'api.github.com' && redirectParsed.hostname !== 'github.com') {
+            delete nextHeaders['Authorization'];
+          }
+          return fetchBuffer(redirectUrl, nextHeaders).then(resolve, reject);
         }
 
         if (res.statusCode === 304) {
@@ -161,6 +194,20 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
     });
 
     if (!releaseRes) {
+      const localBuildDir = path.resolve(SERVER_DIR, '../composeApp/build/dist/wasmJs/productionExecutable');
+      if (fs.existsSync(localBuildDir) && verifyWasmMagic(localBuildDir) && verifyMerkle(localBuildDir)) {
+        console.log('[update-bundle] Auto-seeding bundle from local composeApp build...');
+        const { rootHash } = generateBundleManifest(localBuildDir);
+        const targetDir = path.join(BUNDLES_DIR, rootHash);
+        if (!fs.existsSync(targetDir)) {
+          fs.cpSync(localBuildDir, targetDir, { recursive: true });
+        }
+        atomicSymlink(PUBLIC_LINK, targetDir);
+        localManifest.current = rootHash;
+        localManifest.updatedAt = new Date().toISOString();
+        fs.writeFileSync(MANIFEST_FILE, JSON.stringify(localManifest, null, 2), 'utf8');
+        return { status: 'seeded-local', hash: rootHash };
+      }
       return { status: 'offline' };
     }
 
@@ -171,6 +218,20 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
 
     const releases = JSON.parse(releaseRes.buffer.toString('utf8'));
     if (!Array.isArray(releases) || releases.length === 0) {
+      const localBuildDir = path.resolve(SERVER_DIR, '../composeApp/build/dist/wasmJs/productionExecutable');
+      if (fs.existsSync(localBuildDir) && verifyWasmMagic(localBuildDir) && verifyMerkle(localBuildDir)) {
+        console.log('[update-bundle] Auto-seeding bundle from local composeApp build...');
+        const { rootHash } = generateBundleManifest(localBuildDir);
+        const targetDir = path.join(BUNDLES_DIR, rootHash);
+        if (!fs.existsSync(targetDir)) {
+          fs.cpSync(localBuildDir, targetDir, { recursive: true });
+        }
+        atomicSymlink(PUBLIC_LINK, targetDir);
+        localManifest.current = rootHash;
+        localManifest.updatedAt = new Date().toISOString();
+        fs.writeFileSync(MANIFEST_FILE, JSON.stringify(localManifest, null, 2), 'utf8');
+        return { status: 'seeded-local', hash: rootHash };
+      }
       console.log('[update-bundle] No releases found in repository.');
       return { status: 'no-release' };
     }
@@ -193,10 +254,13 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
       return { status: 'no-wasm-asset' };
     }
 
+    const token = resolveGitHubToken();
+
     // Fetch SHA256SUMS for expected hash
     let expectedHash = null;
     if (checksumsAsset) {
-      const sumsRes = await fetchBuffer(checksumsAsset.browser_download_url);
+      const checksumUrl = (token && checksumsAsset.url) ? checksumsAsset.url : checksumsAsset.browser_download_url;
+      const sumsRes = await fetchBuffer(checksumUrl, { Accept: 'application/octet-stream' }).catch(() => null);
       if (sumsRes && sumsRes.statusCode === 200) {
         const lines = sumsRes.buffer.toString('utf8').split('\n');
         for (const line of lines) {
@@ -215,9 +279,17 @@ export async function runBundleUpdate({ force = false, targetTag = null } = {}) 
     }
 
     console.log(`[update-bundle] Downloading new WASM bundle (${wasmAsset.name})...`);
-    const zipRes = await fetchBuffer(wasmAsset.browser_download_url);
+    let zipRes = null;
+    if (token && wasmAsset.url) {
+      zipRes = await fetchBuffer(wasmAsset.url, { Accept: 'application/octet-stream' }).catch(() => null);
+    }
     if (!zipRes || zipRes.statusCode !== 200) {
-      throw new Error(`Failed to download WASM archive from ${wasmAsset.browser_download_url}`);
+      zipRes = await fetchBuffer(wasmAsset.browser_download_url).catch((err) => {
+        throw new Error(`Failed to download WASM archive from ${wasmAsset.browser_download_url}: ${err.message}`);
+      });
+    }
+    if (!zipRes || zipRes.statusCode !== 200) {
+      throw new Error(`Failed to download WASM archive (${wasmAsset.name})`);
     }
 
     const actualZipHash = crypto.createHash('sha256').update(zipRes.buffer).digest('hex');

@@ -92,4 +92,19 @@ describe('Bundle Gate: Content-Addressed Offline-First Integrity', () => {
 
     fs.rmSync(emptyBase, { recursive: true, force: true });
   });
+
+  test('enforceBundleGate in allowDegraded mode mounts fallback placeholder without throwing', () => {
+    const emptyBase = path.join(tmpBase, 'empty-server-degraded');
+    fs.mkdirSync(emptyBase, { recursive: true });
+
+    const placeholderDir = enforceBundleGate(emptyBase, { allowDegraded: true });
+    assert.ok(fs.existsSync(placeholderDir));
+    assert.ok(fs.existsSync(path.join(placeholderDir, 'index.html')));
+
+    const publicPath = path.join(emptyBase, 'public');
+    assert.ok(fs.existsSync(publicPath));
+    assert.ok(fs.lstatSync(publicPath).isSymbolicLink());
+
+    fs.rmSync(emptyBase, { recursive: true, force: true });
+  });
 });
