@@ -157,16 +157,12 @@ compose.desktop {
                     .current()
                     .isMacOsX
             ) {
-                listTarget.addAll(
-                    listOf(TargetFormat.Dmg, TargetFormat.Pkg),
-                )
+                listTarget.add(TargetFormat.Dmg)
             } else if (org.gradle.internal.os.OperatingSystem
                     .current()
                     .isWindows
             ) {
-                listTarget.addAll(
-                    listOf(TargetFormat.Msi, TargetFormat.Exe),
-                )
+                listTarget.add(TargetFormat.Msi)
             } else {
                 listTarget.addAll(
                     listOf(TargetFormat.Deb, TargetFormat.Rpm),
