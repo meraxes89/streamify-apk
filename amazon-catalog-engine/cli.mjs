@@ -23,6 +23,7 @@
  *   node cli.mjs videos <artist>       Find official music videos
  */
 
+import fs from 'node:fs';
 import { AmazonCatalogClient } from './src/client.mjs';
 
 const args = process.argv.slice(2);
@@ -155,6 +156,66 @@ async function main() {
       break;
     }
 
+    case 'lossless': {
+      const trackName = args[1];
+      const artistName = args[2] || '';
+      if (!trackName) {
+        console.error('Error: Please provide track title.');
+        process.exit(1);
+      }
+      console.log(`Resolving lossless top-tier audio for "${trackName}" by "${artistName}"...`);
+      const resolved = await client.resolveLosslessAudio({ title: trackName, artist: artistName });
+      console.log(JSON.stringify(resolved, null, 2));
+      break;
+    }
+
+    case 'lossless-full': {
+      // Whole-song lossless acquisition: supply the Amazon FLAC stream URL for the
+      // full track via STREAMIFY_FLAC_SOURCE_URL, e.g. an Amazon Music Ultra HD/HD
+      // master link for the resolved track. Writes the entire raw FLAC to disk.
+      const trackName = args[1];
+      const artistName = args[2] || '';
+      const sourceUrl = process.env.STREAMIFY_FLAC_SOURCE_URL;
+      if (!trackName || !sourceUrl) {
+        console.error('Error: provide track title and set STREAMIFY_FLAC_SOURCE_URL=<amazon flac url>.');
+        process.exit(1);
+      }
+      const { LosslessFullSongService } = await import('./src/lossless-fullsong.mjs');
+      const service = new LosslessFullSongService({
+        audioSource: async ({ streamUrl }) => {
+          const res = await fetch(streamUrl);
+          if (!res.ok) throw new Error(`Full-song FLAC fetch failed: HTTP ${res.status}`);
+          const bytes = Buffer.from(await res.arrayBuffer());
+          const declared = res.headers.get('content-type') || '';
+          return {
+            bytes,
+            codec: declared.includes('flac') ? 'flac' : 'opus',
+            contentType: declared,
+          };
+        },
+      });
+      const descriptor = await client.resolveLosslessAudio({ title: trackName, artist: artistName });
+      const artifact = await service.acquireFullSong({
+        streamUrl: sourceUrl,
+        tier: descriptor.tier,
+        codec: 'flac',
+      });
+      const outputFile = args[3] || `${trackName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_lossless.flac`;
+      fs.writeFileSync(outputFile, artifact.flac || artifact.bytes);
+      console.log(JSON.stringify({
+        outputFile,
+        tier: artifact.tier,
+        specLabel: artifact.specLabel,
+        codec: artifact.codec,
+        isLossless: artifact.isLossless,
+        totalBytes: (artifact.flac || artifact.bytes).length,
+        remuxed: artifact.remuxed,
+        sampleRate: artifact.streamInfo?.streamInfo?.sampleRate || null,
+        bitDepth: artifact.streamInfo?.streamInfo?.bitsPerSample || null,
+      }, null, 2));
+      break;
+    }
+
     case 'manifest': {
       const trackName = args[1];
       const manifest = await client.getDashManifest({ title: trackName, artist: args[2] || '' });
@@ -231,6 +292,8 @@ async function main() {
       console.log('  node cli.mjs scrape <url>          Scrape External Playlist');
       console.log('  node cli.mjs lyrics <song> <band>  Synchronized Lyrics');
       console.log('  node cli.mjs resolve <song> <band> Hybrid Stream Resolver');
+      console.log('  node cli.mjs lossless <song> <band> Lossless Top-Tier Full-Song Stream');
+      console.log('  node cli.mjs lossless-full <song> <band> [out.flac]  Whole raw FLAC file (STREAMIFY_FLAC_SOURCE_URL)');
       console.log('  node cli.mjs manifest <song>       DASH MPD Manifest');
       console.log('  node cli.mjs prefetch <song>       Stream Prefetch Descriptor');
       console.log('  node cli.mjs probe                 Live Discovery & Health');

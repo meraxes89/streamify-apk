@@ -329,6 +329,22 @@ export class AmazonCatalogClient {
   }
 
   // -------------------------------------------------------------
+  // API 9b: Lossless Full-Song Stream Resolver (top-tier FLAC)
+  // -------------------------------------------------------------
+  async resolveLosslessAudio(trackOrAsin) {
+    let track = typeof trackOrAsin === 'string'
+      ? { asin: trackOrAsin.replace('amzn:track:', ''), title: trackOrAsin }
+      : trackOrAsin;
+
+    const resolved = await this.resolver.resolveLossless(track);
+    return {
+      ...resolved,
+      requestedTier: resolved.tier || null,
+      lossless: resolved.isLossless !== false,
+    };
+  }
+
+  // -------------------------------------------------------------
   // API 10: Dynamic DASH MPD Manifest (/api/stream/:id/manifest.mpd)
   // -------------------------------------------------------------
   async getDashManifest(trackOrAsin) {

@@ -21,6 +21,7 @@ import { SparseBlockCache, BLOCK_SIZE } from '../../server/src/slices/stream/spa
 import { AmazonCatalogClient } from './client.mjs';
 import { AmazonLyricsService } from './lyrics.mjs';
 import { AmazonStreamResolver } from './resolver.mjs';
+import { LosslessFullSongService } from './lossless-fullsong.mjs';
 import { Readable } from 'stream';
 
 export class AmazonIntegratedEngine {
@@ -31,11 +32,13 @@ export class AmazonIntegratedEngine {
     ttlMs = 300_000, // 5 min default TTL
     pal = null,
     streamsDir = null,
-    maxCacheMb = 256
+    maxCacheMb = 256,
+    losslessFullSongService = new LosslessFullSongService()
   } = {}) {
     // 1. Core Amazon Catalog Client & Resolver
     this.client = new AmazonCatalogClient({ country });
     this.streamResolver = new AmazonStreamResolver({ country });
+    this.losslessFullSongService = losslessFullSongService;
 
     // 2. High-performance Infrastructure Primitives from server/src
     this.cache = new LruCache({ maxItems: cacheMaxItems });
@@ -129,6 +132,53 @@ export class AmazonIntegratedEngine {
 
     try {
       const streamInfo = await this.streamResolver.resolve(trackMeta);
+      const shouldPace = this.pacer.shouldPace();
+
+      return {
+        ...streamInfo,
+        shouldPace,
+        activeStreams: this.admission.activeStreams,
+        governorTier: this.governor.getStatus().tier,
+        release: () => {
+          releaseAdmission();
+          this.governor.setActiveStreams(this.admission.activeStreams);
+        }
+      };
+    } catch (err) {
+      releaseAdmission();
+      this.governor.setActiveStreams(this.admission.activeStreams);
+      throw err;
+    }
+  }
+
+  /**
+   * Lossless full-song engineering: acquire the whole raw lossless audio
+   * (FLAC metadata-first remux + frame-aligned geometry) for a full song via
+   * the resolved top-tier lossless stream.
+   */
+  async acquireLosslessFullSong(trackMeta) {
+    const descriptor = await this.streamResolver.resolveLossless(trackMeta);
+    const artifact = await this.losslessFullSongService.acquireFullSong({
+      streamUrl: descriptor.streamUrl,
+      tier: descriptor.tier,
+      codec: descriptor.codec,
+    });
+    return artifact;
+  }
+
+  /**
+   * Lossless full-song stream resolution, gated by the same admission +
+   * pacing + cache infrastructure as regular playback (comm12-comm15).
+   *
+   * Resolves the track to the top-tier lossless rendition and returns the
+   * paced stream handle so the caller can stream full songs without loss.
+   */
+  async resolveLosslessPacedStream(trackMeta, { priority = PRIORITY.NORMAL } = {}) {
+    const releaseAdmission = await this.admission.acquire({ priority });
+    this.governor.setActiveStreams(this.admission.activeStreams);
+
+    try {
+      const streamInfo = await this.streamResolver.resolveLossless(trackMeta);
       const shouldPace = this.pacer.shouldPace();
 
       return {
