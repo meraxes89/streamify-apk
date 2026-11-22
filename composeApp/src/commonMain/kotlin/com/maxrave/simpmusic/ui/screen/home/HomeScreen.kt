@@ -407,10 +407,6 @@ fun HomeScreen(
     var moodExpanded by rememberSaveable {
         mutableStateOf(false)
     }
-    // Derived, so scrolling recomposes only when the page reaches or leaves its very top.
-    val atTop by remember {
-        derivedStateOf { scrollState.firstVisibleItemIndex == 0 && scrollState.firstVisibleItemScrollOffset == 0 }
-    }
     // The floating chip row refracts the page scrolling under it, so the page is the glass source and
     // the row its sibling (nesting the row inside the source is the RuntimeShader feedback loop).
     val chipBackdrop = rememberBackdrop(MaterialTheme.colorScheme.background)
@@ -1026,15 +1022,18 @@ fun HomeScreen(
         }
         // Spotify / Apple Music flagship translucent top bar:
         // Pure transparent when resting at the top to let hero artwork/glow shine through;
-        // transitions smoothly to a hardware-accelerated specular frosted scrim on scroll.
-        val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
-        val surfaceColor = MaterialTheme.colorScheme.surface
-        val containerColor = MaterialTheme.colorScheme.surfaceContainer
-        val scrimAlpha by animateFloatAsState(
-            targetValue = if (atTop) 0f else 1f,
-            animationSpec = tween(durationMillis = 240),
-            label = "home_top_bar_scrim",
-        )
+        // transitions smoothly to a hardware-accelerated specular frosted scrim as content scrolls under.
+        val density = LocalDensity.current
+        val scrimFadeDistancePx = with(density) { 96.dp.toPx() }
+        val scrimProgress by remember(scrimFadeDistancePx) {
+            derivedStateOf {
+                if (scrollState.firstVisibleItemIndex > 0) {
+                    1f
+                } else {
+                    (scrollState.firstVisibleItemScrollOffset.toFloat() / scrimFadeDistancePx).coerceIn(0f, 1f)
+                }
+            }
+        }
 
         Column(
             modifier =
@@ -1042,23 +1041,25 @@ fun HomeScreen(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .drawBehind {
-                        if (scrimAlpha > 0.005f) {
-                            // 1. Hardware-accelerated specular translucent gradient scrim
+                        val progress = scrimProgress
+                        if (progress > 0.005f) {
+                            // 1. Hardware-accelerated specular translucent gradient scrim matching page background
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
-                                        containerColor.copy(alpha = (if (isDark) 0.95f else 0.96f) * scrimAlpha),
-                                        surfaceColor.copy(alpha = (if (isDark) 0.88f else 0.90f) * scrimAlpha),
+                                        pageBackground.copy(alpha = (if (isLightTheme) 0.88f else 0.84f) * progress),
+                                        pageBackground.copy(alpha = (if (isLightTheme) 0.72f else 0.68f) * progress),
                                     ),
                                 ),
                             )
-                            // 2. Micro-hairline bottom specular rim (0.75dp)
-                            val rimWidth = 0.75.dp.toPx()
-                            val rimColor = if (isDark) {
-                                Color.White.copy(alpha = 0.08f * scrimAlpha)
-                            } else {
-                                Color.Black.copy(alpha = 0.06f * scrimAlpha)
-                            }
+                            // 2. Micro-hairline bottom specular rim (0.5dp)
+                            val rimWidth = 0.5.dp.toPx()
+                            val rimColor =
+                                if (isLightTheme) {
+                                    Color.Black.copy(alpha = 0.06f * progress)
+                                } else {
+                                    Color.White.copy(alpha = 0.08f * progress)
+                                }
                             drawLine(
                                 color = rimColor,
                                 start = Offset(0f, size.height - rimWidth / 2f),
