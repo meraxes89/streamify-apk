@@ -4,9 +4,11 @@ import { Agent, setGlobalDispatcher } from 'undici';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { resolveProfile } from './platform/profile.js';
 import { resolveDataDir } from './platform/data-dir.js';
+import { enforceBundleGate } from './platform/bundle-gate.mjs';
 import fastifyStatic from '@fastify/static';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // P0 Diagnostics: Event loop delay monitor with 10ms sampling resolution
 const eventLoopLagMonitor = monitorEventLoopDelay({ resolution: 10 });
@@ -243,36 +245,37 @@ export async function createApp({
   // Stream gateway vertical slice
   await app.register(streamRoutes, { gateway: streamGateway, prefetch: prefetchCoordinator });
 
-  // Static files for Compose Wasm UI & SPA fallback
-  const publicDir = path.resolve('server/public');
-  if (fs.existsSync(publicDir)) {
-    await app.register(fastifyStatic, {
-      root: publicDir,
-      prefix: '/',
-      preCompressed: true,
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith('index.html')) {
-          res.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-          res.header('Pragma', 'no-cache');
-          res.header('Expires', '0');
-        } else if (filePath.endsWith('.wasm')) {
-          res.header('Content-Type', 'application/wasm');
-          res.header('Cache-Control', 'public, max-age=31536000, immutable');
-        } else if (filePath.endsWith('.js')) {
-          res.header('Content-Type', 'application/javascript');
-          res.header('Cache-Control', 'public, max-age=31536000, immutable');
-        }
-      },
-    });
+  // P0 Bundle Gate: Enforce content-addressed WASM integrity and atomic symlink
+  const serverDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+  const verifiedBundleDir = enforceBundleGate(serverDir);
+  const publicDir = path.resolve(serverDir, 'public');
 
-    app.setNotFoundHandler(async (request, reply) => {
-      if (request.url.startsWith('/api/')) {
-        reply.status(404);
-        return { error: 'Not Found' };
+  await app.register(fastifyStatic, {
+    root: publicDir,
+    prefix: '/',
+    preCompressed: true,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.header('Pragma', 'no-cache');
+        res.header('Expires', '0');
+      } else if (filePath.endsWith('.wasm')) {
+        res.header('Content-Type', 'application/wasm');
+        res.header('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith('.js')) {
+        res.header('Content-Type', 'application/javascript');
+        res.header('Cache-Control', 'public, max-age=31536000, immutable');
       }
-      return reply.sendFile('index.html');
-    });
-  }
+    },
+  });
+
+  app.setNotFoundHandler(async (request, reply) => {
+    if (request.url.startsWith('/api/')) {
+      reply.status(404);
+      return { error: 'Not Found' };
+    }
+    return reply.sendFile('index.html');
+  });
 
   return app;
 }

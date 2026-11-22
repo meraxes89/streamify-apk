@@ -87,10 +87,12 @@ test_lyrics_benchmark/
 
 # Termux server & local runtime
 server/node_modules/
-server/public/
+server/public
+server/bundles/
+server/.state/
+server/.cache/
 .streamify.pid
 tools/gsf/.clasp.json
-
 
 server/compose-dist/
 server/public-feishin/

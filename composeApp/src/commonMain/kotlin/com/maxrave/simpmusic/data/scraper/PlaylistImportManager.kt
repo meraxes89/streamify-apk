@@ -1,7 +1,9 @@
 package com.maxrave.simpmusic.data.scraper
 
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
+import com.maxrave.domain.data.entities.PairSongLocalPlaylist
 import com.maxrave.domain.data.entities.SongEntity
+import com.maxrave.domain.extension.now
 import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.repository.SearchRepository
@@ -114,8 +116,25 @@ class PlaylistImportManager(
             thumbnail = playlistData.thumbnails.lastOrNull()?.url,
         )
 
-        val newId = localPlaylistRepository.insertLocalPlaylist(localPlaylist, "Imported Playlist").lastOrNull()
-        val createdId = (newId?.data as? Long) ?: (newId?.message?.toLongOrNull())
+        localPlaylistRepository.insertLocalPlaylist(localPlaylist, "Imported Playlist").lastOrNull()
+
+        val allPlaylists = localPlaylistRepository.getAllLocalPlaylists().firstOrNull()
+        val createdPlaylist = allPlaylists?.find { it.title == localPlaylist.title && it.tracks == localPlaylist.tracks }
+            ?: allPlaylists?.firstOrNull()
+        val createdId = createdPlaylist?.id
+
+        if (createdId != null) {
+            videoIds.forEachIndexed { index, videoId ->
+                localPlaylistRepository.insertPairSongLocalPlaylist(
+                    PairSongLocalPlaylist(
+                        playlistId = createdId,
+                        songId = videoId,
+                        position = index,
+                        inPlaylist = now(),
+                    ),
+                )
+            }
+        }
 
         channel.send(
             PlaylistImportProgress(
@@ -193,8 +212,25 @@ class PlaylistImportManager(
             tracks = nonNullVideoIds,
         )
 
-        val newId = localPlaylistRepository.insertLocalPlaylist(localPlaylist, "Imported Playlist").lastOrNull()
-        val createdId = (newId?.data as? Long) ?: (newId?.message?.toLongOrNull())
+        localPlaylistRepository.insertLocalPlaylist(localPlaylist, "Imported Playlist").lastOrNull()
+
+        val allPlaylists = localPlaylistRepository.getAllLocalPlaylists().firstOrNull()
+        val createdPlaylist = allPlaylists?.find { it.title == localPlaylist.title && it.tracks == localPlaylist.tracks }
+            ?: allPlaylists?.firstOrNull()
+        val createdId = createdPlaylist?.id
+
+        if (createdId != null) {
+            nonNullVideoIds.forEachIndexed { index, videoId ->
+                localPlaylistRepository.insertPairSongLocalPlaylist(
+                    PairSongLocalPlaylist(
+                        playlistId = createdId,
+                        songId = videoId,
+                        position = index,
+                        inPlaylist = now(),
+                    ),
+                )
+            }
+        }
 
         channel.send(
             PlaylistImportProgress(

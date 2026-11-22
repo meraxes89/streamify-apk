@@ -101,4 +101,37 @@ export async function catalogRoutes(fastify, options) {
       return { error: err.message, tracks: [] };
     }
   });
+
+  // External Playlist Scraper & Solver Endpoint
+  fastify.get('/api/playlist/scrape', async (req, reply) => {
+    try {
+      const url = req.query.url;
+      if (!url) {
+        reply.status(400);
+        return { error: 'url parameter required' };
+      }
+      const scraped = await service.scrapePlaylist(url);
+      return scraped;
+    } catch (err) {
+      req.log.error(err, '[playlist:scrape]');
+      reply.status(500);
+      return { error: err.message, tracks: [] };
+    }
+  });
+
+  fastify.post('/api/playlist/scrape', async (req, reply) => {
+    try {
+      const url = req.body?.url || req.query.url;
+      if (!url) {
+        reply.status(400);
+        return { error: 'url field in body or query required' };
+      }
+      const scraped = await service.scrapePlaylist(url);
+      return scraped;
+    } catch (err) {
+      req.log.error(err, '[playlist:scrape]');
+      reply.status(500);
+      return { error: err.message, tracks: [] };
+    }
+  });
 }
