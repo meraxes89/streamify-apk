@@ -169,15 +169,12 @@ compose.desktop {
             modules("jdk.unsupported")
             packageName = "SimpMusic"
             macOS {
-                val formatedDate =
-                    Instant.now().let {
-                        DateTimeFormatter
-                            .ofPattern("yyyy.MM.dd")
-                            .withZone(ZoneId.of("UTC"))
-                            .format(it)
-                    }
                 includeAllModules = true
-                packageVersion = formatedDate
+                packageVersion =
+                    libs.versions.version.name
+                        .get()
+                        .substringBefore('-')
+                packageBuildVersion = libs.versions.version.code.get()
                 iconFile.set(rootDir.resolve("composeApp/icon/rounded_app_icon.icns"))
                 val macExtraPlistKeys =
                     """

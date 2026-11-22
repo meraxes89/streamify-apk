@@ -611,4 +611,47 @@ jobs:
           if-no-files-found: error
           compression-level: 1
 
+  # ── BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane ────────────
+  macos-desktop-native:
+    name: "macOS desktop cdylib (arm64 + x86_64 universal)"
+    if: inputs.build_desktop_native || inputs.build_linux_native
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: "native-macos-universal"
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Compile macOS engine cdylibs & create universal binary
+        shell: bash
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release --lib --target aarch64-apple-darwin
+          cargo build --manifest-path rust/Cargo.toml --release --lib --target x86_64-apple-darwin
+          mkdir -p rust/target/universal/release
+          lipo -create \
+            rust/target/aarch64-apple-darwin/release/libstreamify_core_rs.dylib \
+            rust/target/x86_64-apple-darwin/release/libstreamify_core_rs.dylib \
+            -output rust/target/universal/release/libstreamify_core_rs.dylib
+
+      - name: Upload engine cdylib
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-macos-universal
+          path: rust/target/universal/release/libstreamify_core_rs.dylib
+          if-no-files-found: error
+          compression-level: 1
+
 

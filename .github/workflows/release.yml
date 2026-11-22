@@ -107,7 +107,7 @@ jobs:
           # Flatten every downloaded payload
           find dist -type f \( \
             -name '*.apk' -o -name '*.deb' -o -name '*.msi' -o \
-            -name '*.AppImage' -o -name '*.zip' \) -exec cp -v {} release/ \;
+            -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \) -exec cp -v {} release/ \;
           echo "── release manifest:"
           ls -la release/
 
