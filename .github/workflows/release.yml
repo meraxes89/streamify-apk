@@ -80,6 +80,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Download Android release APK
         uses: actions/download-artifact@v8
         with:
@@ -127,12 +130,22 @@ jobs:
           done > SHA256SUMS
           cat SHA256SUMS
 
+      - name: Generate formatted release body
+        run: |
+          python3 scripts/generate_release_notes.py \
+            --tag "${{ inputs.tag_name || github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --release-dir release \
+            --changelog CHANGELOG.md \
+            --output release_body.md
+          cat release_body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
+          body_path: release_body.md
           files: |
             release/*
           draft: ${{ inputs.draft || false }}
           prerelease: ${{ inputs.prerelease || false }}
-          generate_release_notes: true
