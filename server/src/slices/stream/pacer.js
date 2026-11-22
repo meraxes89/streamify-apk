@@ -88,7 +88,7 @@ export class PacedStreamTransform extends Transform {
       signal.addEventListener(
         'abort',
         () => {
-          this.destroy(signal.reason || new Error('Stream aborted'));
+          this.destroy();
         },
         { once: true }
       );
@@ -205,17 +205,18 @@ export class PacedStreamTransform extends Transform {
     this.wheel.unregister(this);
     this.buffer = [];
     this.bufferedBytes = 0;
+    const isAbort = err && (err.name === 'AbortError' || err.code === 'ABORT_ERR' || this.signal?.aborted);
     if (this.pendingTransformCb) {
       const cb = this.pendingTransformCb;
       this.pendingTransformCb = null;
-      cb(err);
+      cb(isAbort ? null : err);
     }
     if (this.pendingFlushCb) {
       const cb = this.pendingFlushCb;
       this.pendingFlushCb = null;
-      cb(err);
+      cb(isAbort ? null : err);
     }
-    callback(err);
+    callback(isAbort ? null : err);
   }
 }
 

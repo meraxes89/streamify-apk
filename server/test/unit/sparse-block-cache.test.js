@@ -166,3 +166,39 @@ test('SparseBlockCache: Near-seek vs Far-seek detection', async () => {
   await cache.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
+
+test('BlockRangeStream: AbortController abort cleanly closes stream without unhandled error', async () => {
+  const tmpDir = createTempDir();
+  const cache = new SparseBlockCache({ streamsDir: tmpDir });
+
+  const desc = {
+    videoId: 'abort_test_vid',
+    itag: 251,
+    contentLength: 4 * BLOCK_SIZE,
+    targetUrl: 'https://example.com/audio.webm',
+  };
+
+  const controller = new AbortController();
+  const stream = cache.createRangeStream(desc, 0, 4 * BLOCK_SIZE - 1, controller.signal);
+
+  let closed = false;
+  let errorEmitted = null;
+
+  stream.on('close', () => {
+    closed = true;
+  });
+  stream.on('error', (err) => {
+    errorEmitted = err;
+  });
+
+  // Trigger abort immediately
+  controller.abort(new DOMException('This operation was aborted', 'AbortError'));
+
+  await new Promise((r) => setImmediate(r));
+
+  assert.equal(closed, true, 'Stream must be closed on abort');
+  assert.equal(errorEmitted, null, 'AbortError must not be emitted as an unhandled stream error');
+
+  await cache.close();
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
