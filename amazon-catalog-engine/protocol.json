@@ -44,5 +44,36 @@
   "endpoints": {
     "textsearch": "/{region}/api/textsearch/{type}/v1_1/",
     "msos": "/{region}/api/msos/"
+  },
+  "delivery": {
+    "dmls": {
+      "path": "/{region}/api/dmls/",
+      "service": "com.amazon.digitalmusiclocator.DigitalMusicLocatorServiceExternal",
+      "operations": {
+        "flacDashManifests": "getDashManifestsV2",
+        "streamingUrlsFirstChunk": "getStreamingURLsWithFirstChunkV2",
+        "sampleStreams": "getStreamingURLsForSamples",
+        "playbackLicense": "getLicenseForPlaybackV2"
+      },
+      "flacProtection": {
+        "contentProtectionList": ["TRACK_PSSH"],
+        "musicDashVersionList": ["SIREN_KATANA", "SIREN_KATANA_NO_CLEAR_LEAD"]
+      },
+      "tierEntitlements": {
+        "AMF": ["NIGHTWING"],
+        "PRIME": ["ROBIN", "SONIC_RUSH"],
+        "UNLIMITED": ["HAWKFIRE"],
+        "UNLIMITED_HD": ["HAWKFIRE", "KATANA"]
+      }
+    },
+    "amals": {
+      "path": "/{region}/api/amals/",
+      "service": "com.amazon.amazonmusicaudiolocatorservice.model.AmazonMusicAudioLocatorServiceExternal",
+      "operations": {
+        "onDemandStreamingUrls": "GetOnDemandStreamingURLs",
+        "liveStreamingUrls": "GetLiveStreamingURLs"
+      }
+    },
+    "source": "extracted from production web-platform bundle (d5fx445wy2wpk.cloudfront.net) 2026-11"
   }
 }

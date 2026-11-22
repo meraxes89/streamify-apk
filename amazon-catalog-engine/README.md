@@ -27,6 +27,18 @@ An autonomous, anonymous, on-device Amazon Music metadata and streaming engine d
    * LRCLIB integration providing millisecond-accurate timing cues.
 8. **Hybrid Audio Resolution Bridge (`src/resolver.mjs`):**
    * Resolves Amazon ASINs and metadata to high-bitrate Opus streams with duration tolerance matching and zero DRM friction.
+9. **Lossless Full-Song Engineering (`src/lossless-fullsong.mjs`, `src/flac-introspector.mjs`, `src/frame-gateway.mjs`):**
+   * Real full-song byte acquisition (HttpAudioSource) + magic-byte codec sniffing + honest delivery verdicts.
+   * Spec-exact FLAC frame header decoding (UTF-8-coded sample numbers, blocking-strategy bit, CRC-8 validation).
+   * Metadata-first remux, sample-domain frame-tile integrity, frame-aligned HTTP 206 seeks, two-phase pacing.
+10. **Native Delivery Capability Card (`src/native-delivery.mjs`):**
+   * Probes Amazon's REAL DMLS surface (`/{region}/api/dmls/`, decoded from the production web-player bundle):
+     `getDashManifestsV2` (SIREN_KATANA + TRACK_PSSH), `getStreamingURLsForSamples`, `getLicenseForPlaybackV2`.
+   * Returns typed honest verdicts: `AUTH_REQUIRED` (guest sessions carry no customerId; live-verified
+     `CUSTOMER_INFO_NOT_PROVIDED`), `ENTITLEMENT_REQUIRED` (needs UNLIMITED_HD HAWKFIRE+KATANA),
+     `DRM_MANIFEST` (CENC-encrypted), `AVAILABLE` (bit-perfect bytes).
+   * Tier entitlement map decoded from the shipped player: AMF->NIGHTWING, PRIME->ROBIN+SONIC_RUSH,
+     UNLIMITED->HAWKFIRE, UNLIMITED_HD->HAWKFIRE+KATANA.
 
 ---
 
@@ -49,9 +61,27 @@ An autonomous, anonymous, on-device Amazon Music metadata and streaming engine d
 
 ---
 
+## Honest Delivery Tiering (comm21 elite contract)
+
+The engine never decorates Opus/AAC bytes as FLAC. Every full-song artifact carries a `delivery`
+card with the sniffed codec verdict:
+
+| Path | Verdict |
+|---|---|
+| Native DMLS (guest session) | `AUTH_REQUIRED` - no customerId, `CUSTOMER_INFO_NOT_PROVIDED` (live-verified 2026-11) |
+| Native DMLS (entitled session) | `DRM_MANIFEST` - SIREN_KATANA CENC + TRACK_PSSH; license round-trip required |
+| Relay bridge full bytes | `delivery.codec = 'opus'`, `bitPerfect: false` (labeled exactly what it is) |
+| Real FLAC bytes (any source) | `delivery.codec = 'flac'`, `bitPerfect: true`, CRC-8-validated frame index |
+
+FLAC machinery validated end-to-end on real 24-bit/96kHz files: 352/352 frames CRC-8 validated,
+100% sample-domain frame-tile integrity, sample-precise frame-aligned seeks (t=10s -> exact
+frame boundary, in-frame skip reported), PICTURE-deferred remux for <250ms cold start.
+
+---
+
 ## Quick Start & Verification
 
-Run tests (25 passing unit tests across 7 test suites):
+Run tests (53 passing unit tests across 17 suites):
 ```bash
 cd amazon-catalog-engine
 npm test
@@ -75,4 +105,21 @@ node cli.mjs lyrics "Bohemian Rhapsody" "Queen"
 Test Hybrid Audio Stream Resolution:
 ```bash
 node cli.mjs resolve "Bohemian Rhapsody" "Queen"
+```
+
+Test lossless resolution + native DMLS capability card:
+```bash
+node cli.mjs lossless "Bohemian Rhapsody" "Queen" --asin=B081TV3C5Y
+```
+
+Acquire whole raw full-song bytes (honest codec sniff; writes the file):
+```bash
+STREAMIFY_FLAC_SOURCE_URL=https://example.com/master.flac node cli.mjs lossless-full "Bohemian Rhapsody" "Queen" out.flac
+# or via the relay: node cli.mjs lossless-full "Song" "Artist" --relay=http://127.0.0.1:3000
+```
+
+Deep FLAC introspection (local file or URL - STREAMINFO, CRC-8-validated frame index,
+metadata-first remux, frame-aligned seek geometry, two-phase pacing):
+```bash
+node cli.mjs inspect master.flac
 ```
