@@ -17,7 +17,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".git", ".claude", ".github", "node_modules", "legacy", "build",
-             "bundles", ".state", "public", "target", "gradle"}
+             "bundles", ".state", "public", "target", "gradle", "nano"}
 PIN_RE = re.compile(r"<!--\s*doc-verified-against:\s*([0-9a-f]{40})\s*-->")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)[^)]*\)")
 
