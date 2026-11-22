@@ -237,7 +237,7 @@ export class TrackEntry {
     return null;
   }
 
-  startFetchWindow(desc, startBlock, numBlocksToFetch = 4) {
+  startFetchWindow(desc, startBlock, numBlocksToFetch = 2) {
     const startOffset = startBlock * BLOCK_SIZE;
     const endOffset = this.totalLength
       ? Math.min((startBlock + numBlocksToFetch) * BLOCK_SIZE - 1, this.totalLength - 1)
@@ -416,7 +416,7 @@ export class BlockRangeStream extends Readable {
         // Block is not yet PRESENT. Find or start ActiveFetch
         let activeFetch = this.entry.findActiveFetchFor(this.currentPos);
         if (!activeFetch) {
-          activeFetch = this.entry.startFetchWindow(this.desc, blockIdx, 4);
+          activeFetch = this.entry.startFetchWindow(this.desc, blockIdx, 2);
         }
 
         // Wait for byte barrier (monotonic written watermark)
