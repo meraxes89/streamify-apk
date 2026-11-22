@@ -38,6 +38,11 @@ fun NavGraphBuilder.homeScreenGraph(
             navController = navController,
         )
     }
+    composable<com.maxrave.simpmusic.ui.navigation.destination.home.AnnouncementInboxDestination> {
+        com.streamify.announcements.ui.AnnouncementInboxScreen(
+            navController = navController
+        )
+    }
     composable<AppLogDestination> {
         AppLogScreen(
             paddingValues = innerPadding,
