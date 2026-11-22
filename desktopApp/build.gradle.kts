@@ -158,26 +158,30 @@ compose.desktop {
                     .isMacOsX
             ) {
                 listTarget.addAll(
-                    listOf(TargetFormat.Dmg, TargetFormat.Msi),
+                    listOf(TargetFormat.Dmg, TargetFormat.Pkg),
+                )
+            } else if (org.gradle.internal.os.OperatingSystem
+                    .current()
+                    .isWindows
+            ) {
+                listTarget.addAll(
+                    listOf(TargetFormat.Msi, TargetFormat.Exe),
                 )
             } else {
                 listTarget.addAll(
-                    listOf(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.AppImage),
+                    listOf(TargetFormat.Deb, TargetFormat.Rpm),
                 )
             }
             targetFormats(*listTarget.toTypedArray())
             modules("jdk.unsupported")
             packageName = "SimpMusic"
             macOS {
-                val formatedDate =
-                    Instant.now().let {
-                        DateTimeFormatter
-                            .ofPattern("yyyy.MM.dd")
-                            .withZone(ZoneId.of("UTC"))
-                            .format(it)
-                    }
                 includeAllModules = true
-                packageVersion = formatedDate
+                packageVersion =
+                    libs.versions.version.name
+                        .get()
+                        .substringBefore('-')
+                packageBuildVersion = libs.versions.version.code.get()
                 iconFile.set(rootDir.resolve("composeApp/icon/rounded_app_icon.icns"))
                 val macExtraPlistKeys =
                     """

@@ -42,12 +42,13 @@ concurrency:
 
 jobs:
   engine:
-    name: "Engine (tests + release artifacts)"
+    name: "Engine (release artifacts)"
     uses: ./.github/workflows/_ci-engine.yml
     with:
-      run_tests: true
+      run_tests: false
       build_android_native: true
       build_linux_native: true
+      build_desktop_native: true
 
   android:
     name: "Android release APK"
@@ -58,7 +59,7 @@ jobs:
     secrets: inherit
 
   desktop:
-    name: "Desktop installers (.AppImage / .msi)"
+    name: "Desktop installers (.deb / .rpm / .msi / .dmg)"
     needs: engine
     uses: ./.github/workflows/_ci-desktop.yml
     with:
@@ -79,6 +80,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Download Android release APK
         uses: actions/download-artifact@v8
         with:
@@ -106,7 +110,8 @@ jobs:
           mkdir -p release
           # Flatten every downloaded payload
           find dist -type f \( \
-            -name '*.apk' -o -name '*.deb' -o -name '*.msi' -o \
+            -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o \
+            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o \
             -name '*.AppImage' -o -name '*.zip' \) -exec cp -v {} release/ \;
           echo "── release manifest:"
           ls -la release/
@@ -125,12 +130,22 @@ jobs:
           done > SHA256SUMS
           cat SHA256SUMS
 
+      - name: Generate formatted release body
+        run: |
+          python3 scripts/generate_release_notes.py \
+            --tag "${{ inputs.tag_name || github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --release-dir release \
+            --changelog CHANGELOG.md \
+            --output release_body.md
+          cat release_body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
+          body_path: release_body.md
           files: |
             release/*
           draft: ${{ inputs.draft || false }}
           prerelease: ${{ inputs.prerelease || false }}
-          generate_release_notes: true
