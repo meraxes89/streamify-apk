@@ -1,22 +1,52 @@
 /**
  * AmazonDmlsSolver - THE REAL Amazon Music stream-link solver
  *
- * Speaks the production DMLS wire protocol (decoded end-to-end from the
- * web-hornet Vinyl player, d5fx445wy2wpk.cloudfront.net 1.196.81-hf.1):
+ * Speaks the production DMLS wire protocol. Originally decoded from the
+ * web-hornet Vinyl player bundle; 2026-11 re-decode of the live
+ * vinylChunk-e54d4980a921fb73eda3fe610b852eb1.js dmls client module
+ * (functions H/w/U/V/j/de/he/Te/Ae) locked in the exact shapes below and
+ * added a fifth operation + the anonymous samples vector:
  *
- *   URL      {host}/{region}/api/dmls/
- *   Target   com.amazon.digitalmusiclocator.DigitalMusicLocatorServiceExternal.<op>
- *   Headers  Content-Encoding: amz-1.0 (Coral dispatcher key)
+ *   URL      {host}/{region}/api/dmls/                      (H())
+ *   Target   com.amazon.digitalmusiclocator.DigitalMusicLocatorServiceExternal.<op>  (U)
+ *   Headers  Content-Encoding: amz-1.0   <- Coral dispatcher key
  *            Content-Type: application/json
- *            Authorization: Bearer <oAuthToken>  (bearer mode)
- *            Cookie: <sign-in jar>                (cookie mode - player default)
+ *            X-Amz-Target: <target>                        (V())
+ *            Authorization: Bearer <oAuthToken>            (plain Bearer, every
+ *              token shape incl. Atna| — the AmznMusic base64 form is used by
+ *              the vinyl log endpoint only, never DMLS)
  *            csrf-token / csrf-rnd / csrf-ts
+ *            Cookie + credentials:include in cookie mode
+ *   musicAgent  "Vinyl/2.0 {appId}/{appVersion} ({clientToken})"   (w())
+ *              appId = GREENHORNET_WEB, clientToken = random hex groups
  *
- *   FLAC/Opus manifest request (production shape, vinyl de()):
- *     { appInfo:{musicAgent:"Vinyl/2.0 ..."}, customerId, customerInfo:
- *       {marketplaceId, territoryId}, contentIdList:[{identifier, identifierType:"ASIN"}],
- *       deviceToken, musicDashVersionList:["SIREN_KATANA"],
- *       contentProtectionList:["TRACK_PSSH"], tryAsinSubstitution:true }
+ *   Operations (U):
+ *     getDashManifestsV2            FLAC/Opus manifests (de) - two profiles:
+ *          enableFlacOpus=true (default):
+ *            musicDashVersionList: [SIREN_KATANA | SIREN_KATANA_NO_CLEAR_LEAD],
+ *            contentProtectionList: [TRACK_PSSH],
+ *            tryAsinSubstitution: entitlementList has HAWKFIRE|KATANA
+ *          enableFlacOpus=false (tier 'lossy' / 'v2'):
+ *            musicDashVersionList: ['V2'], bitrateTypeList: [HIGH?|MEDIUM|LOW],
+ *            NO contentProtectionList, NO tryAsinSubstitution
+ *     getStreamingURLsWithFirstChunkV2 (he) - direct URL solve:
+ *            { contentIdList, customerId, customerInfo:{marketplaceId,
+ *              territoryId, entitlementList}, protocol, format, drmType,
+ *              deviceToken, appMetadata, clientMetadata:{clientId: 'WebCP',
+ *              clientRequestId} }
+ *     getStreamingURLsForSamples (Ae) - GUEST-CAPABLE, live-verified:
+ *            { tracksInfoList:[{asin, contentFormat:'mp3', bitrate:64}],
+ *              deviceInfo:{deviceType}, marketplaceId, territoryId,
+ *              expiration: <unix seconds, now+3600>,
+ *              clientInfo:{clientId:'WebCP'}, protocolList:['https'] }
+ *            response: { urls: [[url, ...], ...] }  -> urls[0][0]
+ *            Anonymous guests receive HTTP 200 + signed CloudFront MP3 URLs
+ *            (verified live 2026-11: audio/mpeg bytes, ID3 header).
+ *     getStreamingURLs (Te) - legacy COID path: identifierType 'COID',
+ *            bitRate HIGH; guest verdict = AuthenticationException
+ *            UNSUPPORTED_DEVICE_TYPE (device-type wall; documented, unused).
+ *     getLicenseForPlaybackV2 (W) - SIREN DRM license (documented only; the
+ *            engine never performs the DRM round-trip).
  *
  *   Manifest response envelope:
  *     { contentResponseList:[{ manifest:<inline MPD XML>, cdnType,
@@ -25,14 +55,6 @@
  *       CONTENT_NOT_FOUND, CONTENT_NOT_ELIGIBLE, CONTENT_LOCKED,
  *       CUSTOMER_NOT_ELIGIBLE, CUSTOMER_NOT_VALID, CLIENT_NOT_ELIGIBLE,
  *       CLIENT_NOT_VALID, DEVICE_NOT_AUTHORIZED, DEVICE_NOT_ELIGIBLE, ...
- *
- *   First-chunk URL request (production shape, chunk_796 e.getStreamingURLsWithFirstChunkV2):
- *     { contentIdList, customerId, customerInfo:{marketplaceId, territoryId,
- *       entitlementList}, musicRequestIdentityContext:{musicIdentities:
- *       {musicAccountCid}}, protocol, format, drmType, deviceToken,
- *       appMetadata, clientMetadata, bitRate }
- *     response: { contentResponseList:[{ urlList:[...], cdnTypeList,
- *       statusCode, statusMessage }], drmPlaybackResource, clientCertificate }
  *
  *   MPD dialect: see dash-mpd.mjs (amz-music:bitDepth / amz-music:trackType,
  *   quality ladder UHD96/UHD192..., codec family flac/opus/aac, CENC pssh).
@@ -68,7 +90,17 @@ export const DmlsSolveStatus = Object.freeze({
 const DMLS_SERVICE = 'com.amazon.digitalmusiclocator.DigitalMusicLocatorServiceExternal';
 const dmlsTarget = (op) => `${DMLS_SERVICE}.${op}`;
 
-const MUSIC_AGENT = 'Vinyl/2.0 WebPlayer/1.196.81';
+/** Production web player registered client id (authStore.clientId === 'WebCP'). */
+const DMLS_CLIENT_ID = 'WebCP';
+/** Production app id (Application.GREENHORNET_WEB). */
+const DMLS_APP_ID = 'GREENHORNET_WEB';
+const DMLS_APP_VERSION = '1.196.81';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/** Entitlements that allow the HIGH bitrate on the V2 lossy manifest path. */
+const V2_HIGH_BITRATE_ENTITLEMENTS = new Set(['ROBIN', 'SONIC_RUSH', 'HAWKFIRE', 'KATANA']);
+/** Entitlements that enable tryAsinSubstitution on the FLAC/Opus path. */
+const SUBSTITUTION_ENTITLEMENTS = new Set(['HAWKFIRE', 'KATANA']);
 
 const GUEST_WALL = Object.freeze({
   __type: 'com.amazon.digitalmusiclocator#UnauthorizedException',
@@ -96,13 +128,60 @@ function mapManifestStatus(statusCode) {
   }
 }
 
+/** Random 4-hex group, exactly the production w() token generator shape. */
+function hexGroup() {
+  return Math.floor(65536 * (1 + Math.random())).toString(16).substring(1);
+}
+
+/**
+ * Production musicAgent builder (w()): "Vinyl/2.0 {appId}/{appVersion} ({token})".
+ * The client token is generated once per solver instance and reused.
+ */
+function buildMusicAgent({ appId = DMLS_APP_ID, appVersion = DMLS_APP_VERSION, clientToken = null } = {}) {
+  const token = clientToken ||
+    [hexGroup(), hexGroup(), (appId || '').substring(0, 4), hexGroup(), hexGroup() + hexGroup()].join('-');
+  return `Vinyl/2.0 ${appId || ''}/${appVersion || ''} (${token})`;
+}
+
+/** Production short-ish client request id (createShortUid shape). */
+function shortUid() {
+  return `${Date.now().toString(36)}-${hexGroup()}${hexGroup()}`;
+}
+
+/** tier -> manifest request profile ('flac-opus' | 'v2-lossy'). */
+function dashProfileForTier(tier) {
+  return (tier === 'lossy' || tier === 'v2' || tier === 'v2-lossy') ? 'v2-lossy' : 'flac-opus';
+}
+
 export class AmazonDmlsSolver {
   constructor({
     sessionManager = new AmazonSessionManager(),
-    musicAgent = MUSIC_AGENT
+    musicAgent = null,
+    clientId = DMLS_CLIENT_ID,
+    appId = DMLS_APP_ID,
+    appVersion = DMLS_APP_VERSION
   } = {}) {
     this.sessionManager = sessionManager;
-    this.musicAgent = musicAgent;
+    this.clientId = clientId;
+    this.appId = appId;
+    this.appVersion = appVersion;
+    // Per-instance production client token (w()) reused across calls.
+    this.clientToken = [hexGroup(), hexGroup(), appId.substring(0, 4), hexGroup(), hexGroup() + hexGroup()].join('-');
+    this.musicAgent = musicAgent || buildMusicAgent({ appId, appVersion, clientToken: this.clientToken });
+  }
+
+  /**
+   * Production appMetadata block (carried by first-chunk/legacy calls).
+   */
+  _appMetadata() {
+    return { https: true, appId: this.appId, appVersion: this.appVersion, userAgent: USER_AGENT };
+  }
+
+  /**
+   * Production clientMetadata block: { clientId: 'WebCP', clientRequestId }.
+   */
+  _clientMetadata(requestId = null) {
+    return { clientId: this.clientId, clientRequestId: requestId || shortUid() };
   }
 
   /**
@@ -114,9 +193,13 @@ export class AmazonDmlsSolver {
    * @param {import('./credentials.mjs').AmazonMusicCredential|string} [options.credential]
    *        AmazonMusicCredential, a raw cookie header string, or null for guest.
    *        Falls back to resolveAmazonMusicCredential() (env/file) when omitted.
-   * @param {string} [options.tier='ultra'] - 'ultra' | 'hd' | 'lossy' | 'best'
+   * @param {string} [options.tier='ultra'] - 'ultra' | 'hd' | 'best' (FLAC/Opus
+   *        SIREN_KATANA manifest path) | 'lossy' | 'v2' (V2 bitrateTypeList path,
+   *        no content protection requested)
    * @param {boolean} [options.includeFirstChunk=false] - also solve
    *        getStreamingURLsWithFirstChunkV2 direct URL
+   * @param {boolean} [options.noClearLead=false] - request the
+   *        SIREN_KATANA_NO_CLEAR_LEAD variant (Firefox profile)
    * @param {boolean} [options.forceWire=false] - issue the DMLS call even for
    *        guests (captures the live wall as first-class evidence)
    * @returns {Promise<Object>} solved link card (see README)
@@ -127,11 +210,13 @@ export class AmazonDmlsSolver {
     credential = null,
     tier = 'ultra',
     includeFirstChunk = false,
+    noClearLead = false,
     forceWire = false
   } = {}) {
     if (!asin) throw new Error('ASIN is required to solve DMLS stream links');
     const normalizedAsin = String(asin).replace('amzn:track:', '');
     const terr = territory.toUpperCase();
+    const profile = dashProfileForTier(tier);
 
     const cred = this._normalizeCredential(credential);
 
@@ -144,6 +229,7 @@ export class AmazonDmlsSolver {
       asin: normalizedAsin,
       territory: terr,
       requestedTier: tier,
+      dashProfile: profile,
       session: {
         authenticated: !!session.authenticated,
         customerId: session.customerId || null,
@@ -167,7 +253,8 @@ export class AmazonDmlsSolver {
           'Guest session carries no customerId; DMLS getDashManifestsV2 answers ' +
           '"CUSTOMER_INFO_NOT_PROVIDED (AuthenticationException)" (live-verified). ' +
           'Solve real links by supplying an Amazon Music credential (cookies or bearer): ' +
-          'AMAZON_MUSIC_COOKIES env / ~/.streamify/amazon-music.cookies / credential option.',
+          'AMAZON_MUSIC_COOKIES env / ~/.streamify/amazon-music.cookies / credential option. ' +
+          'Anonymous REAL audio is still available via solveSampleUrl (30s MP3 previews).',
         wall: GUEST_WALL,
         howToAuthenticate: {
           mode: 'cookie (production default)',
@@ -175,7 +262,7 @@ export class AmazonDmlsSolver {
             'Sign in to music.amazon.com in a normal browser',
             'Copy the request Cookie header (or export the cookie jar for music.amazon.com)',
             'Export AMAZON_MUSIC_COOKIES="at-main=...; x-main=...; ..." ' +
-            '(or write it to ~/.streamify/amazon-music.cookies)',
+              '(or write it to ~/.streamify/amazon-music.cookies)',
             'Re-run: solveStreamLinks({ asin, credential }) or CLI: flac-links <asin>'
           ]
         }
@@ -183,8 +270,9 @@ export class AmazonDmlsSolver {
     }
 
     // ------------------------------------------------------------------
-    // Authenticated: issue the REAL FLAC/Opus manifest request.
+    // Authenticated: issue the REAL manifest request (production shape de()).
     // ------------------------------------------------------------------
+    const entitled = new Set(session.entitlementList || []);
     const requestBody = {
       appInfo: { musicAgent: this.musicAgent },
       customerId: session.customerId,
@@ -197,10 +285,22 @@ export class AmazonDmlsSolver {
         deviceTypeId: session.deviceType,
         deviceId: session.deviceId
       },
-      musicDashVersionList: ['SIREN_KATANA'],
-      contentProtectionList: ['TRACK_PSSH'],
-      tryAsinSubstitution: true
+      musicDashVersionList: profile === 'v2-lossy'
+        ? ['V2']
+        : [noClearLead ? 'SIREN_KATANA_NO_CLEAR_LEAD' : 'SIREN_KATANA']
     };
+
+    if (profile === 'v2-lossy') {
+      // Production enableFlacOpus=false path: bitrate ladder, no protection list.
+      requestBody.bitrateTypeList = [
+        ...(entitled.size > 0 && [...V2_HIGH_BITRATE_ENTITLEMENTS].some(e => entitled.has(e)) ? ['HIGH'] : []),
+        'MEDIUM',
+        'LOW'
+      ];
+    } else {
+      requestBody.contentProtectionList = ['TRACK_PSSH'];
+      requestBody.tryAsinSubstitution = [...SUBSTITUTION_ENTITLEMENTS].some(e => entitled.has(e));
+    }
 
     const url = `${session.host}/${session.region}/api/dmls/`;
     const headers = this.sessionManager.buildHeaders(session, dmlsTarget('getDashManifestsV2'));
@@ -340,7 +440,9 @@ export class AmazonDmlsSolver {
       drm: selected && selected.drmProtected
         ? {
             protected: true,
-            envelope: 'SIREN_KATANA CENC (TRACK_PSSH)',
+            envelope: profile === 'v2-lossy'
+              ? 'CENC (V2 manifest carried ContentProtection)'
+              : 'SIREN_KATANA CENC (TRACK_PSSH)',
             keySystems: [...new Set((selected.contentProtection || []).flatMap(cp => [
               ...(cp.schemeIdUri || '').includes('widevine') || /widevine/i.test(cp.value || '') ? ['Widevine'] : [],
               ...(cp.schemeIdUri || '').includes('playready') || /playready/i.test(cp.value || '') ? ['PlayReady'] : [],
@@ -375,7 +477,12 @@ export class AmazonDmlsSolver {
 
   /**
    * Solves the direct streaming URL via getStreamingURLsWithFirstChunkV2
-   * (production shape decoded from chunk_796). Returns the URL + DRM resource.
+   * (production shape he(), 2026-11 re-decode). Returns the URL + DRM resource.
+   *
+   * Body: { contentIdList, customerId, customerInfo:{marketplaceId, territoryId,
+   * entitlementList}, protocol, format, drmType, deviceToken, appMetadata,
+   * clientMetadata:{clientId:'WebCP', clientRequestId} } — no
+   * musicRequestIdentityContext, no bitRate (production truth).
    */
   async solveFirstChunkUrl({
     asin,
@@ -384,8 +491,7 @@ export class AmazonDmlsSolver {
     session = null,
     protocol = 'DASH',
     format = 'ENCRYPTED_AAC',
-    drmType = 'WIDEVINE',
-    bitRate = 'HIGH'
+    drmType = 'WIDEVINE'
   } = {}) {
     const normalizedAsin = String(asin).replace('amzn:track:', '');
     const terr = territory.toUpperCase();
@@ -407,24 +513,17 @@ export class AmazonDmlsSolver {
       customerInfo: {
         marketplaceId: sess.marketplaceId,
         territoryId: terr,
-        entitlementList: sess.entitlementList
-      },
-      musicRequestIdentityContext: {
-        musicIdentities: { musicAccountCid: sess.customerId }
+        entitlementList: sess.entitlementList || []
       },
       protocol,
       format,
       drmType,
-      bitRate,
       deviceToken: {
         deviceTypeId: sess.deviceType,
         deviceId: sess.deviceId
       },
-      appMetadata: { https: 'true' },
-      clientMetadata: {
-        clientId: sess.deviceType,
-        clientRequestId: `amzn-engine-${Date.now()}`
-      }
+      appMetadata: this._appMetadata(),
+      clientMetadata: this._clientMetadata()
     };
 
     const url = `${sess.host}/${sess.region}/api/dmls/`;
@@ -468,10 +567,169 @@ export class AmazonDmlsSolver {
         substituteAsin: entry.substituteAsin ?? null,
         drmPlaybackResource: data.drmPlaybackResource ?? null,
         clientCertificate: data.clientCertificate ?? null,
-        requested: { protocol, format, drmType, bitRate }
+        requested: { protocol, format, drmType }
       };
     } catch (err) {
       return { status: DmlsSolveStatus.UNAVAILABLE, url: null, reason: `Network failure: ${err.message}` };
+    }
+  }
+
+  /**
+   * Solves the REAL sample/preview MP3 URL for a track ASIN - the one DMLS
+   * surface that works for ANONYMOUS GUEST sessions.
+   *
+   * Production shape Ae() (2026-11 re-decode + live verification):
+   *   POST {host}/{region}/api/dmls/  X-Amz-Target ...getStreamingURLsForSamples
+   *   { tracksInfoList: [{ asin, contentFormat: 'mp3', bitrate: 64 }],
+   *     deviceInfo: { deviceType }, marketplaceId, territoryId,
+   *     expiration: <unix seconds; production uses now + 3600>,
+   *     clientInfo: { clientId: 'WebCP' }, protocolList: ['https'] }
+   *   -> { urls: [[url, ...], ...] }  (urls[0][0] is the track's sample URL)
+   *
+   * The registered client id 'WebCP' + a real expiration timestamp are BOTH
+   * required: deviceType-as-clientId answers 400 "unknown client" and
+   * expiration=0 is not the production shape (both live-verified).
+   *
+   * @param {Object} options
+   * @param {string} options.asin - track ASIN
+   * @param {string} [options.territory='US']
+   * @param {number} [options.expirationSec=3600] - signed URL lifetime
+   * @returns {Promise<Object>} { status, url, urls, asin, territory, service,
+   *                              operation, expiresAt, detail? }
+   */
+  async solveSampleUrl({ asin, territory = 'US', expirationSec = 3600 } = {}) {
+    if (!asin) throw new Error('ASIN is required to solve sample URLs');
+    const normalizedAsin = String(asin).replace('amzn:track:', '');
+    const terr = territory.toUpperCase();
+
+    const session = await this.sessionManager.getSession(terr);
+
+    const expiresAt = Math.floor(Date.now() / 1000) + expirationSec;
+    const requestBody = {
+      tracksInfoList: [{ asin: normalizedAsin, contentFormat: 'mp3', bitrate: 64 }],
+      deviceInfo: { deviceType: session.deviceType },
+      marketplaceId: session.marketplaceId,
+      territoryId: session.musicTerritory,
+      expiration: expiresAt,
+      clientInfo: { clientId: this.clientId },
+      protocolList: ['https']
+    };
+
+    const url = `${session.host}/${session.region}/api/dmls/`;
+    const headers = this.sessionManager.buildHeaders(session, dmlsTarget('getStreamingURLsForSamples'));
+
+    try {
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(requestBody) });
+      const rawText = await res.text();
+      let data = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+
+      const errorType = coralErrorType(data);
+      if (errorType) {
+        return {
+          status: DmlsSolveStatus.UNAVAILABLE,
+          url: null,
+          urls: [],
+          asin: normalizedAsin,
+          territory: terr,
+          service: DMLS_SERVICE,
+          operation: 'getStreamingURLsForSamples',
+          expiresAt,
+          reason: `DMLS samples verdict: ${errorType} - ${data.message || ''}`.trim(),
+          detail: rawText.slice(0, 300)
+        };
+      }
+
+      // Production envelope: { urls: [[url, ...], ...] } - one array per track.
+      const urls = Array.isArray(data.urls)
+        ? data.urls.map(u => (Array.isArray(u) ? u.filter(Boolean) : (u ? [u] : [])).flat())
+        : [];
+
+      if (!urls[0]?.length) {
+        return {
+          status: DmlsSolveStatus.CONTENT_NOT_FOUND,
+          url: null,
+          urls,
+          asin: normalizedAsin,
+          territory: terr,
+          service: DMLS_SERVICE,
+          operation: 'getStreamingURLsForSamples',
+          expiresAt,
+          reason: 'No sample URL for this ASIN (album-only ASIN or preview absent in catalog)',
+        };
+      }
+
+      return {
+        status: DmlsSolveStatus.LINKS_SOLVED,
+        url: urls[0][0],
+        urls,
+        asin: normalizedAsin,
+        territory: terr,
+        service: DMLS_SERVICE,
+        operation: 'getStreamingURLsForSamples',
+        expiresAt,
+        evidence: { requestId: data.requestId || null, httpStatus: res.status }
+      };
+    } catch (err) {
+      return {
+        status: DmlsSolveStatus.UNAVAILABLE,
+        url: null,
+        urls: [],
+        asin: normalizedAsin,
+        territory: terr,
+        service: DMLS_SERVICE,
+        operation: 'getStreamingURLsForSamples',
+        expiresAt,
+        reason: `Network failure: ${err.message}`
+      };
+    }
+  }
+
+  /**
+   * Verifies that a solved CDN URL is actually reachable and returns honest
+   * byte-level evidence (Range probe; never decrypts anything).
+   *
+   * @param {string} url - solved init/segment/first-chunk/sample URL
+   * @param {Object} [options]
+   * @param {number} [options.timeoutMs=10000]
+   * @param {number} [options.probeBytes=1024]
+   * @returns {Promise<Object>} { reachable, httpStatus, contentType,
+   *                              contentRange, totalBytes, firstBytesHex }
+   */
+  async verifyLinkReachability(url, { timeoutMs = 10_000, probeBytes = 1024 } = {}) {
+    if (!url || typeof url !== 'string') {
+      return { reachable: false, httpStatus: null, reason: 'URL is required' };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT, 'Range': `bytes=0-${probeBytes - 1}` },
+        signal: controller.signal
+      });
+      const contentType = res.headers.get('content-type');
+      const contentRange = res.headers.get('content-range');
+      const contentLength = res.headers.get('content-length');
+      let firstBytesHex = null;
+      if (res.ok || res.status === 206) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        firstBytesHex = buf.subarray(0, 16).toString('hex');
+      }
+      const totalBytes = contentRange
+        ? Number(/\/(\d+)$/.exec(contentRange)?.[1] || NaN)
+        : (contentLength ? Number(contentLength) : NaN);
+      return {
+        reachable: res.ok || res.status === 206,
+        httpStatus: res.status,
+        contentType,
+        contentRange,
+        totalBytes: Number.isFinite(totalBytes) ? totalBytes : null,
+        firstBytesHex
+      };
+    } catch (err) {
+      return { reachable: false, httpStatus: null, reason: err.message };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -494,3 +752,5 @@ export class AmazonDmlsSolver {
     return resolveAmazonMusicCredential(credential);
   }
 }
+
+export { DMLS_CLIENT_ID, DMLS_APP_ID, buildMusicAgent };

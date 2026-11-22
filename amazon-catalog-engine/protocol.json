@@ -54,11 +54,44 @@
         "flacDashManifests": "getDashManifestsV2",
         "streamingUrlsFirstChunk": "getStreamingURLsWithFirstChunkV2",
         "sampleStreams": "getStreamingURLsForSamples",
-        "playbackLicense": "getLicenseForPlaybackV2"
+        "playbackLicense": "getLicenseForPlaybackV2",
+        "legacyStreamingUrls": "getStreamingURLs"
+      },
+      "clientMetadata": {
+        "clientId": "WebCP"
+      },
+      "appMetadata": {
+        "https": true,
+        "appId": "GREENHORNET_WEB",
+        "appVersion": "1.196.81"
+      },
+      "musicAgent": {
+        "template": "Vinyl/2.0 {appId}/{appVersion} ({clientToken})",
+        "clientTokenHexGroups": 4
       },
       "flacProtection": {
         "contentProtectionList": ["TRACK_PSSH"],
-        "musicDashVersionList": ["SIREN_KATANA", "SIREN_KATANA_NO_CLEAR_LEAD"]
+        "musicDashVersionList": ["SIREN_KATANA"],
+        "noClearLeadVariant": "SIREN_KATANA_NO_CLEAR_LEAD"
+      },
+      "lossyV2Path": {
+        "musicDashVersionList": ["V2"],
+        "bitrateTypeList": ["HIGH", "MEDIUM", "LOW"],
+        "highBitrateEntitlements": ["ROBIN", "SONIC_RUSH", "HAWKFIRE", "KATANA"],
+        "note": "enableFlacOpus=false production path: no contentProtectionList, no tryAsinSubstitution"
+      },
+      "samples": {
+        "contentFormat": "mp3",
+        "bitrate": 64,
+        "expirationOffsetSec": 3600,
+        "responseShape": "urls[trackIndex][urlIndex]",
+        "guestCapable": true,
+        "liveVerified": "2026-11: anonymous guest -> HTTP 200 + signed CloudFront MP3 URLs"
+      },
+      "legacyCoidPath": {
+        "identifierType": "COID",
+        "bitRate": "HIGH",
+        "guestVerdict": "AuthenticationException UNSUPPORTED_DEVICE_TYPE (live-verified 2026-11)"
       },
       "tierEntitlements": {
         "AMF": ["NIGHTWING"],
@@ -73,7 +106,8 @@
       "operations": {
         "onDemandStreamingUrls": "GetOnDemandStreamingURLs",
         "liveStreamingUrls": "GetLiveStreamingURLs"
-      }
+      },
+      "liveVerdict": "404 HTML at /{region}/api/amals/ (live-verified 2026-11; route not mounted for web clients)"
     },
     "enums": {
       "entitlement": {
@@ -114,10 +148,10 @@
     "auth": {
       "vectors": {
         "cookie": "POST /config.json?clientApplication=hornet&cookieauth=true with the signed-in cookie jar (production default; config.customerId !== \"\" => authenticated)",
-        "bearer": "Authorization: Bearer <oAuthToken> on Coral DMLS calls"
+        "bearer": "Authorization: Bearer <oAuthToken> on Coral DMLS calls (plain Bearer for every token shape incl. Atna| — the AmznMusic base64 form is vinyl-log-endpoint only)"
       },
       "coralDispatcherKey": "Content-Encoding: amz-1.0 (missing => com.amazon.coral.service#UnknownOperationException)"
     },
-    "source": "extracted from production web-platform bundle (d5fx445wy2wpk.cloudfront.net, web-hornet 1.196.81-hf.1) 2026-11; DMLS shapes cross-verified live"
+    "source": "extracted from production web-platform bundle (d5fx445wy2wpk.cloudfront.net, web-hornet 1.196.81-hf.1-c90c511) 2026-11; DMLS shapes cross-verified live; vinylChunk-e54d4980a921fb73eda3fe610b852eb1.js re-decoded end-to-end (dmls client module: H()/w()/U/V/j/de/he/Te/Ae)"
   }
 }
