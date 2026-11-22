@@ -21,7 +21,7 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kermit.logging)
                 implementation(libs.kotlinx.datetime)
-                api("org.jetbrains.kotlinx:kotlinx-io-core:0.6.0")
+                api("org.jetbrains.kotlinx:kotlinx-io-core:0.9.3")
                 implementation(libs.runtime)
                 implementation(libs.compose.ui)
                 implementation(libs.ktor.client.core)
