@@ -1,0 +1,15 @@
+{
+  "name": "amazon-catalog-engine",
+  "version": "1.0.0",
+  "description": "Autonomous, anonymous, on-device Amazon Music metadata engine for Streamify",
+  "type": "module",
+  "main": "src/client.mjs",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "probe": "node cli.mjs probe",
+    "search": "node cli.mjs search"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

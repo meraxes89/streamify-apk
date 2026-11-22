@@ -1,0 +1,48 @@
+{
+  "version": "2026.11",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "hosts": {
+    "US": "https://music.amazon.com",
+    "CA": "https://music.amazon.ca",
+    "MX": "https://music.amazon.com.mx",
+    "BR": "https://music.amazon.com.br",
+    "GB": "https://music.amazon.co.uk",
+    "DE": "https://music.amazon.de",
+    "FR": "https://music.amazon.fr",
+    "IT": "https://music.amazon.it",
+    "ES": "https://music.amazon.es",
+    "IN": "https://music.amazon.in",
+    "JP": "https://music.amazon.co.jp",
+    "AU": "https://music.amazon.com.au"
+  },
+  "regions": {
+    "US": "NA",
+    "CA": "NA",
+    "MX": "NA",
+    "BR": "NA",
+    "GB": "ZAZ",
+    "DE": "ZAZ",
+    "FR": "ZAZ",
+    "IT": "ZAZ",
+    "ES": "ZAZ",
+    "IN": "ZAZ",
+    "JP": "FE",
+    "AU": "FE"
+  },
+  "configPath": "/config.json?skipToken=false&clientApplication=skyfire",
+  "commonHeaders": {
+    "Content-Encoding": "amz-1.0",
+    "Content-Type": "application/json; charset=UTF-8",
+    "Accept": "application/json"
+  },
+  "targets": {
+    "search": "com.amazon.tenzing.textsearch.v1_1.TenzingTextSearchServiceExternalV1_1.search",
+    "instantSearch": "com.amazon.tenzing.textsearch.v1_1.TenzingTextSearchServiceExternalV1_1.instantSearch",
+    "clientActions": "com.amazon.cirrus.libraryservice.v3.CirrusLibraryServiceExternalV3.reportClientActions",
+    "subscriptionOffers": "com.amazon.musicsubscriptionofferservice.MusicSubscriptionOfferServiceExternal."
+  },
+  "endpoints": {
+    "textsearch": "/{region}/api/textsearch/{type}/v1_1/",
+    "msos": "/{region}/api/msos/"
+  }
+}
