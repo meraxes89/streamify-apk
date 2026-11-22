@@ -1,0 +1,106 @@
+package com.streamify.announcements.ui
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import coil3.compose.AsyncImage
+import com.maxrave.simpmusic.ui.theme.typo
+import com.streamify.announcements.Announcement
+import com.streamify.announcements.AnnouncementAction
+import com.streamify.announcements.DeepLinkAllowlist
+import org.jetbrains.compose.resources.stringResource
+import simpmusic.composeapp.generated.resources.Res
+import simpmusic.composeapp.generated.resources.later
+
+/**
+ * Modal renderer for Streamify in-app announcements.
+ */
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+fun StreamifyAnnouncementModal(
+    announcement: Announcement,
+    onDismiss: (snooze: Boolean) -> Unit,
+    onAction: () -> Unit
+) {
+    val uriHandler = LocalUriHandler.current
+    val content = announcement.content["en"] ?: announcement.content.values.firstOrNull() ?: return
+
+    AlertDialog(
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        ),
+        onDismissRequest = { onDismiss(true) },
+        confirmButton = {
+            if (announcement.action !is AnnouncementAction.None) {
+                TextButton(onClick = {
+                    onAction()
+                    when (val act = announcement.action) {
+                        is AnnouncementAction.DeepLink -> {
+                            if (DeepLinkAllowlist.isAllowed(act.url)) {
+                                uriHandler.openUri(act.url)
+                            }
+                        }
+                        else -> {}
+                    }
+                }) {
+                    Text(
+                        text = content.actionLabel ?: "Learn More",
+                        style = typo().bodySmall
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onDismiss(true) }) {
+                Text(
+                    text = stringResource(Res.string.later),
+                    style = typo().bodySmall
+                )
+            }
+        },
+        title = {
+            Text(
+                text = content.title,
+                style = typo().labelSmall
+            )
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                content.bannerUrl?.let { banner ->
+                    AsyncImage(
+                        model = banner,
+                        contentDescription = content.contentDescription,
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
+                Text(
+                    text = content.body,
+                    textAlign = TextAlign.Center,
+                    style = typo().bodySmall
+                )
+            }
+        }
+    )
+}

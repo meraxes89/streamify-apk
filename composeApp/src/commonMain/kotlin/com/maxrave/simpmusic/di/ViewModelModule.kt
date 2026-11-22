@@ -59,6 +59,9 @@ val viewModelModule =
             )
         }
         single {
+            com.streamify.announcements.AnnouncementEngine(get())
+        }
+        single {
             SharedViewModel(
                 get(),
                 get(),

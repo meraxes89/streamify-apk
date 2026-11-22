@@ -294,7 +294,6 @@ class SharedViewModel(
             log("SharedViewModel init")
             if (dataStoreManager.appVersion.first() != VersionManager.getVersionName()) {
                 dataStoreManager.resetOpenAppTime()
-                dataStoreManager.putString(FOOTGUNS_STAR_KEY, "false")
                 dataStoreManager.setAppVersion(
                     VersionManager.getVersionName(),
                 )
