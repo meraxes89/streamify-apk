@@ -1,6 +1,6 @@
 # Streamify Multiplatform Execution Ledger & Checkbox Tracker
 **Tracking Document:** `MULTIPLATFORM_CHECKBOX.MD`  
-**Governing Master Plan:** [`docs/architecture/MULTIPLATFORM_PLAN_27_10.MD`](MULTIPLATFORM_PLAN_27_10.MD)  
+**Governing Master Plan:** [`docs/architecture/MULTIPLATFORM_PLAN_27_10.MD`](../architecture/MULTIPLATFORM_PLAN_27_10.MD)  
 **Governing Consensus:** [RFC Discussion #104](https://github.com/meraxes89/streamify-apk/discussions/104#discussioncomment-19212616) & Architectural Review (`docs/nano/resp5.md`)  
 **Date:** October 27, 2026  
 

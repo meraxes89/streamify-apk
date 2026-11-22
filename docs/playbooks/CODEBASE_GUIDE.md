@@ -3,7 +3,7 @@
 > The complete folder-by-folder, file-by-file map of the app module,
 > generated from the live tree. Folder purposes are authored; file
 > lists are real. See each folder's own `README.md` for depth, and
-> [ARCHITECTURE.md](ARCHITECTURE.md) for the system view.
+> [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) for the system view.
 
 ## Contents
 
