@@ -69,7 +69,7 @@
     },
     "amals": {
       "path": "/{region}/api/amals/",
-      "service": "com.amazon.amazonmusicaudiolocatorsservice.model.AmazonMusicAudioLocatorServiceExternal",
+      "service": "com.amazon.amazonmusicaudiolocatorservice.model.AmazonMusicAudioLocatorServiceExternal",
       "operations": {
         "onDemandStreamingUrls": "GetOnDemandStreamingURLs",
         "liveStreamingUrls": "GetLiveStreamingURLs"

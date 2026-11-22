@@ -10,7 +10,7 @@
  *              - getStreamingURLsWithFirstChunkV2
  *              - getStreamingURLsForSamples  (previews, registered-client wall)
  *              - getLicenseForPlaybackV2     (SIREN DRM license)
- *             com.amazon.amazonmusicaudiolocatorsservice.model
+ *             com.amazon.amazonmusicaudiolocatorservice.model
  *              - GetOnDemandStreamingURLs / GetLiveStreamingURLs (AMALS)
  *
  * Empirically verified with anonymous guest sessions (2026-11):
