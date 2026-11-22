@@ -58,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -1388,14 +1389,14 @@ private fun AccountAvatar(
             }
         } else {
             Surface(
-                shape = avatarShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
                 modifier =
                     Modifier
                         .size(size)
                         .clip(avatarShape)
                         .then(modifier),
+                shape = avatarShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
