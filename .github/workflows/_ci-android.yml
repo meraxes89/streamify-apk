@@ -40,6 +40,7 @@ jobs:
   # ── JVM unit suite: state machines, chaos, CAD identity gates ───────────────
   jvm-unit:
     name: "Android JVM unit suite"
+    if: ${{ !inputs.release_mode }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -255,8 +256,14 @@ jobs:
         if: inputs.release_mode
         run: |
           mkdir -p staged-apks
-          TAG_OR_REF="${GITHUB_REF_NAME:-latest}"
-          TAG_CLEAN="${TAG_OR_REF//\//-}"
+          # Determine version tag from gradle version catalog or ref
+          VERSION_NAME=$(grep -m 1 'version-name =' gradle/libs.versions.toml | cut -d '"' -f 2 || echo "")
+          if [ -n "$VERSION_NAME" ]; then
+            TAG_CLEAN="v${VERSION_NAME#v}"
+          else
+            TAG_OR_REF="${GITHUB_REF_NAME:-latest}"
+            TAG_CLEAN="${TAG_OR_REF//\//-}"
+          fi
           
           # Find all release APKs (both universal and per-ABI splits)
           APKS=$(find androidApp/build/outputs/apk/release -name "*.apk")

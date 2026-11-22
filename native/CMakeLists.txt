@@ -438,6 +438,12 @@ if(NOT ANDROID)
         # ZERO link dependencies beyond libc: PipeWire and ALSA are
         # resolved at runtime through dlopen (the driver's own contract).
         target_link_libraries(streamify_desktop_hal PRIVATE ${CMAKE_DL_LIBS} m pthread)
+    elseif(APPLE)
+        target_sources(streamify_desktop_hal PRIVATE audio/coreaudio_pull_adapter.cpp)
+        target_link_libraries(streamify_desktop_hal PRIVATE
+            "-framework CoreAudio"
+            "-framework AudioToolbox"
+        )
     endif()
 endif()
 

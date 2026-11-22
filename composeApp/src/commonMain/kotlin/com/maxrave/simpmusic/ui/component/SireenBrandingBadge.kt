@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,32 +37,42 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.highlight.Highlight
+import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
 import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
+import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
+import com.maxrave.simpmusic.ui.theme.fontFamily
 import kotlinx.coroutines.launch
 
 /**
- * High-Performance Brand Badge: "ENGINEERED BY SIREEN [STUDIO CORE™]"
+ * High-Performance Brand Badge: "ENGINEERED BY SIREEN"
  *
  * Designed with luxury studio aesthetic:
+ * - Liquid-glass shader support with backdrop refraction and specular rim highlight.
+ * - Graceful translucent fallback for low-spec or disabled glass modes.
+ * - Continuous pill curvature matching the top bar glass islands.
  * - High-contrast theme adaptation (never washes out in light or dark mode).
  * - Subtle micro-spectrum acoustic instrument beacon (non-distracting).
- * - Proprietary mini TM-style micro-pill badge for studio certification tagline.
+ * - Compact mode support for mobile single-row app bars to prevent horizontal overcrowding.
  */
 @Composable
 fun SireenBrandingBadge(
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    backdrop: PlatformBackdrop? = null,
     prefix: String = "ENGINEERED BY ",
     author: String = "SIREEN",
-    tagline: String = "STUDIO CORE",
+    tagline: String = "",
     onBadgeClick: (() -> Unit)? = null,
 ) {
+    val brandFont = fontFamily()
     val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
     val primaryColor = MaterialTheme.colorScheme.primary
     val scope = rememberCoroutineScope()
+    val glassOn = LocalLiquidGlassEnabled.current && backdrop != null
 
     // Interactive glint on click
     val glintAlpha = remember { Animatable(0f) }
@@ -105,35 +116,26 @@ fun SireenBrandingBadge(
         label = "bar3",
     )
 
-    // Surface & Border Colors (Engineered for guaranteed contrast)
-    val surfaceBg = if (isDark) Color(0xFF14141B) else Color(0xFFFFFFFF)
-    val borderCol = if (isDark) Color(0xFF2C2C3A) else Color(0xFFD6DAE3)
+    // Pill geometry matching CreateActions / ChipGroup
+    val pillShape = CircleShape
 
     // Text & Beacon Colors
     val prefixColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-    val authorColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val beaconColor1 = if (isDark) primaryColor.copy(alpha = 0.80f) else primaryColor.copy(alpha = 0.85f)
+    val authorColor = MaterialTheme.colorScheme.onSurface
+    val beaconColor1 = primaryColor.copy(alpha = 0.85f)
     val beaconColor2 = if (isDark) Color(0xFF00E5FF).copy(alpha = 0.85f) else Color(0xFF0284C7).copy(alpha = 0.85f)
 
-    // Mini TM-Style "STUDIO CORE" Badge Colors
+    // Mini TM-Style Tagline Colors (only when tagline is provided)
     val tmBadgeBg = if (isDark) primaryColor.copy(alpha = 0.16f) else primaryColor.copy(alpha = 0.10f)
     val tmBadgeBorder = if (isDark) primaryColor.copy(alpha = 0.38f) else primaryColor.copy(alpha = 0.28f)
     val tmBadgeTextColor = if (isDark) Color(0xFF93C5FD) else Color(0xFF1D4ED8)
 
-    Surface(
-        shape = RoundedCornerShape(7.dp),
-        color = surfaceBg,
-        border = BorderStroke(0.75.dp, borderCol),
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(7.dp))
-                .clickable {
-                    triggerInteractiveGlint()
-                    onBadgeClick?.invoke()
-                },
-    ) {
+    val badgeContent: @Composable () -> Unit = {
         Row(
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp),
+            modifier = Modifier.padding(
+                horizontal = if (compact) 8.dp else 10.dp,
+                vertical = if (compact) 4.dp else 5.dp,
+            ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // 1. Micro-Spectrum Acoustic Beacon
@@ -162,33 +164,37 @@ fun SireenBrandingBadge(
                 )
             }
 
-            Spacer(modifier = Modifier.width(5.5.dp))
+            Spacer(modifier = Modifier.width(if (compact) 4.5.dp else 5.dp))
 
-            // 2. Prefix: "ENGINEERED BY "
-            Text(
-                text = prefix,
-                style = TextStyle(
-                    color = prefixColor,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.1.sp,
-                ),
-            )
+            // 2. Prefix: "ENGINEERED BY " (omitted in compact mode)
+            if (!compact && prefix.isNotBlank()) {
+                Text(
+                    text = prefix,
+                    style = TextStyle(
+                        color = prefixColor,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.8.sp,
+                        fontFamily = brandFont,
+                    ),
+                )
+            }
 
             // 3. Author Name: "SIREEN"
             Text(
                 text = author,
                 style = TextStyle(
                     color = authorColor,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.6.sp,
+                    fontSize = if (compact) 8.5.sp else 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = if (compact) 1.2.sp else 1.4.sp,
+                    fontFamily = brandFont,
                 ),
             )
 
-            // 4. Mini TM-Style Proprietary Studio Badge: "STUDIO CORE"
-            if (tagline.isNotBlank()) {
-                Spacer(modifier = Modifier.width(5.dp))
+            // 4. Optional Studio Tagline (only shown when explicitly provided, omitted in compact mode)
+            if (!compact && tagline.isNotBlank()) {
+                Spacer(modifier = Modifier.width(4.5.dp))
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(3.5.dp))
@@ -202,14 +208,49 @@ fun SireenBrandingBadge(
                         style = TextStyle(
                             color = tmBadgeTextColor,
                             fontSize = 6.2.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.8.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.6.sp,
+                            fontFamily = brandFont,
                         ),
                         maxLines = 1,
                     )
                 }
             }
+        }
+    }
+
+    if (glassOn && backdrop != null) {
+        Row(
+            modifier =
+                modifier
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        shape = pillShape,
+                        highlight = Highlight(width = 1.dp),
+                    )
+                    .clip(pillShape)
+                    .clickable {
+                        triggerInteractiveGlint()
+                        onBadgeClick?.invoke()
+                    },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            badgeContent()
+        }
+    } else {
+        Surface(
+            shape = pillShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            modifier =
+                modifier
+                    .clip(pillShape)
+                    .clickable {
+                        triggerInteractiveGlint()
+                        onBadgeClick?.invoke()
+                    },
+        ) {
+            badgeContent()
         }
     }
 }

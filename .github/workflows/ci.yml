@@ -251,7 +251,7 @@ jobs:
     uses: ./.github/workflows/_ci-android.yml
 
   desktop:
-    name: "Desktop Matrix (Linux, Windows)"
+    name: "Desktop Matrix (Linux, Windows, macOS)"
     needs: [preflight, engine_dsp]
     if: |
       always() &&

@@ -11,8 +11,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -56,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -130,6 +133,8 @@ import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
 import com.maxrave.simpmusic.expect.ui.HorizontalScrollBar
 import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
+import com.kyant.backdrop.highlight.Highlight
+import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
 import com.maxrave.simpmusic.extension.angledGradientBackground
@@ -153,6 +158,7 @@ import com.maxrave.simpmusic.ui.component.ItemArtistChart
 import com.maxrave.simpmusic.ui.component.LocalAppDialogOpen
 import com.maxrave.simpmusic.ui.component.LocalNowPlayingOpen
 import com.maxrave.simpmusic.ui.component.SireenBrandingBadge
+import com.maxrave.simpmusic.ui.component.liquidGlass
 import com.maxrave.simpmusic.ui.component.LocalUserStarted
 import com.maxrave.simpmusic.ui.component.MoodMomentAndGenreHomeItem
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
@@ -400,10 +406,6 @@ fun HomeScreen(
 
     var moodExpanded by rememberSaveable {
         mutableStateOf(false)
-    }
-    // Derived, so scrolling recomposes only when the page reaches or leaves its very top.
-    val atTop by remember {
-        derivedStateOf { scrollState.firstVisibleItemIndex == 0 && scrollState.firstVisibleItemScrollOffset == 0 }
     }
     // The floating chip row refracts the page scrolling under it, so the page is the glass source and
     // the row its sibling (nesting the row inside the source is the RuntimeShader feedback loop).
@@ -1020,15 +1022,18 @@ fun HomeScreen(
         }
         // Spotify / Apple Music flagship translucent top bar:
         // Pure transparent when resting at the top to let hero artwork/glow shine through;
-        // transitions smoothly to a hardware-accelerated specular frosted scrim on scroll.
-        val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
-        val surfaceColor = MaterialTheme.colorScheme.surface
-        val containerColor = MaterialTheme.colorScheme.surfaceContainer
-        val scrimAlpha by animateFloatAsState(
-            targetValue = if (atTop) 0f else 1f,
-            animationSpec = tween(durationMillis = 240),
-            label = "home_top_bar_scrim",
-        )
+        // transitions smoothly to a hardware-accelerated specular frosted scrim as content scrolls under.
+        val density = LocalDensity.current
+        val scrimFadeDistancePx = with(density) { 96.dp.toPx() }
+        val scrimProgress by remember(scrimFadeDistancePx) {
+            derivedStateOf {
+                if (scrollState.firstVisibleItemIndex > 0) {
+                    1f
+                } else {
+                    (scrollState.firstVisibleItemScrollOffset.toFloat() / scrimFadeDistancePx).coerceIn(0f, 1f)
+                }
+            }
+        }
 
         Column(
             modifier =
@@ -1036,23 +1041,25 @@ fun HomeScreen(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .drawBehind {
-                        if (scrimAlpha > 0.005f) {
-                            // 1. Hardware-accelerated specular translucent gradient scrim
+                        val progress = scrimProgress
+                        if (progress > 0.005f) {
+                            // 1. Hardware-accelerated specular translucent gradient scrim matching page background
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
-                                        containerColor.copy(alpha = (if (isDark) 0.95f else 0.96f) * scrimAlpha),
-                                        surfaceColor.copy(alpha = (if (isDark) 0.88f else 0.90f) * scrimAlpha),
+                                        pageBackground.copy(alpha = (if (isLightTheme) 0.88f else 0.84f) * progress),
+                                        pageBackground.copy(alpha = (if (isLightTheme) 0.72f else 0.68f) * progress),
                                     ),
                                 ),
                             )
-                            // 2. Micro-hairline bottom specular rim (0.75dp)
-                            val rimWidth = 0.75.dp.toPx()
-                            val rimColor = if (isDark) {
-                                Color.White.copy(alpha = 0.08f * scrimAlpha)
-                            } else {
-                                Color.Black.copy(alpha = 0.06f * scrimAlpha)
-                            }
+                            // 2. Micro-hairline bottom specular rim (0.5dp)
+                            val rimWidth = 0.5.dp.toPx()
+                            val rimColor =
+                                if (isLightTheme) {
+                                    Color.Black.copy(alpha = 0.06f * progress)
+                                } else {
+                                    Color.White.copy(alpha = 0.08f * progress)
+                                }
                             drawLine(
                                 color = rimColor,
                                 start = Offset(0f, size.height - rimWidth / 2f),
@@ -1081,6 +1088,8 @@ fun HomeScreen(
                 val createPinned = getPlatform() == Platform.Desktop || getScreenSizeInfo().let { it.wDP >= it.hDP }
                 val chipHeadFade by animateFloatAsState(if (chipRowState.canScrollBackward) 1f else 0f)
                 val chipTailFade by animateFloatAsState(if (chipRowState.canScrollForward) 1f else 0f)
+                val isCompactScreen = getScreenSizeInfo().let { it.wDP < 600 }
+                var badgeExpanded by remember { mutableStateOf(false) }
                 // Notifications moved into the avatar menu, Listen Together into the Create sheet.
                 val createActions: @Composable () -> Unit = {
                     CreateActions(
@@ -1098,16 +1107,25 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 16.dp, end = 8.dp),
+                        modifier = Modifier.padding(start = 16.dp, end = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         HomeAccountButton(
                             accountName = accountInfo?.first,
                             thumbnailUrl = accountInfo?.second,
                             navController = navController,
+                            backdrop = chipBackdrop,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        SireenBrandingBadge()
+                        Spacer(modifier = Modifier.width(6.dp))
+                        SireenBrandingBadge(
+                            compact = isCompactScreen && !badgeExpanded,
+                            backdrop = chipBackdrop,
+                            onBadgeClick = {
+                                if (isCompactScreen) {
+                                    badgeExpanded = !badgeExpanded
+                                }
+                            },
+                        )
                     }
                     BoxWithConstraints(
                         Modifier
@@ -1225,6 +1243,7 @@ private fun HomeAccountButton(
     accountName: String?,
     thumbnailUrl: String?,
     navController: NavController,
+    backdrop: PlatformBackdrop? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     // Sign-out blanks the stored account name, so a blank name is the signed-out state.
@@ -1236,9 +1255,10 @@ private fun HomeAccountButton(
         AccountAvatar(
             signedIn = signedIn,
             thumbnailUrl = thumbnailUrl,
-            // The Create pill's height, as Apple sizes an avatar like the glass buttons beside it.
-            size = 44.dp,
+            // 40dp aligns with the CreateActions island height on the other side of the header
+            size = 40.dp,
             contentDescription = displayName,
+            backdrop = backdrop,
             modifier = Modifier.clickable { menuOpen = true },
         )
         DropdownMenu(
@@ -1301,40 +1321,93 @@ private fun AccountAvatar(
     thumbnailUrl: String?,
     size: Dp,
     contentDescription: String?,
+    backdrop: PlatformBackdrop? = null,
     modifier: Modifier = Modifier,
 ) {
-    val avatarModifier =
-        Modifier
-            .size(size)
-            .clip(CircleShape)
-            .then(modifier)
+    val glassOn = LocalLiquidGlassEnabled.current && backdrop != null
+    val avatarShape = CircleShape
+
     if (signedIn && !thumbnailUrl.isNullOrBlank()) {
-        AsyncImage(
-            model =
-                ImageRequest
-                    .Builder(LocalPlatformContext.current)
-                    .data(thumbnailUrl)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCacheKey(thumbnailUrl)
-                    .crossfade(true)
-                    .build(),
-            placeholder = rememberHolderPainter(),
-            error = rememberHolderPainter(),
-            contentDescription = contentDescription,
-            contentScale = ContentScale.Crop,
-            modifier = avatarModifier,
-        )
-    } else {
         Box(
-            modifier = avatarModifier.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            modifier =
+                Modifier
+                    .size(size)
+                    .then(
+                        if (glassOn && backdrop != null) {
+                            Modifier.liquidGlass(
+                                backdrop = backdrop,
+                                shape = avatarShape,
+                                highlight = Highlight(width = 1.dp),
+                            )
+                        } else {
+                            Modifier.border(
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                                avatarShape,
+                            )
+                        },
+                    )
+                    .clip(avatarShape)
+                    .then(modifier),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = SimpIcons.Person,
+            AsyncImage(
+                model =
+                    ImageRequest
+                        .Builder(LocalPlatformContext.current)
+                        .data(thumbnailUrl)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .diskCacheKey(thumbnailUrl)
+                        .crossfade(true)
+                        .build(),
+                placeholder = rememberHolderPainter(),
+                error = rememberHolderPainter(),
                 contentDescription = contentDescription,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size * 0.6f),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(avatarShape),
             )
+        }
+    } else {
+        if (glassOn && backdrop != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .liquidGlass(
+                            backdrop = backdrop,
+                            shape = avatarShape,
+                            highlight = Highlight(width = 1.dp),
+                        )
+                        .clip(avatarShape)
+                        .then(modifier),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = SimpIcons.Person,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(size * 0.5f),
+                )
+            }
+        } else {
+            Surface(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .clip(avatarShape)
+                        .then(modifier),
+                shape = avatarShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = SimpIcons.Person,
+                        contentDescription = contentDescription,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(size * 0.5f),
+                    )
+                }
+            }
         }
     }
 }

@@ -66,6 +66,8 @@ jobs:
             os-name: linux
           - os: windows-latest
             os-name: windows
+          - os: macos-latest
+            os-name: macos
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -105,7 +107,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      # ── Engine provisioning: prebuilt fan-out across Linux & Windows ─────
+      # ── Engine provisioning: prebuilt fan-out across Linux, Windows & macOS ─────
       - name: Download prebuilt Linux engine cdylib (build-once / fan-out)
         if: runner.os == 'Linux'
         uses: actions/download-artifact@v8
@@ -120,6 +122,13 @@ jobs:
           name: engine-windows-x86_64
           path: staged-engine
 
+      - name: Download prebuilt macOS engine cdylib (build-once / fan-out)
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@v8
+        with:
+          name: engine-macos-universal
+          path: staged-engine
+
       - name: Set prebuilt engine environment
         shell: bash
         run: |
@@ -127,6 +136,8 @@ jobs:
             echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.so" >> "$GITHUB_ENV"
           elif [ "${{ runner.os }}" = "Windows" ]; then
             echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.dylib" >> "$GITHUB_ENV"
           fi
 
       # ── WS-C (C5): build the desktop HAL module (sink registry C ABI +
@@ -157,6 +168,10 @@ jobs:
             cmake --build native/build-hal --config Release --target streamify_desktop_hal
             HAL_DLL="$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)"
             HAL_DIR="$(dirname "$(cygpath -m "$PWD")/$HAL_DLL")"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            cmake -B native/build-hal -S native -DCMAKE_BUILD_TYPE=Release
+            cmake --build native/build-hal --target streamify_desktop_hal
+            HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.dylib' -print -quit)")"
           else
             cmake -B native/build-hal -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
             cmake --build native/build-hal --target streamify_desktop_hal
@@ -168,7 +183,7 @@ jobs:
       # ── 1. Desktop Test Suite (Single combined pass, resp7 Pillar 4) ──────
       # Single combined invocation reuses Gradle daemon state, workers, and bytecode cache.
       - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"
-        if: ${{ always() && (runner.os == 'Linux' || runner.os == 'Windows') }}
+        if: ${{ !inputs.release_mode && (runner.os == 'Linux' || runner.os == 'Windows' || runner.os == 'macOS') }}
         # TRUTH-01d: unconditional on both legs — the prebuilt engine
         # artifact download above is the hard dependency (a missing
         # artifact fails the step), so there is nothing left to probe.
@@ -192,7 +207,7 @@ jobs:
           }
           "WIX=$wixRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: "Package desktop distribution (jpackage: deb / msi / dmg)"
+      - name: "Package desktop distribution (jpackage: deb / rpm / msi / dmg)"
         if: ${{ inputs.package_installers }}
         shell: bash
         run: |
@@ -216,8 +231,11 @@ jobs:
           name: desktop-installer-${{ matrix.os-name }}
           path: |
             desktopApp/build/compose/binaries/**/*.deb
+            desktopApp/build/compose/binaries/**/*.rpm
             desktopApp/build/compose/binaries/**/*.msi
+            desktopApp/build/compose/binaries/**/*.exe
             desktopApp/build/compose/binaries/**/*.dmg
+            desktopApp/build/compose/binaries/**/*.pkg
             desktopApp/build/compose/binaries/**/*.AppImage
             desktopApp/build/compose/binaries/main/app/**
             desktopApp/build/appimage/**
