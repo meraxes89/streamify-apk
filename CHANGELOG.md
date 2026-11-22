@@ -3,6 +3,37 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.3-beta] — 2026-11-23: Cloudflare Quick Tunnels, Elite Audio & Zero-Token Delivery
+
+The third public beta release of Streamify introduces native zero-config Cloudflare Quick Tunnel hosting with Termux auto-installation, strict elite audio quality enforcement, lookahead chunk window capping to prevent upstream YouTube 403 throttles, clean client abort lifecycle teardown, zero-token static CDN bundle resolution with SemVer ordering, continuous GitHub Pages deployment for Compose Multiplatform Web WASM with offline demo fixtures, and liquid glass branding refinement.
+
+### Key Highlights
+- **Native Cloudflare Tunneling**: Zero-config public relay hosting via `--tunnel` CLI flag or environment configuration, automatically mapping Termux and Android system architectures (`arm64`, `arm`, `x64`) to download or resolve `cloudflared` binaries and publish instantaneous `trycloudflare.com` URLs with API URL rejection hardening.
+- **Strict Elite Audio Quality**: Enforced high-fidelity Opus 251 (~160 kbps) and AAC 140 (~128 kbps) stream selection across all playback requests, discarding legacy 96 kbps video downgrades (itag 18).
+- **Range Fetch Window Optimization**: Capped `ActiveFetch` lookahead chunks to 512 KiB (2 blocks), eliminating YouTube upstream 403 Forbidden errors triggered by large range bursts on Opus 251 streams.
+- **Client Abort & Reader Lifecycle Teardown**: Graceful teardown of active stream readers across `BlockRangeStream`, `PacedStreamTransform`, and `StreamGateway`, eliminating unhandled `DOMException [AbortError]` events on seek and track skip.
+- **Production Zero-Token Bundle Updater**: Overhauled bundle updater to resolve releases via GitHub's unmetered static CDN (`releases/latest/download/SHA256SUMS`), bypassing GitHub 60 req/hr API rate limits and release drafts without requiring `GITHUB_TOKEN` or `gh` CLI in production, combined with SemVer version ordering.
+- **Web WASM GitHub Pages Deployment**: Automated CI workflow publishing the Compose Multiplatform Web WASM client to GitHub Pages with harvested demo catalog and analytics simulation.
+- **Liquid Glass UI Polish**: Unified Sireen branding badge with liquid glass styling and Poppins typography, responsive compact rendering on mobile viewports, and smooth progressive scroll tracking for the home top bar scrim.
+
+### Added
+- **Tunnel**: Native `CloudflareTunnel` daemon in `server/src/platform/cloudflare-tunnel.mjs` supporting quick tunnels and named tunnels (#268, #269, #270).
+- **Distribution**: Automated GitHub Pages deployment workflow `.github/workflows/deploy-pages.yml` (#266).
+- **Web Demo**: `DemoCatalogLoader.kt` and `FakeRepositories.kt` for live WASM demo experience on GitHub Pages with harvested demo catalog fixtures (#266).
+- **Updater**: Semantic version parsing (`parseSemVer`) and comparison (`compareSemVer`) in `update-bundle.mjs` (#274).
+
+### Changed
+- **Server**: Bundle updater resolves assets via zero-auth static CDN endpoint (`releases/latest/download`) bypassing GitHub REST API limits (#274).
+- **Audio Engine**: Strict stream selection enforcing high-fidelity Opus 251 and AAC 140 formats while rejecting itag 18 video audio (#272).
+- **Audio Engine**: Capped stream lookahead fetch window to 512 KiB (2 blocks) to prevent YouTube 403 throttles (#272).
+
+### Fixed
+- **Audio Engine**: Resolved unhandled `DOMException [AbortError]` events on seek and client disconnect in `BlockRangeStream` and `PacedStreamTransform` (#271).
+- **Tunnel**: Excluded internal Cloudflare API hostnames in quick tunnel URL extraction regex (#270).
+- **Tunnel**: Corrected Termux and Android architecture resolution for `cloudflared` binary execution (#269).
+- **UI / UX**: Fixed mobile responsiveness and typography for Sireen branding badge (#263, #264).
+- **UI / UX**: Fixed top bar scrim background color tracking and smooth progressive scroll alpha transition (#265).
+
 ## [1.0.2-beta] — 2026-11-22: Sovereign Presentation, In-App Messaging & Resilient Delivery
 
 The second public beta release of Streamify brings sovereign in-app messaging, microsecond-accurate lyric synchronization with hardware latency modeling, decoupled playback queue stability, cold-start Fastify WASM distribution, native external playlist import, single-row glassmorphic navigation, and Tier-1 documentation verification gates.
