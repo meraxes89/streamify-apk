@@ -66,7 +66,7 @@ jobs:
             os-name: linux
           - os: windows-latest
             os-name: windows
-          - os: macos-14
+          - os: macos-latest
             os-name: macos
     steps:
       - name: Checkout
