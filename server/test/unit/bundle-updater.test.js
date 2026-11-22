@@ -10,6 +10,8 @@ import {
   releaseUpdateLock,
   verifyManifestSignature,
   gcBundles,
+  parseSemVer,
+  compareSemVer,
 } from '../../scripts/update-bundle.mjs';
 
 describe('Phase 2 Bundle Updater: Security & Single-Flight Governance', () => {
@@ -116,5 +118,58 @@ describe('Phase 2 Bundle Updater: Security & Single-Flight Governance', () => {
     );
 
     fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  test('SemVer parser extracts major, minor, patch, and prerelease tags', () => {
+    assert.deepEqual(parseSemVer('v1.0.2-beta'), {
+      major: 1,
+      minor: 0,
+      patch: 2,
+      prerelease: 'beta',
+    });
+    assert.deepEqual(parseSemVer('2.15.0'), {
+      major: 2,
+      minor: 15,
+      patch: 0,
+      prerelease: '',
+    });
+    assert.deepEqual(parseSemVer(null), {
+      major: 0,
+      minor: 0,
+      patch: 0,
+      prerelease: '',
+    });
+  });
+
+  test('SemVer comparator correctly orders versions and handles draft resolution', () => {
+    // Newer patch higher
+    assert.ok(compareSemVer('v1.0.2-beta', 'v1.0.1-beta') > 0);
+    assert.ok(compareSemVer('v1.0.1-beta', 'v1.0.2-beta') < 0);
+
+    // Major / minor differences
+    assert.ok(compareSemVer('v2.0.0', 'v1.9.9') > 0);
+    assert.ok(compareSemVer('v1.1.0', 'v1.0.9') > 0);
+
+    // Release vs prerelease of same major.minor.patch
+    assert.ok(compareSemVer('v1.0.1', 'v1.0.1-beta') > 0);
+    assert.ok(compareSemVer('v1.0.1-beta', 'v1.0.1') < 0);
+
+    // Equal versions
+    assert.equal(compareSemVer('v1.0.2', '1.0.2'), 0);
+
+    // Draft release exclusion test
+    const mockReleases = [
+      { id: 101, tag_name: 'v1.0.1-beta', draft: true },
+      { id: 102, tag_name: 'v1.0.2-beta', draft: false },
+      { id: 100, tag_name: 'v1.0.0', draft: false },
+    ];
+
+    const nonDraftReleases = mockReleases
+      .filter((r) => !r.draft)
+      .sort((a, b) => compareSemVer(b.tag_name, a.tag_name));
+
+    assert.equal(nonDraftReleases.length, 2);
+    assert.equal(nonDraftReleases[0].tag_name, 'v1.0.2-beta', 'Draft v1.0.1-beta excluded; highest SemVer selected');
+    assert.equal(nonDraftReleases[1].tag_name, 'v1.0.0');
   });
 });
