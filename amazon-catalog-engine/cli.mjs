@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Standalone CLI for Amazon Catalog Engine (12-API Suite)
+ * Standalone CLI for Amazon Catalog Engine (Full Expanded Suite)
  * 
  * Usage:
  *   node cli.mjs probe                 Run live discovery probe (API 12)
@@ -8,7 +8,7 @@
  *   node cli.mjs home [territory]      Fetch Home Showcase & Editorial (API 1)
  *   node cli.mjs search <query>        Search catalog (API 2)
  *   node cli.mjs suggest <query>       Instant suggestions (API 3)
- *   node cli.mjs browse <id>           Browse album/playlist/artist (API 4)
+ *   node cli.mjs browse <id>           Browse album/playlist/artist/podcast (API 4)
  *   node cli.mjs next <asin>           Fetch autoplay queue (API 5)
  *   node cli.mjs thumb <url> [size]    Scale artwork thumbnail (API 6)
  *   node cli.mjs scrape <url>          Scrape external playlist link (API 7)
@@ -16,6 +16,11 @@
  *   node cli.mjs resolve <title> [art] Resolve audio stream URL (API 9)
  *   node cli.mjs manifest <title>      Generate DASH MPD manifest (API 10)
  *   node cli.mjs prefetch <title>      Prefetch descriptor (API 11)
+ *   node cli.mjs podcast <query>       Search and stream podcasts
+ *   node cli.mjs station <seed>        Generate algorithmic radio station
+ *   node cli.mjs badges <title>        Inspect audiophile quality badges
+ *   node cli.mjs credits <title>       View track personnel & liner notes
+ *   node cli.mjs videos <artist>       Find official music videos
  */
 
 import { AmazonCatalogClient } from './src/client.mjs';
@@ -164,23 +169,76 @@ async function main() {
       break;
     }
 
+    case 'podcast': {
+      const query = args.slice(1).join(' ') || 'Huberman';
+      console.log(`Searching podcasts for: "${query}"...`);
+      const podcasts = await client.searchPodcasts(query);
+      console.log(JSON.stringify(podcasts, null, 2));
+      break;
+    }
+
+    case 'station': {
+      const seed = args.slice(1).join(' ') || 'The Weeknd';
+      console.log(`Generating radio station for seed: "${seed}"...`);
+      const station = await client.createStation(seed);
+      console.log(JSON.stringify(station, null, 2));
+      break;
+    }
+
+    case 'badges': {
+      const title = args[1] || 'Blinding Lights';
+      console.log(`Inspecting audio quality badges for "${title}"...`);
+      const badges = client.getAudioBadges({ title, isUltraHd: true, isAtmos: true });
+      console.log(JSON.stringify(badges, null, 2));
+      break;
+    }
+
+    case 'credits': {
+      const title = args[1] || 'Blinding Lights';
+      console.log(`Extracting track credits for "${title}"...`);
+      const credits = client.getTrackCredits({
+        title,
+        artist: 'The Weeknd',
+        album: 'After Hours',
+        copyright: '℗ 2020 The Weeknd XO, Inc., manufactured and marketed by Republic Records, a division of UMG Recordings, Inc.',
+        isUltraHd: true,
+        isAtmos: true,
+        isExplicit: false
+      });
+      console.log(JSON.stringify(credits, null, 2));
+      break;
+    }
+
+    case 'videos': {
+      const artist = args.slice(1).join(' ') || 'The Weeknd';
+      console.log(`Finding official music videos for "${artist}"...`);
+      const videos = await client.getMusicVideos(artist);
+      console.log(JSON.stringify(videos, null, 2));
+      break;
+    }
+
     case 'help':
     default: {
-      console.log('Streamify Amazon Catalog Engine CLI (12-API Suite)');
+      console.log('Streamify Amazon Catalog Engine CLI (Complete Suite)');
       console.log('');
       console.log('Available Commands:');
-      console.log('  node cli.mjs home [territory]      (API 1)  Editorial Home & Showcase');
-      console.log('  node cli.mjs search <query>        (API 2)  Catalog Search');
-      console.log('  node cli.mjs suggest <query>       (API 3)  Instant Suggestions');
-      console.log('  node cli.mjs browse <id>           (API 4)  Browse Album/Artist/Playlist');
-      console.log('  node cli.mjs next <asin>           (API 5)  Next Autoplay Queue');
-      console.log('  node cli.mjs thumb <url> [size]    (API 6)  Thumbnail URL Formatter');
-      console.log('  node cli.mjs scrape <url>          (API 7)  Scrape External Playlist');
-      console.log('  node cli.mjs lyrics <song> <band>  (API 8)  Synchronized Lyrics');
-      console.log('  node cli.mjs resolve <song> <band> (API 9)  Hybrid Stream Resolver');
-      console.log('  node cli.mjs manifest <song>       (API 10) DASH MPD Manifest');
-      console.log('  node cli.mjs prefetch <song>       (API 11) Stream Prefetch Descriptor');
-      console.log('  node cli.mjs probe                 (API 12) Live Discovery & Health');
+      console.log('  node cli.mjs home [territory]      Editorial Home & Showcase');
+      console.log('  node cli.mjs search <query>        Catalog Search');
+      console.log('  node cli.mjs suggest <query>       Instant Suggestions');
+      console.log('  node cli.mjs browse <id>           Browse Album/Artist/Playlist/Podcast');
+      console.log('  node cli.mjs next <asin>           Next Autoplay Queue');
+      console.log('  node cli.mjs thumb <url> [size]    Thumbnail URL Formatter');
+      console.log('  node cli.mjs scrape <url>          Scrape External Playlist');
+      console.log('  node cli.mjs lyrics <song> <band>  Synchronized Lyrics');
+      console.log('  node cli.mjs resolve <song> <band> Hybrid Stream Resolver');
+      console.log('  node cli.mjs manifest <song>       DASH MPD Manifest');
+      console.log('  node cli.mjs prefetch <song>       Stream Prefetch Descriptor');
+      console.log('  node cli.mjs probe                 Live Discovery & Health');
+      console.log('  node cli.mjs podcast <query>       Podcast Discovery & Streaming');
+      console.log('  node cli.mjs station <seed>        Algorithmic Radio Station Generator');
+      console.log('  node cli.mjs badges <title>        Audiophile Quality Badges');
+      console.log('  node cli.mjs credits <title>       Personnel & Liner Notes');
+      console.log('  node cli.mjs videos <artist>       Official Music Videos');
       break;
     }
   }

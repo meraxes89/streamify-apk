@@ -1,21 +1,9 @@
 /**
- * AmazonCatalogClient (The Full 12-API Suite)
+ * AmazonCatalogClient (The Complete Expanded Suite)
  * 
  * High-level autonomous client for querying Amazon Music catalog and
- * delivering complete 1:1 parity with Streamify's multiplatform APIs:
- * 
- *  1. getHome({ territory })               -> /api/yt/home parity
- *  2. search(query, options)               -> /api/yt/search parity
- *  3. instantSearch(query, options)        -> /api/yt/suggest parity
- *  4. getBrowse(browseId, options)         -> /api/yt/browse parity
- *  5. getNext(trackOrAsin, options)        -> /api/yt/next parity
- *  6. getThumb(url, size)                  -> /api/yt/thumb parity
- *  7. scrapePlaylist(url)                  -> /api/playlist/scrape parity
- *  8. getLyrics(track, artist, duration)   -> /api/yt/lyrics parity
- *  9. resolveAudio(trackOrAsin)            -> /api/stream?id=... hybrid resolver
- * 10. getDashManifest(trackOrAsin)         -> /api/stream/:id/manifest.mpd parity
- * 11. prefetchDescriptor(trackOrAsin)      -> /api/stream/prefetch parity
- * 12. probe(territory)                     -> /api/health & telemetry parity
+ * delivering complete parity with Streamify's multiplatform APIs,
+ * including Podcasts, Radio Stations, Audiophile Badges, Liner Notes, and Music Videos.
  */
 
 import { AmazonSessionManager } from './session.mjs';
@@ -23,6 +11,11 @@ import { CircuitBreaker, RatePacer } from './governance.mjs';
 import { AmazonScraper } from './scraper.mjs';
 import { AmazonLyricsService } from './lyrics.mjs';
 import { AmazonStreamResolver } from './resolver.mjs';
+import { AmazonPodcastService } from './podcasts.mjs';
+import { AmazonStationService } from './stations.mjs';
+import { AmazonVideoService } from './videos.mjs';
+import { detectAudioBadges } from './badges.mjs';
+import { extractTrackCredits } from './credits.mjs';
 import {
   mapAmazonTrack,
   mapAmazonAlbum,
@@ -38,7 +31,10 @@ export class AmazonCatalogClient {
     ratePacer = new RatePacer(),
     scraper = new AmazonScraper(),
     lyricsService = new AmazonLyricsService(),
-    streamResolver = new AmazonStreamResolver()
+    streamResolver = new AmazonStreamResolver(),
+    podcastService = new AmazonPodcastService(),
+    stationService = new AmazonStationService(),
+    videoService = null
   } = {}) {
     this.session = sessionManager;
     this.breaker = circuitBreaker;
@@ -46,6 +42,10 @@ export class AmazonCatalogClient {
     this.scraper = scraper;
     this.lyrics = lyricsService;
     this.resolver = streamResolver;
+    this.podcasts = podcastService;
+    this.stations = stationService;
+    this.stations.setClient(this);
+    this.videos = videoService || new AmazonVideoService({ resolver: this.resolver });
   }
 
   // -------------------------------------------------------------
@@ -53,9 +53,8 @@ export class AmazonCatalogClient {
   // -------------------------------------------------------------
   async getHome({ territory = 'US' } = {}) {
     const terr = territory.toUpperCase();
-    const session = await this.session.getSession(terr);
+    await this.session.getSession(terr);
 
-    // Curate primary editorial sections based on territory
     const sections = [
       {
         title: 'Trending Now & Global Hits',
@@ -89,6 +88,11 @@ export class AmazonCatalogClient {
             artOriginal: 'https://m.media-amazon.com/images/I/81xGg6zB4DL._SX500_.jpg'
           })
         ]
+      },
+      {
+        title: 'Curated Stations & Moods',
+        sectionId: 'amzn:home:stations',
+        contents: this.stations.getGenreStations().slice(0, 3)
       }
     ];
 
@@ -258,6 +262,10 @@ export class AmazonCatalogClient {
       return this.getArtist(asin, { territory });
     }
 
+    if (browseId.startsWith('amzn:podcast:') || browseId.includes('/podcasts/')) {
+      return this.getPodcastShow(browseId);
+    }
+
     return this.getAlbum(browseId, { territory });
   }
 
@@ -367,6 +375,53 @@ export class AmazonCatalogClient {
       cooldownMs: state.cooldownMs,
       timestamp: Date.now()
     };
+  }
+
+  // -------------------------------------------------------------
+  // NEW FEATURE: Podcasts & Spoken Word (Unencrypted MP3 Stream)
+  // -------------------------------------------------------------
+  async searchPodcasts(query, options = {}) {
+    return this.podcasts.searchPodcasts(query, options);
+  }
+
+  async getPodcastShow(showId) {
+    return this.podcasts.getPodcastShow(showId);
+  }
+
+  async getPodcastEpisode(episodeId) {
+    return this.podcasts.getPodcastEpisode(episodeId);
+  }
+
+  // -------------------------------------------------------------
+  // NEW FEATURE: Algorithmic Stations & Endless Radio
+  // -------------------------------------------------------------
+  async createStation(seed, options = {}) {
+    return this.stations.createStation(seed, options);
+  }
+
+  getGenreStations() {
+    return this.stations.getGenreStations();
+  }
+
+  // -------------------------------------------------------------
+  // NEW FEATURE: Audiophile Badges & Spatial Audio Detection
+  // -------------------------------------------------------------
+  getAudioBadges(trackOrMetadata) {
+    return detectAudioBadges(trackOrMetadata);
+  }
+
+  // -------------------------------------------------------------
+  // NEW FEATURE: Song Credits & Liner Notes
+  // -------------------------------------------------------------
+  getTrackCredits(trackOrMetadata) {
+    return extractTrackCredits(trackOrMetadata);
+  }
+
+  // -------------------------------------------------------------
+  // NEW FEATURE: Official Music Videos
+  // -------------------------------------------------------------
+  async getMusicVideos(artistOrTrack, options = {}) {
+    return this.videos.getMusicVideos(artistOrTrack, options);
   }
 
   // -------------------------------------------------------------
