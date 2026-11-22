@@ -14,6 +14,7 @@
  *   node cli.mjs scrape <url>          Scrape external playlist link (API 7)
  *   node cli.mjs lyrics <song> <band>  Fetch synced lyrics via LRCLIB (API 8)
  *   node cli.mjs resolve <title> [art] Resolve audio stream URL (API 9)
+ *   node cli.mjs flac-links <asin> [flags] Solve REAL Amazon DMLS stream links (FLAC Ultra HD)
  *   node cli.mjs manifest <title>      Generate DASH MPD manifest (API 10)
  *   node cli.mjs prefetch <title>      Prefetch descriptor (API 11)
  *   node cli.mjs podcast <query>       Search and stream podcasts
@@ -156,6 +157,125 @@ async function main() {
       break;
     }
 
+    case 'flac-links': {
+      // THE REAL Amazon stream-link solver: DMLS getDashManifestsV2 (FLAC/Opus
+      // path, SIREN_KATANA + TRACK_PSSH) -> inline MPD -> representation cards
+      // -> init/segment CDN URLs (+ optional first-chunk URL, DRM pssh card).
+      //
+      //   node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra]
+      //        [--cookies-file=path] [--with-first-chunk] [--force-wire]
+      //        [--save-mpd=file]
+      //
+      // Credentials resolve from (priority): --cookies-file, env
+      // AMAZON_MUSIC_COOKIES / AMAZON_MUSIC_OAUTH_TOKEN /
+      // AMAZON_MUSIC_COOKIES_FILE, ~/.streamify/amazon-music.cookies.
+      const asin = args[1];
+      if (!asin || asin.startsWith('--')) {
+        console.error('Usage: node cli.mjs flac-links <asin> [--territory=US] [--tier=ultra|hd|lossy|best] [--cookies-file=path] [--with-first-chunk] [--force-wire] [--save-mpd=file]');
+        process.exit(1);
+      }
+      const getFlag = (name) => {
+        const f = args.find(a => a.startsWith(`--${name}=`));
+        return f ? f.split('=').slice(1).join('=') : null;
+      };
+      const hasFlag = (name) => args.includes(`--${name}`);
+      const territory = (getFlag('territory') || 'US').toUpperCase();
+      const tier = getFlag('tier') || 'ultra';
+      const includeFirstChunk = hasFlag('with-first-chunk');
+      const forceWire = hasFlag('force-wire');
+
+      const { resolveAmazonMusicCredential } = await import('./src/credentials.mjs');
+      const credential = resolveAmazonMusicCredential({ cookiesFile: getFlag('cookies-file') });
+
+      console.log(`Solving Amazon DMLS stream links for ASIN ${asin} [${territory}] tier=${tier} ...`);
+      console.log(`Credential: ${credential.authenticated ? credential.toJSON().mode + ' (' + credential.source + ')' : 'anonymous guest'}`);
+
+      const solved = await client.solveStreamLinks(asin, {
+        territory, tier, credential, includeFirstChunk, forceWire
+      });
+
+      console.log('\n=================== AMAZON DMLS SOLVE ===================');
+      console.log(` Status        : ${solved.status}`);
+      console.log(` Service       : ${solved.operation}`);
+      if (solved.session) {
+        console.log(` Session       : ${solved.session.authenticated ? 'AUTHENTICATED' : 'guest'}${solved.session.musicTier ? ' tier=' + solved.session.musicTier + (solved.session.tierInferred ? ' (inferred)' : '') : ''}`);
+        if (solved.session.customerId) console.log(` CustomerId    : ${solved.session.customerId}`);
+        if (solved.session.entitlementList?.length) console.log(` Entitlements  : ${solved.session.entitlementList.join(', ')}`);
+      }
+      if (solved.reason) console.log(` Reason        : ${solved.reason}`);
+      if (solved.wall) {
+        console.log(` Live wall     : ${solved.wall.__type} - "${solved.wall.message}"`);
+        if (solved.howToAuthenticate) {
+          console.log(`\n Unlock recipe :`);
+          for (const step of solved.howToAuthenticate.recipe) console.log(`   - ${step}`);
+        }
+      }
+      if (solved.detail) console.log(` Detail        : ${String(solved.detail).slice(0, 200)}`);
+
+      if (solved.manifest) {
+        console.log(`\n Manifest      : inline MPD, ${solved.manifest.representationCount} representations, cdn=${solved.manifest.cdnType}, substituteAsin=${solved.manifest.substituteAsin}`);
+        console.log(' Representations:');
+        for (const rep of (solved.manifest.representations || [])) {
+          console.log(`   - ${String(rep.id).padEnd(24)} ${rep.specLabel} | trackType=${rep.trackType} codec=${rep.codec} bw=${rep.bandwidth} drm=${rep.drmProtected ? 'CENC(pssh)' : 'clear'}`);
+        }
+      }
+
+      if (solved.selected) {
+        console.log(`\n Selected      : ${solved.selected.specLabel} (tier=${solved.selected.tierLabel}, codec=${solved.selected.codecFamily}, ${solved.selected.bitDepth}-bit @ ${solved.selected.audioSamplingRate} Hz)`);
+      }
+
+      if (solved.links) {
+        console.log(`\n LINKS (the actual Amazon stream links):`);
+        console.log(`   init segment : ${solved.links.initUrl}`);
+        console.log(`   media template: ${solved.links.mediaTemplate}`);
+        for (const [i, u] of (solved.links.firstSegmentUrls || []).entries()) {
+          console.log(`   segment #${i + 1}    : ${u}`);
+        }
+        if (solved.links.segmentCount != null) console.log(`   segments     : ~${solved.links.segmentCount} @ ${solved.links.segmentDurationSec?.toFixed(2) || '?'}s`);
+      }
+
+      if (solved.drm?.protected) {
+        console.log(`\n DRM           : ${solved.drm.envelope} keySystems=[${solved.drm.keySystems}] pssh=${solved.drm.psshList.length} box(es)`);
+        console.log(`   license op  : ${solved.drm.licenseOperation}`);
+        console.log(`   note        : ${solved.drm.note}`);
+      }
+
+      if (solved.firstChunk) {
+        console.log(`\n First chunk   : ${solved.firstChunk.url || '(not solved: ' + solved.firstChunk.reason + ')'}`);
+        if (solved.firstChunk.cdnType) console.log(`   cdn         : ${solved.firstChunk.cdnType}`);
+      }
+
+      console.log('==========================================================\n');
+
+      const saveMpd = getFlag('save-mpd');
+      if (saveMpd && solved.manifest?.inline) {
+        fs.writeFileSync(saveMpd, solved.manifest.inline);
+        console.log(`Inline MPD saved to ${saveMpd}`);
+      }
+
+      // Machine-readable copy
+      console.log(JSON.stringify({
+        status: solved.status,
+        asin: solved.asin,
+        territory: solved.territory,
+        tier: solved.requestedTier,
+        session: solved.session,
+        reason: solved.reason || null,
+        manifest: solved.manifest ? {
+          mpd: solved.manifest.mpd,
+          cdnType: solved.manifest.cdnType,
+          substituteAsin: solved.manifest.substituteAsin,
+          representationCount: solved.manifest.representationCount,
+          representations: solved.manifest.representations
+        } : null,
+        selected: solved.selected,
+        links: solved.links,
+        drm: solved.drm,
+        firstChunk: solved.firstChunk || null
+      }, null, 2));
+      break;
+    }
+
     case 'lossless': {
       const trackName = args[1];
       const artistName = args[2] || '';
@@ -165,54 +285,167 @@ async function main() {
       }
       console.log(`Resolving lossless top-tier audio for "${trackName}" by "${artistName}"...`);
       const resolved = await client.resolveLosslessAudio({ title: trackName, artist: artistName });
-      console.log(JSON.stringify(resolved, null, 2));
+
+      // Native DMLS capability card (honest verdict on Amazon-side FLAC delivery)
+      let native = null;
+      const asinArg = args.find(a => a.startsWith('--asin='));
+      if (asinArg) {
+        native = await client.probeNativeFlacCapability(asinArg.split('=')[1]);
+      }
+
+      console.log('\n================ NATIVE FLAC CAPABILITY (DMLS) ================');
+      if (native) {
+        console.log(` Status : ${native.status}`);
+        console.log(` Reason : ${native.reason}`);
+      } else {
+        console.log(' Not probed (pass --asin=<ASIN> to probe Amazon\'s native delivery surface).');
+      }
+      console.log('==================================================================\n');
+
+      console.log(JSON.stringify({
+        videoId: resolved.videoId,
+        title: resolved.title,
+        artist: resolved.artist,
+        requestedTier: resolved.requestedTier,
+        tier: resolved.tier,
+        specLabel: resolved.specLabel,
+        streamUrl: resolved.streamUrl,
+        matchConfidence: resolved.matchConfidence,
+        source: resolved.source,
+        delivery: resolved.delivery,
+        native,
+      }, null, 2));
       break;
     }
 
     case 'lossless-full': {
-      // Whole-song lossless acquisition: supply the Amazon FLAC stream URL for the
-      // full track via STREAMIFY_FLAC_SOURCE_URL, e.g. an Amazon Music Ultra HD/HD
-      // master link for the resolved track. Writes the entire raw FLAC to disk.
+      // Whole-song lossless acquisition end-to-end. Sources (in priority):
+      //   1. STREAMIFY_FLAC_SOURCE_URL  - direct full-song FLAC/URL (e.g. Ultra HD master)
+      //   2. --relay=<base> or STREAMIFY_RELAY_BASE + descriptor.streamUrl
+      // Bytes are downloaded, magic-sniffed, introspected, and labeled with the
+      // TRUE codec - never decorated as FLAC when they are Opus/AAC.
       const trackName = args[1];
       const artistName = args[2] || '';
       const sourceUrl = process.env.STREAMIFY_FLAC_SOURCE_URL;
-      if (!trackName || !sourceUrl) {
-        console.error('Error: provide track title and set STREAMIFY_FLAC_SOURCE_URL=<amazon flac url>.');
+      const relayArg = args.find(a => a.startsWith('--relay='));
+      const relayBaseUrl = (relayArg && relayArg.split('=')[1]) || process.env.STREAMIFY_RELAY_BASE || null;
+      if (!trackName || (!sourceUrl && !relayBaseUrl)) {
+        console.error('Error: provide track title plus either STREAMIFY_FLAC_SOURCE_URL=<url> or --relay=<relay-base-url>.');
         process.exit(1);
       }
+
+      const descriptor = await client.resolveLosslessAudio({ title: trackName, artist: artistName });
+      const { HttpAudioSource } = await import('./src/audio-source.mjs');
+      const downloader = new HttpAudioSource({ baseUrl: relayBaseUrl });
+      const fetchUrl = sourceUrl || descriptor.streamUrl;
+
+      console.log(`Acquiring whole raw full-song audio from: ${fetchUrl}`);
+      const audio = await downloader.load({ streamUrl: fetchUrl });
+
       const { LosslessFullSongService } = await import('./src/lossless-fullsong.mjs');
       const service = new LosslessFullSongService({
-        audioSource: async ({ streamUrl }) => {
-          const res = await fetch(streamUrl);
-          if (!res.ok) throw new Error(`Full-song FLAC fetch failed: HTTP ${res.status}`);
-          const bytes = Buffer.from(await res.arrayBuffer());
-          const declared = res.headers.get('content-type') || '';
-          return {
-            bytes,
-            codec: declared.includes('flac') ? 'flac' : 'opus',
-            contentType: declared,
-          };
-        },
+        audioSource: async () => ({
+          bytes: audio.bytes,
+          codec: audio.codec.codec,
+          contentType: audio.contentType,
+          tier: descriptor.tier,
+        }),
       });
-      const descriptor = await client.resolveLosslessAudio({ title: trackName, artist: artistName });
       const artifact = await service.acquireFullSong({
-        streamUrl: sourceUrl,
+        streamUrl: fetchUrl,
         tier: descriptor.tier,
-        codec: 'flac',
+        codec: audio.codec.codec,
       });
-      const outputFile = args[3] || `${trackName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_lossless.flac`;
+
+      const outputFile = args[3] ||
+        `${trackName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_fullsong.${artifact.delivery.codec === 'flac' ? 'flac' : 'bin'}`;
       fs.writeFileSync(outputFile, artifact.flac || artifact.bytes);
+
       console.log(JSON.stringify({
         outputFile,
-        tier: artifact.tier,
+        requestedTier: descriptor.tier,
         specLabel: artifact.specLabel,
-        codec: artifact.codec,
-        isLossless: artifact.isLossless,
+        requestedCodec: descriptor.codec,
         totalBytes: (artifact.flac || artifact.bytes).length,
+        contentType: audio.contentType,
         remuxed: artifact.remuxed,
+        remuxBytesSaved: artifact.streamInfo?.remuxBytesSaved || 0,
+        frameCount: artifact.frameIndex?.length || 0,
         sampleRate: artifact.streamInfo?.streamInfo?.sampleRate || null,
         bitDepth: artifact.streamInfo?.streamInfo?.bitsPerSample || null,
+        channels: artifact.streamInfo?.streamInfo?.channels || null,
+        durationSec: artifact.streamInfo?.streamInfo?.durationSec || null,
+        md5: artifact.streamInfo?.streamInfo?.md5 || null,
+        // THE honest verdict: what the bytes actually are
+        delivery: artifact.delivery,
       }, null, 2));
+      break;
+    }
+
+    case 'inspect': {
+      // Deep FLAC introspection of a local file or URL:
+      // STREAMINFO, metadata blocks, REAL frame index (sample numbers decoded
+      // from UTF-8-coded frame headers), metadata-first remux savings,
+      // frame-aligned seek geometry, and two-phase pacing configuration.
+      const target = args[1];
+      if (!target) {
+        console.error('Error: Please provide a FLAC file path or URL.');
+        process.exit(1);
+      }
+      let buffer;
+      if (/^https?:\/\//.test(target)) {
+        console.log(`Downloading FLAC from: ${target}`);
+        const { HttpAudioSource } = await import('./src/audio-source.mjs');
+        const dl = new HttpAudioSource();
+        const audio = await dl.load({ streamUrl: target });
+        buffer = audio.bytes;
+        console.log(`Downloaded ${buffer.length} bytes | sniffed codec: ${audio.codec.codec} (${audio.codec.detail})`);
+      } else {
+        buffer = fs.readFileSync(target);
+        console.log(`Loaded local file: ${target} (${buffer.length} bytes)`);
+      }
+
+      const { FlacIntrospector } = await import('./src/flac-introspector.mjs');
+      const { FrameAlignedGateway } = await import('./src/frame-gateway.mjs');
+
+      const info = FlacIntrospector.inspect(buffer);
+      console.log('\n================ FLAC STREAMINFO ================');
+      console.log(JSON.stringify(info.streamInfo, null, 2));
+      console.log(`\nMetadata blocks: ${info.blocks.length} | picture: ${info.pictureBlock ? info.pictureBlock.totalBytes + ' bytes' : 'none'} | seektable points: ${info.seekPoints.length}`);
+
+      const remux = FlacIntrospector.createMetadataFirstStream(buffer);
+      const remuxInfo = FlacIntrospector.inspect(remux.remuxedBuffer);
+      const audioPayload = remux.remuxedBuffer.subarray(remuxInfo.firstAudioFrameOffset);
+      const scan = FlacIntrospector.scanFramesDetailed(audioPayload, remuxInfo.firstAudioFrameOffset, 100000, remuxInfo.streamInfo);
+
+      console.log(`\n================ FRAME INDEX (REAL sample numbers) ================`);
+      console.log(`Sync markers    : ${scan.frameCount}`);
+      console.log(`CRC-8 validated : ${scan.validatedFrameCount} (headers decoded + CRC-8 verified)`);
+      console.log(`Contiguous      : ${scan.contiguousFrames}/${Math.max(0, scan.validatedFrameCount - 1)} (${(scan.integrity * 100).toFixed(1)}% frame-tile integrity)`);
+      if (scan.validatedFrameCount > 0) {
+        console.log(`First frame   : sample ${scan.firstSampleNumber} @ byte ${scan.frames.find(f => f.headerValidated).byteOffset}`);
+        console.log(`Last frame    : sample ${scan.lastSampleNumber} @ byte ${scan.frames.filter(f => f.headerValidated).slice(-1)[0].byteOffset}`);
+        console.log(`Sample numbers strictly ascending: ${scan.sampleNumbersAscending}`);
+      }
+      console.log(`Remux         : ${remux.bytesSavedFromFront} bytes saved from front (PICTURE deferred)`);
+
+      const validatedFrames = scan.frames.filter(f => f.headerValidated);
+      const gateway = new FrameAlignedGateway({
+        frameIndex: validatedFrames,
+        sampleRate: remuxInfo.streamInfo?.sampleRate || 48000,
+        totalBytes: remux.remuxedBuffer.length,
+        metadataBytes: remuxInfo.firstAudioFrameOffset,
+        bitrate: remuxInfo.estimatedBitrate || 4608000,
+      });
+
+      const duration = remuxInfo.streamInfo?.durationSec || 0;
+      const seekTarget = Math.max(1, Math.floor(duration / 3));
+      const seek = gateway.resolveSeekRange(seekTarget);
+      console.log(`\n================ FRAME-ALIGNED SEEK (t=${seekTarget}s of ${duration.toFixed(1)}s) ================`);
+      console.log(JSON.stringify(seek, null, 2));
+
+      console.log(`\n================ TWO-PHASE PACING ================`);
+      console.log(JSON.stringify(gateway.computePacingConfig(), null, 2));
       break;
     }
 
@@ -292,8 +525,9 @@ async function main() {
       console.log('  node cli.mjs scrape <url>          Scrape External Playlist');
       console.log('  node cli.mjs lyrics <song> <band>  Synchronized Lyrics');
       console.log('  node cli.mjs resolve <song> <band> Hybrid Stream Resolver');
-      console.log('  node cli.mjs lossless <song> <band> Lossless Top-Tier Full-Song Stream');
-      console.log('  node cli.mjs lossless-full <song> <band> [out.flac]  Whole raw FLAC file (STREAMIFY_FLAC_SOURCE_URL)');
+      console.log('  node cli.mjs lossless <song> <band> [--asin=ASIN] Lossless Top-Tier + Native DMLS Capability Card');
+      console.log('  node cli.mjs lossless-full <song> <band> [--relay=base] Whole raw full-song bytes (honest codec sniff)');
+      console.log('  node cli.mjs inspect <file.flac|url>       Deep FLAC introspection: frames, seek, pacing');
       console.log('  node cli.mjs manifest <song>       DASH MPD Manifest');
       console.log('  node cli.mjs prefetch <song>       Stream Prefetch Descriptor');
       console.log('  node cli.mjs probe                 Live Discovery & Health');

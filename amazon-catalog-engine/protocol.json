@@ -30,6 +30,7 @@
     "AU": "FE"
   },
   "configPath": "/config.json?skipToken=false&clientApplication=skyfire",
+  "authenticatedConfigPath": "/config.json?clientApplication=hornet&cookieauth=true",
   "commonHeaders": {
     "Content-Encoding": "amz-1.0",
     "Content-Type": "application/json; charset=UTF-8",
@@ -68,12 +69,55 @@
     },
     "amals": {
       "path": "/{region}/api/amals/",
-      "service": "com.amazon.amazonmusicaudiolocatorservice.model.AmazonMusicAudioLocatorServiceExternal",
+      "service": "com.amazon.amazonmusicaudiolocatorsservice.model.AmazonMusicAudioLocatorServiceExternal",
       "operations": {
         "onDemandStreamingUrls": "GetOnDemandStreamingURLs",
         "liveStreamingUrls": "GetLiveStreamingURLs"
       }
     },
-    "source": "extracted from production web-platform bundle (d5fx445wy2wpk.cloudfront.net) 2026-11"
+    "enums": {
+      "entitlement": {
+        "UNLIMITED": "HAWKFIRE",
+        "UNLIMITED_HD": "KATANA",
+        "PRIME": "ROBIN",
+        "AUGMENTED_PRIME": "SONIC_RUSH",
+        "FREE": "NIGHTWING"
+      },
+      "tierEntitlementList": {
+        "UNLIMITED": ["KATANA", "HAWKFIRE", "SONIC_RUSH", "ROBIN", "NIGHTWING"],
+        "PRIME": ["SONIC_RUSH", "ROBIN", "NIGHTWING"],
+        "FREE": ["NIGHTWING"]
+      },
+      "format": ["ENCRYPTED_AAC", "ENCRYPTED_OPUS_FLAC", "UNENCRYPTED_AAC", "UNENCRYPTED_FLAC", "UNENCRYPTED_MP3", "UNENCRYPTED_OPUS_FLAC"],
+      "drmType": ["FAIRPLAY", "PLAYREADY", "WIDEVINE", "WIDEVINE_ENTITLEMENT"],
+      "protocol": ["DASH", "HLS", "PROGRESSIVE"],
+      "musicDashVersion": ["SIREN", "SIREN_KATANA", "SIREN_KATANA_NO_CLEAR_LEAD", "V1", "V2"],
+      "contentProtection": ["GROUP_PSSH", "TRACK_PSSH"],
+      "sampleRate": ["44100", "48000", "96000", "192000"],
+      "bitDepth": ["16", "24"],
+      "qualityLadder": ["UHD192", "UHD96", "UHD48", "UHD44", "HD192", "HD96", "HD48", "HD44", "High", "Medium", "Low"],
+      "codecs": {
+        "AAC_LC": "mp4a.40.2",
+        "AAC_HE": "mp4a.40.5",
+        "OPUS": "opus",
+        "FLAC": "flac",
+        "EC3": "ec-3",
+        "AC4_02_02": "ac-4.02.02.00"
+      }
+    },
+    "mpd": {
+      "supplementalProperties": {
+        "bitDepth": "amz-music:bitDepth",
+        "trackType": "amz-music:trackType"
+      }
+    },
+    "auth": {
+      "vectors": {
+        "cookie": "POST /config.json?clientApplication=hornet&cookieauth=true with the signed-in cookie jar (production default; config.customerId !== \"\" => authenticated)",
+        "bearer": "Authorization: Bearer <oAuthToken> on Coral DMLS calls"
+      },
+      "coralDispatcherKey": "Content-Encoding: amz-1.0 (missing => com.amazon.coral.service#UnknownOperationException)"
+    },
+    "source": "extracted from production web-platform bundle (d5fx445wy2wpk.cloudfront.net, web-hornet 1.196.81-hf.1) 2026-11; DMLS shapes cross-verified live"
   }
 }
