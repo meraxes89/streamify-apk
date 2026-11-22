@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "slots": [
+    {
+      "id": "morning",
+      "start_hour": 5,
+      "end_hour": 11,
+      "messages": {
+        "en": [
+          "Good morning",
+          "Morning beats",
+          "Rise and stream"
+        ],
+        "default": "Good morning"
+      }
+    },
+    {
+      "id": "afternoon",
+      "start_hour": 12,
+      "end_hour": 16,
+      "messages": {
+        "en": [
+          "Good afternoon",
+          "Afternoon flow",
+          "Focus mode"
+        ],
+        "default": "Good afternoon"
+      }
+    },
+    {
+      "id": "evening",
+      "start_hour": 17,
+      "end_hour": 21,
+      "messages": {
+        "en": [
+          "Good evening",
+          "Evening unwind",
+          "Golden hour sounds"
+        ],
+        "default": "Good evening"
+      }
+    },
+    {
+      "id": "late_night",
+      "start_hour": 22,
+      "end_hour": 4,
+      "messages": {
+        "en": [
+          "Late night vibes",
+          "Night session",
+          "Midnight frequency",
+          "Good evening"
+        ],
+        "default": "Late night vibes"
+      }
+    }
+  ],
+  "special_events": [
+    {
+      "id": "new_year",
+      "month": 1,
+      "day": 1,
+      "messages": {
+        "en": [
+          "Happy New Year!"
+        ],
+        "default": "Happy New Year!"
+      }
+    }
+  ]
+}

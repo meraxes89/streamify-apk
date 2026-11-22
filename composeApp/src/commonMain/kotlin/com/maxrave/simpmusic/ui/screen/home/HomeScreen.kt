@@ -76,7 +76,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -123,6 +125,7 @@ import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.data.RemoteGreetingManager
 import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
 import com.maxrave.simpmusic.expect.ui.HorizontalScrollBar
@@ -135,7 +138,6 @@ import com.maxrave.simpmusic.extension.getScreenSizeInfo
 import com.maxrave.simpmusic.extension.isScrollingUp
 import com.maxrave.simpmusic.extension.mouseDragScroll
 import com.maxrave.simpmusic.extension.rgbFactor
-import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.ui.component.BlogPromoDialog
 import com.maxrave.simpmusic.ui.component.CenterLoadingBox
@@ -180,6 +182,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.login.LoginDestination
 import com.maxrave.simpmusic.ui.screen.library.LibraryDynamicPlaylistType
 import com.maxrave.simpmusic.ui.theme.ArtworkShape
+import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.desktopPanelDark
 import com.maxrave.simpmusic.ui.theme.typo
@@ -200,10 +203,6 @@ import com.maxrave.simpmusic.viewModel.HomeViewModel.Companion.HOME_PARAMS_SLEEP
 import com.maxrave.simpmusic.viewModel.HomeViewModel.Companion.HOME_PARAMS_WORKOUT
 import com.maxrave.simpmusic.viewModel.ListState
 import com.maxrave.simpmusic.viewModel.SharedViewModel
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.http.Url
@@ -224,10 +223,6 @@ import simpmusic.composeapp.generated.resources.energize
 import simpmusic.composeapp.generated.resources.feel_good
 import simpmusic.composeapp.generated.resources.focus
 import simpmusic.composeapp.generated.resources.go_to_log_in_page
-import simpmusic.composeapp.generated.resources.good_afternoon
-import simpmusic.composeapp.generated.resources.good_evening
-import simpmusic.composeapp.generated.resources.good_morning
-import simpmusic.composeapp.generated.resources.good_night
 import simpmusic.composeapp.generated.resources.guest
 import simpmusic.composeapp.generated.resources.let_s_pick_a_playlist_for_you
 import simpmusic.composeapp.generated.resources.let_s_start_with_a_radio
@@ -420,8 +415,6 @@ fun HomeScreen(
     val atTop by remember {
         derivedStateOf { scrollState.firstVisibleItemIndex == 0 && scrollState.firstVisibleItemScrollOffset == 0 }
     }
-    val hazeState =
-        rememberHazeState()
     // The floating chip row refracts the page scrolling under it, so the page is the glass source and
     // the row its sibling (nesting the row inside the source is the RuntimeShader feedback loop).
     val chipBackdrop = rememberBackdrop(MaterialTheme.colorScheme.background)
@@ -753,8 +746,7 @@ fun HomeScreen(
         PullToRefreshBox(
             modifier =
                 Modifier
-                    .then(if (LocalLiquidGlassEnabled.current) Modifier.layerBackdrop(chipBackdrop) else Modifier)
-                    .hazeSource(hazeState),
+                    .then(if (LocalLiquidGlassEnabled.current) Modifier.layerBackdrop(chipBackdrop) else Modifier),
             state = pullToRefreshState,
             onRefresh = onRefresh,
             isRefreshing = isRefreshing,
@@ -1047,30 +1039,52 @@ fun HomeScreen(
                 }
             }
         }
-        // Spotify's header: the avatar, the chips and Create on one row, with no app bar. At the
-        // top of the page it sits straight on the artwork glow; once the page scrolls under it, the blurred
-        // bar fades in behind it.
-        AnimatedContent(
-            targetState = atTop,
-            transitionSpec = {
-                fadeIn(tween(300)).togetherWith(fadeOut(tween(300)))
-            },
-        ) { target ->
-            Column(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .then(
-                            if (target) {
-                                Modifier.background(Color.Transparent)
+        // Spotify / Apple Music flagship translucent top bar:
+        // Pure transparent when resting at the top to let hero artwork/glow shine through;
+        // transitions smoothly to a hardware-accelerated specular frosted scrim on scroll.
+        val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
+        val surfaceColor = MaterialTheme.colorScheme.surface
+        val containerColor = MaterialTheme.colorScheme.surfaceContainer
+        val scrimAlpha by animateFloatAsState(
+            targetValue = if (atTop) 0f else 1f,
+            animationSpec = tween(durationMillis = 240),
+            label = "home_top_bar_scrim",
+        )
+
+        Column(
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .drawBehind {
+                        if (scrimAlpha > 0.005f) {
+                            // 1. Hardware-accelerated specular translucent gradient scrim
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        containerColor.copy(alpha = (if (isDark) 0.95f else 0.96f) * scrimAlpha),
+                                        surfaceColor.copy(alpha = (if (isDark) 0.88f else 0.90f) * scrimAlpha),
+                                    ),
+                                ),
+                            )
+                            // 2. Micro-hairline bottom specular rim (0.75dp)
+                            val rimWidth = 0.75.dp.toPx()
+                            val rimColor = if (isDark) {
+                                Color.White.copy(alpha = 0.08f * scrimAlpha)
                             } else {
-                                Modifier
-                                    .hazeBlur(HazeInput.Sources(hazeState), ultraThinBarStyle())
-                            },
-                        ).onGloballyPositioned { coordinates ->
-                            topAppBarHeightPx = coordinates.size.height
-                        },
-            ) {
+                                Color.Black.copy(alpha = 0.06f * scrimAlpha)
+                            }
+                            drawLine(
+                                color = rimColor,
+                                start = Offset(0f, size.height - rimWidth / 2f),
+                                end = Offset(size.width, size.height - rimWidth / 2f),
+                                strokeWidth = rimWidth,
+                            )
+                        }
+                    }.onGloballyPositioned { coordinates ->
+                        topAppBarHeightPx = coordinates.size.height
+                    },
+        ) {
                 Spacer(
                     modifier =
                         Modifier
@@ -1096,81 +1110,79 @@ fun HomeScreen(
                         onSettings = { navController.navigate(SettingsDestination) },
                     )
                 }
-                // Single-Row Slim Spotify/YouTube Header (56dp)
+                val accountName = accountInfo?.first
+                val signedIn = !accountName.isNullOrBlank()
+                val displayName = if (signedIn) accountName.orEmpty() else stringResource(Res.string.guest)
+                val hour = now().time.hour
+                val greeting = RemoteGreetingManager.getGreeting(hour)
+
+                // Row 1: Personalized Top Bar with Avatar, Greeting & Actions
                 Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(56.dp),
+                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(start = 16.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        HomeAccountButton(
-                            accountName = accountInfo?.first,
-                            thumbnailUrl = accountInfo?.second,
-                            navController = navController,
+                    HomeAccountButton(
+                        accountName = accountInfo?.first,
+                        thumbnailUrl = accountInfo?.second,
+                        navController = navController,
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = greeting,
+                            style = typo().labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            maxLines = 1,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        SireenBrandingBadge()
+                        Text(
+                            text = displayName,
+                            style = typo().titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    BoxWithConstraints(
+                    SireenBrandingBadge()
+                    Spacer(modifier = Modifier.width(8.dp))
+                    createActions()
+                }
+
+                // Row 2: Direct Horizontal Mood Carousel
+                Row(
+                    modifier =
                         Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxWidth()
+                            .chipStripEdgeFades(24.dp, start = { chipHeadFade }, end = { chipTailFade })
+                            .mouseDragScroll(chipRowState)
+                            .horizontalScroll(chipRowState)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Chip(
+                        isAnimated = loading,
+                        isSelected = params == null,
+                        text = stringResource(Res.string.all),
+                        backdrop = chipBackdrop,
                     ) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxHeight()
-                                    .chipStripEdgeFades(32.dp, start = { chipHeadFade }, end = { chipTailFade })
-                                    .mouseDragScroll(chipRowState)
-                                    .horizontalScroll(chipRowState)
-                                    .widthIn(min = maxWidth)
-                                    .padding(end = if (createPinned) 0.dp else 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Chip(
-                                    isAnimated = loading,
-                                    isSelected = params == null && !moodExpanded,
-                                    text = stringResource(Res.string.all),
-                                    backdrop = chipBackdrop,
-                                ) {
-                                    moodExpanded = false
-                                    viewModel.setParams(null)
-                                }
-                                ExpandableChip(
-                                    text = stringResource(Res.string.mood),
-                                    options = homeMoods.map { stringResource(it.first) },
-                                    selectedIndex = homeMoods.indexOfFirst { it.second == params }.takeIf { it >= 0 },
-                                    expanded = moodExpanded,
-                                    onExpandedChange = { moodExpanded = it },
-                                    onSelect = { index ->
-                                        moodExpanded = false
-                                        viewModel.setParams(homeMoods[index].second)
-                                    },
-                                    isAnimated = loading,
-                                    backdrop = chipBackdrop,
-                                )
-                            }
-                            if (!createPinned) {
-                                Box(Modifier.padding(start = 8.dp)) { createActions() }
-                            }
-                        }
+                        viewModel.setParams(null)
                     }
-                    if (createPinned) {
-                        Box(Modifier.padding(start = 8.dp, end = 16.dp)) { createActions() }
+                    homeMoods.forEach { mood ->
+                        val isSelected = params == mood.second
+                        Chip(
+                            isAnimated = loading,
+                            isSelected = isSelected,
+                            text = stringResource(mood.first),
+                            backdrop = chipBackdrop,
+                        ) {
+                            viewModel.setParams(if (isSelected) null else mood.second)
+                        }
                     }
                 }
             }
-        }
     }
 }
 
@@ -1238,16 +1250,8 @@ private fun HomeAccountButton(
     // Sign-out blanks the stored account name, so a blank name is the signed-out state.
     val signedIn = !accountName.isNullOrBlank()
     val displayName = if (signedIn) accountName.orEmpty() else stringResource(Res.string.guest)
-    val hour = remember { now().time.hour }
-    val greeting =
-        stringResource(
-            when (hour) {
-                in 6..12 -> Res.string.good_morning
-                in 13..17 -> Res.string.good_afternoon
-                in 18..23 -> Res.string.good_evening
-                else -> Res.string.good_night
-            },
-        )
+    val hour = now().time.hour
+    val greeting = RemoteGreetingManager.getGreeting(hour)
     Box {
         AccountAvatar(
             signedIn = signedIn,
