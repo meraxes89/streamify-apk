@@ -371,7 +371,7 @@ export class BlockRangeStream extends Readable {
       signal.addEventListener(
         'abort',
         () => {
-          this.destroy(signal.reason || new Error('Client aborted'));
+          this.destroy();
         },
         { once: true }
       );
@@ -381,7 +381,8 @@ export class BlockRangeStream extends Readable {
   _destroy(err, callback) {
     this.entry.activeReaders = Math.max(0, this.entry.activeReaders - 1);
     this.cache.onReaderDetached(this.entry);
-    callback(err);
+    const isAbort = err && (err.name === 'AbortError' || err.code === 'ABORT_ERR' || this.signal?.aborted);
+    callback(isAbort ? null : err);
   }
 
   async _read(size) {
