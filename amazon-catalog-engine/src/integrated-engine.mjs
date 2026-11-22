@@ -1,14 +1,19 @@
 /**
  * AmazonIntegratedEngine
- * 
+ *
  * Bridges amazon-catalog-engine with server/src low-level infrastructure primitives:
  * - LruCache & SingleFlight (server/src/lib)
  * - StreamPacer, PacingWheel & PacedStreamTransform (server/src/slices/stream/pacer.js)
  * - AsyncAdmission & PRIORITY (server/src/slices/stream/admission.js)
  * - TierGovernor (server/src/platform/tier/governor.js)
  * - SparseBlockCache & BLOCK_SIZE (server/src/slices/stream/sparse-block-cache.js)
- * 
+ *
  * Strict Constraint: Reads server/src primitives without modifying server/src files.
+ *
+ * Lossless pipeline (comm21 elite architecture):
+ *   resolveLossless -> probeNativeCapability (DMLS verdict) -> acquireLosslessFullSong
+ *   (real bytes via HttpAudioSource / relay) -> FLAC introspection -> metadata-first
+ *   remux -> frame-aligned 206 gateway -> two-phase paced delivery.
  */
 
 import { LruCache } from '../../server/src/lib/cache.js';
@@ -22,6 +27,8 @@ import { AmazonCatalogClient } from './client.mjs';
 import { AmazonLyricsService } from './lyrics.mjs';
 import { AmazonStreamResolver } from './resolver.mjs';
 import { LosslessFullSongService } from './lossless-fullsong.mjs';
+import { AmazonNativeDeliveryService } from './native-delivery.mjs';
+import { HttpAudioSource } from './audio-source.mjs';
 import { Readable } from 'stream';
 
 export class AmazonIntegratedEngine {
@@ -33,12 +40,26 @@ export class AmazonIntegratedEngine {
     pal = null,
     streamsDir = null,
     maxCacheMb = 256,
-    losslessFullSongService = new LosslessFullSongService()
+    relayBaseUrl = process.env.STREAMIFY_RELAY_BASE || null,
+    sessionManager = null,
+    losslessFullSongService = null
   } = {}) {
-    // 1. Core Amazon Catalog Client & Resolver
-    this.client = new AmazonCatalogClient({ country });
-    this.streamResolver = new AmazonStreamResolver({ country });
-    this.losslessFullSongService = losslessFullSongService;
+    this.country = country.toUpperCase();
+
+    // 1. Core Amazon Catalog Client & Resolver (real byte acquisition wired)
+    this.audioSource = new HttpAudioSource({ baseUrl: relayBaseUrl });
+    this.client = new AmazonCatalogClient({
+      sessionManager: sessionManager || undefined,
+      relayBaseUrl,
+    });
+    this.streamResolver = new AmazonStreamResolver({
+      sessionManager: sessionManager || this.client.session,
+      nativeDelivery: this.client.nativeDelivery,
+    });
+    this.nativeDelivery = this.client.nativeDelivery ||
+      new AmazonNativeDeliveryService({ sessionManager: this.client.session });
+    this.losslessFullSongService = losslessFullSongService ||
+      new LosslessFullSongService({ audioSource: this.audioSource });
 
     // 2. High-performance Infrastructure Primitives from server/src
     this.cache = new LruCache({ maxItems: cacheMaxItems });
@@ -86,7 +107,7 @@ export class AmazonIntegratedEngine {
     if (cached) return cached;
 
     return this.singleFlight.do(key, async () => {
-      const data = await this.client.search(query, filter);
+      const data = await this.client.search(query, { territory: this.country, limit: 30 });
       this.cache.set(key, data, this.ttlMs);
       return data;
     });
@@ -101,7 +122,7 @@ export class AmazonIntegratedEngine {
     if (cached) return cached;
 
     return this.singleFlight.do(key, async () => {
-      const data = await this.client.getQueue(trackId);
+      const data = await this.client.getQueue(trackId, { territory: this.country });
       this.cache.set(key, data, this.ttlMs);
       return data;
     });
@@ -156,14 +177,26 @@ export class AmazonIntegratedEngine {
    * (FLAC metadata-first remux + frame-aligned geometry) for a full song via
    * the resolved top-tier lossless stream.
    */
-  async acquireLosslessFullSong(trackMeta) {
+  async acquireLosslessFullSong(trackMeta, { relayBaseUrl = null } = {}) {
     const descriptor = await this.streamResolver.resolveLossless(trackMeta);
     const artifact = await this.losslessFullSongService.acquireFullSong({
       streamUrl: descriptor.streamUrl,
       tier: descriptor.tier,
       codec: descriptor.codec,
+      ...(relayBaseUrl ? { audioSource: async (o) => this.audioSource.load({ ...o, baseUrl: relayBaseUrl }) } : {}),
     });
     return artifact;
+  }
+
+  /**
+   * Native DMLS capability card: the honest verdict on whether Amazon's own
+   * delivery surface can serve this track (auth/entitlement/DRM walls included).
+   */
+  async probeNativeFlacCapability(trackMeta, { territory = this.country } = {}) {
+    const track = typeof trackMeta === 'string'
+      ? { asin: trackMeta.replace('amzn:track:', '') }
+      : trackMeta;
+    return this.nativeDelivery.probeCapability(track, { territory });
   }
 
   /**
@@ -216,10 +249,42 @@ export class AmazonIntegratedEngine {
 
   /**
    * Caches an audio block into SparseBlockCache.
+   *
+   * Synchronous entry allocation ( SparseBlockCache.getEntry ). When a buffer
+   * is supplied, an honest write-through is scheduled via writeBlock():
+   * positional-pwrite at blockIndex * BLOCK_SIZE + present-block marking,
+   * exactly the geometry the server relay uses.
    */
-  storeBlock(trackId, profile, blockIndex, buffer) {
+  storeBlock(trackId, profile, blockIndex = 0, buffer = null) {
     if (!this.blockCache) return null;
-    const entry = this.blockCache.getEntry(trackId, profile);
+
+    const entry = this.blockCache.getEntry({
+      videoId: String(trackId),
+      itag: String(profile),
+      ...(buffer && buffer.length ? { contentLength: Math.max((blockIndex + 1) * BLOCK_SIZE, buffer.length) } : {})
+    });
+
+    if (buffer && buffer.length > 0) {
+      // Fire-and-forget warm-ahead write; failures leave the block EMPTY
+      // so readers re-fetch (the cache self-heals).
+      this.writeBlock(entry, blockIndex, buffer).catch(() => {});
+    }
+
+    return entry;
+  }
+
+  /**
+   * Honest positional write-through into a SparseBlockCache entry.
+   */
+  async writeBlock(entry, blockIndex, buffer) {
+    const fh = await entry.getHandle();
+    const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    const offset = blockIndex * BLOCK_SIZE;
+    await fh.write(bytes, 0, bytes.length, offset);
+    if (typeof entry.updatePresentBlocks === 'function') {
+      entry.updatePresentBlocks(offset, offset + bytes.length);
+    }
+    entry.lastAccessed = Date.now();
     return entry;
   }
 
@@ -233,7 +298,9 @@ export class AmazonIntegratedEngine {
       admission: this.admission.getMetrics(),
       cacheSize: this.cache.size(),
       activeFlights: this.singleFlight.size(),
-      hasBlockCache: !!this.blockCache
+      hasBlockCache: !!this.blockCache,
+      relayBaseUrl: this.audioSource.baseUrl || null,
+      country: this.country
     };
   }
 }

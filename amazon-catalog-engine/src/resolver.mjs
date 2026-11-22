@@ -10,13 +10,22 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 import { detectAudioBadges } from './badges.mjs';
 import { selectTopLosslessTier } from './lossless-stream.mjs';
+import { AmazonNativeDeliveryService } from './native-delivery.mjs';
 
 export class AmazonStreamResolver {
-  constructor({ cache = new Map(), badges = detectAudioBadges } = {}) {
+  constructor({ cache = new Map(), badges = detectAudioBadges, nativeDelivery = null, sessionManager = null } = {}) {
     /** @type {Map<string, Object>} asin -> resolved stream descriptor */
     this.cache = cache;
     /** @type {Function} Amazon badge/tier detector (injectable for tests) */
     this.badges = badges;
+    /**
+     * Native DMLS delivery probe (optional). When wired, resolveLossless first
+     * asks Amazon's REAL delivery surface for the track and attaches an honest
+     * capability card (auth/entitlement/DRM verdicts) to the descriptor.
+     */
+    this.nativeDelivery = nativeDelivery || (sessionManager
+      ? new AmazonNativeDeliveryService({ sessionManager })
+      : null);
   }
 
   /**
@@ -239,6 +248,9 @@ export class AmazonStreamResolver {
       durationSeconds: bestMatch.durationSeconds || track.durationSeconds || 0,
       streamUrl: `/api/stream?id=${bestMatch.videoId}`,
       manifestUrl: `/api/stream/${bestMatch.videoId}/manifest.mpd`,
+      matchConfidence: Math.min(100, bestMatch.score),
+      // Target tier policy (Amazon-side rendition the pipeline aims for).
+      // The `delivery` card below reports what is ACTUALLY delivered.
       audioTier: lossless.tier,
       tier: lossless.tier,
       isLossless: true,
@@ -249,9 +261,41 @@ export class AmazonStreamResolver {
       bitrate: lossless.bitrate,
       source: 'amazon-lossless-fullsong',
       ok: true,
+      // Honest delivery card: bridged via relay. True delivered codec is
+      // determined by byte sniffing at acquisition (HttpAudioSource +
+      // LosslessFullSongService). Today the relay serves lossy Opus - the
+      // engine reports that instead of decorating Opus as FLAC.
+      delivery: {
+        pipeline: 'relay-bridge',
+        bitPerfect: false,
+        note: 'Target tier is FLAC; delivered bytes are sniffed at acquisition. ' +
+          'Bit-perfect FLAC requires an entitled native DMLS session (see probeNativeDelivery).'
+      },
     };
+
+    // Attach the real native-delivery capability card when wired
+    if (this.nativeDelivery && asin) {
+      try {
+        descriptor.native = await this.nativeDelivery.probeCapability(
+          { asin, ...track },
+          { territory: (track.territory || 'US').toUpperCase() }
+        );
+      } catch {
+        // Native probe must never break bridge resolution
+        descriptor.native = null;
+      }
+    }
 
     this.cache.set(cacheKey, descriptor);
     return descriptor;
+  }
+
+  /**
+   * Native delivery capability card for a track (DMLS probe).
+   * Returns null when no nativeDelivery service is wired.
+   */
+  async probeNativeDelivery(track, { territory = 'US' } = {}) {
+    if (!this.nativeDelivery) return null;
+    return this.nativeDelivery.probeCapability(track, { territory });
   }
 }
