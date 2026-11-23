@@ -79,7 +79,6 @@ project(":aiService").projectDir = File(serviceDir, "aiService")
 project(":autoEqService").projectDir = File(serviceDir, "autoEqService")
 project(":lyricsService").projectDir = File(serviceDir, "lyricsService")
 project(":kotlinYtmusicScraper").projectDir = File(serviceDir, "kotlinYtmusicScraper")
-project(":spotify").projectDir = File(serviceDir, "spotify")
 project(":kizzy").projectDir = File(serviceDir, "kizzy")
 project(":discord").projectDir = File(serviceDir, "discord")
 project(":listenTogether").projectDir = File(serviceDir, "listenTogether")
@@ -104,7 +103,8 @@ if (streamifyDir.exists()) {
         ":streamify-lyrics-slyr",
         ":streamify-supabase",
         ":streamify-jam",
-        ":streamify-ffmpeg-compat-shim"
+        ":streamify-ffmpeg-compat-shim",
+        ":streamify-graphics"
     )
     project(":streamify-core-bridge").projectDir = File(streamifyDir, "core-bridge")
     project(":streamify-media-hal").projectDir = File(streamifyDir, "media-hal")
@@ -112,6 +112,7 @@ if (streamifyDir.exists()) {
     project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")
     project(":streamify-jam").projectDir = File(streamifyDir, "jam")
     project(":streamify-ffmpeg-compat-shim").projectDir = File(streamifyDir, "ffmpeg-compat-shim")
+    project(":streamify-graphics").projectDir = File(streamifyDir, "graphics")
 }
 
 // Legacy modules preservation (archived for git history and reference; not built in CMP)
