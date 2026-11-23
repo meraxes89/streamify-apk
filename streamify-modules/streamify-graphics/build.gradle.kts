@@ -1,69 +1,70 @@
-// ===========================================================================
-// :streamify-modules:streamify-graphics — Sovereign GPU Engine module
-// (docs/gpu/ARCHITECTURE.md, docs/gpu/PHASED_PLAN.md).
+@file:OptIn(ExperimentalWasmDsl::class)
+
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
+// =============================================================================
+// :streamify-modules:streamify-graphics — Sovereign GPU Engine
+// (docs/gpu/ARCHITECTURE.md, docs/gpu/PHASED_PLAN.md Phase 1)
 //
-// Phase 1 (Track A) scope: the canonical LiquidGlassCore.sksl shader
-// resource plus the Desktop JVM dialect-transpilation gate
-// (DialectTranspileTest). Platform ShaderProvider adapters
-// (androidMain / skikoCommonMain) land in Phase 2; the 3-layer token
-// system, TierGovernor and Koin wiring land with Track B.
-//
-// Upstream immunity: nothing in core/ is consumed or modified here — this
-// module is a self-contained downstream extension under streamify-modules/.
-// ===========================================================================
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+// Upstream-isolated shader / effect / capability-governor abstraction for
+// Compose Multiplatform.
+// Phase 1 scope: 3-layer design tokens, frozen public facade (Modifier.streamifyGlass),
+// hexagonal engine port (SovereignGraphicsEngine), Koin wiring (Track B),
+// canonical LiquidGlassCore.sksl shader, and dialect transpilation test (Track A).
+// =============================================================================
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.compose.multiplatform)
 }
 
 kotlin {
-    // 21 matches :desktopApp / :composeApp desktop lanes; CI runners
-    // provision temurin 21.
-    jvmToolchain(21)
+    android {
+        namespace = "com.streamify.graphics"
+        compileSdk = 37
+        // Tier floor per docs/gpu/: acrylic-scrim fallback must cover API 26+
+        // (Vivo 1712 ships Android 8.1 / API 27 and pins Tier 3).
+        minSdk = 26
+    }
 
-    // Desktop JVM lane. The target is named `desktop` so its source sets
-    // read desktopMain / desktopTest, matching the Phase 2 deliverable
-    // layout (ShaderProvider.skiko.kt + the dialect gate below).
-    jvm("desktop") {
-        compilations.all {
-            compileTaskProvider.configure {
-                compilerOptions {
-                    jvmTarget.set(JvmTarget.JVM_21)
-                }
-            }
-        }
+    // Desktop is the JVM target named `desktop` so its source set is literally
+    // `desktopMain` / `desktopTest` and the CI task selectors documented in
+    // docs/gpu/CI_TESTING_SPEC.md (`testDesktopUnitTest`) resolve as specified.
+    jvm("desktop")
+
+    wasmJs {
+        browser()
     }
 
     sourceSets {
-        commonMain.dependencies {
-            implementation(libs.kotlin.stdlib)
+        commonMain {
+            dependencies {
+                implementation(libs.kotlin.stdlib)
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.koin.core)
+
+                // Compose Multiplatform — pure draw-phase Modifier
+                implementation(libs.runtime)
+                implementation(libs.compose.ui)
+            }
         }
-        // The canonical SkSL ships as a commonMain resource so every platform
-        // adapter (AGSL androidMain, Skia skikoCommonMain) reads the exact
-        // same shader bytes — the dialect deltas live in the adapters, never
-        // in the shader source itself.
+
         val desktopTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
                 // Skia RuntimeEffect / RuntimeShaderBuilder for the dialect
-                // compilation gate (compose 1.12.x -> skiko 0.150.2). The
-                // skikoCommonMain api dependency arrives with the Phase 2
-                // ShaderProvider adapter.
+                // compilation gate (compose 1.12.x -> skiko).
                 implementation(compose.desktop.currentOs)
             }
         }
     }
 }
 
-// KGP names a JVM target's test task after the target (`desktopTest`).
 // docs/gpu/CI_TESTING_SPEC.md pins the desktop verification entry point as
 // `./gradlew :streamify-modules:streamify-graphics:testDesktopUnitTest`, so
-// expose that name as a verification alias over desktopTest. The android
-// lane (`testDebugUnitTest`) appears when the androidLibrary target lands
-// with the Phase 2 ShaderProvider.android.kt.
+// expose that name as a verification alias over desktopTest.
 tasks.register("testDesktopUnitTest") {
     group = "verification"
     description = "Runs desktopTest - the CI-documented desktop unit-test entry point."

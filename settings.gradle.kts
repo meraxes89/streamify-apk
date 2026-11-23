@@ -104,7 +104,8 @@ if (streamifyDir.exists()) {
         ":streamify-lyrics-slyr",
         ":streamify-supabase",
         ":streamify-jam",
-        ":streamify-ffmpeg-compat-shim"
+        ":streamify-ffmpeg-compat-shim",
+        ":streamify-modules:streamify-graphics"
     )
     project(":streamify-core-bridge").projectDir = File(streamifyDir, "core-bridge")
     project(":streamify-media-hal").projectDir = File(streamifyDir, "media-hal")
@@ -112,13 +113,8 @@ if (streamifyDir.exists()) {
     project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")
     project(":streamify-jam").projectDir = File(streamifyDir, "jam")
     project(":streamify-ffmpeg-compat-shim").projectDir = File(streamifyDir, "ffmpeg-compat-shim")
-
-    // Sovereign GPU Engine (docs/gpu/ARCHITECTURE.md, docs/gpu/PHASED_PLAN.md).
-    // Registered under the hierarchical `:streamify-modules:streamify-graphics`
-    // path pinned by docs/gpu/CI_TESTING_SPEC.md:
-    //   ./gradlew :streamify-modules:streamify-graphics:testDesktopUnitTest
-    // Directory mirrors the CI path filter `streamify-modules/streamify-graphics/**`.
-    include(":streamify-modules:streamify-graphics")
+    // Sovereign GPU Engine (docs/gpu/): nested Gradle path so the CI task
+    // selectors in docs/gpu/CI_TESTING_SPEC.md resolve as documented.
     project(":streamify-modules:streamify-graphics").projectDir = File(streamifyDir, "streamify-graphics")
 }
 
