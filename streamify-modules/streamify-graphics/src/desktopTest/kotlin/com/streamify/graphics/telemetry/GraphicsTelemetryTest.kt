@@ -305,7 +305,23 @@ class GraphicsTelemetryTest {
         // The oldest 192 events were evicted; the ring kept the last 8,
         // oldest first, sequence-gap-free.
         assertEquals((193L..200L).toList(), snapshot.recentTierEvents.map { it.sequence })
-        assertEquals(TierEventKind.TIER_PROMOTION, snapshot.recentTierEvents.last().kind)
+        // The retained tail still alternates promotion / demotion exactly as
+        // published: event #193 (i = 192, even) was a promotion and #200
+        // (i = 199, odd) the closing demotion — the eviction dropped whole
+        // events, never reordered or merged them.
+        assertEquals(
+            listOf(
+                TierEventKind.TIER_PROMOTION,
+                TierEventKind.TIER_DEMOTION,
+                TierEventKind.TIER_PROMOTION,
+                TierEventKind.TIER_DEMOTION,
+                TierEventKind.TIER_PROMOTION,
+                TierEventKind.TIER_DEMOTION,
+                TierEventKind.TIER_PROMOTION,
+                TierEventKind.TIER_DEMOTION,
+            ),
+            snapshot.recentTierEvents.map { it.kind },
+        )
     }
 
     @Test
