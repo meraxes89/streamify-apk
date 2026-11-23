@@ -25,6 +25,8 @@ actual fun resolveDeviceBinary(
 
     val hasVivoArtifact = artifacts.containsKey("android-vivo-arm64") ||
         artifacts.containsKey("android-vivo-arm64-v8a") ||
+        artifacts.containsKey("android-vivo-armeabi-v7a") ||
+        artifacts.containsKey("android-vivo-armv7") ||
         artifacts.containsKey("android-vivo-universal") ||
         artifacts.containsKey("android-vivo")
 
@@ -32,12 +34,28 @@ actual fun resolveDeviceBinary(
 
     return when {
         isVivo && hasVivoArtifact -> {
-            val url = artifacts["android-vivo-arm64"]?.url
-                ?: artifacts["android-vivo-arm64-v8a"]?.url
-                ?: artifacts["android-vivo-universal"]?.url
-                ?: artifacts["android-vivo"]?.url
-                ?: releasePageUrl
-            val archName = if (isArm64) "Vivo ARM64" else "Vivo Edition"
+            val url: String = (
+                if (isArm64) {
+                    artifacts["android-vivo-arm64"]?.url
+                        ?: artifacts["android-vivo-arm64-v8a"]?.url
+                        ?: artifacts["android-vivo-universal"]?.url
+                        ?: artifacts["android-vivo"]?.url
+                } else if (isArmV7) {
+                    artifacts["android-vivo-armeabi-v7a"]?.url
+                        ?: artifacts["android-vivo-armv7"]?.url
+                        ?: artifacts["android-vivo-universal"]?.url
+                        ?: artifacts["android-vivo"]?.url
+                } else {
+                    artifacts["android-vivo-universal"]?.url
+                        ?: artifacts["android-vivo"]?.url
+                }
+            ) ?: releasePageUrl
+
+            val archName = when {
+                isArm64 -> "Vivo ARM64"
+                isArmV7 -> "Vivo ARMv7"
+                else -> "Vivo Edition"
+            }
             ResolvedPlatformBinary(
                 downloadUrl = url,
                 buttonLabel = "Download APK ($archName)",

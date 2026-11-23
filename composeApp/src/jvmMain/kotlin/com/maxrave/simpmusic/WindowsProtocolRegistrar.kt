@@ -20,6 +20,7 @@ import com.maxrave.logger.Logger
 object WindowsProtocolRegistrar {
     private const val TAG = "WindowsProtocolRegistrar"
     private const val SCHEME = "simpmusic"
+    private const val STREAMIFY_SCHEME = "streamify"
 
     /**
      * The Last.fm auth callback. Its scheme is fixed by the callback URL registered on the Last.fm
@@ -37,6 +38,7 @@ object WindowsProtocolRegistrar {
             return
         }
 
+        register(STREAMIFY_SCHEME, "URL:Streamify Protocol", exePath)
         register(SCHEME, "URL:SimpMusic Protocol", exePath)
         register(LASTFM_SCHEME, "URL:SimpMusic Last.fm Callback", exePath)
     }
@@ -105,8 +107,9 @@ object WindowsProtocolRegistrar {
         }
 
         if (appDir != null) {
-            val exeFile = java.io.File(appDir, "SimpMusic.exe")
-            if (exeFile.exists()) {
+            val exeFile = java.io.File(appDir, "Streamify.exe").takeIf { it.exists() }
+                ?: java.io.File(appDir, "SimpMusic.exe").takeIf { it.exists() }
+            if (exeFile != null) {
                 return exeFile.absolutePath
             }
         }
