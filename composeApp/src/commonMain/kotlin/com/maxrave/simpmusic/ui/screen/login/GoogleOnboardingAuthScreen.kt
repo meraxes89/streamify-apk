@@ -31,7 +31,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -323,27 +322,6 @@ fun GoogleOnboardingAuthScreen(
                         color = MaterialTheme.colorScheme.error,
                         fontFamily = appFontFamily,
                         textAlign = TextAlign.Center,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                TextButton(
-                    onClick = {
-                        val result = StreamifyAuthManager.signInAsGuest(platformContext)
-                        if (result.isSuccess) {
-                            val profile = result.getOrNull()
-                            if (profile != null) {
-                                onAuthenticated(profile)
-                            }
-                        }
-                    },
-                ) {
-                    Text(
-                        text = "Continue as Guest",
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontFamily = appFontFamily,
-                        color = textSecondary,
                     )
                 }
             }
