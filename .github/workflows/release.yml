@@ -72,9 +72,16 @@ jobs:
     with:
       release_mode: true
 
+  ios:
+    name: "Apple iOS release (Frameworks & Distribution)"
+    needs: engine
+    uses: ./.github/workflows/_ci-ios.yml
+    with:
+      release_mode: true
+
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [engine, android, desktop, wasm]
+    needs: [engine, android, desktop, wasm, ios]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -104,6 +111,13 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Download Apple iOS release archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ios-release-archive
+          path: dist
+          merge-multiple: true
+
       - name: Stage release binaries & verify the manifest
         run: |
           set -euo pipefail
@@ -111,7 +125,7 @@ jobs:
           # Flatten every downloaded payload
           find dist -type f \( \
             -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o \
-            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o \
+            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o -name '*.ipa' -o \
             -name '*.AppImage' -o -name '*.zip' \) -exec cp -v {} release/ \;
           echo "── release manifest:"
           ls -la release/

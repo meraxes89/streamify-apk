@@ -102,6 +102,9 @@ def build_manifest(
             artifacts["linux-rpm"] = {"url": url, "sha256": sha}
         elif filename.endswith(".AppImage"):
             artifacts["linux-appimage"] = {"url": url, "sha256": sha}
+        elif filename.endswith(".ipa"):
+            artifacts["ios-arm64"] = {"url": url, "sha256": sha}
+            artifacts["ios"] = {"url": url, "sha256": sha}
         elif filename.endswith(".zip") and "wasm" in filename:
             artifacts["wasm"] = {"url": url, "sha256": sha}
 
