@@ -74,22 +74,39 @@ def build_manifest(
     base_url = f"https://github.com/{repo}/releases/download/{tag}"
     artifacts = {}
 
-    # Identify best artifact for each platform
+    # Identify artifacts for each platform and architecture
     for filename, sha in checksums.items():
         url = f"{base_url}/{filename}"
         if filename.endswith(".apk"):
-            if "universal" in filename.lower() or (filename.startswith("Streamify-v") and not any(k in filename for k in ["arm64", "armeabi", "x86_64", "vivo"])):
-                artifacts["android"] = {"url": url, "sha256": sha}
-            elif "android" not in artifacts and "vivo" not in filename:
+            if "vivo" in filename.lower():
+                continue
+            if "arm64" in filename.lower():
+                artifacts["android-arm64-v8a"] = {"url": url, "sha256": sha}
+            elif "armeabi" in filename.lower():
+                artifacts["android-armeabi-v7a"] = {"url": url, "sha256": sha}
+            elif "x86_64" in filename.lower():
+                artifacts["android-x86_64"] = {"url": url, "sha256": sha}
+            elif "universal" in filename.lower() or (filename.startswith("Streamify-v") and not any(k in filename for k in ["arm64", "armeabi", "x86_64", "vivo"])):
+                artifacts["android-universal"] = {"url": url, "sha256": sha}
                 artifacts["android"] = {"url": url, "sha256": sha}
         elif filename.endswith(".msi") or filename.endswith(".exe"):
+            artifacts["windows-x64"] = {"url": url, "sha256": sha}
             artifacts["windows"] = {"url": url, "sha256": sha}
         elif filename.endswith(".dmg") or filename.endswith(".pkg"):
+            artifacts["macos-universal"] = {"url": url, "sha256": sha}
             artifacts["macos"] = {"url": url, "sha256": sha}
-        elif filename.endswith(".deb") or filename.endswith(".AppImage"):
+        elif filename.endswith(".deb"):
+            artifacts["linux-deb"] = {"url": url, "sha256": sha}
             artifacts["linux"] = {"url": url, "sha256": sha}
+        elif filename.endswith(".rpm"):
+            artifacts["linux-rpm"] = {"url": url, "sha256": sha}
+        elif filename.endswith(".AppImage"):
+            artifacts["linux-appimage"] = {"url": url, "sha256": sha}
         elif filename.endswith(".zip") and "wasm" in filename:
             artifacts["wasm"] = {"url": url, "sha256": sha}
+
+    if "android" not in artifacts and "android-universal" in artifacts:
+        artifacts["android"] = artifacts["android-universal"]
 
     if not published_at:
         published_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

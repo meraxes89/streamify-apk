@@ -12,6 +12,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -122,10 +123,53 @@ class UpdateResolver(
                 val publishedAt = obj["published_at"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
                 val body = obj["body"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: ""
 
+                val artifactsMap = mutableMapOf<String, UpdateArtifact>()
+                val assets = obj["assets"]?.takeUnless { it is JsonNull }?.let {
+                    runCatching { it.jsonArray }.getOrNull()
+                }.orEmpty()
+
+                for (elem in assets) {
+                    val aObj = elem.jsonObject
+                    val name = aObj["name"]?.jsonPrimitive?.content.orEmpty()
+                    val downloadUrl = aObj["browser_download_url"]?.jsonPrimitive?.content.orEmpty()
+                    if (downloadUrl.isBlank()) continue
+
+                    val lowerName = name.lowercase()
+                    if (lowerName.endsWith(".apk")) {
+                        if ("vivo" in lowerName) continue
+                        when {
+                            "arm64" in lowerName -> artifactsMap["android-arm64-v8a"] = UpdateArtifact(url = downloadUrl)
+                            "armeabi" in lowerName -> artifactsMap["android-armeabi-v7a"] = UpdateArtifact(url = downloadUrl)
+                            "x86_64" in lowerName -> artifactsMap["android-x86_64"] = UpdateArtifact(url = downloadUrl)
+                            "universal" in lowerName || (lowerName.startsWith("streamify-v") && !listOf("arm64", "armeabi", "x86_64").any { it in lowerName }) -> {
+                                artifactsMap["android-universal"] = UpdateArtifact(url = downloadUrl)
+                                artifactsMap["android"] = UpdateArtifact(url = downloadUrl)
+                            }
+                        }
+                    } else if (lowerName.endsWith(".msi") || lowerName.endsWith(".exe")) {
+                        artifactsMap["windows-x64"] = UpdateArtifact(url = downloadUrl)
+                        artifactsMap["windows"] = UpdateArtifact(url = downloadUrl)
+                    } else if (lowerName.endsWith(".dmg") || lowerName.endsWith(".pkg")) {
+                        artifactsMap["macos-universal"] = UpdateArtifact(url = downloadUrl)
+                        artifactsMap["macos"] = UpdateArtifact(url = downloadUrl)
+                    } else if (lowerName.endsWith(".deb")) {
+                        artifactsMap["linux-deb"] = UpdateArtifact(url = downloadUrl)
+                        artifactsMap["linux"] = UpdateArtifact(url = downloadUrl)
+                    } else if (lowerName.endsWith(".rpm")) {
+                        artifactsMap["linux-rpm"] = UpdateArtifact(url = downloadUrl)
+                    } else if (lowerName.endsWith(".zip") && "wasm" in lowerName) {
+                        artifactsMap["wasm"] = UpdateArtifact(url = downloadUrl)
+                    }
+                }
+                if (!artifactsMap.containsKey("android") && artifactsMap.containsKey("android-universal")) {
+                    artifactsMap["android"] = artifactsMap["android-universal"]!!
+                }
+
                 val manifest = UpdateManifest(
                     version = tagName,
                     publishedAt = publishedAt,
                     changelog = body,
+                    artifacts = artifactsMap,
                 )
                 return@runCatching compareAndReturn(manifest, installedCode)
             }

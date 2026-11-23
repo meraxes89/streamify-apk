@@ -70,6 +70,8 @@ import com.maxrave.domain.data.player.GenericMediaItem
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.manager.DataStoreManager.Values.TRUE
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.data.update.UpdateSanitizer
+import com.maxrave.simpmusic.data.update.resolveDeviceBinary
 import com.maxrave.simpmusic.expect.Orientation
 import com.maxrave.simpmusic.expect.currentOrientation
 import com.maxrave.simpmusic.expect.openUrl
@@ -964,6 +966,7 @@ fun App(
 
                 if (shouldShowUpdateDialog) {
                     val response = updateData ?: return@Scaffold
+                    val binary = remember(response.tagName) { resolveDeviceBinary(response.tagName) }
                     AlertDialog(
                         properties =
                             DialogProperties(
@@ -979,11 +982,11 @@ fun App(
                                 onClick = {
                                     shouldShowUpdateDialog = false
                                     viewModel.showedUpdateDialog = false
-                                    openUrl("https://github.com/meraxes89/streamify-apk/releases/latest")
+                                    openUrl(binary.downloadUrl)
                                 },
                             ) {
                                 Text(
-                                    stringResource(Res.string.download),
+                                    binary.buttonLabel,
                                     style = typo().bodySmall,
                                 )
                             }
@@ -1052,6 +1055,21 @@ fun App(
                                         rememberScrollState(),
                                     ),
                             ) {
+                                if (binary.architectureName.isNotBlank()) {
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    ) {
+                                        Text(
+                                            text = "Optimized package: ${binary.architectureName}",
+                                            style = typo().labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = updateMessage,
                                     style = typo().labelMedium,
@@ -1061,7 +1079,7 @@ fun App(
                                         ),
                                 )
                                 Markdown(
-                                    response.body,
+                                    UpdateSanitizer.sanitizeChangelog(response.body),
                                     typography =
                                         markdownTypography(
                                             h1 = typo().labelLarge,
@@ -1080,6 +1098,17 @@ fun App(
                                                     ),
                                                 ),
                                         ),
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "View all release downloads on GitHub",
+                                    style = typo().labelSmall.copy(textDecoration = TextDecoration.Underline),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier =
+                                        Modifier
+                                            .clickable {
+                                                openUrl("https://github.com/meraxes89/streamify-apk/releases/tag/${response.tagName}")
+                                            }.padding(vertical = 4.dp),
                                 )
                             }
                         },

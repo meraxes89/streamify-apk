@@ -32,7 +32,7 @@ class StreamifyUpdateRepositoryImpl(
                                 UpdateData(
                                     tagName = result.manifest.version,
                                     releaseTime = result.manifest.publishedAt,
-                                    body = result.manifest.changelog,
+                                    body = UpdateSanitizer.sanitizeChangelog(result.manifest.changelog),
                                 ),
                             ),
                         )
