@@ -28,6 +28,11 @@ class StreamifyUpdateRepositoryImpl(
 
                 when (val result = resolver.resolve(installedCode)) {
                     is UpdateResult.Available -> {
+                        val isBreaking =
+                            result.manifest.isBreaking ||
+                                (result.manifest.minSupportedVersionCode > 0 && installedCode < result.manifest.minSupportedVersionCode)
+                        UpdateStateHolder.latestManifest = result.manifest
+                        UpdateStateHolder.isBreaking = isBreaking
                         emit(
                             Resource.Success(
                                 UpdateData(

@@ -32,6 +32,14 @@ on:
         description: 'Create as prerelease'
         type: boolean
         default: false
+      min_version_code:
+        description: 'Minimum supported version code (0 for standard)'
+        type: number
+        default: 0
+      breaking:
+        description: 'Flag release as containing breaking changes'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -156,12 +164,19 @@ jobs:
 
       - name: Generate version.json manifest
         run: |
+          EXTRA_FLAGS=""
+          if [ "${{ inputs.breaking }}" = "true" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --breaking"
+          fi
+          if [ -n "${{ inputs.min_version_code }}" ] && [ "${{ inputs.min_version_code }}" != "0" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --min-version-code ${{ inputs.min_version_code }}"
+          fi
           python3 scripts/make_version_json.py \
             --tag "${{ inputs.tag_name || github.ref_name }}" \
             --repo "${{ github.repository }}" \
             --sums release/SHA256SUMS \
             --notes release_body.md \
-            --output release/version.json
+            --output release/version.json $EXTRA_FLAGS
           cat release/version.json
 
       - name: Verify release manifest integrity & naming consistency

@@ -13,6 +13,8 @@ data class UpdateManifest(
     val schemaVersion: Int = 1,
     val version: String = "",
     val versionCode: Int = 0,
+    val minSupportedVersionCode: Int = 0,
+    val isBreaking: Boolean = false,
     val channel: String = "beta",
     val publishedAt: String? = null,
     val changelog: String = "",
@@ -25,3 +27,9 @@ sealed interface UpdateResult {
     data object UpToDate : UpdateResult
     data class Error(val message: String) : UpdateResult
 }
+
+object UpdateStateHolder {
+    var latestManifest: UpdateManifest? = null
+    var isBreaking: Boolean = false
+}
+
