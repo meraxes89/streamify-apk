@@ -1179,6 +1179,12 @@ if (getPlatform() == Platform.Android) {
   - Android Home packs tighter, Desktop unchanged: card sides 8dp (`cardSidePadding`), Quick picks rows 56dp, no 8dp/5dp around Quick picks' own header, no 8dp spacer over each section title. Android's card floor is artwork + `cardTextBlockFloor()`, the tallest text block (two `titleSmall` lines plus the subtitle row) measured with `rememberTextMeasurer`: Desktop's fixed 70dp counts Poppins' line gap (Skia) and left ~10dp spare under every Android card. Keep the floor: without it a row takes the height of the cards on screen and Home jumps when a two-line title scrolls in. Titles stay two lines, as on Spotify's song cards; the spare line belongs under the subtitle, never between title and subtitle.
   - `AppTheme {}` with no arguments is the app's default cyan dark theme, not the user's: anything drawn outside `App()` (Desktop's `LibrarySyncLoginPrompt`) must read theme mode, colour source and custom colour the way `App()` does. Force-dark `typo()` paints `headlineMedium`/`bodyMedium` in its #A8A8A8 body grey, so text on a scrim (the daily discover hero) names `onSurface`/`onSurfaceVariant`.
 
+- **Vivo build identity, Web OAuth callback loop, and update resolver pre-release resilience (2026-11-23, PR #285, PR #286)**:
+  - **Vivo packaging & Google Identity collision**: `vivoAndroidApp` builds under `applicationId = "com.spotify.music"` so Vivo's Origin Island and music widget follow the player. When `GoogleOnboardingAuthScreen` runs, `CredentialManager.getCredential(...)` with `GetGoogleIdOption` fails with `GetCredentialException` because Google Identity Services rejects the signature mismatch between our release/debug certificate and Spotify's official Google Cloud credentials.
+  - **Web OAuth fallback & callback handling**: In `StreamifyAuthManager.android.kt`, catching `GetCredentialException` triggers `tryLaunchWebOAuth()` to the system browser. Supabase redirects the browser to `streamify://callback#access_token=...`. In `App.kt`, `LaunchedEffect(intent)` catches `data.scheme == "streamify" && data.host == "callback"`, extracts `access_token` via `AuthCallbackParser.extractAccessToken(callbackUri)` in `streamify-modules/supabase`, and invokes `SupabaseClient.signInWithAccessToken(token)` to fetch `/auth/v1/user`, verify admin claims via RPC, and populate the session, resolving the infinite redirect loop without any guest bypass.
+  - **Vivo update discovery & architecture mapping**: In `UpdateResolver.kt`, removed line 139 which dropped `"vivo"` APKs during GitHub fallback, mapping Vivo builds to `android-vivo-arm64`, `android-vivo-armeabi-v7a`, `android-vivo-universal`, and `android-vivo`. In `PlatformBinaryResolver.android.kt`, unified architecture resolution to inspect all Vivo keys, guaranteeing Vivo devices never fall through to the universal `com.streamify.app` package.
+  - **Pre-release channel discovery**: Pointed Tier 3 update API to `/releases?per_page=1` supporting array and object JSON payloads, and added an authoritative pinned manifest probe (`$baseUrl/releases/download/$tagName/version.json`), ensuring pre-release and beta releases on GitHub are discoverable even when `/releases/latest` returns 404.
+
 ## 🔄 CLAUDE.md Auto-Update Rule (MANDATORY)
 
 After completing any of the following types of changes, the AI agent **MUST** update this CLAUDE.md file:
@@ -1203,6 +1209,6 @@ After completing any of the following types of changes, the AI agent **MUST** up
 
 *This document helps AI Agents quickly understand the SimpMusic project. Update regularly when there are major changes to architecture or structure.*
 
-**Last updated**: 2026-11-14
+**Last updated**: 2026-11-23
 **Project version**: Check latest release on GitHub
 **Maintained by**: maxrave-dev and contributors
