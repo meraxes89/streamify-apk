@@ -206,8 +206,13 @@ private class AgslRuntimeShaderEngine(
     override fun applyGlass(scope: DrawScope, request: GlassRenderRequest) {
         // The effect applies in the backdrop layer's own coordinate space —
         // resolution follows the layer size, not the glass clip size.
+        // GraphicsLayer.size is an IntSize; the shader takes float pixels.
         val layerSize = request.backdrop.size
-        runtimeShader.setFloatUniform("resolution", layerSize.width, layerSize.height)
+        runtimeShader.setFloatUniform(
+            "resolution",
+            layerSize.width.toFloat(),
+            layerSize.height.toFloat(),
+        )
         runtimeShader.setFloatUniform("lensRadius", PrimitiveTokens.lensCurvatureStandard)
         runtimeShader.setFloatUniform("refractionIndex", PrimitiveTokens.refractionIndexDefault)
         runtimeShader.setFloatUniform("chromaticSpread", chromaticSpread)
@@ -237,7 +242,9 @@ private class AgslRuntimeShaderEngine(
  * `RenderEffect.createBlurEffect` in pixels, rebuilt only when the density
  * changes (radius token is Dp), then cached; applied to the caller-owned
  * backdrop layer with the same set / draw / restore discipline as the AGSL
- * lane.
+ * lane. The three-argument form (radiusX, radiusY, edgeTreatment) is the
+ * API 31 surface — the two-argument convenience overload only exists from
+ * API 33, so this lane pins the TileMode explicitly.
  */
 @RequiresApi(31)
 private class RenderEffectBlurEngine : SovereignGraphicsEngine {
@@ -250,7 +257,7 @@ private class RenderEffectBlurEngine : SovereignGraphicsEngine {
         if (cachedRadiusPx != radiusPx || cachedEffect == null) {
             cachedRadiusPx = radiusPx
             cachedEffect = android.graphics.RenderEffect
-                .createBlurEffect(radiusPx, radiusPx)
+                .createBlurEffect(radiusPx, radiusPx, android.graphics.Shader.TileMode.CLAMP)
                 .asComposeRenderEffect()
         }
 
