@@ -4,13 +4,16 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 // =============================================================================
 // :streamify-modules:streamify-graphics — Sovereign GPU Engine
-// (docs/gpu/ARCHITECTURE.md, docs/gpu/PHASED_PLAN.md Phase 1)
+// (docs/gpu/ARCHITECTURE.md, docs/gpu/PHASED_PLAN.md Phase 1 / Phase 2)
 //
 // Upstream-isolated shader / effect / capability-governor abstraction for
 // Compose Multiplatform.
 // Phase 1 scope: 3-layer design tokens, frozen public facade (Modifier.streamifyGlass),
 // hexagonal engine port (SovereignGraphicsEngine), Koin wiring (Track B),
 // canonical LiquidGlassCore.sksl shader, and dialect transpilation test (Track A).
+// Phase 2-A scope: platform ShaderProvider actuals — androidMain (AGSL /
+// RenderEffect blur / acrylic scrim lanes) plus the shared skikoCommonMain
+// source set wired below (Desktop JVM + wasmJs -> Skia RuntimeShaderBuilder).
 // =============================================================================
 
 plugins {
@@ -49,6 +52,28 @@ kotlin {
                 implementation(libs.runtime)
                 implementation(libs.compose.ui)
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase 2-A Track A: skikoCommonMain — the shared Skia adapter source
+        // set (Desktop JVM + wasmJs) of docs/gpu/ARCHITECTURE.md section 1:
+        // [Adapters] skikoCommonMain -> Skia RuntimeShaderBuilder (SkSL).
+        //
+        // No extra dependency is declared here on purpose: skiko
+        // (RuntimeEffect / RuntimeShaderBuilder / Shader) is api-exposed by
+        // compose.ui on BOTH consuming targets — verified against the compose
+        // 1.12.2 Gradle module metadata (ui-desktop desktopApiElements and
+        // ui-wasm-js wasmJsApiElements both depend on
+        // org.jetbrains.skiko:skiko:0.150.2).
+        // -------------------------------------------------------------------------
+        val skikoCommonMain by creating {
+            dependsOn(commonMain.get())
+        }
+        val desktopMain by getting {
+            dependsOn(skikoCommonMain)
+        }
+        val wasmJsMain by getting {
+            dependsOn(skikoCommonMain)
         }
 
         val desktopTest by getting {
