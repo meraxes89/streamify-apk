@@ -7,6 +7,7 @@ import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.simpmusic.data.update.UpdateResolver
 import com.maxrave.simpmusic.data.update.UpdateResult
 import com.maxrave.simpmusic.data.update.UpdateSanitizer
+import com.maxrave.simpmusic.data.update.UpdateStateHolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -28,6 +29,11 @@ class StreamifyUpdateRepositoryImpl(
 
                 when (val result = resolver.resolve(installedCode)) {
                     is UpdateResult.Available -> {
+                        val isBreaking =
+                            result.manifest.isBreaking ||
+                                (result.manifest.minSupportedVersionCode > 0 && installedCode < result.manifest.minSupportedVersionCode)
+                        UpdateStateHolder.latestManifest = result.manifest
+                        UpdateStateHolder.isBreaking = isBreaking
                         emit(
                             Resource.Success(
                                 UpdateData(

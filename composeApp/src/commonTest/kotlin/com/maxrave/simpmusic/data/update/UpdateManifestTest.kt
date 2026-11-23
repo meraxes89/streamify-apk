@@ -102,4 +102,23 @@ class UpdateManifestTest {
         assertEquals("3333", manifest.artifacts["windows-x64"]?.sha256)
         assertEquals("4444", manifest.artifacts["linux-deb"]?.sha256)
     }
+
+    @Test
+    fun manifestDeserializesMinSupportedVersionAndBreakingFlag() {
+        val payload = """
+            {
+              "version": "v1.0.4-beta",
+              "versionCode": 104,
+              "minSupportedVersionCode": 102,
+              "isBreaking": true
+            }
+        """.trimIndent()
+
+        val manifest = json.decodeFromString<UpdateManifest>(payload)
+
+        assertEquals("v1.0.4-beta", manifest.version)
+        assertEquals(104, manifest.versionCode)
+        assertEquals(102, manifest.minSupportedVersionCode)
+        assertTrue(manifest.isBreaking)
+    }
 }

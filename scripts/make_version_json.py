@@ -69,6 +69,8 @@ def build_manifest(
     version_code: int,
     checksums: dict[str, str],
     changelog: str,
+    min_supported_version_code: int = 0,
+    is_breaking: bool = False,
     published_at: str | None = None,
 ) -> dict:
     base_url = f"https://github.com/{repo}/releases/download/{tag}"
@@ -132,6 +134,8 @@ def build_manifest(
         "schemaVersion": 1,
         "version": tag,
         "versionCode": version_code,
+        "minSupportedVersionCode": min_supported_version_code,
+        "isBreaking": is_breaking,
         "channel": channel,
         "publishedAt": published_at,
         "changelog": changelog,
@@ -144,6 +148,8 @@ def main():
     parser.add_argument("--tag", required=True, help="Release tag (e.g. v1.0.3-beta)")
     parser.add_argument("--repo", default="meraxes89/streamify-apk", help="GitHub repo (owner/repo)")
     parser.add_argument("--version-code", type=int, default=None, help="Numeric version code")
+    parser.add_argument("--min-version-code", type=int, default=0, help="Minimum supported version code")
+    parser.add_argument("--breaking", action="store_true", help="Flag release as containing breaking changes")
     parser.add_argument("--sums", default="release/SHA256SUMS", help="Path to SHA256SUMS file")
     parser.add_argument("--notes", default=None, help="Path to release_body.md or release_notes.md")
     parser.add_argument("--changelog", default="CHANGELOG.md", help="Path to CHANGELOG.md")
@@ -170,6 +176,8 @@ def main():
         version_code=version_code,
         checksums=checksums,
         changelog=changelog_text,
+        min_supported_version_code=args.min_version_code,
+        is_breaking=args.breaking,
     )
 
     json_str = json.dumps(manifest, indent=2, ensure_ascii=False)
