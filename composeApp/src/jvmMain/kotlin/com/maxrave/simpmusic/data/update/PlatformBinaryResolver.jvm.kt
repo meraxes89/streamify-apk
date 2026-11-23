@@ -36,6 +36,7 @@ actual fun resolveDeviceBinary(
             )
         }
         isLinux -> {
+            val isAppImage = System.getenv("APPIMAGE") != null
             val isRpm = try {
                 val osRelease = File("/etc/os-release")
                 if (osRelease.exists()) {
@@ -49,26 +50,39 @@ actual fun resolveDeviceBinary(
                 false
             }
 
-            if (isRpm) {
-                val url = artifacts["linux-rpm"]?.url
-                    ?: artifacts["linux-deb"]?.url
-                    ?: artifacts["linux"]?.url
-                    ?: "$baseDownloadUrl/streamify-$cleanTag.x86_64.rpm"
-                ResolvedPlatformBinary(
-                    downloadUrl = url,
-                    buttonLabel = "Download RPM (.rpm)",
-                    architectureName = "Linux RPM",
-                )
-            } else {
-                val url = artifacts["linux-deb"]?.url
-                    ?: artifacts["linux-rpm"]?.url
-                    ?: artifacts["linux"]?.url
-                    ?: "$baseDownloadUrl/streamify_${cleanTag}_amd64.deb"
-                ResolvedPlatformBinary(
-                    downloadUrl = url,
-                    buttonLabel = "Download DEB (.deb)",
-                    architectureName = "Linux DEB",
-                )
+            when {
+                isAppImage -> {
+                    val url = artifacts["linux-appimage"]?.url
+                        ?: artifacts["linux"]?.url
+                        ?: "$baseDownloadUrl/Streamify-$cleanTag-x86_64.AppImage"
+                    ResolvedPlatformBinary(
+                        downloadUrl = url,
+                        buttonLabel = "Download AppImage (.AppImage)",
+                        architectureName = "Linux AppImage",
+                    )
+                }
+                isRpm -> {
+                    val url = artifacts["linux-rpm"]?.url
+                        ?: artifacts["linux-appimage"]?.url
+                        ?: artifacts["linux"]?.url
+                        ?: "$baseDownloadUrl/streamify-$cleanTag.x86_64.rpm"
+                    ResolvedPlatformBinary(
+                        downloadUrl = url,
+                        buttonLabel = "Download RPM (.rpm)",
+                        architectureName = "Linux RPM",
+                    )
+                }
+                else -> {
+                    val url = artifacts["linux-deb"]?.url
+                        ?: artifacts["linux-appimage"]?.url
+                        ?: artifacts["linux"]?.url
+                        ?: "$baseDownloadUrl/streamify_${cleanTag}_amd64.deb"
+                    ResolvedPlatformBinary(
+                        downloadUrl = url,
+                        buttonLabel = "Download DEB (.deb)",
+                        architectureName = "Linux DEB",
+                    )
+                }
             }
         }
         else -> {

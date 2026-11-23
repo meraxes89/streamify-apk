@@ -191,10 +191,14 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
+      - name: Start sccache server daemon
+        run: sccache --start-server || true
+
       - name: Clippy (workspace, all targets, warnings are errors)
         env:
           RUSTC_WRAPPER: sccache
           SCCACHE_GHA_ENABLED: "true"
+          SCCACHE_SERVER_START_TIMEOUT: "60"
           CARGO_INCREMENTAL: "0"
         working-directory: rust
         run: cargo clippy --workspace --all-targets -- -D warnings

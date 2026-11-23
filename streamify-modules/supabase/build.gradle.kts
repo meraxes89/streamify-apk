@@ -18,6 +18,10 @@ kotlin {
     wasmJs {
         browser()
     }
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    )
 
     sourceSets {
         commonMain {
@@ -48,6 +52,11 @@ kotlin {
         wasmJsMain {
             dependencies {
                 implementation(libs.ktor.client.js)
+            }
+        }
+        iosMain {
+            dependencies {
+                implementation(libs.ktor.client.darwin)
             }
         }
     }

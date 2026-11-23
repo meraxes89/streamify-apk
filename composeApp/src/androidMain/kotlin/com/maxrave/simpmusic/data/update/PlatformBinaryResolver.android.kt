@@ -19,12 +19,34 @@ actual fun resolveDeviceBinary(
     val isArmV7 = abis.any { it.contains("armeabi", ignoreCase = true) || it.contains("armv7", ignoreCase = true) }
     val isX86_64 = abis.any { it.contains("x86_64", ignoreCase = true) }
 
-    val baseDownloadUrl = "https://github.com/meraxes89/streamify-apk/releases/download/$tag"
+    val isVivo = Build.MANUFACTURER.contains("vivo", ignoreCase = true) ||
+        Build.BRAND.contains("vivo", ignoreCase = true) ||
+        Build.FINGERPRINT.contains("vivo", ignoreCase = true)
+
+    val releasePageUrl = "https://github.com/meraxes89/streamify-apk/releases/tag/$tag"
 
     return when {
+        isVivo && isArm64 && artifacts.containsKey("android-vivo-arm64") -> {
+            val url = artifacts["android-vivo-arm64"]?.url ?: releasePageUrl
+            ResolvedPlatformBinary(
+                downloadUrl = url,
+                buttonLabel = "Download APK (Vivo ARM64)",
+                architectureName = "Vivo ARM64",
+            )
+        }
+        isVivo && artifacts.containsKey("android-vivo-universal") -> {
+            val url = artifacts["android-vivo-universal"]?.url ?: releasePageUrl
+            ResolvedPlatformBinary(
+                downloadUrl = url,
+                buttonLabel = "Download APK (Vivo Universal)",
+                architectureName = "Vivo Universal",
+            )
+        }
         isArm64 -> {
             val url = artifacts["android-arm64-v8a"]?.url
-                ?: "$baseDownloadUrl/Streamify-$tag-arm64-v8a-release.apk"
+                ?: artifacts["android-universal"]?.url
+                ?: artifacts["android"]?.url
+                ?: releasePageUrl
             ResolvedPlatformBinary(
                 downloadUrl = url,
                 buttonLabel = "Download APK (ARM64)",
@@ -33,7 +55,9 @@ actual fun resolveDeviceBinary(
         }
         isArmV7 -> {
             val url = artifacts["android-armeabi-v7a"]?.url
-                ?: "$baseDownloadUrl/Streamify-$tag-armeabi-v7a-release.apk"
+                ?: artifacts["android-universal"]?.url
+                ?: artifacts["android"]?.url
+                ?: releasePageUrl
             ResolvedPlatformBinary(
                 downloadUrl = url,
                 buttonLabel = "Download APK (ARMv7)",
@@ -42,7 +66,9 @@ actual fun resolveDeviceBinary(
         }
         isX86_64 -> {
             val url = artifacts["android-x86_64"]?.url
-                ?: "$baseDownloadUrl/Streamify-$tag-x86_64-release.apk"
+                ?: artifacts["android-universal"]?.url
+                ?: artifacts["android"]?.url
+                ?: releasePageUrl
             ResolvedPlatformBinary(
                 downloadUrl = url,
                 buttonLabel = "Download APK (x86_64)",
@@ -52,7 +78,7 @@ actual fun resolveDeviceBinary(
         else -> {
             val url = artifacts["android-universal"]?.url
                 ?: artifacts["android"]?.url
-                ?: "$baseDownloadUrl/Streamify-$tag.apk"
+                ?: releasePageUrl
             ResolvedPlatformBinary(
                 downloadUrl = url,
                 buttonLabel = "Download APK (Universal)",

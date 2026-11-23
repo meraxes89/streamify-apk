@@ -79,6 +79,13 @@ def build_manifest(
         url = f"{base_url}/{filename}"
         if filename.endswith(".apk"):
             if "vivo" in filename.lower():
+                if "arm64" in filename.lower():
+                    artifacts["android-vivo-arm64"] = {"url": url, "sha256": sha}
+                elif "armeabi" in filename.lower():
+                    artifacts["android-vivo-armeabi-v7a"] = {"url": url, "sha256": sha}
+                else:
+                    artifacts["android-vivo-universal"] = {"url": url, "sha256": sha}
+                    artifacts["android-vivo"] = {"url": url, "sha256": sha}
                 continue
             if "arm64" in filename.lower():
                 artifacts["android-arm64-v8a"] = {"url": url, "sha256": sha}
@@ -100,8 +107,15 @@ def build_manifest(
             artifacts["linux"] = {"url": url, "sha256": sha}
         elif filename.endswith(".rpm"):
             artifacts["linux-rpm"] = {"url": url, "sha256": sha}
+            if "linux" not in artifacts:
+                artifacts["linux"] = {"url": url, "sha256": sha}
         elif filename.endswith(".AppImage"):
             artifacts["linux-appimage"] = {"url": url, "sha256": sha}
+            if "linux" not in artifacts:
+                artifacts["linux"] = {"url": url, "sha256": sha}
+        elif filename.endswith(".ipa") or ("ios" in filename.lower() and filename.endswith(".zip")):
+            artifacts["ios-arm64"] = {"url": url, "sha256": sha}
+            artifacts["ios"] = {"url": url, "sha256": sha}
         elif filename.endswith(".zip") and "wasm" in filename:
             artifacts["wasm"] = {"url": url, "sha256": sha}
 
