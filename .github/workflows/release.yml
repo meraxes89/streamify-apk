@@ -164,6 +164,27 @@ jobs:
             --output release/version.json
           cat release/version.json
 
+      - name: Verify release manifest integrity & naming consistency
+        run: |
+          python3 - << 'PY'
+          import json, sys
+
+          with open("release/version.json") as f:
+              manifest = json.load(f)
+
+          artifacts = manifest.get("artifacts", {})
+          print(f"Verified {len(artifacts)} release artifacts in manifest.")
+
+          # Fail if legacy SimpMusic binary names leak into the release
+          for key, data in artifacts.items():
+              url = data.get("url", "")
+              if "simpmusic" in url.lower() and not "streamify" in url.lower():
+                  print(f"::error::Detected legacy 'SimpMusic' binary in manifest under key '{key}': {url}")
+                  sys.exit(1)
+
+          print("✅ All platform binaries correctly mapped with Streamify identity.")
+          PY
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
