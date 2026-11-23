@@ -1324,32 +1324,49 @@ private fun AccountAvatar(
     backdrop: PlatformBackdrop? = null,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
+    val colorScheme = MaterialTheme.colorScheme
     val glassOn = LocalLiquidGlassEnabled.current && backdrop != null
     val avatarShape = CircleShape
 
-    if (signedIn && !thumbnailUrl.isNullOrBlank()) {
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .then(
-                        if (glassOn && backdrop != null) {
-                            Modifier.liquidGlass(
-                                backdrop = backdrop,
-                                shape = avatarShape,
-                                highlight = Highlight(width = 1.dp),
-                            )
-                        } else {
-                            Modifier.border(
-                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-                                avatarShape,
-                            )
-                        },
-                    )
-                    .clip(avatarShape)
-                    .then(modifier),
-            contentAlignment = Alignment.Center,
-        ) {
+    // Adaptive border and container colors matching mood pills (ChipGroup)
+    val borderColor =
+        if (isDark) {
+            if (glassOn) Color.White.copy(alpha = 0.12f) else colorScheme.outlineVariant
+        } else {
+            Color.Black.copy(alpha = 0.14f)
+        }
+
+    val containerColor =
+        if (isDark) {
+            if (glassOn) Color.Transparent else colorScheme.surfaceContainer.copy(alpha = 0.5f)
+        } else {
+            Color.Black.copy(alpha = 0.04f)
+        }
+
+    val shapeModifier =
+        if (glassOn && backdrop != null) {
+            Modifier.liquidGlass(
+                backdrop = backdrop,
+                shape = avatarShape,
+                highlight = Highlight(width = 1.dp),
+            )
+        } else {
+            Modifier.clip(avatarShape)
+        }
+
+    Box(
+        modifier =
+            Modifier
+                .size(size)
+                .then(shapeModifier)
+                .background(containerColor, avatarShape)
+                .border(1.dp, borderColor, avatarShape)
+                .clip(avatarShape)
+                .then(modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (signedIn && !thumbnailUrl.isNullOrBlank()) {
             AsyncImage(
                 model =
                     ImageRequest
@@ -1365,49 +1382,13 @@ private fun AccountAvatar(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(avatarShape),
             )
-        }
-    } else {
-        if (glassOn && backdrop != null) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .liquidGlass(
-                            backdrop = backdrop,
-                            shape = avatarShape,
-                            highlight = Highlight(width = 1.dp),
-                        )
-                        .clip(avatarShape)
-                        .then(modifier),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = SimpIcons.Person,
-                    contentDescription = contentDescription,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(size * 0.5f),
-                )
-            }
         } else {
-            Surface(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .clip(avatarShape)
-                        .then(modifier),
-                shape = avatarShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = SimpIcons.Person,
-                        contentDescription = contentDescription,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(size * 0.5f),
-                    )
-                }
-            }
+            Icon(
+                imageVector = SimpIcons.Person,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(size * 0.5f),
+            )
         }
     }
 }
