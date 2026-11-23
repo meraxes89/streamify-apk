@@ -15,10 +15,10 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
 import com.streamify.graphics.api.GlassRenderRequest
 import com.streamify.graphics.api.SovereignGraphicsEngine
-import com.streamify.graphics.engine.adapter.A gslDialect
-import com.streamify.graphics.engine.adapter.GlassRenderStrategy
-import com.streamify.graphics.engine.adapter.LiquidGlassSource
-import com.streamify.graphics.engine.adapter.ShaderTierLadder
+// All four adapter helpers (AgslDialect, GlassRenderStrategy,
+// LiquidGlassSource, ShaderTierLadder) are consumed here — one wildcard
+// keeps the isolation-file import block short.
+import com.streamify.graphics.engine.adapter.*
 import com.streamify.graphics.governor.CapabilityProbe
 import com.streamify.graphics.governor.RenderTier
 import com.streamify.graphics.tokens.PrimitiveTokens
