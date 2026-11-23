@@ -168,6 +168,9 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
+      - name: Start sccache server daemon
+        run: sccache --start-server || true
+
       - name: Run the embedding benchmark (median-of-21, release)
         run: |
           cargo run --release --manifest-path rust/Cargo.toml \
@@ -424,6 +427,7 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_SERVER_START_TIMEOUT: "60"
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
@@ -438,6 +442,9 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Start sccache server daemon
+        run: sccache --start-server || true
 
       - name: Setup CCache for the C++ DSP
         uses: hendrikmuhs/ccache-action@v1.2.25
@@ -554,6 +561,9 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Start sccache server daemon
+        run: sccache --start-server || true
 
       # Deliberately identical to the desktop Gradle lane's
       # `cargo build --release --lib` (no extra RUSTFLAGS, release profile

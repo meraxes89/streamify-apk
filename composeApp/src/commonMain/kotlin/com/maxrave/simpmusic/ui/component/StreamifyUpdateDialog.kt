@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.maxrave.simpmusic.data.update.ResolvedDeviceBinary
+import com.maxrave.simpmusic.data.update.ResolvedPlatformBinary
 import com.maxrave.simpmusic.data.update.UpdateSanitizer
 import com.maxrave.simpmusic.ui.theme.fontFamily
 import com.maxrave.simpmusic.ui.theme.typo
@@ -61,7 +61,7 @@ fun StreamifyUpdateDialog(
     currentVersion: String,
     releaseDate: String?,
     changelog: String?,
-    binary: ResolvedDeviceBinary,
+    binary: ResolvedPlatformBinary,
     isBreaking: Boolean = false,
     onConfirmUpdate: () -> Unit,
     onSkipLaunch: () -> Unit,
