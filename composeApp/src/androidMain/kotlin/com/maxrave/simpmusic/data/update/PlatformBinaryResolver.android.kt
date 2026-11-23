@@ -23,23 +23,25 @@ actual fun resolveDeviceBinary(
         Build.BRAND.contains("vivo", ignoreCase = true) ||
         Build.FINGERPRINT.contains("vivo", ignoreCase = true)
 
+    val hasVivoArtifact = artifacts.containsKey("android-vivo-arm64") ||
+        artifacts.containsKey("android-vivo-arm64-v8a") ||
+        artifacts.containsKey("android-vivo-universal") ||
+        artifacts.containsKey("android-vivo")
+
     val releasePageUrl = "https://github.com/meraxes89/streamify-apk/releases/tag/$tag"
 
     return when {
-        isVivo && isArm64 && artifacts.containsKey("android-vivo-arm64") -> {
-            val url = artifacts["android-vivo-arm64"]?.url ?: releasePageUrl
+        isVivo && hasVivoArtifact -> {
+            val url = artifacts["android-vivo-arm64"]?.url
+                ?: artifacts["android-vivo-arm64-v8a"]?.url
+                ?: artifacts["android-vivo-universal"]?.url
+                ?: artifacts["android-vivo"]?.url
+                ?: releasePageUrl
+            val archName = if (isArm64) "Vivo ARM64" else "Vivo Edition"
             ResolvedPlatformBinary(
                 downloadUrl = url,
-                buttonLabel = "Download APK (Vivo ARM64)",
-                architectureName = "Vivo ARM64",
-            )
-        }
-        isVivo && artifacts.containsKey("android-vivo-universal") -> {
-            val url = artifacts["android-vivo-universal"]?.url ?: releasePageUrl
-            ResolvedPlatformBinary(
-                downloadUrl = url,
-                buttonLabel = "Download APK (Vivo Universal)",
-                architectureName = "Vivo Universal",
+                buttonLabel = "Download APK ($archName)",
+                architectureName = archName,
             )
         }
         isArm64 -> {
