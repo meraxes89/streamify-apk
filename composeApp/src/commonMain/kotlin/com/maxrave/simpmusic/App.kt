@@ -1124,8 +1124,10 @@ fun App(
                         },
                     )
                 }
-            }
-        }
+            },
+        )
+    }
+}
 
         AnimatedVisibility(
             visible = isSplashVisible || streamifyAuthState is AuthState.Loading,

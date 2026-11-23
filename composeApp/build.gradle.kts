@@ -135,8 +135,6 @@ kotlin {
             implementation(libs.compose.material3.adaptive)
             implementation(libs.compose.material.ripple)
 
-            implementation(libs.ui.tooling.preview)
-
             // Other module
             api(projects.common)
             api(projects.domain)
@@ -1005,7 +1003,6 @@ configurations.matching { it.name.contains("wasmJs", ignoreCase = true) }.config
         substitute(module("androidx.room:room-runtime")).using(project(":room-wasm-stub"))
         substitute(module("com.kmpalette:kmpalette-core")).using(project(":room-wasm-stub"))
         substitute(module("com.kmpalette:extensions-network")).using(project(":room-wasm-stub"))
-        substitute(module("androidx.compose.ui:ui-tooling-preview")).using(project(":room-wasm-stub"))
         substitute(module("androidx.datastore:datastore-preferences")).using(project(":room-wasm-stub"))
         substitute(module("androidx.datastore:datastore-core")).using(project(":room-wasm-stub"))
         substitute(module("androidx.datastore:datastore-preferences-core")).using(project(":room-wasm-stub"))
