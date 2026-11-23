@@ -49,10 +49,7 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Instant
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 
 @Composable
@@ -78,23 +75,16 @@ fun StreamifyUpdateDialog(
         }
     }
 
-    val formattedDate =
+    val formattedDate: String? =
         remember(releaseDate) {
             releaseDate?.let { input ->
                 try {
                     val instant = Instant.parse(input)
-                    val dateTime = instant.toLocalDateTime(TimeZone.currentSystemDefault())
-                    dateTime.format(
-                        LocalDateTime.Format {
-                            day()
-                            char(' ')
-                            monthName(MonthNames.ENGLISH_ABBREVIATED)
-                            char(' ')
-                            year()
-                        },
-                    )
+                    val dt = instant.toLocalDateTime(TimeZone.currentSystemDefault())
+                    val month = dt.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+                    "${dt.dayOfMonth} $month ${dt.year}"
                 } catch (_: Exception) {
-                    null
+                    input.take(10)
                 }
             }
         }
