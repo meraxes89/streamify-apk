@@ -168,6 +168,7 @@ fun App(
     val navController = rememberNavController()
     BindNavigationBackHandler(navController)
     val isDesktopShell = getPlatform() == Platform.Desktop
+    val platformContext = rememberPlatformContext()
 
     val sleepTimerState by viewModel.sleepTimerState.collectAsStateWithLifecycle()
     val nowPlayingData by viewModel.nowPlayingState.collectAsStateWithLifecycle()
@@ -254,7 +255,19 @@ fun App(
         val data = intent.data
         Logger.d("MainActivity", "onCreate: $data")
         if (data != null) {
-            if (data.scheme == "simpmusic" && data.host == "notification") {
+            if (data.scheme == "streamify" && data.host == "callback") {
+                // Supabase web OAuth callback (e.g. Google Sign-In fallback on Vivo or non-GMS devices):
+                // streamify://callback#access_token=...&refresh_token=...
+                val uriString = data.toString()
+                Logger.d("MainActivity", "Streamify auth callback: $uriString")
+                viewModel.setIntent(null)
+                val result = StreamifyAuthManager.handleAuthCallback(uriString, platformContext)
+                if (result.isSuccess) {
+                    Logger.d("MainActivity", "Streamify auth callback success: ${result.getOrNull()?.email}")
+                } else {
+                    Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
+                }
+            } else if (data.scheme == "simpmusic" && data.host == "notification") {
                 viewModel.setIntent(null)
                 navController.navigate(
                     NotificationDestination,
@@ -538,7 +551,6 @@ fun App(
         // The setting governs Desktop too, the same as Android: off, every glass surface draws flat.
         liquidGlassEnabled = isLiquidGlassEnabled == TRUE,
     ) {
-        val platformContext = rememberPlatformContext()
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)

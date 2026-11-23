@@ -131,6 +131,55 @@ object SupabaseClient {
     }
 
     /**
+     * Authenticates a user using an access token obtained from Supabase OAuth redirects.
+     * Fetches user profile from /auth/v1/user and verifies admin claims.
+     */
+    suspend fun signInWithAccessToken(token: String): Result<UserProfile> = withContext(ioDispatcher) {
+        try {
+            val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/user"
+            val response = httpClient.get(url) {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer $token")
+            }
+
+            val bodyText = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val jsonParser = Json { ignoreUnknownKeys = true }
+                val userObj = jsonParser.parseToJsonElement(bodyText).jsonObject
+                val userId = userObj["id"]?.jsonPrimitive?.content ?: ""
+                val email = userObj["email"]?.jsonPrimitive?.content ?: ""
+                val meta = userObj["user_metadata"]?.jsonObject
+                val name = meta?.get("full_name")?.jsonPrimitive?.content
+                    ?: meta?.get("name")?.jsonPrimitive?.content
+                    ?: email.substringBefore("@")
+                val avatar = meta?.get("avatar_url")?.jsonPrimitive?.content
+                    ?: meta?.get("picture")?.jsonPrimitive?.content
+                    ?: ""
+
+                _accessToken.value = token
+                val isAdminUser = fetchServerIsAdmin(userId)
+
+                val profile = UserProfile(
+                    id = userId,
+                    email = email,
+                    displayName = name,
+                    avatarUrl = avatar,
+                    isAdmin = isAdminUser,
+                )
+
+                _currentUser.value = profile
+                ensureProfile(profile)
+
+                Result.success(profile)
+            } else {
+                Result.failure(Exception("Token verification failed: $bodyText"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * SEC-09/SEC-10: resolve the admin claim from the server via get_my_admin_status() RPC.
      */
     internal suspend fun fetchServerIsAdmin(userId: String): Boolean = withContext(ioDispatcher) {
