@@ -199,6 +199,7 @@ compose.desktop {
                             <key>CFBundleURLSchemes</key>
                             <array>
                                 <string>simpmusic</string>
+                                <string>streamify</string>
                             </array>
                         </dict>
                     </array>
@@ -209,6 +210,12 @@ compose.desktop {
             }
             windows {
                 includeAllModules = true
+                perUserInstall = true
+                dirChooser = true
+                menu = true
+                shortcut = true
+                menuGroup = "Streamify"
+                upgradeUuid = "6b0d69b1-1f6e-4f29-9f6a-9f1f0000004b"
                 packageVersion =
                     libs.versions.version.name
                         .get()
