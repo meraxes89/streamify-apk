@@ -6,7 +6,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import com.streamify.graphics.engine.LegacyRedirectGlassEngine
-import org.koin.core.context.GlobalContext
+import kotlin.concurrent.Volatile
+import org.koin.mp.KoinPlatform.getKoin
 
 /**
  * Frozen public facade of the Sovereign GPU Engine — the single entry point
@@ -66,7 +67,7 @@ internal object SovereignGraphicsEngineLocator {
     fun engine(): SovereignGraphicsEngine {
         cached?.let { return it }
         val resolved = runCatching {
-            GlobalContext.get().get(SovereignGraphicsEngine::class)
+            getKoin().get(SovereignGraphicsEngine::class)
         }.getOrNull()
         if (resolved != null) {
             cached = resolved

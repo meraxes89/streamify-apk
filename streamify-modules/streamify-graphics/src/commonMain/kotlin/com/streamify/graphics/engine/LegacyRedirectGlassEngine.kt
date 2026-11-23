@@ -1,10 +1,13 @@
 package com.streamify.graphics.engine
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipOutline
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
 import com.streamify.graphics.api.GlassRenderRequest
 import com.streamify.graphics.api.SovereignGraphicsEngine
@@ -38,8 +41,19 @@ internal object LegacyRedirectGlassEngine : SovereignGraphicsEngine {
             density = scope,
         )
 
+        // This Compose revision has no clipOutline on DrawScope — flatten the
+        // outline to a Path (shapes resolve to exactly one of three variants)
+        // and clip through the proven clipPath lane instead.
+        val outlinePath = Path().apply {
+            when (outline) {
+                is Outline.Rectangle -> addRect(outline.rect)
+                is Outline.Rounded -> addRoundRect(outline.roundRect)
+                is Outline.Generic -> addPath(outline.path)
+            }
+        }
+
         with(scope) {
-            clipOutline(outline) {
+            clipPath(outlinePath) {
                 // Un-refracted, un-blurred backdrop. An unrecorded layer
                 // (nothing captured yet) draws nothing — by design.
                 drawLayer(request.backdrop)
@@ -50,8 +64,8 @@ internal object LegacyRedirectGlassEngine : SovereignGraphicsEngine {
 
             // 1px optical highlight stroke along the glass rim.
             drawOutline(
-                outline = outline,
-                brush = SolidColor(SemanticTokens.specularBorderHighlight),
+                outline,
+                SolidColor(SemanticTokens.specularBorderHighlight),
                 style = Stroke(width = PrimitiveTokens.specularStrokeWidth.toPx()),
             )
         }
