@@ -11,7 +11,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -45,7 +47,7 @@ class UpdateResolver(
     private val repoName: String = "streamify-apk",
 ) {
     private val baseUrl = "https://github.com/$repoOwner/$repoName"
-    private val apiLatestUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/latest"
+    private val apiLatestUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=1"
 
     // Circuit breaker state for Tier 3 (REST API last resort)
     private var t3DisabledUntilMs: Long = 0L
@@ -118,10 +120,27 @@ class UpdateResolver(
             if (req.status == HttpStatusCode.OK) {
                 storedEtag = req.headers[HttpHeaders.ETag]
                 val bodyText = req.bodyAsText()
-                val obj = json.parseToJsonElement(bodyText).jsonObject
+                val jsonElement = json.parseToJsonElement(bodyText)
+                val obj = (jsonElement as? JsonArray)?.firstOrNull()?.jsonObject
+                    ?: (jsonElement as? JsonObject)
+                    ?: return@runCatching UpdateResult.Error("Unexpected API response structure")
+
                 val tagName = obj["tag_name"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: ""
                 val publishedAt = obj["published_at"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
                 val body = obj["body"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: ""
+
+                if (tagName.isNotBlank()) {
+                    // Self-healing: if the release carries a pinned version.json manifest, prefer it
+                    runCatching {
+                        val pinnedRes = cdnClient.get("$baseUrl/releases/download/$tagName/version.json") {
+                            header(HttpHeaders.UserAgent, "Streamify-App")
+                        }
+                        if (pinnedRes.status == HttpStatusCode.OK) {
+                            val pinnedManifest = json.decodeFromString<UpdateManifest>(pinnedRes.bodyAsText())
+                            return@runCatching compareAndReturn(pinnedManifest, installedCode)
+                        }
+                    }
+                }
 
                 val artifactsMap = mutableMapOf<String, UpdateArtifact>()
                 val assets = obj["assets"]?.takeUnless { it is JsonNull }?.let {
@@ -136,7 +155,17 @@ class UpdateResolver(
 
                     val lowerName = name.lowercase()
                     if (lowerName.endsWith(".apk")) {
-                        if ("vivo" in lowerName) continue
+                        if ("vivo" in lowerName) {
+                            when {
+                                "arm64" in lowerName -> artifactsMap["android-vivo-arm64"] = UpdateArtifact(url = downloadUrl)
+                                "armeabi" in lowerName -> artifactsMap["android-vivo-armeabi-v7a"] = UpdateArtifact(url = downloadUrl)
+                                else -> {
+                                    artifactsMap["android-vivo-universal"] = UpdateArtifact(url = downloadUrl)
+                                    artifactsMap["android-vivo"] = UpdateArtifact(url = downloadUrl)
+                                }
+                            }
+                            continue
+                        }
                         when {
                             "arm64" in lowerName -> artifactsMap["android-arm64-v8a"] = UpdateArtifact(url = downloadUrl)
                             "armeabi" in lowerName -> artifactsMap["android-armeabi-v7a"] = UpdateArtifact(url = downloadUrl)
