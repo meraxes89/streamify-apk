@@ -140,6 +140,16 @@ jobs:
             --output release_body.md
           cat release_body.md
 
+      - name: Generate version.json manifest
+        run: |
+          python3 scripts/make_version_json.py \
+            --tag "${{ inputs.tag_name || github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --sums release/SHA256SUMS \
+            --notes release_body.md \
+            --output release/version.json
+          cat release/version.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
