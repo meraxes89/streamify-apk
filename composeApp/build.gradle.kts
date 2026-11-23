@@ -59,15 +59,15 @@ kotlin {
         }
     }
 
-//    listOf(
-//        iosArm64(),
-//        iosSimulatorArm64()
-//    ).forEach { iosTarget ->
-//        iosTarget.binaries.framework {
-//            baseName = "ComposeApp"
-//            isStatic = true
-//        }
-//    }
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "ComposeApp"
+            isStatic = true
+        }
+    }
 
     jvm()
 
@@ -992,6 +992,12 @@ afterEvaluate {
         }
 }
 
+configurations.matching { it.name.contains("wasmJs", ignoreCase = true) || it.name.contains("ios", ignoreCase = true) }.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("io.coil-kt.coil3:coil-network-okhttp")).using(module("io.coil-kt.coil3:coil-network-ktor3:3.6.3"))
+    }
+}
+
 configurations.matching { it.name.contains("wasmJs", ignoreCase = true) }.configureEach {
     resolutionStrategy.dependencySubstitution {
         substitute(project(":data")).using(project(":room-wasm-stub"))
@@ -1004,6 +1010,5 @@ configurations.matching { it.name.contains("wasmJs", ignoreCase = true) }.config
         substitute(module("androidx.datastore:datastore-core")).using(project(":room-wasm-stub"))
         substitute(module("androidx.datastore:datastore-preferences-core")).using(project(":room-wasm-stub"))
         substitute(module("io.ktor:ktor-client-cio")).using(project(":room-wasm-stub"))
-        substitute(module("io.coil-kt.coil3:coil-network-okhttp")).using(module("io.coil-kt.coil3:coil-network-ktor3:3.6.3"))
     }
 }

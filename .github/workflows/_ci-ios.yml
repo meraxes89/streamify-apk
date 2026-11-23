@@ -1,0 +1,102 @@
+# ============================================================================
+# _ci-ios.yml — Reusable Apple iOS & Universal XCFramework spoke.
+#
+# Builds the sovereign Rust/C++ StreamifyCore.xcframework and the Kotlin
+# Compose Multiplatform iOS frameworks for iPhone devices (arm64) and simulators.
+# ============================================================================
+name: "CI — Apple iOS Distribution"
+
+on:
+  workflow_call:
+    inputs:
+      release_mode:
+        description: "Package distribution archive for release"
+        type: boolean
+        default: false
+      build_xcframework:
+        description: "Build StreamifyCore.xcframework via cargo/lipo"
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: "Package distribution archive for release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    name: "Apple iOS (Frameworks & Distribution)"
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Apply core submodule patches
+        shell: bash
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch"
+          fi
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'microsoft'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Rust toolchain & iOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Build StreamifyCore XCFramework
+        if: ${{ inputs.build_xcframework }}
+        shell: bash
+        run: |
+          chmod +x scripts/build_ios_xcframework.sh
+          ./scripts/build_ios_xcframework.sh
+
+      - name: Build Compose Multiplatform iOS Frameworks
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :composeApp:assembleComposeAppReleaseFrameworkIosArm64 \
+                    :composeApp:assembleComposeAppReleaseFrameworkIosSimulatorArm64 \
+                    --no-daemon \
+                    --stacktrace
+
+      - name: Package iOS Release Artifacts
+        if: ${{ inputs.release_mode }}
+        shell: bash
+        run: |
+          mkdir -p release-ios
+          # Package StreamifyCore.xcframework
+          if [ -d "target/xcframework/StreamifyCore.xcframework" ]; then
+            ditto -c -k --sequesterRsrc target/xcframework/StreamifyCore.xcframework release-ios/StreamifyCore.xcframework.zip
+          fi
+          # Package ComposeApp.framework
+          if [ -d "composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework" ]; then
+            ditto -c -k --sequesterRsrc composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework release-ios/Streamify-iOS-arm64.framework.zip
+          fi
+          ls -la release-ios/
+
+      - name: Upload iOS Release Artifacts
+        if: ${{ inputs.release_mode }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-release-archive
+          path: release-ios/*.zip
+          if-no-files-found: warn

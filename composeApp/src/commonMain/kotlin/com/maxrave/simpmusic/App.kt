@@ -70,6 +70,9 @@ import com.maxrave.domain.data.player.GenericMediaItem
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.manager.DataStoreManager.Values.TRUE
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.data.update.UpdateSanitizer
+import com.maxrave.simpmusic.data.update.UpdateStateHolder
+import com.maxrave.simpmusic.data.update.resolveDeviceBinary
 import com.maxrave.simpmusic.expect.Orientation
 import com.maxrave.simpmusic.expect.currentOrientation
 import com.maxrave.simpmusic.expect.openUrl
@@ -84,6 +87,8 @@ import com.maxrave.simpmusic.ui.component.LiquidGlassAppBottomNavigationBar
 import com.maxrave.simpmusic.ui.component.LocalAppDialogOpen
 import com.maxrave.simpmusic.ui.component.LocalNowPlayingOpen
 import com.maxrave.simpmusic.ui.component.LocalUserStarted
+import com.maxrave.simpmusic.ui.component.StreamifyUpdateDialog
+import com.maxrave.simpmusic.ui.component.UpdateDockedPill
 import com.maxrave.simpmusic.ui.icon.ArrowForwardIos
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.navigation.destination.home.AnalyticsDestination
@@ -163,6 +168,7 @@ fun App(
     val navController = rememberNavController()
     BindNavigationBackHandler(navController)
     val isDesktopShell = getPlatform() == Platform.Desktop
+    val platformContext = rememberPlatformContext()
 
     val sleepTimerState by viewModel.sleepTimerState.collectAsStateWithLifecycle()
     val nowPlayingData by viewModel.nowPlayingState.collectAsStateWithLifecycle()
@@ -218,6 +224,10 @@ fun App(
         mutableStateOf(false)
     }
 
+    var hasSkippedUpdateDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+
     var isSplashVisible by rememberSaveable {
         mutableStateOf(true)
     }
@@ -245,7 +255,19 @@ fun App(
         val data = intent.data
         Logger.d("MainActivity", "onCreate: $data")
         if (data != null) {
-            if (data.scheme == "simpmusic" && data.host == "notification") {
+            if (data.scheme == "streamify" && data.host == "callback") {
+                // Supabase web OAuth callback (e.g. Google Sign-In fallback on Vivo or non-GMS devices):
+                // streamify://callback#access_token=...&refresh_token=...
+                val uriString = data.toString()
+                Logger.d("MainActivity", "Streamify auth callback: $uriString")
+                viewModel.setIntent(null)
+                val result = StreamifyAuthManager.handleAuthCallback(uriString, platformContext)
+                if (result.isSuccess) {
+                    Logger.d("MainActivity", "Streamify auth callback success: ${result.getOrNull()?.email}")
+                } else {
+                    Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
+                }
+            } else if (data.scheme == "simpmusic" && data.host == "notification") {
                 viewModel.setIntent(null)
                 navController.navigate(
                     NotificationDestination,
@@ -529,7 +551,6 @@ fun App(
         // The setting governs Desktop too, the same as Android: off, every glass surface draws flat.
         liquidGlassEnabled = isLiquidGlassEnabled == TRUE,
     ) {
-        val platformContext = rememberPlatformContext()
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
@@ -914,6 +935,25 @@ fun App(
                             }
                         }
                     }
+
+                    if (hasSkippedUpdateDialog && !shouldShowUpdateDialog && !isShowNowPlaylistScreen) {
+                        val response = updateData
+                        if (response != null && VersionManager.isBehind(response.tagName)) {
+                            UpdateDockedPill(
+                                targetVersion = response.tagName,
+                                onClick = {
+                                    shouldShowUpdateDialog = true
+                                },
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(
+                                            top = if (isDesktopShell) 12.dp else 48.dp,
+                                            end = 16.dp,
+                                        ),
+                            )
+                        }
+                    }
                 }
 
                 if (isShowNowPlaylistScreen && !isTabletLandscape) {
@@ -964,124 +1004,24 @@ fun App(
 
                 if (shouldShowUpdateDialog) {
                     val response = updateData ?: return@Scaffold
-                    AlertDialog(
-                        properties =
-                            DialogProperties(
-                                dismissOnBackPress = false,
-                                dismissOnClickOutside = false,
-                            ),
-                        onDismissRequest = {
+                    val binary = remember(response.tagName) { resolveDeviceBinary(response.tagName) }
+                    val currentVersion = remember { VersionManager.getVersionName() }
+                    StreamifyUpdateDialog(
+                        targetVersion = response.tagName,
+                        currentVersion = currentVersion,
+                        releaseDate = response.releaseTime,
+                        changelog = response.body,
+                        binary = binary,
+                        isBreaking = UpdateStateHolder.isBreaking,
+                        onConfirmUpdate = {
                             shouldShowUpdateDialog = false
                             viewModel.showedUpdateDialog = false
+                            openUrl(binary.downloadUrl)
                         },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    shouldShowUpdateDialog = false
-                                    viewModel.showedUpdateDialog = false
-                                    openUrl("https://github.com/meraxes89/streamify-apk/releases/latest")
-                                },
-                            ) {
-                                Text(
-                                    stringResource(Res.string.download),
-                                    style = typo().bodySmall,
-                                )
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    shouldShowUpdateDialog = false
-                                    viewModel.showedUpdateDialog = false
-                                },
-                            ) {
-                                Text(
-                                    stringResource(Res.string.cancel),
-                                    style = typo().bodySmall,
-                                )
-                            }
-                        },
-                        title = {
-                            Text(
-                                stringResource(Res.string.update_available),
-                                style = typo().labelSmall,
-                            )
-                        },
-                        text = {
-                            val formatted =
-                                response.releaseTime?.let { input ->
-                                    try {
-                                        val instant = kotlin.time.Instant.parse(input)
-                                        val dateTime = instant.toLocalDateTime(TimeZone.currentSystemDefault())
-                                        dateTime.format(
-                                            LocalDateTime.Format {
-                                                day()
-                                                char(' ')
-                                                monthName(MonthNames.ENGLISH_ABBREVIATED)
-                                                char(' ')
-                                                year()
-                                                char(' ')
-                                                hour()
-                                                char(':')
-                                                minute()
-                                                char(':')
-                                                second()
-                                            },
-                                        )
-                                    } catch (e: Exception) {
-                                        stringResource(Res.string.unknown)
-                                    }
-                                } ?: stringResource(Res.string.unknown)
-
-                            val updateMessage =
-                                runBlocking {
-                                    getString(
-                                        Res.string.update_message,
-                                        response.tagName,
-                                        formatted,
-                                        // values-iw/values-in still carry an old %3$s; Compose Resources indexes
-                                        // args without a bounds check, so omitting it crashes the dialog
-                                        "",
-                                    )
-                                }
-                            Column(
-                                Modifier
-                                    .heightIn(
-                                        max = 400.dp,
-                                    ).verticalScroll(
-                                        rememberScrollState(),
-                                    ),
-                            ) {
-                                Text(
-                                    text = updateMessage,
-                                    style = typo().labelMedium,
-                                    modifier =
-                                        Modifier.padding(
-                                            vertical = 8.dp,
-                                        ),
-                                )
-                                Markdown(
-                                    response.body,
-                                    typography =
-                                        markdownTypography(
-                                            h1 = typo().labelLarge,
-                                            h2 = typo().labelMedium,
-                                            h3 = typo().labelSmall,
-                                            text = typo().bodySmall,
-                                            bullet = typo().bodySmall,
-                                            paragraph = typo().bodySmall,
-                                            textLink =
-                                                TextLinkStyles(
-                                                    SpanStyle(
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Normal,
-                                                        fontFamily = fontFamily(),
-                                                        textDecoration = TextDecoration.Underline,
-                                                    ),
-                                                ),
-                                        ),
-                                )
-                            }
+                        onSkipLaunch = {
+                            shouldShowUpdateDialog = false
+                            viewModel.showedUpdateDialog = false
+                            hasSkippedUpdateDialog = true
                         },
                     )
                 }

@@ -102,6 +102,9 @@ jobs:
       - name: Setup sccache (mandatory compiler caching, resp6 §3)
         uses: mozilla-actions/sccache-action@v0.0.11
 
+      - name: Start sccache server daemon
+        run: sccache --start-server || true
+
       - name: Set up Gradle (with dependency cache)
         uses: gradle/actions/setup-gradle@v6
         with:

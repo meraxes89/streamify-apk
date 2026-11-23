@@ -9,6 +9,7 @@ import android.net.Uri
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -128,10 +129,35 @@ actual object StreamifyAuthManager {
             Result.success(profile)
         } catch (e: GetCredentialCancellationException) {
             Result.failure(Exception("Sign-in cancelled."))
-        } catch (e: NoCredentialException) {
-            // If Credential Manager fails, trigger web-based browser OAuth fallback
+        } catch (e: GetCredentialException) {
+            // Credential Manager error (unregistered package on Vivo, missing Play Services, etc.)
             tryLaunchWebOAuth(ctx)
-            Result.failure(Exception("No Google credentials available on device. Opening web sign-in..."))
+            Result.failure(Exception("Google Sign-In unavailable on device. Opening web sign-in..."))
+        } catch (e: Exception) {
+            tryLaunchWebOAuth(ctx)
+            Result.failure(e)
+        }
+    }
+
+    actual suspend fun handleAuthCallback(callbackUri: String, context: Any?): Result<UserProfile> = withContext(Dispatchers.Main) {
+        val ctx = context as? Context
+        if (ctx != null) {
+            getPrefs(ctx)
+        }
+        try {
+            val accessToken = AuthCallbackParser.extractAccessToken(callbackUri)
+            if (!accessToken.isNullOrBlank()) {
+                val result = SupabaseClient.signInWithAccessToken(accessToken)
+                if (result.isSuccess) {
+                    val profile = result.getOrThrow()
+                    saveProfile(profile, accessToken)
+                    _authState.value = AuthState.Authenticated(profile)
+                    return@withContext Result.success(profile)
+                } else {
+                    return@withContext result
+                }
+            }
+            Result.failure(Exception("No access token found in callback URL"))
         } catch (e: Exception) {
             Result.failure(e)
         }
