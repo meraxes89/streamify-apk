@@ -17,6 +17,11 @@ actual object StreamifyAuthManager {
         return Result.success(SupabaseConfig.DEFAULT_USER)
     }
 
+    actual suspend fun handleAuthCallback(callbackUri: String, context: Any?): Result<UserProfile> {
+        _authState.value = AuthState.Authenticated(SupabaseConfig.DEFAULT_USER)
+        return Result.success(SupabaseConfig.DEFAULT_USER)
+    }
+
     actual fun signInAsDefaultUser(context: Any?): Result<UserProfile> {
         _authState.value = AuthState.Authenticated(SupabaseConfig.DEFAULT_USER)
         return Result.success(SupabaseConfig.DEFAULT_USER)
