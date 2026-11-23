@@ -34,20 +34,22 @@ actual fun resolveDeviceBinary(
 
     return when {
         isVivo && hasVivoArtifact -> {
-            val url = if (isArm64) {
-                artifacts["android-vivo-arm64"]?.url
-                    ?: artifacts["android-vivo-arm64-v8a"]?.url
-                    ?: artifacts["android-vivo-universal"]?.url
-                    ?: artifacts["android-vivo"]?.url
-            } else if (isArmV7) {
-                artifacts["android-vivo-armeabi-v7a"]?.url
-                    ?: artifacts["android-vivo-armv7"]?.url
-                    ?: artifacts["android-vivo-universal"]?.url
-                    ?: artifacts["android-vivo"]?.url
-            } else {
-                artifacts["android-vivo-universal"]?.url
-                    ?: artifacts["android-vivo"]?.url
-            } ?: releasePageUrl
+            val url: String = (
+                if (isArm64) {
+                    artifacts["android-vivo-arm64"]?.url
+                        ?: artifacts["android-vivo-arm64-v8a"]?.url
+                        ?: artifacts["android-vivo-universal"]?.url
+                        ?: artifacts["android-vivo"]?.url
+                } else if (isArmV7) {
+                    artifacts["android-vivo-armeabi-v7a"]?.url
+                        ?: artifacts["android-vivo-armv7"]?.url
+                        ?: artifacts["android-vivo-universal"]?.url
+                        ?: artifacts["android-vivo"]?.url
+                } else {
+                    artifacts["android-vivo-universal"]?.url
+                        ?: artifacts["android-vivo"]?.url
+                }
+            ) ?: releasePageUrl
 
             val archName = when {
                 isArm64 -> "Vivo ARM64"
