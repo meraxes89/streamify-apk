@@ -13,6 +13,7 @@ decision requires a new ADR that links back.
 | [ADR-003](ADR-003-hybrid-sqlite-supabase-sync.md) | Hybrid SQLite WAL + Supabase sync | Accepted |
 | [ADR-004](ADR-004-ioc-streamify-modules.md) | Inversion of control via streamify-modules | Accepted |
 | [ADR-005](ADR-005-vivo-package-identity-and-oauth-resolution.md) | Vivo package identity, Web OAuth callback, and resilient update resolution | Accepted |
+| [ADR-006](ADR-005-unified-hybrid-sync-v2.md) | Unified hybrid sync architecture v2 & schema alignment | Accepted |
 
 ## Format
 

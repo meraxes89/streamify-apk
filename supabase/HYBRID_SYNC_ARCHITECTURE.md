@@ -53,9 +53,11 @@ Without strict architectural boundaries, dual-store synchronization suffers from
 | `SongEntity` (`videoId`, `liked=true`) | `public.user_likes` $\bowtie$ `public.tracks` | `videoId` (YouTube / Stream ID) | Idempotent upsert via `resolution=merge-duplicates` |
 | `ArtistEntity` (`channelId`, `followedAt`) | `public.user_item_favorites` (`item_type='artist'`) | `channelId` (Channel / Artist ID) | Union merge on `item_id` |
 | `AlbumEntity` (`albumId`, `bookmarkedAt`) | `public.user_item_favorites` (`item_type='album'`) | `albumId` (Browse / Album ID) | Union merge on `item_id` |
-| `LocalPlaylistEntity` (`id: Long`) | `public.playlists` (`id: UUID`) | `UUID` stored in playlist metadata | Local-to-Cloud UUID linkage |
+| `LocalPlaylistEntity` (`id: Long`, `syncId`) | `public.playlists` (`id: UUID`) | `syncId: UUID` | Local-to-Cloud UUID linkage |
 | `PairSongLocalPlaylist` (`position`) | `public.playlist_tracks` (`position`) | `(playlist_id, track_id)` | Position-preserving upsert |
+| `SearchHistory` (`query`) | `public.user_search_history` (`query`) | `(user_id, query)` | Bi-directional search sync with tombstones |
 | `SongPlayCount` / Analytics | `public.user_listening_history` + `profiles` | Incremental timestamp ledger | Append-only with deduplication |
+| DataStore Preferences (`settings.preferences_pb`) | `public.user_settings` (`settings: JSONB`) | `user_id: UUID` | Bidirectional union merge |
 
 ---
 

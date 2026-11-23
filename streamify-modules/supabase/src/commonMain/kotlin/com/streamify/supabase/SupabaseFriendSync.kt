@@ -29,9 +29,7 @@ object SupabaseFriendSync {
 
     /**
      * Reports user playback activity:
-     * 1. Records telemetry in `user_play_events`
-     * 2. Updates `listening_sessions` so friends see live listening status and position
-     * 3. Updates `profiles.listening_seconds`, `total_plays`, and `top_track` via monotonic RPC
+     * Increments monotonic listener statistics in `profiles` (listening_seconds, total_plays, top_track).
      */
     suspend fun reportPlayback(
         trackId: String,
@@ -48,51 +46,7 @@ object SupabaseFriendSync {
             val user = SupabaseClient.currentUser.value
             val targetUserId = userId ?: user?.id ?: SupabaseConfig.DEFAULT_USER.id
 
-            // 1. Emit telemetry event to `user_play_events`
-            val eventPayload = buildJsonObject {
-                put("user_id", targetUserId)
-                put("track_sig", trackId)
-                put("track_title", title)
-                put("track_artist", artist)
-                put("duration_played_sec", (positionMs / 1000).toInt())
-                put("completion_ratio", 1.0)
-                put("hour_of_day", currentHour)
-            }.toString()
-
-            SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_play_events") {
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                contentType(ContentType.Application.Json)
-                setBody(eventPayload)
-            }
-
-            // 2. Active Jam / Listening session update
-            val trackObj = buildJsonObject {
-                put("id", 1)
-                put("title", title)
-                put("artist", artist)
-                put("filepath", "https://www.youtube.com/watch?v=$trackId")
-                put("durationSec", durationSec)
-                put("coverArtPath", coverUrl)
-            }
-
-            val sessionPayload = buildJsonObject {
-                put("host_user_id", targetUserId)
-                put("current_track_id", trackId)
-                put("position_ms", positionMs)
-                put("is_playing", isPlaying)
-                put("current_track_json", trackObj)
-            }.toString()
-
-            SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                header("Prefer", "resolution=merge-duplicates")
-                contentType(ContentType.Application.Json)
-                setBody(sessionPayload)
-            }
-
-            // 3. Increment monotonic listener statistics in `profiles` (listening_seconds, total_plays)
+            // Increment monotonic listener statistics in `profiles` (listening_seconds, total_plays)
             val rpcPayload = buildJsonObject {
                 put("p_listening_seconds", (positionMs / 1000).toInt().coerceAtLeast(1))
                 put("p_total_plays", 1)
@@ -107,6 +61,15 @@ object SupabaseFriendSync {
                 setBody(rpcPayload)
             }
 
+            // Record detailed playback event in `user_listening_history` for Analytics & Wrapped
+            if (trackId.isNotBlank() && !trackId.startsWith("trk_")) {
+                SupabaseLibrarySync.recordPlaybackHistory(
+                    userId = targetUserId,
+                    trackId = trackId,
+                    durationSec = (positionMs / 1000).toInt().coerceAtLeast(1)
+                )
+            }
+
             Result.success(true)
         } catch (e: Exception) {
             Result.failure(e)
@@ -114,21 +77,11 @@ object SupabaseFriendSync {
     }
 
     /**
-     * Fetches live friend activity by querying active listening_sessions and user profiles.
+     * Fetches live friend activity by querying active user profiles.
      */
     suspend fun fetchLiveFriendActivity(): List<FriendActivityItem> = withContext(ioDispatcher) {
         try {
-            // 1. Fetch active listening sessions
-            val sessionsResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
-                parameter("select", "id,session_code,host_user_id,current_track_id,position_ms,is_playing,current_track_json,updated_at")
-                parameter("is_playing", "eq.true")
-                parameter("order", "updated_at.desc")
-                parameter("limit", "10")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-
-            // 2. Fetch profiles with listener metrics
+            // Fetch profiles with listener metrics
             val profilesResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
                 parameter("select", "id,display_name,email,avatar_url,listening_seconds,total_plays,top_track")
                 parameter("limit", "50")
@@ -136,49 +89,11 @@ object SupabaseFriendSync {
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
             }
 
-            val sessions = if (sessionsResp.status.isSuccess()) {
-                json.decodeFromString<List<CloudListeningSession>>(sessionsResp.bodyAsText())
-            } else emptyList()
-
             val profiles = if (profilesResp.status.isSuccess()) {
                 json.decodeFromString<List<UserProfile>>(profilesResp.bodyAsText())
             } else emptyList()
 
-            val profileMap = profiles.associateBy { it.id }
             val activityList = mutableListOf<FriendActivityItem>()
-
-            for (session in sessions) {
-                val profile = profileMap[session.host_user_id]
-                val track = session.current_track_json
-                if (track != null && track.title.isNotBlank()) {
-                    val listeningTime = if (profile != null && profile.listeningSeconds > 0) {
-                        val hrs = profile.listeningSeconds / 3600
-                        val mins = (profile.listeningSeconds % 3600) / 60
-                        if (hrs > 0) "${hrs}h ${mins}m listened" else "$mins mins listened"
-                    } else if (profile != null && profile.totalPlays > 0) {
-                        "${profile.totalPlays} plays"
-                    } else {
-                        ""
-                    }
-
-                    activityList.add(
-                        FriendActivityItem(
-                            userId = session.host_user_id,
-                            displayName = profile?.displayName ?: "Streamify Listener",
-                            avatarUrl = profile?.avatarUrl ?: "",
-                            trackTitle = track.title,
-                            trackArtist = track.artist.ifBlank { "Streamify Artist" },
-                            coverUrl = track.coverArtPath,
-                            isLive = session.is_playing,
-                            jamCode = session.session_code,
-                            timeAgo = if (session.is_playing) "Listening now" else "Paused",
-                            listeningTimeText = listeningTime,
-                            positionMs = session.position_ms,
-                            durationSec = track.durationSec
-                        )
-                    )
-                }
-            }
 
             // If active sessions are fewer than 3, add high-engagement friends from profiles for a lively UI
             if (activityList.size < 3) {

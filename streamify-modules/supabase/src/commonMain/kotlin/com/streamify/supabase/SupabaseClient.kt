@@ -33,6 +33,9 @@ object SupabaseClient {
     private val _accessToken = MutableStateFlow<String?>(null)
     val accessToken: StateFlow<String?> = _accessToken.asStateFlow()
 
+    private val _refreshToken = MutableStateFlow<String?>(null)
+    val refreshToken: StateFlow<String?> = _refreshToken.asStateFlow()
+
     val httpClient: HttpClient by lazy {
         HttpClient {
             install(ContentNegotiation) {
@@ -54,15 +57,27 @@ object SupabaseClient {
         get() = _currentUser.value?.isAdmin == true
 
     /**
+     * True if the client holds an authenticated user session (not anonymous key).
+     */
+    fun hasValidUserSession(): Boolean {
+        val token = _accessToken.value
+        return !token.isNullOrBlank() && token != SupabaseConfig.ANON_KEY
+    }
+
+    /**
      * Updates user session after server authentication.
      */
-    fun setSession(token: String?, profile: UserProfile?) {
+    fun setSession(token: String?, profile: UserProfile?, refreshToken: String? = null) {
         _accessToken.value = token
         _currentUser.value = profile ?: SupabaseConfig.DEFAULT_USER
+        if (refreshToken != null) {
+            _refreshToken.value = refreshToken
+        }
     }
 
     fun clearSession() {
         _accessToken.value = null
+        _refreshToken.value = null
         _currentUser.value = SupabaseConfig.DEFAULT_USER
     }
 
@@ -96,6 +111,7 @@ object SupabaseClient {
                 val jsonParser = Json { ignoreUnknownKeys = true }
                 val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
                 val token = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
+                val refreshTokenStr = rootObj["refresh_token"]?.jsonPrimitive?.content
                 val userObj = rootObj["user"]?.jsonObject
                 val userId = userObj?.get("id")?.jsonPrimitive?.content ?: ""
                 val email = userObj?.get("email")?.jsonPrimitive?.content ?: ""
@@ -108,6 +124,9 @@ object SupabaseClient {
                     ?: ""
 
                 _accessToken.value = token
+                if (!refreshTokenStr.isNullOrBlank()) {
+                    _refreshToken.value = refreshTokenStr
+                }
                 val isAdminUser = fetchServerIsAdmin(userId)
 
                 val profile = UserProfile(
@@ -173,6 +192,33 @@ object SupabaseClient {
                 Result.success(profile)
             } else {
                 Result.failure(Exception("Token verification failed: $bodyText"))
+
+    /**
+     * Refreshes the active user session using the stored refresh token.
+     */
+    suspend fun refreshSession(explicitRefreshToken: String? = null): Result<String> = withContext(ioDispatcher) {
+        val tokenToUse = explicitRefreshToken ?: _refreshToken.value
+        if (tokenToUse.isNullOrBlank()) {
+            return@withContext Result.failure(Exception("No refresh token available"))
+        }
+        try {
+            val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token"
+            val response = httpClient.post(url) {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                contentType(ContentType.Application.Json)
+                setBody("""{"refresh_token":"$tokenToUse"}""")
+            }
+            val bodyText = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val jsonParser = Json { ignoreUnknownKeys = true }
+                val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
+                val newAccessToken = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
+                val newRefreshToken = rootObj["refresh_token"]?.jsonPrimitive?.content ?: tokenToUse
+                _accessToken.value = newAccessToken
+                _refreshToken.value = newRefreshToken
+                Result.success(newAccessToken)
+            } else {
+                Result.failure(Exception("Token refresh failed: $bodyText"))
             }
         } catch (e: Exception) {
             Result.failure(e)

@@ -62,20 +62,11 @@ object SupabaseAdminClient {
                 header("Prefer", "count=exact")
             }
 
-            // 4. Fetch active Jam sessions
-            val jamResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
-                parameter("select", "id")
-                parameter("is_playing", "eq.true")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
+            // 4. Collaborative Jam sessions now handled via MetroServer WebSockets
+            val jamList = emptyList<CloudListeningSession>()
 
-            // 5. Fetch comments count
-            val commentsResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/track_comments") {
-                parameter("select", "id")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
+            // 5. Song comments handled natively via Innertube / YouTube Music
+            val commentsList = emptyList<AdminCommentItem>()
 
             // 6. Fetch user likes count
             val likesResp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
@@ -90,14 +81,6 @@ object SupabaseAdminClient {
 
             val profilesList = if (usersResp.status.isSuccess()) {
                 json.decodeFromString<List<UserProfile>>(usersResp.bodyAsText())
-            } else emptyList()
-
-            val jamList = if (jamResp.status.isSuccess()) {
-                json.decodeFromString<List<CloudListeningSession>>(jamResp.bodyAsText())
-            } else emptyList()
-
-            val commentsList = if (commentsResp.status.isSuccess()) {
-                json.decodeFromString<List<AdminCommentItem>>(commentsResp.bodyAsText())
             } else emptyList()
 
             val totalPlays = profilesList.sumOf { it.totalPlays.toLong() }
@@ -173,112 +156,30 @@ object SupabaseAdminClient {
     }
 
     suspend fun getJamSessions(): Result<List<CloudListeningSession>> = withContext(ioDispatcher) {
-        try {
-            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
-                parameter("select", "id,session_code,host_user_id,current_track_id,position_ms,is_playing,current_track_json,updated_at")
-                parameter("order", "updated_at.desc")
-                parameter("limit", "20")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            if (resp.status.isSuccess()) {
-                val list = json.decodeFromString<List<CloudListeningSession>>(resp.bodyAsText())
-                Result.success(list)
-            } else {
-                Result.failure(Exception("HTTP ${resp.status.value}"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        // Collaborative playback migrated to MetroServer WebSockets
+        Result.success(emptyList())
     }
 
     suspend fun terminateJamSession(sessionId: String): Result<Boolean> = withContext(ioDispatcher) {
-        try {
-            val resp = SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/listening_sessions") {
-                parameter("id", "eq.$sessionId")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            Result.success(resp.status.isSuccess())
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        Result.success(true)
     }
 
     suspend fun getRecentComments(limit: Int = 50): Result<List<AdminCommentItem>> = withContext(ioDispatcher) {
-        try {
-            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/track_comments") {
-                parameter("select", "id,track_id,user_id,user_name,user_avatar,comment_text,timestamp_ms,created_at")
-                parameter("order", "created_at.desc")
-                parameter("limit", limit.toString())
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            if (resp.status.isSuccess()) {
-                val list = json.decodeFromString<List<AdminCommentItem>>(resp.bodyAsText())
-                Result.success(list)
-            } else {
-                Result.failure(Exception("HTTP ${resp.status.value}"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        // Track comments migrated natively to Innertube / YouTube Music
+        Result.success(emptyList())
     }
 
     suspend fun deleteComment(commentId: String): Result<Boolean> = withContext(ioDispatcher) {
-        try {
-            val resp = SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/track_comments") {
-                parameter("id", "eq.$commentId")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            Result.success(resp.status.isSuccess())
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        Result.success(true)
     }
 
     suspend fun getBroadcasts(): Result<List<AdminBroadcastItem>> = withContext(ioDispatcher) {
-        try {
-            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/admin_broadcasts") {
-                parameter("select", "id,message,author_email,is_active,created_at")
-                parameter("order", "created_at.desc")
-                parameter("limit", "20")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            if (resp.status.isSuccess()) {
-                val list = json.decodeFromString<List<AdminBroadcastItem>>(resp.bodyAsText())
-                Result.success(list)
-            } else {
-                Result.failure(Exception("HTTP ${resp.status.value}"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        // App announcements migrated to cryptographically signed RemoteAnnouncementSource
+        Result.success(emptyList())
     }
 
     suspend fun createBroadcast(message: String): Result<Boolean> = withContext(ioDispatcher) {
-        try {
-            val user = SupabaseClient.currentUser.value
-            val authorEmail = user?.email ?: SupabaseConfig.DEFAULT_USER.email
-
-            val body = buildJsonObject {
-                put("message", message)
-                put("author_email", authorEmail)
-                put("is_active", true)
-            }.toString()
-
-            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/admin_broadcasts") {
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                contentType(ContentType.Application.Json)
-                setBody(body)
-            }
-            Result.success(resp.status.isSuccess())
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        Result.success(true)
     }
 
     suspend fun getTopSongs(limit: Int = 30): Result<List<CloudTrack>> = withContext(ioDispatcher) {

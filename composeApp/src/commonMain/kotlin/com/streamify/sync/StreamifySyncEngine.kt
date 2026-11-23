@@ -1,8 +1,10 @@
 package com.streamify.sync
 
 import com.maxrave.domain.data.entities.DownloadState
+import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.extension.now
+import com.maxrave.domain.repository.AlbumRepository
 import com.maxrave.domain.repository.ArtistRepository
 import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.SongRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -40,10 +43,43 @@ object StreamifySyncEngine : KoinComponent {
 
     private val songRepository: SongRepository by inject()
     private val artistRepository: ArtistRepository by inject()
+    private val albumRepository: AlbumRepository by inject()
     private val localPlaylistRepository: LocalPlaylistRepository by inject()
+    private val dataStoreManager: com.maxrave.domain.manager.DataStoreManager by inject()
+    private val analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository by inject()
 
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val SYNCABLE_SETTINGS_KEYS = listOf(
+        // Appearance & Themes
+        "theme_mode",
+        "theme_color_source",
+        "custom_theme_color",
+        "now_playing_style",
+        "chart_key",
+        // Audio & Playback
+        "quality",
+        "download_quality",
+        "normalize_volume",
+        "skip_silent",
+        "crossfade_enabled",
+        "crossfade_duration",
+        // Content
+        "explicit_content_enabled",
+        "location",
+        "radio_audio_only",
+        "endless_queue",
+        "sponsor_block_enabled",
+        "spotify_canvas",
+        "am_animated_artwork",
+        // Lyrics
+        "lyrics_provider",
+        "translation_language",
+        "use_translation_language",
+        "use_ai_translation",
+        "lyrics_style"
+    )
 
     @Volatile
     var isSyncActive: Boolean = false
@@ -92,8 +128,17 @@ object StreamifySyncEngine : KoinComponent {
             _syncState.value = SyncStatus.Syncing("Syncing followed artists...")
             syncArtistsInternal(targetUserId)
 
+            _syncState.value = SyncStatus.Syncing("Syncing saved albums...")
+            syncAlbumsInternal(targetUserId)
+
             _syncState.value = SyncStatus.Syncing("Syncing playlists...")
             syncPlaylistsInternal(targetUserId)
+
+            _syncState.value = SyncStatus.Syncing("Syncing settings...")
+            syncSettingsInternal(targetUserId)
+
+            _syncState.value = SyncStatus.Syncing("Syncing listening history...")
+            syncListeningHistoryInternal(targetUserId)
 
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
@@ -112,8 +157,8 @@ object StreamifySyncEngine : KoinComponent {
      * Phase 3 Inbound Hydration & Phase 2 Outbox Drain for Liked Songs.
      */
     private suspend fun syncLikesInternal(targetUserId: String): Int {
-        // 1. Fetch remote cloud liked tracks
-        val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracks(targetUserId)
+        // 1. Fetch remote cloud liked tracks (excluding any legacy trk_ items)
+        val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracks(targetUserId).filter { !it.id.startsWith("trk_") }
         val cloudIds = cloudTracks.map { it.id }.toSet()
 
         // 2. Fetch local liked songs
@@ -128,33 +173,48 @@ object StreamifySyncEngine : KoinComponent {
         for (cloudTrack in cloudTracks) {
             if (cloudTrack.id !in localIds) {
                 try {
+                    val existing = songRepository.getSongById(cloudTrack.id).firstOrNull()
+                    if (existing != null && !existing.liked) {
+                        // The track exists locally, but the user explicitly unliked it!
+                        // Reconcile: delete from Supabase user_likes instead of resurrecting it locally!
+                        SupabaseLibrarySync.syncLike(
+                            trackId = cloudTrack.id,
+                            title = cloudTrack.title,
+                            artist = cloudTrack.artist,
+                            isLiked = false,
+                            userId = targetUserId
+                        )
+                        continue
+                    }
                     val durationStr = formatDuration(cloudTrack.durationSec)
-                    val entity = SongEntity(
-                        videoId = cloudTrack.id,
-                        albumId = null,
-                        albumName = cloudTrack.album ?: "Streamify",
-                        artistId = null,
-                        artistName = listOf(cloudTrack.artist),
-                        duration = durationStr,
-                        durationSeconds = cloudTrack.durationSec,
-                        isAvailable = true,
-                        isExplicit = false,
-                        likeStatus = "LIKE",
-                        thumbnails = cloudTrack.coverUrl.ifBlank { null },
-                        title = cloudTrack.title,
-                        videoType = "MUSIC_VIDEO_TYPE_ATV",
-                        category = null,
-                        resultType = null,
-                        liked = true,
-                        totalPlayTime = 0,
-                        downloadState = DownloadState.STATE_NOT_DOWNLOADED,
-                        favoriteAt = now(),
-                        downloadedAt = now(),
-                        inLibrary = now(),
-                        canvasUrl = null,
-                        canvasThumbUrl = null
-                    )
-                    songRepository.insertSong(entity).lastOrNull()
+                    if (existing == null) {
+                        val entity = SongEntity(
+                            videoId = cloudTrack.id,
+                            albumId = null,
+                            albumName = cloudTrack.album ?: "Streamify",
+                            artistId = null,
+                            artistName = listOf(cloudTrack.artist),
+                            duration = durationStr,
+                            durationSeconds = cloudTrack.durationSec,
+                            isAvailable = true,
+                            isExplicit = false,
+                            likeStatus = "LIKE",
+                            thumbnails = cloudTrack.coverUrl.ifBlank { null },
+                            title = cloudTrack.title,
+                            videoType = "MUSIC_VIDEO_TYPE_ATV",
+                            category = null,
+                            resultType = null,
+                            liked = true,
+                            totalPlayTime = 0,
+                            downloadState = DownloadState.STATE_NOT_DOWNLOADED,
+                            favoriteAt = now(),
+                            downloadedAt = now(),
+                            inLibrary = now(),
+                            canvasUrl = null,
+                            canvasThumbUrl = null
+                        )
+                        songRepository.insertSong(entity).lastOrNull()
+                    }
                     songRepository.updateLikeStatus(cloudTrack.id, 1)
                 } catch (_: Exception) {
                     // Isolate single entity failure so the remaining batch proceeds
@@ -162,23 +222,21 @@ object StreamifySyncEngine : KoinComponent {
             }
         }
 
-        // 4. Outbox: Push local likes that don't exist in cloud to Supabase
-        for (localSong in localLiked) {
-            if (localSong.videoId !in cloudIds && localSong.liked) {
-                try {
-                    SupabaseLibrarySync.syncLike(
-                        trackId = localSong.videoId,
-                        title = localSong.title,
-                        artist = localSong.artistName?.joinToString(", ") ?: "Unknown",
-                        album = localSong.albumName,
-                        coverUrl = localSong.thumbnails,
-                        durationSec = localSong.durationSeconds,
-                        isLiked = true,
-                        userId = targetUserId
-                    )
-                } catch (_: Exception) {
-                }
+        // 4. Outbox: Push local likes that don't exist in cloud to Supabase in high-performance batches
+        val pendingUploads = localLiked.filter { it.videoId !in cloudIds && it.liked && !it.videoId.startsWith("trk_") }
+        if (pendingUploads.isNotEmpty()) {
+            val cloudBatch = pendingUploads.map { localSong ->
+                CloudTrack(
+                    id = localSong.videoId,
+                    title = localSong.title,
+                    artist = localSong.artistName?.joinToString(", ") ?: "Unknown",
+                    album = localSong.albumName,
+                    durationSec = localSong.durationSeconds,
+                    coverUrl = localSong.thumbnails ?: "",
+                    streamUrl = "https://www.youtube.com/watch?v=${localSong.videoId}"
+                )
             }
+            SupabaseLibrarySync.uploadLikedTracksBatch(cloudBatch, targetUserId)
         }
 
         return cloudTracks.size.coerceAtLeast(localLiked.size)
@@ -211,21 +269,177 @@ object StreamifySyncEngine : KoinComponent {
     }
 
     /**
-     * Phase 2 / Phase 3 Playlists Synchronization.
+     * Phase 2 / Phase 3 Saved Albums Synchronization.
+     */
+    private suspend fun syncAlbumsInternal(targetUserId: String) {
+        try {
+            val cloudAlbumIds = SupabaseLibrarySync.fetchCloudItemFavorites("album", targetUserId).toSet()
+            val localLikedAlbums = try {
+                albumRepository.getLikedAlbums().first()
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val localAlbumIds = localLikedAlbums.map { it.browseId }.toSet()
+
+            // Inbound: save albums locally that are favorited in the cloud
+            for (cloudAlbumId in cloudAlbumIds) {
+                if (cloudAlbumId !in localAlbumIds) {
+                    albumRepository.updateAlbumLiked(cloudAlbumId, 1)
+                }
+            }
+
+            // Outbox: push locally favorited albums to cloud
+            for (localAlbum in localLikedAlbums) {
+                if (localAlbum.browseId !in cloudAlbumIds && localAlbum.liked == 1) {
+                    SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 2 / Phase 3 Playlists Synchronization (Full Inbound & Outbound with UUID linkage).
      */
     private suspend fun syncPlaylistsInternal(targetUserId: String) {
         try {
+            // 1. Inbound: fetch cloud playlists
+            val cloudPlaylists = SupabaseLibrarySync.fetchCloudPlaylists(targetUserId)
             val localPlaylists = localPlaylistRepository.getAllLocalPlaylists().first()
-            for (localPl in localPlaylists) {
+            val localSyncIds = localPlaylists.mapNotNull { it.syncId?.ifBlank { null } }.toSet()
+
+            for (cloudPl in cloudPlaylists) {
+                if (cloudPl.id !in localSyncIds) {
+                    val newEntity = LocalPlaylistEntity(
+                        title = cloudPl.name,
+                        thumbnail = cloudPl.coverUrl.ifBlank { null },
+                        syncId = cloudPl.id
+                    )
+                    localPlaylistRepository.insertLocalPlaylist(newEntity, "Synced from Cloud").first()
+
+                    // Fetch tracks for this cloud playlist with full metadata preservation
+                    val cloudTracksWithMeta = SupabaseLibrarySync.fetchCloudPlaylistTracksWithMetadata(cloudPl.id)
+                    if (cloudTracksWithMeta.isNotEmpty()) {
+                        val refreshedLocal = localPlaylistRepository.getAllLocalPlaylists().first()
+                        val matched = refreshedLocal.find { it.syncId == cloudPl.id }
+                        if (matched != null) {
+                            for (item in cloudTracksWithMeta) {
+                                val tid = item.trackId
+                                val meta = item.tracks
+                                val song = songRepository.getSongById(tid).firstOrNull() ?: SongEntity(
+                                    videoId = tid,
+                                    title = meta?.title ?: "Synced Track",
+                                    artistName = listOf(meta?.artist ?: "Unknown Artist"),
+                                    albumName = meta?.album ?: "Streamify",
+                                    duration = formatDuration(meta?.durationSec ?: 0),
+                                    durationSeconds = meta?.durationSec ?: 0,
+                                    thumbnails = meta?.coverUrl?.ifBlank { null },
+                                    isAvailable = true,
+                                    isExplicit = false,
+                                    likeStatus = "INDIFFERENT",
+                                    videoType = "MUSIC_VIDEO_TYPE_ATV"
+                                ).also {
+                                    songRepository.insertSong(it).lastOrNull()
+                                }
+                                localPlaylistRepository.addTrackToLocalPlaylist(matched.id, song).first()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Outbound: push local playlists and their tracks to cloud
+            val refreshedPlaylists = localPlaylistRepository.getAllLocalPlaylists().first()
+            for (localPl in refreshedPlaylists) {
+                // Ensure valid UUID format for Supabase playlists.id
+                val syncId = if (!localPl.syncId.isNullOrBlank()) {
+                    localPl.syncId
+                } else {
+                    "00000000-0000-4000-8000-${localPl.id.toString(16).padStart(12, '0')}"
+                }
+
+                val tracks = localPlaylistRepository.getFullPlaylistTracks(localPl.id)
+                val trackIds = tracks.map { it.videoId }.filter { it.isNotBlank() && !it.startsWith("trk_") }
+
                 SupabaseLibrarySync.syncPlaylist(
-                    playlistId = "local_${localPl.id}",
+                    playlistId = syncId,
                     name = localPl.title,
-                    description = "Streamify Local Playlist",
+                    description = "Streamify Playlist",
                     coverUrl = localPl.thumbnail ?: "",
-                    trackIds = emptyList(),
+                    trackIds = trackIds,
                     isPublic = false,
                     userId = targetUserId
                 )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 2 Outbox & Phase 3 Inbound for User Settings Profile.
+     */
+    private suspend fun syncSettingsInternal(targetUserId: String) {
+        try {
+            val remoteResult = SupabaseLibrarySync.fetchUserSettings(targetUserId)
+            val remoteSettings = remoteResult.getOrDefault(emptyMap())
+
+            val localSettings = mutableMapOf<String, String>()
+            for (key in SYNCABLE_SETTINGS_KEYS) {
+                val value = dataStoreManager.getString(key).firstOrNull()
+                if (!value.isNullOrBlank()) {
+                    localSettings[key] = value
+                }
+            }
+
+            // Inbound: If local setting is unset but exists in remote, apply it locally
+            for ((key, remoteVal) in remoteSettings) {
+                if (key !in localSettings && remoteVal.isNotBlank()) {
+                    dataStoreManager.putString(key, remoteVal)
+                }
+            }
+
+            // Outbox: Merge local into remote and upload if there are newer local settings
+            val merged = remoteSettings.toMutableMap().apply { putAll(localSettings) }
+            if (merged != remoteSettings && localSettings.isNotEmpty()) {
+                SupabaseLibrarySync.uploadUserSettings(targetUserId, merged)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 3 Inbound & Phase 2 Outbox for Playback History (Analytics & Wrapped).
+     */
+    private suspend fun syncListeningHistoryInternal(targetUserId: String) {
+        try {
+            // 1. Inbound: fetch remote cloud listening history
+            val cloudHistory = SupabaseLibrarySync.fetchCloudListeningHistory(targetUserId, limit = 100)
+            val cloudIds = cloudHistory.map { it.trackId }.toSet()
+
+            val localEvents = analyticsRepository.getPlaybackEventsByOffset(0, 100).firstOrNull() ?: emptyList()
+            val localVideoIds = localEvents.map { it.videoId }.toSet()
+
+            for (cloudItem in cloudHistory) {
+                if (cloudItem.trackId !in localVideoIds && cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
+                    analyticsRepository.insertPlaybackEvent(
+                        videoId = cloudItem.trackId,
+                        channelIds = emptyList(),
+                        albumBrowseId = null,
+                        durationSecond = cloudItem.listenedDurationSec.toLong(),
+                        listenedSecond = cloudItem.listenedDurationSec.toLong()
+                    ).firstOrNull()
+                }
+            }
+
+            // 2. Outbox: push local playback events not yet in cloud
+            for (localEvent in localEvents) {
+                if (localEvent.videoId !in cloudIds && localEvent.videoId.isNotBlank() && !localEvent.videoId.startsWith("trk_")) {
+                    SupabaseLibrarySync.recordPlaybackHistory(
+                        userId = targetUserId,
+                        trackId = localEvent.videoId,
+                        durationSec = localEvent.listenedSecond.toInt().coerceAtLeast(1)
+                    )
+                }
             }
         } catch (_: Exception) {
         }
