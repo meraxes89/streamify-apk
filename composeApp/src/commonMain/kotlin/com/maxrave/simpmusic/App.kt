@@ -565,18 +565,29 @@ fun App(
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            if (streamifyAuthState is AuthState.Unauthenticated) {
-                GoogleOnboardingAuthScreen(
-                    onAuthenticated = {
-                        val current = StreamifyAuthManager.authState.value
-                        if (current is AuthState.Authenticated) {
-                            com.streamify.sync.StreamifySyncEngine.triggerSync(current.user.id)
-                        }
-                    },
-                )
-            } else {
-                // Read inside AppTheme so MaterialTheme reflects the resolved scheme.
-                val isLightScheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
+            when (streamifyAuthState) {
+                is AuthState.Unauthenticated -> {
+                    GoogleOnboardingAuthScreen(
+                        onAuthenticated = {
+                            val current = StreamifyAuthManager.authState.value
+                            if (current is AuthState.Authenticated) {
+                                com.streamify.sync.StreamifySyncEngine.triggerSync(current.user.id)
+                            }
+                        },
+                    )
+                }
+                is AuthState.Loading -> {
+                    // Holding state while reading cached credentials from storage:
+                    // Render clean background matching theme to prevent main Scaffold flash/thrash
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                    )
+                }
+                is AuthState.Authenticated -> {
+                    // Read inside AppTheme so MaterialTheme reflects the resolved scheme.
+                    val isLightScheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
 
         // The desktop shell is a window colour with panels floating on it. The two schemes mirror
         // each other: the window takes the extreme (pure black / pure white) and the panel steps
@@ -1004,7 +1015,12 @@ fun App(
 
                 if (shouldShowUpdateDialog) {
                     val response = updateData ?: return@Scaffold
-                    val binary = remember(response.tagName) { resolveDeviceBinary(response.tagName) }
+                    val binary = remember(response.tagName) {
+                        resolveDeviceBinary(
+                            tag = response.tagName,
+                            artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                        )
+                    }
                     val currentVersion = remember { VersionManager.getVersionName() }
                     StreamifyUpdateDialog(
                         targetVersion = response.tagName,
@@ -1108,21 +1124,19 @@ fun App(
                         },
                     )
                 }
-            },
-        )
-    }
+            }
+        }
 
-    AnimatedVisibility(
-        visible = isSplashVisible,
-        enter = fadeIn(animationSpec = tween(300)),
-        exit = fadeOut(animationSpec = tween(500)),
-    ) {
-        StreamifySplashScreen(
-            onDismiss = {
-                isSplashVisible = false
-            },
-        )
-    }
+        AnimatedVisibility(
+            visible = isSplashVisible || streamifyAuthState is AuthState.Loading,
+            enter = fadeIn(animationSpec = tween(300)),
+            exit = fadeOut(animationSpec = tween(500)),
+        ) {
+            StreamifySplashScreen(
+                onDismiss = {
+                    isSplashVisible = false
+                },
+            )
         }
     }
 }

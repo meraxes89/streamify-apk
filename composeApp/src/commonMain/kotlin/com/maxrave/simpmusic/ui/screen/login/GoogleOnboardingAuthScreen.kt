@@ -121,7 +121,11 @@ fun GoogleOnboardingAuthScreen(
                 }
             } else {
                 val err = result.exceptionOrNull()?.message ?: "Sign-in failed"
-                if (!err.contains("cancelled", ignoreCase = true)) {
+                if (err.contains("web sign-in", ignoreCase = true)) {
+                    // Browser OAuth fallback is actively in flight: maintain loading state without error text
+                    isLoading = true
+                    errorMessage = null
+                } else if (!err.contains("cancelled", ignoreCase = true)) {
                     errorMessage = err
                 }
             }

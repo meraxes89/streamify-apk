@@ -34,8 +34,11 @@ The third public beta release of Streamify introduces native zero-config Cloudfl
 ### Fixed
 - **Auth**: Resolved Vivo build (`vivoAndroidApp`) infinite external browser redirect loop caused by Google Credential Manager rejecting spoofed package `com.spotify.music` signature (#285).
 - **Auth**: Expanded Android Credential Manager exception handling to catch all `GetCredentialException` variants and cleanly trigger web OAuth fallback (#285).
+- **Auth**: Fixed cold-start auth state race condition in `App.kt` by holding splash/neutral state during `AuthState.Loading`, preventing premature Scaffold rendering and layout thrash for unauthenticated users.
+- **Auth**: Silenced false-positive error state in `GoogleOnboardingAuthScreen.kt` when browser OAuth fallback is triggered.
 - **Update Engine**: Repaired Vivo APK filtering blindspot in `UpdateResolver.kt` and unified architecture matching in `PlatformBinaryResolver.android.kt` across all Vivo manifest keys (#286).
 - **Update Engine**: Enforced ABI-aware binary matching for Vivo builds in `PlatformBinaryResolver.android.kt`, ensuring 32-bit `armeabi-v7a` Vivo devices resolve compatible packages instead of unexecutable `arm64-v8a` splits.
+- **Update Engine**: Wired `UpdateStateHolder.latestManifest?.artifacts` into `resolveDeviceBinary` in `App.kt`, restoring direct CDN binary resolution for the in-app update dialog.
 - **Update Engine**: Defused GitHub pre-release CDN 404 update discovery trap by pointing REST API fallback to `/releases?per_page=1` with array payload support in `UpdateResolver.kt` (#286).
 - **Audio Engine**: Resolved unhandled `DOMException [AbortError]` events on seek and client disconnect in `BlockRangeStream` and `PacedStreamTransform` (#271).
 - **Tunnel**: Excluded internal Cloudflare API hostnames in quick tunnel URL extraction regex (#270).
