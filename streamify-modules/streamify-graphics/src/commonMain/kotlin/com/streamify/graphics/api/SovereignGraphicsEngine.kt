@@ -1,0 +1,62 @@
+package com.streamify.graphics.api
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+
+/**
+ * Frozen render request passed from the `Modifier.streamifyGlass` facade to
+ * the [SovereignGraphicsEngine] port.
+ *
+ * Immutable by convention — the facade builds one instance per composition
+ * and reuses it across every draw pass, so implementations MUST NOT mutate
+ * or retain ownership of it beyond a single [SovereignGraphicsEngine.applyGlass]
+ * call.
+ *
+ * @property backdrop Caller-captured backdrop layer (e.g. via
+ * `rememberGraphicsLayer()`). Contains the content *behind* the glass
+ * surface, pre-captured by the hosting composable. May be unrecorded —
+ * implementations must treat drawing it as a no-op, never an error.
+ * @property shape Clip geometry of the glass surface.
+ * @property tint Optional overlay fill. `Color.Unspecified` means "no tint
+ * layer" — implementations skip the fill entirely.
+ */
+class GlassRenderRequest(
+    val backdrop: GraphicsLayer,
+    val shape: Shape,
+    val tint: Color,
+)
+
+/**
+ * Hexagonal port of the Sovereign GPU Engine — the ONLY contract through
+ * which the Compose UI layer requests Liquid Glass rendering
+ * (docs/gpu/ARCHITECTURE.md, section 1).
+ *
+ * The UI never sees a platform type: Phase 2 adapters implement this
+ * interface per tier —
+ *  * androidMain: AGSL `RuntimeShader` (API 33+, Tier 1/2),
+ *    `RenderEffect` (API 31–32, Tier 2), acrylic scrim (API < 31, Tier 3).
+ *  * skiko targets (Desktop / iOS / wasmJs): Skia `RuntimeShaderBuilder`
+ *    over the canonical `LiquidGlassCore.sksl`.
+ *
+ * Implementations must honor the engine's core invariants:
+ *  * **Draw-phase only.** Called exclusively from a draw scope; never
+ *    triggers recomposition and never allocates per frame.
+ *  * **Never throws.** Any shader compilation or GPU failure degrades to the
+ *    Tier 4 (Safe) solid-tint path inside the adapter (see
+ *    docs/gpu/CI_TESTING_SPEC.md, Shader Compilation Failure Fallback Test).
+ *  * **Thread-safe.** May be invoked from any render thread.
+ */
+interface SovereignGraphicsEngine {
+
+    /**
+     * Renders the glass composite for [request] into [scope]: the backdrop
+     * (refracted / blurred according to the active tier), the optional tint
+     * fill, and the specular rim highlight, all clipped to the request shape.
+     *
+     * The caller draws its own content afterwards; this method paints only
+     * the surface *behind* the content.
+     */
+    fun applyGlass(scope: DrawScope, request: GlassRenderRequest)
+}

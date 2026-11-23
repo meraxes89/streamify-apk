@@ -5,7 +5,8 @@
 #                           analysis (ubuntu, ~2 min)
 #   Tier 2  engine_dsp /   reusable workflow_call shards, dispatched in
 #          android /        parallel, each skipped-by-condition (never
-#          desktop / ios    missing) when its subtree is untouched
+#          desktop / wasm / missing) when its subtree is untouched
+#          graphics
 #   Tier 3  ci-gate         "CI Gate (Blocking)" — the ONE required status
 #                           check in Branch Protection. Passes on success OR
 #                           skipped, fails loudly on failure/cancelled.
@@ -56,6 +57,7 @@ jobs:
       run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_wasm: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.wasm == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_graphics: ${{ steps.filter.outputs.graphics == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
           contains(github.event.pull_request.labels.*.name, 'package') ||
@@ -108,6 +110,10 @@ jobs:
             supabase:
               - 'supabase/**'
               - 'streamify-modules/supabase/**'
+            graphics:
+              - 'streamify-modules/streamify-graphics/**'
+              - 'docs/gpu/**'
+              - '.github/workflows/_ci-graphics.yml'
             packaging:
               - '**/*.gradle.kts'
               - 'gradle/**'
@@ -273,6 +279,21 @@ jobs:
     with:
       release_mode: false
 
+  # Sovereign GPU Engine spoke (docs/gpu/CI_TESTING_SPEC.md). Phase 1
+  # scope: KMP assemble verification of
+  # :streamify-modules:streamify-graphics. The 5-job test matrix
+  # (governor state machine, API 27 Robolectric, offscreen Skia golden,
+  # software-raster, shader-failure) extends _ci-graphics.yml with the
+  # Phase 2/4 test deliverables without touching this hub wiring.
+  graphics:
+    name: "Graphics Engine (Sovereign GPU)"
+    needs: preflight
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.preflight.outputs.run_graphics == 'true'
+    uses: ./.github/workflows/_ci-graphics.yml
+
   # SEC-10 gate: the Supabase RLS hardening suite runs the schema +
   # regression assertions against a real Postgres+pgvector service
   # container. Every assertion FAILS if a pre-SEC-10 permissive policy
@@ -323,7 +344,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, wasm, supabase-rls]
+    needs: [preflight, clippy, engine_dsp, android, desktop, wasm, graphics, supabase-rls]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)
