@@ -67,7 +67,7 @@ internal object SovereignGraphicsEngineLocator {
     fun engine(): SovereignGraphicsEngine {
         cached?.let { return it }
         val resolved = runCatching {
-            getKoin().get(SovereignGraphicsEngine::class)
+            getKoin().get<SovereignGraphicsEngine>()
         }.getOrNull()
         if (resolved != null) {
             cached = resolved
