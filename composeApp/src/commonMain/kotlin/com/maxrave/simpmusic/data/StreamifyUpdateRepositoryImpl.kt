@@ -6,6 +6,7 @@ import com.maxrave.domain.utils.Resource
 import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.simpmusic.data.update.UpdateResolver
 import com.maxrave.simpmusic.data.update.UpdateResult
+import com.maxrave.simpmusic.data.update.UpdateSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -32,7 +33,7 @@ class StreamifyUpdateRepositoryImpl(
                                 UpdateData(
                                     tagName = result.manifest.version,
                                     releaseTime = result.manifest.publishedAt,
-                                    body = result.manifest.changelog,
+                                    body = UpdateSanitizer.sanitizeChangelog(result.manifest.changelog),
                                 ),
                             ),
                         )

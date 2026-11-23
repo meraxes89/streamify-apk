@@ -67,4 +67,39 @@ class UpdateManifestTest {
         assertEquals("", manifest.changelog)
         assertTrue(manifest.artifacts.isEmpty())
     }
+
+    @Test
+    fun manifestDeserializesMultiplatformAbiKeys() {
+        val payload = """
+            {
+              "version": "v1.0.3-beta",
+              "versionCode": 66,
+              "artifacts": {
+                "android-arm64-v8a": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-v1.0.3-beta-arm64-v8a-release.apk",
+                  "sha256": "1111"
+                },
+                "android-armeabi-v7a": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-v1.0.3-beta-armeabi-v7a-release.apk",
+                  "sha256": "2222"
+                },
+                "windows-x64": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-1.0.3.msi",
+                  "sha256": "3333"
+                },
+                "linux-deb": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/streamify_1.0.3_amd64.deb",
+                  "sha256": "4444"
+                }
+              }
+            }
+        """.trimIndent()
+
+        val manifest = json.decodeFromString<UpdateManifest>(payload)
+
+        assertEquals("1111", manifest.artifacts["android-arm64-v8a"]?.sha256)
+        assertEquals("2222", manifest.artifacts["android-armeabi-v7a"]?.sha256)
+        assertEquals("3333", manifest.artifacts["windows-x64"]?.sha256)
+        assertEquals("4444", manifest.artifacts["linux-deb"]?.sha256)
+    }
 }
