@@ -8,33 +8,34 @@ package com.streamify.graphics.engine.adapter
  *
  * The transform is mechanical, total and idempotent — no parsing beyond
  * targeted line-level rewrites, so the AGSL text handed to Android's
- * `RuntimeShader` on API 33+ is exactly the canonical source plus the two
- * documented deltas below. The Skia side of the equivalence is enforced in
+ * `RuntimeShader` on API 33+ is exactly the canonical source plus the one
+ * documented delta below. The Skia side of the equivalence is enforced in
  * CI: `AgslDialectEquivalenceTest` compiles the transpiled text through
  * `RuntimeEffect.makeForShader()` and renders it pixel-identical to the
  * canonical source.
  *
- * Deltas applied (AGSL is an SkSL dialect; only these differ for this
- * shader):
+ * Delta applied (AGSL is an SkSL dialect; this is the only one this shader
+ * needs):
  *
- *  1. **Entry-point parameter rename** — `main(float2 coord)` becomes
- *     `main(float2 fragCoord)`, the parameter name every AGSL example in
- *     the platform documentation uses. Cosmetic, but keeps the generated
- *     text aligned with the documented entry-point contract.
- *  2. **`uniform half4` promotion** — `uniform half4 tintColor` becomes
- *     `uniform float4`. AGSL uniform setters are float-based
- *     (`RuntimeShader.setFloatUniform` binds `floatN` uniforms on every
- *     API 33 build, while early OEM AGSL implementations mishandled
- *     half-precision uniform bindings), so declaring shader uniforms as
- *     `float4` guarantees `setFloatUniform` compatibility across every
- *     API 33+ device. Skia treats the two identically, which is exactly
- *     what the pixel-equivalence gate pins.
+ *  1. **`uniform half4` promotion** — `uniform half4 tintColor` becomes
+ *     `uniform float4`. AGSL treats `half` as a float alias and its
+ *     uniform setters are float-based, and the Android documentation
+ *     recommends declaring shader uniforms as `float` for exactly this
+ *     reason, so the promoted declaration guarantees `setFloatUniform`
+ *     compatibility on every API 33+ build. Skia treats the two
+ *     identically, which is exactly what the pixel-equivalence gate pins.
+ *
+ * **No entry-point rewrite** — AGSL accepts any `main` parameter name; the
+ * canonical `half4 main(float2 coord)` signature shape compiles as-is on
+ * both dialects. Renaming the parameter (e.g. to the docs' `fragCoord`
+ * convention) would force a whole-body identifier rewrite, and a
+ * signature-only rename is a compile error — the first iteration of this
+ * shim did exactly that and was caught by the equivalence gate, which is
+ * the gate's job.
  */
 object AgslDialect {
 
     private val ENTRY_POINT = Regex("""half4\s+main\s*\(\s*float2\s+\w+\s*\)""")
-
-    private val ENTRY_PARAMETER = Regex("""(half4\s+main\s*\(\s*float2\s+)(\w+)(\s*\))""")
 
     private val HALF4_UNIFORM = Regex("""(?m)^(\s*uniform\s+)half4(\s+)""")
 
@@ -57,9 +58,6 @@ object AgslDialect {
         return canonicalSksl
             .replace(HALF4_UNIFORM) { match ->
                 match.groupValues[1] + "float4" + match.groupValues[2]
-            }
-            .replace(ENTRY_PARAMETER) { match ->
-                match.groupValues[1] + "fragCoord" + match.groupValues[3]
             }
     }
 

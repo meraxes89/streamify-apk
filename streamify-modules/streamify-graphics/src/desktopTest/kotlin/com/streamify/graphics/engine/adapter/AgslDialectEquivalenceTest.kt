@@ -30,11 +30,17 @@ import org.jetbrains.skia.Surface
  *  3. **Pixels** — the transpiled text must render sample-for-sample
  *     identical to the canonical source on a raster surface, in both the
  *     Tier 1 (3-tap dispersion) and Tier 2 (single-tap) configurations —
- *     the dialect deltas are provably semantic no-ops.
+ *     the dialect delta is provably a semantic no-op.
  *
- * Plus unit cases for the transpiler mechanics (rename, promotion,
- * idempotence) and the fail-fast lint (SkSL-only constructs rejected with
- * `IllegalArgumentException` — the Android adapter's degradation path).
+ * Plus unit cases for the transpiler mechanics (signature pass-through,
+ * half4 promotion, idempotence) and the fail-fast lint (SkSL-only
+ * constructs rejected with `IllegalArgumentException` — the Android
+ * adapter's degradation path).
+ *
+ * This gate earned its keep on its first CI run: an earlier shim iteration
+ * renamed the entry parameter only in the signature, leaving the body's
+ * `coord` references dangling — exactly the class of silent dialect bug
+ * the pixel-equivalence layer exists to catch.
  */
 class AgslDialectEquivalenceTest {
 
@@ -85,10 +91,15 @@ class AgslDialectEquivalenceTest {
     }
 
     @Test
-    fun entryParameterIsRenamedToFragCoord() {
+    fun entryPointSignaturePassesThroughUntouched() {
+        // AGSL accepts any entry-point parameter name — the canonical
+        // `half4 main(float2 coord)` shape compiles as-is on both dialects,
+        // so the shim must not rewrite it. A signature-only rename would
+        // leave the body's `coord` references dangling (the compile error
+        // the first shim iteration shipped and this gate caught).
         val transpiled = AgslDialect.transpile(LiquidGlassSource.SKSL)
-        assertTrue("half4 main(float2 fragCoord)" in transpiled)
-        assertTrue("float2 coord)" !in transpiled)
+        assertTrue("half4 main(float2 coord)" in transpiled)
+        assertTrue("fragCoord" !in transpiled)
     }
 
     @Test
