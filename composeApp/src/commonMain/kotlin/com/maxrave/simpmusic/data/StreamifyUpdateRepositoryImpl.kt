@@ -6,6 +6,7 @@ import com.maxrave.domain.utils.Resource
 import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.simpmusic.data.update.UpdateResolver
 import com.maxrave.simpmusic.data.update.UpdateResult
+import com.maxrave.simpmusic.data.update.UpdateSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
