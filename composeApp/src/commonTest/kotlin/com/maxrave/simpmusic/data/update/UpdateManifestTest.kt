@@ -121,4 +121,30 @@ class UpdateManifestTest {
         assertEquals(102, manifest.minSupportedVersionCode)
         assertTrue(manifest.isBreaking)
     }
+
+    @Test
+    fun manifestDeserializesVivoArtifacts() {
+        val payload = """
+            {
+              "version": "v1.0.3-beta",
+              "versionCode": 66,
+              "artifacts": {
+                "android-vivo-arm64": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-vivo-v1.0.3-beta-vivoAndroidApp-release.apk",
+                  "sha256": "vivo_arm64_sha"
+                },
+                "android-vivo": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-vivo-v1.0.3-beta-vivoAndroidApp-release.apk",
+                  "sha256": "vivo_arm64_sha"
+                }
+              }
+            }
+        """.trimIndent()
+
+        val manifest = json.decodeFromString<UpdateManifest>(payload)
+
+        assertEquals("vivo_arm64_sha", manifest.artifacts["android-vivo-arm64"]?.sha256)
+        assertEquals("vivo_arm64_sha", manifest.artifacts["android-vivo"]?.sha256)
+        assertTrue(manifest.artifacts["android-vivo"]?.url?.contains("Streamify-vivo") == true)
+    }
 }

@@ -17,6 +17,10 @@ The third public beta release of Streamify introduces native zero-config Cloudfl
 - **Liquid Glass UI Polish**: Unified Sireen branding badge with liquid glass styling and Poppins typography, responsive compact rendering on mobile viewports, and smooth progressive scroll tracking for the home top bar scrim.
 
 ### Added
+- **Auth**: In-app OAuth redirect deep link handling for `streamify://callback` and `SupabaseClient.signInWithAccessToken` token verification (#285).
+- **Auth**: Multiplatform `handleAuthCallback` contract across Android, iOS, JVM, and WasmJs in `StreamifyAuthManager` (#285).
+- **Auth**: Shared `AuthCallbackParser` with comprehensive unit tests for fragment (`#access_token=...`) and query parameter token parsing (#285).
+- **Update Engine**: Self-healing pinned `version.json` manifest probe directly against discovered release tags in `UpdateResolver.kt` (#286).
 - **Tunnel**: Native `CloudflareTunnel` daemon in `server/src/platform/cloudflare-tunnel.mjs` supporting quick tunnels and named tunnels (#268, #269, #270).
 - **Distribution**: Automated GitHub Pages deployment workflow `.github/workflows/deploy-pages.yml` (#266).
 - **Web Demo**: `DemoCatalogLoader.kt` and `FakeRepositories.kt` for live WASM demo experience on GitHub Pages with harvested demo catalog fixtures (#266).
@@ -28,6 +32,10 @@ The third public beta release of Streamify introduces native zero-config Cloudfl
 - **Audio Engine**: Capped stream lookahead fetch window to 512 KiB (2 blocks) to prevent YouTube 403 throttles (#272).
 
 ### Fixed
+- **Auth**: Resolved Vivo build (`vivoAndroidApp`) infinite external browser redirect loop caused by Google Credential Manager rejecting spoofed package `com.spotify.music` signature (#285).
+- **Auth**: Expanded Android Credential Manager exception handling to catch all `GetCredentialException` variants and cleanly trigger web OAuth fallback (#285).
+- **Update Engine**: Repaired Vivo APK filtering blindspot in `UpdateResolver.kt` and unified architecture matching in `PlatformBinaryResolver.android.kt` across all Vivo manifest keys (#286).
+- **Update Engine**: Defused GitHub pre-release CDN 404 update discovery trap by pointing REST API fallback to `/releases?per_page=1` with array payload support in `UpdateResolver.kt` (#286).
 - **Audio Engine**: Resolved unhandled `DOMException [AbortError]` events on seek and client disconnect in `BlockRangeStream` and `PacedStreamTransform` (#271).
 - **Tunnel**: Excluded internal Cloudflare API hostnames in quick tunnel URL extraction regex (#270).
 - **Tunnel**: Corrected Termux and Android architecture resolution for `cloudflared` binary execution (#269).
