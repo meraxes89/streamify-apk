@@ -34,6 +34,7 @@ The third public beta release of Streamify introduces native zero-config Cloudfl
 - **UI / UX**: Fixed mobile responsiveness and typography for Sireen branding badge (#263, #264).
 - **UI / UX**: Fixed top bar scrim background color tracking and smooth progressive scroll alpha transition (#265).
 - **Desktop**: Hardened Windows installer reliability across Windows 10 and 11 by enabling `perUserInstall = true`, directory selection (`dirChooser = true`), Start Menu and Desktop shortcuts, and stable `upgradeUuid` in WiX/jpackage distribution configuration, preventing Windows Installer error 1619 when launching from restricted or Mark of the Web (MOTW) download directories.
+- **Desktop**: Hardened Linux `.deb` and `.rpm` packaging with explicit `shortcut = true`, `appCategory = "AudioVideo"`, `menuGroup`, and maintainer metadata so desktop launchers appear reliably in GNOME and KDE application menus.
 - **Desktop**: Registered `streamify://` URI protocol handler alongside `simpmusic://` and `wordbyword://` on Windows and macOS, and improved executable path resolution for packaged `Streamify.exe` binaries.
 
 ## [1.0.2-beta] — 2026-11-22: Sovereign Presentation, In-App Messaging & Resilient Delivery

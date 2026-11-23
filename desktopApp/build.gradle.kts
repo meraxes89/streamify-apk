@@ -224,6 +224,11 @@ compose.desktop {
             }
             linux {
                 includeAllModules = true
+                shortcut = true
+                appCategory = "AudioVideo"
+                menuGroup = "AudioVideo"
+                debMaintainer = "Streamify <zephyr4289@gmail.com>"
+                rpmLicenseType = "GPL-3.0"
                 packageVersion =
                     libs.versions.version.name
                         .get()
