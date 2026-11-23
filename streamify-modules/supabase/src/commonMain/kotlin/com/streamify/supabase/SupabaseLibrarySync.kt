@@ -13,6 +13,8 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -97,25 +99,90 @@ object SupabaseLibrarySync {
     }
 
     /**
-     * Fetches all cloud-liked track IDs for this user to enable cross-device synchronization.
+     * Fetches all cloud-liked track IDs for this user with automatic pagination beyond PostgREST 1000-row limit.
      */
     suspend fun fetchCloudLikes(userId: String? = null): List<String> = withContext(ioDispatcher) {
+        val allLikes = mutableListOf<String>()
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
-            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
-                parameter("user_id", "eq.$targetUserId")
-                parameter("select", "track_id")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            if (resp.status.isSuccess()) {
+            var offset = 0
+            val limit = 1000
+            while (true) {
+                val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
+                    parameter("user_id", "eq.$targetUserId")
+                    parameter("select", "track_id")
+                    parameter("limit", limit.toString())
+                    parameter("offset", offset.toString())
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                }
+                if (!resp.status.isSuccess()) break
                 val list = json.decodeFromString<List<CloudUserLike>>(resp.bodyAsText())
-                list.map { it.track_id }
-            } else {
-                emptyList()
+                allLikes.addAll(list.map { it.track_id })
+                if (list.size < limit) break
+                offset += limit
             }
+        } catch (_: Exception) {
+        }
+        allLikes
+    }
+
+    /**
+     * High-performance batch uploader for local liked tracks:
+     * Chunks items into 50-track JSON arrays to avoid serial N+1 HTTP calls.
+     */
+    suspend fun uploadLikedTracksBatch(
+        tracks: List<CloudTrack>,
+        userId: String? = null
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val chunks = tracks.chunked(50)
+            for (chunk in chunks) {
+                // 1. Bulk upsert tracks metadata
+                val tracksArray = buildJsonArray {
+                    for (t in chunk) {
+                        add(buildJsonObject {
+                            put("id", t.id)
+                            put("title", t.title)
+                            put("artist", t.artist)
+                            put("album", t.album ?: "Streamify")
+                            put("duration_sec", t.durationSec)
+                            put("cover_url", t.coverUrl)
+                            put("stream_url", "https://www.youtube.com/watch?v=${t.id}")
+                        })
+                    }
+                }.toString()
+
+                SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                    header("Prefer", "resolution=merge-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(tracksArray)
+                }
+
+                // 2. Bulk insert user_likes
+                val likesArray = buildJsonArray {
+                    for (t in chunk) {
+                        add(buildJsonObject {
+                            put("user_id", targetUserId)
+                            put("track_id", t.id)
+                        })
+                    }
+                }.toString()
+
+                SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                    header("Prefer", "resolution=ignore-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(likesArray)
+                }
+            }
+            Result.success(true)
         } catch (e: Exception) {
-            emptyList()
+            Result.failure(e)
         }
     }
 
@@ -245,13 +312,24 @@ object SupabaseLibrarySync {
                 setBody(playlistPayload)
             }
 
-            // Sync track relationships if any are provided
-            trackIds.forEachIndexed { idx, trackId ->
-                val trackPayload = buildJsonObject {
-                    put("playlist_id", playlistId)
-                    put("track_id", trackId)
-                    put("position", idx)
-                    put("added_by", targetUserId)
+            // Clear old track mappings for this playlist to prevent duplicate rows and clean deleted items
+            SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlist_tracks") {
+                parameter("playlist_id", "eq.$playlistId")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+
+            // Sync all track relationships in a SINGLE bulk array request
+            if (trackIds.isNotEmpty()) {
+                val tracksArray = buildJsonArray {
+                    trackIds.forEachIndexed { idx, trackId ->
+                        add(buildJsonObject {
+                            put("playlist_id", playlistId)
+                            put("track_id", trackId)
+                            put("position", idx)
+                            put("added_by", targetUserId)
+                        })
+                    }
                 }.toString()
 
                 SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlist_tracks") {
@@ -259,10 +337,26 @@ object SupabaseLibrarySync {
                     header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                     header("Prefer", "resolution=merge-duplicates")
                     contentType(ContentType.Application.Json)
-                    setBody(trackPayload)
+                    setBody(tracksArray)
                 }
             }
             Result.success(plResp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Deletes a cloud playlist and cascades to its playlist_tracks mappings.
+     */
+    suspend fun deleteCloudPlaylist(playlistId: String): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.delete("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlists") {
+                parameter("id", "eq.$playlistId")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -281,6 +375,166 @@ object SupabaseLibrarySync {
             }
             if (resp.status.isSuccess()) {
                 json.decodeFromString<List<CloudPlaylist>>(resp.bodyAsText())
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Fetches track IDs and full embedded track metadata belonging to a cloud playlist.
+     */
+    suspend fun fetchCloudPlaylistTracksWithMetadata(playlistId: String): List<CloudPlaylistTrackWithMetadata> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlist_tracks") {
+                parameter("playlist_id", "eq.$playlistId")
+                parameter("order", "position.asc")
+                parameter("select", "id,playlist_id,track_id,position,tracks(*)")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                json.decodeFromString<List<CloudPlaylistTrackWithMetadata>>(resp.bodyAsText())
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Fetches track IDs belonging to a cloud playlist, ordered by position.
+     */
+    suspend fun fetchCloudPlaylistTracks(playlistId: String): List<String> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlist_tracks") {
+                parameter("playlist_id", "eq.$playlistId")
+                parameter("order", "position.asc")
+                parameter("select", "track_id")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                val list = json.decodeFromString<List<CloudPlaylistTrack>>(resp.bodyAsText())
+                list.map { it.trackId }.filter { it.isNotBlank() }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Uploads the user's settings profile to `public.user_settings`.
+     */
+    suspend fun uploadUserSettings(
+        userId: String,
+        settingsMap: Map<String, String>
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val settingsJson = buildJsonObject {
+                settingsMap.forEach { (k, v) -> put(k, v) }
+            }
+            val payload = buildJsonObject {
+                put("user_id", userId)
+                put("settings", settingsJson)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_settings") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                header("Prefer", "resolution=merge-duplicates")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            Result.success(resp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches the user's cloud settings from `public.user_settings`.
+     */
+    suspend fun fetchUserSettings(
+        userId: String
+    ): Result<Map<String, String>> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_settings") {
+                parameter("select", "user_id,settings,updated_at")
+                parameter("user_id", "eq.$userId")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                val list = json.decodeFromString<List<CloudUserSettings>>(resp.bodyAsText())
+                Result.success(list.firstOrNull()?.settings ?: emptyMap())
+            } else {
+                Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Records a playback event to `public.user_listening_history` for Analytics & Wrapped.
+     */
+    suspend fun recordPlaybackHistory(
+        userId: String,
+        trackId: String,
+        durationSec: Int,
+        syncId: String? = null,
+        createdAtIso: String? = null
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val payload = buildJsonObject {
+                if (!syncId.isNullOrBlank()) {
+                    put("id", syncId)
+                }
+                put("user_id", userId)
+                put("track_id", trackId)
+                put("listened_duration_sec", durationSec)
+                if (!createdAtIso.isNullOrBlank()) {
+                    put("created_at", createdAtIso)
+                }
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                header("Prefer", "resolution=ignore-duplicates")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            Result.success(resp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches the user's remote playback history from `public.user_listening_history`.
+     */
+    suspend fun fetchCloudListeningHistory(
+        userId: String,
+        limit: Int = 100
+    ): List<CloudListeningHistoryItem> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
+                parameter("select", "id,user_id,track_id,listened_duration_sec,created_at")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "created_at.desc")
+                parameter("limit", limit.toString())
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                json.decodeFromString<List<CloudListeningHistoryItem>>(resp.bodyAsText())
             } else {
                 emptyList()
             }

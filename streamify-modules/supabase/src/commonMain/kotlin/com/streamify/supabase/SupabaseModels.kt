@@ -64,11 +64,33 @@ data class CloudUserLike(
 @Serializable
 data class CloudUserItemFavorite(
     @SerialName("user_id")
-    val userId: String,
+    val userId: String = "",
     @SerialName("item_type")
-    val itemType: String,
+    val itemType: String = "",
     @SerialName("item_id")
-    val itemId: String,
+    val itemId: String = "",
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+
+@Serializable
+data class CloudUserSettings(
+    @SerialName("user_id")
+    val userId: String = "",
+    val settings: Map<String, String> = emptyMap(),
+    @SerialName("updated_at")
+    val updatedAt: String? = null
+)
+
+@Serializable
+data class CloudListeningHistoryItem(
+    val id: String = "",
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("track_id")
+    val trackId: String = "",
+    @SerialName("listened_duration_sec")
+    val listenedDurationSec: Int = 0,
     @SerialName("created_at")
     val createdAt: String? = null
 )
@@ -92,12 +114,23 @@ data class CloudPlaylist(
 data class CloudPlaylistTrack(
     val id: String? = null,
     @SerialName("playlist_id")
-    val playlistId: String,
+    val playlistId: String = "",
     @SerialName("track_id")
-    val trackId: String,
+    val trackId: String = "",
     val position: Int = 0,
     @SerialName("added_by")
     val addedBy: String? = null
+)
+
+@Serializable
+data class CloudPlaylistTrackWithMetadata(
+    val id: String? = null,
+    @SerialName("playlist_id")
+    val playlistId: String = "",
+    @SerialName("track_id")
+    val trackId: String = "",
+    val position: Int = 0,
+    val tracks: CloudTrack? = null
 )
 
 @Serializable
