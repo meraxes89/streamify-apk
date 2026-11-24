@@ -1087,6 +1087,99 @@ object SupabaseLibrarySync {
         }
     }
 
+    /**
+     * V4.1 Fleet Telemetry: Registers or updates device hardware, OS, and build telemetry.
+     * Records version transitions in `user_device_version_history` when versionCode or gitSha changes.
+     */
+    suspend fun recordDeviceSession(
+        deviceId: String,
+        platform: String,
+        appVersion: String,
+        versionCode: Int,
+        gitSha: String = "",
+        buildFlavor: String = "standard",
+        deviceModel: String = "",
+        osVersion: String = "",
+        architecture: String = ""
+    ): Result<DeviceRegistrationResult> = withContext(ioDispatcher) {
+        try {
+            val payload = buildJsonObject {
+                put("p_device_id", deviceId)
+                put("p_platform", platform)
+                put("p_app_version", appVersion)
+                put("p_version_code", versionCode)
+                put("p_git_sha", gitSha)
+                put("p_build_flavor", buildFlavor)
+                put("p_device_model", deviceModel)
+                put("p_os_version", osVersion)
+                put("p_architecture", architecture)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/record_device_session") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            if (resp.status.isSuccess()) {
+                val result = json.decodeFromString<DeviceRegistrationResult>(resp.bodyAsText())
+                Result.success(result)
+            } else {
+                Result.failure(Exception("record_device_session failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * V4.1 Fleet Telemetry: Remotely marks a device session as revoked.
+     */
+    suspend fun revokeDeviceSession(deviceId: String): Result<DeviceRevocationResult> = withContext(ioDispatcher) {
+        try {
+            val payload = buildJsonObject {
+                put("p_device_id", deviceId)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/revoke_device_session") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            if (resp.status.isSuccess()) {
+                val result = json.decodeFromString<DeviceRevocationResult>(resp.bodyAsText())
+                Result.success(result)
+            } else {
+                Result.failure(Exception("revoke_device_session failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * V4.1 Fleet Telemetry: Retrieves all registered devices for the authenticated user.
+     */
+    suspend fun getMyDevices(): Result<List<CloudDeviceSession>> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/get_my_devices") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody("{}")
+            }
+            if (resp.status.isSuccess()) {
+                val devices = json.decodeFromString<List<CloudDeviceSession>>(resp.bodyAsText())
+                Result.success(devices)
+            } else {
+                Result.failure(Exception("get_my_devices failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun generateUuid(): String {
         val bytes = kotlin.random.Random.nextBytes(16)
         bytes[6] = ((bytes[6].toInt() and 0x0f) or 0x40).toByte()
