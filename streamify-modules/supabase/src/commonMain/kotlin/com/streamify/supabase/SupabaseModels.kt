@@ -381,3 +381,48 @@ data class CloudPresence(
     @SerialName("updated_at")
     val updatedAt: String = ""
 )
+
+@Serializable
+data class CloudDeviceSession(
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("device_id")
+    val deviceId: String = "",
+    val platform: String = "",
+    @SerialName("app_version")
+    val appVersion: String = "",
+    @SerialName("version_code")
+    val versionCode: Int = 0,
+    @SerialName("git_sha")
+    val gitSha: String = "",
+    @SerialName("build_flavor")
+    val buildFlavor: String = "standard",
+    @SerialName("device_model")
+    val deviceModel: String = "",
+    @SerialName("os_version")
+    val osVersion: String = "",
+    val architecture: String = "",
+    @SerialName("first_seen_at")
+    val firstSeenAt: String? = null,
+    @SerialName("last_seen")
+    val lastSeen: String? = null,
+    @SerialName("last_active_at")
+    val lastActiveAt: String? = null,
+    @SerialName("is_revoked")
+    val isRevoked: Boolean = false
+)
+
+@Serializable
+data class DeviceRegistrationResult(
+    val status: String = "",
+    @SerialName("is_revoked")
+    val isRevoked: Boolean = false
+)
+
+@Serializable
+data class DeviceRevocationResult(
+    val status: String = "",
+    @SerialName("device_id")
+    val deviceId: String = "",
+    val revoked: Boolean = false
+)
