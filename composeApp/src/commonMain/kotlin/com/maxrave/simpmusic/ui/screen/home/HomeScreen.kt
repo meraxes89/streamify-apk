@@ -509,48 +509,50 @@ fun HomeScreen(
 //        )
 //    }
 
-    if (showReviewDialog) {
-        ReviewDialog(
-            onDismissRequest = {
-                sharedViewModel.onDoneReview(
-                    isDismissOnly = true,
-                )
-                showReviewDialog = false
-            },
-            onDoneReview = {
-                sharedViewModel.onDoneReview(
-                    isDismissOnly = false,
-                )
-                showReviewDialog = false
-            },
-        )
-    }
+    if (!appDialogOpen) {
+        if (showReviewDialog) {
+            ReviewDialog(
+                onDismissRequest = {
+                    sharedViewModel.onDoneReview(
+                        isDismissOnly = true,
+                    )
+                    showReviewDialog = false
+                },
+                onDoneReview = {
+                    sharedViewModel.onDoneReview(
+                        isDismissOnly = false,
+                    )
+                    showReviewDialog = false
+                },
+            )
+        }
 
-    if (showRequestShareLyricsPermissions) {
-        ShareSavedLyricsDialog(
-            onDismissRequest = {
-                showRequestShareLyricsPermissions = false
-            },
-            onConfirm = { contributor ->
-                sharedViewModel.onDoneRequestingShareLyrics(
-                    contributor,
-                )
-            },
-        )
-    }
+        if (showRequestShareLyricsPermissions) {
+            ShareSavedLyricsDialog(
+                onDismissRequest = {
+                    showRequestShareLyricsPermissions = false
+                },
+                onConfirm = { contributor ->
+                    sharedViewModel.onDoneRequestingShareLyrics(
+                        contributor,
+                    )
+                },
+            )
+        }
 
-    // Sovereign In-App Message Engine — Modal Renderer (comm19)
-    activeAnnouncement?.let { announcement ->
-        com.streamify.announcements.ui.StreamifyAnnouncementModal(
-            announcement = announcement,
-            language = language,
-            onDismiss = { snooze ->
-                announcementEngine.onDismiss(announcement, snooze = snooze)
-            },
-            onAction = {
-                announcementEngine.onAction(announcement)
-            }
-        )
+        // Sovereign In-App Message Engine — Modal Renderer (comm19)
+        activeAnnouncement?.let { announcement ->
+            com.streamify.announcements.ui.StreamifyAnnouncementModal(
+                announcement = announcement,
+                language = language,
+                onDismiss = { snooze ->
+                    announcementEngine.onDismiss(announcement, snooze = snooze)
+                },
+                onAction = {
+                    announcementEngine.onAction(announcement)
+                }
+            )
+        }
     }
 
     // The launch banner, decided once per launch. It waits for Home to settle on its own dialogs (the

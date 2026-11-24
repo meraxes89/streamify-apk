@@ -233,10 +233,14 @@ fun App(
         mutableStateOf(true)
     }
 
-    // Every dialog this file raises on its own. Home's launch banner waits until none is up; see
-    // LocalAppDialogOpen. (The banner waits for a running update check by itself.)
+    val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
+    val isEntranceBlocking = isSplashVisible || streamifyAuthState is AuthState.Loading
+
+    // Every dialog this file raises on its own, plus blocking entrance animations.
+    // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
     val appDialogOpen =
-        shouldShowUpdateDialog || showNotificationPermissionDialog ||
+        isEntranceBlocking ||
+            shouldShowUpdateDialog || showNotificationPermissionDialog ||
             showDesktopNotificationPermissionDialog || sleepTimerState.isDone
 
     // Set by the first press or wheel scroll anywhere in the app this launch, or by opening Now
@@ -556,7 +560,6 @@ fun App(
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
             com.maxrave.simpmusic.data.RemoteGreetingManager.syncRemoteConfig()
         }
-        val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
         LaunchedEffect(streamifyAuthState) {
             if (streamifyAuthState is AuthState.Authenticated) {
                 val user = (streamifyAuthState as AuthState.Authenticated).user
@@ -1013,7 +1016,8 @@ fun App(
                     )
                 }
 
-                if (shouldShowUpdateDialog) {
+                if (!isEntranceBlocking) {
+                    if (shouldShowUpdateDialog) {
                     val response = updateData ?: return@Scaffold
                     val binary = remember(response.tagName) {
                         resolveDeviceBinary(
@@ -1124,13 +1128,14 @@ fun App(
                         },
                     )
                 }
+            }
             },
         )
     }
 }
 
         AnimatedVisibility(
-            visible = isSplashVisible || streamifyAuthState is AuthState.Loading,
+            visible = isEntranceBlocking,
             enter = EnterTransition.None,
             exit = fadeOut(animationSpec = tween(500)),
         ) {
