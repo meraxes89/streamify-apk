@@ -13,6 +13,8 @@ decision requires a new ADR that links back.
 | [ADR-003](ADR-003-hybrid-sqlite-supabase-sync.md) | Hybrid SQLite WAL + Supabase sync | Accepted |
 | [ADR-004](ADR-004-ioc-streamify-modules.md) | Inversion of control via streamify-modules | Accepted |
 | [ADR-005](ADR-005-vivo-package-identity-and-oauth-resolution.md) | Vivo package identity, Web OAuth callback, and resilient update resolution | Accepted |
+| [ADR-006](ADR-005-unified-hybrid-sync-v2.md) | Unified hybrid sync architecture v2 & schema alignment | Accepted |
+| [ADR-007](ADR-007-user-graph-alignment-and-cross-device-continuity.md) | User graph alignment and cross-device continuity | Accepted |
 
 ## Format
 
@@ -50,4 +52,4 @@ When you change code covered by a pinned document, re-verify the document's
 claims against the new tree and update the pin in the same commit.
 
 ---
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+<!-- doc-verified-against: 7fc4ed7b5a0848381b20f98763afea4b921ccdde -->

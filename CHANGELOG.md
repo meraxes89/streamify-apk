@@ -34,13 +34,21 @@ The third public beta release of Streamify introduces native zero-config Cloudfl
 ### Fixed
 - **Auth**: Resolved Vivo build (`vivoAndroidApp`) infinite external browser redirect loop caused by Google Credential Manager rejecting spoofed package `com.spotify.music` signature (#285).
 - **Auth**: Expanded Android Credential Manager exception handling to catch all `GetCredentialException` variants and cleanly trigger web OAuth fallback (#285).
+- **Auth**: Fixed cold-start auth state race condition in `App.kt` by holding splash/neutral state during `AuthState.Loading`, preventing premature Scaffold rendering and layout thrash for unauthenticated users.
+- **Auth**: Silenced false-positive error state in `GoogleOnboardingAuthScreen.kt` when browser OAuth fallback is triggered.
 - **Update Engine**: Repaired Vivo APK filtering blindspot in `UpdateResolver.kt` and unified architecture matching in `PlatformBinaryResolver.android.kt` across all Vivo manifest keys (#286).
+- **Update Engine**: Enforced ABI-aware binary matching for Vivo builds in `PlatformBinaryResolver.android.kt`, ensuring 32-bit `armeabi-v7a` Vivo devices resolve compatible packages instead of unexecutable `arm64-v8a` splits.
+- **Update Engine**: Wired `UpdateStateHolder.latestManifest?.artifacts` into `resolveDeviceBinary` in `App.kt`, restoring direct CDN binary resolution for the in-app update dialog.
 - **Update Engine**: Defused GitHub pre-release CDN 404 update discovery trap by pointing REST API fallback to `/releases?per_page=1` with array payload support in `UpdateResolver.kt` (#286).
 - **Audio Engine**: Resolved unhandled `DOMException [AbortError]` events on seek and client disconnect in `BlockRangeStream` and `PacedStreamTransform` (#271).
 - **Tunnel**: Excluded internal Cloudflare API hostnames in quick tunnel URL extraction regex (#270).
 - **Tunnel**: Corrected Termux and Android architecture resolution for `cloudflared` binary execution (#269).
 - **UI / UX**: Fixed mobile responsiveness and typography for Sireen branding badge (#263, #264).
 - **UI / UX**: Fixed top bar scrim background color tracking and smooth progressive scroll alpha transition (#265).
+- **Desktop**: Hardened Windows installer reliability across Windows 10 and 11 by enabling `perUserInstall = true`, directory selection (`dirChooser = true`), Start Menu and Desktop shortcuts, and stable `upgradeUuid` in WiX/jpackage distribution configuration, preventing Windows Installer error 1619 when launching from restricted or Mark of the Web (MOTW) download directories.
+- **Desktop**: Hardened Linux `.deb` and `.rpm` packaging with explicit `shortcut = true`, `appCategory = "AudioVideo"`, `menuGroup`, and maintainer metadata so desktop launchers appear reliably in GNOME and KDE application menus.
+- **Desktop**: Registered `streamify://` URI protocol handler alongside `simpmusic://` and `wordbyword://` on Windows and macOS, and improved executable path resolution for packaged `Streamify.exe` binaries.
+- **Release Orchestration**: Upgraded `scripts/generate_release_notes.py` to index standalone Linux `.AppImage` binaries and properly categorize Apple iOS archives (`.ipa` and `*ios*.zip`) into a dedicated platform section rather than misclassifying them under Web WASM.
 
 ## [1.0.2-beta] — 2026-11-22: Sovereign Presentation, In-App Messaging & Resilient Delivery
 

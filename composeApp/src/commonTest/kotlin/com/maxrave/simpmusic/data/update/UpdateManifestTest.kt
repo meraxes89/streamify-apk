@@ -133,6 +133,10 @@ class UpdateManifestTest {
                   "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-vivo-v1.0.3-beta-vivoAndroidApp-release.apk",
                   "sha256": "vivo_arm64_sha"
                 },
+                "android-vivo-armeabi-v7a": {
+                  "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-vivo-v1.0.3-beta-vivoAndroidApp-armeabi-v7a-release.apk",
+                  "sha256": "vivo_armv7_sha"
+                },
                 "android-vivo": {
                   "url": "https://github.com/meraxes89/streamify-apk/releases/download/v1.0.3-beta/Streamify-vivo-v1.0.3-beta-vivoAndroidApp-release.apk",
                   "sha256": "vivo_arm64_sha"
@@ -144,7 +148,9 @@ class UpdateManifestTest {
         val manifest = json.decodeFromString<UpdateManifest>(payload)
 
         assertEquals("vivo_arm64_sha", manifest.artifacts["android-vivo-arm64"]?.sha256)
+        assertEquals("vivo_armv7_sha", manifest.artifacts["android-vivo-armeabi-v7a"]?.sha256)
         assertEquals("vivo_arm64_sha", manifest.artifacts["android-vivo"]?.sha256)
         assertTrue(manifest.artifacts["android-vivo"]?.url?.contains("Streamify-vivo") == true)
+        assertTrue(manifest.artifacts["android-vivo-armeabi-v7a"]?.url?.contains("armeabi-v7a") == true)
     }
 }
