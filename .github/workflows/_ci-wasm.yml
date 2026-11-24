@@ -89,6 +89,20 @@ jobs:
               }
           done
 
+      - name: Fetch demo catalog and configure SPA fallback
+        if: ${{ !inputs.fast_check || inputs.release_mode }}
+        run: |
+          DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
+          curl -sL "https://github.com/meraxes89/docs/releases/download/v1.0.0/demo-catalog.json" -o "$DIST_DIR/demo-catalog.json"
+          if [ -s "$DIST_DIR/demo-catalog.json" ]; then
+            echo "Successfully fetched demo catalog (size: $(du -h "$DIST_DIR/demo-catalog.json" | cut -f1))"
+          else
+            echo "::warning::Demo catalog fetch failed or empty"
+          fi
+          if [ -f "$DIST_DIR/index.html" ] && [ ! -f "$DIST_DIR/404.html" ]; then
+            cp "$DIST_DIR/index.html" "$DIST_DIR/404.html"
+          fi
+
       - name: Precompress assets
         if: ${{ !inputs.fast_check || inputs.release_mode }}
         run: |
@@ -96,12 +110,12 @@ jobs:
           sudo apt-get update && sudo apt-get install -y brotli zip
           if [ "${{ inputs.release_mode }}" = "true" ]; then
             echo "Release mode: applying maximum brotli -q 11 and gzip -9..."
-            find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" \) \
+            find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" -o -name "*.json" \) \
               -exec gzip -9 -k -f {} \; \
               -exec brotli -q 11 -k -f {} \;
           else
             echo "CI mode: applying fast brotli -q 1 and gzip -1 for rapid compression verification..."
-            find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" \) \
+            find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" -o -name "*.json" \) \
               -exec gzip -1 -k -f {} \; \
               -exec brotli -q 1 -k -f {} \;
           fi
