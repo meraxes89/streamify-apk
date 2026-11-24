@@ -666,24 +666,31 @@ fun PlaylistFullWidthItems(
         ) {
             Spacer(modifier = Modifier.width(8.dp))
             Box(modifier = Modifier.size(48.dp)) {
-                AsyncImage(
-                    model =
-                        ImageRequest
-                            .Builder(LocalPlatformContext.current)
-                            .data(thumb)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .diskCacheKey(thumb)
-                            .crossfade(true)
-                            .build(),
-                    placeholder = rememberHolderPainter(),
-                    error = rememberHolderPainter(),
-                    contentDescription = null,
-                    contentScale = ContentScale.FillWidth,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .clip(ArtworkShape),
-                )
+                if (data is LocalPlaylistEntity) {
+                    PlaylistArtwork(
+                        playlist = data,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    AsyncImage(
+                        model =
+                            ImageRequest
+                                .Builder(LocalPlatformContext.current)
+                                .data(thumb)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .diskCacheKey(thumb)
+                                .crossfade(true)
+                                .build(),
+                        placeholder = rememberHolderPainter(),
+                        error = rememberHolderPainter(),
+                        contentDescription = null,
+                        contentScale = ContentScale.FillWidth,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .clip(ArtworkShape),
+                    )
+                }
             }
             Column(
                 Modifier

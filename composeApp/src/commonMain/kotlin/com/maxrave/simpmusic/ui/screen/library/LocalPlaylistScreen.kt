@@ -91,6 +91,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -142,6 +143,7 @@ import com.maxrave.simpmusic.ui.component.LiquidGlassIconButton
 import com.maxrave.simpmusic.ui.component.LoadingDialog
 import com.maxrave.simpmusic.ui.component.LocalPlaylistBottomSheet
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
+import com.maxrave.simpmusic.ui.component.PlaylistArtwork
 import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.component.SongFullWidthItems
 import com.maxrave.simpmusic.ui.component.selection.SelectedSongsBottomSheet
@@ -382,13 +384,18 @@ fun LocalPlaylistScreen(
     var paletteGeneratedFor by remember {
         mutableStateOf<String?>(null)
     }
-    val currentThumbnail = uiState.thumbnail
+    val trackThumbnails = remember(trackPagingItems.itemCount) {
+        trackPagingItems.itemSnapshotList.items
+            .mapNotNull { it.first.thumbnails }
+            .filter { it.isNotBlank() }
+    }
+    val paletteKey = uiState.thumbnail ?: "${uiState.id}_${trackThumbnails.firstOrNull().orEmpty()}"
 
     LaunchedEffect(bitmap) {
         val bm = bitmap
-        if (bm != null && paletteGeneratedFor != currentThumbnail) {
+        if (bm != null && paletteGeneratedFor != paletteKey) {
             paletteState.generate(bm)
-            paletteGeneratedFor = currentThumbnail
+            paletteGeneratedFor = paletteKey
         }
     }
 
@@ -542,24 +549,14 @@ fun LocalPlaylistScreen(
                             ) {
                                 // Inner Box — backdrop SOURCE (artwork + overlays only, NO glass)
                                 Box(modifier = Modifier.fillMaxSize().layerBackdrop(artworkBackdrop)) {
-                                    AsyncImage(
-                                        model =
-                                            ImageRequest
-                                                .Builder(LocalPlatformContext.current)
-                                                .data(uiState.thumbnail)
-                                                .diskCachePolicy(CachePolicy.ENABLED)
-                                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                                .diskCacheKey(uiState.thumbnail)
-                                                .memoryCacheKey(uiState.thumbnail)
-                                                .crossfade(550)
-                                                .build(),
-                                        placeholder = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                        error = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                        fallback = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        onSuccess = {
-                                            bitmap = it.result.image.toImageBitmap()
+                                    PlaylistArtwork(
+                                        title = uiState.title,
+                                        thumbnailUrl = uiState.thumbnail,
+                                        trackIds = uiState.tracks,
+                                        resolvedThumbnails = trackThumbnails,
+                                        shape = RectangleShape,
+                                        onSuccessBitmap = {
+                                            bitmap = it
                                         },
                                         modifier = Modifier.fillMaxSize(),
                                     )
@@ -741,24 +738,14 @@ fun LocalPlaylistScreen(
                                         horizontalArrangement = Arrangement.spacedBy(24.dp),
                                         verticalAlignment = Alignment.Top,
                                     ) {
-                                        AsyncImage(
-                                            model =
-                                                ImageRequest
-                                                    .Builder(LocalPlatformContext.current)
-                                                    .data(uiState.thumbnail)
-                                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                                    .diskCacheKey(uiState.thumbnail)
-                                                    .memoryCacheKey(uiState.thumbnail)
-                                                    .crossfade(550)
-                                                    .build(),
-                                            placeholder = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                            error = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                            fallback = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            onSuccess = {
-                                                bitmap = it.result.image.toImageBitmap()
+                                        PlaylistArtwork(
+                                            title = uiState.title,
+                                            thumbnailUrl = uiState.thumbnail,
+                                            trackIds = uiState.tracks,
+                                            resolvedThumbnails = trackThumbnails,
+                                            shape = ArtworkShape,
+                                            onSuccessBitmap = {
+                                                bitmap = it
                                             },
                                             modifier =
                                                 Modifier

@@ -1,22 +1,39 @@
 package com.maxrave.simpmusic.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -31,11 +48,315 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.expect.ui.toImageBitmap
+import com.maxrave.simpmusic.ui.icon.QueueMusic
+import com.maxrave.simpmusic.ui.icon.SimpIcons
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import org.jetbrains.compose.resources.painterResource
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.monochrome
 import kotlin.math.abs
+
+sealed interface PlaylistArtLayout {
+    data class Single(val url: String) : PlaylistArtLayout
+    data class Quad(val urls: List<String>) : PlaylistArtLayout
+    data object Empty : PlaylistArtLayout
+}
+
+fun resolvePlaylistArtLayout(
+    customThumbnail: String?,
+    trackIds: List<String>?,
+    resolvedThumbnails: List<String>? = null,
+): PlaylistArtLayout {
+    if (!customThumbnail.isNullOrBlank()) {
+        return PlaylistArtLayout.Single(customThumbnail)
+    }
+    val candidateUrls = resolvedThumbnails?.filter { it.isNotBlank() }
+        ?.ifEmpty { null }
+        ?: trackIds.orEmpty().filter { it.isNotBlank() }.map { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
+
+    val distinctUrls = candidateUrls.distinct()
+    return when {
+        distinctUrls.size >= 4 -> PlaylistArtLayout.Quad(distinctUrls.take(4))
+        distinctUrls.isNotEmpty() -> PlaylistArtLayout.Single(distinctUrls.first())
+        else -> PlaylistArtLayout.Empty
+    }
+}
+
+/**
+ * Universal dynamic playlist artwork following Spotify and Apple Music standards:
+ * - Explicit custom thumbnail: 100% full-bleed.
+ * - 4+ tracks: 2x2 quad-grid collage with micro-seam separator.
+ * - 1..3 tracks: 100% full-bleed first track artwork.
+ * - 0 tracks: Generative ambient monogram with title-derived gradient and music badge.
+ */
+@Composable
+fun PlaylistArtwork(
+    title: String,
+    thumbnailUrl: String?,
+    trackIds: List<String>?,
+    modifier: Modifier = Modifier,
+    shape: Shape = ArtworkShape,
+    resolvedThumbnails: List<String>? = null,
+    onSuccessBitmap: ((ImageBitmap) -> Unit)? = null,
+) {
+    val layout = remember(thumbnailUrl, trackIds, resolvedThumbnails) {
+        resolvePlaylistArtLayout(
+            customThumbnail = thumbnailUrl,
+            trackIds = trackIds,
+            resolvedThumbnails = resolvedThumbnails,
+        )
+    }
+
+    Box(
+        modifier = modifier.clip(shape),
+    ) {
+        when (layout) {
+            is PlaylistArtLayout.Single -> {
+                SingleArtworkCover(
+                    url = layout.url,
+                    title = title,
+                    onSuccessBitmap = onSuccessBitmap,
+                )
+            }
+
+            is PlaylistArtLayout.Quad -> {
+                QuadCollageCover(
+                    urls = layout.urls,
+                    onPrimaryBitmap = onSuccessBitmap,
+                )
+            }
+
+            is PlaylistArtLayout.Empty -> {
+                EmptyPlaylistCover(
+                    title = title,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PlaylistArtwork(
+    playlist: LocalPlaylistEntity,
+    modifier: Modifier = Modifier,
+    shape: Shape = ArtworkShape,
+    resolvedThumbnails: List<String>? = null,
+    onSuccessBitmap: ((ImageBitmap) -> Unit)? = null,
+) {
+    PlaylistArtwork(
+        title = playlist.title,
+        thumbnailUrl = playlist.thumbnail,
+        trackIds = playlist.tracks,
+        modifier = modifier,
+        shape = shape,
+        resolvedThumbnails = resolvedThumbnails,
+        onSuccessBitmap = onSuccessBitmap,
+    )
+}
+
+@Composable
+private fun SingleArtworkCover(
+    url: String,
+    title: String,
+    modifier: Modifier = Modifier,
+    onSuccessBitmap: ((ImageBitmap) -> Unit)? = null,
+) {
+    val context = LocalPlatformContext.current
+    val fallback = rememberHolderPainter(square = true)
+    AsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(url)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(400)
+            .build(),
+        contentDescription = title,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.fillMaxSize(),
+        onSuccess = { onSuccessBitmap?.invoke(it.result.image.toImageBitmap()) },
+        placeholder = fallback,
+        error = fallback,
+        fallback = fallback,
+    )
+}
+
+@Composable
+private fun QuadCollageCover(
+    urls: List<String>,
+    modifier: Modifier = Modifier,
+    onPrimaryBitmap: ((ImageBitmap) -> Unit)? = null,
+) {
+    val context = LocalPlatformContext.current
+    val seamColor = Color.Black.copy(alpha = 0.30f)
+    val seamWidth = 0.75.dp
+    val fallback = rememberHolderPainter(square = true)
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(urls[0])
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .crossfade(350)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    onSuccess = { onPrimaryBitmap?.invoke(it.result.image.toImageBitmap()) },
+                    placeholder = fallback,
+                    error = fallback,
+                    fallback = fallback,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(seamWidth)
+                    .background(seamColor),
+            )
+            Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(urls.getOrNull(1))
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .crossfade(350)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = fallback,
+                    error = fallback,
+                    fallback = fallback,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(seamWidth)
+                .background(seamColor),
+        )
+        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(urls.getOrNull(2))
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .crossfade(350)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = fallback,
+                    error = fallback,
+                    fallback = fallback,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(seamWidth)
+                    .background(seamColor),
+            )
+            Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(urls.getOrNull(3))
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .crossfade(350)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = fallback,
+                    error = fallback,
+                    fallback = fallback,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyPlaylistCover(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    val gradientColors = playlistTitleGradient(title)
+    BoxWithConstraints(
+        modifier = modifier
+            .background(
+                brush = Brush.linearGradient(
+                    colors = gradientColors,
+                    start = Offset.Zero,
+                    end = Offset.Infinite,
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.35f),
+                        ),
+                    ),
+                ),
+        )
+
+        val isTiny = maxWidth < 56.dp
+        val isSmall = maxWidth < 100.dp
+        val badgeSize = when {
+            isTiny -> 24.dp
+            isSmall -> 36.dp
+            maxWidth < 200.dp -> 48.dp
+            else -> 72.dp
+        }
+        val iconSize = when {
+            isTiny -> 14.dp
+            isSmall -> 20.dp
+            maxWidth < 200.dp -> 26.dp
+            else -> 38.dp
+        }
+
+        Box(
+            modifier = Modifier
+                .size(badgeSize)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f))
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.28f),
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = SimpIcons.QueueMusic,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(iconSize),
+            )
+        }
+    }
+}
 
 @Composable
 fun PlaylistThumbnail(
