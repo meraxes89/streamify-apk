@@ -310,7 +310,7 @@ object StreamifySyncEngine : KoinComponent {
 
             // Outbox: push locally favorited albums to cloud
             for (localAlbum in localLikedAlbums) {
-                if (localAlbum.browseId !in cloudAlbumIds && localAlbum.liked == 1) {
+                if (localAlbum.browseId !in cloudAlbumIds && localAlbum.liked) {
                     SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
                 }
             }
@@ -358,11 +358,19 @@ object StreamifySyncEngine : KoinComponent {
                                     isAvailable = true,
                                     isExplicit = false,
                                     likeStatus = "INDIFFERENT",
-                                    videoType = "MUSIC_VIDEO_TYPE_ATV"
+                                    videoType = "MUSIC_VIDEO_TYPE_ATV",
+                                    category = null,
+                                    resultType = null
                                 ).also {
                                     songRepository.insertSong(it).lastOrNull()
                                 }
-                                localPlaylistRepository.addTrackToLocalPlaylist(matched.id, song).first()
+                                localPlaylistRepository.addTrackToLocalPlaylist(
+                                    id = matched.id,
+                                    song = song,
+                                    successMessage = "Added track",
+                                    updatedYtMessage = "",
+                                    errorMessage = "Failed to add track"
+                                ).first()
                             }
                         }
                     }
@@ -441,8 +449,8 @@ object StreamifySyncEngine : KoinComponent {
             for (cloudItem in cloudHistory) {
                 if (cloudItem.trackId !in localVideoIds && cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
                     val localSong = songRepository.getSongById(cloudItem.trackId).firstOrNull()
-                    val channelIds = if (!cloudItem.artistId.isNullOrBlank()) {
-                        listOf(cloudItem.artistId)
+                    val channelIds: List<String> = if (!cloudItem.artistId.isNullOrBlank()) {
+                        listOfNotNull(cloudItem.artistId)
                     } else {
                         localSong?.artistId ?: emptyList()
                     }
