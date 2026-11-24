@@ -5,6 +5,7 @@ import io.ktor.client.statement.bodyAsText
 import kotlinx.browser.localStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -23,9 +24,25 @@ fun setWebLocalStorage(key: String, value: String) {
     } catch (_: Throwable) {}
 }
 
+/**
+ * Resolves a file URL relative to current window.location, ensuring correct path resolution
+ * whether hosted on root (e.g. localhost:8080/), custom port, or subpath (e.g. /streamify-apk/).
+ */
+fun resolveWebResourceUrl(filename: String): String {
+    return try {
+        val location = kotlinx.browser.window.location
+        val pathname = location.pathname
+        val dir = if (pathname.endsWith("/")) pathname else pathname.substringBeforeLast('/') + "/"
+        location.origin.trimEnd('/') + dir + filename.trimStart('/')
+    } catch (_: Throwable) {
+        filename
+    }
+}
+
 object DemoCatalogLoader {
-    private const val CDN_URL = "https://github.com/meraxes89/docs/releases/download/v1.0.0/demo-catalog.json"
     private const val STORAGE_KEY = "streamify_demo_catalog"
+    private const val LEGACY_RELEASE_URL =
+        "https://github.com/meraxes89/docs/releases/download/v1.0.0/demo-catalog.json"
 
     private val _catalog = MutableStateFlow<JsonObject?>(null)
     val catalog: StateFlow<JsonObject?> = _catalog
@@ -50,19 +67,29 @@ object DemoCatalogLoader {
             println("[DemoCatalogLoader] Error reading localStorage cache: ${e.message}")
         }
 
-        // 2. Fetch from CDN
-        try {
-            val responseText = webKtorClient.get(CDN_URL).bodyAsText()
-            if (responseText.isNotBlank() && responseText.startsWith("{")) {
-                val parsed = Json.parseToJsonElement(responseText).jsonObject
-                _catalog.value = parsed
-                isLoaded = true
-                setWebLocalStorage(STORAGE_KEY, responseText)
-                seedLocalStorageIfEmpty(parsed)
-                println("[DemoCatalogLoader] Successfully fetched and cached demo catalog from CDN")
+        // 2. Fetch from same-origin resource, then legacy fallback URL
+        val candidateUrls = listOfNotNull(
+            resolveWebResourceUrl("demo-catalog.json"),
+            "demo-catalog.json",
+            "./demo-catalog.json",
+            LEGACY_RELEASE_URL
+        ).distinct()
+
+        for (url in candidateUrls) {
+            try {
+                val responseText = webKtorClient.get(url).bodyAsText()
+                if (responseText.isNotBlank() && responseText.startsWith("{")) {
+                    val parsed = Json.parseToJsonElement(responseText).jsonObject
+                    _catalog.value = parsed
+                    isLoaded = true
+                    setWebLocalStorage(STORAGE_KEY, responseText)
+                    seedLocalStorageIfEmpty(parsed)
+                    println("[DemoCatalogLoader] Successfully fetched and cached demo catalog from: $url")
+                    break
+                }
+            } catch (e: Throwable) {
+                println("[DemoCatalogLoader] Fetch from $url failed: ${e.message}")
             }
-        } catch (e: Throwable) {
-            println("[DemoCatalogLoader] CDN fetch failed or offline: ${e.message}")
         }
     }
 
