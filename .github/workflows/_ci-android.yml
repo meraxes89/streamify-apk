@@ -39,7 +39,7 @@ permissions:
 jobs:
   # ── JVM unit suite: state machines, chaos, CAD identity gates ───────────────
   jvm-unit:
-    name: "Android JVM unit suite"
+    name: "Unit Tests"
     if: ${{ !inputs.release_mode }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -99,7 +99,7 @@ jobs:
 
   # ── APK assembly over the prebuilt engine artifacts ─────────────────────────
   assemble-apk:
-    name: ${{ inputs.release_mode && 'Assemble release APK (signed)' || 'Assemble debug APK (universal 2-ABI)' }}
+    name: "${{ inputs.release_mode && 'Assemble APK (release)' || 'Assemble APK (debug)' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # GOV-05: release signing secrets (RELEASE_KEYSTORE_B64, KEYSTORE_PASSWORD,
