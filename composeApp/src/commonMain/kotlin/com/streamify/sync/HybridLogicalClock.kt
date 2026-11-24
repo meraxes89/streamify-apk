@@ -2,7 +2,7 @@ package com.streamify.sync
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * 64-bit Hybrid Logical Clock (HLC) as specified in RFC 2026-11-24:
