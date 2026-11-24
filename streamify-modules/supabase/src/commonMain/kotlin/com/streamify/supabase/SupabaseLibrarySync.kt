@@ -3,6 +3,7 @@ package com.streamify.supabase
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.patch
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -12,6 +13,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -43,6 +45,7 @@ object SupabaseLibrarySync {
         coverUrl: String? = null,
         durationSec: Int = 0,
         isLiked: Boolean,
+        createdAtIso: String? = null,
         userId: String? = null
     ): Result<Boolean> = withContext(ioDispatcher) {
         try {
@@ -73,6 +76,9 @@ object SupabaseLibrarySync {
                 val likePayload = buildJsonObject {
                     put("user_id", targetUserId)
                     put("track_id", trackId)
+                    if (!createdAtIso.isNullOrBlank()) {
+                        put("created_at", createdAtIso)
+                    }
                 }.toString()
 
                 val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
@@ -99,10 +105,10 @@ object SupabaseLibrarySync {
     }
 
     /**
-     * Fetches all cloud-liked track IDs for this user with automatic pagination beyond PostgREST 1000-row limit.
+     * Fetches all cloud-liked track IDs with their like timestamp (`created_at`).
      */
-    suspend fun fetchCloudLikes(userId: String? = null): List<String> = withContext(ioDispatcher) {
-        val allLikes = mutableListOf<String>()
+    suspend fun fetchCloudLikesWithTime(userId: String? = null): Map<String, String?> = withContext(ioDispatcher) {
+        val allLikes = mutableMapOf<String, String?>()
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             var offset = 0
@@ -110,7 +116,7 @@ object SupabaseLibrarySync {
             while (true) {
                 val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
                     parameter("user_id", "eq.$targetUserId")
-                    parameter("select", "track_id")
+                    parameter("select", "track_id,created_at")
                     parameter("limit", limit.toString())
                     parameter("offset", offset.toString())
                     header("apikey", SupabaseConfig.ANON_KEY)
@@ -118,13 +124,20 @@ object SupabaseLibrarySync {
                 }
                 if (!resp.status.isSuccess()) break
                 val list = json.decodeFromString<List<CloudUserLike>>(resp.bodyAsText())
-                allLikes.addAll(list.map { it.track_id })
+                list.forEach { allLikes[it.track_id] = it.created_at }
                 if (list.size < limit) break
                 offset += limit
             }
         } catch (_: Exception) {
         }
         allLikes
+    }
+
+    /**
+     * Fetches all cloud-liked track IDs for this user with automatic pagination beyond PostgREST 1000-row limit.
+     */
+    suspend fun fetchCloudLikes(userId: String? = null): List<String> = withContext(ioDispatcher) {
+        fetchCloudLikesWithTime(userId).keys.toList()
     }
 
     /**
@@ -168,6 +181,9 @@ object SupabaseLibrarySync {
                         add(buildJsonObject {
                             put("user_id", targetUserId)
                             put("track_id", t.id)
+                            if (!t.createdAt.isNullOrBlank()) {
+                                put("created_at", t.createdAt)
+                            }
                         })
                     }
                 }.toString()
@@ -192,7 +208,8 @@ object SupabaseLibrarySync {
      */
     suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> = withContext(ioDispatcher) {
         try {
-            val likedIds = fetchCloudLikes(userId)
+            val likesMap = fetchCloudLikesWithTime(userId)
+            val likedIds = likesMap.keys.toList()
             if (likedIds.isEmpty()) return@withContext emptyList()
 
             val resultTracks = mutableListOf<CloudTrack>()
@@ -206,7 +223,10 @@ object SupabaseLibrarySync {
                 }
                 if (resp.status.isSuccess()) {
                     val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
-                    resultTracks.addAll(tracks)
+                    resultTracks.addAll(tracks.map { track ->
+                        val likedTime = likesMap[track.id]
+                        if (likedTime != null) track.copy(createdAt = likedTime) else track
+                    })
                 }
             }
             resultTracks
@@ -290,6 +310,7 @@ object SupabaseLibrarySync {
         coverUrl: String = "",
         trackIds: List<String> = emptyList(),
         isPublic: Boolean = true,
+        youtubePlaylistId: String? = null,
         userId: String? = null
     ): Result<Boolean> = withContext(ioDispatcher) {
         try {
@@ -302,6 +323,9 @@ object SupabaseLibrarySync {
                 put("description", description)
                 put("cover_url", coverUrl)
                 put("is_public", isPublic)
+                if (!youtubePlaylistId.isNullOrBlank()) {
+                    put("youtube_playlist_id", youtubePlaylistId)
+                }
             }.toString()
 
             val plResp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlists") {
@@ -489,6 +513,7 @@ object SupabaseLibrarySync {
         trackId: String,
         durationSec: Int,
         syncId: String? = null,
+        albumId: String? = null,
         createdAtIso: String? = null
     ): Result<Boolean> = withContext(ioDispatcher) {
         try {
@@ -499,6 +524,9 @@ object SupabaseLibrarySync {
                 put("user_id", userId)
                 put("track_id", trackId)
                 put("listened_duration_sec", durationSec)
+                if (!albumId.isNullOrBlank()) {
+                    put("album_id", albumId)
+                }
                 if (!createdAtIso.isNullOrBlank()) {
                     put("created_at", createdAtIso)
                 }
@@ -526,7 +554,7 @@ object SupabaseLibrarySync {
     ): List<CloudListeningHistoryItem> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
-                parameter("select", "id,user_id,track_id,listened_duration_sec,created_at")
+                parameter("select", "id,user_id,track_id,listened_duration_sec,album_id,created_at")
                 parameter("user_id", "eq.$userId")
                 parameter("order", "created_at.desc")
                 parameter("limit", limit.toString())
@@ -540,6 +568,121 @@ object SupabaseLibrarySync {
             }
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    /**
+     * Fetches the user's search history from `public.user_search_history`.
+     */
+    suspend fun fetchCloudSearchHistory(userId: String? = null): List<CloudSearchQuery> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_search_history") {
+                parameter("user_id", "eq.$targetUserId")
+                parameter("is_deleted", "eq.false")
+                parameter("order", "searched_at.desc")
+                parameter("limit", "100")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                json.decodeFromString<List<CloudSearchQuery>>(resp.bodyAsText())
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Batch uploads search queries to `public.user_search_history`.
+     */
+    suspend fun uploadSearchHistory(
+        queries: List<String>,
+        userId: String? = null
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val validQueries = queries.filter { it.isNotBlank() }
+            if (validQueries.isEmpty()) return@withContext Result.success(true)
+
+            val arrayPayload = buildJsonArray {
+                for (q in validQueries) {
+                    add(buildJsonObject {
+                        put("user_id", targetUserId)
+                        put("query", q)
+                    })
+                }
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_search_history") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                header("Prefer", "resolution=ignore-duplicates")
+                contentType(ContentType.Application.Json)
+                setBody(arrayPayload)
+            }
+            Result.success(resp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Updates the user's active playback session in `public.profiles` for cross-device continuity.
+     */
+    suspend fun updateActiveSession(
+        trackId: String?,
+        positionMs: Long,
+        queueIds: List<String> = emptyList(),
+        userId: String? = null
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val sessionObj = buildJsonObject {
+                put("track_id", trackId)
+                put("position_ms", positionMs)
+                put("queue_ids", buildJsonArray { queueIds.forEach { add(it) } })
+                put("updated_at", Clock.System.now().toString())
+            }
+            val payload = buildJsonObject {
+                put("active_session", sessionObj)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.patch("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
+                parameter("id", "eq.$targetUserId")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            Result.success(resp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches the user's active playback session from `public.profiles`.
+     */
+    suspend fun fetchActiveSession(userId: String? = null): Result<CloudActiveSession?> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
+                parameter("id", "eq.$targetUserId")
+                parameter("select", "active_session")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                val list = json.decodeFromString<List<UserProfile>>(resp.bodyAsText())
+                Result.success(list.firstOrNull()?.activeSession)
+            } else {
+                Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

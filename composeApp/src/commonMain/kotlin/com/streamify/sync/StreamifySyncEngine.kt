@@ -2,11 +2,14 @@ package com.streamify.sync
 
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
+import com.maxrave.domain.data.entities.SearchHistory
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.repository.AlbumRepository
 import com.maxrave.domain.repository.ArtistRepository
 import com.maxrave.domain.repository.LocalPlaylistRepository
+import com.maxrave.domain.repository.PodcastRepository
+import com.maxrave.domain.repository.SearchRepository
 import com.maxrave.domain.repository.SongRepository
 import com.streamify.supabase.CloudTrack
 import com.streamify.supabase.SupabaseClient
@@ -25,6 +28,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import kotlin.concurrent.Volatile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -47,6 +55,8 @@ object StreamifySyncEngine : KoinComponent {
     private val localPlaylistRepository: LocalPlaylistRepository by inject()
     private val dataStoreManager: com.maxrave.domain.manager.DataStoreManager by inject()
     private val analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository by inject()
+    private val searchRepository: SearchRepository by inject()
+    private val podcastRepository: PodcastRepository by inject()
 
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -140,6 +150,15 @@ object StreamifySyncEngine : KoinComponent {
             _syncState.value = SyncStatus.Syncing("Syncing listening history...")
             syncListeningHistoryInternal(targetUserId)
 
+            _syncState.value = SyncStatus.Syncing("Syncing podcasts...")
+            syncPodcastsInternal(targetUserId)
+
+            _syncState.value = SyncStatus.Syncing("Syncing search history...")
+            syncSearchHistoryInternal(targetUserId)
+
+            _syncState.value = SyncStatus.Syncing("Syncing active session...")
+            syncActiveSessionInternal(targetUserId)
+
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
             success
@@ -207,7 +226,7 @@ object StreamifySyncEngine : KoinComponent {
                             liked = true,
                             totalPlayTime = 0,
                             downloadState = DownloadState.STATE_NOT_DOWNLOADED,
-                            favoriteAt = now(),
+                            favoriteAt = parseIsoToLocalDateTime(cloudTrack.createdAt) ?: now(),
                             downloadedAt = now(),
                             inLibrary = now(),
                             canvasUrl = null,
@@ -233,7 +252,8 @@ object StreamifySyncEngine : KoinComponent {
                     album = localSong.albumName,
                     durationSec = localSong.durationSeconds,
                     coverUrl = localSong.thumbnails ?: "",
-                    streamUrl = "https://www.youtube.com/watch?v=${localSong.videoId}"
+                    streamUrl = "https://www.youtube.com/watch?v=${localSong.videoId}",
+                    createdAt = localSong.favoriteAt?.toInstant(TimeZone.currentSystemDefault())?.toString()
                 )
             }
             SupabaseLibrarySync.uploadLikedTracksBatch(cloudBatch, targetUserId)
@@ -313,7 +333,8 @@ object StreamifySyncEngine : KoinComponent {
                     val newEntity = LocalPlaylistEntity(
                         title = cloudPl.name,
                         thumbnail = cloudPl.coverUrl.ifBlank { null },
-                        syncId = cloudPl.id
+                        syncId = cloudPl.id,
+                        youtubePlaylistId = cloudPl.youtubePlaylistId
                     )
                     localPlaylistRepository.insertLocalPlaylist(newEntity, "Synced from Cloud").first()
 
@@ -368,6 +389,7 @@ object StreamifySyncEngine : KoinComponent {
                     coverUrl = localPl.thumbnail ?: "",
                     trackIds = trackIds,
                     isPublic = false,
+                    youtubePlaylistId = localPl.youtubePlaylistId,
                     userId = targetUserId
                 )
             }
@@ -424,7 +446,7 @@ object StreamifySyncEngine : KoinComponent {
                     analyticsRepository.insertPlaybackEvent(
                         videoId = cloudItem.trackId,
                         channelIds = emptyList(),
-                        albumBrowseId = null,
+                        albumBrowseId = cloudItem.albumId,
                         durationSecond = cloudItem.listenedDurationSec.toLong(),
                         listenedSecond = cloudItem.listenedDurationSec.toLong()
                     ).firstOrNull()
@@ -437,11 +459,103 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.recordPlaybackHistory(
                         userId = targetUserId,
                         trackId = localEvent.videoId,
-                        durationSec = localEvent.listenedSecond.toInt().coerceAtLeast(1)
+                        durationSec = localEvent.listenedSecond.toInt().coerceAtLeast(1),
+                        albumId = localEvent.albumBrowseId,
+                        createdAtIso = localEvent.timestamp.toInstant(TimeZone.currentSystemDefault()).toString()
                     )
                 }
             }
         } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 2 / Phase 3 Saved Podcasts Synchronization.
+     */
+    private suspend fun syncPodcastsInternal(targetUserId: String) {
+        try {
+            val cloudPodcastIds = SupabaseLibrarySync.fetchCloudItemFavorites("podcast", targetUserId).toSet()
+            val localFavPodcasts = podcastRepository.getFavoritePodcasts().firstOrNull() ?: emptyList()
+            val localPodcastIds = localFavPodcasts.map { it.podcastId }.toSet()
+
+            // Inbound: favorite podcasts locally that are favorited in the cloud
+            for (cloudPodId in cloudPodcastIds) {
+                if (cloudPodId !in localPodcastIds && cloudPodId.isNotBlank()) {
+                    podcastRepository.favoritePodcast(cloudPodId, true).firstOrNull()
+                }
+            }
+
+            // Outbox: push local favorite podcasts to cloud
+            for (localPod in localFavPodcasts) {
+                if (localPod.podcastId !in cloudPodcastIds && localPod.podcastId.isNotBlank()) {
+                    SupabaseLibrarySync.syncItemFavorite("podcast", localPod.podcastId, true, targetUserId)
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 2 / Phase 3 Search History Synchronization.
+     */
+    private suspend fun syncSearchHistoryInternal(targetUserId: String) {
+        try {
+            val cloudSearch = SupabaseLibrarySync.fetchCloudSearchHistory(targetUserId)
+            val cloudQueries = cloudSearch.map { it.query }.toSet()
+
+            val localHistory = searchRepository.getSearchHistory().firstOrNull() ?: emptyList()
+            val localQueries = localHistory.map { it.query }.toSet()
+
+            // Inbound: insert missing cloud queries into local search history
+            for (q in cloudQueries) {
+                if (q !in localQueries && q.isNotBlank()) {
+                    searchRepository.insertSearchHistory(SearchHistory(q)).firstOrNull()
+                }
+            }
+
+            // Outbox: push local search queries not yet in cloud
+            val pendingUploads = localQueries.filter { it !in cloudQueries && it.isNotBlank() }
+            if (pendingUploads.isNotEmpty()) {
+                SupabaseLibrarySync.uploadSearchHistory(pendingUploads, targetUserId)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Cross-Device Active Playback Session Hand-off (Continuity).
+     */
+    private suspend fun syncActiveSessionInternal(targetUserId: String) {
+        try {
+            val localMediaId = dataStoreManager.recentMediaId.firstOrNull() ?: ""
+            val localPosStr = dataStoreManager.recentPosition.firstOrNull() ?: "0"
+            val localPos = localPosStr.toLongOrNull() ?: 0L
+
+            val remoteSession = SupabaseLibrarySync.fetchActiveSession(targetUserId).getOrNull()
+
+            if (localMediaId.isNotBlank() && !localMediaId.startsWith("trk_")) {
+                // Outbox: If device has an active track, update cloud active session
+                val localQueue = songRepository.getSavedQueue().firstOrNull()?.firstOrNull()?.listTrack?.map { it.videoId } ?: emptyList()
+                SupabaseLibrarySync.updateActiveSession(
+                    trackId = localMediaId,
+                    positionMs = localPos,
+                    queueIds = localQueue,
+                    userId = targetUserId
+                )
+            } else if (remoteSession != null && !remoteSession.trackId.isNullOrBlank()) {
+                // Inbound: If this device has no recent track and cloud has one, restore continuity
+                dataStoreManager.saveRecentSong(remoteSession.trackId, remoteSession.positionMs)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun parseIsoToLocalDateTime(iso: String?): LocalDateTime? {
+        if (iso.isNullOrBlank()) return null
+        return try {
+            Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault())
+        } catch (_: Exception) {
+            null
         }
     }
 
