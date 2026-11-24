@@ -17,12 +17,10 @@ title bar is macOS-only; Linux and Windows use native decorations.
 ## Audio and natives
 
 Desktop playback goes through bundled libmpv slices (per-arch natives staged
-by `:composeApp:mpvSetupAll` and packaged by Conveyor). The real-time HAL
-library `streamify_desktop_hal` (WASAPI on Windows, PipeWire/ALSA on Linux)
-is built from `native/` by CI with CMake and loaded by
-`streamify-modules/media-hal`'s `DesktopHalAudioBridge`. The legacy JNA
+by `:composeApp:mpvSetupAll` and packaged by Conveyor). The prebuilt playback
+stack handles audio rendering across Windows, Linux, and macOS. The legacy JNA
 engine smoke test (`legacy/desktop/.../DesktopJnaEngineSmokeTest.kt`) verifies
-the Rust cdylib and sink ABI round-trips on the desktop classpath; legacy
+the Rust cdylib and engine lifecycle on the desktop classpath; legacy
 modules are not part of the shipping build.
 
 ## Memory tuning

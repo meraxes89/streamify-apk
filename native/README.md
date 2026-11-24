@@ -11,14 +11,12 @@ last section.
 
 ```
 native/
-├── include/     audio_sink_ringbuffer.h, desktop_hal.h, {wasapi,pipewire,alsa,coreaudio}_render_core.h,
-│                virtual_hal.h, linuxhal_embedded_abi.h, streamify_audio_sinks.h (frozen sink ABI)
+├── include/     audio_sink_ringbuffer.h, virtual_hal.h, streamify_audio_sinks.h (frozen sink ABI)
 ├── src/         audio_sink_ringbuffer.cpp, jni_bridge_audio_sinks.cpp (7 symbols),
-│                desktop_hal_c_api.cpp, virtual_hal.cpp, palette SIMD
+│                virtual_hal.cpp, palette SIMD
 ├── dsp/         LufsNormalizer, SoftKneeLimiter, MasterChain, ChannelOps,
 │                AcousticPhaseResampler, LyricAligner, kissfft (vendored)
-├── audio/       wasapi_pull_adapter.cpp, pipewire_driver.cpp, coreaudio_pull_adapter.cpp,
-│                ADTS/Opus parsers, AudioFrameRemuxer
+├── audio/       ADTS/Opus parsers, AudioFrameRemuxer
 ├── engine/      PtpEngine (Kalman-Bucy), HardwareLatencyProfiler, StreamifyDB (vendored sqlite3),
 │                TelemetryEngine, VectorStore, AirDropPhysicsEngine, TaskOrchestrator
 ├── jni/         jni_bridge.cc (86 Java_com_streamify_* entry points, JNI_SHIELD), JniShield.h
@@ -105,26 +103,12 @@ pairs are published through single-writer seqlocks (odd mark, release fence,
 payload, even mark; readers retry at most 64 spins). Underruns silence-fill
 the starved tail; the clock is never stalled.
 
-## HAL integration
+## Playback stack architecture
 
-- **Android**: no in-tree AAudio/Oboe C++ code. Data plane: Media3 renderer
-  -> `nativeWriteFloat` (JNI) -> AudioSink -> feeder thread pulls
-  `nativeReadFramesF32` -> Kotlin `AudioTrackPullOutput`
-  (ENCODING_PCM_FLOAT). `AudioTrack.getTimestamp()` / AAudio timestamps feed
-  `HardwareLatencyProfiler::submitTrackTimestamp` (128-anchor window,
-  6 s half-life, MAD 3-sigma rejection, 5 ms gate on clock-bridge noise).
-- **Windows (WASAPI)**: `audio/wasapi_pull_adapter.cpp` — IAudioClient3
-  shared-low-latency / shared / event-driven exclusive; render thread raised
-  to MMCSS "Pro Audio"; `IAudioClock::GetPosition` pairs published via
-  seqlock; 128-bit intermediates in tick rescaling.
-- **Linux**: `audio/pipewire_driver.cpp` — PipeWire via
-  `dlopen("libpipewire-0.3.so.0")` with frozen embedded ABI
-  (`include/linuxhal_embedded_abi.h`), ALSA fallback
-  `dlopen("libasound.so.2")`; the pw thread-loop lock is never held in the
-  process callback; clock sampled by a control-plane thread.
-- **macOS/iOS (CoreAudio)**: `audio/coreaudio_pull_adapter.cpp` — AUHAL /
-  RemoteIO render callback pulling through a `RenderFrameSource` virtual;
-  timestamps from `AudioTimeStamp` with `mach_timebase_info` cached off-thread.
+- **Android**: Media3 / ExoPlayer renderer -> `nativeWriteFloat` (JNI) -> AudioSink -> feeder thread pulls `nativeReadFramesF32` -> Kotlin `AudioTrackPullOutput` (ENCODING_PCM_FLOAT). `AudioTrack.getTimestamp()` / AAudio timestamps feed `HardwareLatencyProfiler::submitTrackTimestamp`.
+- **Desktop (Windows/Linux/macOS)**: Prebuilt `libmpv` playback stack.
+- **Web (Wasm)**: Prebuilt HTML5 DOM `<audio>` element playback.
+- **iOS**: Native AVPlayer and AVAudioSession integration.
 
 Clock acceptance: `DacPresentationClock` interpolation must stay within
 5 ms of simulated presentation time; `tests/test_virtual_hal.cpp` enforces
@@ -134,14 +118,9 @@ broken estimator exceeds 5 ms.
 ## Build and test
 
 CMake >= 3.22.1, C++20. Android: `streamify_native_core` shared library.
-Desktop: `streamify_desktop_hal` (WASAPI links avrt/ole32; the Linux driver
-links only dl/m/pthread). Test executables include `test_audio_sink_ringbuffer`
-(10M-frame SPSC stress, flush protocol, AllocGuard),
-`desktop_hal_render_core_test_suite` (WASAPI/PipeWire/ALSA cores driven
-callback-for-callback against VirtualHAL), `linux_hal_driver_test_suite`
-(Linux only), `lufs_parity_test_suite`, `jni_sink_bridge_test_suite`
-(host JNIEnv stub), and more — 12 CTest registrations on Linux. LibFuzzer
-harnesses (`-fsanitize=fuzzer,address,undefined`) build under clang only.
+Test executables include `test_audio_sink_ringbuffer` (10M-frame SPSC stress, flush protocol, AllocGuard),
+`virtual_hal_test_suite`, `dsp_phase_lock_test_suite`, `lufs_parity_test_suite`,
+`jni_sink_bridge_test_suite` (host JNIEnv stub), and `capability_abi_parity_test_suite`.
 Flags: `-O3 -ffast-math -flto` in production (tests are overridden with
 `-fno-fast-math -O2`), ASAN option available, arm64-v8a adds
 `-march=armv8-a+simd+crypto`.
@@ -149,7 +128,6 @@ Flags: `-O3 -ffast-math -flto` in production (tests are overridden with
 ```bash
 cmake -B build -S . -DENABLE_TESTS=ON
 cmake --build build --target test_audio_sink_ringbuffer
-cmake --build build --target desktop_hal_render_core_test_suite
 ctest --test-dir build --output-on-failure
 ```
 
