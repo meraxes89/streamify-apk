@@ -387,6 +387,121 @@ index e88affc..c143fdf 100644
                          ).build(),
                  ).setWakeMode(C.WAKE_MODE_NETWORK)
                  .setHandleAudioBecomingNoisy(true)
+diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
+index 90f78fb..dfaa9b6 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
+@@ -204,7 +204,7 @@ internal class DownloadUtils(
+         get() = _downloads
+     private val _downloadTask = MutableStateFlow<Map<String, Int>>(emptyMap())
+     override val downloadTask: StateFlow<Map<String, Int>> get() = _downloadTask
+-    val downloadingVideoIds = MutableStateFlow<MutableSet<String>>(mutableSetOf())
++    val downloadingVideoIds = MutableStateFlow<Set<String>>(emptySet())
+ 
+     /**
+      * Use thumbnail to check video or audio. The video stream is fetched only while
+@@ -245,7 +245,7 @@ internal class DownloadUtils(
+             context,
+             MusicDownloadService::class.java,
+             downloadRequest,
+-            false,
++            true,
+         )
+         if (isVideo) {
+             val id = MERGING_DATA_TYPE.VIDEO + videoId
+@@ -259,7 +259,7 @@ internal class DownloadUtils(
+                 context,
+                 MusicDownloadService::class.java,
+                 downloadRequestVideo,
+-                false,
++                true,
+             )
+         }
+     }
+@@ -283,7 +283,7 @@ internal class DownloadUtils(
+     override fun removeAllDownloads() {
+         _downloads.value = emptyMap()
+         _downloadTask.value = emptyMap()
+-        downloadingVideoIds.value = mutableSetOf()
++        downloadingVideoIds.value = emptySet()
+         downloadManager.removeAllDownloads()
+     }
+ 
+@@ -296,11 +296,7 @@ internal class DownloadUtils(
+                 // that still listed the song as downloaded.
+                 (previousIds - download.keys).forEach { videoId ->
+                     _downloadTask.update { it + (videoId to DownloadState.STATE_NOT_DOWNLOADED) }
+-                    downloadingVideoIds.update {
+-                        it.apply {
+-                            remove(videoId)
+-                        }
+-                    }
++                    downloadingVideoIds.update { it - videoId }
+                     songRepository.updateDownloadState(videoId, DownloadState.STATE_NOT_DOWNLOADED)
+                 }
+                 previousIds = download.keys.toSet()
+@@ -335,27 +331,15 @@ internal class DownloadUtils(
+                     }
+                     when (combineState) {
+                         DownloadState.STATE_DOWNLOADED -> {
+-                            downloadingVideoIds.update {
+-                                it.apply {
+-                                    remove(videoId)
+-                                }
+-                            }
++                            downloadingVideoIds.update { it - videoId }
+                             songRepository.updateDownloadState(videoId, DownloadState.STATE_DOWNLOADED)
+                         }
+                         DownloadState.STATE_DOWNLOADING -> {
+-                            downloadingVideoIds.update {
+-                                it.apply {
+-                                    add(videoId)
+-                                }
+-                            }
++                            downloadingVideoIds.update { it + videoId }
+                             songRepository.updateDownloadState(videoId, DownloadState.STATE_DOWNLOADING)
+                         }
+                         DownloadState.STATE_NOT_DOWNLOADED -> {
+-                            downloadingVideoIds.update {
+-                                it.apply {
+-                                    remove(videoId)
+-                                }
+-                            }
++                            downloadingVideoIds.update { it - videoId }
+                             songRepository.updateDownloadState(videoId, DownloadState.STATE_NOT_DOWNLOADED)
+                         }
+                         DownloadState.STATE_PREPARING -> {
+diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt
+index cf08060..39024b5 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt
+@@ -94,7 +94,7 @@ internal class MusicDownloadService :
+                         null,
+                         Util.fromUtf8Bytes(download.request.data),
+                     )
+-                NotificationUtil.setNotification(context, nextNotificationId++, notification)
++                NotificationUtil.setNotification(context, nextNotificationId, notification)
+             } else if (download.state == Download.STATE_COMPLETED) {
+                 val notification =
+                     notificationHelper.buildDownloadCompletedNotification(
+@@ -103,16 +103,7 @@ internal class MusicDownloadService :
+                         null,
+                         Util.fromUtf8Bytes(download.request.data),
+                     )
+-                NotificationUtil.setNotification(context, nextNotificationId++, notification)
+-            }
+-        }
+-
+-        override fun onDownloadsPausedChanged(
+-            downloadManager: DownloadManager,
+-            downloadsPaused: Boolean,
+-        ) {
+-            if (downloadsPaused) {
+-                downloadManager.resumeDownloads()
++                NotificationUtil.setNotification(context, nextNotificationId, notification)
+             }
+         }
+     }
 diff --git a/service/discord/build.gradle.kts b/service/discord/build.gradle.kts
 index 4a92fcc..7321237 100644
 --- a/service/discord/build.gradle.kts
