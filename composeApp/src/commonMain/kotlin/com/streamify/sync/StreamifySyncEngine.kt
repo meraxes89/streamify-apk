@@ -33,6 +33,18 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import com.streamify.supabase.SyncPullOp
+import com.streamify.supabase.SyncPullResult
+import com.streamify.supabase.SyncPushResult
+import com.streamify.supabase.CloudPresence
 import kotlin.concurrent.Volatile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -116,8 +128,18 @@ object StreamifySyncEngine : KoinComponent {
         }
     }
 
+    private suspend fun getOrCreateDeviceId(): String {
+        val existing = dataStoreManager.getString("streamify_device_id_v3").firstOrNull()
+        if (!existing.isNullOrBlank()) {
+            return existing
+        }
+        val newId = "dev_" + HybridLogicalClock.randomUuid()
+        dataStoreManager.putString("streamify_device_id_v3", newId)
+        return newId
+    }
+
     /**
-     * Suspending orchestrator that executes all sync stages sequentially with error containment.
+     * Suspending orchestrator that executes all sync stages with V3 delta sync & HLC.
      */
     suspend fun syncAll(userId: String? = null): SyncStatus = withContext(Dispatchers.IO) {
         if (!mutex.tryLock()) {
@@ -131,33 +153,57 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             isSyncActive = true
-            _syncState.value = SyncStatus.Syncing("Syncing liked songs...")
+            val deviceId = getOrCreateDeviceId()
+            val hlc = HybridLogicalClock.now()
+            val localCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
 
-            val likedCount = syncLikesInternal(targetUserId)
+            var likedCount = 0
 
-            _syncState.value = SyncStatus.Syncing("Syncing followed artists...")
-            syncArtistsInternal(targetUserId)
+            if (localCursor > 0L) {
+                // V3 Delta Sync path (cursor-based delta pull)
+                _syncState.value = SyncStatus.Syncing("Pulling delta changes...")
+                syncDeltaInternal(targetUserId, deviceId)
 
-            _syncState.value = SyncStatus.Syncing("Syncing saved albums...")
-            syncAlbumsInternal(targetUserId)
+                // Drain local outbox via sync_push
+                _syncState.value = SyncStatus.Syncing("Pushing changes...")
+                syncOutboxPushInternal(targetUserId, deviceId, hlc)
 
-            _syncState.value = SyncStatus.Syncing("Syncing playlists...")
-            syncPlaylistsInternal(targetUserId)
+                likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
+            } else {
+                // Cold Bootstrap Sync
+                _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
+                likedCount = syncLikesInternal(targetUserId)
 
-            _syncState.value = SyncStatus.Syncing("Syncing settings...")
-            syncSettingsInternal(targetUserId)
+                _syncState.value = SyncStatus.Syncing("Bootstrapping followed artists...")
+                syncArtistsInternal(targetUserId)
 
-            _syncState.value = SyncStatus.Syncing("Syncing listening history...")
-            syncListeningHistoryInternal(targetUserId)
+                _syncState.value = SyncStatus.Syncing("Bootstrapping saved albums...")
+                syncAlbumsInternal(targetUserId)
 
-            _syncState.value = SyncStatus.Syncing("Syncing podcasts...")
-            syncPodcastsInternal(targetUserId)
+                _syncState.value = SyncStatus.Syncing("Bootstrapping playlists...")
+                syncPlaylistsInternal(targetUserId)
 
-            _syncState.value = SyncStatus.Syncing("Syncing search history...")
-            syncSearchHistoryInternal(targetUserId)
+                _syncState.value = SyncStatus.Syncing("Bootstrapping settings...")
+                syncSettingsInternal(targetUserId)
 
-            _syncState.value = SyncStatus.Syncing("Syncing active session...")
-            syncActiveSessionInternal(targetUserId)
+                _syncState.value = SyncStatus.Syncing("Bootstrapping listening history...")
+                syncListeningHistoryInternal(targetUserId)
+
+                _syncState.value = SyncStatus.Syncing("Bootstrapping podcasts...")
+                syncPodcastsInternal(targetUserId)
+
+                _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
+                syncSearchHistoryInternal(targetUserId)
+
+                // Record latest changelog cursor upon bootstrap completion
+                val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
+                val latestCursor = pullRes?.cursor ?: 0L
+                dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
+            }
+
+            // Sync presence via heartbeat_presence with HLC guard and dual-write active_session
+            _syncState.value = SyncStatus.Syncing("Syncing playback presence...")
+            syncPresenceInternal(targetUserId, deviceId, hlc)
 
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
@@ -562,6 +608,254 @@ object StreamifySyncEngine : KoinComponent {
             } else if (!remoteTrackId.isNullOrBlank() && remoteSession != null) {
                 // Inbound: If this device has no recent track and cloud has one, restore continuity
                 dataStoreManager.saveRecentSong(remoteTrackId, remoteSession.positionMs)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * V3 Delta Sync: pulls changelog delta ops since local cursor, skipping calling device's own ops.
+     */
+    private suspend fun syncDeltaInternal(targetUserId: String, deviceId: String): Boolean {
+        var cursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
+        var hasMore = true
+        var pagesFetched = 0
+
+        while (hasMore && pagesFetched < 20) {
+            val pullResult = SupabaseLibrarySync.syncPull(
+                since = cursor,
+                limit = 500,
+                deviceId = deviceId
+            ).getOrNull() ?: return false
+
+            for (op in pullResult.ops) {
+                applyDeltaOp(op)
+            }
+
+            cursor = pullResult.cursor
+            dataStoreManager.putString("streamify_sync_cursor_v3", cursor.toString())
+            hasMore = pullResult.hasMore
+            pagesFetched++
+        }
+        return true
+    }
+
+    /**
+     * Drains pending local outbox changes to Supabase via `sync_push` RPC.
+     */
+    private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long) {
+        try {
+            val ops = mutableListOf<JsonObject>()
+
+            // Liked songs
+            val localLiked = songRepository.getLikedSongs().firstOrNull() ?: emptyList()
+            for (song in localLiked.take(50)) {
+                if (song.videoId.isBlank() || song.videoId.startsWith("trk_")) continue
+                ops.add(buildJsonObject {
+                    put("entity", "like")
+                    put("op", "U")
+                    put("key", song.videoId)
+                    put("hlc", hlc)
+                    put("data", buildJsonObject {
+                        put("created_at", song.favoriteAt?.toString())
+                        put("meta", buildJsonObject {
+                            put("title", song.title)
+                            put("artist", song.artistName?.firstOrNull() ?: "Unknown")
+                            put("album", song.albumName ?: "Streamify")
+                            put("duration_sec", song.durationSeconds)
+                            put("thumb_url", song.thumbnails ?: "")
+                        })
+                    })
+                })
+            }
+
+            if (ops.isNotEmpty()) {
+                val pushRes = SupabaseLibrarySync.syncPush(JsonArray(ops), deviceId).getOrNull()
+                if (pushRes != null && pushRes.cursor > 0L) {
+                    val currentCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
+                    if (pushRes.cursor > currentCursor) {
+                        dataStoreManager.putString("streamify_sync_cursor_v3", pushRes.cursor.toString())
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Applies an incoming SyncPullOp to local Room SQLite.
+     */
+    private suspend fun applyDeltaOp(op: SyncPullOp) {
+        try {
+            when (op.entity) {
+                "like" -> {
+                    if (op.op == "D") {
+                        songRepository.updateLikeStatus(op.key, 0)
+                    } else {
+                        val existing = songRepository.getSongById(op.key).firstOrNull()
+                        if (existing == null) {
+                            val meta = op.data?.get("snapshot")?.jsonObject
+                                ?: op.data?.get("meta")?.jsonObject
+                            val title = meta?.get("title")?.jsonPrimitive?.contentOrNull ?: "Synced Track"
+                            val artist = meta?.get("artist")?.jsonPrimitive?.contentOrNull ?: "Unknown Artist"
+                            val album = meta?.get("album")?.jsonPrimitive?.contentOrNull ?: "Streamify"
+                            val durationSec = meta?.get("duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                            val thumb = meta?.get("thumb")?.jsonPrimitive?.contentOrNull
+                                ?: meta?.get("thumb_url")?.jsonPrimitive?.contentOrNull
+                            val entity = SongEntity(
+                                videoId = op.key,
+                                title = title,
+                                artistName = listOf(artist),
+                                albumName = album,
+                                duration = formatDuration(durationSec),
+                                durationSeconds = durationSec,
+                                thumbnails = thumb?.ifBlank { null },
+                                isAvailable = true,
+                                isExplicit = false,
+                                likeStatus = "LIKE",
+                                videoType = "MUSIC_VIDEO_TYPE_ATV",
+                                category = null,
+                                resultType = null,
+                                liked = true
+                            )
+                            songRepository.insertSong(entity).lastOrNull()
+                        }
+                        songRepository.updateLikeStatus(op.key, 1)
+                    }
+                }
+                "favorite" -> {
+                    val itemType = op.data?.get("item_type")?.jsonPrimitive?.contentOrNull
+                        ?: op.key.substringBefore(":")
+                    val itemId = op.data?.get("item_id")?.jsonPrimitive?.contentOrNull
+                        ?: op.key.substringAfter(":")
+                    val isLiked = op.op != "D"
+                    when (itemType) {
+                        "artist" -> artistRepository.updateArtistLiked(itemId, if (isLiked) 1 else 0)
+                        "album" -> albumRepository.updateAlbumLiked(itemId, if (isLiked) 1 else 0)
+                        "podcast" -> podcastRepository.favoritePodcast(itemId, isLiked).firstOrNull()
+                    }
+                }
+                "playlist" -> {
+                    val localPlaylists = localPlaylistRepository.getAllLocalPlaylists().firstOrNull() ?: emptyList()
+                    val matched = localPlaylists.find { it.syncId == op.key }
+                    if (op.op == "D") {
+                        if (matched != null) {
+                            localPlaylistRepository.deleteLocalPlaylist(matched.id, "Synced deletion").firstOrNull()
+                        }
+                    } else {
+                        val name = op.data?.get("name")?.jsonPrimitive?.contentOrNull ?: "Synced Playlist"
+                        val cover = op.data?.get("cover_url")?.jsonPrimitive?.contentOrNull
+                        val ytId = op.data?.get("youtube_playlist_id")?.jsonPrimitive?.contentOrNull
+                        if (matched == null) {
+                            localPlaylistRepository.insertLocalPlaylist(
+                                LocalPlaylistEntity(
+                                    title = name,
+                                    thumbnail = cover?.ifBlank { null },
+                                    syncId = op.key,
+                                    youtubePlaylistId = ytId
+                                ),
+                                "Synced from Cloud"
+                            ).firstOrNull()
+                        }
+                    }
+                }
+                "playlist_track" -> {
+                    val playlistIdStr = op.data?.get("playlist_id")?.jsonPrimitive?.contentOrNull
+                    val trackId = op.data?.get("track_id")?.jsonPrimitive?.contentOrNull
+                    if (!playlistIdStr.isNullOrBlank() && !trackId.isNullOrBlank()) {
+                        val localPlaylists = localPlaylistRepository.getAllLocalPlaylists().firstOrNull() ?: emptyList()
+                        val matched = localPlaylists.find { it.syncId == playlistIdStr }
+                        if (matched != null) {
+                            val song = songRepository.getSongById(trackId).firstOrNull() ?: SongEntity(
+                                videoId = trackId,
+                                title = "Synced Track",
+                                duration = "0:00",
+                                durationSeconds = 0,
+                                isAvailable = true,
+                                isExplicit = false,
+                                likeStatus = "INDIFFERENT",
+                                videoType = "MUSIC_VIDEO_TYPE_ATV",
+                                category = null,
+                                resultType = null
+                            ).also { songRepository.insertSong(it).lastOrNull() }
+                            if (op.op == "D") {
+                                localPlaylistRepository.removeTrackFromLocalPlaylist(
+                                    id = matched.id,
+                                    song = song,
+                                    successMessage = "",
+                                    updatedYtMessage = "",
+                                    errorMessage = ""
+                                ).firstOrNull()
+                            } else {
+                                localPlaylistRepository.addTrackToLocalPlaylist(
+                                    id = matched.id,
+                                    song = song,
+                                    successMessage = "",
+                                    updatedYtMessage = "",
+                                    errorMessage = ""
+                                ).firstOrNull()
+                            }
+                        }
+                    }
+                }
+                "search" -> {
+                    if (op.op != "D") {
+                        searchRepository.insertSearchHistory(SearchHistory(op.key)).firstOrNull()
+                    }
+                }
+                "history" -> {
+                    if (op.op != "D") {
+                        val trackId = op.data?.get("track_id")?.jsonPrimitive?.contentOrNull ?: op.key
+                        val artistId = op.data?.get("artist_id")?.jsonPrimitive?.contentOrNull
+                        val albumId = op.data?.get("album_id")?.jsonPrimitive?.contentOrNull
+                        val dur = op.data?.get("listened_duration_sec")?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                        if (trackId.isNotBlank() && !trackId.startsWith("trk_")) {
+                            analyticsRepository.insertPlaybackEvent(
+                                videoId = trackId,
+                                channelIds = listOfNotNull(artistId),
+                                albumBrowseId = albumId,
+                                durationSecond = dur,
+                                listenedSecond = dur
+                            ).firstOrNull()
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * V3 Presence Synchronization with HLC guard and dual-write backward compatibility.
+     */
+    private suspend fun syncPresenceInternal(targetUserId: String, deviceId: String, hlc: Long) {
+        try {
+            val localMediaId = dataStoreManager.recentMediaId.firstOrNull() ?: ""
+            val localPosStr = dataStoreManager.recentPosition.firstOrNull() ?: "0"
+            val localPos = localPosStr.toLongOrNull() ?: 0L
+            val localQueue = songRepository.getSavedQueue().firstOrNull()?.firstOrNull()?.listTrack?.map { it.videoId } ?: emptyList()
+
+            // 1. Send V3 presence heartbeat with HLC guard
+            if (localMediaId.isNotBlank() && !localMediaId.startsWith("trk_")) {
+                SupabaseLibrarySync.heartbeatPresence(
+                    deviceId = deviceId,
+                    trackId = localMediaId,
+                    positionMs = localPos,
+                    isPlaying = false,
+                    queueIds = localQueue.take(200),
+                    hlc = hlc
+                )
+            }
+
+            // 2. Dual-write active_session for backward compatibility with older readers
+            syncActiveSessionInternal(targetUserId)
+
+            // 3. Remote presence hand-off if local device is idle
+            if (localMediaId.isBlank()) {
+                val latestPresence = SupabaseLibrarySync.fetchLatestPresence().getOrNull()
+                if (latestPresence != null && !latestPresence.trackId.isNullOrBlank() && latestPresence.deviceId != deviceId) {
+                    dataStoreManager.saveRecentSong(latestPresence.trackId, latestPresence.positionMs)
+                }
             }
         } catch (_: Exception) {
         }

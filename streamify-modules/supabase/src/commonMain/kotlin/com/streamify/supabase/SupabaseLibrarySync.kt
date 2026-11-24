@@ -689,4 +689,123 @@ object SupabaseLibrarySync {
             Result.failure(e)
         }
     }
+
+    /**
+     * V3 Sync Contract: Idempotent batched push via `sync_push` RPC.
+     */
+    suspend fun syncPush(
+        ops: kotlinx.serialization.json.JsonArray,
+        deviceId: String
+    ): Result<SyncPushResult> = withContext(ioDispatcher) {
+        try {
+            val payload = buildJsonObject {
+                put("p_ops", ops)
+                put("p_device_id", deviceId)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_push") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            if (resp.status.isSuccess()) {
+                val result = json.decodeFromString<SyncPushResult>(resp.bodyAsText())
+                Result.success(result)
+            } else {
+                Result.failure(Exception("sync_push failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * V3 Sync Contract: Delta pull via `sync_pull` RPC.
+     */
+    suspend fun syncPull(
+        since: Long,
+        limit: Int = 500,
+        deviceId: String? = null
+    ): Result<SyncPullResult> = withContext(ioDispatcher) {
+        try {
+            val payload = buildJsonObject {
+                put("p_since", since)
+                put("p_limit", limit)
+                if (!deviceId.isNullOrBlank()) {
+                    put("p_device_id", deviceId)
+                }
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_pull") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            if (resp.status.isSuccess()) {
+                val result = json.decodeFromString<SyncPullResult>(resp.bodyAsText())
+                Result.success(result)
+            } else {
+                Result.failure(Exception("sync_pull failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * V3 Presence: Playback presence heartbeat with HLC guard.
+     */
+    suspend fun heartbeatPresence(
+        deviceId: String,
+        trackId: String? = null,
+        positionMs: Long = 0L,
+        isPlaying: Boolean = false,
+        queueIds: List<String> = emptyList(),
+        hlc: Long = 0L
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val payload = buildJsonObject {
+                put("p_device_id", deviceId)
+                if (trackId != null) put("p_track_id", trackId)
+                put("p_position_ms", positionMs)
+                put("p_is_playing", isPlaying)
+                put("p_queue_ids", buildJsonArray { queueIds.forEach { add(it) } })
+                put("p_hlc", hlc)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/heartbeat_presence") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            Result.success(resp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * V3 Presence: Fetch most recent cross-device presence state.
+     */
+    suspend fun fetchLatestPresence(): Result<CloudPresence?> = withContext(ioDispatcher) {
+        try {
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/get_latest_presence") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                contentType(ContentType.Application.Json)
+                setBody("{}")
+            }
+            if (resp.status.isSuccess()) {
+                val list = json.decodeFromString<List<CloudPresence>>(resp.bodyAsText())
+                Result.success(list.firstOrNull())
+            } else {
+                Result.failure(Exception("get_latest_presence failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

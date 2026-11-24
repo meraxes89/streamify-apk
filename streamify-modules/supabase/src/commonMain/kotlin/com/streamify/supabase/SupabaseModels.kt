@@ -284,3 +284,48 @@ data class AdminTelemetry(
     val engineMode: String,
     val latencyMs: Long
 )
+
+@Serializable
+data class SyncPushResult(
+    val applied: Int = 0,
+    val rejected: Int = 0,
+    val cursor: Long = 0
+)
+
+@Serializable
+data class SyncPullOp(
+    val seq: Long = 0,
+    val entity: String = "",
+    val op: String = "", // "I", "U", "D"
+    val key: String = "",
+    val hlc: Long? = null,
+    val data: kotlinx.serialization.json.JsonObject? = null
+)
+
+@Serializable
+data class SyncPullResult(
+    val cursor: Long = 0,
+    @SerialName("has_more")
+    val hasMore: Boolean = false,
+    val ops: List<SyncPullOp> = emptyList()
+)
+
+@Serializable
+data class CloudPresence(
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("device_id")
+    val deviceId: String = "",
+    @SerialName("track_id")
+    val trackId: String? = null,
+    @SerialName("position_ms")
+    val positionMs: Long = 0L,
+    @SerialName("is_playing")
+    val isPlaying: Boolean = false,
+    @SerialName("queue_ids")
+    val queueIds: List<String> = emptyList(),
+    @SerialName("modified_hlc")
+    val modifiedHlc: Long = 0L,
+    @SerialName("updated_at")
+    val updatedAt: String = ""
+)
