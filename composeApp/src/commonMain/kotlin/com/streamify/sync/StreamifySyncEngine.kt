@@ -373,11 +373,8 @@ object StreamifySyncEngine : KoinComponent {
             val refreshedPlaylists = localPlaylistRepository.getAllLocalPlaylists().first()
             for (localPl in refreshedPlaylists) {
                 // Ensure valid UUID format for Supabase playlists.id
-                val syncId = if (!localPl.syncId.isNullOrBlank()) {
-                    localPl.syncId
-                } else {
-                    "00000000-0000-4000-8000-${localPl.id.toString(16).padStart(12, '0')}"
-                }
+                val syncId: String = localPl.syncId?.ifBlank { null }
+                    ?: "00000000-0000-4000-8000-${localPl.id.toString(16).padStart(12, '0')}"
 
                 val tracks = localPlaylistRepository.getFullPlaylistTracks(localPl.id)
                 val trackIds = tracks.map { it.videoId }.filter { it.isNotBlank() && !it.startsWith("trk_") }
@@ -542,6 +539,7 @@ object StreamifySyncEngine : KoinComponent {
             val localPos = localPosStr.toLongOrNull() ?: 0L
 
             val remoteSession = SupabaseLibrarySync.fetchActiveSession(targetUserId).getOrNull()
+            val remoteTrackId = remoteSession?.trackId
 
             if (localMediaId.isNotBlank() && !localMediaId.startsWith("trk_")) {
                 // Outbox: If device has an active track, update cloud active session
@@ -553,9 +551,9 @@ object StreamifySyncEngine : KoinComponent {
                     updatedAtIso = now().toInstant(TimeZone.currentSystemDefault()).toString(),
                     userId = targetUserId
                 )
-            } else if (remoteSession != null && !remoteSession.trackId.isNullOrBlank()) {
+            } else if (!remoteTrackId.isNullOrBlank() && remoteSession != null) {
                 // Inbound: If this device has no recent track and cloud has one, restore continuity
-                dataStoreManager.saveRecentSong(remoteSession.trackId, remoteSession.positionMs)
+                dataStoreManager.saveRecentSong(remoteTrackId, remoteSession.positionMs)
             }
         } catch (_: Exception) {
         }
