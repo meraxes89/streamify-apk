@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   build-wasm:
-    name: "Browser Distribution"
+    name: "Client"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -60,7 +60,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Verify wasmJs compilation (fast PR check)
+      - name: Verify wasm compilation
         if: ${{ inputs.fast_check && !inputs.release_mode }}
         run: |
           chmod +x ./gradlew
@@ -69,7 +69,7 @@ jobs:
             -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC" \
             -Dkotlin.daemon.jvmargs="-Xmx8g"
 
-      - name: Build wasmJs Browser Distribution
+      - name: Build distribution
         if: ${{ !inputs.fast_check || inputs.release_mode }}
         run: |
           chmod +x ./gradlew
@@ -89,7 +89,7 @@ jobs:
               }
           done
 
-      - name: Precompress wasm distribution (.gz and .br)
+      - name: Precompress assets
         if: ${{ !inputs.fast_check || inputs.release_mode }}
         run: |
           DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
@@ -108,7 +108,7 @@ jobs:
           echo "=== Distribution Artifacts ==="
           ls -lh "$DIST_DIR"
 
-      - name: Package release archive
+      - name: Package archive
         if: inputs.release_mode
         run: |
           DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
@@ -118,7 +118,7 @@ jobs:
           (cd "$DIST_DIR" && zip -r "../../../../../${ARCHIVE_NAME}" .)
           ls -la "${ARCHIVE_NAME}"
 
-      - name: Upload wasm distribution folder
+      - name: Upload distribution
         if: ${{ !inputs.fast_check || inputs.release_mode }}
         uses: actions/upload-artifact@v7
         with:
@@ -126,7 +126,7 @@ jobs:
           path: composeApp/build/dist/wasmJs/productionExecutable/
           if-no-files-found: error
 
-      - name: Upload wasm release archive
+      - name: Upload archive
         if: inputs.release_mode
         uses: actions/upload-artifact@v7
         with:

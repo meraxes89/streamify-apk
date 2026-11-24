@@ -300,7 +300,7 @@ jobs:
   # container. Every assertion FAILS if a pre-SEC-10 permissive policy
   # (WITH CHECK (TRUE) / OR TRUE / email-granted admin) is restored.
   supabase-rls:
-    name: "Supabase RLS"
+    name: "Supabase"
     needs: preflight
     if: |
       always() &&

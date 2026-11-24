@@ -6,10 +6,8 @@
 #   * ci.yml      (PR / merge_group / push-main hub)
 #   * release.yml (tag-driven release, release_mode: true)
 #
-# Matrix: ubuntu-latest (linux), windows-latest (windows), macos-latest (macos).
-# On PR fast-path, desktop-linux runs headless CMP JVM tests in ~3 min, while
-# desktop-other (windows + macos) is skipped unless full_matrix, package_installers,
-# release_mode, or full-matrix label is active.
+# Jobs: Linux (runs on PR fast path and full matrix), Windows and macOS
+# (run only on full matrix, packaging, release, or when full-matrix label is present).
 # ============================================================================
 name: CI Desktop (CMP Matrix)
 
@@ -33,9 +31,9 @@ permissions:
   contents: read
 
 jobs:
-  # ── PR Fast Path & Linux Primary Leg ───────────────────────────────────────
+  # ── Linux Primary Leg (PR Fast Path & Full Matrix) ─────────────────────────
   desktop-linux:
-    name: "linux"
+    name: "Linux"
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -44,7 +42,7 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Apply core submodule patch if present
+      - name: Apply core patch
         shell: bash
         run: |
           if [ -f core.patch ]; then
@@ -58,10 +56,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Rust toolchain (host target)
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Rust cache (host)
+      - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "rust -> rust/target"
@@ -69,30 +67,29 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Setup sccache (mandatory compiler caching, resp6 §3)
+      - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
-      - name: Start sccache server daemon
+      - name: Start sccache
         run: sccache --start-server || true
 
-      - name: Set up Gradle (with dependency cache)
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      # ── Engine provisioning: prebuilt fan-out (Linux) ─────────────────────
-      - name: Download prebuilt Linux engine cdylib (build-once / fan-out)
+      - name: Download Linux engine
         uses: actions/download-artifact@v8
         with:
           name: engine-linux-x86_64
           path: staged-engine
 
-      - name: Set prebuilt engine environment
+      - name: Set engine environment
         shell: bash
         run: |
           echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.so" >> "$GITHUB_ENV"
 
-      - name: Build the desktop HAL library (WS-C C5)
+      - name: Build desktop HAL
         shell: bash
         run: |
           cmake -B native/build-hal -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -101,8 +98,7 @@ jobs:
           echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
           echo "desktop HAL module at: $HAL_DIR"
 
-      # ── 1. Desktop Test Suite ─────────────────────────────────────────────
-      - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"
+      - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
         shell: bash
         run: |
@@ -111,8 +107,7 @@ jobs:
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
-      # ── 2. Installer packaging + strict size budget (gated) ────────────────
-      - name: "Package desktop distribution (jpackage: deb / rpm / msi / dmg)"
+      - name: Package installers
         if: ${{ inputs.package_installers }}
         shell: bash
         run: |
@@ -121,13 +116,13 @@ jobs:
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
-      - name: MP-HAL10 size budget report (strictly < 250 MiB)
+      - name: Verify size budget
         if: ${{ inputs.package_installers }}
         shell: bash
         run: |
           echo "Desktop packaging verification completed"
 
-      - name: Upload desktop installers
+      - name: Upload installers
         if: ${{ inputs.package_installers }}
         uses: actions/upload-artifact@v7
         with:
@@ -144,8 +139,7 @@ jobs:
             desktopApp/build/appimage/**
           if-no-files-found: warn
 
-      # ── Debug aids ──────────────────────────────────────────────────────────
-      - name: Upload generated uniffi bindings (debug aid)
+      - name: Upload uniffi bindings
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -153,7 +147,7 @@ jobs:
           path: composeApp/build/generated/uniffi/
           if-no-files-found: ignore
 
-      - name: Upload test reports (on failure)
+      - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -162,27 +156,19 @@ jobs:
             composeApp/build/reports/tests/**
           if-no-files-found: ignore
 
-  # ── Full Matrix Secondary Legs (Windows & macOS) ──────────────────────────
-  desktop-other:
-    name: "${{ matrix.os-name }}"
+  # ── Windows Leg (Full Matrix / Packaging / Release) ────────────────────────
+  desktop-windows:
+    name: "Windows"
     if: inputs.full_matrix || inputs.package_installers || inputs.release_mode || github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix')
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            os-name: windows
-          - os: macos-latest
-            os-name: macos
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           submodules: 'recursive'
 
-      - name: Apply core submodule patch if present
+      - name: Apply core patch
         shell: bash
         run: |
           if [ -f core.patch ]; then
@@ -196,71 +182,51 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Rust toolchain (host target)
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Rust cache (host)
+      - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "rust -> rust/target"
-          shared-key: desktop-${{ matrix.os-name }}
+          shared-key: desktop-windows
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Setup sccache (mandatory compiler caching, resp6 §3)
+      - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
-      - name: Start sccache server daemon
+      - name: Start sccache
         run: sccache --start-server || true
 
-      - name: Set up Gradle (with dependency cache)
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      # ── Engine provisioning: prebuilt fan-out across Windows & macOS ─────────
-      - name: Download prebuilt Windows engine cdylib (build-once / fan-out)
-        if: runner.os == 'Windows'
+      - name: Download Windows engine
         uses: actions/download-artifact@v8
         with:
           name: engine-windows-x86_64
           path: staged-engine
 
-      - name: Download prebuilt macOS engine cdylib (build-once / fan-out)
-        if: runner.os == 'macOS'
-        uses: actions/download-artifact@v8
-        with:
-          name: engine-macos-universal
-          path: staged-engine
-
-      - name: Set prebuilt engine environment
+      - name: Set engine environment
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.dylib" >> "$GITHUB_ENV"
-          fi
+          echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
 
-      - name: Build the desktop HAL library (WS-C C5)
+      - name: Build desktop HAL
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cmake -B native/build-hal -S native -A x64
-            cmake --build native/build-hal --config Release --target streamify_desktop_hal
-            HAL_DLL="$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)"
-            HAL_DIR="$(dirname "$(cygpath -m "$PWD")/$HAL_DLL")"
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            cmake -B native/build-hal -S native -DCMAKE_BUILD_TYPE=Release
-            cmake --build native/build-hal --target streamify_desktop_hal
-            HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.dylib' -print -quit)")"
-          fi
+          cmake -B native/build-hal -S native -A x64
+          cmake --build native/build-hal --config Release --target streamify_desktop_hal
+          HAL_DLL="$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)"
+          HAL_DIR="$(dirname "$(cygpath -m "$PWD")/$HAL_DLL")"
           echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
           echo "desktop HAL module at: $HAL_DIR"
 
-      # ── 1. Desktop Test Suite ─────────────────────────────────────────────
-      - name: "Desktop test suite (CMP UI shell + shared desktopTest + JNA smoke)"
-        if: ${{ !inputs.release_mode && (runner.os == 'Windows' || runner.os == 'macOS') }}
+      - name: Run desktop tests
+        if: ${{ !inputs.release_mode }}
         shell: bash
         run: |
           chmod +x gradlew
@@ -268,9 +234,8 @@ jobs:
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
-      # ── 2. Installer packaging + strict size budget (gated) ────────────────
-      - name: Install WiX Toolset 3.14 (jpackage MSI prerequisite)
-        if: ${{ inputs.package_installers && runner.os == 'Windows' }}
+      - name: Install WiX Toolset 3.14
+        if: ${{ inputs.package_installers }}
         shell: pwsh
         run: |
           $wixRoot = "${env:ProgramFiles(x86)}\WiX Toolset v3.14"
@@ -281,7 +246,7 @@ jobs:
           }
           "WIX=$wixRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: "Package desktop distribution (jpackage: deb / rpm / msi / dmg)"
+      - name: Package installers
         if: ${{ inputs.package_installers }}
         shell: bash
         run: |
@@ -290,17 +255,17 @@ jobs:
             -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
-      - name: MP-HAL10 size budget report (strictly < 250 MiB)
+      - name: Verify size budget
         if: ${{ inputs.package_installers }}
         shell: bash
         run: |
           echo "Desktop packaging verification completed"
 
-      - name: Upload desktop installers
+      - name: Upload installers
         if: ${{ inputs.package_installers }}
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-installer-${{ matrix.os-name }}
+          name: desktop-installer-windows
           path: |
             desktopApp/build/compose/binaries/**/*.deb
             desktopApp/build/compose/binaries/**/*.rpm
@@ -313,20 +278,145 @@ jobs:
             desktopApp/build/appimage/**
           if-no-files-found: warn
 
-      # ── Debug aids ──────────────────────────────────────────────────────────
-      - name: Upload generated uniffi bindings (debug aid)
+      - name: Upload uniffi bindings
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-uniffi-bindings-${{ matrix.os-name }}
+          name: desktop-uniffi-bindings-windows
           path: composeApp/build/generated/uniffi/
           if-no-files-found: ignore
 
-      - name: Upload test reports (on failure)
+      - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-test-reports-${{ matrix.os-name }}
+          name: desktop-test-reports-windows
+          path: |
+            composeApp/build/reports/tests/**
+          if-no-files-found: ignore
+
+  # ── macOS Leg (Full Matrix / Packaging / Release) ──────────────────────────
+  desktop-macos:
+    name: "macOS"
+    if: inputs.full_matrix || inputs.package_installers || inputs.release_mode || github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Apply core patch
+        shell: bash
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> rust/target"
+          shared-key: desktop-macos
+          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Start sccache
+        run: sccache --start-server || true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Download macOS engine
+        uses: actions/download-artifact@v8
+        with:
+          name: engine-macos-universal
+          path: staged-engine
+
+      - name: Set engine environment
+        shell: bash
+        run: |
+          echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.dylib" >> "$GITHUB_ENV"
+
+      - name: Build desktop HAL
+        shell: bash
+        run: |
+          cmake -B native/build-hal -S native -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/build-hal --target streamify_desktop_hal
+          HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.dylib' -print -quit)")"
+          echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
+          echo "desktop HAL module at: $HAL_DIR"
+
+      - name: Run desktop tests
+        if: ${{ !inputs.release_mode }}
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew :composeApp:jvmTest \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache --stacktrace
+
+      - name: Package installers
+        if: ${{ inputs.package_installers }}
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktopApp:packageDistributionForCurrentOS \
+            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
+            --parallel --build-cache --configuration-cache --stacktrace
+
+      - name: Verify size budget
+        if: ${{ inputs.package_installers }}
+        shell: bash
+        run: |
+          echo "Desktop packaging verification completed"
+
+      - name: Upload installers
+        if: ${{ inputs.package_installers }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-installer-macos
+          path: |
+            desktopApp/build/compose/binaries/**/*.deb
+            desktopApp/build/compose/binaries/**/*.rpm
+            desktopApp/build/compose/binaries/**/*.msi
+            desktopApp/build/compose/binaries/**/*.exe
+            desktopApp/build/compose/binaries/**/*.dmg
+            desktopApp/build/compose/binaries/**/*.pkg
+            desktopApp/build/compose/binaries/**/*.AppImage
+            desktopApp/build/compose/binaries/main/app/**
+            desktopApp/build/appimage/**
+          if-no-files-found: warn
+
+      - name: Upload uniffi bindings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-uniffi-bindings-macos
+          path: composeApp/build/generated/uniffi/
+          if-no-files-found: ignore
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-test-reports-macos
           path: |
             composeApp/build/reports/tests/**
           if-no-files-found: ignore

@@ -80,7 +80,7 @@ permissions:
 jobs:
   # ── Rust core: unit + integration suite (VirtualHAL double, golden vectors) ──
   rust-core:
-    name: "Nextest (${{ inputs.nextest_profile }} ${{ matrix.partition }}/2)"
+    name: "Nextest (${{ matrix.partition }}/2)"
     if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -121,7 +121,7 @@ jobs:
       # documented flake lane); the nightly profile runs it serialized in the
       # serial-heavy-mesh test group. --all-targets keeps examples compiled.
       # resp7 Pillar 2: 2-way hash partition gives statistically balanced shards.
-      - name: Run workspace test suite (VirtualHAL double, golden vectors, all integration suites)
+      - name: Run workspace tests
         run: |
           cargo nextest run \
             --manifest-path rust/Cargo.toml \
@@ -147,7 +147,7 @@ jobs:
   # regression headroom over the observed ~48 ms median — the full
   # derivation lives in rust/crates/streamify-audio/examples/embedding_bench.rs).
   embedding-bench:
-    name: "Embedding Benchmark"
+    name: "Benchmark"
     if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -175,7 +175,7 @@ jobs:
       - name: Start sccache server daemon
         run: sccache --start-server || true
 
-      - name: Run the embedding benchmark (median-of-21, release)
+      - name: Run benchmark
         run: |
           cargo run --release --manifest-path rust/Cargo.toml \
             -p streamify-audio --example embedding_bench
@@ -270,7 +270,7 @@ jobs:
             ${{ runner.os }}-ccache-native-
           max-size: 500M
 
-      - name: Build & execute all C++ suites under ASan/UBSan (ctest)
+      - name: Run C++ suites (ctest)
         run: |
           mkdir -p /dev/shm/native_test_tmp
           sudo mount -t tmpfs -o size=3G tmpfs /tmp || true
@@ -314,22 +314,22 @@ jobs:
   # NDK-only (the CMake ANDROID guard); Apple/linux targets are skipped
   # by their own platform guards on this runner.
   windows-native:
-    name: "MSVC Guard"
+    name: "MSVC"
     if: inputs.run_tests
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure the native tree (host Visual Studio, x64)
+      - name: Configure native tree
         run: cmake -B native/build -S native -A x64
 
-      - name: Compile the WASAPI adapter + desktop HAL library (Release)
+      - name: Build WASAPI and HAL
         run: |
           cmake --build native/build --config Release `
             --target streamify_desktop_hal streamify_wasapi_adapter
 
-      - name: Upload the built HAL module (rot-guard evidence)
+      - name: Upload HAL module
         uses: actions/upload-artifact@v7
         with:
           name: windows-native-hal-x86_64
@@ -405,7 +405,7 @@ jobs:
           cargo ndk --version
 
       # Direct cargo-ndk + CMake/Ninja: zero Gradle daemon startup tax.
-      - name: Cross-compile Rust + C++ DSP for ${{ matrix.abi }}
+      - name: Build Rust and C++ DSP
         env:
           CARGO_PROFILE_RELEASE_DEBUG: "0"
           CARGO_PROFILE_RELEASE_STRIP: "debuginfo"
@@ -464,7 +464,7 @@ jobs:
 
   # ── BUILD-ONCE / FAN-OUT: Linux desktop cdylib for the JNA lane ────────────
   linux-desktop-native:
-    name: "Linux cdylib"
+    name: "Linux Lib"
     if: inputs.build_desktop_native || inputs.build_linux_native
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -497,7 +497,7 @@ jobs:
       # Deliberately identical to the desktop Gradle lane's
       # `cargo build --release --lib` (no extra RUSTFLAGS, release profile
       # strips) so the prebuilt is byte-equivalent to a local build.
-      - name: Cross-compile the engine cdylib (release, stripped)
+      - name: Build Linux cdylib
         run: cargo build --manifest-path rust/Cargo.toml --release --lib --target x86_64-unknown-linux-gnu
 
       - name: Upload engine cdylib
@@ -510,7 +510,7 @@ jobs:
 
   # ── BUILD-ONCE / FAN-OUT: Windows desktop cdylib for the JNA lane ──────────
   windows-desktop-native:
-    name: "Windows cdylib"
+    name: "Windows Lib"
     if: (inputs.build_desktop_native || inputs.build_linux_native) && (inputs.build_full_desktop || github.event_name != 'pull_request')
     runs-on: windows-latest
     timeout-minutes: 30
@@ -542,7 +542,7 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Compile Windows engine cdylib (release, stripped)
+      - name: Build Windows cdylib
         shell: bash
         run: cargo build --manifest-path rust/Cargo.toml --release --lib --target x86_64-pc-windows-msvc
 
@@ -556,7 +556,7 @@ jobs:
 
   # ── BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane ────────────
   macos-desktop-native:
-    name: "macOS cdylib"
+    name: "macOS Lib"
     if: (inputs.build_desktop_native || inputs.build_linux_native) && (inputs.build_full_desktop || github.event_name != 'pull_request')
     runs-on: macos-latest
     timeout-minutes: 30
@@ -578,7 +578,7 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Compile macOS engine cdylibs & create universal binary
+      - name: Build macOS cdylib
         shell: bash
         run: |
           cargo build --manifest-path rust/Cargo.toml --release --lib --target aarch64-apple-darwin
