@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
@@ -156,23 +157,66 @@ actual object StreamifyAuthManager {
 
     actual suspend fun handleAuthCallback(callbackUri: String, context: Any?): Result<UserProfile> = withContext(Dispatchers.Main) {
         val ctx = context as? Context
-        if (ctx != null) {
-            getPrefs(ctx)
-        }
+        val sp = ctx?.let { getPrefs(it) } ?: prefs
         try {
-            val accessToken = AuthCallbackParser.extractAccessToken(callbackUri)
+            val callbackData = AuthCallbackParser.parse(callbackUri)
+            if (callbackData.isError) {
+                return@withContext Result.failure(
+                    Exception("Authentication error: ${callbackData.errorDescription ?: callbackData.error}")
+                )
+            }
+
+            // PKCE Authorization Code Grant flow
+            val code = callbackData.code
+            if (!code.isNullOrBlank()) {
+                val storedVerifier = sp?.getString("pending_code_verifier", null)
+                val storedState = sp?.getString("pending_state", null)
+
+                if (storedState != null && callbackData.state != null && storedState != callbackData.state) {
+                    return@withContext Result.failure(SecurityException("CSRF state mismatch"))
+                }
+
+                if (storedVerifier.isNullOrBlank()) {
+                    return@withContext Result.failure(Exception("No pending PKCE code verifier found"))
+                }
+
+                val exchangeResult = SupabaseClient.exchangeCodeForSession(
+                    code = code,
+                    codeVerifier = storedVerifier,
+                    redirectUri = "streamify://callback"
+                )
+
+                // Clean up ephemeral PKCE state
+                sp?.edit()
+                    ?.remove("pending_code_verifier")
+                    ?.remove("pending_state")
+                    ?.apply()
+
+                if (exchangeResult.isSuccess) {
+                    val profile = exchangeResult.getOrThrow()
+                    saveProfile(profile, SupabaseClient.getAuthToken(), SupabaseClient.refreshToken.value)
+                    _authState.value = AuthState.Authenticated(profile)
+                    return@withContext Result.success(profile)
+                } else {
+                    return@withContext exchangeResult
+                }
+            }
+
+            // Fallback for legacy access token in hash fragment
+            val accessToken = callbackData.accessToken
             if (!accessToken.isNullOrBlank()) {
                 val result = SupabaseClient.signInWithAccessToken(accessToken)
                 if (result.isSuccess) {
                     val profile = result.getOrThrow()
-                    saveProfile(profile, accessToken)
+                    saveProfile(profile, accessToken, callbackData.refreshToken)
                     _authState.value = AuthState.Authenticated(profile)
                     return@withContext Result.success(profile)
                 } else {
                     return@withContext result
                 }
             }
-            Result.failure(Exception("No access token found in callback URL"))
+
+            Result.failure(Exception("No authorization code or access token found in callback URL"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -180,11 +224,43 @@ actual object StreamifyAuthManager {
 
     fun tryLaunchWebOAuth(context: Context) {
         try {
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=streamify://callback"
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl)).apply {
+            val sp = getPrefs(context)
+            val verifier = PkceCrypto.generateCodeVerifier()
+            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
+            val state = PkceCrypto.generateState()
+
+            // Persist PKCE challenge and state in SharedPreferences across potential activity/process death
+            sp.edit()
+                .putString("pending_code_verifier", verifier)
+                .putString("pending_state", state)
+                .apply()
+
+            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
+                    "provider=google" +
+                    "&redirect_to=streamify://callback" +
+                    "&code_challenge=$challenge" +
+                    "&code_challenge_method=S256" +
+                    "&state=$state" +
+                    "&prompt=select_account"
+
+            val uri = Uri.parse(authUrl)
+
+            // Primary: Chrome Custom Tabs (shares active browser session cookies)
+            try {
+                val customTabsIntent = CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .build()
+                customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                customTabsIntent.launchUrl(context, uri)
+                return
+            } catch (_: Exception) {
+                // Custom Tabs unavailable on device, fall back to standard external browser intent
+            }
+
+            val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(intent)
+            context.startActivity(fallbackIntent)
         } catch (_: Exception) {
         }
     }
