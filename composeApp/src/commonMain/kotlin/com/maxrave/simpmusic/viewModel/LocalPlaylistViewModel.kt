@@ -480,7 +480,8 @@ class LocalPlaylistViewModel(
     fun deletePlaylist(id: Long) {
         showLoadingDialog(message = getString(Res.string.delete))
         viewModelScope.launch {
-            val playlist = localPlaylistRepository.getLocalPlaylist(id).firstOrNull()
+            val playlistResource = localPlaylistRepository.getLocalPlaylist(id).firstOrNull()
+            val playlist = playlistResource?.data
             val syncId = if (!playlist?.syncId.isNullOrBlank()) {
                 playlist.syncId
             } else {
