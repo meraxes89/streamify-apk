@@ -62,7 +62,7 @@ package com.streamify.graphics.visualizer
  * @param binCount FFT bin count of the frames this texture stages;
  * defaults to the canonical 1024 of ARCHITECTURE.md section 4.
  */
-class FftDataTexture(val binCount: Int = FFT_BIN_COUNT) {
+class FftDataTexture(val binCount: Int = FFT_BIN_COUNT) : GpuDataTexture {
 
     init {
         require(binCount > 0) { "binCount must be positive (got $binCount)" }
@@ -78,15 +78,15 @@ class FftDataTexture(val binCount: Int = FFT_BIN_COUNT) {
     private var stamp: Long = 0L
 
     /** Texture width in texels — one texel per FFT bin. */
-    val textureWidth: Int
+    override val textureWidth: Int
         get() = binCount
 
     /** Texture height in texels — the single row of the 1024x1 layout. */
-    val textureHeight: Int
+    override val textureHeight: Int
         get() = 1
 
     /** Row stride in bytes (tight packing — width x 4 bytes per texel). */
-    val rowBytes: Int
+    override val rowBytes: Int
         get() = binCount * BYTES_PER_TEXEL
 
     /**
@@ -95,11 +95,11 @@ class FftDataTexture(val binCount: Int = FFT_BIN_COUNT) {
      * `payload[4k .. 4k+3]` as (R, G, B, A); see the class KDoc for the
      * full encoding contract.
      */
-    val payload: ByteArray
+    override val payload: ByteArray
         get() = payloadBytes
 
     /** Monotonic stamp of the last [update] / [clear]; starts at 0. */
-    val frameStamp: Long
+    override val frameStamp: Long
         get() = stamp
 
     /**
@@ -150,7 +150,7 @@ class FftDataTexture(val binCount: Int = FFT_BIN_COUNT) {
      * touching the caller's arrays — the pause / stop state. Allocation-
      * free: in-place fills plus the stamp bump.
      */
-    fun clear() {
+    override fun clear() {
         magnitudes.fill(0.0f)
         var offset = 0
         for (bin in 0 until binCount) {

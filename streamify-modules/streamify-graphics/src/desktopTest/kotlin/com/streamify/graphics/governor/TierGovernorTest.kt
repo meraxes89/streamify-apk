@@ -325,6 +325,18 @@ class TierGovernorTest {
         assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
     }
 
+    @Test
+    fun refreshRateGovernorAdaptsBudgetCorrectly() {
+        val probe = tier1CapableProbe()
+        val gov60 = TierGovernor.forRefreshRate(probe, 60.0)
+        assertEquals(8.3, gov60.fastFrameBudgetMs, 0.05)
+        assertEquals(16.66, gov60.p95FrameBudgetMs, 0.05)
+
+        val gov120 = TierGovernor.forRefreshRate(probe, 120.0)
+        assertEquals(4.16, gov120.fastFrameBudgetMs, 0.05)
+        assertEquals(8.33, gov120.p95FrameBudgetMs, 0.05)
+    }
+
     private companion object {
         /** Comfortably under the 8.3 ms fast-frame budget. */
         private const val FAST_FRAME_MS = 8.0
