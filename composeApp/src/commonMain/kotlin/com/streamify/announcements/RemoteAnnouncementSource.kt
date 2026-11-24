@@ -2,6 +2,7 @@ package com.streamify.announcements
 
 import com.maxrave.domain.manager.DataStoreManager
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
@@ -22,12 +23,20 @@ data class RemoteManifestResult(
  * - Cryptographically verifies payload authenticity against pinned pubkey
  * - Enforces deep-link allowlist and kill-switch revocation
  * - Governs master launch popup toggle via popupModalEnabled
+ * - Enforces network timeouts to prevent hanging on connection degradation
+ * - Recovers from orphan ETag states
  * - Offline-first: returns cached payload immediately, updates in background
  * - Fail-safe: any network or verification error returns cached state without crashing
  */
 class RemoteAnnouncementSource(
     private val dataStoreManager: DataStoreManager,
-    private val httpClient: HttpClient = HttpClient(),
+    private val httpClient: HttpClient = HttpClient {
+        install(HttpTimeout) {
+            connectTimeoutMillis = 4000L
+            requestTimeoutMillis = 8000L
+            socketTimeoutMillis = 8000L
+        }
+    },
     private val verifier: ManifestSignatureVerifier = PinnedManifestSignatureVerifier()
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -58,7 +67,12 @@ class RemoteAnnouncementSource(
             }
 
             if (response.status == HttpStatusCode.NotModified) {
-                return getCachedManifest()
+                val cached = getCachedManifest()
+                // If cache was somehow emptied but ETag remained, reset ETag so next launch re-fetches
+                if (cached.announcements.isEmpty() && !cached.popupModalEnabled && cachedEtag.isNotBlank()) {
+                    dataStoreManager.putString(etagKey, "")
+                }
+                return cached
             }
 
             if (response.status != HttpStatusCode.OK) {

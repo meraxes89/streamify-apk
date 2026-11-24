@@ -457,7 +457,7 @@ fun HomeScreen(
 
 
     val otherDialogOpen =
-        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || (activeAnnouncement != null)
+        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions
 
     LaunchedEffect(openAppTime, otherDialogOpen) {
         val platformName = when (getPlatform()) {
@@ -530,9 +530,6 @@ fun HomeScreen(
         ShareSavedLyricsDialog(
             onDismissRequest = {
                 showRequestShareLyricsPermissions = false
-                sharedViewModel.onDoneReview(
-                    isDismissOnly = true,
-                )
             },
             onConfirm = { contributor ->
                 sharedViewModel.onDoneRequestingShareLyrics(
@@ -546,6 +543,7 @@ fun HomeScreen(
     activeAnnouncement?.let { announcement ->
         com.streamify.announcements.ui.StreamifyAnnouncementModal(
             announcement = announcement,
+            language = language,
             onDismiss = { snooze ->
                 announcementEngine.onDismiss(announcement, snooze = snooze)
             },
@@ -623,7 +621,7 @@ fun HomeScreen(
     // Whatever the user starts before the banner's turn puts it off to a later launch, uncounted.
     LaunchedEffect(userStarted) {
         val pending = promoBanner
-        if (userStarted && pending != null) {
+        if (userStarted && pending != null && promoClearFor == null) {
             Logger.i("Promo", "Put off ${pending.id}: the user started before its turn")
             promoBanner = null
         }

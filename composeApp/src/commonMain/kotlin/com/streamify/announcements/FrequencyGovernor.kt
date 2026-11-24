@@ -2,6 +2,7 @@ package com.streamify.announcements
 
 /**
  * Enforces global annoyance budget and per-message frequency caps (comm19 Decision 3 & 4).
+ * Includes clock-rollback resilience, priority bypass, and snooze reactivation.
  */
 class FrequencyGovernor(
     private val store: AnnouncementStore,
@@ -9,10 +10,13 @@ class FrequencyGovernor(
 ) {
 
     suspend fun isEligible(announcement: Announcement, nowEpochMs: Long): Boolean {
-        // Global budget check: has any announcement shown in the last 24h?
-        val globalLastShown = store.getGlobalLastShownEpochMs()
-        if (nowEpochMs - globalLastShown < globalCooldownMs) {
-            return false
+        // Global budget check: high-priority announcements (priority >= 500) bypass global cooldown
+        if (announcement.priority < 500) {
+            val globalLastShown = store.getGlobalLastShownEpochMs()
+            // Protect against clock-skew / rollback: only enforce cooldown if now is forward of last shown
+            if (globalLastShown > 0L && nowEpochMs >= globalLastShown && (nowEpochMs - globalLastShown) < globalCooldownMs) {
+                return false
+            }
         }
 
         // Schedule check
@@ -30,13 +34,12 @@ class FrequencyGovernor(
             return false
         }
 
-        // Snooze check
-        if (record.state == MessageState.SNOOZED && nowEpochMs < record.snoozeUntil) {
-            return false
-        }
-
-        // Impression cap check
-        if (record.impressions >= announcement.frequency.maxImpressions) {
+        // Snooze check: when snoozed, check if cooldown elapsed. If it has elapsed, allow reshow.
+        if (record.state == MessageState.SNOOZED) {
+            if (nowEpochMs < record.snoozeUntil) {
+                return false
+            }
+        } else if (record.impressions >= announcement.frequency.maxImpressions) {
             return false
         }
 

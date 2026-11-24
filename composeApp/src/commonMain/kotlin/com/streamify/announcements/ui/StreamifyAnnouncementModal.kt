@@ -35,17 +35,25 @@ import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.later
 
 /**
- * Modal renderer for Streamify in-app announcements with rich Markdown rendering.
+ * Modal renderer for Streamify in-app announcements with rich Markdown rendering
+ * and responsive scrollable viewport management.
  */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun StreamifyAnnouncementModal(
     announcement: Announcement,
+    language: String = "en",
     onDismiss: (snooze: Boolean) -> Unit,
     onAction: () -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
-    val content = announcement.content["en"] ?: announcement.content.values.firstOrNull() ?: return
+    val normalizedLang = language.trim().lowercase()
+    val baseLang = normalizedLang.substringBefore('-')
+    val content = announcement.content[normalizedLang]
+        ?: announcement.content[baseLang]
+        ?: announcement.content["en"]
+        ?: announcement.content.values.firstOrNull()
+        ?: return
 
     AlertDialog(
         properties = DialogProperties(
@@ -84,11 +92,17 @@ fun StreamifyAnnouncementModal(
         title = {
             Text(
                 text = content.title,
-                style = typo().labelSmall
+                style = typo().titleMedium
             )
         },
         text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 content.bannerUrl?.let { banner ->
                     AsyncImage(
                         model = banner,
@@ -99,27 +113,20 @@ fun StreamifyAnnouncementModal(
                             .aspectRatio(16f / 9f)
                             .clip(RoundedCornerShape(12.dp))
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 240.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Markdown(
-                        content = content.body,
-                        typography = markdownTypography(
-                            h1 = typo().labelLarge,
-                            h2 = typo().labelMedium,
-                            h3 = typo().labelSmall,
-                            text = typo().bodySmall.copy(textAlign = TextAlign.Center),
-                            paragraph = typo().bodySmall.copy(textAlign = TextAlign.Center),
-                            bullet = typo().bodySmall
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                Markdown(
+                    content = content.body,
+                    typography = markdownTypography(
+                        h1 = typo().labelLarge,
+                        h2 = typo().labelMedium,
+                        h3 = typo().labelSmall,
+                        text = typo().bodySmall.copy(textAlign = TextAlign.Center),
+                        paragraph = typo().bodySmall.copy(textAlign = TextAlign.Center),
+                        bullet = typo().bodySmall
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     )
