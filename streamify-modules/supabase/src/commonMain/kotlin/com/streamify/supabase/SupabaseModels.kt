@@ -99,8 +99,26 @@ data class CloudListeningHistoryItem(
     val artistId: String? = null,
     @SerialName("listened_duration_sec")
     val listenedDurationSec: Int = 0,
+    @SerialName("client_event_id")
+    val clientEventId: String? = null,
     @SerialName("created_at")
     val createdAt: String? = null
+)
+
+@Serializable
+data class PlaybackHistoryBatchItem(
+    @SerialName("track_id")
+    val trackId: String,
+    @SerialName("listened_duration_sec")
+    val durationSec: Int,
+    @SerialName("client_event_id")
+    val clientEventId: String? = null,
+    @SerialName("album_id")
+    val albumId: String? = null,
+    @SerialName("artist_id")
+    val artistId: String? = null,
+    @SerialName("created_at")
+    val createdAtIso: String? = null
 )
 
 @Serializable
