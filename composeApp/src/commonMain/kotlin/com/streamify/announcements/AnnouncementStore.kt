@@ -6,18 +6,19 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Persists announcement lifecycle records in DataStore.
+ * Persists announcement lifecycle records in DataStore, or memory when unprovided.
  */
-class AnnouncementStore(
-    private val dataStoreManager: DataStoreManager
+open class AnnouncementStore(
+    private val dataStoreManager: DataStoreManager? = null
 ) {
+    private val inMemoryMap = mutableMapOf<String, String>()
     private val json = Json { ignoreUnknownKeys = true }
     private val prefPrefix = "announcement_record_"
     private val globalLastShownKey = "announcement_global_last_shown"
 
-    suspend fun getRecord(id: String): AnnouncementRecord {
+    open suspend fun getRecord(id: String): AnnouncementRecord {
         return try {
-            val raw = dataStoreManager.getString(prefPrefix + id).first()
+            val raw = dataStoreManager?.getString(prefPrefix + id)?.first() ?: inMemoryMap[prefPrefix + id]
             if (!raw.isNullOrBlank()) {
                 json.decodeFromString<AnnouncementRecord>(raw)
             } else {
@@ -28,24 +29,32 @@ class AnnouncementStore(
         }
     }
 
-    suspend fun saveRecord(record: AnnouncementRecord) {
+    open suspend fun saveRecord(record: AnnouncementRecord) {
         try {
             val serialized = json.encodeToString(record)
-            dataStoreManager.putString(prefPrefix + record.id, serialized)
+            if (dataStoreManager != null) {
+                dataStoreManager.putString(prefPrefix + record.id, serialized)
+            } else {
+                inMemoryMap[prefPrefix + record.id] = serialized
+            }
         } catch (_: Exception) {}
     }
 
-    suspend fun getGlobalLastShownEpochMs(): Long {
+    open suspend fun getGlobalLastShownEpochMs(): Long {
         return try {
-            dataStoreManager.getString(globalLastShownKey).first()?.toLongOrNull() ?: 0L
+            (dataStoreManager?.getString(globalLastShownKey)?.first() ?: inMemoryMap[globalLastShownKey])?.toLongOrNull() ?: 0L
         } catch (_: Exception) {
             0L
         }
     }
 
-    suspend fun updateGlobalLastShownEpochMs(epochMs: Long) {
+    open suspend fun updateGlobalLastShownEpochMs(epochMs: Long) {
         try {
-            dataStoreManager.putString(globalLastShownKey, epochMs.toString())
+            if (dataStoreManager != null) {
+                dataStoreManager.putString(globalLastShownKey, epochMs.toString())
+            } else {
+                inMemoryMap[globalLastShownKey] = epochMs.toString()
+            }
         } catch (_: Exception) {}
     }
 }
