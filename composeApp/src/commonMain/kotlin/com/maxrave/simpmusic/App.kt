@@ -1,6 +1,7 @@
 package com.maxrave.simpmusic
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -563,7 +564,7 @@ fun App(
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF060608))) {
             when (streamifyAuthState) {
                 is AuthState.Unauthenticated -> {
                     GoogleOnboardingAuthScreen(
@@ -1130,7 +1131,7 @@ fun App(
 
         AnimatedVisibility(
             visible = isSplashVisible || streamifyAuthState is AuthState.Loading,
-            enter = fadeIn(animationSpec = tween(300)),
+            enter = EnterTransition.None,
             exit = fadeOut(animationSpec = tween(500)),
         ) {
             StreamifySplashScreen(

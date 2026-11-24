@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -383,6 +384,10 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
             state = windowState,
             visible = isVisible,
         ) {
+            SideEffect {
+                window.background = java.awt.Color(0x06, 0x06, 0x08)
+                window.contentPane.background = java.awt.Color(0x06, 0x06, 0x08)
+            }
             // Returning from macOS System Settings is the only reliable time to learn whether the
             // user enabled notifications after denying the one-shot system prompt.
             DisposableEffect(window) {
@@ -454,6 +459,7 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .background(Color(0xFF060608))
                         .then(
                             if (!nativeTitleBar) {
                                 Modifier.clip(RoundedCornerShape(12.dp))
