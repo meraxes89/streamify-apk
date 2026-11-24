@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   desktop-matrix:
-    name: "Desktop (${{ matrix.os-name }})"
+    name: "${{ matrix.os-name }}"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
