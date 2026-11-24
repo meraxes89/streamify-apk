@@ -43,6 +43,9 @@ import org.koin.dsl.module
 
 val viewModelModule =
     module {
+        single<com.streamify.sync.SyncOutboxRepository> {
+            com.streamify.sync.createPlatformSyncOutboxRepository()
+        }
         single<UpdateRepository> {
             StreamifyUpdateRepositoryImpl()
         }
