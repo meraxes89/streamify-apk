@@ -95,6 +95,8 @@ data class CloudListeningHistoryItem(
     val trackId: String = "",
     @SerialName("album_id")
     val albumId: String? = null,
+    @SerialName("artist_id")
+    val artistId: String? = null,
     @SerialName("listened_duration_sec")
     val listenedDurationSec: Int = 0,
     @SerialName("created_at")
