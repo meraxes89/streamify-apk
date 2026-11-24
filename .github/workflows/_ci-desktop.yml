@@ -89,15 +89,6 @@ jobs:
         run: |
           echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.so" >> "$GITHUB_ENV"
 
-      - name: Build desktop HAL
-        shell: bash
-        run: |
-          cmake -B native/build-hal -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build native/build-hal --target streamify_desktop_hal
-          HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.so' -print -quit)")"
-          echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
-          echo "desktop HAL module at: $HAL_DIR"
-
       - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
         shell: bash
@@ -214,16 +205,6 @@ jobs:
         shell: bash
         run: |
           echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
-
-      - name: Build desktop HAL
-        shell: bash
-        run: |
-          cmake -B native/build-hal -S native -A x64
-          cmake --build native/build-hal --config Release --target streamify_desktop_hal
-          HAL_DLL="$(find native/build-hal -name 'streamify_desktop_hal.dll' -print -quit)"
-          HAL_DIR="$(dirname "$(cygpath -m "$PWD")/$HAL_DLL")"
-          echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
-          echo "desktop HAL module at: $HAL_DIR"
 
       - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
@@ -353,15 +334,6 @@ jobs:
         shell: bash
         run: |
           echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.dylib" >> "$GITHUB_ENV"
-
-      - name: Build desktop HAL
-        shell: bash
-        run: |
-          cmake -B native/build-hal -S native -DCMAKE_BUILD_TYPE=Release
-          cmake --build native/build-hal --target streamify_desktop_hal
-          HAL_DIR="$(dirname "$PWD/$(find native/build-hal -name 'libstreamify_desktop_hal.dylib' -print -quit)")"
-          echo "STREAMIFY_DESKTOP_HAL_DIR=$HAL_DIR" >> "$GITHUB_ENV"
-          echo "desktop HAL module at: $HAL_DIR"
 
       - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
