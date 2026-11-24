@@ -817,6 +817,7 @@ class SharedViewModel(
         value: String,
     ) {
         runBlocking { dataStoreManager.putString(key, value) }
+        com.streamify.sync.StreamifySyncEngine.recordSettingChange(key, value)
     }
 
     fun setSleepTimer(minutes: Int) {
