@@ -60,7 +60,6 @@ object SupabaseLibrarySync {
                     put("album", album ?: "Streamify")
                     put("duration_sec", durationSec)
                     put("cover_url", coverUrl ?: "")
-                    put("stream_url", "https://www.youtube.com/watch?v=$trackId")
                 }.toString()
 
                 SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
@@ -161,7 +160,6 @@ object SupabaseLibrarySync {
                             put("album", t.album ?: "Streamify")
                             put("duration_sec", t.durationSec)
                             put("cover_url", t.coverUrl)
-                            put("stream_url", "https://www.youtube.com/watch?v=${t.id}")
                         })
                     }
                 }.toString()
