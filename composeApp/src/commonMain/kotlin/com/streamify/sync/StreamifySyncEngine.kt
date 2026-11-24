@@ -11,7 +11,6 @@ import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.PodcastRepository
 import com.maxrave.domain.repository.SearchRepository
 import com.maxrave.domain.repository.SongRepository
-import com.maxrave.data.db.SyncDao
 import com.streamify.supabase.CloudTrack
 import com.streamify.supabase.SupabaseClient
 import com.streamify.supabase.SupabaseConfig
@@ -70,7 +69,6 @@ object StreamifySyncEngine : KoinComponent {
     private val analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository by inject()
     private val searchRepository: SearchRepository by inject()
     private val podcastRepository: PodcastRepository by inject()
-    private val syncDao: SyncDao by inject()
 
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -438,13 +436,9 @@ object StreamifySyncEngine : KoinComponent {
             for (localPl in refreshedPlaylists) {
                 // Ensure valid UUID format for Supabase playlists.id - migrate away from deterministic hex collision IDs
                 val syncId: String = if (localPl.syncId.isNullOrBlank() || localPl.syncId.startsWith("00000000-0000-4000-8000-")) {
-                    val generated = HybridLogicalClock.randomUuid()
-                    try {
-                        syncDao.setLocalPlaylistSyncId(localPl.id, generated)
-                    } catch (_: Exception) {}
-                    generated
+                    HybridLogicalClock.randomUuid()
                 } else {
-                    localPl.syncId
+                    localPl.syncId ?: HybridLogicalClock.randomUuid()
                 }
 
                 val tracks = localPlaylistRepository.getFullPlaylistTracks(localPl.id)
@@ -529,41 +523,30 @@ object StreamifySyncEngine : KoinComponent {
                     val channelIds: List<String> = if (!cloudItem.artistId.isNullOrBlank()) {
                         listOf(cloudItem.artistId)
                     } else {
-                        localSong?.artistId ?: emptyList()
+                        localSong?.artistId?.filterNotNull() ?: emptyList()
                     }
                     val albumId = cloudItem.albumId ?: localSong?.albumId
-                    val eventTimestamp = parseIsoToLocalDateTime(cloudItem.createdAt) ?: now()
-                    val eventEntity = com.maxrave.domain.data.entities.analytics.PlaybackEventEntity(
-                        timestamp = eventTimestamp,
+                    analyticsRepository.insertPlaybackEvent(
                         videoId = cloudItem.trackId,
+                        channelIds = channelIds,
                         albumBrowseId = albumId,
                         durationSecond = cloudItem.listenedDurationSec.toLong(),
-                        listenedSecond = cloudItem.listenedDurationSec.toLong(),
-                        syncId = cloudEventId,
-                        deviceId = "cloud"
-                    )
-                    syncDao.insertEventWithArtists(eventEntity, channelIds)
+                        listenedSecond = cloudItem.listenedDurationSec.toLong()
+                    ).firstOrNull()
                 }
             }
 
-            // 2. Outbound: backfill local events missing syncId and push missing plays to cloud in batches
+            // 2. Outbound: push missing plays to cloud in batches with client_event_id
             val pendingBatch = mutableListOf<com.streamify.supabase.PlaybackHistoryBatchItem>()
             for (localEvent in localEvents) {
                 if (localEvent.videoId.isBlank() || localEvent.videoId.startsWith("trk_")) continue
 
-                val effectiveSyncId = if (localEvent.syncId.isNullOrBlank()) {
-                    val generated = HybridLogicalClock.randomUuid()
-                    try {
-                        syncDao.setEventSyncId(localEvent.eventId, generated)
-                    } catch (_: Exception) {}
-                    generated
-                } else {
-                    localEvent.syncId
-                }
+                val effectiveSyncId = localEvent.syncId?.ifBlank { null }
+                    ?: HybridLogicalClock.randomUuid()
 
                 if (effectiveSyncId !in cloudClientEventIds) {
                     val song = songRepository.getSongById(localEvent.videoId).firstOrNull()
-                    val artistId = song?.artistId?.firstOrNull()
+                    val artistId = song?.artistId?.filterNotNull()?.firstOrNull()
                     val createdAtIso = try {
                         localEvent.timestamp.toInstant(TimeZone.currentSystemDefault()).toString()
                     } catch (_: Exception) {
