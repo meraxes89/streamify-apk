@@ -39,7 +39,7 @@ permissions:
 jobs:
   # ── JVM unit suite: state machines, chaos, CAD identity gates ───────────────
   jvm-unit:
-    name: "Android JVM unit suite"
+    name: "Tests"
     if: ${{ !inputs.release_mode }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -99,7 +99,7 @@ jobs:
 
   # ── APK assembly over the prebuilt engine artifacts ─────────────────────────
   assemble-apk:
-    name: ${{ inputs.release_mode && 'Assemble release APK (signed)' || 'Assemble debug APK (universal 2-ABI)' }}
+    name: "APK"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # GOV-05: release signing secrets (RELEASE_KEYSTORE_B64, KEYSTORE_PASSWORD,
@@ -124,7 +124,7 @@ jobs:
 
       # audit #44 P0-1 — fail FAST on any external fun in NativeBridge.kt
       # with no JNI export, before any runner time is spent on Gradle.
-      - name: JNI ABI parity gate (source-level, fail-fast)
+      - name: Check JNI ABI parity
         run: python3 scripts/jni_parity_check.py --source
 
       - name: Set up JDK 21
@@ -138,7 +138,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Pre-compile Kotlin, resources & D8 dex
+      - name: Pre-compile Kotlin & resources
         run: |
           chmod +x gradlew
           ./gradlew \
@@ -155,7 +155,7 @@ jobs:
           pattern: jniLibs-*
           path: staged-jni
 
-      - name: Stage prebuilt .so into androidApp and vivoAndroidApp jniLibs
+      - name: Stage prebuilt .so
         run: |
           for ABI in arm64-v8a x86_64; do
             mkdir -p androidApp/src/main/jniLibs/$ABI
@@ -178,7 +178,7 @@ jobs:
             echo "Notice: no RELEASE_KEYSTORE_B64 secret found; falling back to repository signing config."
           fi
 
-      - name: Assemble debug APK (prebuilt natives, no Rust rebuild)
+      - name: Assemble debug APK
         if: ${{ !inputs.release_mode }}
         env:
           # Backend wiring: the anon (publishable) key for the live Supabase
@@ -195,7 +195,7 @@ jobs:
             --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
 
-      - name: Assemble release APK (prebuilt natives, signed)
+      - name: Assemble release APK
         if: inputs.release_mode
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -211,7 +211,7 @@ jobs:
             --stacktrace 2>&1 | tee build.log
 
       # Hard verification: the universal APK must carry BOTH beta ABIs.
-      - name: Verify both architectures exist in the final APK
+      - name: Verify architectures
         run: |
           APK=$(find androidApp/build/outputs/apk -name "*universal*.apk" | head -n 1)
           if [ -z "$APK" ]; then
@@ -228,7 +228,7 @@ jobs:
           echo "Verified universal APK contains arm64-v8a and x86_64."
 
       # audit #44 P0-1 — authoritative link-time parity gate on the shipped .so.
-      - name: JNI ABI parity gate (nm on shipped .so)
+      - name: Verify JNI exports
         run: |
           NDK_DIR="${ANDROID_NDK_HOME:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/ndk/26.1.10909125}"
           NM="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"

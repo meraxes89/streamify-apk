@@ -221,16 +221,13 @@ import simpmusic.composeapp.generated.resources.all
 import simpmusic.composeapp.generated.resources.cancel
 import simpmusic.composeapp.generated.resources.chart
 import simpmusic.composeapp.generated.resources.commute
-import simpmusic.composeapp.generated.resources.do_not_show_again
 import simpmusic.composeapp.generated.resources.energize
 import simpmusic.composeapp.generated.resources.feel_good
 import simpmusic.composeapp.generated.resources.focus
-import simpmusic.composeapp.generated.resources.go_to_log_in_page
 import simpmusic.composeapp.generated.resources.guest
 import simpmusic.composeapp.generated.resources.let_s_pick_a_playlist_for_you
 import simpmusic.composeapp.generated.resources.let_s_start_with_a_radio
 import simpmusic.composeapp.generated.resources.log_in_to_YouTube
-import simpmusic.composeapp.generated.resources.log_in_warning
 import simpmusic.composeapp.generated.resources.mood
 import simpmusic.composeapp.generated.resources.notification
 import simpmusic.composeapp.generated.resources.party
@@ -317,8 +314,6 @@ fun HomeScreen(
     val params by viewModel.params.collectAsStateWithLifecycle()
     val homeListState by viewModel.homeListState.collectAsStateWithLifecycle()
     val continuation by viewModel.continuation.collectAsStateWithLifecycle()
-
-    val shouldShowLogInAlert by viewModel.showLogInAlert.collectAsStateWithLifecycle()
 
     val openAppTime by sharedViewModel.openAppTime.collectAsStateWithLifecycle()
     val shareLyricsPermissions by sharedViewModel.shareSavedLyrics.collectAsStateWithLifecycle()
@@ -462,7 +457,7 @@ fun HomeScreen(
 
 
     val otherDialogOpen =
-        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || shouldShowLogInAlert || (activeAnnouncement != null)
+        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || (activeAnnouncement != null)
 
     LaunchedEffect(openAppTime, otherDialogOpen) {
         val platformName = when (getPlatform()) {
@@ -666,59 +661,6 @@ fun HomeScreen(
             onFailed = {
                 Logger.w("Promo", "Picture failed to load for ${banner.id}; closed without counting it")
                 promoBanner = null
-            },
-        )
-    }
-
-    if (shouldShowLogInAlert) {
-        var doNotShowAgain by rememberSaveable {
-            mutableStateOf(false)
-        }
-        AlertDialog(
-            title = {
-                Text(stringResource(Res.string.warning))
-            },
-            text = {
-                Column {
-                    Text(text = stringResource(Res.string.log_in_warning))
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier =
-                            Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    doNotShowAgain = !doNotShowAgain
-                                }.fillMaxWidth(),
-                    ) {
-                        Checkbox(
-                            checked = doNotShowAgain,
-                            onCheckedChange = {
-                                doNotShowAgain = it
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(stringResource(Res.string.do_not_show_again))
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.doneShowLogInAlert(doNotShowAgain)
-                    navController.navigate(LoginDestination)
-                }) {
-                    Text(stringResource(Res.string.go_to_log_in_page))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    viewModel.doneShowLogInAlert(doNotShowAgain)
-                }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            onDismissRequest = {
-                viewModel.doneShowLogInAlert()
             },
         )
     }

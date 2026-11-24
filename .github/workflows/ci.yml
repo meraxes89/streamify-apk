@@ -48,18 +48,25 @@ jobs:
   # TIER 1: Fast-Fail Preflight & Impact Analysis (ubuntu, fast)
   # =========================================================================
   preflight:
-    name: "Tier 1: Fast-Fail & Path Filter"
+    name: "Preflight"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      run_engine: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_wasm: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.wasm == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_graphics: ${{ steps.filter.outputs.graphics == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_engine: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_wasm: ${{ steps.filter.outputs.wasm == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_graphics: ${{ steps.filter.outputs.graphics == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
+          contains(github.event.pull_request.labels.*.name, 'package') ||
+          steps.filter.outputs.packaging == 'true'
+        }}
+      full_matrix: >-
+        ${{
+          github.event_name != 'pull_request' ||
+          contains(github.event.pull_request.labels.*.name, 'full-matrix') ||
           contains(github.event.pull_request.labels.*.name, 'package') ||
           steps.filter.outputs.packaging == 'true'
         }}
@@ -77,35 +84,45 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           filters: |
+            root_ci:
+              - '.github/workflows/ci.yml'
+              - 'gradle/**'
+              - 'gradle.properties'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
             core:
               - 'rust/**'
               - 'native/**'
               - 'CMakeLists.txt'
+              - '.github/workflows/_ci-engine.yml'
             android:
               - 'androidApp/**'
-              - 'composeApp/**'
+              - 'vivoAndroidApp/**'
+              - 'composeApp/src/android*/**'
+              - 'composeApp/src/common*/**'
               - 'core/**'
               - 'streamify-modules/**'
-              - 'vivoAndroidApp/**'
               - 'cast/**'
               - 'lastfm/**'
+              - '.github/workflows/_ci-android.yml'
             desktop:
               - 'desktopApp/**'
-              - 'composeApp/**'
+              - 'composeApp/src/desktop*/**'
+              - 'composeApp/src/common*/**'
               - 'core/**'
               - 'streamify-modules/**'
               - 'conveyor.conf'
+              - '.github/workflows/_ci-desktop.yml'
             wasm:
-              - 'composeApp/**'
+              - 'wasmApp/**'
+              - 'composeApp/src/wasm*/**'
+              - 'composeApp/src/common*/**'
               - 'core/**'
               - 'streamify-modules/**'
               - 'room-wasm-stub/**'
               - 'lastfm/**'
               - 'lastfm-empty/**'
               - 'core.patch'
-              - 'gradle/**'
-              - 'build.gradle.kts'
-              - 'settings.gradle.kts'
               - '.github/workflows/_ci-wasm.yml'
             supabase:
               - 'supabase/**'
@@ -121,8 +138,6 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - 'conveyor.conf'
-            ci:
-              - '.github/workflows/**'
 
       # SEC-05 secret scan, blocking, at t=0. PR/push events only: on
       # merge_group a full-history scan would re-flag the pre-existing
@@ -173,7 +188,7 @@ jobs:
   # Clippy runs as a dedicated parallel spoke (resp7 Pillar 5) so preflight
   # finishes in < 20 seconds.
   clippy:
-    name: "Rust clippy (workspace, -D warnings)"
+    name: "Clippy"
     runs-on: ubuntu-latest
     needs: preflight
     if: needs.preflight.outputs.run_engine == 'true'
@@ -237,7 +252,7 @@ jobs:
   # with per-input granularity so an app-only PR skips the test suite but
   # still gets its prebuilt natives.
   engine_dsp:
-    name: "Core Engine & C++ DSP"
+    name: "Engine"
     needs: preflight
     if: >-
       needs.preflight.outputs.run_engine == 'true' ||
@@ -249,9 +264,10 @@ jobs:
       build_android_native: ${{ needs.preflight.outputs.run_android == 'true' }}
       build_desktop_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
       build_linux_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
+      build_full_desktop: ${{ needs.preflight.outputs.full_matrix == 'true' }}
 
   android:
-    name: "Android Matrix"
+    name: "Android"
     needs: [preflight, engine_dsp]
     if: |
       always() &&
@@ -261,7 +277,7 @@ jobs:
     uses: ./.github/workflows/_ci-android.yml
 
   desktop:
-    name: "Desktop Matrix (Linux, Windows, macOS)"
+    name: "Desktop"
     needs: [preflight, engine_dsp]
     if: |
       always() &&
@@ -271,9 +287,10 @@ jobs:
     uses: ./.github/workflows/_ci-desktop.yml
     with:
       package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
+      full_matrix: ${{ needs.preflight.outputs.full_matrix == 'true' }}
 
   wasm:
-    name: "Web Wasm Matrix"
+    name: "Wasm"
     needs: preflight
     if: |
       always() &&
@@ -281,6 +298,7 @@ jobs:
       needs.preflight.outputs.run_wasm == 'true'
     uses: ./.github/workflows/_ci-wasm.yml
     with:
+      fast_check: ${{ needs.preflight.outputs.full_matrix != 'true' }}
       release_mode: false
 
   # Sovereign GPU Engine spoke (docs/gpu/CI_TESTING_SPEC.md). Phase 1
@@ -303,7 +321,7 @@ jobs:
   # container. Every assertion FAILS if a pre-SEC-10 permissive policy
   # (WITH CHECK (TRUE) / OR TRUE / email-granted admin) is restored.
   supabase-rls:
-    name: "Supabase RLS hardening suite (SEC-10)"
+    name: "Supabase"
     needs: preflight
     if: |
       always() &&

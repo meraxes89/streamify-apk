@@ -571,6 +571,7 @@ class SharedViewModel(
                     mediaPlayerHandler.controlState.collectLatest {
                         Logger.w(tag, "ControlState is $it")
                         _controllerState.value = it
+                        com.streamify.sync.StreamifySyncEngine.setPlaybackActive(it.isPlaying)
                         // Propagate crossfade state to timeline so UI can react
                         _timeline.update { timeline ->
                             timeline.copy(isCrossfading = it.isCrossfading)
@@ -816,6 +817,7 @@ class SharedViewModel(
         value: String,
     ) {
         runBlocking { dataStoreManager.putString(key, value) }
+        com.streamify.sync.StreamifySyncEngine.recordSettingChange(key, value)
     }
 
     fun setSleepTimer(minutes: Int) {
@@ -1345,9 +1347,13 @@ class SharedViewModel(
 
     fun createLocalPlaylist(title: String) {
         viewModelScope.launch {
+            val syncId = com.streamify.sync.HybridLogicalClock.randomUuid()
             localPlaylistRepository
                 .insertLocalPlaylist(
-                    LocalPlaylistEntity(title = title),
+                    LocalPlaylistEntity(
+                        title = title,
+                        syncId = syncId,
+                    ),
                     getString(Res.string.added_local_playlist),
                 ).lastOrNull()
             makeToast(getString(Res.string.added_local_playlist))

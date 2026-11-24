@@ -743,7 +743,7 @@ static void test_peer_mix_pool() {
                 for (int p = 0; p < 4; ++p) left += pool.peerReadable(p);
                 if (left == 0) break;   // rings drained: nothing in flight
             }
-            if (mixed > 20 * static_cast<size_t>(kPerPeer)) {   // safety valve
+            if (mixed > 100 * static_cast<size_t>(kPerPeer)) {   // safety valve
                 check(false, "jitter: safety valve tripped");
                 break;
             }

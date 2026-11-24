@@ -1,0 +1,79 @@
+# ============================================================================
+# .github/labeler.yml — Configuration for actions/labeler@v5.
+# Categorizes PRs automatically based on file paths.
+# ============================================================================
+
+area:android:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'androidApp/**'
+          - 'vivoAndroidApp/**'
+          - 'composeApp/src/androidMain/**'
+          - 'cast/**'
+
+area:desktop:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'desktopApp/**'
+          - 'composeApp/src/desktopMain/**'
+          - 'conveyor.conf'
+
+area:wasm:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'wasmApp/**'
+          - 'composeApp/src/wasmJsMain/**'
+          - 'room-wasm-stub/**'
+
+area:ios:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'composeApp/src/iosMain/**'
+          - 'native/include/apple_remote_command.h'
+          - 'native/include/ios_audio_session.h'
+          - 'native/os/apple_remote_command.mm'
+          - 'native/audio/ios_audio_session.mm'
+
+area:engine:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'rust/**'
+          - 'Cargo.toml'
+          - 'Cargo.lock'
+
+area:dsp:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'native/**'
+          - 'CMakeLists.txt'
+
+area:backend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'supabase/**'
+          - 'streamify-modules/supabase/**'
+
+area:ui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'composeApp/**'
+          - 'streamify-modules/**'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/*.yml'
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '**/*.md'
+          - 'LICENSE'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'gradle/libs.versions.toml'
+          - 'rust/Cargo.lock'

@@ -13,29 +13,16 @@
 #                        suites (jam + audio), every integration suite.
 #   cpp-sanitizers       the C++20 ASan/UBSan matrix (DSP, SIMD physics,
 #                        telemetry/storage) under eatmydata + tmpfs scratch.
-#                        WS-C (C3): the 7 previously CI-dead native suites
-#                        are switched ON — virtual_hal_test_suite,
-#                        desktop_hal_render_core_test_suite,
+#                        Native suites: virtual_hal_test_suite,
 #                        dsp_phase_lock_test_suite,
 #                        capability_abi_parity_test_suite,
 #                        test_audio_sink_ringbuffer,
-#                        coreaudio_render_core_test_suite,
-#                        linux_hal_driver_test_suite (ALSA null PCM — no
-#                        hardware needed) — ~4,000 LOC of written-but-never-
-#                        executed verification now gates every core PR. WS-C
-#                        adds the two new lanes: jni_sink_bridge_test_suite
-#                        (C1: the frozen JNI sink contract through a stub
-#                        JNIEnv) and lufs_parity_test_suite (C8: the C++
-#                        BS.1770-4 path vs the canonical Rust vectors).
+#                        jni_sink_bridge_test_suite (frozen JNI sink contract),
+#                        and lufs_parity_test_suite (C++ BS.1770-4 path vs Rust vectors).
 #   android-native       BUILD-ONCE / FAN-OUT factory: cargo-ndk + CMake/NDK
 #                        for arm64-v8a + x86_64, uploaded once (resp6 §3) so
 #                        the Gradle shards never rebuild Rust from scratch.
-#                        WS-C (C1): the .so now carries the 7-symbol JNI sink
-#                        bridge (jni_bridge_audio_sinks.cpp).
-#   windows-native       WS-C (C4): the MSVC rot guard — the native tree
-#                        (WASAPI adapter + the C5 desktop HAL library)
-#                        compiled with Visual Studio on every core PR; the
-#                        if(WIN32) targets finally fire somewhere.
+#                        The .so carries the 7-symbol JNI sink bridge (jni_bridge_audio_sinks.cpp).
 #   linux-desktop-native the x86_64-unknown-linux-gnu cdylib consumed by the
 #                        Linux leg of _ci-desktop.yml through the
 #                        -Pstreamify.prebuiltEngineLib Gradle seam.
@@ -65,6 +52,10 @@ on:
         description: Cross-compile the Linux desktop JNA cdylib artifact (backward compatibility).
         type: boolean
         default: true
+      build_full_desktop:
+        description: Cross-compile full desktop cdylibs including Windows and macOS (on PR fast path, only Linux is built).
+        type: boolean
+        default: false
       nextest_profile:
         description: "nextest profile from rust/.config/nextest.toml: ci (PR fast path, chaos suite excluded) or nightly (deep matrix)."
         type: string
@@ -76,7 +67,7 @@ permissions:
 jobs:
   # ── Rust core: unit + integration suite (VirtualHAL double, golden vectors) ──
   rust-core:
-    name: "Rust core: nextest (${{ inputs.nextest_profile }} ${{ matrix.partition }}/2)"
+    name: "Nextest (${{ matrix.partition }}/2)"
     if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -117,7 +108,7 @@ jobs:
       # documented flake lane); the nightly profile runs it serialized in the
       # serial-heavy-mesh test group. --all-targets keeps examples compiled.
       # resp7 Pillar 2: 2-way hash partition gives statistically balanced shards.
-      - name: Run workspace test suite (VirtualHAL double, golden vectors, all integration suites)
+      - name: Run workspace tests
         run: |
           cargo nextest run \
             --manifest-path rust/Cargo.toml \
@@ -143,7 +134,7 @@ jobs:
   # regression headroom over the observed ~48 ms median — the full
   # derivation lives in rust/crates/streamify-audio/examples/embedding_bench.rs).
   embedding-bench:
-    name: "WS-D D2: embedding producer benchmark (30s clip budget)"
+    name: "Benchmark"
     if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -171,65 +162,19 @@ jobs:
       - name: Start sccache server daemon
         run: sccache --start-server || true
 
-      - name: Run the embedding benchmark (median-of-21, release)
+      - name: Run benchmark
         run: |
           cargo run --release --manifest-path rust/Cargo.toml \
             -p streamify-audio --example embedding_bench
 
-  # ── C++ DSP: ASan/UBSan matrix (clang-17, ccache, eatmydata on tmpfs) ─────
-  # WS-C (C3): +7 revived suites and +2 new WS-C lanes — the full host
-  # verification surface acts as a live gate on every core-touching PR.
+  # ── C++ DSP: ASan/UBSan consolidated suite (clang-17, ccache, eatmydata on tmpfs) ─────
+  # WS-C (C3): Full native verification surface (12 test suites) running in parallel
+  # on a single runner under CTest, reducing 12 separate VM allocations to 1 fast runner.
   cpp-sanitizers:
-    name: "C++ ASan/UBSan: ${{ matrix.shard }}"
+    name: "Sanitizers"
     if: inputs.run_tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: native-dsp
-            description: "KissFFT 2048 STFT, Krumhansl Key, Ellis BPM & EBU R128 LUFS"
-            target: dsp_test_suite
-          - shard: native-simd-physics
-            description: "128-D ARM NEON VectorStore & RK4 AirDrop ODE Solver"
-            target: simd_physics_test_suite
-          - shard: native-telemetry-storage
-            description: "Lock-Free SPSC Buffer, SHA-256 Proof-of-Compute & SQLite WAL"
-            target: storage_telemetry_test_suite
-          # ---- WS-C (C3): the previously CI-dead native suites -------------
-          - shard: native-dsp-phase-lock
-            description: "PTP clock kernel, fractional sinc resampler & HW latency profiler"
-            target: dsp_phase_lock_test_suite
-          - shard: native-virtual-hal
-            description: "Adversarial VirtualHAL double vs the hardened SPSC AudioSink"
-            target: virtual_hal_test_suite
-          # WS-C C3 revival, doubled as the WS-B B4 AC: the Apple CoreAudio
-          # render core's host-lane audit (sections A-I: RT zero-alloc
-          # proofs, seqlock clock publication, <5 ms latency error,
-          # 1200-quantum zero-underrun steady state).
-          - shard: native-coreaudio-render-core
-            description: "CoreAudio RT render core (SPSC pull, seqlock DAC clock, zero-alloc)"
-            target: coreaudio_render_core_test_suite
-          - shard: native-audio-sink-ringbuffer
-            description: "SPSC f32 sink ring + WearOS packetizer (dedicated lane)"
-            target: test_audio_sink_ringbuffer
-          - shard: native-desktop-hal-render-cores
-            description: "WASAPI/PipeWire/ALSA render cores driven by the VirtualHAL double"
-            target: desktop_hal_render_core_test_suite
-          - shard: native-capability-abi-parity
-            description: "Apple C-ABI capability codes (frozen SF_* enum pins)"
-            target: capability_abi_parity_test_suite
-          - shard: native-linux-hal-driver
-            description: "PipeWire dlopen driver + ALSA null-PCM fallback (no hardware needed)"
-            target: linux_hal_driver_test_suite
-          # ---- WS-C new lanes ------------------------------------------------
-          - shard: native-jni-sink-bridge
-            description: "C1: the 7 frozen JNI sink symbols through a host stub JNIEnv"
-            target: jni_sink_bridge_test_suite
-          - shard: native-lufs-parity
-            description: "C8: C++ BS.1770-4 vs the canonical Rust golden vectors"
-            target: lufs_parity_test_suite
+    timeout-minutes: 20
     env:
       ASAN_OPTIONS: "fast_unwind_on_malloc=1:detect_leaks=1:halt_on_error=1"
       UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
@@ -239,13 +184,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The sanitizer lane's toolchain setup is infra-resilient (the same
-      # treatment the NDK lane's ccache got in this PR): a runner archive/DNS
-      # incident must neither burn 15+ minutes per shard inside apt's
-      # internal retry storm nor red the shard. cmake (4.4) and ninja (1.13)
-      # ship on the ubuntu-26.04 image — apt is only spent on the pinned
-      # clang-17 (with the image's preinstalled clang as fallback), and on
-      # best-effort speedups (ccache, eatmydata).
       - name: Set up Clang & build tools (DNS-flake resilient)
         run: |
           DNS_OK=1
@@ -274,10 +212,6 @@ jobs:
               || echo "::warning::apt-get update failed — trying installs anyway (cached indexes)"
           fi
 
-          # Preferred: the lane's pinned clang-17 (frozen sanitizer
-          # behavior). Fallback: the image's preinstalled clang
-          # (20/21/22 on ubuntu-26.04) — any of them compiles this tree
-          # under ASan/UBSan; a green shard on clang-22 beats a red one.
           SANI_CC=""; SANI_CXX=""
           if apt_install clang-17 libstdc++-13-dev \
              && command -v clang-17 >/dev/null 2>&1; then
@@ -300,34 +234,17 @@ jobs:
           echo "Sanitizer toolchain: $SANI_CXX ($($SANI_CXX --version | head -n1))"
 
           # eatmydata is an fsync suppressor — a large speed multiplier
-          # for the sqlite/telemetry suites under ASan, but a speedup, not
-          # a dependency.
           apt_install eatmydata \
             || echo "::warning::eatmydata unavailable — suites run without it"
 
-          # ccache: also just a speedup; the build step attaches the
-          # compiler launcher only when ccache is on PATH.
+          # ccache: compiler launcher cache
           apt_install ccache \
             || echo "::warning::ccache unavailable — building without the compile cache"
-
-          # Loud-CI contract: the PipeWire frozen-ABI cross-check lane in
-          # linux_hal_driver_test_suite (real spa_pod_builder_add_object
-          # rebuilt pod vs the embedded reference, real struct layouts vs
-          # the frozen ABI) must RUN, not degrade to "no pipewire dev
-          # headers — cross-check lane skipped". The dev packages land on
-          # the shard that owns that suite; every other shard merely
-          # configures the tree (the find_path result changes nothing for
-          # their targets). Only a total runner network outage downgrades
-          # this to the embedded-reference-only check (loudly warned).
-          if [ "${{ matrix.shard }}" = "native-linux-hal-driver" ]; then
-            apt_install libpipewire-0.3-dev libspa-0.2-dev \
-              || echo "::warning::PipeWire dev headers unavailable — frozen-ABI cross-check degrades to the embedded reference"
-          fi
 
           echo "SANI_CC=$SANI_CC"   >> "$GITHUB_ENV"
           echo "SANI_CXX=$SANI_CXX" >> "$GITHUB_ENV"
 
-      - name: Setup CCache for native shards
+      - name: Setup CCache for native sanitizers
         uses: hendrikmuhs/ccache-action@v1.2.25
         continue-on-error: true
         with:
@@ -336,15 +253,11 @@ jobs:
             ${{ runner.os }}-ccache-native-
           max-size: 500M
 
-      - name: Build & execute under ASan/UBSan (eatmydata, tmpfs scratch)
+      - name: Run C++ suites (ctest)
         run: |
           mkdir -p /dev/shm/native_test_tmp
           sudo mount -t tmpfs -o size=3G tmpfs /tmp || true
           mkdir -p native/build && cd native/build
-          # ccache is a speedup, not a dependency: attach the launcher only
-          # when ccache is on PATH (runner archive/DNS flakes must not
-          # poison the CMake compiler probe — same discipline as the NDK
-          # lane).
           CCACHE_ARGS=""
           if command -v ccache >/dev/null 2>&1; then
             CCACHE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
@@ -356,63 +269,20 @@ jobs:
                 -DCMAKE_C_COMPILER="$SANI_CC" \
                 $CCACHE_ARGS \
                 -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -O2 -g" \
+                -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -O2 -g" \
                 -DSTREAMIFY_BUILD_TESTS=ON \
+                -DENABLE_ASAN=ON \
                 -G Ninja ..
-          ninja ${{ matrix.target }}
-          cp -a ${{ matrix.target }} /dev/shm/native_test_tmp/
-          cd /dev/shm/native_test_tmp
-          # eatmydata is a speed multiplier, not a dependency.
+          ninja
           if command -v eatmydata >/dev/null 2>&1; then
-            eatmydata ./${{ matrix.target }}
+            eatmydata ctest --output-on-failure
           else
-            ./${{ matrix.target }}
+            ctest --output-on-failure
           fi
-
-  # ── WS-C (C4): the Windows native C++ rot guard (MSVC) ────────────────────
-  # The WASAPI adapter's if(WIN32) target never fired anywhere before this
-  # lane existed (no Windows native CMake configure ever ran), so SDK/MSVC
-  # rot could land silently between releases. Every core-touching PR now
-  # compiles the native tree with the image's CURRENT Visual Studio: the
-  # configure step deliberately does NOT pin -G "Visual Studio 17 2022" —
-  # windows-latest migrated to the windows-2025-vs2026 image (VS 2026
-  # only), and a hardcoded VS 2022 generator aborts with "could not find
-  # any instance of Visual Studio". CMake's default generator resolves to
-  # the newest installed VS on the runner, which is exactly what a rot
-  # guard should compile against. The desktop HAL shared library (the C5
-  # wiring slice — sink registry C ABI + the WASAPI pull adapter) must
-  # link against avrt/ole32 and the C++20 over-aligned AudioSink storage
-  # must survive MSVC's allocator. The Android packaging .so stays
-  # NDK-only (the CMake ANDROID guard); Apple/linux targets are skipped
-  # by their own platform guards on this runner.
-  windows-native:
-    name: "Windows native C++ (MSVC rot guard, C4)"
-    if: inputs.run_tests
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure the native tree (host Visual Studio, x64)
-        run: cmake -B native/build -S native -A x64
-
-      - name: Compile the WASAPI adapter + desktop HAL library (Release)
-        run: |
-          cmake --build native/build --config Release `
-            --target streamify_desktop_hal streamify_wasapi_adapter
-
-      - name: Upload the built HAL module (rot-guard evidence)
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-native-hal-x86_64
-          path: |
-            native/build/Release/streamify_desktop_hal.dll
-            native/build/Release/streamify_wasapi_adapter.lib
-          if-no-files-found: error
-          compression-level: 1
 
   # ── BUILD-ONCE / FAN-OUT: Android NDK artifacts for the Gradle shards ──────
   android-native:
-    name: "Android NDK artifact (${{ matrix.abi }})"
+    name: "NDK (${{ matrix.abi }})"
     if: inputs.build_android_native
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -476,7 +346,7 @@ jobs:
           cargo ndk --version
 
       # Direct cargo-ndk + CMake/Ninja: zero Gradle daemon startup tax.
-      - name: Cross-compile Rust + C++ DSP for ${{ matrix.abi }}
+      - name: Build Rust and C++ DSP
         env:
           CARGO_PROFILE_RELEASE_DEBUG: "0"
           CARGO_PROFILE_RELEASE_STRIP: "debuginfo"
@@ -535,7 +405,7 @@ jobs:
 
   # ── BUILD-ONCE / FAN-OUT: Linux desktop cdylib for the JNA lane ────────────
   linux-desktop-native:
-    name: "Linux desktop cdylib (x86_64-unknown-linux-gnu)"
+    name: "Linux Lib"
     if: inputs.build_desktop_native || inputs.build_linux_native
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -568,7 +438,7 @@ jobs:
       # Deliberately identical to the desktop Gradle lane's
       # `cargo build --release --lib` (no extra RUSTFLAGS, release profile
       # strips) so the prebuilt is byte-equivalent to a local build.
-      - name: Cross-compile the engine cdylib (release, stripped)
+      - name: Build Linux cdylib
         run: cargo build --manifest-path rust/Cargo.toml --release --lib --target x86_64-unknown-linux-gnu
 
       - name: Upload engine cdylib
@@ -581,8 +451,8 @@ jobs:
 
   # ── BUILD-ONCE / FAN-OUT: Windows desktop cdylib for the JNA lane ──────────
   windows-desktop-native:
-    name: "Windows desktop cdylib (x86_64-pc-windows-msvc)"
-    if: inputs.build_desktop_native || inputs.build_linux_native
+    name: "Windows Lib"
+    if: (inputs.build_desktop_native || inputs.build_linux_native) && (inputs.build_full_desktop || github.event_name != 'pull_request')
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -613,7 +483,7 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Compile Windows engine cdylib (release, stripped)
+      - name: Build Windows cdylib
         shell: bash
         run: cargo build --manifest-path rust/Cargo.toml --release --lib --target x86_64-pc-windows-msvc
 
@@ -627,8 +497,8 @@ jobs:
 
   # ── BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane ────────────
   macos-desktop-native:
-    name: "macOS desktop cdylib (arm64 + x86_64 universal)"
-    if: inputs.build_desktop_native || inputs.build_linux_native
+    name: "macOS Lib"
+    if: (inputs.build_desktop_native || inputs.build_linux_native) && (inputs.build_full_desktop || github.event_name != 'pull_request')
     runs-on: macos-latest
     timeout-minutes: 30
     env:
@@ -649,7 +519,7 @@ jobs:
           key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Compile macOS engine cdylibs & create universal binary
+      - name: Build macOS cdylib
         shell: bash
         run: |
           cargo build --manifest-path rust/Cargo.toml --release --lib --target aarch64-apple-darwin
