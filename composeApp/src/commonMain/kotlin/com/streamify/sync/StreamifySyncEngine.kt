@@ -14,11 +14,16 @@ import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.repository.PodcastRepository
 import com.maxrave.domain.repository.SearchRepository
 import com.maxrave.domain.repository.SongRepository
+import com.streamify.supabase.CloudEpisodeState
 import com.streamify.supabase.CloudLibraryTrack
+import com.streamify.supabase.CloudPresence
 import com.streamify.supabase.CloudTrack
 import com.streamify.supabase.SupabaseClient
 import com.streamify.supabase.SupabaseConfig
 import com.streamify.supabase.SupabaseLibrarySync
+import com.streamify.supabase.SyncPullOp
+import com.streamify.supabase.SyncPullResult
+import com.streamify.supabase.SyncPushResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -37,18 +42,16 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import com.streamify.supabase.SyncPullOp
-import com.streamify.supabase.SyncPullResult
-import com.streamify.supabase.SyncPushResult
-import com.streamify.supabase.CloudPresence
 import kotlin.concurrent.Volatile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -107,6 +110,16 @@ object StreamifySyncEngine : KoinComponent {
         "use_ai_translation",
         "lyrics_style"
     )
+
+    data class LocalEpisodeState(
+        val episodeId: String,
+        val podcastId: String = "",
+        val positionSec: Int = 0,
+        val completed: Boolean = false,
+        val modifiedHlc: Long = 0L
+    )
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     @Volatile
     var isCurrentPlaybackActive: Boolean = false
@@ -183,41 +196,83 @@ object StreamifySyncEngine : KoinComponent {
 
                 likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
             } else {
-                // Cold Bootstrap Sync
-                _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
-                likedCount = syncLikesInternal(targetUserId)
+                // Cold Bootstrap Sync with Resumable Stage Checkpointing (Step 8)
+                val resumeStage = dataStoreManager.getString("streamify_bootstrap_checkpoint_v3").firstOrNull() ?: ""
+                val stages = listOf(
+                    "LIKES",
+                    "ARTISTS",
+                    "ALBUMS",
+                    "LIBRARY_TRACKS",
+                    "SAVED_PLAYLISTS",
+                    "PLAYLISTS",
+                    "SETTINGS",
+                    "HISTORY",
+                    "PODCASTS",
+                    "EPISODES",
+                    "SEARCH"
+                )
+                val resumeIdx = stages.indexOf(resumeStage).let { if (it >= 0) it + 1 else 0 }
 
-                _syncState.value = SyncStatus.Syncing("Bootstrapping followed artists...")
-                syncArtistsInternal(targetUserId)
+                for (idx in resumeIdx until stages.size) {
+                    val stage = stages[idx]
+                    when (stage) {
+                        "LIKES" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
+                            likedCount = syncLikesInternal(targetUserId)
+                        }
+                        "ARTISTS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping followed artists...")
+                            syncArtistsInternal(targetUserId)
+                        }
+                        "ALBUMS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping saved albums...")
+                            syncAlbumsInternal(targetUserId)
+                        }
+                        "LIBRARY_TRACKS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping library tracks...")
+                            syncLibraryTracksInternal(targetUserId)
+                        }
+                        "SAVED_PLAYLISTS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping saved playlists...")
+                            syncSavedPlaylistsInternal(targetUserId)
+                        }
+                        "PLAYLISTS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping playlists...")
+                            syncPlaylistsInternal(targetUserId)
+                        }
+                        "SETTINGS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping settings...")
+                            syncSettingsInternal(targetUserId)
+                        }
+                        "HISTORY" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping listening history...")
+                            syncListeningHistoryInternal(targetUserId)
+                        }
+                        "PODCASTS" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping podcasts...")
+                            syncPodcastsInternal(targetUserId)
+                        }
+                        "EPISODES" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping podcast episode progress...")
+                            syncPodcastEpisodeStateInternal(targetUserId)
+                        }
+                        "SEARCH" -> {
+                            _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
+                            syncSearchHistoryInternal(targetUserId)
+                        }
+                    }
+                    dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", stage)
+                }
 
-                _syncState.value = SyncStatus.Syncing("Bootstrapping saved albums...")
-                syncAlbumsInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping library tracks...")
-                syncLibraryTracksInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping saved playlists...")
-                syncSavedPlaylistsInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping playlists...")
-                syncPlaylistsInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping settings...")
-                syncSettingsInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping listening history...")
-                syncListeningHistoryInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping podcasts...")
-                syncPodcastsInternal(targetUserId)
-
-                _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
-                syncSearchHistoryInternal(targetUserId)
+                if (likedCount == 0) {
+                    likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
+                }
 
                 // Record latest changelog cursor upon bootstrap completion
                 val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
                 val latestCursor = pullRes?.cursor ?: 0L
                 dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
+                dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "DONE")
             }
 
             // Sync presence via heartbeat_presence with HLC guard
@@ -333,7 +388,7 @@ object StreamifySyncEngine : KoinComponent {
     private suspend fun syncArtistsInternal(targetUserId: String) {
         try {
             val cloudArtistIds = SupabaseLibrarySync.fetchCloudItemFavorites("artist", targetUserId).toSet()
-            val localArtists = artistRepository.getAllArtists(1000).first()
+            val localArtists = artistRepository.getFollowedArtists().firstOrNull() ?: emptyList()
             val localArtistIds = localArtists.map { it.channelId }.toSet()
 
             // Inbound: follow artists locally that are in the cloud
@@ -391,7 +446,7 @@ object StreamifySyncEngine : KoinComponent {
             val cloudLibrary = SupabaseLibrarySync.fetchCloudLibraryTracks(targetUserId)
             val cloudTrackIds = cloudLibrary.map { it.trackId }.toSet()
 
-            val localSongs = songRepository.getAllSongs(1000).firstOrNull() ?: emptyList()
+            val localSongs = songRepository.getAllSongs(Int.MAX_VALUE).firstOrNull() ?: emptyList()
             val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
             val localLibraryIds = localInLibrary.map { it.videoId }.toSet()
 
@@ -607,19 +662,19 @@ object StreamifySyncEngine : KoinComponent {
 
     /**
      * Phase 3 Inbound & Phase 2 Outbox for Playback History (Analytics & Wrapped).
-     * High fidelity: uses client_event_id deduplication, batch uploads, and paginated drains up to 1000 events.
+     * High fidelity: uses client_event_id deduplication, batch uploads, and unconstrained paginated drains.
      */
     private suspend fun syncListeningHistoryInternal(targetUserId: String) {
         try {
             // 1. Inbound: fetch remote cloud listening history with client_event_id fidelity
-            val cloudHistory = SupabaseLibrarySync.fetchCloudListeningHistory(targetUserId, limit = 500)
+            val cloudHistory = SupabaseLibrarySync.fetchCloudListeningHistory(targetUserId, limit = 1000)
             val cloudClientEventIds = cloudHistory.mapNotNull { it.clientEventId?.ifBlank { null } ?: it.id.ifBlank { null } }.toSet()
 
-            // Fetch local playback events with pagination up to 1000 items
+            // Fetch local playback events with unconstrained pagination drain
             val localEvents = mutableListOf<com.maxrave.domain.data.entities.analytics.PlaybackEventEntity>()
             var offset = 0
             val pageSize = 200
-            while (offset < 1000) {
+            while (true) {
                 val page = analyticsRepository.getPlaybackEventsByOffset(offset, pageSize).firstOrNull() ?: emptyList()
                 if (page.isEmpty()) break
                 localEvents.addAll(page)
@@ -714,7 +769,64 @@ object StreamifySyncEngine : KoinComponent {
     }
 
     /**
+     * Phase 2 / Phase 3 Podcast Episode State Synchronization.
+     */
+    private suspend fun syncPodcastEpisodeStateInternal(targetUserId: String) {
+        try {
+            val cloudStates = SupabaseLibrarySync.fetchCloudEpisodeStates(targetUserId)
+            val localStates = getLocalEpisodeStates().toMutableMap()
+            var stateChanged = false
+
+            // Inbound: reconcile cloud states using HLC-LWW
+            for (cloud in cloudStates) {
+                val local = localStates[cloud.episodeId]
+                val cloudHlc = cloud.modifiedHlc ?: 0L
+                if (local == null || cloudHlc > local.modifiedHlc) {
+                    localStates[cloud.episodeId] = LocalEpisodeState(
+                        episodeId = cloud.episodeId,
+                        podcastId = cloud.podcastId,
+                        positionSec = cloud.positionSec,
+                        completed = cloud.completed,
+                        modifiedHlc = cloudHlc
+                    )
+                    stateChanged = true
+                }
+            }
+
+            if (stateChanged) {
+                saveLocalEpisodeStates(localStates)
+            }
+
+            // Outbox: push local episode states that are newer than cloud
+            val cloudMap = cloudStates.associateBy { it.episodeId }
+            val pendingUploads = mutableListOf<CloudEpisodeState>()
+            for ((epId, local) in localStates) {
+                val cloud = cloudMap[epId]
+                val cloudHlc = cloud?.modifiedHlc ?: 0L
+                if (cloud == null || local.modifiedHlc > cloudHlc) {
+                    pendingUploads.add(
+                        CloudEpisodeState(
+                            episodeId = epId,
+                            podcastId = local.podcastId,
+                            positionSec = local.positionSec,
+                            completed = local.completed,
+                            modifiedHlc = local.modifiedHlc
+                        )
+                    )
+                }
+            }
+
+            if (pendingUploads.isNotEmpty()) {
+                SupabaseLibrarySync.uploadEpisodeStatesBatch(pendingUploads, targetUserId)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
      * Phase 2 / Phase 3 Search History Synchronization.
+     * Defect D8 fix: Insert cloud queries in reverse order (oldest first) so that
+     * SQLite rowid sequence reflects chronological searched_at ordering.
      */
     private suspend fun syncSearchHistoryInternal(targetUserId: String) {
         try {
@@ -724,11 +836,11 @@ object StreamifySyncEngine : KoinComponent {
             val localHistory = searchRepository.getSearchHistory().firstOrNull() ?: emptyList()
             val localQueries = localHistory.map { it.query }.toSet()
 
-            // Inbound: insert missing cloud queries into local search history
-            for (q in cloudQueries) {
-                if (q !in localQueries && q.isNotBlank()) {
-                    searchRepository.insertSearchHistory(SearchHistory(q)).firstOrNull()
-                }
+            // Inbound: insert missing cloud queries in reversed order (oldest first)
+            // so that SQLite rowid reflects chronological searched_at order (Defect D8 resolution)
+            val toInsert = cloudSearch.filter { it.query !in localQueries && it.query.isNotBlank() }.reversed()
+            for (item in toInsert) {
+                searchRepository.insertSearchHistory(SearchHistory(item.query)).firstOrNull()
             }
 
             // Outbox: push local search queries not yet in cloud
@@ -798,7 +910,7 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             // Followed artists
-            val localArtists = artistRepository.getAllArtists(1000).firstOrNull() ?: emptyList()
+            val localArtists = artistRepository.getFollowedArtists().firstOrNull() ?: emptyList()
             for (artist in localArtists) {
                 if (artist.channelId.isBlank() || !artist.followed) continue
                 ops.add(buildJsonObject {
@@ -836,7 +948,7 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             // Library tracks
-            val localSongs = songRepository.getAllSongs(1000).firstOrNull() ?: emptyList()
+            val localSongs = songRepository.getAllSongs(Int.MAX_VALUE).firstOrNull() ?: emptyList()
             val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
             for (song in localInLibrary) {
                 if (song.videoId.isBlank() || song.videoId.startsWith("trk_")) continue
@@ -868,6 +980,40 @@ object StreamifySyncEngine : KoinComponent {
                             put("thumbnail", pl.thumbnails)
                             put("track_count", pl.trackCount.toString())
                         })
+                    })
+                })
+            }
+
+            // Favorite podcasts
+            val localFavPodcasts = podcastRepository.getFavoritePodcasts().firstOrNull() ?: emptyList()
+            for (pod in localFavPodcasts) {
+                if (pod.podcastId.isBlank() || !pod.isFavorite) continue
+                ops.add(buildJsonObject {
+                    put("entity", "favorite")
+                    put("op", "U")
+                    put("key", "podcast:${pod.podcastId}")
+                    put("hlc", hlc)
+                    put("data", buildJsonObject {
+                        put("item_type", "podcast")
+                        put("item_id", pod.podcastId)
+                        put("title", pod.title)
+                    })
+                })
+            }
+
+            // Podcast episode states
+            val localEpStates = getLocalEpisodeStates()
+            for ((epId, ep) in localEpStates) {
+                if (epId.isBlank()) continue
+                ops.add(buildJsonObject {
+                    put("entity", "episode_state")
+                    put("op", "U")
+                    put("key", epId)
+                    put("hlc", ep.modifiedHlc.coerceAtLeast(hlc))
+                    put("data", buildJsonObject {
+                        put("podcast_id", ep.podcastId)
+                        put("position_sec", ep.positionSec)
+                        put("completed", ep.completed)
                     })
                 })
             }
@@ -1060,6 +1206,14 @@ object StreamifySyncEngine : KoinComponent {
                         }
                     }
                 }
+                "episode_state" -> {
+                    val episodeId = op.key
+                    val podcastId = op.data?.get("podcast_id")?.jsonPrimitive?.contentOrNull ?: ""
+                    val pos = op.data?.get("position_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                    val comp = op.data?.get("completed")?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+                    val opHlc = op.hlc ?: 0L
+                    updateLocalEpisodeState(episodeId, podcastId, pos, comp, opHlc)
+                }
             }
         } catch (_: Exception) {
         }
@@ -1112,5 +1266,92 @@ object StreamifySyncEngine : KoinComponent {
         val m = seconds / 60
         val s = seconds % 60
         return "$m:${s.toString().padStart(2, '0')}"
+    }
+
+    suspend fun getLocalEpisodeStates(): Map<String, LocalEpisodeState> {
+        val raw = dataStoreManager.getString("streamify_podcast_episode_states").firstOrNull() ?: return emptyMap()
+        return try {
+            val jsonObj = json.parseToJsonElement(raw).jsonObject
+            jsonObj.mapValues { (epId, elem) ->
+                val obj = elem.jsonObject
+                LocalEpisodeState(
+                    episodeId = epId,
+                    podcastId = obj["podcast_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                    positionSec = obj["position_sec"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
+                    completed = obj["completed"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
+                    modifiedHlc = obj["modified_hlc"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                )
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    suspend fun saveLocalEpisodeStates(states: Map<String, LocalEpisodeState>) {
+        try {
+            val jsonObj = buildJsonObject {
+                states.forEach { (epId, state) ->
+                    put(epId, buildJsonObject {
+                        put("podcast_id", state.podcastId)
+                        put("position_sec", state.positionSec)
+                        put("completed", state.completed)
+                        put("modified_hlc", state.modifiedHlc)
+                    })
+                }
+            }
+            dataStoreManager.putString("streamify_podcast_episode_states", jsonObj.toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    suspend fun updateLocalEpisodeState(
+        episodeId: String,
+        podcastId: String,
+        positionSec: Int,
+        completed: Boolean,
+        hlc: Long = 0L
+    ) {
+        val current = getLocalEpisodeStates().toMutableMap()
+        val existing = current[episodeId]
+        val resolvedHlc = if (hlc > 0L) hlc else HybridLogicalClock.now()
+        if (existing == null || resolvedHlc >= existing.modifiedHlc) {
+            current[episodeId] = LocalEpisodeState(
+                episodeId = episodeId,
+                podcastId = podcastId.ifBlank { existing?.podcastId ?: "" },
+                positionSec = positionSec,
+                completed = completed,
+                modifiedHlc = resolvedHlc
+            )
+            saveLocalEpisodeStates(current)
+        }
+    }
+
+    suspend fun recordEpisodeProgress(
+        episodeId: String,
+        podcastId: String,
+        positionSec: Int,
+        completed: Boolean
+    ) {
+        val hlc = HybridLogicalClock.now()
+        updateLocalEpisodeState(episodeId, podcastId, positionSec, completed, hlc)
+        val targetUserId = SupabaseClient.currentUser.value?.id
+        if (!targetUserId.isNullOrBlank() && targetUserId != "guest") {
+            SupabaseLibrarySync.syncEpisodeState(
+                episodeId = episodeId,
+                podcastId = podcastId,
+                positionSec = positionSec,
+                completed = completed,
+                hlc = hlc,
+                userId = targetUserId
+            )
+        }
+    }
+
+    suspend fun getEpisodeState(episodeId: String): LocalEpisodeState? {
+        return getLocalEpisodeStates()[episodeId]
+    }
+
+    suspend fun getAllEpisodeStates(): Map<String, LocalEpisodeState> {
+        return getLocalEpisodeStates()
     }
 }

@@ -515,6 +515,106 @@ object SupabaseLibrarySync {
     }
 
     /**
+     * Fetches podcast episode states from `public.user_podcast_episode_state`.
+     */
+    suspend fun fetchCloudEpisodeStates(userId: String? = null): List<CloudEpisodeState> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_podcast_episode_state") {
+                parameter("user_id", "eq.$targetUserId")
+                parameter("select", "episode_id,podcast_id,position_sec,completed,modified_hlc,updated_at,user_id")
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            }
+            if (resp.status.isSuccess()) {
+                json.decodeFromString<List<CloudEpisodeState>>(resp.bodyAsText())
+            } else {
+                emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Synchronizes a single podcast episode state with `public.user_podcast_episode_state`.
+     */
+    suspend fun syncEpisodeState(
+        episodeId: String,
+        podcastId: String,
+        positionSec: Int,
+        completed: Boolean,
+        hlc: Long = 0L,
+        userId: String? = null
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            val payload = buildJsonObject {
+                put("user_id", targetUserId)
+                put("episode_id", episodeId)
+                put("podcast_id", podcastId)
+                put("position_sec", positionSec)
+                put("completed", completed)
+                put("modified_hlc", hlc)
+            }.toString()
+
+            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_podcast_episode_state") {
+                header("apikey", SupabaseConfig.ANON_KEY)
+                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                header("Prefer", "resolution=merge-duplicates")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            Result.success(resp.status.isSuccess())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Batch uploads podcast episode states to `public.user_podcast_episode_state`.
+     */
+    suspend fun uploadEpisodeStatesBatch(
+        states: List<CloudEpisodeState>,
+        userId: String? = null
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            if (states.isEmpty()) return@withContext Result.success(true)
+            val chunks = states.chunked(50)
+            for (chunk in chunks) {
+                val arrayPayload = buildJsonArray {
+                    for (st in chunk) {
+                        add(buildJsonObject {
+                            put("user_id", targetUserId)
+                            put("episode_id", st.episodeId)
+                            put("podcast_id", st.podcastId)
+                            put("position_sec", st.positionSec)
+                            put("completed", st.completed)
+                            if (st.modifiedHlc != null) {
+                                put("modified_hlc", st.modifiedHlc)
+                            }
+                        })
+                    }
+                }.toString()
+                val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_podcast_episode_state") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                    header("Prefer", "resolution=merge-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(arrayPayload)
+                }
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+                }
+            }
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Deletes a cloud playlist and cascades to its playlist_tracks mappings.
      */
     suspend fun deleteCloudPlaylist(playlistId: String): Result<Boolean> = withContext(ioDispatcher) {
@@ -749,7 +849,7 @@ object SupabaseLibrarySync {
      */
     suspend fun fetchCloudListeningHistory(
         userId: String,
-        limit: Int = 500
+        limit: Int = 1000
     ): List<CloudListeningHistoryItem> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
@@ -773,14 +873,17 @@ object SupabaseLibrarySync {
     /**
      * Fetches the user's search history from `public.user_search_history`.
      */
-    suspend fun fetchCloudSearchHistory(userId: String? = null): List<CloudSearchQuery> = withContext(ioDispatcher) {
+    suspend fun fetchCloudSearchHistory(
+        userId: String? = null,
+        limit: Int = 1000
+    ): List<CloudSearchQuery> = withContext(ioDispatcher) {
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_search_history") {
                 parameter("user_id", "eq.$targetUserId")
                 parameter("deleted_at", "is.null")
                 parameter("order", "searched_at.desc")
-                parameter("limit", "100")
+                parameter("limit", limit.toString())
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
             }

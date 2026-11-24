@@ -93,6 +93,23 @@ data class CloudLibraryTrack(
 )
 
 @Serializable
+data class CloudEpisodeState(
+    @SerialName("episode_id")
+    val episodeId: String,
+    @SerialName("podcast_id")
+    val podcastId: String = "",
+    @SerialName("position_sec")
+    val positionSec: Int = 0,
+    val completed: Boolean = false,
+    @SerialName("modified_hlc")
+    val modifiedHlc: Long? = null,
+    @SerialName("updated_at")
+    val updatedAt: String? = null,
+    @SerialName("user_id")
+    val userId: String? = null
+)
+
+@Serializable
 data class CloudUserSettings(
     @SerialName("user_id")
     val userId: String = "",
