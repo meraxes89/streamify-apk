@@ -71,6 +71,8 @@ def build_manifest(
     changelog: str,
     min_supported_version_code: int = 0,
     is_breaking: bool = False,
+    git_sha: str = "",
+    recalled_shas: list[str] | None = None,
     published_at: str | None = None,
 ) -> dict:
     base_url = f"https://github.com/{repo}/releases/download/{tag}"
@@ -134,6 +136,8 @@ def build_manifest(
         "schemaVersion": 1,
         "version": tag,
         "versionCode": version_code,
+        "gitSha": git_sha,
+        "recalledShas": recalled_shas or [],
         "minSupportedVersionCode": min_supported_version_code,
         "isBreaking": is_breaking,
         "channel": channel,
@@ -150,6 +154,8 @@ def main():
     parser.add_argument("--version-code", type=int, default=None, help="Numeric version code")
     parser.add_argument("--min-version-code", type=int, default=0, help="Minimum supported version code")
     parser.add_argument("--breaking", action="store_true", help="Flag release as containing breaking changes")
+    parser.add_argument("--git-sha", default=None, help="Authoritative Git commit SHA for build tie-breaking")
+    parser.add_argument("--recalled-shas", nargs="*", default=[], help="List of recalled git commit SHAs")
     parser.add_argument("--sums", default="release/SHA256SUMS", help="Path to SHA256SUMS file")
     parser.add_argument("--notes", default=None, help="Path to release_body.md or release_notes.md")
     parser.add_argument("--changelog", default="CHANGELOG.md", help="Path to CHANGELOG.md")
@@ -161,6 +167,14 @@ def main():
     version_code = args.version_code
     if version_code is None:
         version_code = extract_version_code(Path(args.toml))
+
+    git_sha = args.git_sha
+    if not git_sha:
+        try:
+            import subprocess
+            git_sha = subprocess.check_output(["git", "rev-parse", "--short=8", "HEAD"], text=True).strip()
+        except Exception:
+            git_sha = ""
 
     checksums = parse_checksums(Path(args.sums))
 
@@ -178,6 +192,8 @@ def main():
         changelog=changelog_text,
         min_supported_version_code=args.min_version_code,
         is_breaking=args.breaking,
+        git_sha=git_sha,
+        recalled_shas=args.recalled_shas,
     )
 
     json_str = json.dumps(manifest, indent=2, ensure_ascii=False)

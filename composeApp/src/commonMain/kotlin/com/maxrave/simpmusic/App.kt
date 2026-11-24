@@ -483,10 +483,9 @@ fun App(
 
     LaunchedEffect(updateData) {
         val response = updateData ?: return@LaunchedEffect
-        // Only a NEWER release is offered. This used to compare the tags for inequality, which told a
-        // build ahead of the latest release (dev, beta) to "update" back down to it, and told every
-        // F-Droid-channel user to update on each launch: that channel's tag carries no leading "v".
-        if (viewModel.showedUpdateDialog && VersionManager.isBehind(response.tagName)) {
+        // An update is offered if UpdateResolver verified an update manifest (code/hash/revocation)
+        // or if legacy tag string comparison isBehind is true.
+        if (viewModel.showedUpdateDialog && (UpdateStateHolder.latestManifest != null || VersionManager.isBehind(response.tagName))) {
             shouldShowUpdateDialog = true
         }
     }
@@ -949,7 +948,7 @@ fun App(
 
                     if (hasSkippedUpdateDialog && !shouldShowUpdateDialog && !isShowNowPlaylistScreen) {
                         val response = updateData
-                        if (response != null && VersionManager.isBehind(response.tagName)) {
+                        if (response != null && (UpdateStateHolder.latestManifest != null || VersionManager.isBehind(response.tagName))) {
                             UpdateDockedPill(
                                 targetVersion = response.tagName,
                                 onClick = {

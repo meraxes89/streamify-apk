@@ -862,8 +862,19 @@ buildkonfig {
             libs.versions.version.code
                 .get()
                 .toInt()
+        val gitSha = providers.environmentVariable("GITHUB_SHA")
+            .map { it.take(8) }
+            .orElse(
+                providers.exec {
+                    commandLine("git", "rev-parse", "--short=8", "HEAD")
+                    isIgnoreExitValue = true
+                }.standardOutput.asText.map { it.trim() }
+            )
+            .orElse("")
+            .get()
         buildConfigField(STRING, "versionName", versionName)
         buildConfigField(INT, "versionCode", "$versionCode")
+        buildConfigField(STRING, "gitSha", gitSha)
 
         if (isFullBuild) {
             try {
