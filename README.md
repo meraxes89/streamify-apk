@@ -8,6 +8,47 @@ to Supabase. The project descends from SimpMusic; the shared data/domain
 modules still arrive through the `core` git submodule (`maxrave-dev/core`)
 with a local patch (`core.patch`) applied on top.
 
+## UI showcase — Liquid Glass (BETA)
+
+The same Compose Multiplatform UI reflows from a 1440 × 900 desktop canvas
+down to a 390 × 844 phone: an adaptive navigation rail, a floating
+**Liquid Glass (BETA)** mini-player pill, and the frosted-glass treatment
+wherever panels dock over content. Enable it under
+`Settings → Appearance → Enable liquid glass (BETA)`
+(or set `localStorage.enableLiquidGlass = "true"` on the wasm shell) and the
+translucent glass surfaces pick up the artwork and feed behind them.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><em>Desktop — Home / Discover</em></td>
+    <td width="50%" align="center"><em>Desktop — Now Playing</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="asset/screenshot/desktop/desktop-home.png"><img src="asset/screenshot/desktop/desktop-home.png" alt="Streamify on desktop: navigation rail, quick picks and trending community playlists under the Liquid Glass theme" title="Home / Discover"></a></td>
+    <td width="50%"><a href="asset/screenshot/desktop/desktop-player.png"><img src="asset/screenshot/desktop/desktop-player.png" alt="Streamify on desktop: Now Playing split view with artwork, lyrics and the frosted glass mini-player pill" title="Now Playing"></a></td>
+  </tr>
+</table>
+
+<p align="center">
+  <a href="asset/screenshot/desktop/desktop-library.png"><img src="asset/screenshot/desktop/desktop-library.png" alt="Streamify on desktop: Library view with favorites, playback stats and synced playlists" title="Library" width="80%"></a><br>
+  <em>Desktop — Library</em>
+</p>
+
+<table>
+  <tr>
+    <td width="33%" align="center"><em>Mobile — Home</em></td>
+    <td width="33%" align="center"><em>Mobile — Now Playing</em></td>
+    <td width="33%" align="center"><em>Mobile — Search</em></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="asset/screenshot/mobile/mobile-home.png"><img src="asset/screenshot/mobile/mobile-home.png" alt="Streamify on a 390 × 844 phone: home feed with quick picks and trending playlists" title="Home"></a></td>
+    <td width="33%" align="center"><a href="asset/screenshot/mobile/mobile-player.png"><img src="asset/screenshot/mobile/mobile-player.png" alt="Streamify on a phone: full-screen Now Playing view with artwork and synced lyrics" title="Now Playing"></a></td>
+    <td width="33%" align="center"><a href="asset/screenshot/mobile/mobile-search.png"><img src="asset/screenshot/mobile/mobile-search.png" alt="Streamify on a phone: search results with the docked mini-player pill" title="Search"></a></td>
+  </tr>
+</table>
+
+<sub>Captured against the live wasmJs shell with Liquid Glass (BETA) enabled; viewports 1440 × 900 (desktop) and 390 × 844 (mobile). The phone bottom bar in the wasm demo keeps its flat variant — the folding glass bar ships on the Android/iOS/desktop shells.</sub>
+
 ```
 Platform shells (Kotlin Compose)      androidApp + composeApp (Android)
                                       desktopApp (Windows/macOS/Linux)
