@@ -102,6 +102,7 @@ jobs:
       build_android_native: true
       build_linux_native: true
       build_desktop_native: true
+      build_full_desktop: true
 
   android:
     name: "Android release APK"
@@ -118,6 +119,7 @@ jobs:
     with:
       package_installers: true
       release_mode: true
+      full_matrix: true
 
   wasm:
     name: "Web Wasm distribution"
