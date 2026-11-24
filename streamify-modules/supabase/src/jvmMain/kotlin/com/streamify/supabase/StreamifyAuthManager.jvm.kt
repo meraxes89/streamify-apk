@@ -1,9 +1,11 @@
 package com.streamify.supabase
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.net.URI
@@ -15,9 +17,10 @@ actual object StreamifyAuthManager {
     private var pendingCodeVerifier: String? = null
     private var pendingState: String? = null
     private var pendingRedirectUri: String? = null
+    private var activeServer: LoopbackAuthServer? = null
+    private var activeCompletionDeferred: CompletableDeferred<Result<UserProfile>>? = null
 
     actual fun init(context: Any?) {
-        // Initialize session: if SupabaseClient already has valid session, reflect it
         if (SupabaseClient.hasValidUserSession()) {
             val user = SupabaseClient.currentUser.value ?: SupabaseConfig.DEFAULT_USER
             _authState.value = AuthState.Authenticated(user)
@@ -28,6 +31,10 @@ actual object StreamifyAuthManager {
 
     actual suspend fun signInWithGoogle(context: Any?): Result<UserProfile> = withContext(Dispatchers.IO) {
         val server = LoopbackAuthServer()
+        activeServer = server
+        val completion = CompletableDeferred<Result<UserProfile>>()
+        activeCompletionDeferred = completion
+
         try {
             val verifier = PkceCrypto.generateCodeVerifier()
             val challenge = PkceCrypto.deriveCodeChallenge(verifier)
@@ -50,36 +57,56 @@ actual object StreamifyAuthManager {
 
             launchSystemBrowser(authUrl)
 
-            val callbackResult = server.awaitCallback(timeoutSeconds = 120)
-            val callbackData = callbackResult.getOrThrow()
+            // Concurrently listen on the loopback server while leaving the door open for
+            // deep-link callbacks (e.g. macOS Apple Events routing to handleAuthCallback)
+            val loopbackJob = launch {
+                val callbackResult = server.awaitCallback(timeoutSeconds = 120)
+                if (completion.isCompleted) return@launch
 
-            if (callbackData.error != null) {
-                return@withContext Result.failure(
-                    Exception("Sign-in cancelled or failed: ${callbackData.errorDescription ?: callbackData.error}")
+                val callbackData = callbackResult.getOrElse { err ->
+                    completion.complete(Result.failure(err))
+                    return@launch
+                }
+
+                if (callbackData.error != null) {
+                    completion.complete(
+                        Result.failure(Exception("Sign-in cancelled or failed: ${callbackData.errorDescription ?: callbackData.error}"))
+                    )
+                    return@launch
+                }
+
+                if (callbackData.state != state) {
+                    completion.complete(Result.failure(SecurityException("CSRF security state mismatch")))
+                    return@launch
+                }
+
+                val code = callbackData.code
+                if (code == null) {
+                    completion.complete(Result.failure(Exception("No authorization code received from Google")))
+                    return@launch
+                }
+
+                val exchangeResult = SupabaseClient.exchangeCodeForSession(
+                    code = code,
+                    codeVerifier = verifier,
+                    redirectUri = redirectUri
                 )
+
+                exchangeResult.onSuccess { profile ->
+                    _authState.value = AuthState.Authenticated(profile)
+                }
+                completion.complete(exchangeResult)
             }
 
-            if (callbackData.state != state) {
-                return@withContext Result.failure(SecurityException("CSRF security state mismatch"))
-            }
-
-            val code = callbackData.code
-                ?: return@withContext Result.failure(Exception("No authorization code received from Google"))
-
-            val exchangeResult = SupabaseClient.exchangeCodeForSession(
-                code = code,
-                codeVerifier = verifier,
-                redirectUri = redirectUri
-            )
-
-            exchangeResult.onSuccess { profile ->
-                _authState.value = AuthState.Authenticated(profile)
-            }
-            exchangeResult
+            val finalResult = completion.await()
+            loopbackJob.cancel()
+            finalResult
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
             server.stop()
+            activeServer = null
+            activeCompletionDeferred = null
             pendingCodeVerifier = null
             pendingState = null
             pendingRedirectUri = null
@@ -90,9 +117,12 @@ actual object StreamifyAuthManager {
         try {
             val data = AuthCallbackParser.parse(callbackUri)
             if (data.isError) {
-                return@withContext Result.failure(
+                val err = Result.failure<UserProfile>(
                     Exception("Authentication error: ${data.errorDescription ?: data.error}")
                 )
+                activeCompletionDeferred?.complete(err)
+                activeServer?.stop()
+                return@withContext err
             }
 
             // PKCE Code exchange path
@@ -103,7 +133,10 @@ actual object StreamifyAuthManager {
 
                 val expectedState = pendingState
                 if (expectedState != null && data.state != null && data.state != expectedState) {
-                    return@withContext Result.failure(SecurityException("CSRF state mismatch"))
+                    val err = Result.failure<UserProfile>(SecurityException("CSRF state mismatch"))
+                    activeCompletionDeferred?.complete(err)
+                    activeServer?.stop()
+                    return@withContext err
                 }
 
                 val redirectUri = pendingRedirectUri ?: "streamify://callback"
@@ -111,6 +144,9 @@ actual object StreamifyAuthManager {
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
+                // Unblock pending signInWithGoogle call and close the loopback server immediately
+                activeCompletionDeferred?.complete(result)
+                activeServer?.stop()
                 return@withContext result
             }
 
@@ -121,12 +157,20 @@ actual object StreamifyAuthManager {
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
+                activeCompletionDeferred?.complete(result)
+                activeServer?.stop()
                 return@withContext result
             }
 
-            Result.failure(Exception("No authorization code or access token found in callback URI"))
+            val noTokenErr = Result.failure<UserProfile>(Exception("No authorization code or access token found in callback URI"))
+            activeCompletionDeferred?.complete(noTokenErr)
+            activeServer?.stop()
+            return@withContext noTokenErr
         } catch (e: Exception) {
-            Result.failure(e)
+            val err = Result.failure<UserProfile>(e)
+            activeCompletionDeferred?.complete(err)
+            activeServer?.stop()
+            return@withContext err
         }
     }
 

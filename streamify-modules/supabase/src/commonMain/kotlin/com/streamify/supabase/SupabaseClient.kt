@@ -20,8 +20,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /**
  * Universal Supabase Client facade.
@@ -104,10 +106,14 @@ object SupabaseClient {
     suspend fun signInWithGoogleIdToken(idToken: String): Result<UserProfile> = withContext(ioDispatcher) {
         try {
             val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=id_token"
+            val payload = buildJsonObject {
+                put("provider", "google")
+                put("id_token", idToken)
+            }.toString()
             val response = httpClient.post(url) {
                 header("apikey", SupabaseConfig.ANON_KEY)
                 contentType(ContentType.Application.Json)
-                setBody("""{"provider":"google","id_token":"$idToken"}""")
+                setBody(payload)
             }
 
             val bodyText = response.bodyAsText()
@@ -215,10 +221,13 @@ object SupabaseClient {
         val sessionResult = refreshCoordinator.executeSingleFlight(callerScope) {
             try {
                 val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token"
+                val payload = buildJsonObject {
+                    put("refresh_token", tokenToUse)
+                }.toString()
                 val response = httpClient.post(url) {
                     header("apikey", SupabaseConfig.ANON_KEY)
                     contentType(ContentType.Application.Json)
-                    setBody("""{"refresh_token":"$tokenToUse"}""")
+                    setBody(payload)
                 }
                 val bodyText = response.bodyAsText()
                 if (response.status.isSuccess()) {
@@ -226,8 +235,13 @@ object SupabaseClient {
                     val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
                     val newAccessToken = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
                     val newRefreshToken = rootObj["refresh_token"]?.jsonPrimitive?.content ?: tokenToUse
-                    val expiresIn = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
-                    val expiresAt = Clock.System.now().toEpochMilliseconds() + (expiresIn * 1000L)
+                    val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
+                    val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
+                    val expiresAt = if (expiresAtSec != null && expiresAtSec > 0) {
+                        expiresAtSec * 1000L
+                    } else {
+                        Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
+                    }
 
                     _accessToken.value = newAccessToken
                     _refreshToken.value = newRefreshToken
@@ -253,10 +267,16 @@ object SupabaseClient {
     ): Result<UserProfile> = withContext(ioDispatcher) {
         try {
             val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=authorization_code"
+            val payload = buildJsonObject {
+                put("auth_code", code)
+                put("code_verifier", codeVerifier)
+                put("redirect_uri", redirectUri)
+            }.toString()
+
             val response = httpClient.post(url) {
                 header("apikey", SupabaseConfig.ANON_KEY)
                 contentType(ContentType.Application.Json)
-                setBody("""{"auth_code":"$code","code_verifier":"$codeVerifier","redirect_uri":"$redirectUri"}""")
+                setBody(payload)
             }
 
             val bodyText = response.bodyAsText()
@@ -265,6 +285,13 @@ object SupabaseClient {
                 val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
                 val token = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
                 val refreshTokenStr = rootObj["refresh_token"]?.jsonPrimitive?.content
+                val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
+                val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
+                val expiresAt = if (expiresAtSec != null && expiresAtSec > 0) {
+                    expiresAtSec * 1000L
+                } else {
+                    Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
+                }
                 val userObj = rootObj["user"]?.jsonObject
                 val userId = userObj?.get("id")?.jsonPrimitive?.content ?: ""
                 val email = userObj?.get("email")?.jsonPrimitive?.content ?: ""
