@@ -65,6 +65,10 @@ on:
         description: Cross-compile the Linux desktop JNA cdylib artifact (backward compatibility).
         type: boolean
         default: true
+      build_full_desktop:
+        description: Cross-compile full desktop cdylibs including Windows and macOS (on PR fast path, only Linux is built).
+        type: boolean
+        default: false
       nextest_profile:
         description: "nextest profile from rust/.config/nextest.toml: ci (PR fast path, chaos suite excluded) or nightly (deep matrix)."
         type: string
@@ -507,7 +511,7 @@ jobs:
   # ── BUILD-ONCE / FAN-OUT: Windows desktop cdylib for the JNA lane ──────────
   windows-desktop-native:
     name: "Windows cdylib"
-    if: inputs.build_desktop_native || inputs.build_linux_native
+    if: (inputs.build_desktop_native || inputs.build_linux_native) && (inputs.build_full_desktop || github.event_name != 'pull_request')
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -553,7 +557,7 @@ jobs:
   # ── BUILD-ONCE / FAN-OUT: macOS desktop cdylib for the JNA lane ────────────
   macos-desktop-native:
     name: "macOS cdylib"
-    if: inputs.build_desktop_native || inputs.build_linux_native
+    if: (inputs.build_desktop_native || inputs.build_linux_native) && (inputs.build_full_desktop || github.event_name != 'pull_request')
     runs-on: macos-latest
     timeout-minutes: 30
     env:

@@ -49,6 +49,10 @@ on:
         description: Upload the packaged installers for the release publish job.
         type: boolean
         default: false
+      full_matrix:
+        description: Run full OS matrix (Linux, Windows, macOS). When false on PRs, only Linux runs.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -64,10 +68,14 @@ jobs:
         include:
           - os: ubuntu-latest
             os-name: linux
+            tier: pr
           - os: windows-latest
             os-name: windows
+            tier: full
           - os: macos-latest
             os-name: macos
+            tier: full
+    if: matrix.tier == 'pr' || inputs.full_matrix || inputs.package_installers || inputs.release_mode || github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix')
     steps:
       - name: Checkout
         uses: actions/checkout@v7
