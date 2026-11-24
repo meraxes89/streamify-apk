@@ -15,10 +15,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.net.toUri
 import androidx.core.os.LocaleListCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -43,6 +45,7 @@ import com.maxrave.simpmusic.service.test.notification.NotifyWork
 import com.maxrave.simpmusic.utils.ComposeResUtils
 import com.maxrave.simpmusic.utils.VersionManager
 import com.maxrave.simpmusic.viewModel.SharedViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
@@ -122,6 +125,10 @@ class MainActivity : AppCompatActivity() {
 
     @ExperimentalFoundationApi
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        var isReady = false
+        splashScreen.setKeepOnScreenCondition { !isReady }
+
         super.onCreate(savedInstanceState)
         loadKoinModules(
             module {
@@ -205,24 +212,28 @@ class MainActivity : AppCompatActivity() {
                 ),
         )
         viewModel.checkIsRestoring()
-        val request =
-            PeriodicWorkRequestBuilder<NotifyWork>(
-                12L,
-                TimeUnit.HOURS,
-            ).addTag("Worker Test")
-                .setConstraints(
-                    Constraints
-                        .Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build(),
-                ).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "Artist Worker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request,
-        )
-        // Ensure any legacy blog worker from SimpMusic RSS is cancelled
-        WorkManager.getInstance(this).cancelUniqueWork("Blog RSS Worker")
+
+        // Offload WorkManager initialization and unique work enqueueing to background thread
+        lifecycleScope.launch(Dispatchers.IO) {
+            val request =
+                PeriodicWorkRequestBuilder<NotifyWork>(
+                    12L,
+                    TimeUnit.HOURS,
+                ).addTag("Worker Test")
+                    .setConstraints(
+                        Constraints
+                            .Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build(),
+                    ).build()
+            WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+                "Artist Worker",
+                ExistingPeriodicWorkPolicy.KEEP,
+                request,
+            )
+            // Ensure any legacy blog worker from SimpMusic RSS is cancelled
+            WorkManager.getInstance(applicationContext).cancelUniqueWork("Blog RSS Worker")
+        }
 
         if (!EasyPermissions.hasPermissions(this, Manifest.permission.POST_NOTIFICATIONS)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -230,14 +241,18 @@ class MainActivity : AppCompatActivity() {
                 if (doNotAsk != "true") {
                     val wasAsked = getString("notification_permission_asked")
                     if (wasAsked != "true") {
-                        // First time: request system permission
-                        EasyPermissions.requestPermissions(
-                            this,
-                            runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.NOTIFICATION_REQUEST) },
-                            1,
-                            Manifest.permission.POST_NOTIFICATIONS,
-                        )
-                        putString("notification_permission_asked", "true")
+                        // First time: request system permission asynchronously without blocking main thread
+                        lifecycleScope.launch {
+                            val rationale =
+                                ComposeResUtils.getResString(ComposeResUtils.StringType.NOTIFICATION_REQUEST)
+                            EasyPermissions.requestPermissions(
+                                this@MainActivity,
+                                rationale,
+                                1,
+                                Manifest.permission.POST_NOTIFICATIONS,
+                            )
+                            putString("notification_permission_asked", "true")
+                        }
                     } else {
                         // Already asked before: show custom dialog with "Don't show again"
                         viewModel.showNotificationPermissionDialog()
@@ -248,6 +263,9 @@ class MainActivity : AppCompatActivity() {
         viewModel.getLocation()
 
         setContent {
+            SideEffect {
+                isReady = true
+            }
             App(viewModel)
         }
     }

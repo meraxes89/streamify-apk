@@ -1,18 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-        Cold-start / splash background only — Compose paints everything after the first frame.
-
-        Pinned rather than left to DayNight because the system resolves it before any app code
-        runs, so it cannot read the stored theme mode. It matches the dark page of the DataStore
-        default (THEME_MODE_DARK): tone 6, the lightness of Material's dark background. The real
-        page is tinted by the theme colour, which the system cannot know this early, so this is the
-        neutral grey at that tone. Letting it follow the system instead gave dark-theme users a
-        white flash on light-mode devices.
+        Cold-start background aligned with Streamify's dark surface (#FF060608) so the transition
+        from OS starting window to Compose UI has zero color jump or white/grey flash.
     -->
-    <color name="simpmusic_cold_start_background">#FF131313</color>
+    <color name="simpmusic_cold_start_background">#FF060608</color>
 
     <style name="Theme.SimpMusic" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/simpmusic_cold_start_background</item>
+    </style>
+
+    <!--
+        AndroidX SplashScreen API theme.
+        Used as the launcher activity theme across all supported Android versions.
+        Guarantees the branded Streamify circle icon is displayed immediately from frame 0
+        without any blank black/grey void before Compose rendering begins.
+    -->
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/simpmusic_cold_start_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/circle_app_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.SimpMusic</item>
     </style>
 </resources>
