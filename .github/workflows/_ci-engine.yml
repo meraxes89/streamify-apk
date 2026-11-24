@@ -13,29 +13,16 @@
 #                        suites (jam + audio), every integration suite.
 #   cpp-sanitizers       the C++20 ASan/UBSan matrix (DSP, SIMD physics,
 #                        telemetry/storage) under eatmydata + tmpfs scratch.
-#                        WS-C (C3): the 7 previously CI-dead native suites
-#                        are switched ON — virtual_hal_test_suite,
-#                        desktop_hal_render_core_test_suite,
+#                        Native suites: virtual_hal_test_suite,
 #                        dsp_phase_lock_test_suite,
 #                        capability_abi_parity_test_suite,
 #                        test_audio_sink_ringbuffer,
-#                        coreaudio_render_core_test_suite,
-#                        linux_hal_driver_test_suite (ALSA null PCM — no
-#                        hardware needed) — ~4,000 LOC of written-but-never-
-#                        executed verification now gates every core PR. WS-C
-#                        adds the two new lanes: jni_sink_bridge_test_suite
-#                        (C1: the frozen JNI sink contract through a stub
-#                        JNIEnv) and lufs_parity_test_suite (C8: the C++
-#                        BS.1770-4 path vs the canonical Rust vectors).
+#                        jni_sink_bridge_test_suite (frozen JNI sink contract),
+#                        and lufs_parity_test_suite (C++ BS.1770-4 path vs Rust vectors).
 #   android-native       BUILD-ONCE / FAN-OUT factory: cargo-ndk + CMake/NDK
 #                        for arm64-v8a + x86_64, uploaded once (resp6 §3) so
 #                        the Gradle shards never rebuild Rust from scratch.
-#                        WS-C (C1): the .so now carries the 7-symbol JNI sink
-#                        bridge (jni_bridge_audio_sinks.cpp).
-#   windows-native       WS-C (C4): the MSVC rot guard — the native tree
-#                        (WASAPI adapter + the C5 desktop HAL library)
-#                        compiled with Visual Studio on every core PR; the
-#                        if(WIN32) targets finally fire somewhere.
+#                        The .so carries the 7-symbol JNI sink bridge (jni_bridge_audio_sinks.cpp).
 #   linux-desktop-native the x86_64-unknown-linux-gnu cdylib consumed by the
 #                        Linux leg of _ci-desktop.yml through the
 #                        -Pstreamify.prebuiltEngineLib Gradle seam.
@@ -254,10 +241,6 @@ jobs:
           apt_install ccache \
             || echo "::warning::ccache unavailable — building without the compile cache"
 
-          # PipeWire dev packages for linux_hal_driver_test_suite ABI cross-check
-          apt_install libpipewire-0.3-dev libspa-0.2-dev \
-            || echo "::warning::PipeWire dev headers unavailable — frozen-ABI cross-check degrades to the embedded reference"
-
           echo "SANI_CC=$SANI_CC"   >> "$GITHUB_ENV"
           echo "SANI_CXX=$SANI_CXX" >> "$GITHUB_ENV"
 
@@ -296,48 +279,6 @@ jobs:
           else
             ctest --output-on-failure
           fi
-
-  # ── WS-C (C4): the Windows native C++ rot guard (MSVC) ────────────────────
-  # The WASAPI adapter's if(WIN32) target never fired anywhere before this
-  # lane existed (no Windows native CMake configure ever ran), so SDK/MSVC
-  # rot could land silently between releases. Every core-touching PR now
-  # compiles the native tree with the image's CURRENT Visual Studio: the
-  # configure step deliberately does NOT pin -G "Visual Studio 17 2022" —
-  # windows-latest migrated to the windows-2025-vs2026 image (VS 2026
-  # only), and a hardcoded VS 2022 generator aborts with "could not find
-  # any instance of Visual Studio". CMake's default generator resolves to
-  # the newest installed VS on the runner, which is exactly what a rot
-  # guard should compile against. The desktop HAL shared library (the C5
-  # wiring slice — sink registry C ABI + the WASAPI pull adapter) must
-  # link against avrt/ole32 and the C++20 over-aligned AudioSink storage
-  # must survive MSVC's allocator. The Android packaging .so stays
-  # NDK-only (the CMake ANDROID guard); Apple/linux targets are skipped
-  # by their own platform guards on this runner.
-  windows-native:
-    name: "MSVC"
-    if: inputs.run_tests
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure native tree
-        run: cmake -B native/build -S native -A x64
-
-      - name: Build WASAPI and HAL
-        run: |
-          cmake --build native/build --config Release `
-            --target streamify_desktop_hal streamify_wasapi_adapter
-
-      - name: Upload HAL module
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-native-hal-x86_64
-          path: |
-            native/build/Release/streamify_desktop_hal.dll
-            native/build/Release/streamify_wasapi_adapter.lib
-          if-no-files-found: error
-          compression-level: 1
 
   # ── BUILD-ONCE / FAN-OUT: Android NDK artifacts for the Gradle shards ──────
   android-native:

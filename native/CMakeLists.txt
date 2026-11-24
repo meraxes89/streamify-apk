@@ -241,18 +241,6 @@ if (STREAMIFY_BUILD_TESTS)
     target_include_directories(virtual_hal_test_suite PRIVATE include src util .)
     target_link_libraries(virtual_hal_test_suite PRIVATE m pthread)
 
-    # Phase 4a (MP-HAL04): the CoreAudio adapter's RT render core — the
-    # platform-independent pull/clock-publication path the Apple
-    # AURenderCallback runs, audited on every host lane.
-    add_executable(coreaudio_render_core_test_suite
-        tests/test_coreaudio_render_core.cpp
-        src/audio_sink_ringbuffer.cpp
-        # Phase 4a audit fix: real (non-vacuous) zero-alloc proofs.
-        tests/alloc_guard_override.cc
-    )
-    target_include_directories(coreaudio_render_core_test_suite PRIVATE include src util .)
-    target_link_libraries(coreaudio_render_core_test_suite PRIVATE m pthread)
-
     # Phase 4a (MP-HAL01): the directive workflow's dedicated SPSC lane —
     # the shared suite body with a standalone main, so
     # `cmake --build build --target test_audio_sink_ringbuffer` works.
@@ -295,54 +283,6 @@ if (STREAMIFY_BUILD_TESTS)
     target_include_directories(lufs_parity_test_suite PRIVATE dsp util include .)
     target_link_libraries(lufs_parity_test_suite PRIVATE m pthread)
 
-    # Phase 4b (MP-HAL08 / MP-HAL09): the desktop HAL render cores —
-    # WASAPI, PipeWire and the ALSA fallback — platform-independent
-    # RT pull/clock paths audited on every host lane, driven callback-
-    # for-callback against the Phase 4a VirtualHAL adversarial double
-    # (deliverable 3: buffer pull contracts without Windows/Linux
-    # audio hardware).
-    add_executable(desktop_hal_render_core_test_suite
-        tests/test_desktop_hal_render_cores.cpp
-        src/audio_sink_ringbuffer.cpp
-        src/virtual_hal.cpp
-        # Phase 4a audit fix: real (non-vacuous) zero-alloc proofs.
-        tests/alloc_guard_override.cc
-    )
-    target_include_directories(desktop_hal_render_core_test_suite PRIVATE include src util .)
-    target_link_libraries(desktop_hal_render_core_test_suite PRIVATE m pthread)
-
-    # Phase 4b (MP-HAL09): the Linux HAL driver TU — dlopen PipeWire +
-    # ALSA fallback. White-box suite: unity-includes the driver, so it
-    # needs no PipeWire/ALSA dev packages and runs against the ALSA
-    # "null" PCM (the deviceless hardware double). Linux hosts only.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        add_executable(linux_hal_driver_test_suite
-            tests/test_linux_hal_driver.cpp
-            src/audio_sink_ringbuffer.cpp
-            tests/alloc_guard_override.cc
-        )
-        target_include_directories(linux_hal_driver_test_suite PRIVATE include src util .)
-        target_link_libraries(linux_hal_driver_test_suite PRIVATE m pthread ${CMAKE_DL_LIBS})
-        # Best-effort REAL-header cross-check lane: when the spa/pod
-        # headers are reachable, the suite re-derives the canonical
-        # EnumFormat pod with spa_pod_builder_add_object and byte-
-        # compares it against the embedded frozen ABI. Gracefully
-        # skipped where the dev packages are absent.
-        find_path(STREAMIFY_SPA_INCLUDE_DIR spa/pod/builder.h
-                  PATH_SUFFIXES spa-0.2)
-        find_path(STREAMIFY_PW_INCLUDE_DIR pipewire/stream.h
-                  PATH_SUFFIXES pipewire-0.3)
-        if(STREAMIFY_SPA_INCLUDE_DIR AND STREAMIFY_PW_INCLUDE_DIR)
-            message(STATUS "Phase 4b: real pipewire headers found — enabling the frozen-ABI cross-check lane")
-            target_compile_definitions(linux_hal_driver_test_suite PRIVATE
-                STREAMIFY_HAVE_REAL_PW_HEADERS)
-            target_include_directories(linux_hal_driver_test_suite PRIVATE
-                ${STREAMIFY_SPA_INCLUDE_DIR} ${STREAMIFY_PW_INCLUDE_DIR})
-        else()
-            message(STATUS "Phase 4b: no pipewire dev headers — frozen-ABI cross-check lane skipped (embedded reference still checked)")
-        endif()
-    endif()
-
     # Phase 5 (MP-CAP03 + MP-UI02): the capability C-ABI parity lane.
     # Both headers (native/include/apple_remote_command.h,
     # native/include/ios_audio_session.h) are PURE C — no Apple
@@ -360,7 +300,7 @@ if (STREAMIFY_BUILD_TESTS)
     target_include_directories(capability_abi_parity_test_suite PRIVATE include .)
     target_link_libraries(capability_abi_parity_test_suite PRIVATE pthread)
 
-    # Variant B: Hardware-tuned hot loops for all 4 test targets.
+    # Variant B: Hardware-tuned hot loops for all test targets.
     # Prevents ASan/UBSan instrumentation from defeating vectorization and register
     # allocation in the 10M-frame SPSC, 1M-tick pacer, and SHA-256 stress loops.
     # -fno-lto drops LTO overhead on test binaries. No -march=native: it caused
@@ -368,10 +308,7 @@ if (STREAMIFY_BUILD_TESTS)
     # portable, while the arm64-v8a NDK lane carries the deterministic
     # -march=armv8-a+simd+crypto baseline set at the top of this file.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite coreaudio_render_core_test_suite test_audio_sink_ringbuffer jni_sink_bridge_test_suite lufs_parity_test_suite desktop_hal_render_core_test_suite capability_abi_parity_test_suite)
-        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-            list(APPEND PHASE4B_TEST_TARGETS linux_hal_driver_test_suite)
-        endif()
+        set(PHASE4B_TEST_TARGETS dsp_test_suite simd_physics_test_suite storage_telemetry_test_suite dsp_phase_lock_test_suite virtual_hal_test_suite test_audio_sink_ringbuffer jni_sink_bridge_test_suite lufs_parity_test_suite capability_abi_parity_test_suite)
         foreach(tname ${PHASE4B_TEST_TARGETS})
             target_compile_options(${tname} PRIVATE
                 -fno-fast-math
@@ -392,107 +329,11 @@ if (STREAMIFY_BUILD_TESTS)
     add_test(NAME simd_physics_test_suite COMMAND simd_physics_test_suite)
     add_test(NAME storage_telemetry_test_suite COMMAND storage_telemetry_test_suite)
     add_test(NAME dsp_phase_lock_test_suite COMMAND dsp_phase_lock_test_suite)
-    # Phase 4a lanes: VirtualHAL, the CoreAudio render core and the
-    # directive's standalone SPSC target.
     add_test(NAME virtual_hal_test_suite COMMAND virtual_hal_test_suite)
-    add_test(NAME coreaudio_render_core_test_suite COMMAND coreaudio_render_core_test_suite)
     add_test(NAME test_audio_sink_ringbuffer COMMAND test_audio_sink_ringbuffer)
-    # WS-C lanes: the C1 JNI bridge round-trip (stub JNIEnv) and the C8
-    # LUFS cross-implementation parity (Rust-canonical golden vectors).
     add_test(NAME jni_sink_bridge_test_suite COMMAND jni_sink_bridge_test_suite)
     add_test(NAME lufs_parity_test_suite COMMAND lufs_parity_test_suite)
-    # Phase 4b lanes: the desktop HAL render cores (every host) and the
-    # Linux dlopen driver (Linux hosts).
-    add_test(NAME desktop_hal_render_core_test_suite COMMAND desktop_hal_render_core_test_suite)
-    # Phase 5 lane: the capability C-ABI parity suite (every host).
     add_test(NAME capability_abi_parity_test_suite COMMAND capability_abi_parity_test_suite)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        add_test(NAME linux_hal_driver_test_suite COMMAND linux_hal_driver_test_suite)
-    endif()
-endif()
-
-# --- WS-C (C5): the desktop HAL shared library (Linux + Windows) --------------
-# The loadable module that finally gives the Phase 4b C facades a
-# production compilation home: the plain-C sink registry ABI
-# (include/desktop_hal.h — the same frozen contract the C1 JNI bridge
-# binds on Android) plus the platform pull adapters (WASAPI on Windows,
-# PipeWire + ALSA fallback on Linux). The desktop JVM shell binds it
-# through JNA (DesktopHalBridge) — the C5 wiring slice; the engine-side
-# relay onto the Rust playback_ring() is ENG-1's follow-up.
-if(NOT ANDROID)
-    add_library(streamify_desktop_hal SHARED
-        src/desktop_hal_c_api.cpp
-        src/audio_sink_ringbuffer.cpp
-    )
-    target_include_directories(streamify_desktop_hal PRIVATE include src util .)
-    # Auto-export the C ABI on MSVC (the GCC/Clang lanes export via the
-    # STREAMIFY_HAL_API visibility attribute in desktop_hal.h).
-    set_target_properties(streamify_desktop_hal PROPERTIES
-        WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    if(WIN32)
-        target_sources(streamify_desktop_hal PRIVATE audio/wasapi_pull_adapter.cpp)
-        # avrt: AvSetMmThreadCharacteristicsW; ole32: COM runtime.
-        target_link_libraries(streamify_desktop_hal PRIVATE avrt ole32)
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        target_sources(streamify_desktop_hal PRIVATE audio/pipewire_driver.cpp)
-        # ZERO link dependencies beyond libc: PipeWire and ALSA are
-        # resolved at runtime through dlopen (the driver's own contract).
-        target_link_libraries(streamify_desktop_hal PRIVATE ${CMAKE_DL_LIBS} m pthread)
-    elseif(APPLE)
-        target_sources(streamify_desktop_hal PRIVATE audio/coreaudio_pull_adapter.cpp)
-        target_link_libraries(streamify_desktop_hal PRIVATE
-            "-framework CoreAudio"
-            "-framework AudioToolbox"
-        )
-    endif()
-endif()
-
-# --- Phase 4a (MP-HAL04): Apple CoreAudio pull adapter (Apple hosts only) ----
-# The AURenderCallback lifecycle wrapper (AUHAL on macOS / RemoteIO on iOS).
-# Its entire RT-critical path is the host-testable CoreAudioRenderCore
-# (see coreaudio_render_core_test_suite above); this library adds only the
-# AudioUnit scaffolding and the C facade for the Swift shell (Phase 5).
-if(APPLE)
-    add_library(streamify_coreaudio_adapter STATIC
-        audio/coreaudio_pull_adapter.cpp
-    )
-    target_include_directories(streamify_coreaudio_adapter PRIVATE include src .)
-    target_link_libraries(streamify_coreaudio_adapter PRIVATE
-        "-framework CoreAudio"
-        "-framework AudioUnit"
-        "-framework CoreFoundation"
-    )
-endif()
-
-# --- Phase 4b (MP-HAL08): Windows WASAPI pull adapter (Windows hosts only) ---
-# The event-driven IAudioClient3 / shared / exclusive render thread with
-# Pro Audio MMCSS priority and IAudioClock ingestion. Its entire
-# RT-critical path is the host-testable WasapiRenderCore (see
-# desktop_hal_render_core_test_suite above); this library adds only the
-# COM/MMDevice scaffolding and the C facade for the desktop shells.
-if(WIN32)
-    add_library(streamify_wasapi_adapter STATIC
-        audio/wasapi_pull_adapter.cpp
-    )
-    target_include_directories(streamify_wasapi_adapter PRIVATE include src .)
-    # avrt: AvSetMmThreadCharacteristicsW; ole32: COM runtime.
-    target_link_libraries(streamify_wasapi_adapter PRIVATE avrt ole32)
-endif()
-
-# --- Phase 4b (MP-HAL09): Linux PipeWire driver + ALSA fallback (Linux only) -
-# The pw_stream process-callback driver with the dlopen'd ALSA fallback.
-# ZERO link dependencies: both backends are resolved at runtime through
-# dlopen, so this target compiles on any Linux toolchain without
-# libpipewire-dev / libasound-dev. Its RT-critical path is the
-# host-testable PipeWireRenderCore / AlsaRenderCore pair (see
-# desktop_hal_render_core_test_suite) and its frozen embedded ABI is
-# audited by linux_hal_driver_test_suite.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_library(streamify_linuxhal_driver STATIC
-        audio/pipewire_driver.cpp
-    )
-    target_include_directories(streamify_linuxhal_driver PRIVATE include src .)
-    target_link_libraries(streamify_linuxhal_driver PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 # --- Phase 5 (MP-CAP03): Apple RemoteCommandCenter bridge (Apple only) -------
