@@ -9,13 +9,16 @@ import android.net.Uri
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 actual object StreamifyAuthManager {
@@ -39,7 +42,7 @@ actual object StreamifyAuthManager {
         return null
     }
 
-    private fun saveProfile(profile: UserProfile, token: String? = null) {
+    private fun saveProfile(profile: UserProfile, token: String? = null, refreshToken: String? = null) {
         prefs?.edit()?.apply {
             putBoolean("has_completed_onboarding", true)
             putString("user_id", profile.id)
@@ -49,6 +52,9 @@ actual object StreamifyAuthManager {
             putBoolean("is_admin", profile.isAdmin)
             if (token != null) {
                 putString("access_token", token)
+            }
+            if (refreshToken != null) {
+                putString("refresh_token", refreshToken)
             }
             apply()
         }
@@ -63,6 +69,7 @@ actual object StreamifyAuthManager {
         val savedAvatar = sp.getString("avatar_url", null)
         val savedIsAdmin = sp.getBoolean("is_admin", false)
         val savedToken = sp.getString("access_token", null)
+        val savedRefreshToken = sp.getString("refresh_token", null)
 
         if (!savedUserId.isNullOrBlank() && !savedEmail.isNullOrBlank()) {
             val user = UserProfile(
@@ -72,8 +79,17 @@ actual object StreamifyAuthManager {
                 avatarUrl = savedAvatar ?: "",
                 isAdmin = savedIsAdmin,
             )
-            SupabaseClient.setSession(savedToken, user)
+            SupabaseClient.setSession(savedToken, user, savedRefreshToken)
             _authState.value = AuthState.Authenticated(user)
+
+            if (!savedRefreshToken.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    val refreshed = SupabaseClient.refreshSession(savedRefreshToken)
+                    refreshed.onSuccess { newToken ->
+                        saveProfile(user, newToken, SupabaseClient.refreshToken.value)
+                    }
+                }
+            }
         } else {
             _authState.value = AuthState.Unauthenticated
         }
@@ -123,15 +139,40 @@ actual object StreamifyAuthManager {
                 )
             }
 
-            saveProfile(profile, SupabaseClient.getAuthToken())
+            saveProfile(profile, SupabaseClient.getAuthToken(), SupabaseClient.refreshToken.value)
             _authState.value = AuthState.Authenticated(profile)
             Result.success(profile)
         } catch (e: GetCredentialCancellationException) {
             Result.failure(Exception("Sign-in cancelled."))
-        } catch (e: NoCredentialException) {
-            // If Credential Manager fails, trigger web-based browser OAuth fallback
+        } catch (e: GetCredentialException) {
+            // Credential Manager error (unregistered package on Vivo, missing Play Services, etc.)
             tryLaunchWebOAuth(ctx)
-            Result.failure(Exception("No Google credentials available on device. Opening web sign-in..."))
+            Result.failure(Exception("Google Sign-In unavailable on device. Opening web sign-in..."))
+        } catch (e: Exception) {
+            tryLaunchWebOAuth(ctx)
+            Result.failure(e)
+        }
+    }
+
+    actual suspend fun handleAuthCallback(callbackUri: String, context: Any?): Result<UserProfile> = withContext(Dispatchers.Main) {
+        val ctx = context as? Context
+        if (ctx != null) {
+            getPrefs(ctx)
+        }
+        try {
+            val accessToken = AuthCallbackParser.extractAccessToken(callbackUri)
+            if (!accessToken.isNullOrBlank()) {
+                val result = SupabaseClient.signInWithAccessToken(accessToken)
+                if (result.isSuccess) {
+                    val profile = result.getOrThrow()
+                    saveProfile(profile, accessToken)
+                    _authState.value = AuthState.Authenticated(profile)
+                    return@withContext Result.success(profile)
+                } else {
+                    return@withContext result
+                }
+            }
+            Result.failure(Exception("No access token found in callback URL"))
         } catch (e: Exception) {
             Result.failure(e)
         }

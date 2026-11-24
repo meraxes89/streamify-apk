@@ -128,9 +128,9 @@ tasks.named<hydraulic.conveyor.gradle.WriteConveyorConfigTask>("writeConveyorCon
     doLast {
         destination.get().asFile.appendText(
             """
-            |app.fsname = simpmusic
-            |app.display-name = SimpMusic
-            |app.rdns-name = com.maxrave.simpmusic
+            |app.fsname = streamify
+            |app.display-name = Streamify
+            |app.rdns-name = com.streamify.desktop
             |
             |// Override the Gradle-detected classpath with the ProGuard'd
             |// jar directory. Conveyor expands a directory entry to every
@@ -170,7 +170,7 @@ compose.desktop {
             }
             targetFormats(*listTarget.toTypedArray())
             modules("jdk.unsupported")
-            packageName = "SimpMusic"
+            packageName = "Streamify"
             macOS {
                 includeAllModules = true
                 packageVersion =
@@ -199,6 +199,7 @@ compose.desktop {
                             <key>CFBundleURLSchemes</key>
                             <array>
                                 <string>simpmusic</string>
+                                <string>streamify</string>
                             </array>
                         </dict>
                     </array>
@@ -209,6 +210,12 @@ compose.desktop {
             }
             windows {
                 includeAllModules = true
+                perUserInstall = true
+                dirChooser = true
+                menu = true
+                shortcut = true
+                menuGroup = "Streamify"
+                upgradeUuid = "6b0d69b1-1f6e-4f29-9f6a-9f1f0000004b"
                 packageVersion =
                     libs.versions.version.name
                         .get()
@@ -217,6 +224,11 @@ compose.desktop {
             }
             linux {
                 includeAllModules = true
+                shortcut = true
+                appCategory = "AudioVideo"
+                menuGroup = "AudioVideo"
+                debMaintainer = "Streamify <zephyr4289@gmail.com>"
+                rpmLicenseType = "GPL-3.0"
                 packageVersion =
                     libs.versions.version.name
                         .get()
@@ -345,7 +357,7 @@ tasks.register("packageConveyorAppImage") {
     )
 
     doLast {
-        val appName = "SimpMusic"
+        val appName = "Streamify"
         val conveyorOutput = rootDir.resolve("output")
         if (!conveyorOutput.exists()) {
             throw GradleException(
@@ -390,7 +402,7 @@ tasks.register("packageConveyorAppImage") {
 
         // Ensure top-level PNG icon expected by appimagetool exists.
         val iconSrc = rootDir.resolve("composeApp/icon/circle_app_icon.png")
-        val iconDst = appDir.resolve("simpmusic.png")
+        val iconDst = appDir.resolve("streamify.png")
         if (!iconDst.exists() && iconSrc.exists()) {
             FileUtils.copyFile(iconSrc, iconDst)
         }
@@ -398,25 +410,23 @@ tasks.register("packageConveyorAppImage") {
         val versionName =
             libs.versions.version.name
                 .get()
-        val desktopFile = appDir.resolve("simpmusic.desktop")
+        val desktopFile = appDir.resolve("streamify.desktop")
         // This file, not Conveyor's, is what actually reaches the user: AppRun installs it into
         // ~/.local/share/applications and runs update-desktop-database. So every scheme listed in
         // `app.url-schemes` in conveyor.conf has to be repeated here as an x-scheme-handler MIME
         // type, or xdg-open finds no handler for it and the redirect dies in the browser.
-        // "wordbyword" is the Last.fm auth callback and was missing, which is why Last.fm login
-        // could never come back to the app on Linux.
         desktopFile.writeText(
             """[Desktop Entry]
             |Type=Application
             |Version=1.0
-            |Name=SimpMusic
-            |Comment=SimpMusic v$versionName - FOSS YouTube Music Client
-            |Exec=bin/simpmusic %u
-            |Icon=simpmusic
+            |Name=Streamify
+            |Comment=Streamify v$versionName - Multiplatform Music Client
+            |Exec=bin/streamify %u
+            |Icon=streamify
             |Terminal=false
             |Categories=Audio;AudioVideo;
-            |StartupWMClass=SimpMusic
-            |MimeType=x-scheme-handler/simpmusic;x-scheme-handler/wordbyword;
+            |StartupWMClass=Streamify
+            |MimeType=x-scheme-handler/streamify;x-scheme-handler/simpmusic;x-scheme-handler/wordbyword;
             |
             """.trimMargin(),
         )
@@ -430,9 +440,9 @@ tasks.register("packageConveyorAppImage") {
             |
             |# Install icon into XDG dirs so GNOME/KDE pick it up the first time.
             |ICON_DIR="${'$'}HOME/.local/share/icons/hicolor/256x256/apps"
-            |if [ ! -f "${'$'}ICON_DIR/simpmusic.png" ] || [ "${'$'}HERE/simpmusic.png" -nt "${'$'}ICON_DIR/simpmusic.png" ]; then
+            |if [ ! -f "${'$'}ICON_DIR/streamify.png" ] || [ "${'$'}HERE/streamify.png" -nt "${'$'}ICON_DIR/streamify.png" ]; then
             |    mkdir -p "${'$'}ICON_DIR"
-            |    cp "${'$'}HERE/simpmusic.png" "${'$'}ICON_DIR/simpmusic.png"
+            |    cp "${'$'}HERE/streamify.png" "${'$'}ICON_DIR/streamify.png"
             |    gtk-update-icon-cache -f -t "${'$'}HOME/.local/share/icons/hicolor" 2>/dev/null || true
             |fi
             |
@@ -440,31 +450,21 @@ tasks.register("packageConveyorAppImage") {
             |DESKTOP_DIR="${'$'}HOME/.local/share/applications"
             |mkdir -p "${'$'}DESKTOP_DIR"
             |APPIMAGE_PATH="${'$'}{APPIMAGE:-${'$'}SELF}"
-            |sed "s|Exec=bin/simpmusic|Exec=${'$'}APPIMAGE_PATH|" "${'$'}HERE/simpmusic.desktop" > "${'$'}DESKTOP_DIR/com-maxrave-simpmusic-MainKt.desktop"
+            |sed "s|Exec=bin/streamify|Exec=${'$'}APPIMAGE_PATH|" "${'$'}HERE/streamify.desktop" > "${'$'}DESKTOP_DIR/com-streamify-desktop-MainKt.desktop"
             |update-desktop-database "${'$'}DESKTOP_DIR" 2>/dev/null || true
             |
             |# Cap glibc's per-thread malloc arenas.
-            |#
-            |# glibc spawns a fresh 64 MB-aligned arena whenever it sees mutex contention, up to
-            |# 8 x nproc of them, and never gives an arena back to the OS. Measured on a 20-core
-            |# box: 161 arenas holding 1.45 GB of a 1.9 GB RSS, while the JVM heap was using only
-            |# 121 MB of its 512 MB cap. Pinning the count to 2 took that to ~5 arenas. The cost is
-            |# more allocator lock contention, which this workload does not notice - the audio path
-            |# is native and its buffers are long-lived.
-            |#
-            |# Linux-only by construction: this file only exists inside the AppImage. macOS and
-            |# Windows tune their allocators elsewhere, and MemoryTrimmer covers all three at runtime.
             |export MALLOC_ARENA_MAX=2
             |
             |cd "${'$'}HERE"
-            |exec bin/simpmusic "${'$'}@"
+            |exec bin/streamify "${'$'}@"
             |
             """.trimMargin(),
         )
         appRun.setExecutable(true, false)
 
-        // Conveyor's launcher lives at output/bin/simpmusic (lowercase).
-        val appExecutable = appDir.resolve("bin/simpmusic")
+        // Conveyor's launcher lives at output/bin/streamify (lowercase).
+        val appExecutable = appDir.resolve("bin/streamify")
         if (appExecutable.exists() && !appExecutable.canExecute()) {
             appExecutable.setExecutable(true)
         }

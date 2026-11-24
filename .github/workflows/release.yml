@@ -32,6 +32,14 @@ on:
         description: 'Create as prerelease'
         type: boolean
         default: false
+      min_version_code:
+        description: 'Minimum supported version code (0 for standard)'
+        type: number
+        default: 0
+      breaking:
+        description: 'Flag release as containing breaking changes'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -72,9 +80,16 @@ jobs:
     with:
       release_mode: true
 
+  ios:
+    name: "Apple iOS release (Frameworks & Distribution)"
+    needs: engine
+    uses: ./.github/workflows/_ci-ios.yml
+    with:
+      release_mode: true
+
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [engine, android, desktop, wasm]
+    needs: [engine, android, desktop, wasm, ios]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -104,6 +119,13 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Download Apple iOS release archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ios-release-archive
+          path: dist
+          merge-multiple: true
+
       - name: Stage release binaries & verify the manifest
         run: |
           set -euo pipefail
@@ -111,7 +133,7 @@ jobs:
           # Flatten every downloaded payload
           find dist -type f \( \
             -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o \
-            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o \
+            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o -name '*.ipa' -o \
             -name '*.AppImage' -o -name '*.zip' \) -exec cp -v {} release/ \;
           echo "── release manifest:"
           ls -la release/
@@ -139,6 +161,44 @@ jobs:
             --changelog CHANGELOG.md \
             --output release_body.md
           cat release_body.md
+
+      - name: Generate version.json manifest
+        run: |
+          EXTRA_FLAGS=""
+          if [ "${{ inputs.breaking }}" = "true" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --breaking"
+          fi
+          if [ -n "${{ inputs.min_version_code }}" ] && [ "${{ inputs.min_version_code }}" != "0" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --min-version-code ${{ inputs.min_version_code }}"
+          fi
+          python3 scripts/make_version_json.py \
+            --tag "${{ inputs.tag_name || github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --sums release/SHA256SUMS \
+            --notes release_body.md \
+            --output release/version.json $EXTRA_FLAGS
+          cat release/version.json
+
+      - name: Verify release manifest integrity & naming consistency
+        run: |
+          python3 - << 'PY'
+          import json, sys
+
+          with open("release/version.json") as f:
+              manifest = json.load(f)
+
+          artifacts = manifest.get("artifacts", {})
+          print(f"Verified {len(artifacts)} release artifacts in manifest.")
+
+          # Fail if legacy SimpMusic binary names leak into the release
+          for key, data in artifacts.items():
+              url = data.get("url", "")
+              if "simpmusic" in url.lower() and not "streamify" in url.lower():
+                  print(f"::error::Detected legacy 'SimpMusic' binary in manifest under key '{key}': {url}")
+                  sys.exit(1)
+
+          print("✅ All platform binaries correctly mapped with Streamify identity.")
+          PY
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

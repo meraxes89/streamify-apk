@@ -53,17 +53,20 @@ def main():
     linux_files = []
     windows_files = []
     macos_files = []
+    ios_files = []
     web_files = []
 
     for f in sorted(files):
         if f.endswith(".apk"):
             android_files.append(f)
-        elif f.endswith((".deb", ".rpm")):
+        elif f.endswith((".deb", ".rpm", ".AppImage")):
             linux_files.append(f)
         elif f.endswith((".msi", ".exe")):
             windows_files.append(f)
         elif f.endswith((".dmg", ".pkg")):
             macos_files.append(f)
+        elif f.endswith(".ipa") or ("ios" in f.lower() and f.endswith(".zip")):
+            ios_files.append(f)
         elif f.endswith(".zip"):
             web_files.append(f)
 
@@ -110,6 +113,8 @@ def main():
                 lines.append(f"| [{f}]({url}) | Debian / Ubuntu / Mint | `sudo apt install ./{f}` |")
             elif f.endswith(".rpm"):
                 lines.append(f"| [{f}]({url}) | Fedora / RHEL / openSUSE | `sudo dnf install ./{f}` |")
+            elif f.endswith(".AppImage"):
+                lines.append(f"| [{f}]({url}) | Universal (All Distributions) | `chmod +x {f} && ./{f}` |")
             else:
                 lines.append(f"| [{f}]({url}) | Linux | Standard package |")
         lines.append("")
@@ -132,6 +137,19 @@ def main():
         for f in macos_files:
             url = f"{base_url}/{f}"
             lines.append(f"| [{f}]({url}) | Universal | Apple Silicon (M1/M2/M3/M4) & Intel |")
+        lines.append("")
+
+    # Apple iOS section
+    if ios_files:
+        lines.append("### Apple iOS\n")
+        lines.append("| Package | Type | Details |")
+        lines.append("| :--- | :--- | :--- |")
+        for f in ios_files:
+            url = f"{base_url}/{f}"
+            if f.endswith(".ipa"):
+                lines.append(f"| [{f}]({url}) | Sideload Package | Sideloadly / AltStore / TrollStore |")
+            else:
+                lines.append(f"| [{f}]({url}) | Distribution Archive | iOS Framework & Bundle Archive |")
         lines.append("")
 
     # Web & Server section

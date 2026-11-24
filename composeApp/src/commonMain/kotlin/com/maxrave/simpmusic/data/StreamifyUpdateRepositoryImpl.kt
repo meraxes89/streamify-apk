@@ -3,51 +3,64 @@ package com.maxrave.simpmusic.data
 import com.maxrave.domain.data.model.update.UpdateData
 import com.maxrave.domain.repository.UpdateRepository
 import com.maxrave.domain.utils.Resource
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
+import com.maxrave.simpmusic.BuildKonfig
+import com.maxrave.simpmusic.data.update.UpdateResolver
+import com.maxrave.simpmusic.data.update.UpdateResult
+import com.maxrave.simpmusic.data.update.UpdateSanitizer
+import com.maxrave.simpmusic.data.update.UpdateStateHolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 class StreamifyUpdateRepositoryImpl(
-    private val httpClient: HttpClient = HttpClient(CIO),
+    private val resolver: UpdateResolver = UpdateResolver(),
 ) : UpdateRepository {
 
     override fun checkForGithubReleaseUpdate(): Flow<Resource<UpdateData>> =
         flow<Resource<UpdateData>> {
             try {
-                val response = httpClient.get(GITHUB_API_LATEST_RELEASE) {
-                    header(HttpHeaders.UserAgent, "Streamify-App")
-                    header(HttpHeaders.Accept, "application/vnd.github.v3+json")
-                }
-                if (response.status == HttpStatusCode.OK) {
-                    val bodyText = response.bodyAsText()
-                    val json = Json { ignoreUnknownKeys = true }
-                    val obj = json.parseToJsonElement(bodyText).jsonObject
-                    val tagName = obj["tag_name"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: ""
-                    val publishedAt = obj["published_at"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
-                    val body = obj["body"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: ""
-                    emit(
-                        Resource.Success(
-                            UpdateData(
-                                tagName = tagName,
-                                releaseTime = publishedAt,
-                                body = body,
+                val installedCode =
+                    try {
+                        BuildKonfig.versionCode
+                    } catch (_: Exception) {
+                        0
+                    }
+
+                when (val result = resolver.resolve(installedCode)) {
+                    is UpdateResult.Available -> {
+                        val isBreaking =
+                            result.manifest.isBreaking ||
+                                (result.manifest.minSupportedVersionCode > 0 && installedCode < result.manifest.minSupportedVersionCode)
+                        UpdateStateHolder.latestManifest = result.manifest
+                        UpdateStateHolder.isBreaking = isBreaking
+                        emit(
+                            Resource.Success(
+                                UpdateData(
+                                    tagName = result.manifest.version,
+                                    releaseTime = result.manifest.publishedAt,
+                                    body = UpdateSanitizer.sanitizeChangelog(result.manifest.changelog),
+                                ),
                             ),
-                        ),
-                    )
-                } else {
-                    emit(Resource.Error<UpdateData>("GitHub API returned HTTP ${response.status.value}"))
+                        )
+                    }
+                    is UpdateResult.TagOnly -> {
+                        emit(
+                            Resource.Success(
+                                UpdateData(
+                                    tagName = result.tag,
+                                    releaseTime = null,
+                                    body = "https://github.com/meraxes89/streamify-apk/releases/tag/${result.tag}",
+                                ),
+                            ),
+                        )
+                    }
+                    is UpdateResult.UpToDate -> {
+                        emit(Resource.Error<UpdateData>("App is up to date"))
+                    }
+                    is UpdateResult.Error -> {
+                        emit(Resource.Error<UpdateData>(result.message))
+                    }
                 }
             } catch (e: Exception) {
                 emit(Resource.Error<UpdateData>(e.message ?: "Failed to check for updates"))
@@ -63,9 +76,4 @@ class StreamifyUpdateRepositoryImpl(
         flow<Resource<List<String>>> {
             emit(Resource.Success<List<String>>(emptyList()))
         }.flowOn(Dispatchers.IO)
-
-    companion object {
-        private const val GITHUB_API_LATEST_RELEASE =
-            "https://api.github.com/repos/meraxes89/streamify-apk/releases/latest"
-    }
 }

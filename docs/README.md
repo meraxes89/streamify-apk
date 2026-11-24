@@ -24,6 +24,7 @@ docs/
 | Document | Scope |
 |---|---|
 | [ARCHITECTURE.md](architecture/ARCHITECTURE.md) | Master map: Compose UI -> Koin -> Rust core -> C++20 ringbuffer -> platform HALs; hybrid SQLite/Supabase sync; measured invariants |
+| [gpu/](gpu/README.md) | Sovereign GPU Engine: Skia/HWUI pipeline, 4-tier capability matrix, 2-engineer phased plan, and CI spec |
 | [JAM_ENGINE_SPEC.md](architecture/JAM_ENGINE_SPEC.md) | CRDT jam engine, Merkle state sync, wire protocols |
 | [CRYPTO_SPEC.md](architecture/CRYPTO_SPEC.md) | ChaCha20-Poly1305 vault and cache cipher (SEC-06) |
 | [acoustic_embedding_contract_v1.md](architecture/acoustic_embedding_contract_v1.md) | 128-dim acoustic embedding contract (Rust + UDL) |

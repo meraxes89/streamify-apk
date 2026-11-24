@@ -24,6 +24,8 @@ data class UserProfile(
     val topTrack: String? = null,
     @SerialName("is_private")
     val isPrivate: Boolean = false,
+    @SerialName("active_session")
+    val activeSession: CloudActiveSession? = null,
     @SerialName("created_at")
     val createdAt: String = "",
     @SerialName("last_active_at")
@@ -48,7 +50,9 @@ data class CloudTrack(
     @SerialName("play_count")
     val playCount: Int = 0,
     @SerialName("like_count")
-    val likeCount: Int = 0
+    val likeCount: Int = 0,
+    @SerialName("created_at")
+    val createdAt: String? = null
 )
 
 @Serializable
@@ -64,11 +68,37 @@ data class CloudUserLike(
 @Serializable
 data class CloudUserItemFavorite(
     @SerialName("user_id")
-    val userId: String,
+    val userId: String = "",
     @SerialName("item_type")
-    val itemType: String,
+    val itemType: String = "",
     @SerialName("item_id")
-    val itemId: String,
+    val itemId: String = "",
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+
+@Serializable
+data class CloudUserSettings(
+    @SerialName("user_id")
+    val userId: String = "",
+    val settings: Map<String, String> = emptyMap(),
+    @SerialName("updated_at")
+    val updatedAt: String? = null
+)
+
+@Serializable
+data class CloudListeningHistoryItem(
+    val id: String = "",
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("track_id")
+    val trackId: String = "",
+    @SerialName("album_id")
+    val albumId: String? = null,
+    @SerialName("artist_id")
+    val artistId: String? = null,
+    @SerialName("listened_duration_sec")
+    val listenedDurationSec: Int = 0,
     @SerialName("created_at")
     val createdAt: String? = null
 )
@@ -85,19 +115,56 @@ data class CloudPlaylist(
     @SerialName("is_public")
     val isPublic: Boolean = true,
     @SerialName("likes_count")
-    val likesCount: Int = 0
+    val likesCount: Int = 0,
+    @SerialName("youtube_playlist_id")
+    val youtubePlaylistId: String? = null
+)
+
+@Serializable
+data class CloudSearchQuery(
+    val id: String? = null,
+    @SerialName("user_id")
+    val userId: String? = null,
+    val query: String,
+    @SerialName("searched_at")
+    val searchedAt: String? = null,
+    @SerialName("is_deleted")
+    val isDeleted: Boolean = false
+)
+
+@Serializable
+data class CloudActiveSession(
+    @SerialName("track_id")
+    val trackId: String? = null,
+    @SerialName("position_ms")
+    val positionMs: Long = 0L,
+    @SerialName("queue_ids")
+    val queueIds: List<String> = emptyList(),
+    @SerialName("updated_at")
+    val updatedAt: String? = null
 )
 
 @Serializable
 data class CloudPlaylistTrack(
     val id: String? = null,
     @SerialName("playlist_id")
-    val playlistId: String,
+    val playlistId: String = "",
     @SerialName("track_id")
-    val trackId: String,
+    val trackId: String = "",
     val position: Int = 0,
     @SerialName("added_by")
     val addedBy: String? = null
+)
+
+@Serializable
+data class CloudPlaylistTrackWithMetadata(
+    val id: String? = null,
+    @SerialName("playlist_id")
+    val playlistId: String = "",
+    @SerialName("track_id")
+    val trackId: String = "",
+    val position: Int = 0,
+    val tracks: CloudTrack? = null
 )
 
 @Serializable

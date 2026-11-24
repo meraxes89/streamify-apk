@@ -50,16 +50,26 @@ jobs:
           distribution: 'microsoft'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build wasmJs Browser Distribution
         run: |
           chmod +x ./gradlew
-          ./gradlew :composeApp:wasmJsBrowserDistribution \
-            --no-daemon \
-            --stacktrace \
-            -Dorg.gradle.jvmargs="-Xmx10g -XX:+UseParallelGC" \
-            -Dkotlin.daemon.jvmargs="-Xmx10g"
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt: Running wasmJsBrowserDistribution..."
+            ./gradlew :composeApp:wasmJsBrowserDistribution \
+              --no-daemon \
+              --stacktrace \
+              -Dorg.gradle.jvmargs="-Xmx10g -XX:+UseParallelGC" \
+              -Dkotlin.daemon.jvmargs="-Xmx10g" && break || {
+                if [ $attempt -eq 3 ]; then
+                  echo "All attempts failed."
+                  exit 1
+                fi
+                echo "Attempt $attempt failed due to network or dependency resolution. Retrying in 10s..."
+                sleep 10
+              }
+          done
 
       - name: Precompress wasm distribution (.gz and .br)
         run: |

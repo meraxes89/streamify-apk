@@ -480,11 +480,23 @@ class LocalPlaylistViewModel(
     fun deletePlaylist(id: Long) {
         showLoadingDialog(message = getString(Res.string.delete))
         viewModelScope.launch {
+            val playlistResource = localPlaylistRepository.getLocalPlaylist(id).firstOrNull()
+            val playlist = playlistResource?.data
+            val syncId = if (!playlist?.syncId.isNullOrBlank()) {
+                playlist.syncId
+            } else {
+                "00000000-0000-4000-8000-${id.toString(16).padStart(12, '0')}"
+            }
             _uiState.value = LocalPlaylistState.initial()
             localPlaylistRepository
                 .deleteLocalPlaylist(id, getString(Res.string.delete))
                 .collectLatestResource(
                     onSuccess = {
+                        if (!syncId.isNullOrBlank()) {
+                            viewModelScope.launch {
+                                com.streamify.supabase.SupabaseLibrarySync.deleteCloudPlaylist(syncId)
+                            }
+                        }
                         makeToast(it)
                         hideLoadingDialog()
                     },
