@@ -192,6 +192,11 @@ object SupabaseClient {
                 Result.success(profile)
             } else {
                 Result.failure(Exception("Token verification failed: $bodyText"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     /**
      * Refreshes the active user session using the stored refresh token.
