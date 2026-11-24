@@ -266,7 +266,7 @@ jobs:
             ${{ runner.os }}-ccache-native-
           max-size: 500M
 
-      - name: Build & execute all C++ suites under ASan/UBSan (parallel ctest)
+      - name: Build & execute all C++ suites under ASan/UBSan (ctest)
         run: |
           mkdir -p /dev/shm/native_test_tmp
           sudo mount -t tmpfs -o size=3G tmpfs /tmp || true
@@ -288,9 +288,9 @@ jobs:
                 -G Ninja ..
           ninja
           if command -v eatmydata >/dev/null 2>&1; then
-            eatmydata ctest --output-on-failure --parallel "$(nproc)"
+            eatmydata ctest --output-on-failure
           else
-            ctest --output-on-failure --parallel "$(nproc)"
+            ctest --output-on-failure
           fi
 
   # ── WS-C (C4): the Windows native C++ rot guard (MSVC) ────────────────────
