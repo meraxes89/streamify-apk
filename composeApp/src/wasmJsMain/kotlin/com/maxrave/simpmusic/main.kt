@@ -32,10 +32,10 @@ fun main() {
                 println("DemoCatalogLoader init error: $e")
             }
         }
-        val loadingEl = document.getElementById("loading")
-        loadingEl?.remove()
-
         ComposeViewport(document.body!!) {
+            androidx.compose.runtime.SideEffect {
+                document.getElementById("loading")?.remove()
+            }
             App()
         }
     } catch (e: Throwable) {
