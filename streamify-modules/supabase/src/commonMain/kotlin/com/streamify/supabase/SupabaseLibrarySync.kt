@@ -517,7 +517,7 @@ object SupabaseLibrarySync {
         try {
             val payload = buildJsonObject {
                 if (!syncId.isNullOrBlank()) {
-                    put("id", syncId)
+                    put("client_event_id", syncId)
                 }
                 put("user_id", userId)
                 put("track_id", trackId)
@@ -547,15 +547,66 @@ object SupabaseLibrarySync {
     }
 
     /**
+     * High-performance batch uploader for playback events (Analytics & Wrapped).
+     * Chunks items into 50-event JSON arrays to avoid serial N+1 HTTP calls.
+     */
+    suspend fun recordPlaybackHistoryBatch(
+        userId: String,
+        items: List<PlaybackHistoryBatchItem>
+    ): Result<Boolean> = withContext(ioDispatcher) {
+        try {
+            if (items.isEmpty()) return@withContext Result.success(true)
+            val chunks = items.chunked(50)
+            for (chunk in chunks) {
+                val arrayPayload = buildJsonArray {
+                    for (item in chunk) {
+                        add(buildJsonObject {
+                            if (!item.clientEventId.isNullOrBlank()) {
+                                put("client_event_id", item.clientEventId)
+                            }
+                            put("user_id", userId)
+                            put("track_id", item.trackId)
+                            put("listened_duration_sec", item.durationSec)
+                            if (!item.albumId.isNullOrBlank()) {
+                                put("album_id", item.albumId)
+                            }
+                            if (!item.artistId.isNullOrBlank()) {
+                                put("artist_id", item.artistId)
+                            }
+                            if (!item.createdAtIso.isNullOrBlank()) {
+                                put("created_at", item.createdAtIso)
+                            }
+                        })
+                    }
+                }.toString()
+
+                val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                    header("Prefer", "resolution=ignore-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(arrayPayload)
+                }
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+                }
+            }
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetches the user's remote playback history from `public.user_listening_history`.
      */
     suspend fun fetchCloudListeningHistory(
         userId: String,
-        limit: Int = 100
+        limit: Int = 500
     ): List<CloudListeningHistoryItem> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
-                parameter("select", "id,user_id,track_id,listened_duration_sec,album_id,artist_id,created_at")
+                parameter("select", "id,user_id,track_id,listened_duration_sec,album_id,artist_id,client_event_id,created_at")
                 parameter("user_id", "eq.$userId")
                 parameter("order", "created_at.desc")
                 parameter("limit", limit.toString())
