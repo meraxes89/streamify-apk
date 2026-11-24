@@ -1303,7 +1303,7 @@ class SettingsViewModel(
     fun clearDownloadedCache() {
         viewModelScope.launch {
             cacheRepository.clearCache(Config.DOWNLOAD_CACHE)
-            songRepository.getDownloadedSongs().singleOrNull()?.let { songs ->
+            songRepository.getDownloadedSongs().firstOrNull()?.let { songs ->
                 songs.forEach { song ->
                     songRepository.updateDownloadState(song.videoId, DownloadState.STATE_NOT_DOWNLOADED)
                 }
