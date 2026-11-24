@@ -16,6 +16,8 @@ data class UpdateManifest(
     val minSupportedVersionCode: Int = 0,
     val isBreaking: Boolean = false,
     val channel: String = "beta",
+    val gitSha: String = "",
+    val recalledShas: List<String> = emptyList(),
     val publishedAt: String? = null,
     val changelog: String = "",
     val artifacts: Map<String, UpdateArtifact> = emptyMap(),
