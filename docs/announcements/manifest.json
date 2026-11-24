@@ -14,7 +14,7 @@
         "en": {
           "title": "Welcome to Streamify",
           "body": "Streamify delivers sovereign, high-fidelity music streaming.\n\n- **Lossless Audio**: Bit-perfect engine output.\n- **Synchronized Lyrics**: Ultra-precise real-time line scrolling.\n- **Persistent Inbox**: Review announcements anytime.",
-          "bannerUrl": null,
+          "bannerUrl": "https://opengraph.githubassets.com/1/meraxes89/streamify-apk",
           "actionLabel": "Explore Releases"
         }
       },
