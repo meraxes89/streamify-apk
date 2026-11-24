@@ -540,6 +540,7 @@ object StreamifySyncEngine : KoinComponent {
                     trackId = localMediaId,
                     positionMs = localPos,
                     queueIds = localQueue,
+                    updatedAtIso = now().toInstant(TimeZone.currentSystemDefault()).toString(),
                     userId = targetUserId
                 )
             } else if (remoteSession != null && !remoteSession.trackId.isNullOrBlank()) {
