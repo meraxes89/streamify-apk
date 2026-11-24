@@ -9,12 +9,20 @@ name: "CI — Web Wasm Distribution"
 on:
   workflow_call:
     inputs:
+      fast_check:
+        description: "Run fast Kotlin/Wasm compilation check instead of full browser distribution"
+        type: boolean
+        default: false
       release_mode:
         description: "Package distribution archive for release"
         type: boolean
         default: false
   workflow_dispatch:
     inputs:
+      fast_check:
+        description: "Run fast Kotlin/Wasm compilation check instead of full browser distribution"
+        type: boolean
+        default: false
       release_mode:
         description: "Package distribution archive for release"
         type: boolean
@@ -52,7 +60,17 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Verify wasmJs compilation (fast PR check)
+        if: ${{ inputs.fast_check && !inputs.release_mode }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :composeApp:compileKotlinWasmJs :composeApp:wasmJsProcessResources \
+            --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC" \
+            -Dkotlin.daemon.jvmargs="-Xmx8g"
+
       - name: Build wasmJs Browser Distribution
+        if: ${{ !inputs.fast_check || inputs.release_mode }}
         run: |
           chmod +x ./gradlew
           for attempt in 1 2 3; do
@@ -72,6 +90,7 @@ jobs:
           done
 
       - name: Precompress wasm distribution (.gz and .br)
+        if: ${{ !inputs.fast_check || inputs.release_mode }}
         run: |
           DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
           sudo apt-get update && sudo apt-get install -y brotli zip
@@ -100,6 +119,7 @@ jobs:
           ls -la "${ARCHIVE_NAME}"
 
       - name: Upload wasm distribution folder
+        if: ${{ !inputs.fast_check || inputs.release_mode }}
         uses: actions/upload-artifact@v7
         with:
           name: compose-wasm-dist
