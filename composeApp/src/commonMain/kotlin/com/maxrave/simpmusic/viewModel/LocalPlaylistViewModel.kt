@@ -963,6 +963,7 @@ class LocalPlaylistViewModel(
                                 syncState = pl.syncState,
                                 ytPlaylistId = pl.youtubePlaylistId,
                                 trackCount = pl.tracks?.size ?: 0,
+                                tracks = pl.tracks ?: emptyList(),
                             )
                         }
                         if (refresh) {
@@ -1104,6 +1105,7 @@ data class LocalPlaylistState(
     val loadState: PlaylistLoadState = PlaylistLoadState.Loading,
     val filterState: FilterState = FilterState.OlderFirst,
     val suggestions: SuggestionSongs? = null,
+    val tracks: List<String> = emptyList(),
 ) {
     sealed class SuggestionState {
         data object Loading : SuggestionState()
