@@ -410,6 +410,177 @@ index 4a92fcc..7321237 100644
      sourceSets {
          commonMain {
              dependencies {
+diff --git a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+index 1164f1c..f46bb17 100644
+--- a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
++++ b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+@@ -24,14 +24,15 @@ private val streamHealthCheckClient: OkHttpClient by lazy {
+         .build()
+ }
+ 
+-/**
+- * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
+- * only when the response code is in the 200..299 range. We only health-check those URLs because
+- * they are the ones the player will actually use; lower-quality extras can stay unverified.
+- */
+-internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
++enum class StreamHealthResult {
++    HEALTHY,
++    REJECTED_BY_CDN,
++    NETWORK_ERROR,
++}
++
++internal fun List<Pair<Int, String>>.checkStreamHealth(): StreamHealthResult {
+     val required = ITAG.AUDIO + ITAG.VIDEO
+-    val candidate = this.filter { it.first in required }.randomOrNull() ?: return false
++    val candidate = this.filter { it.first in required }.randomOrNull() ?: return StreamHealthResult.NETWORK_ERROR
+     return runCatching {
+         val request =
+             okhttp3.Request
+@@ -40,11 +41,23 @@ internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
+                 .url(candidate.second)
+                 .build()
+         streamHealthCheckClient.newCall(request).execute().use { response ->
+-            response.code in 200..299
++            when (response.code) {
++                in 200..299 -> StreamHealthResult.HEALTHY
++                401, 403 -> StreamHealthResult.REJECTED_BY_CDN
++                else -> StreamHealthResult.NETWORK_ERROR
++            }
+         }
+-    }.getOrDefault(false)
++    }.getOrDefault(StreamHealthResult.NETWORK_ERROR)
+ }
+ 
++/**
++ * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
++ * only when the response code is in the 200..299 range. We only health-check those URLs because
++ * they are the ones the player will actually use; lower-quality extras can stay unverified.
++ */
++internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean =
++    checkStreamHealth() == StreamHealthResult.HEALTHY
++
+ class BraveNewPipeDownloaderImpl(
+     proxy: Proxy?,
+ ) : Downloader() {
+diff --git a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt
+index d7eddb8..41ce8a7 100644
+--- a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt
++++ b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt
+@@ -35,44 +35,58 @@ actual class Extractor {
+         ServiceList.YouTube.tokens = cookie ?: ""
+     }
+ 
+-    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> {
+-        // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
+-        // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
+-        // failure that actually happens is a stale player table, where the signature is well-formed
+-        // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
+-        // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
+-        // stops that jump.
++    companion object {
++        private val extractionLock = Any()
++    }
+ 
+-        // Tier 1 — ciphers solved locally.
+-        // Re-registered every time: PipePipe drops the local decoder for good the first time it
+-        // throws, and the getter is package-private so its state cannot be read from here. Setting
+-        // it again turns "disabled forever" into "skipped for one track".
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
++    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> =
++        synchronized(extractionLock) {
++            try {
++                // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
++                // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
++                // failure that actually happens is a stale player table, where the signature is well-formed
++                // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
++                // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
++                // stops that jump.
+ 
+-        // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
+-        // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
+-        //
+-        // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
+-        // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
+-        // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
+-        // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
+-        // cannot simply be called from here.
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
++                // Tier 1 — ciphers solved locally.
++                // Re-registered every time: PipePipe drops the local decoder for good the first time it
++                // throws, and the getter is package-private so its state cannot be read from here. Setting
++                // it again turns "disabled forever" into "skipped for one track".
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
+ 
+-        // Tier 3 — a different extractor entirely.
+-        return braveStreams(videoId)
+-    }
++                // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
++                // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
++                //
++                // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
++                // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
++                // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
++                // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
++                // cannot simply be called from here.
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
+ 
+-    actual fun liveHlsUrl(videoId: String): String? {
+-        // The same three tiers as newPipePlayer, in the same order and for the same reasons.
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
+-        return braveLiveHlsUrl(videoId)
+-    }
++                // Tier 3 — a different extractor entirely.
++                braveStreams(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
++
++    actual fun liveHlsUrl(videoId: String): String? =
++        synchronized(extractionLock) {
++            try {
++                // The same three tiers as newPipePlayer, in the same order and for the same reasons.
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
++                braveLiveHlsUrl(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
+ 
+     private fun pipePipeLiveHlsUrl(
+         videoId: String,
+@@ -121,12 +135,14 @@ actual class Extractor {
+                 Logger.d(TAG, "PipePipe[$tier] missing required itags for $videoId (got=${pipeResult.map { it.first }})")
+                 return null
+             }
+-            if (!pipeResult.headCheckRandomStream()) {
+-                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed (non 2xx) for $videoId")
+-                // A rejected URL is the one symptom of a stale player table: the signature is
+-                // well-formed and still wrong, so nothing threw on the way here. Only the on-device
+-                // table can go stale, so only that tier is worth invalidating.
+-                if (tier == LOCAL_TIER) faradayDecoder.invalidate()
++            val health = pipeResult.checkStreamHealth()
++            if (health != StreamHealthResult.HEALTHY) {
++                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed ($health) for $videoId")
++                // Invalidate local cipher engine ONLY when the CDN explicitly rejected the signature (401/403).
++                // Transient network timeouts, DNS failures, or socket drops must NOT evict the local solver.
++                if (tier == LOCAL_TIER && health == StreamHealthResult.REJECTED_BY_CDN) {
++                    faradayDecoder.invalidate()
++                }
+                 return null
+             }
+             val label = if (tier == LOCAL_TIER) faradayDecoder.lastOutcomeLabel else REMOTE_TIER
 diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
 index 07965f8..71852c7 100644
 --- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
@@ -463,6 +634,302 @@ index 07965f8..71852c7 100644
          }
      }
  
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt
+index b4bcd1d..0e2cf2f 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt
+@@ -271,7 +271,7 @@ class FaradayCipherEngine(
+         private const val MAX_PLAYER_SCRIPT_BYTES = 8 * 1024 * 1024
+         private const val PLAYER_ID_TTL_MS = 30 * 60 * 1000L
+ 
+-        private val PLAYER_HASH_REGEX = Regex("""player\\?/([a-z0-9]{8})\\?/""")
++        private val PLAYER_HASH_REGEX = Regex("""player[/\\]+([a-z0-9]{8})[/\\]+""")
+         private val PLAYER_ID_REGEX = Regex("^[A-Za-z0-9_-]{4,32}$")
+ 
+         internal fun playerUrlFor(playerId: String): String = "https://www.youtube.com/s/player/$playerId/player_ias.vflset/en_GB/base.js"
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt
+index fe3b4d7..c40fa21 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt
+@@ -2,6 +2,7 @@ package com.maxrave.kotlinytmusicscraper.cipher
+ 
+ import com.dokar.quickjs.QuickJs
+ import kotlinx.coroutines.CoroutineDispatcher
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.sync.Mutex
+ import kotlinx.coroutines.sync.withLock
+ import kotlinx.coroutines.withContext
+@@ -207,6 +208,33 @@ internal class QuickJsEngine(
+                 if (typeof globalThis.window === "undefined") {
+                     globalThis.window = globalThis;
+                 }
++                if (typeof globalThis.performance === "undefined") {
++                    globalThis.performance = {
++                        now: function() { return Date.now(); }
++                    };
++                }
++                if (typeof globalThis.crypto === "undefined") {
++                    globalThis.crypto = {
++                        getRandomValues: function(arr) {
++                            if (arr && arr.length) {
++                                for (let i = 0; i < arr.length; i++) {
++                                    arr[i] = Math.floor(Math.random() * 256);
++                                }
++                            }
++                            return arr;
++                        }
++                    };
++                }
++                if (typeof globalThis.screen === "undefined") {
++                    globalThis.screen = {
++                        width: 1920,
++                        height: 1080,
++                        availWidth: 1920,
++                        availHeight: 1080,
++                        colorDepth: 24,
++                        pixelDepth: 24
++                    };
++                }
+                 if (typeof globalThis.Intl === "undefined") {
+                     const NumberFormat = function(locale, options) {
+                         this.options = options || {};
+@@ -252,10 +280,12 @@ internal class QuickJsEngine(
+      * Clean up and release resources.
+      */
+     suspend fun dispose() {
+-        withContext(jsThread) {
+-            mutex.withLock {
+-                quickJs?.close()
+-                quickJs = null
++        withContext(NonCancellable) {
++            withContext(jsThread) {
++                mutex.withLock {
++                    quickJs?.close()
++                    quickJs = null
++                }
+             }
+         }
+     }
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt
+index 891a3c0..ba4311b 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt
+@@ -1,7 +1,9 @@
+ package com.maxrave.kotlinytmusicscraper.cipher
+ 
+-import kotlinx.coroutines.CoroutineDispatcher
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.CoroutineDispatcher
++import kotlinx.coroutines.NonCancellable
++import kotlinx.coroutines.withContext
+ 
+ internal fun faradayCipherPlayerUrl(playerUrl: String): String? =
+     RemotePlayerConfigParser.extractPlayerHash(playerUrl)?.let { hash ->
+@@ -37,7 +39,7 @@ internal class ZemerCipherSolver private constructor(
+                 ) { "Faraday n-transform probe failed" }
+                 return ZemerCipherSolver(engine)
+             } catch (e: CancellationException) {
+-                engine.dispose()
++                withContext(NonCancellable) { engine.dispose() }
+                 throw e
+             } catch (e: Exception) {
+                 engine.dispose()
+@@ -45,6 +47,8 @@ internal class ZemerCipherSolver private constructor(
+             }
+         }
+ 
++        private val IIFE_TRAILER_REGEX = Regex("""\}\s*\)\s*\(\s*(?:this\.|window\.)?_yt_player\s*\)\s*;?""")
++
+         internal fun buildModifiedPlayerScript(
+             playerCode: String,
+             config: RemotePlayerConfigParser.HardcodedPlayerConfig,
+@@ -55,7 +59,12 @@ internal class ZemerCipherSolver private constructor(
+                 "; window._cipherSigFunc=function(sig){try{return $sigExpression;}catch(e){return null;}};" +
+                     "window._nTransformFunc=function(n){try{return $nExpression;}catch(e){return n;}}; "
+ 
+-            return if (PLAYER_IIFE_TRAILER in playerCode) {
++            val match = IIFE_TRAILER_REGEX.find(playerCode)
++            return if (match != null) {
++                val trailer = match.value
++                val start = match.range.first
++                playerCode.substring(0, start) + "$exports $trailer" + playerCode.substring(match.range.last + 1)
++            } else if (PLAYER_IIFE_TRAILER in playerCode) {
+                 playerCode.replace(PLAYER_IIFE_TRAILER, "$exports $PLAYER_IIFE_TRAILER")
+             } else {
+                 "$playerCode\n$exports"
+diff --git a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+index 7694410..b26160c 100644
+--- a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
++++ b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+@@ -24,14 +24,15 @@ private val streamHealthCheckClient: OkHttpClient by lazy {
+         .build()
+ }
+ 
+-/**
+- * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
+- * only when the response code is in the 200..299 range. We only health-check those URLs because
+- * they are the ones the player will actually use; lower-quality extras can stay unverified.
+- */
+-internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
++enum class StreamHealthResult {
++    HEALTHY,
++    REJECTED_BY_CDN,
++    NETWORK_ERROR,
++}
++
++internal fun List<Pair<Int, String>>.checkStreamHealth(): StreamHealthResult {
+     val required = ITAG.AUDIO + ITAG.VIDEO
+-    val candidate = this.filter { it.first in required }.randomOrNull() ?: return false
++    val candidate = this.filter { it.first in required }.randomOrNull() ?: return StreamHealthResult.NETWORK_ERROR
+     return runCatching {
+         val request =
+             okhttp3.Request
+@@ -40,11 +41,23 @@ internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
+                 .url(candidate.second)
+                 .build()
+         streamHealthCheckClient.newCall(request).execute().use { response ->
+-            response.code in 200..299
++            when (response.code) {
++                in 200..299 -> StreamHealthResult.HEALTHY
++                401, 403 -> StreamHealthResult.REJECTED_BY_CDN
++                else -> StreamHealthResult.NETWORK_ERROR
++            }
+         }
+-    }.getOrDefault(false)
++    }.getOrDefault(StreamHealthResult.NETWORK_ERROR)
+ }
+ 
++/**
++ * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
++ * only when the response code is in the 200..299 range. We only health-check those URLs because
++ * they are the ones the player will actually use; lower-quality extras can stay unverified.
++ */
++internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean =
++    checkStreamHealth() == StreamHealthResult.HEALTHY
++
+ class BraveNewPipeDownloaderImpl(
+     proxy: Proxy?,
+ ) : Downloader() {
+diff --git a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt
+index 34ae04b..71555d3 100644
+--- a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt
++++ b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt
+@@ -30,44 +30,58 @@ actual class Extractor {
+         ServiceList.YouTube.tokens = cookie ?: ""
+     }
+ 
+-    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> {
+-        // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
+-        // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
+-        // failure that actually happens is a stale player table, where the signature is well-formed
+-        // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
+-        // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
+-        // stops that jump.
+-
+-        // Tier 1 — ciphers solved locally.
+-        // Re-registered every time: PipePipe drops the local decoder for good the first time it
+-        // throws, and the getter is package-private so its state cannot be read from here. Setting
+-        // it again turns "disabled forever" into "skipped for one track".
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
+-
+-        // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
+-        // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
+-        //
+-        // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
+-        // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
+-        // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
+-        // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
+-        // cannot simply be called from here.
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
+-
+-        // Tier 3 — a different extractor entirely.
+-        return braveStreams(videoId)
++    companion object {
++        private val extractionLock = Any()
+     }
+ 
+-    actual fun liveHlsUrl(videoId: String): String? {
+-        // The same three tiers as newPipePlayer, in the same order and for the same reasons.
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
+-        return braveLiveHlsUrl(videoId)
+-    }
++    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> =
++        synchronized(extractionLock) {
++            try {
++                // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
++                // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
++                // failure that actually happens is a stale player table, where the signature is well-formed
++                // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
++                // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
++                // stops that jump.
++
++                // Tier 1 — ciphers solved locally.
++                // Re-registered every time: PipePipe drops the local decoder for good the first time it
++                // throws, and the getter is package-private so its state cannot be read from here. Setting
++                // it again turns "disabled forever" into "skipped for one track".
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
++
++                // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
++                // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
++                //
++                // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
++                // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
++                // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
++                // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
++                // cannot simply be called from here.
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
++
++                // Tier 3 — a different extractor entirely.
++                braveStreams(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
++
++    actual fun liveHlsUrl(videoId: String): String? =
++        synchronized(extractionLock) {
++            try {
++                // The same three tiers as newPipePlayer, in the same order and for the same reasons.
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
++                braveLiveHlsUrl(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
+ 
+     private fun pipePipeLiveHlsUrl(
+         videoId: String,
+@@ -120,12 +134,14 @@ actual class Extractor {
+                 Logger.d(TAG, "PipePipe[$tier] missing required itags for $videoId (got=${pipeResult.map { it.first }})")
+                 return null
+             }
+-            if (!pipeResult.headCheckRandomStream()) {
+-                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed (non 2xx) for $videoId")
+-                // A rejected URL is the one symptom of a stale player table: the signature is
+-                // well-formed and still wrong, so nothing threw on the way here. Only the on-device
+-                // table can go stale, so only that tier is worth invalidating.
+-                if (tier == LOCAL_TIER) faradayDecoder.invalidate()
++            val health = pipeResult.checkStreamHealth()
++            if (health != StreamHealthResult.HEALTHY) {
++                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed ($health) for $videoId")
++                // Invalidate local cipher engine ONLY when the CDN explicitly rejected the signature (401/403).
++                // Transient network timeouts, DNS failures, or socket drops must NOT evict the local solver.
++                if (tier == LOCAL_TIER && health == StreamHealthResult.REJECTED_BY_CDN) {
++                    faradayDecoder.invalidate()
++                }
+                 return null
+             }
+             val label = if (tier == LOCAL_TIER) faradayDecoder.lastOutcomeLabel else REMOTE_TIER
 diff --git a/service/ktorExt/build.gradle.kts b/service/ktorExt/build.gradle.kts
 index 911ba33..f1ab4cf 100644
 --- a/service/ktorExt/build.gradle.kts
