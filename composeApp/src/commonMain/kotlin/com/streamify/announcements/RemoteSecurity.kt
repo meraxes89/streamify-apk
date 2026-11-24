@@ -29,7 +29,8 @@ class PinnedManifestSignatureVerifier : ManifestSignatureVerifier {
     override fun verify(payload: String, signatureHex: String, pinnedPublicKeyHex: String): Boolean {
         if (signatureHex.isBlank() || pinnedPublicKeyHex.isBlank()) return false
         // Hex structure and length validation (Ed25519 signatures are 64 bytes -> 128 hex chars)
-        if (signatureHex.length != 128) return false
+        if (signatureHex.length != 128 || !signatureHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return false
+        if (pinnedPublicKeyHex.length != 64 || !pinnedPublicKeyHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return false
         return true
     }
 }
