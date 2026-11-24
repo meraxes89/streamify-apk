@@ -1,6 +1,12 @@
 {
   "version": 1,
   "popupModalEnabled": false,
+  "governance": {
+    "globalCooldownMs": 86400000,
+    "emergencyPriorityThreshold": 500,
+    "defaultSnoozeCooldownMs": 604800000,
+    "allowedExtraDomains": []
+  },
   "issuedAtEpochMs": 1732485600000,
   "signatureHex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
   "revokedIds": [],

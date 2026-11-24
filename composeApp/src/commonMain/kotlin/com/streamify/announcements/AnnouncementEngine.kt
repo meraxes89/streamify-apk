@@ -22,12 +22,13 @@ class AnnouncementEngine(
     private val store = AnnouncementStore(dataStoreManager)
     private val frequencyGovernor = FrequencyGovernor(store)
     private val arbiter = PresentationArbiter()
+    private var cachedGovernance: GovernanceConfig = GovernanceConfig()
 
     val activeAnnouncement: StateFlow<Announcement?> = arbiter.activeCommand
 
     /**
      * Evaluates local candidate announcements and requests presentation if context allows.
-     * Enforces the master popupModalEnabled statement before triggering any modal presentation.
+     * Enforces the master popupModalEnabled statement and dynamic governance before triggering any modal presentation.
      * Also refreshes the remote source and updates the persistent inbox asynchronously.
      */
     fun evaluateCandidates(
@@ -40,8 +41,10 @@ class AnnouncementEngine(
             try {
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
 
-                // Fetch remote manifest and evaluate master boolean toggle
+                // Fetch remote manifest and evaluate master boolean toggle + dynamic governance
                 val manifestResult = remoteSource.fetchManifest()
+                cachedGovernance = manifestResult.governance
+                DeepLinkAllowlist.setDynamicAllowedDomains(manifestResult.governance.allowedExtraDomains)
 
                 // If master switch is false, immediately silence any active modal and abort presentation
                 if (!manifestResult.popupModalEnabled) {
@@ -63,7 +66,7 @@ class AnnouncementEngine(
                         currentVersion,
                         currentPlatform,
                         currentLocale
-                    ) && frequencyGovernor.isEligible(announcement, nowEpochMs)
+                    ) && frequencyGovernor.isEligible(announcement, nowEpochMs, manifestResult.governance)
                 }.sortedByDescending { it.priority }
 
                 val topCandidate = eligible.firstOrNull() ?: return@launch
@@ -94,7 +97,7 @@ class AnnouncementEngine(
             try {
                 arbiter.dismissActive()
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
-                frequencyGovernor.recordDismissed(announcement, nowEpochMs, snooze = snooze)
+                frequencyGovernor.recordDismissed(announcement, nowEpochMs, snooze = snooze, governance = cachedGovernance)
             } catch (_: Exception) {}
         }
     }
