@@ -12,6 +12,7 @@ Crucially, it guarantees rock-solid stability and locked 60 FPS on low-end hardw
 
 | Document | Description |
 |---|---|
+| [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | **Developer & Extension Playbook**: Practical guide for UI devs to offload rendering to the GPU and GPU devs to extend shaders, hardware, and SPI effects. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Full technical specification: Skia/HWUI pipeline, SkSL universal IR, 4-tier capability matrix, and zero-allocation FFT data-texture visualizer. |
 | [PHASED_PLAN.md](PHASED_PLAN.md) | Phase 1 to Phase 4 roadmap orchestrating two parallel engineers with explicit branch/PR workflows against `integration/sovereign-graphics`. |
 | [CI_TESTING_SPEC.md](CI_TESTING_SPEC.md) | Automated testing specification triggered when GPU files change: software-raster tests (Tier 4), headless Skia tests, API 27 emulation, and shader-failover gates. |
