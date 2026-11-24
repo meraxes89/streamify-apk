@@ -700,7 +700,7 @@ object StreamifySyncEngine : KoinComponent {
                         ?: op.key.substringAfter(":")
                     val isLiked = op.op != "D"
                     when (itemType) {
-                        "artist" -> artistRepository.updateArtistLiked(itemId, if (isLiked) 1 else 0)
+                        "artist" -> artistRepository.updateFollowedStatus(itemId, if (isLiked) 1 else 0)
                         "album" -> albumRepository.updateAlbumLiked(itemId, if (isLiked) 1 else 0)
                         "podcast" -> podcastRepository.favoritePodcast(itemId, isLiked).firstOrNull()
                     }
@@ -820,8 +820,9 @@ object StreamifySyncEngine : KoinComponent {
             // 2. Remote presence hand-off if local device is idle
             if (localMediaId.isBlank()) {
                 val latestPresence = SupabaseLibrarySync.fetchLatestPresence().getOrNull()
-                if (latestPresence != null && !latestPresence.trackId.isNullOrBlank() && latestPresence.deviceId != deviceId) {
-                    dataStoreManager.saveRecentSong(latestPresence.trackId, latestPresence.positionMs)
+                val trackId = latestPresence?.trackId
+                if (latestPresence != null && !trackId.isNullOrBlank() && latestPresence.deviceId != deviceId) {
+                    dataStoreManager.saveRecentSong(trackId, latestPresence.positionMs)
                 }
             }
         } catch (_: Exception) {
