@@ -1,6 +1,7 @@
 package com.streamify.sync
 
 import com.maxrave.common.Config
+import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.PlaylistEntity
@@ -25,6 +26,7 @@ import com.streamify.supabase.SupabaseLibrarySync
 import com.streamify.supabase.SyncPullOp
 import com.streamify.supabase.SyncPullResult
 import com.streamify.supabase.SyncPushResult
+import com.streamify.supabase.resolvePlatformDeviceInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -82,6 +84,8 @@ object StreamifySyncEngine : KoinComponent {
 
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private const val TELEMETRY_INTERVAL_MS = 3_600_000L // 1 hour keep-alive floor
 
     private val SYNCABLE_SETTINGS_KEYS = listOf(
         // Appearance & Themes
@@ -153,6 +157,19 @@ object StreamifySyncEngine : KoinComponent {
     fun triggerSync(userId: String? = null) {
         scope.launch {
             syncAll(userId)
+        }
+    }
+
+    /**
+     * Triggers asynchronous device and version telemetry sync.
+     */
+    fun triggerDeviceTelemetry(userId: String? = null) {
+        scope.launch {
+            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
+            if (targetUserId.isNotBlank() && targetUserId != "guest") {
+                val deviceId = getOrCreateDeviceId()
+                syncDeviceTelemetryInternal(targetUserId, deviceId)
+            }
         }
     }
 
@@ -280,6 +297,9 @@ object StreamifySyncEngine : KoinComponent {
             // Sync presence via heartbeat_presence with HLC guard
             _syncState.value = SyncStatus.Syncing("Syncing playback presence...")
             syncPresenceInternal(targetUserId, deviceId, hlc)
+
+            // V4.1 Fleet Telemetry: Sync device and version telemetry
+            syncDeviceTelemetryInternal(targetUserId, deviceId)
 
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
@@ -1781,5 +1801,55 @@ object StreamifySyncEngine : KoinComponent {
 
     suspend fun getAllEpisodeStates(): Map<String, LocalEpisodeState> {
         return getLocalEpisodeStates()
+    }
+
+    /**
+     * V4.1 Fleet Telemetry: Periodically reports device hardware, OS, and build telemetry.
+     * Fires immediately on cold start, on version upgrade or gitSha change,
+     * or when the 1-hour keep-alive floor has elapsed.
+     */
+    private suspend fun syncDeviceTelemetryInternal(targetUserId: String, deviceId: String) {
+        try {
+            val currentVersionCode = BuildKonfig.versionCode
+            val currentGitSha = BuildKonfig.gitSha
+            val nowMs = System.currentTimeMillis()
+
+            val lastVersionCode = dataStoreManager.getString("streamify_telemetry_reported_version_code")
+                .firstOrNull()?.toIntOrNull() ?: 0
+            val lastGitSha = dataStoreManager.getString("streamify_telemetry_reported_git_sha")
+                .firstOrNull() ?: ""
+            val lastReportedMs = dataStoreManager.getString("streamify_telemetry_reported_timestamp_ms")
+                .firstOrNull()?.toLongOrNull() ?: 0L
+
+            val isUpgradeOrRespin = (currentVersionCode != lastVersionCode && currentVersionCode > 0) ||
+                (currentGitSha.isNotBlank() && currentGitSha != lastGitSha)
+            val isKeepAliveDue = (nowMs - lastReportedMs) > TELEMETRY_INTERVAL_MS
+
+            if (!isUpgradeOrRespin && !isKeepAliveDue && lastReportedMs > 0L) {
+                // Throttled: zero redundant network calls
+                return
+            }
+
+            val platformInfo = resolvePlatformDeviceInfo()
+            val regResult = SupabaseLibrarySync.recordDeviceSession(
+                deviceId = deviceId,
+                platform = platformInfo.platform,
+                appVersion = BuildKonfig.versionName,
+                versionCode = currentVersionCode,
+                gitSha = currentGitSha,
+                buildFlavor = platformInfo.buildFlavor,
+                deviceModel = platformInfo.deviceModel,
+                osVersion = platformInfo.osVersion,
+                architecture = platformInfo.architecture
+            ).getOrNull()
+
+            if (regResult != null && regResult.status == "ok") {
+                dataStoreManager.putString("streamify_telemetry_reported_version_code", currentVersionCode.toString())
+                dataStoreManager.putString("streamify_telemetry_reported_git_sha", currentGitSha)
+                dataStoreManager.putString("streamify_telemetry_reported_timestamp_ms", nowMs.toString())
+            }
+        } catch (_: Exception) {
+            // Telemetry reporting must never crash syncAll pipeline
+        }
     }
 }
