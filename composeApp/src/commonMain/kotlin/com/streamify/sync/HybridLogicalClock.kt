@@ -21,6 +21,11 @@ object HybridLogicalClock {
         return (lastPhysicalMs shl 16) or (logicalCounter.toLong() and 0xFFFFL)
     }
 
+    internal fun resetForTesting(lastMs: Long = 0L, counter: Int = 0) {
+        lastPhysicalMs = lastMs
+        logicalCounter = counter
+    }
+
     /**
      * Deterministic, zero-dependency UUIDv4 generator for Kotlin Multiplatform.
      */

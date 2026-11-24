@@ -1,10 +1,16 @@
 package com.streamify.sync
 
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class HybridLogicalClockTest {
+
+    @BeforeTest
+    fun setUp() {
+        HybridLogicalClock.resetForTesting()
+    }
 
     @Test
     fun generatesMonotonicallyIncreasingTimestampsForSamePhysicalTime() {
