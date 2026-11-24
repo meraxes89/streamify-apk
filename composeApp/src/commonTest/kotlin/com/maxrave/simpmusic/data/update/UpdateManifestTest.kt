@@ -153,4 +153,82 @@ class UpdateManifestTest {
         assertTrue(manifest.artifacts["android-vivo"]?.url?.contains("Streamify-vivo") == true)
         assertTrue(manifest.artifacts["android-vivo-armeabi-v7a"]?.url?.contains("armeabi-v7a") == true)
     }
+
+    @Test
+    fun manifestDeserializesGitShaAndRecalledShas() {
+        val payload = """
+            {
+              "version": "v1.0.3-beta",
+              "versionCode": 67,
+              "gitSha": "41c018b2",
+              "recalledShas": ["deadbeef", "badc0de0"]
+            }
+        """.trimIndent()
+
+        val manifest = json.decodeFromString<UpdateManifest>(payload)
+
+        assertEquals("41c018b2", manifest.gitSha)
+        assertEquals(2, manifest.recalledShas.size)
+        assertTrue(manifest.recalledShas.contains("deadbeef"))
+        assertTrue(manifest.recalledShas.contains("badc0de0"))
+    }
+
+    @Test
+    fun updateResolverDetectsTieBreakerShaWhenVersionCodeMatches() {
+        val resolver = UpdateResolver()
+        val manifest = UpdateManifest(
+            version = "v1.0.3-beta",
+            versionCode = 66,
+            gitSha = "new_sha_respin",
+        )
+
+        // Same versionCode (66 == 66), but installedSha is old_sha_recalled -> should flag update
+        val result = resolver.compareAndReturn(
+            manifest = manifest,
+            installedCode = 66,
+            installedSha = "old_sha_recalled",
+        )
+
+        assertTrue(result is UpdateResult.Available)
+        assertEquals("v1.0.3-beta", (result as UpdateResult.Available).manifest.version)
+    }
+
+    @Test
+    fun updateResolverDetectsRecalledBuild() {
+        val resolver = UpdateResolver()
+        val manifest = UpdateManifest(
+            version = "v1.0.3-beta",
+            versionCode = 66,
+            gitSha = "fixed_sha",
+            recalledShas = listOf("poisoned_sha_123"),
+        )
+
+        // Installed sha is in recalled list -> should flag update even if codes match
+        val result = resolver.compareAndReturn(
+            manifest = manifest,
+            installedCode = 66,
+            installedSha = "poisoned_sha_123",
+        )
+
+        assertTrue(result is UpdateResult.Available)
+    }
+
+    @Test
+    fun updateResolverConsidersSameShaUpToDate() {
+        val resolver = UpdateResolver()
+        val manifest = UpdateManifest(
+            version = "v1.0.3-beta",
+            versionCode = 66,
+            gitSha = "matching_sha",
+        )
+
+        // Same code, same sha -> UpToDate
+        val result = resolver.compareAndReturn(
+            manifest = manifest,
+            installedCode = 66,
+            installedSha = "matching_sha",
+        )
+
+        assertTrue(result is UpdateResult.UpToDate)
+    }
 }

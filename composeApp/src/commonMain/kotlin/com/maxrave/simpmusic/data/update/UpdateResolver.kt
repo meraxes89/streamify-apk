@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.data.update
 
+import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.simpmusic.utils.VersionManager
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -208,11 +209,31 @@ class UpdateResolver(
         }
     }
 
-    private fun compareAndReturn(manifest: UpdateManifest, installedCode: Int): UpdateResult {
-        val isNewer = if (manifest.versionCode > 0 && installedCode > 0) {
-            manifest.versionCode > installedCode
-        } else {
-            VersionManager.isBehind(manifest.version)
+    internal fun compareAndReturn(
+        manifest: UpdateManifest,
+        installedCode: Int,
+        installedSha: String = try {
+            BuildKonfig.gitSha
+        } catch (_: Exception) {
+            ""
+        },
+    ): UpdateResult {
+        val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.contains(installedSha)
+
+        val isNewer = when {
+            isRecalled -> true
+            manifest.versionCode > 0 && installedCode > 0 -> {
+                if (manifest.versionCode > installedCode) {
+                    true
+                } else if (manifest.versionCode == installedCode) {
+                    // Tie-breaker: If version codes match but gitSha differs,
+                    // this is an authoritative re-spun build for the same release cycle.
+                    manifest.gitSha.isNotBlank() && installedSha.isNotBlank() && manifest.gitSha != installedSha
+                } else {
+                    false
+                }
+            }
+            else -> VersionManager.isBehind(manifest.version)
         }
         return if (isNewer) UpdateResult.Available(manifest) else UpdateResult.UpToDate
     }
