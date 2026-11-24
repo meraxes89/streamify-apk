@@ -1,9 +1,6 @@
 package com.streamify.announcements
 
-import com.maxrave.domain.manager.DataStoreManager
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -16,51 +13,6 @@ class LaunchPopupControlTest {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-    }
-
-    private class FakeDataStore : DataStoreManager {
-        private val map = mutableMapOf<String, String>()
-
-        override fun getString(key: String): Flow<String?> = flowOf(map[key])
-        override suspend fun putString(key: String, value: String) {
-            map[key] = value
-        }
-
-        override val appVersion: Flow<String> = flowOf("")
-        override suspend fun setAppVersion(version: String) {}
-        override val openAppTime: Flow<Int> = flowOf(0)
-        override suspend fun openApp() {}
-        override suspend fun resetOpenAppTime() {}
-        override suspend fun doneOpenAppTime() {}
-        override val location: Flow<String> = flowOf("")
-        override suspend fun setLocation(location: String) {}
-        override val quality: Flow<String> = flowOf("")
-        override suspend fun setQuality(quality: String) {}
-        override val downloadQuality: Flow<String> = flowOf("")
-        override suspend fun setDownloadQuality(quality: String) {}
-        override val videoDownloadQuality: Flow<String> = flowOf("")
-        override suspend fun setVideoDownloadQuality(quality: String) {}
-        override val language: Flow<String> = flowOf("en")
-        override val moodAndGenresCache: Flow<String?> = flowOf(null)
-        override suspend fun setMoodAndGenresCache(json: String) {}
-        override val moodArtworkCache: Flow<String?> = flowOf(null)
-        override suspend fun setMoodArtworkCache(json: String) {}
-        override val tasteProfile: Flow<String?> = flowOf(null)
-        override suspend fun setTasteProfile(json: String?) {}
-        override val loggedIn: Flow<String> = flowOf("false")
-        override val cookie: Flow<String> = flowOf("")
-        override val pageId: Flow<String> = flowOf("")
-        override val authUser: Flow<Int> = flowOf(0)
-        override suspend fun setCookie(cookie: String, pageId: String?, authUser: Int) {}
-        override suspend fun setLoggedIn(logged: Boolean) {}
-        override val normalizeVolume: Flow<String> = flowOf("false")
-        override suspend fun setNormalizeVolume(normalize: Boolean) {}
-        override val skipSilent: Flow<String> = flowOf("false")
-        override suspend fun setSkipSilent(skip: Boolean) {}
-        override val saveStateOfPlayback: Flow<String> = flowOf("false")
-        override suspend fun setSaveStateOfPlayback(save: Boolean) {}
-        override val shuffleKey: Flow<String> = flowOf("")
-        override val repeatKey: Flow<String> = flowOf("")
     }
 
     @Test
@@ -203,9 +155,9 @@ class LaunchPopupControlTest {
     }
 
     @Test
-    fun testFrequencyGovernorSnoozeWakeUpAndClockRollback() = runTest {
-        val store = AnnouncementStore(FakeDataStore())
-        val governor = FrequencyGovernor(store)
+    fun testFrequencyGovernorSnoozeWakeUpAndClockRollback() = runBlocking {
+        val store = AnnouncementStore()
+        val governor = FrequencyGovernor(store, globalCooldownMs = 1000L)
 
         val announcement = Announcement(
             id = "test_snooze_01",
@@ -227,8 +179,8 @@ class LaunchPopupControlTest {
     }
 
     @Test
-    fun testFrequencyGovernorPriorityBypass() = runTest {
-        val store = AnnouncementStore(FakeDataStore())
+    fun testFrequencyGovernorPriorityBypass() = runBlocking {
+        val store = AnnouncementStore()
         val governor = FrequencyGovernor(store)
 
         val t0 = 50000L
