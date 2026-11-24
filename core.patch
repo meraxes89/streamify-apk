@@ -329,6 +329,64 @@ index 54db97f..cafc1c3 100644
      block: suspend () -> Unit,
  ) = withContext(dispatcher) {
      block.invoke()
+diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
+index bbffab7..206e8d2 100644
+--- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
++++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
+@@ -16,6 +16,7 @@ import com.maxrave.domain.mediaservice.automix.TransitionPlanner
+ import com.maxrave.domain.data.player.PlayerConstants
+ import com.maxrave.domain.data.player.PlayerError
+ import com.maxrave.domain.extension.isVideo
++import com.maxrave.domain.extension.now
+ import com.maxrave.domain.manager.DataStoreManager
+ import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
+ import com.maxrave.domain.mediaservice.player.MediaPlayerListener
+@@ -1787,13 +1788,15 @@ class MpvPlayerAdapter(
+                                 retryCount++
+                                 Logger.w(TAG, "Retrying playback (attempt $retryCount/$maxRetryCount) for $currentVideoId")
+                                 try {
++                                    // Snapshot current playback position so retry resumes where it stalled instead of restarting
++                                    val resumePositionMs = cachedPosition.coerceAtLeast(0L)
+                                     // Invalidate cached format so fresh URL is fetched
+                                     streamRepository.invalidateFormat(currentVideoId)
+                                     streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$currentVideoId")
+                                     // Evict stale precache
+                                     precachedPlayers.remove(currentVideoId)?.player?.release()
+-                                    // Reload the track
+-                                    loadAndPlayTrackInternal(localCurrentMediaItemIndex, 0L, shouldPlay = true)
++                                    // Reload the track from the failure point
++                                    loadAndPlayTrackInternal(localCurrentMediaItemIndex, resumePositionMs, shouldPlay = true)
+                                     return@launch
+                                 } catch (e: Exception) {
+                                     if (e is CancellationException) throw e
+@@ -3360,8 +3363,11 @@ class MpvPlayerAdapter(
+         streamRepository.getNewFormat(videoId).lastOrNull()?.let { format ->
+             val audioUrl = format.audioUrl
+             val videoUrl = format.videoUrl
++            val isExpired = format.expiredTime <= now()
+ 
+-            if (shouldFindVideo && !videoUrl.isNullOrEmpty()) {
++            if (isExpired) {
++                Logger.d(TAG, "Cached format for $videoId expired at ${format.expiredTime}, requesting fresh stream")
++            } else if (shouldFindVideo && !videoUrl.isNullOrEmpty()) {
+                 val is403Video = streamRepository.is403Url(videoUrl).firstOrNull() != false
+                 if (!is403Video) {
+                     // Return video URL with audio as a second EDL stream for merging
+diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
+index e88affc..c143fdf 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
+@@ -657,8 +657,8 @@ internal class CrossfadeExoPlayerAdapter(
+                         .setBufferDurationsMs(
+                             DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
+                             DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
+-                            0,
+-                            0,
++                            1000,
++                            2000,
+                         ).build(),
+                 ).setWakeMode(C.WAKE_MODE_NETWORK)
+                 .setHandleAudioBecomingNoisy(true)
 diff --git a/service/discord/build.gradle.kts b/service/discord/build.gradle.kts
 index 4a92fcc..7321237 100644
 --- a/service/discord/build.gradle.kts
@@ -353,7 +411,7 @@ index 4a92fcc..7321237 100644
          commonMain {
              dependencies {
 diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
-index 07965f8..63e04b1 100644
+index 07965f8..71852c7 100644
 --- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
 +++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
 @@ -172,6 +172,7 @@ class Ytmusic {
@@ -388,6 +446,22 @@ index 07965f8..63e04b1 100644
 -            Logger.d(TAG, "SAPI SID Hash: SAPISIDHASH ${currentTime}_$sapisidHash")
              "SAPISIDHASH ${currentTime}_$sapisidHash"
          }
+ 
+@@ -1357,10 +1356,11 @@ class Ytmusic {
+ 
+     suspend fun is403Url(url: String): Boolean {
+         return try {
+-            return httpClient.head(url).status.value in 400..499
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-            true
++            httpClient.head(url).status.value in 400..499
++        } catch (_: Exception) {
++            // Network failure or timeout does not indicate an HTTP 403/410 expiration.
++            // Returning false prevents transient connectivity drops from wiping valid cached stream URLs.
++            false
+         }
+     }
  
 diff --git a/service/ktorExt/build.gradle.kts b/service/ktorExt/build.gradle.kts
 index 911ba33..f1ab4cf 100644
