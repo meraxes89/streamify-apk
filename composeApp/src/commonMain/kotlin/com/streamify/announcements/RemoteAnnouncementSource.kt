@@ -14,7 +14,8 @@ import kotlinx.serialization.json.Json
 @Serializable
 data class RemoteManifestResult(
     val popupModalEnabled: Boolean,
-    val announcements: List<Announcement>
+    val announcements: List<Announcement>,
+    val governance: GovernanceConfig = GovernanceConfig()
 )
 
 /**
@@ -99,7 +100,7 @@ class RemoteAnnouncementSource(
             val revokedSet = manifest.revokedIds.toSet()
             val safeAnnouncements = manifest.announcements.filterNot { it.id in revokedSet }.filter { announcement ->
                 when (val act = announcement.action) {
-                    is AnnouncementAction.DeepLink -> DeepLinkAllowlist.isAllowed(act.url)
+                    is AnnouncementAction.DeepLink -> DeepLinkAllowlist.isAllowed(act.url, manifest.governance.allowedExtraDomains)
                     else -> true
                 }
             }
@@ -113,7 +114,8 @@ class RemoteAnnouncementSource(
 
             RemoteManifestResult(
                 popupModalEnabled = manifest.popupModalEnabled,
-                announcements = safeAnnouncements
+                announcements = safeAnnouncements,
+                governance = manifest.governance
             )
         } catch (_: Exception) {
             // Fail-safe to cache or disabled state on any failure
@@ -133,12 +135,12 @@ class RemoteAnnouncementSource(
                 val manifest = json.decodeFromString<SignedManifest>(raw)
                 val revokedSet = manifest.revokedIds.toSet()
                 val safe = manifest.announcements.filterNot { it.id in revokedSet }
-                RemoteManifestResult(manifest.popupModalEnabled, safe)
+                RemoteManifestResult(manifest.popupModalEnabled, safe, manifest.governance)
             } else {
-                RemoteManifestResult(popupModalEnabled = cachedEnabled, announcements = emptyList())
+                RemoteManifestResult(popupModalEnabled = cachedEnabled, announcements = emptyList(), governance = GovernanceConfig())
             }
         } catch (_: Exception) {
-            RemoteManifestResult(popupModalEnabled = false, announcements = emptyList())
+            RemoteManifestResult(popupModalEnabled = false, announcements = emptyList(), governance = GovernanceConfig())
         }
     }
 

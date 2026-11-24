@@ -41,10 +41,24 @@ The top-level boolean property `popupModalEnabled` controls whether *any* announ
 |---|---|---|
 | `version` | `Integer` | Schema revision number (currently `1`). |
 | `popupModalEnabled` | `Boolean` | Master toggle governing launch popup presentation. |
+| `governance` | `Object` | Frequency budget, emergency thresholds, and allowlist configuration. |
 | `issuedAtEpochMs` | `Long` | UTC Unix epoch millisecond timestamp when the manifest was generated. |
 | `signatureHex` | `String` | 128-character hexadecimal Ed25519 cryptographic signature. |
 | `revokedIds` | `Array<String>` | Emergency kill switch list. Any announcement ID in this array is immediately silenced and permanently purged from client caches. |
 | `announcements` | `Array<Announcement>` | Array of announcement objects evaluated in order of priority. |
+
+---
+
+### Governance Configuration Object (`governance`)
+
+Governs global pacing, emergency bypass criteria, and external domain trust:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `globalCooldownMs` | `Long` | `86400000` (24h) | Minimum quiet period between any modal dialogs across the app. Coerced to safe range [0, 365 days]. |
+| `emergencyPriorityThreshold` | `Integer` | `500` | Minimum priority score required to bypass `globalCooldownMs` and display immediately. |
+| `defaultSnoozeCooldownMs` | `Long` | `604800000` (7d) | Default snooze cooldown when tapping "Later" if the announcement omits `frequency.cooldownMs`. |
+| `allowedExtraDomains` | `Array<String>` | `[]` | List of cryptographically authenticated hostnames or prefixes dynamically added to `DeepLinkAllowlist`. |
 
 ---
 
