@@ -107,6 +107,8 @@ enum class ThermalStatus {
 @OptIn(ExperimentalAtomicApi::class)
 class TierGovernor(
     val probe: CapabilityProbe,
+    val fastFrameBudgetMs: Double = FAST_FRAME_BUDGET_MS,
+    val p95FrameBudgetMs: Double = P95_FRAME_BUDGET_MS,
 ) {
 
     /**
@@ -268,7 +270,7 @@ class TierGovernor(
     private fun p95ExceedsBudget(): Boolean {
         var overBudget = 0
         for (i in 0 until P95_WINDOW_FRAMES) {
-            if (frameWindow[i] > P95_FRAME_BUDGET_MS) {
+            if (frameWindow[i] > p95FrameBudgetMs) {
                 overBudget++
                 if (overBudget > P95_TOLERATED_SPIKES) return true
             }
@@ -281,7 +283,7 @@ class TierGovernor(
         frameWindowHead = (frameWindowHead + 1) % P95_WINDOW_FRAMES
         if (frameWindowCount < P95_WINDOW_FRAMES) frameWindowCount++
         consecutiveFastFrames =
-            if (frameTimeMillis < FAST_FRAME_BUDGET_MS) {
+            if (frameTimeMillis < fastFrameBudgetMs) {
                 // Cap at the promotion threshold: once reached, ">= 120"
                 // holds forever without the counter ever overflowing Int.
                 minOf(consecutiveFastFrames + 1, PROMOTION_FRAME_COUNT)
@@ -346,5 +348,26 @@ class TierGovernor(
 
         /** Frames after any transition during which no promotion is attempted. */
         const val HYSTERESIS_FRAME_COUNT = 300
+
+        /**
+         * Factory producing a [TierGovernor] calibrated to a specific display refresh rate.
+         *
+         * @param probe Device capability probe.
+         * @param refreshRateHz Display refresh rate in Hz (e.g. 60.0 for standard, 120.0 for ProMotion).
+         */
+        fun forRefreshRate(
+            probe: CapabilityProbe,
+            refreshRateHz: Double = 60.0,
+        ): TierGovernor {
+            val safeHz = if (refreshRateHz <= 0.0) 60.0 else refreshRateHz
+            val frameTimeMs = 1000.0 / safeHz
+            val fastBudget = minOf(FAST_FRAME_BUDGET_MS, frameTimeMs * 0.5)
+            val p95Budget = frameTimeMs
+            return TierGovernor(
+                probe = probe,
+                fastFrameBudgetMs = fastBudget,
+                p95FrameBudgetMs = p95Budget,
+            )
+        }
     }
 }
