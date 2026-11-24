@@ -767,7 +767,7 @@ object SupabaseLibrarySync {
     /**
      * V3 Presence: Fetch most recent cross-device presence state.
      */
-    suspend fun fetchLatestPresence(): Result<CloudPresence?> = withContext(ioDispatcher) {
+    suspend fun fetchLatestPresence(userId: String? = null): Result<CloudPresence?> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/get_latest_presence") {
                 header("apikey", SupabaseConfig.ANON_KEY)

@@ -2,6 +2,7 @@ package com.streamify.sync
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.Clock
 
 /**
  * 64-bit Hybrid Logical Clock (HLC) as specified in RFC 2026-11-24:
@@ -13,7 +14,7 @@ object HybridLogicalClock {
     private var logicalCounter: Int = 0
     private val mutex = Mutex()
 
-    suspend fun now(physicalMillis: Long = System.currentTimeMillis()): Long = mutex.withLock {
+    suspend fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long = mutex.withLock {
         if (physicalMillis > lastPhysicalMs) {
             lastPhysicalMs = physicalMillis
             logicalCounter = 0
