@@ -13,7 +13,6 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -636,6 +635,7 @@ object SupabaseLibrarySync {
         trackId: String?,
         positionMs: Long,
         queueIds: List<String> = emptyList(),
+        updatedAtIso: String? = null,
         userId: String? = null
     ): Result<Boolean> = withContext(ioDispatcher) {
         try {
@@ -644,7 +644,9 @@ object SupabaseLibrarySync {
                 put("track_id", trackId)
                 put("position_ms", positionMs)
                 put("queue_ids", buildJsonArray { queueIds.forEach { add(it) } })
-                put("updated_at", Clock.System.now().toString())
+                if (!updatedAtIso.isNullOrBlank()) {
+                    put("updated_at", updatedAtIso)
+                }
             }
             val payload = buildJsonObject {
                 put("active_session", sessionObj)
