@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "popupModalEnabled": false,
+  "issuedAtEpochMs": 1732485600000,
+  "signatureHex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "revokedIds": [],
+  "announcements": [
+    {
+      "id": "streamify_launch_announcement",
+      "schemaVersion": 1,
+      "priority": 100,
+      "presentation": "MODAL",
+      "content": {
+        "en": {
+          "title": "Welcome to Streamify",
+          "body": "Streamify delivers sovereign, high-fidelity music streaming.\n\n- **Lossless Audio**: Bit-perfect engine output.\n- **Synchronized Lyrics**: Ultra-precise real-time line scrolling.\n- **Persistent Inbox**: Review announcements anytime.",
+          "bannerUrl": null,
+          "actionLabel": "Explore Releases"
+        }
+      },
+      "action": {
+        "type": "com.streamify.announcements.AnnouncementAction.DeepLink",
+        "url": "https://github.com/meraxes89/streamify-apk"
+      },
+      "targeting": {
+        "minVersion": null,
+        "maxVersion": null,
+        "platforms": [],
+        "locales": []
+      },
+      "frequency": {
+        "maxImpressions": 1,
+        "cooldownMs": 604800000
+      },
+      "dismissPolicy": "LATER_SNOOZE",
+      "startAtEpochMs": 0,
+      "endAtEpochMs": 9223372036854775807
+    }
+  ]
+}
