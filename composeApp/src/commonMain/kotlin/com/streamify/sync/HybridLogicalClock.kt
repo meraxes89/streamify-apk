@@ -1,7 +1,5 @@
 package com.streamify.sync
 
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
 /**
@@ -12,16 +10,15 @@ import kotlin.time.Clock
 object HybridLogicalClock {
     private var lastPhysicalMs: Long = 0L
     private var logicalCounter: Int = 0
-    private val mutex = Mutex()
 
-    suspend fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long = mutex.withLock {
+    fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long {
         if (physicalMillis > lastPhysicalMs) {
             lastPhysicalMs = physicalMillis
             logicalCounter = 0
         } else {
             logicalCounter = (logicalCounter + 1) and 0xFFFF
         }
-        (lastPhysicalMs shl 16) or (logicalCounter.toLong() and 0xFFFFL)
+        return (lastPhysicalMs shl 16) or (logicalCounter.toLong() and 0xFFFFL)
     }
 
     /**

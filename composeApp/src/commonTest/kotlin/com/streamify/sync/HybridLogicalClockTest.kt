@@ -1,6 +1,5 @@
 package com.streamify.sync
 
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -8,7 +7,7 @@ import kotlin.test.assertTrue
 class HybridLogicalClockTest {
 
     @Test
-    fun generatesMonotonicallyIncreasingTimestampsForSamePhysicalTime() = runTest {
+    fun generatesMonotonicallyIncreasingTimestampsForSamePhysicalTime() {
         val physical = 1700000000000L
         val t1 = HybridLogicalClock.now(physical)
         val t2 = HybridLogicalClock.now(physical)
@@ -28,7 +27,7 @@ class HybridLogicalClockTest {
     }
 
     @Test
-    fun resetsLogicalCounterWhenPhysicalTimeAdvances() = runTest {
+    fun resetsLogicalCounterWhenPhysicalTimeAdvances() {
         val p1 = 1700000000000L
         val p2 = 1700000001000L
 
