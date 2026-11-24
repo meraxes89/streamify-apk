@@ -11,7 +11,7 @@ import kotlin.time.Clock
 /**
  * Sovereign In-App Message Engine Facade (comm19 Phase 1 & 2).
  * Integrates Local Defaults, Signed Remote Source, Targeting, Frequency Governance,
- * and Persistent Inbox.
+ * Master Launch Popup Switch, and Persistent Inbox.
  */
 class AnnouncementEngine(
     private val dataStoreManager: DataStoreManager,
@@ -27,6 +27,7 @@ class AnnouncementEngine(
 
     /**
      * Evaluates local candidate announcements and requests presentation if context allows.
+     * Enforces the master popupModalEnabled statement before triggering any modal presentation.
      * Also refreshes the remote source and updates the persistent inbox asynchronously.
      */
     fun evaluateCandidates(
@@ -39,9 +40,19 @@ class AnnouncementEngine(
             try {
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
 
-                // Fetch remote announcements (failsafe, returns cache if offline/error)
-                val remoteAnnouncements = remoteSource.fetch()
-                val combined = (LocalAnnouncementDefaults.ALL + remoteAnnouncements).distinctBy { it.id }
+                // Fetch remote manifest and evaluate master boolean toggle
+                val manifestResult = remoteSource.fetchManifest()
+
+                // If master switch is false, immediately silence any active modal and abort presentation
+                if (!manifestResult.popupModalEnabled) {
+                    arbiter.dismissActive()
+                    if (manifestResult.announcements.isNotEmpty()) {
+                        inboxRepository.saveInboxAnnouncements(manifestResult.announcements)
+                    }
+                    return@launch
+                }
+
+                val combined = (LocalAnnouncementDefaults.ALL + manifestResult.announcements).distinctBy { it.id }
 
                 // Sync persistent inbox
                 inboxRepository.saveInboxAnnouncements(combined)

@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SignedManifest(
     val version: Int,
+    val popupModalEnabled: Boolean = false,
     val issuedAtEpochMs: Long,
     val announcements: List<Announcement>,
     val revokedIds: List<String> = emptyList(),
