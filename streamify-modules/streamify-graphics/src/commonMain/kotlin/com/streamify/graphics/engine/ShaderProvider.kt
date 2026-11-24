@@ -18,8 +18,8 @@ import com.streamify.graphics.governor.RenderTier
  *    API 27 process (Vivo 1712 / Android 8.1) never links
  *    `android.graphics.RenderEffect` / `RuntimeShader` — the hard invariant
  *    of docs/gpu/CI_TESTING_SPEC.md section 2 (Job 2).
- *  * `skikoCommonMain` — `ShaderProvider.skiko.kt` (desktop JVM + wasmJs
- *    shared source set): Skia `RuntimeEffect` / `RuntimeShaderBuilder`
+ *  * `skikoCommonMain` — `ShaderProvider.skiko.kt` (desktop JVM, wasmJs,
+ *    and iOS shared source set): Skia `RuntimeEffect` / `RuntimeShaderBuilder`
  *    over the canonical `LiquidGlassCore` source with all six uniforms
  *    (`backdrop` child, `resolution`, `lensRadius`, `refractionIndex`,
  *    `chromaticSpread`, `tintColor`) bound through the Skia dialect's

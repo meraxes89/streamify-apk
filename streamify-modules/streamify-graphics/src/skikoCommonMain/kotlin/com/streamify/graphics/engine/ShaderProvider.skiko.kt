@@ -23,7 +23,7 @@ import org.jetbrains.skia.RuntimeShaderBuilder
 import org.jetbrains.skia.Shader
 
 /**
- * Skiko actual of the platform shader adapter (desktop JVM + wasmJs shared
+ * Skiko actual of the platform shader adapter (desktop JVM + wasmJs + iOS shared
  * skikoCommonMain source set) — Track A deliverable 2 of
  * docs/gpu/PHASED_PLAN.md Phase 2, per ARCHITECTURE.md section 1's
  * [Adapters] skikoCommonMain -> Skia RuntimeShaderBuilder (SkSL) line.

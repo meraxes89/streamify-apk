@@ -41,6 +41,11 @@ kotlin {
         browser()
     }
 
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    )
+
     sourceSets {
         commonMain {
             dependencies {
@@ -73,6 +78,9 @@ kotlin {
             dependsOn(skikoCommonMain)
         }
         val wasmJsMain by getting {
+            dependsOn(skikoCommonMain)
+        }
+        val iosMain by getting {
             dependsOn(skikoCommonMain)
         }
 
