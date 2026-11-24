@@ -11,11 +11,13 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
@@ -35,6 +37,8 @@ object SupabaseClient {
 
     private val _refreshToken = MutableStateFlow<String?>(null)
     val refreshToken: StateFlow<String?> = _refreshToken.asStateFlow()
+
+    val refreshCoordinator = AuthRefreshMutex()
 
     val httpClient: HttpClient by lazy {
         HttpClient {
@@ -200,30 +204,98 @@ object SupabaseClient {
 
     /**
      * Refreshes the active user session using the stored refresh token.
+     * Protected by [AuthRefreshMutex] to prevent Supabase Refresh Token Rotation (RTR) breaches.
      */
     suspend fun refreshSession(explicitRefreshToken: String? = null): Result<String> = withContext(ioDispatcher) {
         val tokenToUse = explicitRefreshToken ?: _refreshToken.value
         if (tokenToUse.isNullOrBlank()) {
             return@withContext Result.failure(Exception("No refresh token available"))
         }
+        val callerScope = CoroutineScope(coroutineContext)
+        val sessionResult = refreshCoordinator.executeSingleFlight(callerScope) {
+            try {
+                val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token"
+                val response = httpClient.post(url) {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"refresh_token":"$tokenToUse"}""")
+                }
+                val bodyText = response.bodyAsText()
+                if (response.status.isSuccess()) {
+                    val jsonParser = Json { ignoreUnknownKeys = true }
+                    val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
+                    val newAccessToken = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
+                    val newRefreshToken = rootObj["refresh_token"]?.jsonPrimitive?.content ?: tokenToUse
+                    val expiresIn = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
+                    val expiresAt = Clock.System.now().toEpochMilliseconds() + (expiresIn * 1000L)
+
+                    _accessToken.value = newAccessToken
+                    _refreshToken.value = newRefreshToken
+                    Result.success(TokenSession(newAccessToken, newRefreshToken, expiresAt))
+                } else {
+                    Result.failure(Exception("Token refresh failed: $bodyText"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+        sessionResult.map { it.accessToken }
+    }
+
+    /**
+     * Exchanges an OAuth PKCE authorization code for an authenticated user session
+     * via POST /auth/v1/token?grant_type=authorization_code.
+     */
+    suspend fun exchangeCodeForSession(
+        code: String,
+        codeVerifier: String,
+        redirectUri: String
+    ): Result<UserProfile> = withContext(ioDispatcher) {
         try {
-            val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token"
+            val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=authorization_code"
             val response = httpClient.post(url) {
                 header("apikey", SupabaseConfig.ANON_KEY)
                 contentType(ContentType.Application.Json)
-                setBody("""{"refresh_token":"$tokenToUse"}""")
+                setBody("""{"auth_code":"$code","code_verifier":"$codeVerifier","redirect_uri":"$redirectUri"}""")
             }
+
             val bodyText = response.bodyAsText()
             if (response.status.isSuccess()) {
                 val jsonParser = Json { ignoreUnknownKeys = true }
                 val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
-                val newAccessToken = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
-                val newRefreshToken = rootObj["refresh_token"]?.jsonPrimitive?.content ?: tokenToUse
-                _accessToken.value = newAccessToken
-                _refreshToken.value = newRefreshToken
-                Result.success(newAccessToken)
+                val token = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
+                val refreshTokenStr = rootObj["refresh_token"]?.jsonPrimitive?.content
+                val userObj = rootObj["user"]?.jsonObject
+                val userId = userObj?.get("id")?.jsonPrimitive?.content ?: ""
+                val email = userObj?.get("email")?.jsonPrimitive?.content ?: ""
+                val meta = userObj?.get("user_metadata")?.jsonObject
+                val name = meta?.get("full_name")?.jsonPrimitive?.content
+                    ?: meta?.get("name")?.jsonPrimitive?.content
+                    ?: email.substringBefore("@")
+                val avatar = meta?.get("avatar_url")?.jsonPrimitive?.content
+                    ?: meta?.get("picture")?.jsonPrimitive?.content
+                    ?: ""
+
+                _accessToken.value = token
+                if (!refreshTokenStr.isNullOrBlank()) {
+                    _refreshToken.value = refreshTokenStr
+                }
+                val isAdminUser = fetchServerIsAdmin(userId)
+
+                val profile = UserProfile(
+                    id = userId,
+                    email = email,
+                    displayName = name,
+                    avatarUrl = avatar,
+                    isAdmin = isAdminUser
+                )
+
+                _currentUser.value = profile
+                ensureProfile(profile)
+
+                Result.success(profile)
             } else {
-                Result.failure(Exception("Token refresh failed: $bodyText"))
+                Result.failure(Exception("PKCE code exchange failed: $bodyText"))
             }
         } catch (e: Exception) {
             Result.failure(e)
