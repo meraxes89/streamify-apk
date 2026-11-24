@@ -443,10 +443,17 @@ object StreamifySyncEngine : KoinComponent {
 
             for (cloudItem in cloudHistory) {
                 if (cloudItem.trackId !in localVideoIds && cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
+                    val localSong = songRepository.getSongById(cloudItem.trackId).firstOrNull()
+                    val channelIds = if (!cloudItem.artistId.isNullOrBlank()) {
+                        listOf(cloudItem.artistId)
+                    } else {
+                        localSong?.artistId ?: emptyList()
+                    }
+                    val albumId = cloudItem.albumId ?: localSong?.albumId
                     analyticsRepository.insertPlaybackEvent(
                         videoId = cloudItem.trackId,
-                        channelIds = emptyList(),
-                        albumBrowseId = cloudItem.albumId,
+                        channelIds = channelIds,
+                        albumBrowseId = albumId,
                         durationSecond = cloudItem.listenedDurationSec.toLong(),
                         listenedSecond = cloudItem.listenedDurationSec.toLong()
                     ).firstOrNull()
@@ -456,11 +463,14 @@ object StreamifySyncEngine : KoinComponent {
             // 2. Outbox: push local playback events not yet in cloud
             for (localEvent in localEvents) {
                 if (localEvent.videoId !in cloudIds && localEvent.videoId.isNotBlank() && !localEvent.videoId.startsWith("trk_")) {
+                    val song = songRepository.getSongById(localEvent.videoId).firstOrNull()
+                    val artistId = song?.artistId?.firstOrNull()
                     SupabaseLibrarySync.recordPlaybackHistory(
                         userId = targetUserId,
                         trackId = localEvent.videoId,
                         durationSec = localEvent.listenedSecond.toInt().coerceAtLeast(1),
-                        albumId = localEvent.albumBrowseId,
+                        albumId = localEvent.albumBrowseId ?: song?.albumId,
+                        artistId = artistId,
                         createdAtIso = localEvent.timestamp.toInstant(TimeZone.currentSystemDefault()).toString()
                     )
                 }

@@ -513,6 +513,7 @@ object SupabaseLibrarySync {
         durationSec: Int,
         syncId: String? = null,
         albumId: String? = null,
+        artistId: String? = null,
         createdAtIso: String? = null
     ): Result<Boolean> = withContext(ioDispatcher) {
         try {
@@ -525,6 +526,9 @@ object SupabaseLibrarySync {
                 put("listened_duration_sec", durationSec)
                 if (!albumId.isNullOrBlank()) {
                     put("album_id", albumId)
+                }
+                if (!artistId.isNullOrBlank()) {
+                    put("artist_id", artistId)
                 }
                 if (!createdAtIso.isNullOrBlank()) {
                     put("created_at", createdAtIso)
@@ -553,7 +557,7 @@ object SupabaseLibrarySync {
     ): List<CloudListeningHistoryItem> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_listening_history") {
-                parameter("select", "id,user_id,track_id,listened_duration_sec,album_id,created_at")
+                parameter("select", "id,user_id,track_id,listened_duration_sec,album_id,artist_id,created_at")
                 parameter("user_id", "eq.$userId")
                 parameter("order", "created_at.desc")
                 parameter("limit", limit.toString())

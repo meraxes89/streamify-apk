@@ -14,9 +14,12 @@
 ALTER TABLE public.playlists 
 ADD COLUMN IF NOT EXISTS youtube_playlist_id TEXT;
 
--- 2. Extend user_listening_history with album_id for Wrapped Top Albums
+-- 2. Extend user_listening_history with album_id & artist_id for Wrapped Top Albums & Top Artists
 ALTER TABLE public.user_listening_history 
 ADD COLUMN IF NOT EXISTS album_id TEXT;
+
+ALTER TABLE public.user_listening_history 
+ADD COLUMN IF NOT EXISTS artist_id TEXT;
 
 -- 3. Extend user_item_favorites constraint to include podcasts
 ALTER TABLE public.user_item_favorites 
