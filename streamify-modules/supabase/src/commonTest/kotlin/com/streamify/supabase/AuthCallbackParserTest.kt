@@ -45,6 +45,27 @@ class AuthCallbackParserTest {
     }
 
     @Test
+    fun parseUtf8MultiBytePercentEncodedDescription() {
+        // Multi-byte UTF-8: German umlauts and em-dash (%E2%80%94)
+        val uri = "streamify://callback?error=access_denied&error_description=Zugriff+verweigert%3A+Benutzer+hat+abgelehnt+%E2%80%94+Fehler"
+        val data = AuthCallbackParser.parse(uri)
+
+        assertTrue(data.isError)
+        assertEquals("Zugriff verweigert: Benutzer hat abgelehnt — Fehler", data.errorDescription)
+    }
+
+    @Test
+    fun parseQueryWithTrailingFragmentHash() {
+        // Google / provider redirects often attach trailing fragments like '#_=_'
+        val uri = "streamify://callback?code=CODE_WITH_HASH&state=STATE_1#_=_"
+        val data = AuthCallbackParser.parse(uri)
+
+        assertTrue(data.isSuccess)
+        assertEquals("CODE_WITH_HASH", data.code)
+        assertEquals("STATE_1", data.state)
+    }
+
+    @Test
     fun parseLegacyImplicitFlowFragment() {
         val uri = "streamify://callback#access_token=sb-test-token-12345&refresh_token=refresh-67890&token_type=bearer&expires_in=3600"
         val data = AuthCallbackParser.parse(uri)

@@ -79,34 +79,47 @@ object AuthCallbackParser {
     }
 
     /**
-     * Minimal URL component decoder replacing '+' with space and decoding '%XX' sequences.
+     * Standard RFC 3986 percent-decoding into UTF-8.
+     * Accurately decodes multi-byte UTF-8 sequences (e.g. non-ASCII international error descriptions).
      */
     private fun decodeComponent(encoded: String): String {
         if (!encoded.contains("%") && !encoded.contains("+")) return encoded
-        val sb = StringBuilder(encoded.length)
+        val rawBytes = encoded.encodeToByteArray()
+        val out = ByteArray(rawBytes.size)
+        var outIdx = 0
         var i = 0
-        while (i < encoded.length) {
-            val c = encoded[i]
-            when (c) {
-                '+' -> sb.append(' ')
-                '%' -> {
-                    if (i + 2 < encoded.length) {
-                        val hex = encoded.substring(i + 1, i + 3)
-                        val code = hex.toIntOrNull(16)
-                        if (code != null) {
-                            sb.append(code.toChar())
-                            i += 2
+        while (i < rawBytes.size) {
+            val b = rawBytes[i]
+            when (b) {
+                '+'.code.toByte() -> {
+                    out[outIdx++] = ' '.code.toByte()
+                    i++
+                }
+                '%'.code.toByte() -> {
+                    if (i + 2 < rawBytes.size) {
+                        val c1 = rawBytes[i + 1].toInt().toChar()
+                        val c2 = rawBytes[i + 2].toInt().toChar()
+                        val digit1 = c1.digitToIntOrNull(16)
+                        val digit2 = c2.digitToIntOrNull(16)
+                        if (digit1 != null && digit2 != null) {
+                            val byteVal = ((digit1 shl 4) or digit2).toByte()
+                            out[outIdx++] = byteVal
+                            i += 3
                         } else {
-                            sb.append('%')
+                            out[outIdx++] = b
+                            i++
                         }
                     } else {
-                        sb.append('%')
+                        out[outIdx++] = b
+                        i++
                     }
                 }
-                else -> sb.append(c)
+                else -> {
+                    out[outIdx++] = b
+                    i++
+                }
             }
-            i++
         }
-        return sb.toString()
+        return out.decodeToString(startIndex = 0, endIndex = outIdx, throwOnInvalidSequence = false)
     }
 }

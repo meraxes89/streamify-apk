@@ -14,8 +14,9 @@ import java.net.SocketTimeoutException
  *
  * Implements RFC 8252 Section 7.3 (Loopback Interface Redirection):
  * - Binds to dynamic port 0 on loopback IPv4 127.0.0.1.
- * - Serves a confirmation HTML response to the browser upon receiving the redirect.
- * - Automatically terminates after handling the callback or upon reaching the 120s timeout.
+ * - Robust against browser pre-connections and speculative requests (e.g. /favicon.ico).
+ * - Drains HTTP request headers to prevent TCP RST on Windows/Linux clients.
+ * - Serves a styled confirmation page and gracefully terminates.
  */
 class LoopbackAuthServer {
 
@@ -28,57 +29,102 @@ class LoopbackAuthServer {
      * @return The dynamically allocated port number.
      */
     fun start(): Int {
-        val socket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val socket = ServerSocket(0, 10, InetAddress.getByName("127.0.0.1"))
         serverSocket = socket
         return socket.localPort
     }
 
     /**
      * Awaits the incoming OAuth redirect request from the system browser.
+     * Loops across non-callback requests (e.g. /favicon.ico) until /callback arrives or timeout occurs.
+     *
      * @param timeoutSeconds Max duration to wait before timing out (default 120s).
      */
     suspend fun awaitCallback(timeoutSeconds: Long = 120): Result<AuthCallbackData> = withContext(Dispatchers.IO) {
         val socket = serverSocket ?: return@withContext Result.failure(IllegalStateException("Server not started"))
+        val startTime = System.currentTimeMillis()
+        val timeoutMs = (timeoutSeconds * 1000L).coerceAtMost(Int.MAX_VALUE.toLong())
+
         try {
-            socket.soTimeout = (timeoutSeconds * 1000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            val client = socket.accept()
+            while (serverSocket != null && !socket.isClosed) {
+                val elapsed = System.currentTimeMillis() - startTime
+                val remaining = (timeoutMs - elapsed).coerceAtLeast(1L).toInt()
+                if (remaining <= 1) {
+                    return@withContext Result.failure(
+                        Exception("Authentication timed out. No response received from browser within $timeoutSeconds seconds.")
+                    )
+                }
 
-            var callbackData = AuthCallbackData()
-            client.use { clientSocket ->
-                val reader = BufferedReader(InputStreamReader(clientSocket.getInputStream()))
-                val writer = OutputStreamWriter(clientSocket.getOutputStream(), Charsets.UTF_8)
+                socket.soTimeout = remaining
+                val client = try {
+                    socket.accept()
+                } catch (e: SocketTimeoutException) {
+                    return@withContext Result.failure(
+                        Exception("Authentication timed out. No response received from browser within $timeoutSeconds seconds.")
+                    )
+                }
 
-                val requestLine = reader.readLine()
-                if (!requestLine.isNullOrBlank()) {
-                    val parts = requestLine.split(" ")
-                    if (parts.size >= 2) {
-                        val pathAndQuery = parts[1]
-                        val fullUri = "http://127.0.0.1:$port$pathAndQuery"
-                        callbackData = AuthCallbackParser.parse(fullUri)
+                var handledCallback = false
+                var callbackData = AuthCallbackData()
+
+                client.use { clientSocket ->
+                    val reader = BufferedReader(InputStreamReader(clientSocket.getInputStream(), Charsets.UTF_8))
+                    val writer = OutputStreamWriter(clientSocket.getOutputStream(), Charsets.UTF_8)
+
+                    val requestLine = reader.readLine()
+                    // Drain HTTP headers to prevent TCP RST on client socket
+                    var headerLine = reader.readLine()
+                    while (!headerLine.isNullOrBlank()) {
+                        headerLine = reader.readLine()
+                    }
+
+                    if (!requestLine.isNullOrBlank()) {
+                        val parts = requestLine.split(" ")
+                        if (parts.size >= 2) {
+                            val pathAndQuery = parts[1]
+                            val pathOnly = pathAndQuery.substringBefore("?")
+
+                            if (pathOnly == "/callback" || pathOnly.startsWith("/callback")) {
+                                handledCallback = true
+                                val fullUri = "http://127.0.0.1:$port$pathAndQuery"
+                                callbackData = AuthCallbackParser.parse(fullUri)
+
+                                val htmlBody = if (callbackData.isSuccess) {
+                                    SUCCESS_HTML
+                                } else {
+                                    ERROR_HTML.replace(
+                                        "{{ERROR}}",
+                                        callbackData.errorDescription ?: callbackData.error ?: "Unknown error"
+                                    )
+                                }
+
+                                val response = buildString {
+                                    append("HTTP/1.1 200 OK\r\n")
+                                    append("Content-Type: text/html; charset=UTF-8\r\n")
+                                    append("Content-Length: ${htmlBody.encodeToByteArray().size}\r\n")
+                                    append("Connection: close\r\n\r\n")
+                                    append(htmlBody)
+                                }
+
+                                writer.write(response)
+                                writer.flush()
+                            } else {
+                                // Non-callback request (e.g. /favicon.ico, /robots.txt or pre-connect):
+                                // Respond with 404 and continue waiting for the OAuth callback
+                                val notFound = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                                writer.write(notFound)
+                                writer.flush()
+                            }
+                        }
                     }
                 }
 
-                val htmlBody = if (callbackData.isSuccess) {
-                    SUCCESS_HTML
-                } else {
-                    ERROR_HTML.replace("{{ERROR}}", callbackData.errorDescription ?: callbackData.error ?: "Unknown error")
+                if (handledCallback) {
+                    return@withContext Result.success(callbackData)
                 }
-
-                val response = buildString {
-                    append("HTTP/1.1 200 OK\r\n")
-                    append("Content-Type: text/html; charset=UTF-8\r\n")
-                    append("Content-Length: ${htmlBody.encodeToByteArray().size}\r\n")
-                    append("Connection: close\r\n\r\n")
-                    append(htmlBody)
-                }
-
-                writer.write(response)
-                writer.flush()
             }
 
-            Result.success(callbackData)
-        } catch (e: SocketTimeoutException) {
-            Result.failure(Exception("Authentication timed out. No response received from browser within $timeoutSeconds seconds."))
+            Result.failure(Exception("Server socket was closed before authentication completed"))
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -157,7 +203,12 @@ class LoopbackAuthServer {
     <div class="hint">This tab will close automatically.</div>
   </div>
   <script>
-    setTimeout(function() { window.close(); }, 2500);
+    setTimeout(function() {
+      try {
+        window.open('', '_self', '');
+        window.close();
+      } catch (_) {}
+    }, 2000);
   </script>
 </body>
 </html>"""
