@@ -6,6 +6,7 @@ import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.PlaylistEntity
 import com.maxrave.domain.data.entities.SearchHistory
 import com.maxrave.domain.data.entities.SongEntity
+import com.maxrave.domain.data.entities.sync.SyncChangeEntity
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.repository.AlbumRepository
 import com.maxrave.domain.repository.ArtistRepository
@@ -77,6 +78,7 @@ object StreamifySyncEngine : KoinComponent {
     private val analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository by inject()
     private val searchRepository: SearchRepository by inject()
     private val podcastRepository: PodcastRepository by inject()
+    private val syncOutboxRepository: SyncOutboxRepository by inject()
 
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -867,8 +869,10 @@ object StreamifySyncEngine : KoinComponent {
                 deviceId = deviceId
             ).getOrNull() ?: return false
 
-            for (op in pullResult.ops) {
-                applyDeltaOp(op)
+            withContext(withSyncApplying()) {
+                for (op in pullResult.ops) {
+                    applyDeltaOp(op)
+                }
             }
 
             cursor = pullResult.cursor
@@ -880,11 +884,395 @@ object StreamifySyncEngine : KoinComponent {
     }
 
     /**
-     * Drains pending local outbox changes to Supabase via `sync_push` RPC.
-     * Includes liked songs (uncapped), followed artists, and liked albums in chunks of 100.
+     * Drains pending local universal outbox changes from SyncDao to Supabase via `sync_push` RPC.
+     * Maps all entity types (likes, library tracks, follows, album/playlist favorites, local playlist edits/tracks,
+     * playback events, settings, episode progress) into idempotent batch operations.
      */
     private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long) {
         try {
+            // 1. Drain pending outbox changes (up to 500)
+            val pendingChanges = syncOutboxRepository.getPending(500)
+            if (pendingChanges.isNotEmpty()) {
+                val outboxOps = mutableListOf<JsonObject>()
+                val handledChangeIds = mutableListOf<String>()
+
+                val historyKeys = pendingChanges.filter { it.entity == SyncKind.HISTORY }.map { it.entityKey }
+                val historyEvents = if (historyKeys.isNotEmpty()) {
+                    syncOutboxRepository.getPlaybackEventsBySyncIds(historyKeys).associateBy { it.syncId }
+                } else {
+                    emptyMap()
+                }
+
+                for (change in pendingChanges) {
+                    val changeHlc = change.changedAt.coerceAtLeast(hlc)
+                    when (change.entity) {
+                        SyncKind.SONG_LIKE -> {
+                            val isLike = change.op == SyncOp.UPSERT || (change.op == SyncOp.SET && change.value == "1")
+                            if (!isLike || change.op == SyncOp.DELETE) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "like")
+                                    put("op", "D")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                })
+                            } else {
+                                val song = songRepository.getSongById(change.entityKey).firstOrNull()
+                                val title = song?.title ?: "Track ${change.entityKey}"
+                                val artist = song?.artistName?.firstOrNull() ?: "Unknown"
+                                val album = song?.albumName ?: "Streamify"
+                                val durationSec = song?.durationSeconds ?: 0
+                                val thumbUrl = song?.thumbnails ?: ""
+                                val createdAt = song?.favoriteAt?.toString() ?: Instant.fromEpochMilliseconds(change.changedAt).toString()
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "like")
+                                    put("op", "U")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("created_at", createdAt)
+                                        put("meta", buildJsonObject {
+                                            put("title", title)
+                                            put("artist", artist)
+                                            put("album", album)
+                                            put("duration_sec", durationSec)
+                                            put("thumb_url", thumbUrl)
+                                        })
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.LIBRARY_TRACK -> {
+                            val inLib = change.op != SyncOp.DELETE && change.value != "0"
+                            if (!inLib) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "library_track")
+                                    put("op", "D")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                })
+                            } else {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "library_track")
+                                    put("op", "U")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("added_at", Instant.fromEpochMilliseconds(change.changedAt).toString())
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.ARTIST_FOLLOW -> {
+                            val isFollow = change.op != SyncOp.DELETE && change.value != "0"
+                            if (!isFollow) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "D")
+                                    put("key", "artist:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "artist")
+                                        put("item_id", change.entityKey)
+                                    })
+                                })
+                            } else {
+                                val artist = artistRepository.getArtistById(change.entityKey).firstOrNull()
+                                val name = artist?.name ?: "Artist"
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "U")
+                                    put("key", "artist:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "artist")
+                                        put("item_id", change.entityKey)
+                                        put("name", name)
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.ALBUM_LIKE -> {
+                            val isLiked = change.op != SyncOp.DELETE && change.value != "0"
+                            if (!isLiked) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "D")
+                                    put("key", "album:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "album")
+                                        put("item_id", change.entityKey)
+                                    })
+                                })
+                            } else {
+                                val album = albumRepository.getAlbum(change.entityKey).firstOrNull()
+                                val title = album?.title ?: "Album"
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "U")
+                                    put("key", "album:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "album")
+                                        put("item_id", change.entityKey)
+                                        put("title", title)
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.PLAYLIST_LIKE -> {
+                            val isLiked = change.op != SyncOp.DELETE && change.value != "0"
+                            if (!isLiked) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "D")
+                                    put("key", "playlist:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "playlist")
+                                        put("item_id", change.entityKey)
+                                    })
+                                })
+                            } else {
+                                val pl = playlistRepository.getPlaylist(change.entityKey).firstOrNull()
+                                val title = pl?.title ?: "Playlist"
+                                val thumb = pl?.thumbnails ?: ""
+                                val count = (pl?.trackCount ?: 0).toString()
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "U")
+                                    put("key", "playlist:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "playlist")
+                                        put("item_id", change.entityKey)
+                                        put("metadata", buildJsonObject {
+                                            put("title", title)
+                                            put("thumbnail", thumb)
+                                            put("track_count", count)
+                                        })
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.PODCAST_FAVORITE -> {
+                            val isFav = change.op != SyncOp.DELETE && change.value != "0"
+                            if (!isFav) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "D")
+                                    put("key", "podcast:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "podcast")
+                                        put("item_id", change.entityKey)
+                                    })
+                                })
+                            } else {
+                                val pod = podcastRepository.getPodcast(change.entityKey).firstOrNull()
+                                val title = pod?.title ?: "Podcast"
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "favorite")
+                                    put("op", "U")
+                                    put("key", "podcast:${change.entityKey}")
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("item_type", "podcast")
+                                        put("item_id", change.entityKey)
+                                        put("title", title)
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.LOCAL_PLAYLIST -> {
+                            if (change.op == SyncOp.DELETE) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "playlist")
+                                    put("op", "D")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                })
+                            } else {
+                                val localPl = syncOutboxRepository.getLocalPlaylistBySyncId(change.entityKey)
+                                if (localPl != null) {
+                                    outboxOps.add(buildJsonObject {
+                                        put("entity", "playlist")
+                                        put("op", "U")
+                                        put("key", change.entityKey)
+                                        put("hlc", changeHlc)
+                                        put("data", buildJsonObject {
+                                            put("name", localPl.title)
+                                            put("description", "")
+                                            put("cover_url", localPl.thumbnail ?: "")
+                                            put("is_public", false)
+                                            put("youtube_playlist_id", localPl.youtubePlaylistId)
+                                        })
+                                    })
+                                }
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.LOCAL_PLAYLIST_TRACK -> {
+                            val parts = change.entityKey.split("|")
+                            val plSyncId = parts.getOrNull(0) ?: ""
+                            val videoId = parts.getOrNull(1) ?: ""
+                            val inPlaylist = change.op != SyncOp.DELETE && change.value != "0"
+                            if (!inPlaylist) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "playlist_track")
+                                    put("op", "D")
+                                    put("key", videoId)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("playlist_id", plSyncId)
+                                        put("track_id", videoId)
+                                    })
+                                })
+                            } else {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "playlist_track")
+                                    put("op", "U")
+                                    put("key", videoId)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("playlist_id", plSyncId)
+                                        put("track_id", videoId)
+                                        put("position", 0)
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.LOCAL_PLAYLIST_ORDER -> {
+                            val localPl = syncOutboxRepository.getLocalPlaylistBySyncId(change.entityKey)
+                            if (localPl != null) {
+                                val orderedTrackIds = syncOutboxRepository.getPlaylistTrackOrder(localPl.id)
+                                for ((idx, trkId) in orderedTrackIds.withIndex()) {
+                                    outboxOps.add(buildJsonObject {
+                                        put("entity", "playlist_track")
+                                        put("op", "U")
+                                        put("key", trkId)
+                                        put("hlc", changeHlc)
+                                        put("data", buildJsonObject {
+                                            put("playlist_id", change.entityKey)
+                                            put("track_id", trkId)
+                                            put("position", idx)
+                                        })
+                                    })
+                                }
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.HISTORY -> {
+                            val ev = historyEvents[change.entityKey]
+                            if (ev != null) {
+                                val song = songRepository.getSongById(ev.videoId).firstOrNull()
+                                val clientEventId = ev.syncId ?: change.entityKey
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "history")
+                                    put("op", "I")
+                                    put("key", clientEventId)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("client_event_id", clientEventId)
+                                        put("track_id", ev.videoId)
+                                        put("listened_duration_sec", ev.listenedSecond)
+                                        put("artist_id", "")
+                                        put("album_id", ev.albumBrowseId ?: "")
+                                        put("title", song?.title ?: "")
+                                        put("artist_name", song?.artistName?.firstOrNull() ?: "")
+                                        put("album_name", song?.albumName ?: "")
+                                        put("listened_at", ev.timestamp.toString())
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.SETTINGS -> {
+                            if (change.entityKey in SYNCABLE_SETTINGS_KEYS) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "settings")
+                                    put("op", "U")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("settings", buildJsonObject {
+                                            put(change.entityKey, change.value ?: "")
+                                        })
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+
+                        SyncKind.EPISODE_STATE -> {
+                            val isDelete = change.op == SyncOp.DELETE
+                            if (isDelete) {
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "episode_state")
+                                    put("op", "D")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                })
+                            } else {
+                                val dataObj = try {
+                                    change.value?.let { Json.parseToJsonElement(it).jsonObject }
+                                } catch (_: Exception) { null }
+                                outboxOps.add(buildJsonObject {
+                                    put("entity", "episode_state")
+                                    put("op", "U")
+                                    put("key", change.entityKey)
+                                    put("hlc", changeHlc)
+                                    put("data", buildJsonObject {
+                                        put("podcast_id", dataObj?.get("podcast_id")?.jsonPrimitive?.contentOrNull ?: "")
+                                        put("position_sec", dataObj?.get("position_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0)
+                                        put("completed", dataObj?.get("completed")?.jsonPrimitive?.booleanOrNull ?: false)
+                                    })
+                                })
+                            }
+                            handledChangeIds.add(change.changeId)
+                        }
+                    }
+                }
+
+                if (outboxOps.isNotEmpty()) {
+                    val chunkedOps = outboxOps.chunked(100)
+                    val chunkedIds = handledChangeIds.chunked(100)
+                    for (i in chunkedOps.indices) {
+                        val pushRes = SupabaseLibrarySync.syncPush(JsonArray(chunkedOps[i]), deviceId).getOrNull()
+                        if (pushRes != null && pushRes.cursor > 0L) {
+                            if (i < chunkedIds.size) {
+                                syncOutboxRepository.markSent(chunkedIds[i], pushRes.cursor)
+                            }
+                            val currentCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
+                            if (pushRes.cursor > currentCursor) {
+                                dataStoreManager.putString("streamify_sync_cursor_v3", pushRes.cursor.toString())
+                            }
+                        }
+                    }
+                }
+
+                val sevenDaysAgo = HybridLogicalClock.now() - 7 * 24 * 60 * 60 * 1000L
+                syncOutboxRepository.pruneSent(sevenDaysAgo)
+            }
+
+            // 2. Snapshot reconciliation fallback
             val ops = mutableListOf<JsonObject>()
 
             // Liked songs
@@ -1334,6 +1722,25 @@ object StreamifySyncEngine : KoinComponent {
     ) {
         val hlc = HybridLogicalClock.now()
         updateLocalEpisodeState(episodeId, podcastId, positionSec, completed, hlc)
+        try {
+            val deviceId = getOrCreateDeviceId()
+            val payload = buildJsonObject {
+                put("podcast_id", podcastId)
+                put("position_sec", positionSec)
+                put("completed", completed)
+            }.toString()
+            syncOutboxRepository.recordPending(
+                SyncChangeEntity(
+                    changeId = HybridLogicalClock.randomUuid(),
+                    entity = SyncKind.EPISODE_STATE,
+                    entityKey = episodeId,
+                    op = SyncOp.UPSERT,
+                    value = payload,
+                    changedAt = hlc,
+                    deviceId = deviceId,
+                )
+            )
+        } catch (_: Exception) {}
         val targetUserId = SupabaseClient.currentUser.value?.id
         if (!targetUserId.isNullOrBlank() && targetUserId != "guest") {
             SupabaseLibrarySync.syncEpisodeState(
@@ -1344,6 +1751,27 @@ object StreamifySyncEngine : KoinComponent {
                 hlc = hlc,
                 userId = targetUserId
             )
+        }
+    }
+
+    fun recordSettingChange(key: String, value: String) {
+        if (key in SYNCABLE_SETTINGS_KEYS) {
+            scope.launch {
+                try {
+                    val deviceId = getOrCreateDeviceId()
+                    val change = SyncChangeEntity(
+                        changeId = HybridLogicalClock.randomUuid(),
+                        entity = SyncKind.SETTINGS,
+                        entityKey = key,
+                        op = SyncOp.SET,
+                        value = value,
+                        changedAt = HybridLogicalClock.now(),
+                        deviceId = deviceId,
+                    )
+                    syncOutboxRepository.recordPending(change)
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 
