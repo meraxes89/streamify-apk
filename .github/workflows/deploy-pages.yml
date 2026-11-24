@@ -64,6 +64,16 @@ jobs:
             -Dorg.gradle.jvmargs="-Xmx10g -XX:+UseParallelGC" \
             -Dkotlin.daemon.jvmargs="-Xmx10g"
 
+      - name: Fetch Demo Catalog for Pages Distribution
+        run: |
+          DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
+          curl -sL "https://github.com/meraxes89/docs/releases/download/v1.0.0/demo-catalog.json" -o "$DIST_DIR/demo-catalog.json"
+          if [ -s "$DIST_DIR/demo-catalog.json" ]; then
+            echo "Successfully fetched demo catalog for GitHub Pages (size: $(du -h "$DIST_DIR/demo-catalog.json" | cut -f1))"
+          else
+            echo "::warning::Demo catalog fetch failed or empty"
+          fi
+
       - name: Provide SPA fallback (404.html)
         run: |
           DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
@@ -75,7 +85,7 @@ jobs:
         run: |
           DIST_DIR="composeApp/build/dist/wasmJs/productionExecutable"
           sudo apt-get update && sudo apt-get install -y brotli
-          find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" \) \
+          find "$DIST_DIR" -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" -o -name "*.json" \) \
             -exec gzip -9 -k -f {} \; \
             -exec brotli -q 11 -k -f {} \;
           echo "=== Pages Distribution Artifacts ==="
