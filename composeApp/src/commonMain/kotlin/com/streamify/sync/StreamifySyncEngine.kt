@@ -435,10 +435,11 @@ object StreamifySyncEngine : KoinComponent {
             val refreshedPlaylists = localPlaylistRepository.getAllLocalPlaylists().first()
             for (localPl in refreshedPlaylists) {
                 // Ensure valid UUID format for Supabase playlists.id - migrate away from deterministic hex collision IDs
-                val syncId: String = if (localPl.syncId.isNullOrBlank() || localPl.syncId.startsWith("00000000-0000-4000-8000-")) {
+                val currentSyncId = localPl.syncId
+                val syncId: String = if (currentSyncId.isNullOrBlank() || currentSyncId.startsWith("00000000-0000-4000-8000-")) {
                     HybridLogicalClock.randomUuid()
                 } else {
-                    localPl.syncId ?: HybridLogicalClock.randomUuid()
+                    currentSyncId
                 }
 
                 val tracks = localPlaylistRepository.getFullPlaylistTracks(localPl.id)
@@ -520,8 +521,9 @@ object StreamifySyncEngine : KoinComponent {
                 val cloudEventId = cloudItem.clientEventId?.ifBlank { null } ?: cloudItem.id
                 if (cloudEventId !in localSyncIds && cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
                     val localSong = songRepository.getSongById(cloudItem.trackId).firstOrNull()
-                    val channelIds: List<String> = if (!cloudItem.artistId.isNullOrBlank()) {
-                        listOf(cloudItem.artistId)
+                    val remoteArtistId = cloudItem.artistId
+                    val channelIds: List<String> = if (!remoteArtistId.isNullOrBlank()) {
+                        listOf(remoteArtistId)
                     } else {
                         localSong?.artistId?.filterNotNull() ?: emptyList()
                     }
