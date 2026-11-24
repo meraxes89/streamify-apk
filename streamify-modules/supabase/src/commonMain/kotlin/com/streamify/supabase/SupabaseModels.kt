@@ -73,8 +73,23 @@ data class CloudUserItemFavorite(
     val itemType: String = "",
     @SerialName("item_id")
     val itemId: String = "",
+    val metadata: Map<String, String>? = null,
     @SerialName("created_at")
     val createdAt: String? = null
+)
+
+@Serializable
+data class CloudLibraryTrack(
+    @SerialName("track_id")
+    val trackId: String,
+    @SerialName("user_id")
+    val userId: String? = null,
+    @SerialName("added_at")
+    val addedAt: String? = null,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
+    @SerialName("modified_hlc")
+    val modifiedHlc: Long? = null
 )
 
 @Serializable

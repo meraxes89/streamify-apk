@@ -1,16 +1,20 @@
 package com.streamify.sync
 
+import com.maxrave.common.Config
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
+import com.maxrave.domain.data.entities.PlaylistEntity
 import com.maxrave.domain.data.entities.SearchHistory
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.repository.AlbumRepository
 import com.maxrave.domain.repository.ArtistRepository
 import com.maxrave.domain.repository.LocalPlaylistRepository
+import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.repository.PodcastRepository
 import com.maxrave.domain.repository.SearchRepository
 import com.maxrave.domain.repository.SongRepository
+import com.streamify.supabase.CloudLibraryTrack
 import com.streamify.supabase.CloudTrack
 import com.streamify.supabase.SupabaseClient
 import com.streamify.supabase.SupabaseConfig
@@ -65,6 +69,7 @@ object StreamifySyncEngine : KoinComponent {
     private val artistRepository: ArtistRepository by inject()
     private val albumRepository: AlbumRepository by inject()
     private val localPlaylistRepository: LocalPlaylistRepository by inject()
+    private val playlistRepository: PlaylistRepository by inject()
     private val dataStoreManager: com.maxrave.domain.manager.DataStoreManager by inject()
     private val analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository by inject()
     private val searchRepository: SearchRepository by inject()
@@ -187,6 +192,12 @@ object StreamifySyncEngine : KoinComponent {
 
                 _syncState.value = SyncStatus.Syncing("Bootstrapping saved albums...")
                 syncAlbumsInternal(targetUserId)
+
+                _syncState.value = SyncStatus.Syncing("Bootstrapping library tracks...")
+                syncLibraryTracksInternal(targetUserId)
+
+                _syncState.value = SyncStatus.Syncing("Bootstrapping saved playlists...")
+                syncSavedPlaylistsInternal(targetUserId)
 
                 _syncState.value = SyncStatus.Syncing("Bootstrapping playlists...")
                 syncPlaylistsInternal(targetUserId)
@@ -366,6 +377,108 @@ object StreamifySyncEngine : KoinComponent {
             for (localAlbum in localLikedAlbums) {
                 if (localAlbum.browseId !in cloudAlbumIds && localAlbum.liked) {
                     SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 2 / Phase 3 Library Tracks Synchronization (in-library state independent of likes).
+     */
+    private suspend fun syncLibraryTracksInternal(targetUserId: String) {
+        try {
+            val cloudLibrary = SupabaseLibrarySync.fetchCloudLibraryTracks(targetUserId)
+            val cloudTrackIds = cloudLibrary.map { it.trackId }.toSet()
+
+            val localSongs = songRepository.getAllSongs(1000).firstOrNull() ?: emptyList()
+            val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
+            val localLibraryIds = localInLibrary.map { it.videoId }.toSet()
+
+            // Inbound: hydrate cloud library tracks locally
+            for (cloudItem in cloudLibrary) {
+                if (cloudItem.trackId !in localLibraryIds && cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
+                    val existing = songRepository.getSongById(cloudItem.trackId).firstOrNull()
+                    val addedAtTime = parseIsoToLocalDateTime(cloudItem.addedAt) ?: now()
+                    if (existing == null) {
+                        val entity = SongEntity(
+                            videoId = cloudItem.trackId,
+                            title = "Synced Track",
+                            albumName = "Streamify",
+                            duration = "0:00",
+                            durationSeconds = 0,
+                            isAvailable = true,
+                            isExplicit = false,
+                            likeStatus = "INDIFFERENT",
+                            videoType = "MUSIC_VIDEO_TYPE_ATV",
+                            category = null,
+                            resultType = null,
+                            inLibrary = addedAtTime
+                        )
+                        songRepository.insertSong(entity).lastOrNull()
+                    } else {
+                        songRepository.updateSongInLibrary(addedAtTime, cloudItem.trackId).firstOrNull()
+                    }
+                }
+            }
+
+            // Outbox: push local library tracks not yet in cloud
+            val pendingUploads = localInLibrary.filter { it.videoId !in cloudTrackIds && !it.videoId.startsWith("trk_") }
+            if (pendingUploads.isNotEmpty()) {
+                SupabaseLibrarySync.uploadLibraryTracksBatch(pendingUploads.map { it.videoId }, targetUserId)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Phase 2 / Phase 3 Saved YouTube Playlists Synchronization.
+     */
+    private suspend fun syncSavedPlaylistsInternal(targetUserId: String) {
+        try {
+            val cloudFavorites = SupabaseLibrarySync.fetchCloudItemFavoritesWithMetadata("playlist", targetUserId)
+            val cloudPlaylistIds = cloudFavorites.map { it.itemId }.toSet()
+
+            val localPlaylists = playlistRepository.getLikedPlaylists().firstOrNull() ?: emptyList()
+            val localPlaylistIds = localPlaylists.map { it.id }.toSet()
+
+            // Inbound: save playlists locally that are favorited in the cloud
+            for (cloudFav in cloudFavorites) {
+                if (cloudFav.itemId !in localPlaylistIds && cloudFav.itemId.isNotBlank()) {
+                    val existing = playlistRepository.getPlaylist(cloudFav.itemId).firstOrNull()
+                    if (existing == null) {
+                        val title = cloudFav.metadata?.get("title") ?: "Saved Playlist"
+                        val thumb = cloudFav.metadata?.get("thumbnail") ?: ""
+                        val count = cloudFav.metadata?.get("track_count")?.toIntOrNull() ?: 0
+                        val entity = PlaylistEntity(
+                            id = cloudFav.itemId,
+                            title = title,
+                            thumbnails = thumb,
+                            trackCount = count,
+                            liked = true,
+                            favoriteAt = parseIsoToLocalDateTime(cloudFav.createdAt) ?: now()
+                        )
+                        playlistRepository.insertPlaylist(entity)
+                    } else {
+                        playlistRepository.updatePlaylistLiked(cloudFav.itemId, 1)
+                    }
+                }
+            }
+
+            // Outbox: push locally favorited playlists to cloud
+            for (localPl in localPlaylists) {
+                if (localPl.id !in cloudPlaylistIds && localPl.liked && localPl.id.isNotBlank()) {
+                    SupabaseLibrarySync.syncItemFavorite(
+                        itemType = "playlist",
+                        itemId = localPl.id,
+                        isFavorited = true,
+                        userId = targetUserId,
+                        metadata = mapOf(
+                            "title" to localPl.title,
+                            "thumbnail" to localPl.thumbnails,
+                            "track_count" to localPl.trackCount.toString()
+                        )
+                    )
                 }
             }
         } catch (_: Exception) {
@@ -722,6 +835,43 @@ object StreamifySyncEngine : KoinComponent {
                 })
             }
 
+            // Library tracks
+            val localSongs = songRepository.getAllSongs(1000).firstOrNull() ?: emptyList()
+            val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
+            for (song in localInLibrary) {
+                if (song.videoId.isBlank() || song.videoId.startsWith("trk_")) continue
+                ops.add(buildJsonObject {
+                    put("entity", "library_track")
+                    put("op", "U")
+                    put("key", song.videoId)
+                    put("hlc", hlc)
+                    put("data", buildJsonObject {
+                        put("added_at", song.inLibrary.toString())
+                    })
+                })
+            }
+
+            // Saved YouTube playlists
+            val localLikedPlaylists = playlistRepository.getLikedPlaylists().firstOrNull() ?: emptyList()
+            for (pl in localLikedPlaylists) {
+                if (pl.id.isBlank() || !pl.liked) continue
+                ops.add(buildJsonObject {
+                    put("entity", "favorite")
+                    put("op", "U")
+                    put("key", "playlist:${pl.id}")
+                    put("hlc", hlc)
+                    put("data", buildJsonObject {
+                        put("item_type", "playlist")
+                        put("item_id", pl.id)
+                        put("metadata", buildJsonObject {
+                            put("title", pl.title)
+                            put("thumbnail", pl.thumbnails)
+                            put("track_count", pl.trackCount.toString())
+                        })
+                    })
+                })
+            }
+
             if (ops.isNotEmpty()) {
                 for (chunk in ops.chunked(100)) {
                     val pushRes = SupabaseLibrarySync.syncPush(JsonArray(chunk), deviceId).getOrNull()
@@ -788,6 +938,33 @@ object StreamifySyncEngine : KoinComponent {
                         "artist" -> artistRepository.updateFollowedStatus(itemId, if (isLiked) 1 else 0)
                         "album" -> albumRepository.updateAlbumLiked(itemId, if (isLiked) 1 else 0)
                         "podcast" -> podcastRepository.favoritePodcast(itemId, isLiked).firstOrNull()
+                        "playlist" -> playlistRepository.updatePlaylistLiked(itemId, if (isLiked) 1 else 0)
+                    }
+                }
+                "library_track" -> {
+                    if (op.op == "D") {
+                        songRepository.updateSongInLibrary(Config.REMOVED_SONG_DATE_TIME, op.key).firstOrNull()
+                    } else {
+                        val existing = songRepository.getSongById(op.key).firstOrNull()
+                        if (existing == null) {
+                            val entity = SongEntity(
+                                videoId = op.key,
+                                title = "Synced Track",
+                                albumName = "Streamify",
+                                duration = "0:00",
+                                durationSeconds = 0,
+                                isAvailable = true,
+                                isExplicit = false,
+                                likeStatus = "INDIFFERENT",
+                                videoType = "MUSIC_VIDEO_TYPE_ATV",
+                                category = null,
+                                resultType = null,
+                                inLibrary = now()
+                            )
+                            songRepository.insertSong(entity).lastOrNull()
+                        } else {
+                            songRepository.updateSongInLibrary(now(), op.key).firstOrNull()
+                        }
                     }
                 }
                 "playlist" -> {
