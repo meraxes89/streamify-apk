@@ -580,7 +580,7 @@ object SupabaseLibrarySync {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_search_history") {
                 parameter("user_id", "eq.$targetUserId")
-                parameter("is_deleted", "eq.false")
+                parameter("deleted_at", "is.null")
                 parameter("order", "searched_at.desc")
                 parameter("limit", "100")
                 header("apikey", SupabaseConfig.ANON_KEY)
@@ -631,7 +631,8 @@ object SupabaseLibrarySync {
     }
 
     /**
-     * Updates the user's active playback session in `public.profiles` for cross-device continuity.
+     * Updates the user's active playback session.
+     * Note: Decommissioned in Phase P4; active presence is heartbeated via heartbeatPresence into user_presence.
      */
     suspend fun updateActiveSession(
         trackId: String?,
@@ -640,50 +641,26 @@ object SupabaseLibrarySync {
         updatedAtIso: String? = null,
         userId: String? = null
     ): Result<Boolean> = withContext(ioDispatcher) {
-        try {
-            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
-            val sessionObj = buildJsonObject {
-                put("track_id", trackId)
-                put("position_ms", positionMs)
-                put("queue_ids", buildJsonArray { queueIds.forEach { add(it) } })
-                if (!updatedAtIso.isNullOrBlank()) {
-                    put("updated_at", updatedAtIso)
-                }
-            }
-            val payload = buildJsonObject {
-                put("active_session", sessionObj)
-            }.toString()
-
-            val resp = SupabaseClient.httpClient.patch("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
-                parameter("id", "eq.$targetUserId")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                contentType(ContentType.Application.Json)
-                setBody(payload)
-            }
-            Result.success(resp.status.isSuccess())
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        Result.success(true)
     }
 
     /**
-     * Fetches the user's active playback session from `public.profiles`.
+     * Fetches the user's active playback session, delegating to `user_presence` for backward compatibility.
      */
     suspend fun fetchActiveSession(userId: String? = null): Result<CloudActiveSession?> = withContext(ioDispatcher) {
         try {
-            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
-            val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/profiles") {
-                parameter("id", "eq.$targetUserId")
-                parameter("select", "active_session")
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-            }
-            if (resp.status.isSuccess()) {
-                val list = json.decodeFromString<List<UserProfile>>(resp.bodyAsText())
-                Result.success(list.firstOrNull()?.activeSession)
+            val presence = fetchLatestPresence(userId).getOrNull()
+            if (presence != null) {
+                Result.success(
+                    CloudActiveSession(
+                        trackId = presence.trackId,
+                        positionMs = presence.positionMs,
+                        queueIds = presence.queueIds,
+                        updatedAt = presence.updatedAt
+                    )
+                )
             } else {
-                Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
+                Result.success(null)
             }
         } catch (e: Exception) {
             Result.failure(e)

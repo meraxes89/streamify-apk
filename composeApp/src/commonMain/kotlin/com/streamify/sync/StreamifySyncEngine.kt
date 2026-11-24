@@ -201,7 +201,7 @@ object StreamifySyncEngine : KoinComponent {
                 dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
             }
 
-            // Sync presence via heartbeat_presence with HLC guard and dual-write active_session
+            // Sync presence via heartbeat_presence with HLC guard
             _syncState.value = SyncStatus.Syncing("Syncing playback presence...")
             syncPresenceInternal(targetUserId, deviceId, hlc)
 
@@ -584,36 +584,6 @@ object StreamifySyncEngine : KoinComponent {
     }
 
     /**
-     * Cross-Device Active Playback Session Hand-off (Continuity).
-     */
-    private suspend fun syncActiveSessionInternal(targetUserId: String) {
-        try {
-            val localMediaId = dataStoreManager.recentMediaId.firstOrNull() ?: ""
-            val localPosStr = dataStoreManager.recentPosition.firstOrNull() ?: "0"
-            val localPos = localPosStr.toLongOrNull() ?: 0L
-
-            val remoteSession = SupabaseLibrarySync.fetchActiveSession(targetUserId).getOrNull()
-            val remoteTrackId = remoteSession?.trackId
-
-            if (localMediaId.isNotBlank() && !localMediaId.startsWith("trk_")) {
-                // Outbox: If device has an active track, update cloud active session
-                val localQueue = songRepository.getSavedQueue().firstOrNull()?.firstOrNull()?.listTrack?.map { it.videoId } ?: emptyList()
-                SupabaseLibrarySync.updateActiveSession(
-                    trackId = localMediaId,
-                    positionMs = localPos,
-                    queueIds = localQueue,
-                    updatedAtIso = now().toInstant(TimeZone.currentSystemDefault()).toString(),
-                    userId = targetUserId
-                )
-            } else if (!remoteTrackId.isNullOrBlank() && remoteSession != null) {
-                // Inbound: If this device has no recent track and cloud has one, restore continuity
-                dataStoreManager.saveRecentSong(remoteTrackId, remoteSession.positionMs)
-            }
-        } catch (_: Exception) {
-        }
-    }
-
-    /**
      * V3 Delta Sync: pulls changelog delta ops since local cursor, skipping calling device's own ops.
      */
     private suspend fun syncDeltaInternal(targetUserId: String, deviceId: String): Boolean {
@@ -847,10 +817,7 @@ object StreamifySyncEngine : KoinComponent {
                 )
             }
 
-            // 2. Dual-write active_session for backward compatibility with older readers
-            syncActiveSessionInternal(targetUserId)
-
-            // 3. Remote presence hand-off if local device is idle
+            // 2. Remote presence hand-off if local device is idle
             if (localMediaId.isBlank()) {
                 val latestPresence = SupabaseLibrarySync.fetchLatestPresence().getOrNull()
                 if (latestPresence != null && !latestPresence.trackId.isNullOrBlank() && latestPresence.deviceId != deviceId) {

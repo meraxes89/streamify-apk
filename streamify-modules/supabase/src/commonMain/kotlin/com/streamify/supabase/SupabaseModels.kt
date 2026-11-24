@@ -128,6 +128,8 @@ data class CloudSearchQuery(
     val query: String,
     @SerialName("searched_at")
     val searchedAt: String? = null,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
     @SerialName("is_deleted")
     val isDeleted: Boolean = false
 )
