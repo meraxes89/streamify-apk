@@ -2206,6 +2206,8 @@ data class SettingAlertState(
     ) {
         fun getSelected(): String = listSelect.firstOrNull { it.first }?.second ?: ""
 
+        fun getSelectedIndex(): Int = listSelect.indexOfFirst { it.first }
+
         fun getListSelected(): List<String> = listSelect.filter { it.first }.map { it.second }
     }
 }

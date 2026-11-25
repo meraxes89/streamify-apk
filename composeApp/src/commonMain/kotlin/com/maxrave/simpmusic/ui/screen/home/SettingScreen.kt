@@ -1499,7 +1499,7 @@ fun SettingScreen(
                                             confirm =
                                                 changeLabel to { state ->
                                                     viewModel.setProxy(
-                                                        if (state.selectOne?.getSelected() == socksLabel) {
+                                                        if (state.selectOne?.getSelectedIndex() == 1) {
                                                             DataStoreManager.ProxyType.PROXY_TYPE_SOCKS
                                                         } else {
                                                             DataStoreManager.ProxyType.PROXY_TYPE_HTTP
@@ -1831,24 +1831,22 @@ fun SettingScreen(
                                         confirm =
                                             runBlocking { getString(Res.string.change) } to { state ->
                                                 val duration =
-                                                    when (state.selectOne?.getSelected()) {
-                                                        runBlocking {
-                                                            getString(
-                                                                Res.string.crossfade_auto,
-                                                            )
-                                                        },
-                                                        -> DataStoreManager.CROSSFADE_DURATION_AUTO
-                                                        "1s" -> 1000
-                                                        "2s" -> 2000
-                                                        "3s" -> 3000
-                                                        "5s" -> 5000
-                                                        "8s" -> 8000
-                                                        "10s" -> 10000
-                                                        "12s" -> 12000
-                                                        "15s" -> 15000
-                                                        "20s" -> 20000
-                                                        "30s" -> 30000
-                                                        else -> 5000
+                                                    if (state.selectOne?.getSelectedIndex() == 0) {
+                                                        DataStoreManager.CROSSFADE_DURATION_AUTO
+                                                    } else {
+                                                        when (state.selectOne?.getSelected()) {
+                                                            "1s" -> 1000
+                                                            "2s" -> 2000
+                                                            "3s" -> 3000
+                                                            "5s" -> 5000
+                                                            "8s" -> 8000
+                                                            "10s" -> 10000
+                                                            "12s" -> 12000
+                                                            "15s" -> 15000
+                                                            "20s" -> 20000
+                                                            "30s" -> 30000
+                                                            else -> 5000
+                                                        }
                                                     }
                                                 viewModel.setCrossfadeDuration(duration)
                                             },
@@ -1972,11 +1970,11 @@ fun SettingScreen(
                                 confirm =
                                     runBlocking { getString(Res.string.change) } to { state ->
                                         viewModel.setLyricsProvider(
-                                            when (state.selectOne?.getSelected()) {
-                                                runBlocking { getString(Res.string.simpmusic_lyrics) } -> DataStoreManager.SIMPMUSIC
-                                                runBlocking { getString(Res.string.youtube_transcript) } -> DataStoreManager.YOUTUBE
-                                                runBlocking { getString(Res.string.lrclib) } -> DataStoreManager.LRCLIB
-                                                runBlocking { getString(Res.string.better_lyrics) } -> DataStoreManager.BETTER_LYRICS
+                                            when (state.selectOne?.getSelectedIndex()) {
+                                                0 -> DataStoreManager.SIMPMUSIC
+                                                1 -> DataStoreManager.YOUTUBE
+                                                2 -> DataStoreManager.LRCLIB
+                                                3 -> DataStoreManager.BETTER_LYRICS
                                                 else -> DataStoreManager.SIMPMUSIC
                                             },
                                         )
@@ -2180,16 +2178,10 @@ fun SettingScreen(
                                 confirm =
                                     runBlocking { getString(Res.string.change) } to { state ->
                                         viewModel.setAIProvider(
-                                            when (state.selectOne?.getSelected()) {
-                                                runBlocking { getString(Res.string.openai) } -> DataStoreManager.AI_PROVIDER_OPENAI
-                                                runBlocking { getString(Res.string.gemini) } -> DataStoreManager.AI_PROVIDER_GEMINI
-                                                runBlocking {
-                                                    getString(
-                                                        Res.string.openai_api_compatible,
-                                                    )
-                                                },
-                                                -> DataStoreManager.AI_PROVIDER_CUSTOM_OPENAI
-
+                                            when (state.selectOne?.getSelectedIndex()) {
+                                                0 -> DataStoreManager.AI_PROVIDER_OPENAI
+                                                1 -> DataStoreManager.AI_PROVIDER_GEMINI
+                                                2 -> DataStoreManager.AI_PROVIDER_CUSTOM_OPENAI
                                                 else -> DataStoreManager.AI_PROVIDER_OPENAI
                                             },
                                         )
@@ -2951,25 +2943,10 @@ fun SettingScreen(
                                             confirm =
                                                 runBlocking { getString(Res.string.change) } to { state ->
                                                     val frequency =
-                                                        when (state.selectOne?.getSelected()) {
-                                                            runBlocking {
-                                                                getString(
-                                                                    Res.string.daily,
-                                                                )
-                                                            },
-                                                            -> DataStoreManager.AUTO_BACKUP_FREQUENCY_DAILY
-                                                            runBlocking {
-                                                                getString(
-                                                                    Res.string.weekly,
-                                                                )
-                                                            },
-                                                            -> DataStoreManager.AUTO_BACKUP_FREQUENCY_WEEKLY
-                                                            runBlocking {
-                                                                getString(
-                                                                    Res.string.monthly,
-                                                                )
-                                                            },
-                                                            -> DataStoreManager.AUTO_BACKUP_FREQUENCY_MONTHLY
+                                                        when (state.selectOne?.getSelectedIndex()) {
+                                                            0 -> DataStoreManager.AUTO_BACKUP_FREQUENCY_DAILY
+                                                            1 -> DataStoreManager.AUTO_BACKUP_FREQUENCY_WEEKLY
+                                                            2 -> DataStoreManager.AUTO_BACKUP_FREQUENCY_MONTHLY
                                                             else -> DataStoreManager.AUTO_BACKUP_FREQUENCY_DAILY
                                                         }
                                                     viewModel.setAutoBackupFrequency(frequency)
@@ -3104,9 +3081,9 @@ fun SettingScreen(
                                 confirm =
                                     runBlocking { getString(Res.string.change) } to { state ->
                                         viewModel.setUpdateChannel(
-                                            when (state.selectOne?.getSelected()) {
-                                                "F-Droid" -> DataStoreManager.FDROID
-                                                "Streamify GitHub Release" -> DataStoreManager.GITHUB
+                                            when (state.selectOne?.getSelectedIndex()) {
+                                                0 -> DataStoreManager.FDROID
+                                                1 -> DataStoreManager.GITHUB
                                                 else -> DataStoreManager.GITHUB
                                             },
                                         )
