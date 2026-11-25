@@ -183,3 +183,37 @@ If a previously deployed announcement contains a typo or broken asset:
 2. Add the announcement's `id` to `"revokedIds": ["bad_announcement_id"]`.
 3. Commit and merge to `main`.
 4. The client will immediately drop and suppress that announcement from active display and from the user's inbox.
+
+---
+
+## 5. Cryptographic Verification & Manifest Signing Guide (P0-2)
+
+### Architecture & Security Model
+All Streamify clients (Android, Desktop, iOS, and Web/WASM) enforce authentic **Ed25519 asymmetric signature verification** on the remote announcement manifest before parsing or displaying any announcement content:
+- **Pinned Release Public Key**: `e5eb74f63c8f8b3949826354f923c66f9de58f8e7b1e4277b7bf0e7f7b32cb64` (pinned in `RemoteSecurity.kt: PINNED_MANIFEST_PUBLIC_KEY_HEX`).
+- **Signature Format**: 128-character hexadecimal Ed25519 signature stored in `manifest.json` under `"signatureHex"`.
+- **Canonical Payload Binding**: Signing and verification are computed over a normalized canonical representation: the exact UTF-8 content of `manifest.json` with `"signatureHex": ""` (empty string), avoiding whitespace desynchronization or formatting artifacts.
+- **Fail-Closed Behavior**: If an untrusted actor modifies the manifest or pushes an announcement without a valid Ed25519 signature from the pinned private key, the client rejects the payload, logs an error, and silently falls back to cached announcements.
+
+### How to Sign docs/announcements/manifest.json
+Whenever you edit, add, or remove announcements in `docs/announcements/manifest.json`, you must regenerate its signature before committing:
+
+1. **Prerequisites**: Node.js v16+ (using native Node `crypto`).
+2. **Execute the Signing Script**:
+   ```bash
+   node scripts/sign_manifest.js
+   ```
+   Or with a custom private key via environment variable:
+   ```bash
+   STREAMIFY_ANNOUNCEMENT_KEY="<64_hex_private_key>" node scripts/sign_manifest.js
+   ```
+3. **Verify the Output**:
+   The script verifies the signature immediately after generation and updates `docs/announcements/manifest.json` in-place:
+   ```
+   Successfully signed manifest.json
+   Public Key (hex): e5eb74f63c8f8b3949826354f923c66f9de58f8e7b1e4277b7bf0e7f7b32cb64
+   Signature (hex): <128_hex_signature>
+   ```
+4. **Commit & Push**:
+   Stage both the modified `manifest.json` and documentation changes, then commit to your release branch.
+
