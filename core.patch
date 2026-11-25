@@ -342,6 +342,74 @@ index 54db97f..cafc1c3 100644
      block: suspend () -> Unit,
  ) = withContext(dispatcher) {
      block.invoke()
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
+new file mode 100644
+index 0000000..3e0ac06
+--- /dev/null
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
+@@ -0,0 +1,62 @@
++package com.maxrave.domain.utils
++
++import kotlin.math.min
++import kotlin.math.pow
++import kotlin.random.Random
++import kotlinx.coroutines.delay
++
++/**
++ * Standard retry policy supporting exponential backoff with full jitter and
++ * explicit Retry-After headers, per Phase 1 Audio Audit (F3 / P1-12).
++ */
++data class RetryPolicy(
++    val maxAttempts: Int = 3,
++    val initialDelayMs: Long = 500L,
++    val maxDelayMs: Long = 10_000L,
++    val backoffMultiplier: Double = 2.0,
++    val fullJitter: Boolean = true,
++) {
++    /**
++     * Computes delay duration in milliseconds for a given attempt index (0-based).
++     * If [retryAfterMs] is provided (> 0), it overrides standard calculation, clamped to [maxDelayMs].
++     */
++    fun computeDelayMs(attempt: Int, retryAfterMs: Long? = null): Long {
++        if (retryAfterMs != null && retryAfterMs > 0L) {
++            return min(retryAfterMs, maxDelayMs)
++        }
++        val calculated = (initialDelayMs * backoffMultiplier.pow(attempt.toDouble())).toLong()
++        val capped = min(calculated, maxDelayMs)
++        return if (fullJitter && capped > 0L) {
++            Random.nextLong(capped / 2, capped + 1)
++        } else {
++            capped
++        }
++    }
++
++    /**
++     * Executes [block] with retry logic according to this policy.
++     */
++    suspend fun <T> execute(
++        shouldRetry: (Throwable) -> Boolean = { true },
++        extractRetryAfterMs: ((Throwable) -> Long?)? = null,
++        onRetry: ((attempt: Int, delayMs: Long, error: Throwable) -> Unit)? = null,
++        block: suspend (attempt: Int) -> T,
++    ): Result<T> {
++        var lastError: Throwable? = null
++        for (attempt in 0 until maxAttempts) {
++            try {
++                return Result.success(block(attempt))
++            } catch (t: Throwable) {
++                lastError = t
++                if (attempt == maxAttempts - 1 || !shouldRetry(t)) {
++                    return Result.failure(t)
++                }
++                val retryAfter = extractRetryAfterMs?.invoke(t)
++                val delayMs = computeDelayMs(attempt, retryAfter)
++                onRetry?.invoke(attempt, delayMs, t)
++                delay(delayMs)
++            }
++        }
++        return Result.failure(lastError ?: IllegalStateException("Exhausted retries"))
++    }
++}
 diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
 index bbffab7..206e8d2 100644
 --- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
