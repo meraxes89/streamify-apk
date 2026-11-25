@@ -1712,36 +1712,42 @@ class SharedViewModel(
     fun setLyricsOffsetMs(offsetMs: Int) {
         viewModelScope.launch {
             dataStoreManager.setLyricsOffsetMs(offsetMs)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LYRICS_OFFSET_MS, offsetMs.toString())
         }
     }
 
     fun setThemeMode(mode: String) {
         viewModelScope.launch {
             dataStoreManager.setThemeMode(mode)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.THEME_MODE, mode)
         }
     }
 
     fun setThemeColorSource(source: String) {
         viewModelScope.launch {
             dataStoreManager.setThemeColorSource(source)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.THEME_COLOR_SOURCE, source)
         }
     }
 
     fun setCustomThemeColor(argbHex: String) {
         viewModelScope.launch {
             dataStoreManager.setCustomThemeColor(argbHex)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.CUSTOM_THEME_COLOR, argbHex)
         }
     }
 
     fun setNowPlayingStyle(style: String) {
         viewModelScope.launch {
             dataStoreManager.setNowPlayingStyle(style)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.NOW_PLAYING_STYLE, style)
         }
     }
 
     fun setLyricsStyle(style: String) {
         viewModelScope.launch {
             dataStoreManager.setLyricsStyle(style)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LYRICS_STYLE, style)
         }
     }
 
