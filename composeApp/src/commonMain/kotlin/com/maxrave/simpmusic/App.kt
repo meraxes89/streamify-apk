@@ -175,6 +175,7 @@ fun App(
     val nowPlayingData by viewModel.nowPlayingState.collectAsStateWithLifecycle()
     val updateData by viewModel.updateResponse.collectAsStateWithLifecycle()
     val intent by viewModel.intent.collectAsStateWithLifecycle()
+    val intentSeq by viewModel.intentSeq.collectAsStateWithLifecycle()
     val showNotificationPermissionDialog by viewModel.showNotificationPermissionDialog.collectAsStateWithLifecycle()
 
     val isLiquidGlassEnabled by viewModel.getEnableLiquidGlass().collectAsStateWithLifecycle(DataStoreManager.FALSE)
@@ -258,7 +259,7 @@ fun App(
     val hazeState =
         rememberHazeState()
 
-    LaunchedEffect(intent) {
+    LaunchedEffect(intent, intentSeq, streamifyAuthState) {
         val intent = intent ?: return@LaunchedEffect
         val data = intent.data
         Logger.d("MainActivity", "onCreate: $data")
@@ -275,11 +276,6 @@ fun App(
                 } else {
                     Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
                 }
-            } else if (data.scheme == "simpmusic" && data.host == "notification") {
-                viewModel.setIntent(null)
-                navController.navigate(
-                    NotificationDestination,
-                )
             } else if (data.scheme == "wordbyword" && data.host == "lastfm-auth") {
                 // Last.fm sends the user back here after they approve access, carrying the request
                 // token: wordbyword://lastfm-auth?token=xxx. The callback is fixed on the API
@@ -299,6 +295,14 @@ fun App(
                 Logger.d("MainActivity", "Discord callback, code present: ${!data.getQueryParameter("code").isNullOrEmpty()}")
                 viewModel.setIntent(null)
                 viewModel.completeDiscordLogin(data.toString())
+            } else if (streamifyAuthState !is AuthState.Authenticated) {
+                // Defer navigation deep links until AppNavigationGraph is mounted.
+                return@LaunchedEffect
+            } else if (data.scheme == "simpmusic" && data.host == "notification") {
+                viewModel.setIntent(null)
+                navController.navigate(
+                    NotificationDestination,
+                )
             } else if (data.host == "simpmusic.org" || data.scheme == "simpmusic") {
                 // https://simpmusic.org/app/watch?v=VIDEO_ID
                 // https://simpmusic.org/app/playlist?list=PLAYLIST_ID
@@ -485,6 +489,7 @@ fun App(
                         }
                     }
                 }
+                viewModel.setIntent(null)
             }
         }
     }

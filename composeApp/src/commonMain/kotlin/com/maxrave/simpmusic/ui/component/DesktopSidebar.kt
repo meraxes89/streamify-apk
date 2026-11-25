@@ -175,6 +175,11 @@ fun DesktopSidebar(
             selectedIndex = BottomNavScreen.Home.ordinal
         }
     }
+    LaunchedEffect(currentBackStackEntry, navScreens) {
+        findMatchedTabOrdinal(currentBackStackEntry, navScreens)?.let {
+            selectedIndex = it
+        }
+    }
     val selectTab: (BottomNavScreen) -> Unit = { screen ->
         if (selectedIndex == screen.ordinal) {
             if (currentBackStackEntry?.destination?.hierarchy?.any { it.hasRoute(screen.destination::class) } == true) {
