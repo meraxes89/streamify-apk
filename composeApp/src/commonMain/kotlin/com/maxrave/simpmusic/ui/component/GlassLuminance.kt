@@ -24,14 +24,14 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 
 private const val SAMPLE_SIZE = 5
-private const val SAMPLE_INTERVAL_MS = 2_500L
 private const val LUMINANCE_CHANGE_THRESHOLD = 0.02f
 
-/** Samples a small GPU-rendered copy; reading pixels also handles Android hardware bitmaps. */
+/** Samples a small GPU-rendered copy on lifecycle start and trigger changes; reading pixels also handles Android hardware bitmaps. */
 @Composable
 internal fun rememberGlassLuminance(
     source: GraphicsLayer,
     enabled: Boolean = true,
+    trigger: Any? = null,
 ): State<Float> {
     val sample = rememberGraphicsLayer()
     val luminance = remember { Animatable(0f) }
@@ -39,11 +39,13 @@ internal fun rememberGlassLuminance(
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
 
-    LaunchedEffect(source, sample, enabled, lifecycle, density, layoutDirection) {
+    LaunchedEffect(source, sample, enabled, lifecycle, density, layoutDirection, trigger) {
         if (!enabled) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             val pixels = IntArray(SAMPLE_SIZE * SAMPLE_SIZE)
-            while (isActive) {
+            var attempts = 0
+            while (isActive && attempts < 3) {
+                delay(150L)
                 val sourceSize = source.size
                 // A layer has no display list until its first draw.
                 if (sourceSize.width > 0 && sourceSize.height > 0) {
@@ -77,8 +79,9 @@ internal fun rememberGlassLuminance(
                     if (abs(target - luminance.targetValue) >= LUMINANCE_CHANGE_THRESHOLD) {
                         luminance.animateTo(target, tween(500))
                     }
+                    break
                 }
-                delay(SAMPLE_INTERVAL_MS)
+                attempts++
             }
         }
     }
