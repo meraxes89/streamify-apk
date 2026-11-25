@@ -81,6 +81,69 @@ index 0000000..09e84b4
 +++ b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
 @@ -0,0 +1 @@
 +package com.maxrave.common
+diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
+index 6a30090..c452fe5 100644
+--- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
++++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
+@@ -1647,7 +1647,7 @@ internal class MediaServiceHandlerImpl(
+                                             ),
+                                     )
+                                 }
+-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
++                                if (dataStoreManager.endlessQueue.first() == TRUE) {
+                                     Logger.w(TAG, "loadMore: Endless Queue")
+                                     val lastTrack =
+                                         queueData.value.data.listTracks
+@@ -1677,28 +1677,28 @@ internal class MediaServiceHandlerImpl(
+                         }
+                 }
+             }
+-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+-            Logger.w(TAG, "loadMore: Endless Queue")
+-            val lastTrack =
+-                queueData.value.data.listTracks
+-                    .lastOrNull() ?: return
+-            _queueData.update {
+-                it.copy(
+-                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+-                    data =
+-                        it.data.copy(
+-                            playlistId = "RDAMVM${lastTrack.videoId}",
+-                            // Past the end of what the user picked, this queue IS a radio: from here
+-                            // on it is extended by the radio of its last track and grows without end.
+-                            // Saying so keeps the type honest and lets the history trim apply, while
+-                            // the album snapshot for the crossfade rule was already taken at load.
+-                            playlistType = PlaylistType.RADIO,
+-                        ),
+-                )
++        } else {
++            coroutineScope.launch {
++                if (dataStoreManager.endlessQueue.first() == TRUE) {
++                    Logger.w(TAG, "loadMore: Endless Queue")
++                    val lastTrack =
++                        queueData.value.data.listTracks
++                            .lastOrNull() ?: return@launch
++                    _queueData.update {
++                        it.copy(
++                            queueState = QueueData.StateSource.STATE_INITIALIZED,
++                            data =
++                                it.data.copy(
++                                    playlistId = "RDAMVM${lastTrack.videoId}",
++                                    playlistType = PlaylistType.RADIO,
++                                ),
++                        )
++                    }
++                    reorderShuffledQueue(player.getCurrentMediaTimeLine())
++                    Logger.d("Check loadMore", "queueData: ${queueData.value}")
++                    getRelated(lastTrack.videoId)
++                }
+             }
+-            reorderShuffledQueue(player.getCurrentMediaTimeLine())
+-            Logger.d("Check loadMore", "queueData: ${queueData.value}")
+-            getRelated(lastTrack.videoId)
+         }
+     }
+ 
 diff --git a/data/src/commonMain/kotlin/DatabaseDao.kt b/data/src/commonMain/kotlin/DatabaseDao.kt
 index db029df..1e1929c 100644
 --- a/data/src/commonMain/kotlin/DatabaseDao.kt
@@ -267,6 +330,69 @@ index cd39fe9..e18f459 100644
  
      suspend fun flag(
          kind: String,
+diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
+index 4e3866d..73d6153 100644
+--- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
++++ b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
+@@ -1774,7 +1774,7 @@ class JvmMediaPlayerHandlerImpl(
+                                             ),
+                                     )
+                                 }
+-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
++                                if (dataStoreManager.endlessQueue.first() == TRUE) {
+                                     Logger.w(TAG, "loadMore: Endless Queue")
+                                     val lastTrack =
+                                         queueData.value.data.listTracks
+@@ -1804,28 +1804,28 @@ class JvmMediaPlayerHandlerImpl(
+                         }
+                 }
+             }
+-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+-            Logger.w(TAG, "loadMore: Endless Queue")
+-            val lastTrack =
+-                queueData.value.data.listTracks
+-                    .lastOrNull() ?: return
+-            _queueData.update {
+-                it.copy(
+-                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+-                    data =
+-                        it.data.copy(
+-                            playlistId = "RDAMVM${lastTrack.videoId}",
+-                            // Past the end of what the user picked, this queue IS a radio: from here
+-                            // on it is extended by the radio of its last track and grows without end.
+-                            // Saying so keeps the type honest and lets the history trim apply, while
+-                            // the album snapshot for the crossfade rule was already taken at load.
+-                            playlistType = PlaylistType.RADIO,
+-                        ),
+-                )
++        } else {
++            coroutineScope.launch {
++                if (dataStoreManager.endlessQueue.first() == TRUE) {
++                    Logger.w(TAG, "loadMore: Endless Queue")
++                    val lastTrack =
++                        queueData.value.data.listTracks
++                            .lastOrNull() ?: return@launch
++                    _queueData.update {
++                        it.copy(
++                            queueState = QueueData.StateSource.STATE_INITIALIZED,
++                            data =
++                                it.data.copy(
++                                    playlistId = "RDAMVM${lastTrack.videoId}",
++                                    playlistType = PlaylistType.RADIO,
++                                ),
++                        )
++                    }
++                    reorderShuffledQueue(player.getCurrentMediaTimeLine())
++                    Logger.d("Check loadMore", "queueData: ${queueData.value}")
++                    getRelated(lastTrack.videoId)
++                }
+             }
+-            reorderShuffledQueue(player.getCurrentMediaTimeLine())
+-            Logger.d("Check loadMore", "queueData: ${queueData.value}")
+-            getRelated(lastTrack.videoId)
+         }
+     }
+ 
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
