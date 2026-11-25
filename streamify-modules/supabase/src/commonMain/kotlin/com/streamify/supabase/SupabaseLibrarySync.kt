@@ -7,6 +7,7 @@ import io.ktor.client.request.patch
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -976,6 +977,30 @@ object SupabaseLibrarySync {
         }
     }
 
+    private suspend fun postWithAuthRetry(
+        url: String,
+        payload: String,
+    ): HttpResponse {
+        var resp = SupabaseClient.httpClient.post(url) {
+            header("apikey", SupabaseConfig.ANON_KEY)
+            header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+        if (resp.status.value == 401 && SupabaseClient.hasValidUserSession()) {
+            val refreshResult = SupabaseClient.refreshSession()
+            if (refreshResult.isSuccess) {
+                resp = SupabaseClient.httpClient.post(url) {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }
+            }
+        }
+        return resp
+    }
+
     /**
      * V3 Sync Contract: Idempotent batched push via `sync_push` RPC.
      */
@@ -989,12 +1014,7 @@ object SupabaseLibrarySync {
                 put("p_device_id", deviceId)
             }.toString()
 
-            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_push") {
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                contentType(ContentType.Application.Json)
-                setBody(payload)
-            }
+            val resp = postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_push", payload)
             if (resp.status.isSuccess()) {
                 val result = json.decodeFromString<SyncPushResult>(resp.bodyAsText())
                 Result.success(result)
@@ -1023,12 +1043,7 @@ object SupabaseLibrarySync {
                 }
             }.toString()
 
-            val resp = SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_pull") {
-                header("apikey", SupabaseConfig.ANON_KEY)
-                header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                contentType(ContentType.Application.Json)
-                setBody(payload)
-            }
+            val resp = postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_pull", payload)
             if (resp.status.isSuccess()) {
                 val result = json.decodeFromString<SyncPullResult>(resp.bodyAsText())
                 Result.success(result)
