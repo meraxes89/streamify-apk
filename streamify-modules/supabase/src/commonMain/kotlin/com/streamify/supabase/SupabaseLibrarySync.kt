@@ -10,10 +10,15 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -99,6 +104,7 @@ object SupabaseLibrarySync {
                 Result.success(resp.status.isSuccess())
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -202,6 +208,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -235,6 +242,7 @@ object SupabaseLibrarySync {
             }
             resultTracks
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -260,6 +268,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -284,6 +293,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -331,6 +341,7 @@ object SupabaseLibrarySync {
                 Result.success(resp.status.isSuccess())
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -422,6 +433,7 @@ object SupabaseLibrarySync {
 
             Result.success(plResp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -483,6 +495,7 @@ object SupabaseLibrarySync {
                 Result.success(resp.status.isSuccess())
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -520,6 +533,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -579,6 +593,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -622,6 +637,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -638,6 +654,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -660,6 +677,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -683,6 +701,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -707,6 +726,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -736,6 +756,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -761,6 +782,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -805,6 +827,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -856,6 +879,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -882,6 +906,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -909,6 +934,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -943,6 +969,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -980,6 +1007,7 @@ object SupabaseLibrarySync {
                 Result.success(null)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1023,12 +1051,15 @@ object SupabaseLibrarySync {
 
             val resp = postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_push", payload)
             if (resp.status.isSuccess()) {
+                val serverTimeMs = parseHttpDateToEpochMs(resp.headers[HttpHeaders.Date])
                 val result = json.decodeFromString<SyncPushResult>(resp.bodyAsText())
+                    .copy(serverTimeMs = serverTimeMs)
                 Result.success(result)
             } else {
                 Result.failure(Exception("sync_push failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1052,12 +1083,15 @@ object SupabaseLibrarySync {
 
             val resp = postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_pull", payload)
             if (resp.status.isSuccess()) {
+                val serverTimeMs = parseHttpDateToEpochMs(resp.headers[HttpHeaders.Date])
                 val result = json.decodeFromString<SyncPullResult>(resp.bodyAsText())
+                    .copy(serverTimeMs = serverTimeMs)
                 Result.success(result)
             } else {
                 Result.failure(Exception("sync_pull failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1091,6 +1125,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1113,6 +1148,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("get_latest_presence failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1158,6 +1194,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("record_device_session failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1184,6 +1221,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("revoke_device_session failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1206,7 +1244,48 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("get_my_devices failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Parses an HTTP `Date` header (RFC 1123, e.g. `Thu, 26 Nov 2026 01:30:00 GMT`) into epoch ms.
+     * Returns `null` if the header is missing or malformed.
+     */
+    internal fun parseHttpDateToEpochMs(dateHeader: String?): Long? {
+        if (dateHeader.isNullOrBlank()) return null
+        val afterComma = dateHeader.substringAfter(',', dateHeader).trim()
+        val parts = afterComma.split(' ').filter { it.isNotBlank() }
+        if (parts.size < 4) return null
+        val day = parts[0].toIntOrNull() ?: return null
+        val month = when (parts[1].lowercase()) {
+            "jan" -> 1
+            "feb" -> 2
+            "mar" -> 3
+            "apr" -> 4
+            "may" -> 5
+            "jun" -> 6
+            "jul" -> 7
+            "aug" -> 8
+            "sep" -> 9
+            "oct" -> 10
+            "nov" -> 11
+            "dec" -> 12
+            else -> return null
+        }
+        val year = parts[2].toIntOrNull() ?: return null
+        val timeParts = parts[3].split(':')
+        if (timeParts.size != 3) return null
+        val hour = timeParts[0].toIntOrNull() ?: return null
+        val minute = timeParts[1].toIntOrNull() ?: return null
+        val second = timeParts[2].toIntOrNull() ?: return null
+        return try {
+            LocalDateTime(year, month, day, hour, minute, second)
+                .toInstant(TimeZone.UTC)
+                .toEpochMilliseconds()
+        } catch (_: Exception) {
+            null
         }
     }
 
