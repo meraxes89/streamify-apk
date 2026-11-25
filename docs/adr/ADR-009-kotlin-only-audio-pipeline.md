@@ -3,7 +3,7 @@
 * Status: Accepted
 * Date: 2026-11-25
 * Supersedes: ADR-001 and ADR-002 for shipped audio processing
-* Verified against: 1d387b7ed4d5f3d4cb13f5f2681eb2bcbf1bb05e (staleness protocol in docs/adr/README.md)
+* Verified against: ee2590133b8ccf610640278dca3b3374139573b4 (staleness protocol in docs/adr/README.md)
 
 ## Context
 
@@ -86,4 +86,4 @@ retired path. Duplicating EQ, reverb, delay or 8D is explicitly out of scope.
 - `scripts/verify_docs.py` and `scripts/docs_ledger_check.py` run in Tier-1
   preflight and flag present-tense claims about the retired native core.
 
-<!-- doc-verified-against: 1d387b7ed4d5f3d4cb13f5f2681eb2bcbf1bb05e -->
+<!-- doc-verified-against: ee2590133b8ccf610640278dca3b3374139573b4 -->
