@@ -30,7 +30,7 @@ permissions:
 jobs:
   build-ios:
     name: "Apple iOS (Frameworks & Distribution)"
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:

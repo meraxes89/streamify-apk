@@ -4,8 +4,8 @@ import com.streamify.graphics.governor.ThermalStatus
 import com.streamify.graphics.governor.TierGovernor
 import com.streamify.graphics.governor.mapThermalState
 import platform.Foundation.NSNotificationCenter
-import platform.Foundation.NSObjectProtocol
 import platform.Foundation.NSProcessInfo
+import platform.darwin.NSObjectProtocol
 
 /**
  * iosMain actual of [GraphicsEnvironmentBridge] — the native Apple
