@@ -1,7 +1,7 @@
 # Universal Multiplatform Migration Execution Ledger
 
 **Document ID:** `LEDGER-UNIV-MP-001`  
-**Governing Plan:** `docs/universal_migration/MASTER_PLAN.md`  
+**Governing Plan:** `docs/archive/universal_migration/MASTER_PLAN.md` (archived)  
 **Integration Branch:** `integration/universal-multiplatform`  
 **Last Updated:** 2026-11-18  
 
@@ -25,7 +25,7 @@
 
 ### Phase 0: Branch & Preservation
 - [x] Create integration branch `integration/universal-multiplatform`.
-- [x] Create dedicated documentation directory `docs/universal_migration/`.
+- [x] Create dedicated documentation directory `docs/universal_migration/` (later archived to `docs/archive/universal_migration/`).
 - [x] Write `MASTER_PLAN.md` and `MIGRATION_EXECUTION_LEDGER.md`.
 - [x] Move `/app` to `legacy/app` via git move to preserve history:
   ```bash

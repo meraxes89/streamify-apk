@@ -21,7 +21,8 @@ immutable. Keep rejected RFCs — the "why not" is the valuable part.
   `Superseded by RFC-NNN`.
 - New RFCs must be added to this table in the same PR.
 
-Historical paths `docs/BACKEND_ARCHITECTURE_RFC.md` and
-`docs/architecture/GPU_DIRECT_DRIVER_OFFLOAD_RFC.md` are pointer stubs only.
+Former paths `docs/BACKEND_ARCHITECTURE_RFC.md` and
+`docs/architecture/GPU_DIRECT_DRIVER_OFFLOAD_RFC.md` are retired; both RFCs now
+live only in this directory.
 
 <!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
