@@ -40,4 +40,4 @@ tests: []
 
 - Track the V4 catalog/user-graph decoupling from RFC-002.
 
-<!-- doc-verified-against: 1d387b7ed4d5f3d4cb13f5f2681eb2bcbf1bb05e -->
+<!-- doc-verified-against: ee2590133b8ccf610640278dca3b3374139573b4 -->

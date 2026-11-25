@@ -40,4 +40,4 @@ tests: []
 
 - Move pins forward as each doc's area is re-verified; do not bulk-bump without review.
 
-<!-- doc-verified-against: 1d387b7ed4d5f3d4cb13f5f2681eb2bcbf1bb05e -->
+<!-- doc-verified-against: ee2590133b8ccf610640278dca3b3374139573b4 -->
