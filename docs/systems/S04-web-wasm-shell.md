@@ -40,4 +40,4 @@ tests: []
 
 - State explicitly which features are browser-only no-ops.
 
-<!-- doc-verified-against: ee2590133b8ccf610640278dca3b3374139573b4 -->
+<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
