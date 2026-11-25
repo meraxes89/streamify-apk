@@ -4,7 +4,7 @@
 
 The Sovereign GPU Engine (`:streamify-modules:streamify-graphics`) is an upstream-isolated, hardware-adaptive graphics subsystem for Compose Multiplatform (CMP). It offloads heavy rendering tasks—specifically **Liquid Glass / Glassmorphism**, normal-map refraction shaders, and real-time audio visualizers—directly to native GPU drivers (**Vulkan, Metal, Direct3D 11 via ANGLE, WebGL 2.0**) by riding Skia and Android HWUI's internal compilation pipeline.
 
-Crucially, it guarantees rock-solid stability and locked 60 FPS on low-end hardware (such as the **Vivo 1712 / Android 8.1 API 27**) through an automatic **4-Tier Hardware Capability Matrix**.
+Crucially, it guarantees rock-solid stability and locked 60 FPS on low-end hardware (such as the **Vivo 1712 / Android 8.1 API 27**) through an automatic **4-Tier Hardware Capability Matrix**, and covers the full universal Android spectrum — API 26 (Oreo) through API 35+ (Android 15/16) and every mobile GPU architecture (Adreno 3xx–8xx, Mali Midgard through Immortalis, Xclipse, Dimensity/Helio, PowerVR Rogue/B-Series, and software rasters) — through capability probing, dialect adaptation, and the earned performance model, never marketing-name whitelisting.
 
 ---
 
@@ -13,9 +13,10 @@ Crucially, it guarantees rock-solid stability and locked 60 FPS on low-end hardw
 | Document | Description |
 |---|---|
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | **Developer & Extension Playbook**: Practical guide for UI devs to offload rendering to the GPU and GPU devs to extend shaders, hardware, and SPI effects. |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Full technical specification: Skia/HWUI pipeline, SkSL universal IR, 4-tier capability matrix, and zero-allocation FFT data-texture visualizer. |
-| [PHASED_PLAN.md](PHASED_PLAN.md) | Phase 1 to Phase 4 roadmap orchestrating two parallel engineers with explicit branch/PR workflows against `integration/sovereign-graphics`. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Full technical specification: Skia/HWUI pipeline, SkSL universal IR (with the precision contract), 4-tier capability matrix, and zero-allocation FFT data-texture visualizer. |
 | [CI_TESTING_SPEC.md](CI_TESTING_SPEC.md) | Automated testing specification triggered when GPU files change: software-raster tests (Tier 4), headless Skia tests, API 27 emulation, and shader-failover gates. |
+
+The Phase 1–4 roadmap (`PHASED_PLAN.md`) was retired with the plan's completion; the phase history lives in the integration branch's merged PRs.
 
 ---
 

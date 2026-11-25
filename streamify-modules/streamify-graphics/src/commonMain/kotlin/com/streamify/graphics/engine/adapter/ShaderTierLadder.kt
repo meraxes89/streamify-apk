@@ -68,6 +68,27 @@ data class AdapterExecutionPlan(
  * section 3): the total (tier x capability) -> strategy mapping shared by
  * every platform adapter.
  *
+ * ## Track C — the API 26 -> 35+ spectrum (docs/gpu/ARCHITECTURE.md
+ * section 3, axis 1)
+ *
+ * The ladder consumes the capability classification, never raw API levels,
+ * so the Android version spectrum is the probe's mapping:
+ *
+ *  * **API 33–35+ (Android 13–15/16)** — [ShaderCapability.RUNTIME_SHADER]:
+ *    the full AGSL `RuntimeShader` lane (Vulkan / GLES 3.2 backends).
+ *    Tier 1 = `LiquidGlassCore` dispersion; Tier 2 = single-tap.
+ *  * **API 31–32 (Android 12 / 12L)** — [ShaderCapability.RENDER_EFFECT]:
+ *    hardware `RenderEffect.createBlurEffect()` — zero runtime shader
+ *    programs, zero AGSL class references.
+ *  * **API 28–30 (Android 9–11)** — [ShaderCapability.FIXED_FUNCTION]:
+ *    hardware-accelerated `RenderNode` clipping + layer compositing through
+ *    the scrim engine (no shader, no blur API: `createBlurEffect` is API
+ *    31+, so Pie/Q/R never class-link it).
+ *  * **API 26–27 (Android 8.0/8.1 — Vivo 1712 et al.)** — the same
+ *    FIXED_FUNCTION scrim lane: strictly zero shader classes and zero
+ *    blur classes linked, 0% thermal throttling contribution, and zero
+ *    `NoClassDefFoundError` risk (the CI Job 2 invariant).
+ *
  * Both inputs come from the governor contracts — the live tier from
  * [TierGovernor][com.streamify.graphics.governor.TierGovernor], the
  * capability from [CapabilityProbe] — and both outputs are data the
@@ -92,6 +113,13 @@ object ShaderTierLadder {
      * | T2   | SINGLE_TAP (1 prog) | BLUR (0 progs) | SCRIM (0)      |
      * | T3   | SCRIM (0)           | SCRIM (0)      | SCRIM (0)      |
      * | T4   | SOLID_TINT (0)      | SOLID_TINT (0) | SOLID_TINT (0) |
+     *
+     * API-spectrum reading (Track C): the column a device lands in is the
+     * probe's API mapping — API 33–35+ in RUNTIME_SHADER, API 31–32 in
+     * RENDER_EFFECT, API 26–30 in FIXED_FUNCTION. The API 27 hard
+     * invariant falls out of the third column: Tier 3 row, zero shader
+     * programs, and the Android adapter links no API 31+ class from that
+     * arm.
      */
     fun planFor(tier: RenderTier, capability: ShaderCapability): AdapterExecutionPlan =
         when (tier) {
@@ -140,7 +168,8 @@ object ShaderTierLadder {
      * shader programs. `apiLevel = 33, runtimeShaderCompileSupported = true`
      * -> Tier 1 dispersion with exactly one program. A software-rasterizer
      * marker collapses everything to Tier 4 regardless of API level
-     * (axis 2 dominates axis 1).
+     * (axis 2 dominates axis 1); a Track D denylist marker does the same
+     * (axis 3).
      */
     fun bestPlanFor(
         apiLevel: Int,
