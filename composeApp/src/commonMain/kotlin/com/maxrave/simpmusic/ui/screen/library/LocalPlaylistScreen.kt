@@ -246,17 +246,7 @@ fun LocalPlaylistScreen(
             ),
         label = "shimmer",
     )
-    val infiniteTransition = rememberInfiniteTransition(label = "rotation")
-    val angle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(5000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-        label = "rotation",
-    )
+
 
     val lazyState = rememberLazyListState()
     val firstItemVisible by remember {
