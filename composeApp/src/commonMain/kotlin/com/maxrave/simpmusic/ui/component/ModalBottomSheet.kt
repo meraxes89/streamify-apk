@@ -329,9 +329,11 @@ fun InfoPlayerBottomSheet(
         )
 
     val screenDataState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()
-    val songEntity by sharedViewModel.nowPlayingState.map { it?.songEntity }.collectAsState(null)
-    val format by sharedViewModel.format.collectAsState(null)
-    val extractSource by sharedViewModel.extractSource.collectAsState()
+    val songEntity by remember(sharedViewModel) {
+        sharedViewModel.nowPlayingState.map { it?.songEntity }
+    }.collectAsStateWithLifecycle(null)
+    val format by sharedViewModel.format.collectAsStateWithLifecycle(null)
+    val extractSource by sharedViewModel.extractSource.collectAsStateWithLifecycle()
     val downloadProgress by sharedViewModel.downloadFileProgress.collectAsStateWithLifecycle()
 
     ModalBottomSheet(
@@ -1960,12 +1962,12 @@ fun NowPlayingBottomSheet(
 fun rememberAddToQueueBlock(): AddToQueueBlock? {
     val handler = koinInject<MediaPlayerHandler>()
     val dataStoreManager = koinInject<DataStoreManager>()
-    val queueData by handler.queueData.collectAsState()
+    val queueData by handler.queueData.collectAsStateWithLifecycle()
     val endlessQueueFlow =
         remember(dataStoreManager) {
             dataStoreManager.endlessQueue.map { it == DataStoreManager.TRUE }
         }
-    val endlessQueue by endlessQueueFlow.collectAsState(false)
+    val endlessQueue by endlessQueueFlow.collectAsStateWithLifecycle(false)
     return queueData.addToQueueBlock(endlessQueue)
 }
 
@@ -1975,7 +1977,7 @@ fun rememberAddToQueueBlock(): AddToQueueBlock? {
  */
 @Composable
 fun AddToQueueBlock?.addToQueueLabel(): StringResource {
-    val queueData by koinInject<MediaPlayerHandler>().queueData.collectAsState()
+    val queueData by koinInject<MediaPlayerHandler>().queueData.collectAsStateWithLifecycle()
     return when (this) {
         null -> if (queueData?.data?.listTracks.isNullOrEmpty()) Res.string.create_new_queue_and_play else Res.string.add_to_queue
         AddToQueueBlock.RADIO -> Res.string.add_to_queue_disabled_radio

@@ -276,11 +276,15 @@ fun LocalPlaylistScreen(
     var showSelectionAddToPlaylist by rememberSaveable { mutableStateOf(false) }
     var shouldShowSuggestButton by rememberSaveable { mutableStateOf(false) }
 
-    val playingTrack by sharedViewModel.nowPlayingState
-        .mapLatest {
-            it?.songEntity
-        }.collectAsState(initial = null)
-    val isPlaying by sharedViewModel.controllerState.map { it.isPlaying }.collectAsState(initial = false)
+    val playingTrack by remember(sharedViewModel) {
+        sharedViewModel.nowPlayingState
+            .mapLatest {
+                it?.songEntity
+            }
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val isPlaying by remember(sharedViewModel) {
+        sharedViewModel.controllerState.map { it.isPlaying }
+    }.collectAsStateWithLifecycle(initialValue = false)
 
     val queueData by sharedViewModel.getQueueDataState().collectAsStateWithLifecycle()
     val playingPlaylistId by remember {
@@ -289,7 +293,9 @@ fun LocalPlaylistScreen(
         }
     }
 
-    val suggestedTracks by viewModel.uiState.map { it.suggestions?.songs ?: emptyList() }.collectAsState(initial = emptyList())
+    val suggestedTracks by remember(viewModel) {
+        viewModel.uiState.map { it.suggestions?.songs ?: emptyList() }
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     val suggestionsLoading by viewModel.loading.collectAsStateWithLifecycle()
     var showSyncAlertDialog by rememberSaveable { mutableStateOf(false) }
     var showUnsyncAlertDialog by rememberSaveable { mutableStateOf(false) }

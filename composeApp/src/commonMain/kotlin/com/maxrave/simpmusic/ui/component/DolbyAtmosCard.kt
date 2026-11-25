@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,9 +32,9 @@ import com.streamify.media.hal.DolbySpatialManager
 fun DolbyAtmosCard(
     modifier: Modifier = Modifier
 ) {
-    val isDetected by DolbySpatialManager.isDolbyAtmosDetected.collectAsState()
-    val hardwareDetail by DolbySpatialManager.hardwareDetail.collectAsState()
-    val hasHeadTracking by DolbySpatialManager.hasHeadTracking.collectAsState()
+    val isDetected by DolbySpatialManager.isDolbyAtmosDetected.collectAsStateWithLifecycle()
+    val hardwareDetail by DolbySpatialManager.hardwareDetail.collectAsStateWithLifecycle()
+    val hasHeadTracking by DolbySpatialManager.hasHeadTracking.collectAsStateWithLifecycle()
 
     val accentColor = if (isDetected) Color(0xFFD4AF37) else Color(0xFF888888)
     val containerBg = Color(0xFF141414)
