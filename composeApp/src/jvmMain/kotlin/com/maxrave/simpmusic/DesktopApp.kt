@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -21,6 +22,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import coil3.ImageLoader
 import coil3.annotation.ExperimentalCoilApi
@@ -68,6 +71,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.runBlocking
 import multiplatform.network.cmptoast.ToastHost
 import multiplatform.network.cmptoast.showToast
@@ -310,11 +314,39 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
     }
 
     governedApplication {
-        // Main Window
+        // Main Window State Persistence (P2-1)
+        val windowPrefs = remember { java.util.prefs.Preferences.userRoot().node("Streamify/MainWindow") }
+        val savedWidth = windowPrefs.getFloat("width", 1280f).coerceIn(800f, 3840f)
+        val savedHeight = windowPrefs.getFloat("height", 800f).coerceIn(600f, 2160f)
+        val savedX = windowPrefs.getFloat("x", Float.NaN)
+        val savedY = windowPrefs.getFloat("y", Float.NaN)
+        val isMaximized = windowPrefs.getBoolean("maximized", false)
+
         val windowState =
             rememberWindowState(
-                size = DpSize(1500.dp, 860.dp),
+                placement = if (isMaximized) WindowPlacement.Maximized else WindowPlacement.Floating,
+                position =
+                    if (savedX.isNaN() || savedY.isNaN()) {
+                        WindowPosition(Alignment.Center)
+                    } else {
+                        WindowPosition(savedX.coerceAtLeast(0f).dp, savedY.coerceAtLeast(0f).dp)
+                    },
+                size = DpSize(savedWidth.dp, savedHeight.dp),
             )
+
+        LaunchedEffect(windowState.position, windowState.size, windowState.placement) {
+            val pos = windowState.position
+            if (pos is WindowPosition.Absolute) {
+                windowPrefs.putFloat("x", pos.x.value)
+                windowPrefs.putFloat("y", pos.y.value)
+            }
+            if (windowState.placement == WindowPlacement.Floating) {
+                windowPrefs.putFloat("width", windowState.size.width.value)
+                windowPrefs.putFloat("height", windowState.size.height.value)
+            }
+            windowPrefs.putBoolean("maximized", windowState.placement == WindowPlacement.Maximized)
+        }
+
         var isVisible by remember { mutableStateOf(true) }
         val showNotificationPermissionDialog by
             desktopNotificationManager.shouldShowPermissionDialog.collectAsState()
@@ -377,9 +409,15 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
             }
             Divider()
             Item(quitAppString) {
-                mediaPlayerHandler.release()
-                Sentry.endSession()
-                exitApplication()
+                startupScope.launch {
+                    runCatching {
+                        withTimeoutOrNull(2000) {
+                            mediaPlayerHandler.release()
+                        }
+                    }
+                    Sentry.endSession()
+                    exitApplication()
+                }
             }
         }
         // Windows and Linux keep the native title bar (on Linux, undecorated + transparent

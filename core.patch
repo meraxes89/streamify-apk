@@ -810,7 +810,7 @@ index bc3bcfb..4dedd05 100644
 +    coroutineScope: CoroutineScope,
 +): MediaPlayerHandler = NoOpMediaPlayerHandler()
 diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
-index 4e3866d..73d6153 100644
+index 4e3866d..50117f7 100644
 --- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
 +++ b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
 @@ -1774,7 +1774,7 @@ class JvmMediaPlayerHandlerImpl(
@@ -872,6 +872,14 @@ index 4e3866d..73d6153 100644
          }
      }
  
+@@ -2716,6 +2716,7 @@ class JvmMediaPlayerHandlerImpl(
+ 
+             // Stop and release player
+             player.removeListener(this)
++            runCatching { player.release() }
+ 
+             // Release audio effects
+ //            try {
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
@@ -1189,10 +1197,18 @@ index 0000000..aea0a2d
 +    }
 +}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
-index 62c93a5..b950462 100644
+index 62c93a5..a51f81f 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
-@@ -84,6 +84,7 @@ import kotlinx.coroutines.flow.firstOrNull
+@@ -62,6 +62,7 @@ import com.maxrave.domain.repository.SearchRepository
+ import com.maxrave.domain.repository.SongRepository
+ import com.maxrave.domain.repository.StreamRepository
+ import com.maxrave.logger.Logger
++import com.maxrave.media3.audio.LimiterAudioProcessor
+ import com.maxrave.media3.cast.CastHandoffManager
+ import com.maxrave.media3.waveform.WaveformReader
+ import com.maxrave.media3.cast.CastStreamResolver
+@@ -84,6 +85,7 @@ import kotlinx.coroutines.flow.firstOrNull
  import kotlinx.coroutines.flow.lastOrNull
  import kotlinx.coroutines.launch
  import kotlinx.coroutines.runBlocking
@@ -1200,7 +1216,7 @@ index 62c93a5..b950462 100644
  import okhttp3.OkHttpClient
  import okhttp3.logging.HttpLoggingInterceptor
  import org.koin.android.ext.koin.androidApplication
-@@ -105,28 +106,33 @@ private val mediaServiceModule =
+@@ -105,28 +107,33 @@ private val mediaServiceModule =
          // Service
          // CoroutineScope for service
          single<CoroutineScope>(
@@ -1241,7 +1257,7 @@ index 62c93a5..b950462 100644
              provideSimpleCache(
                  context = androidContext(),
                  cacheName = "download",
-@@ -135,7 +141,7 @@ private val mediaServiceModule =
+@@ -135,7 +142,7 @@ private val mediaServiceModule =
              )
          }
          // Spotify Canvas Cache
@@ -1250,7 +1266,7 @@ index 62c93a5..b950462 100644
              provideSimpleCache(
                  context = androidContext(),
                  cacheName = "spotifyCanvas",
-@@ -144,7 +150,7 @@ private val mediaServiceModule =
+@@ -144,7 +151,7 @@ private val mediaServiceModule =
              )
          }
          // DownloadUtils
@@ -1259,7 +1275,7 @@ index 62c93a5..b950462 100644
              DownloadUtils(
                  context = androidContext(),
                  playerCache = get(named(PLAYER_CACHE)),
-@@ -157,11 +163,11 @@ private val mediaServiceModule =
+@@ -157,11 +164,11 @@ private val mediaServiceModule =
          }
  
          // AudioAttributes
@@ -1273,7 +1289,7 @@ index 62c93a5..b950462 100644
              provideMergingMediaSource(
                  androidContext(),
                  get(named(DOWNLOAD_CACHE)),
-@@ -172,7 +178,7 @@ private val mediaServiceModule =
+@@ -172,7 +179,7 @@ private val mediaServiceModule =
              )
          }
  
@@ -1282,7 +1298,7 @@ index 62c93a5..b950462 100644
              provideRendererFactory(androidContext())
          }
  
-@@ -187,7 +193,7 @@ private val mediaServiceModule =
+@@ -187,7 +194,7 @@ private val mediaServiceModule =
          }
  
          // CoilBitmapLoader
@@ -1291,7 +1307,7 @@ index 62c93a5..b950462 100644
              provideCoilBitmapLoader(androidContext(), get(named(SERVICE_SCOPE)))
          }
  
-@@ -209,7 +215,7 @@ private val mediaServiceModule =
+@@ -209,7 +216,7 @@ private val mediaServiceModule =
              )
          }
  
@@ -1300,7 +1316,7 @@ index 62c93a5..b950462 100644
              CrossfadeExoPlayerAdapter(
                  context = androidContext(),
                  coroutineScope = get(named(SERVICE_SCOPE)),
-@@ -223,7 +229,7 @@ private val mediaServiceModule =
+@@ -223,7 +230,7 @@ private val mediaServiceModule =
  
          // Local ↔ Cast receiver handoff. No-op when wrapWithCastPlayer returned the plain
          // ForwardingPlayer (FOSS build or no GMS on the device).
@@ -1309,7 +1325,7 @@ index 62c93a5..b950462 100644
              CastHandoffManager(
                  adapter = get<MediaPlayerInterface>() as CrossfadeExoPlayerAdapter,
                  sessionPlayer = get(qualifier = named(MAIN_PLAYER)),
-@@ -233,7 +239,7 @@ private val mediaServiceModule =
+@@ -233,7 +240,7 @@ private val mediaServiceModule =
          }
  
          // MediaSession Callback for main player
@@ -1318,7 +1334,7 @@ index 62c93a5..b950462 100644
              SimpleMediaSessionCallback(
                  androidApplication(),
                  get<CoroutineScope>(named(SERVICE_SCOPE)),
-@@ -247,7 +253,7 @@ private val mediaServiceModule =
+@@ -247,7 +254,7 @@ private val mediaServiceModule =
              )
          }
  
@@ -1327,7 +1343,16 @@ index 62c93a5..b950462 100644
              CacheRepositoryImpl(
                  playerCache = get(named(PLAYER_CACHE)),
                  downloadCache = get(named(DOWNLOAD_CACHE)),
-@@ -628,10 +634,18 @@ fun startService(
+@@ -514,7 +521,7 @@ private fun provideRendererFactory(context: Context): DefaultRenderersFactory =
+                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                 .setAudioProcessorChain(
+                     DefaultAudioSink.DefaultAudioProcessorChain(
+-                        emptyArray(),
++                        arrayOf(LimiterAudioProcessor()),
+                         SilenceSkippingAudioProcessor(
+                             2_000_000,
+                             (20_000 / 2_000_000).toFloat(),
+@@ -628,10 +635,18 @@ fun startService(
      try {
          context.startService(intent)
      } catch (e: IllegalStateException) {
