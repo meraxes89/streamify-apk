@@ -61,10 +61,6 @@ interface SyncOutboxRepository {
     suspend fun getPendingCount(): Int
 }
 
-object SyncApplyingKey : kotlin.coroutines.CoroutineContext.Key<SyncApplying>
-
-object SyncApplying : kotlin.coroutines.AbstractCoroutineContextElement(SyncApplyingKey)
-
-fun withSyncApplying(): kotlin.coroutines.CoroutineContext = SyncApplying
+expect fun withSyncApplying(): kotlin.coroutines.CoroutineContext
 
 expect fun createPlatformSyncOutboxRepository(): SyncOutboxRepository

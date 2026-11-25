@@ -34,3 +34,5 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
 }
 
 actual fun createPlatformSyncOutboxRepository(): SyncOutboxRepository = WasmFakeSyncOutboxRepository()
+
+actual fun withSyncApplying(): kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext
