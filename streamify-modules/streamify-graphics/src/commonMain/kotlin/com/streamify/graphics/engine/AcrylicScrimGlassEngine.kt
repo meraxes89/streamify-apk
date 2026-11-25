@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -23,11 +22,22 @@ import com.streamify.graphics.tokens.SemanticTokens
  * caller-captured backdrop is drawn as-is, a **cached** vertical acrylic
  * gradient scrim ([Brush.verticalGradient] built once from the frozen
  * token layer — a fixed-function 2D-canvas fill, the "Hardware 2D Canvas"
- * lane of section 1) keeps the surface legible, and the 1px optical
- * specular rim stroke closes the glass silhouette. This is the engine
- * behind the hard API 27 invariant — it references no platform shader
- * class at all, so a Vivo 1712 / Android 8.1 process can never fail
- * class-linking through it.
+ * lane of section 1) keeps the surface legible, and the rim closes the
+ * glass silhouette. This is the engine behind the hard API 27 invariant —
+ * it references no platform shader class at all, so a Vivo 1712 /
+ * Android 8.1 process can never fail class-linking through it.
+ *
+ * Kyant optical parity on this lane (S24 Track D): where AGSL cannot run
+ * at all, the two pillars a 2D canvas CAN express are preserved with
+ * hardware gradients —
+ *  * the **directional 45° highlight** renders as a dual-stop diagonal
+ *    [Brush.linearGradient] stroke (full-alpha stop at the top-left
+ *    boundary, 25%-alpha ambient stop at the bottom-right — the same
+ *    lit/ambient split as the shader's cosine falloff), and
+ *  * the **adaptive luminance scrim floor** draws the exact same
+ *    `lerp(0.12, 0.50, clamp((luminance - 0.3) / 0.5))` "đục đen" rect
+ *    the shader lanes fold into `darkenAmount`, so older devices match
+ *    the premium dark-glass look without a single shader class.
  *
  * Differs from [LegacyRedirectGlassEngine] (Tier 4 failover) by the scrim
  * gradient: the flat failover draws a plain tint, the legacy lane carries
@@ -44,6 +54,21 @@ internal object AcrylicScrimGlassEngine : SovereignGraphicsEngine {
         colors = listOf(
             SemanticTokens.surfaceGlassMuted,
             SemanticTokens.legacyAcrylicScrim,
+        ),
+    )
+
+    /**
+     * Cached dual-stop directional rim gradient — the Tier 3 stand-in for
+     * the shader's 45° specular sweep. `Brush.linearGradient` without
+     * explicit start/end offsets spans the draw area from its top-left to
+     * its bottom-right, so the lit stop lands exactly on the top-left
+     * boundary and the ambient stop on the bottom-right, mirroring the
+     * shader's `L = normalize(float2(-1.0, -1.0))` cosine distribution.
+     */
+    private val directionalRimBrush = Brush.linearGradient(
+        colors = listOf(
+            SemanticTokens.specularBorderHighlight,
+            SemanticTokens.specularRimShaded,
         ),
     )
 
@@ -74,12 +99,19 @@ internal object AcrylicScrimGlassEngine : SovereignGraphicsEngine {
                 if (request.tint != Color.Unspecified) {
                     drawRect(color = request.tint)
                 }
+                // Kyant parity (S24 Track D): the identical luminance-adaptive
+                // "đục đen" floor the shader lanes bind as darkenAmount —
+                // a plain rect here, evaluated from the request's live
+                // backdrop luminance.
+                drawAdaptiveScrim(request)
             }
 
-            // 1px optical highlight stroke along the glass rim.
+            // 1px optical highlight stroke along the glass rim — the
+            // dual-stop directional 45° sweep (lit top-left, ambient
+            // bottom-right) instead of a flat uniform rim.
             drawOutline(
                 outline,
-                SolidColor(SemanticTokens.specularBorderHighlight),
+                directionalRimBrush,
                 style = Stroke(width = PrimitiveTokens.specularStrokeWidth.toPx()),
             )
         }

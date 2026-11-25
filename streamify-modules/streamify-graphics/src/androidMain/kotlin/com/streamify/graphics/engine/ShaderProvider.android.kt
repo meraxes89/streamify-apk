@@ -251,6 +251,13 @@ private class AgslRuntimeShaderEngine(
         runtimeShader.setFloatUniform("lensRadius", PrimitiveTokens.lensCurvatureStandard)
         runtimeShader.setFloatUniform("refractionIndex", PrimitiveTokens.refractionIndexDefault)
         runtimeShader.setFloatUniform("chromaticSpread", chromaticSpread)
+        // Kyant optical parity (S24): vibrancy, the adaptive "đục đen" scrim
+        // and the directional 45° rim strength. The darkening ramp is
+        // evaluated here on the CPU (AdaptiveLuminanceScrim) and bound as a
+        // uniform so the shader folds it into the composite on the GPU.
+        runtimeShader.setFloatUniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+        runtimeShader.setFloatUniform("darkenAmount", AdaptiveLuminanceScrim.alphaFor(request.luminance()))
+        runtimeShader.setFloatUniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         val tint = if (request.tint == Color.Unspecified) {
             SemanticTokens.surfaceGlassMuted
         } else {
@@ -263,8 +270,9 @@ private class AgslRuntimeShaderEngine(
         try {
             // tintFill = false: the tint is already mixed inside the shader
             // (mix(half4(c, a), tintColor, tintColor.a)) — drawing it again
-            // would double-apply.
-            drawGlassComposite(scope, request, tintFill = false)
+            // would double-apply. Same for the adaptive scrim: the
+            // darkenAmount uniform already folds the "đục đen" ramp in.
+            drawGlassComposite(scope, request, tintFill = false, adaptiveScrim = false)
         } finally {
             request.backdrop.renderEffect = previousEffect
         }
@@ -299,7 +307,11 @@ private class RenderEffectBlurEngine : SovereignGraphicsEngine {
         val previousEffect = request.backdrop.renderEffect
         request.backdrop.renderEffect = cachedEffect
         try {
-            drawGlassComposite(scope, request, tintFill = true)
+            // tintFill = true: the blur lane cannot mix the tint inside a
+            // fixed-function effect, and the adaptive scrim is drawn here as
+            // a plain rect (Kyant's onDrawSurface drawRect) because no
+            // runtime shader runs on this lane.
+            drawGlassComposite(scope, request, tintFill = true, adaptiveScrim = true)
         } finally {
             request.backdrop.renderEffect = previousEffect
         }
@@ -307,14 +319,20 @@ private class RenderEffectBlurEngine : SovereignGraphicsEngine {
 }
 
 /**
- * Clip + backdrop draw + optional tint fill + 1px specular rim — the draw
- * half shared by the AGSL and blur lanes (the effect attached to the layer
- * does the refract / blur work during `drawLayer`).
+ * Clip + backdrop draw + optional tint fill + adaptive scrim + 1px specular
+ * rim — the draw half shared by the AGSL and blur lanes (the effect
+ * attached to the layer does the refract / blur work during `drawLayer`).
+ *
+ * [adaptiveScrim] draws the "đục đen" ramp as a rect for lanes that cannot
+ * fold it into a shader (the API 31-32 blur lane); the AGSL lane passes
+ * `false` because its `darkenAmount` uniform already applies the identical
+ * curve inside `LiquidGlassCore.sksl`.
  */
 private fun drawGlassComposite(
     scope: DrawScope,
     request: GlassRenderRequest,
     tintFill: Boolean,
+    adaptiveScrim: Boolean,
 ) {
     val outline = request.shape.createOutline(
         size = scope.size,
@@ -338,6 +356,9 @@ private fun drawGlassComposite(
             drawLayer(request.backdrop)
             if (tintFill && request.tint != Color.Unspecified) {
                 drawRect(color = request.tint)
+            }
+            if (adaptiveScrim) {
+                drawAdaptiveScrim(request)
             }
         }
 

@@ -53,7 +53,9 @@ class GraphicsEffectRegistryTest {
     fun liquidGlassEffectCompilesAndTranspilesCleanly() {
         val effect = LiquidGlassEffect
         assertEquals("com.streamify.effect.liquid_glass", effect.id)
-        assertEquals(6, effect.uniforms.size)
+        // S24 Kyant parity: nine uniforms (the three new pillars — vibrancy,
+        // darkenAmount, specularIntensity — ride alongside the six originals).
+        assertEquals(9, effect.uniforms.size)
 
         // Skia compilation verification
         val skiaEffect = RuntimeEffect.makeForShader(effect.canonicalSkSl)

@@ -60,6 +60,12 @@ internal object LegacyRedirectGlassEngine : SovereignGraphicsEngine {
                 if (request.tint != Color.Unspecified) {
                     drawRect(color = request.tint)
                 }
+                // Kyant parity (S24): the same adaptive "đục đen" floor as
+                // every other lane — a plain rect keeps the failover
+                // visually consistent with the premium dark-glass look
+                // while introducing zero shader classes (the Tier 4
+                // invariant).
+                drawAdaptiveScrim(request)
             }
 
             // 1px optical highlight stroke along the glass rim.
