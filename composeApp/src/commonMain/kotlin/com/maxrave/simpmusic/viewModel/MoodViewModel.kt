@@ -8,13 +8,11 @@ import com.maxrave.domain.repository.HomeRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 
 class MoodViewModel(
     dataStoreManager: DataStoreManager,
@@ -53,9 +51,7 @@ class MoodViewModel(
                     }
                 }
             }
-            withContext(Dispatchers.Main) {
-                loading.value = false
-            }
+            loading.value = false
         }
     }
 }
