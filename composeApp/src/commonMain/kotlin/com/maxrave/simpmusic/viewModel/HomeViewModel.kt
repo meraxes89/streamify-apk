@@ -16,6 +16,7 @@ import com.maxrave.simpmusic.utils.pinQuickPicksToTop
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +30,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.music_video
 import simpmusic.composeapp.generated.resources.new_release
@@ -57,7 +57,12 @@ class HomeViewModel(
 
     private var homeJob: Job? = null
 
-    val showSnackBarErrorState = MutableSharedFlow<String>()
+    val showSnackBarErrorState =
+        MutableSharedFlow<String>(
+            replay = 0,
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
 
     private val _chart: MutableStateFlow<Chart?> = MutableStateFlow(null)
     val chart: StateFlow<Chart?> = _chart
@@ -248,8 +253,9 @@ class HomeViewModel(
                         exploreMoodItem is Resource.Error -> exploreMoodItem.message
                         chart is Resource.Error -> chart.message
                         else -> null
-                    }?.let {
-                        showSnackBarErrorState.emit(it)
+                    }?.let { errorMsg ->
+                        showSnackBarErrorState.tryEmit(errorMsg)
+                        makeToast(errorMsg)
                         Logger.w("Error", "getHomeItemList: ${home.message}")
                         Logger.w("Error", "getHomeItemList: ${exploreMoodItem.message}")
                         Logger.w("Error", "getHomeItemList: ${chart.message}")
@@ -292,8 +298,10 @@ class HomeViewModel(
 
                             is Resource.Error -> {
                                 _continuation.value = null
-                                Logger.w(tag, "getContinueHomeItem: ${home.message}")
-                                showSnackBarErrorState.emit(home.message ?: "Unknown error")
+                                val errorMsg = home.message ?: "Unknown error"
+                                Logger.w(tag, "getContinueHomeItem: $errorMsg")
+                                showSnackBarErrorState.tryEmit(errorMsg)
+                                makeToast(errorMsg)
                                 _homeListState.value = ListState.PAGINATION_EXHAUST
                             }
                         }
