@@ -270,7 +270,7 @@ class MainActivity : AppCompatActivity() {
 
         // Always unbind service if it was bound to prevent MusicBinder leak
         if (shouldStopMusicService && shouldUnbind && isFinishing) {
-            viewModel.isServiceRunning = false
+            viewModel.setServiceRunning(false)
         }
         super.onDestroy()
         Logger.d("MainActivity", "onDestroy: ")
@@ -305,7 +305,7 @@ class MainActivity : AppCompatActivity() {
                 },
             )
         }
-        viewModel.isServiceRunning = true
+        viewModel.setServiceRunning(true)
         shouldUnbind = true
         Logger.d("Service", "Service started")
     }

@@ -147,10 +147,15 @@ class SharedViewModel(
     private val cacheRepository: CacheRepository,
     private val discordRepository: DiscordRepository,
 ) : BaseViewModel() {
-    var isFirstLiked: Boolean = false
-    var isFirstMiniplayer: Boolean = false
-    var isFirstSuggestions: Boolean = false
+    private var isFirstLiked: Boolean = false
+    private var isFirstMiniplayer: Boolean = false
+    private var isFirstSuggestions: Boolean = false
     var showedUpdateDialog: Boolean = false
+        private set
+
+    fun setShowedUpdateDialog(showed: Boolean) {
+        showedUpdateDialog = showed
+    }
 
     private val appIdentity: AppIdentity by inject()
 
@@ -161,6 +166,11 @@ class SharedViewModel(
     val liked: StateFlow<Boolean> = _liked.asStateFlow()
 
     var isServiceRunning: Boolean = false
+        private set
+
+    fun setServiceRunning(running: Boolean) {
+        isServiceRunning = running
+    }
 
     private var _sleepTimerState = MutableStateFlow(SleepTimerState(false, 0))
     val sleepTimerState: StateFlow<SleepTimerState> = _sleepTimerState
@@ -209,9 +219,19 @@ class SharedViewModel(
 
     private var getFormatFlowJob: Job? = null
 
-    var playlistId: MutableStateFlow<String?> = MutableStateFlow(null)
+    private val _playlistId: MutableStateFlow<String?> = MutableStateFlow(null)
+    val playlistId: StateFlow<String?> = _playlistId.asStateFlow()
+
+    fun setPlaylistId(id: String?) {
+        _playlistId.value = id
+    }
 
     var isFullScreen: Boolean = false
+        private set
+
+    fun setFullScreen(fullScreen: Boolean) {
+        isFullScreen = fullScreen
+    }
 
     private var _nowPlayingState = MutableStateFlow<NowPlayingTrackState?>(null)
     val nowPlayingState: StateFlow<NowPlayingTrackState?> = _nowPlayingState
