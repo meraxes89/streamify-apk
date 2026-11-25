@@ -26,11 +26,14 @@ import platform.darwin.NSObjectProtocol
  *
  * ## Low Power Mode (`NSProcessInfoPowerStateDidChangeNotification`)
  *
- * `NSProcessInfo.processInfo.isLowPowerModeEnabled` toggles feed
+ * `NSProcessInfo.processInfo.lowPowerModeEnabled` toggles feed
  * [TierGovernor.onLowPowerModeEnabled], which caps the promotion ceiling
  * at Tier 2, demotes a live Tier 1 immediately and pins the frame
  * budgets to the 60 Hz lane (the display link itself is capped at 60 Hz
- * in this mode).
+ * in this mode). (Binding note: the Kotlin property name follows the
+ * ObjC declaration `@property (getter=isLowPowerModeEnabled) BOOL
+ * lowPowerModeEnabled` — the `is`-prefixed spelling is Swift-only sugar
+ * and does not resolve in Kotlin/Native.)
  *
  * ## Reentrancy guard
  *
@@ -76,7 +79,7 @@ actual object GraphicsEnvironmentBridge {
         runCatching {
             governor.onThermalStatusChanged(currentThermalStatus())
             governor.onLowPowerModeEnabled(
-                NSProcessInfo.processInfo.isLowPowerModeEnabled,
+                NSProcessInfo.processInfo.lowPowerModeEnabled,
             )
         }
 
@@ -101,7 +104,7 @@ actual object GraphicsEnvironmentBridge {
                 null,
             ) { _ ->
                 governor.onLowPowerModeEnabled(
-                    NSProcessInfo.processInfo.isLowPowerModeEnabled,
+                    NSProcessInfo.processInfo.lowPowerModeEnabled,
                 )
             }
         }.getOrNull()
