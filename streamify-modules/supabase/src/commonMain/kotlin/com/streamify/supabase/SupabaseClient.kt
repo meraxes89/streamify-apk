@@ -285,13 +285,6 @@ object SupabaseClient {
                 val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
                 val token = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
                 val refreshTokenStr = rootObj["refresh_token"]?.jsonPrimitive?.content
-                val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
-                val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
-                val expiresAt = if (expiresAtSec != null && expiresAtSec > 0) {
-                    expiresAtSec * 1000L
-                } else {
-                    Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
-                }
                 val userObj = rootObj["user"]?.jsonObject
                 val userId = userObj?.get("id")?.jsonPrimitive?.content ?: ""
                 val email = userObj?.get("email")?.jsonPrimitive?.content ?: ""

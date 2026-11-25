@@ -28,6 +28,79 @@ actual object StreamifyAuthManager {
 
     private var prefs: SharedPreferences? = null
 
+    private object AndroidTokenCipher {
+        private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
+        private const val KEY_ALIAS = "streamify_auth_token_key_v1"
+        private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val ENC_PREFIX = "enc_v1:"
+        private const val GCM_TAG_BITS = 128
+        private const val GCM_IV_BYTES = 12
+
+        private fun getOrCreateKey(): java.security.Key? {
+            return try {
+                val keyStore = java.security.KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+                keyStore.getKey(KEY_ALIAS, null) ?: run {
+                    val keyGen = javax.crypto.KeyGenerator.getInstance(
+                        android.security.keystore.KeyProperties.KEY_ALGORITHM_AES,
+                        KEYSTORE_PROVIDER
+                    )
+                    val spec = android.security.keystore.KeyGenParameterSpec.Builder(
+                        KEY_ALIAS,
+                        android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
+                            android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+                    )
+                        .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setKeySize(256)
+                        .build()
+                    keyGen.init(spec)
+                    keyGen.generateKey()
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        fun encrypt(plaintext: String): String? {
+            val key = getOrCreateKey() ?: return null
+            return try {
+                val cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION)
+                cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
+                val iv = cipher.iv
+                val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
+                val combined = ByteArray(iv.size + ciphertext.size)
+                System.arraycopy(iv, 0, combined, 0, iv.size)
+                System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
+                ENC_PREFIX + android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        fun decrypt(stored: String?): String? {
+            if (stored.isNullOrBlank()) return null
+            if (!stored.startsWith(ENC_PREFIX)) {
+                return stored
+            }
+            val key = getOrCreateKey() ?: return null
+            return try {
+                val combined = android.util.Base64.decode(stored.removePrefix(ENC_PREFIX), android.util.Base64.NO_WRAP)
+                if (combined.size <= GCM_IV_BYTES) return null
+                val iv = combined.copyOfRange(0, GCM_IV_BYTES)
+                val ciphertext = combined.copyOfRange(GCM_IV_BYTES, combined.size)
+                val cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION)
+                cipher.init(
+                    javax.crypto.Cipher.DECRYPT_MODE,
+                    key,
+                    javax.crypto.spec.GCMParameterSpec(GCM_TAG_BITS, iv)
+                )
+                String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     private fun getPrefs(context: Context): SharedPreferences {
         return prefs ?: context.getSharedPreferences("streamify_auth", Context.MODE_PRIVATE).also {
             prefs = it
@@ -52,10 +125,10 @@ actual object StreamifyAuthManager {
             putString("avatar_url", profile.avatarUrl)
             putBoolean("is_admin", profile.isAdmin)
             if (token != null) {
-                putString("access_token", token)
+                AndroidTokenCipher.encrypt(token)?.let { putString("access_token", it) }
             }
             if (refreshToken != null) {
-                putString("refresh_token", refreshToken)
+                AndroidTokenCipher.encrypt(refreshToken)?.let { putString("refresh_token", it) }
             }
             apply()
         }
@@ -69,8 +142,8 @@ actual object StreamifyAuthManager {
         val savedName = sp.getString("display_name", null)
         val savedAvatar = sp.getString("avatar_url", null)
         val savedIsAdmin = sp.getBoolean("is_admin", false)
-        val savedToken = sp.getString("access_token", null)
-        val savedRefreshToken = sp.getString("refresh_token", null)
+        val savedToken = AndroidTokenCipher.decrypt(sp.getString("access_token", null))
+        val savedRefreshToken = AndroidTokenCipher.decrypt(sp.getString("refresh_token", null))
 
         if (!savedUserId.isNullOrBlank() && !savedEmail.isNullOrBlank()) {
             val user = UserProfile(
@@ -169,8 +242,8 @@ actual object StreamifyAuthManager {
             // PKCE Authorization Code Grant flow
             val code = callbackData.code
             if (!code.isNullOrBlank()) {
-                val storedVerifier = sp?.getString("pending_code_verifier", null)
-                val storedState = sp?.getString("pending_state", null)
+                val storedVerifier = AndroidTokenCipher.decrypt(sp?.getString("pending_code_verifier", null))
+                val storedState = AndroidTokenCipher.decrypt(sp?.getString("pending_state", null))
 
                 if (storedState != null && callbackData.state != null && storedState != callbackData.state) {
                     return@withContext Result.failure(SecurityException("CSRF state mismatch"))
@@ -229,11 +302,12 @@ actual object StreamifyAuthManager {
             val challenge = PkceCrypto.deriveCodeChallenge(verifier)
             val state = PkceCrypto.generateState()
 
-            // Persist PKCE challenge and state in SharedPreferences across potential activity/process death
-            sp.edit()
-                .putString("pending_code_verifier", verifier)
-                .putString("pending_state", state)
-                .apply()
+            // Persist encrypted PKCE challenge and state across potential activity/process death
+            sp.edit().apply {
+                AndroidTokenCipher.encrypt(verifier)?.let { putString("pending_code_verifier", it) }
+                AndroidTokenCipher.encrypt(state)?.let { putString("pending_state", it) }
+                apply()
+            }
 
             val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
                     "provider=google" +
@@ -254,13 +328,22 @@ actual object StreamifyAuthManager {
                 customTabsIntent.launchUrl(context, uri)
                 return
             } catch (_: Exception) {
-                // Custom Tabs unavailable on device, fall back to standard external browser intent
+                // Custom Tabs unavailable on device, fall back to resolved default browser package
             }
 
-            val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val resolveInfo = context.packageManager.resolveActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://")),
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+            )
+            val browserPackage = resolveInfo?.activityInfo?.packageName
+            if (!browserPackage.isNullOrBlank() && browserPackage != "android") {
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    addCategory(Intent.CATEGORY_BROWSABLE)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    setPackage(browserPackage)
+                }
+                context.startActivity(fallbackIntent)
             }
-            context.startActivity(fallbackIntent)
         } catch (_: Exception) {
         }
     }
