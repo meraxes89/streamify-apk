@@ -329,6 +329,10 @@ fun App(
                 val youTubeLoggedIn = viewModel.getYouTubeLoggedIn().first() == TRUE
                 viewModel.setIntent(null)
                 when (appPath) {
+                    "notification" -> {
+                        navController.navigate(NotificationDestination)
+                    }
+
                     "watch" -> {
                         data.getQueryParameter("v")?.let { videoId ->
                             viewModel.loadSharedMediaItem(videoId)
@@ -506,7 +510,10 @@ fun App(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(navBackStackEntry) {
         Logger.d("MainActivity", "Current destination: ${navBackStackEntry?.destination?.route}")
-        if (navBackStackEntry?.destination?.route?.contains("FullscreenDestination") == true) {
+        if (navBackStackEntry?.destination?.hierarchy?.any {
+                it.hasRoute(FullscreenDestination::class)
+            } == true
+        ) {
             isShowNowPlaylistScreen = false
         }
         // Wrapped counts as fullscreen for the same reason the video player does: it is a
