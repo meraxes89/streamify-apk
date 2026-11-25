@@ -107,7 +107,7 @@ private fun Int.toKhzLabel(): String {
  * a content composable only renders from this snapshot.
  */
 @Stable
-class NowPlayingContentState(
+data class NowPlayingContentState(
     val screenData: NowPlayingScreenData,
     val controllerState: ControlState,
     val timelineState: TimeLine,
