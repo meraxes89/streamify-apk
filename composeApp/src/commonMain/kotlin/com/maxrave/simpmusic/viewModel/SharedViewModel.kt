@@ -83,7 +83,6 @@ import com.maxrave.simpmusic.utils.decodePromos
 import com.maxrave.simpmusic.utils.shownPromoIds
 import com.maxrave.simpmusic.utils.withShownPromo
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -432,16 +431,20 @@ class SharedViewModel(
                             ?: -1L
                     _timeline.update { it.copy(total = seededTotal) }
                     state.songEntity?.let { track ->
-                        viewModelScope.launch {
-                            com.streamify.supabase.SupabaseFriendSync.reportPlayback(
-                                trackId = track.videoId,
-                                title = track.title,
-                                artist = track.artistName?.joinToString(", ") ?: "",
-                                coverUrl = track.thumbnails ?: "",
-                                durationSec = track.durationSeconds,
-                                positionMs = 0L,
-                                isPlaying = true,
-                            )
+                        launch {
+                            runCatching {
+                                com.streamify.supabase.SupabaseFriendSync.reportPlayback(
+                                    trackId = track.videoId,
+                                    title = track.title,
+                                    artist = track.artistName?.joinToString(", ") ?: "",
+                                    coverUrl = track.thumbnails ?: "",
+                                    durationSec = track.durationSeconds,
+                                    positionMs = 0L,
+                                    isPlaying = true,
+                                )
+                            }.onFailure { e ->
+                                Logger.w(tag, "Supabase friend sync reportPlayback failed: ${e.message}")
+                            }
                         }
                         _nowPlayingScreenData.value =
                             NowPlayingScreenData(
@@ -1034,9 +1037,7 @@ class SharedViewModel(
                     track.videoId,
                 )
             }
-            withContext(Dispatchers.Main) {
-                mediaPlayerHandler.addMediaItem(track.toGenericMediaItem(), playWhenReady = type != RECOVER_TRACK_QUEUE)
-            }
+            mediaPlayerHandler.addMediaItem(track.toGenericMediaItem(), playWhenReady = type != RECOVER_TRACK_QUEUE)
 
             when (type) {
                 SONG_CLICK -> {
@@ -1487,23 +1488,21 @@ class SharedViewModel(
                         log("Removed out-of-sync translated lyrics for $videoId")
                         val simpMusicLyricsId = lyrics.simpMusicLyrics?.id
                         if (lyricsProvider == LyricsProvider.SIMPMUSIC && !simpMusicLyricsId.isNullOrEmpty()) {
-                            viewModelScope.launch {
-                                lyricsCanvasRepository
-                                    .voteSimpMusicTranslatedLyrics(
-                                        translatedLyricsId = simpMusicLyricsId,
-                                        false,
-                                    ).collectLatest {
-                                        when (it) {
-                                            is Resource.Error -> {
-                                                Logger.w(tag, "Vote SimpMusic Translated Lyrics Error ${it.message}")
-                                            }
+                            lyricsCanvasRepository
+                                .voteSimpMusicTranslatedLyrics(
+                                    translatedLyricsId = simpMusicLyricsId,
+                                    false,
+                                ).collectLatest {
+                                    when (it) {
+                                        is Resource.Error -> {
+                                            Logger.w(tag, "Vote SimpMusic Translated Lyrics Error ${it.message}")
+                                        }
 
-                                            is Resource.Success -> {
-                                                Logger.d(tag, "Vote SimpMusic Translated Lyrics Success")
-                                            }
+                                        is Resource.Success -> {
+                                            Logger.d(tag, "Vote SimpMusic Translated Lyrics Success")
                                         }
                                     }
-                            }
+                                }
                         }
                         nowPlayingScreenData.value.lyricsData?.lyrics?.let {
                             getAITranslationLyrics(
