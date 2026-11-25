@@ -229,6 +229,8 @@ object SupabaseClient {
             Result.failure(e)
         }
     }
+
+    /**
      * SEC-09/SEC-10: resolve the admin claim from the server via get_my_admin_status() RPC.
      */
     internal suspend fun fetchServerIsAdmin(userId: String): Boolean = withContext(ioDispatcher) {
