@@ -203,6 +203,36 @@ index 2c3a3a2..47aa7ee 100644
      @Query("DELETE FROM sync_change WHERE serverSeq IS NOT NULL AND changedAt < :before")
      suspend fun pruneSent(before: Long)
  
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
+index 3903b7e..bbc1166 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
+@@ -20,8 +20,10 @@ internal class AnalyticsDatasource(
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String? = null,
++        recordSync: Boolean = true,
+     ): Long {
+-        val syncId = newSyncId()
++        val effectiveSyncId = syncId?.ifBlank { null } ?: newSyncId()
+         val eventId =
+             databaseDao.insertPlaybackWithArtists(
+                 videoId = videoId,
+@@ -29,9 +31,11 @@ internal class AnalyticsDatasource(
+                 albumBrowseId = albumBrowseId,
+                 durationSecond = durationSecond,
+                 listenedSecond = listenedSecond,
+-                syncId = syncId,
++                syncId = effectiveSyncId,
+             )
+-        syncRecorder.play(syncId)
++        if (recordSync) {
++            syncRecorder.play(effectiveSyncId)
++        }
+         return eventId
+     }
+ 
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 index 4024528..a7b5a84 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
@@ -345,6 +375,28 @@ index cd39fe9..e18f459 100644
  
      suspend fun flag(
          kind: String,
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
+index 18fac82..3e58472 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
+@@ -34,6 +34,8 @@ internal class AnalyticsRepositoryImpl(
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String?,
++        recordSync: Boolean,
+     ): Flow<Long> =
+         flow {
+             emit(
+@@ -43,6 +45,8 @@ internal class AnalyticsRepositoryImpl(
+                     albumBrowseId,
+                     durationSecond,
+                     listenedSecond,
++                    syncId,
++                    recordSync,
+                 ),
+             )
+         }.flowOn(Dispatchers.IO)
 diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
 index 4e3866d..73d6153 100644
 --- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
@@ -443,6 +495,19 @@ index 9d59c49..1ca8f91 100644
 +    }
  }
 \ No newline at end of file
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
+index 416a581..6f44e1c 100644
+--- a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
+@@ -16,6 +16,8 @@ interface AnalyticsRepository {
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String? = null,
++        recordSync: Boolean = true,
+     ): Flow<Long>
+ 
+     suspend fun getPlaybackEventsByOffset(
 diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
 index 54db97f..cafc1c3 100644
 --- a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt

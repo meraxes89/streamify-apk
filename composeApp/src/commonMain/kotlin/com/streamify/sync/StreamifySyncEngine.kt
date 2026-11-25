@@ -729,7 +729,9 @@ object StreamifySyncEngine : KoinComponent {
                         channelIds = channelIds,
                         albumBrowseId = albumId,
                         durationSecond = cloudItem.listenedDurationSec.toLong(),
-                        listenedSecond = cloudItem.listenedDurationSec.toLong()
+                        listenedSecond = cloudItem.listenedDurationSec.toLong(),
+                        syncId = cloudEventId,
+                        recordSync = false,
                     ).firstOrNull()
                 }
             }
