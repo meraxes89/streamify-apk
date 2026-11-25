@@ -76,6 +76,17 @@ RFC, playbook. A document's directory is its type.
 Subject-line scope uses the subsystem ID where one exists, e.g.
 `docs(S08): add limiter refinement note`.
 
+### Working with AI agents
+
+Root [AGENTS.md](AGENTS.md) is the cross-agent entry point. The six Ponytail
+minimal-change skills are vendored in `.claude/skills/ponytail*`; OpenCode and
+Claude Code load them automatically, and other `AGENTS.md` agents read the
+matching skill file directly. Run `python3 scripts/check_agent_skills.py` to
+verify the set. The project rules above always win, and the no-auto-build rule
+applies: write the tests and docs, but do not run Gradle or cargo unless the
+user asks. See [docs/playbooks/PONYTAIL.md](docs/playbooks/PONYTAIL.md) for
+precedence, commands, and the `shortcut:` marker convention.
+
 ### Commit message convention
 
 We use conventional commits with scope:
