@@ -259,14 +259,22 @@ object StreamifySyncEngine : KoinComponent {
 
             var likedCount = 0
 
+            var syncFailureMessage: String? = null
+
             if (shouldRunDeltaSync(localCursor, bootstrapCheckpoint)) {
                 // V3 Delta Sync path (cursor-based delta pull)
                 _syncState.value = SyncStatus.Syncing("Pulling delta changes...")
-                syncDeltaInternal(targetUserId, deviceId)
+                val deltaOk = syncDeltaInternal(targetUserId, deviceId)
 
                 // Drain local outbox via sync_push
                 _syncState.value = SyncStatus.Syncing("Pushing changes...")
-                syncOutboxPushInternal(targetUserId, deviceId, hlc)
+                val pushOk = syncOutboxPushInternal(targetUserId, deviceId, hlc)
+
+                if (!deltaOk) {
+                    syncFailureMessage = "Delta pull failed; cursor held for retry"
+                } else if (!pushOk) {
+                    syncFailureMessage = "Outbox push failed; changes queued for retry"
+                }
 
                 effectiveCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: localCursor
                 likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
@@ -352,6 +360,7 @@ object StreamifySyncEngine : KoinComponent {
 
                 // Record latest changelog cursor upon bootstrap completion
                 val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
+                pullRes?.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
                 val latestCursor = pullRes?.cursor ?: 0L
                 effectiveCursor = latestCursor
                 dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
@@ -364,6 +373,21 @@ object StreamifySyncEngine : KoinComponent {
 
             // V4.1 Fleet Telemetry: Sync device and version telemetry
             syncDeviceTelemetryInternal(targetUserId, deviceId)
+
+            if (syncFailureMessage != null) {
+                consecutiveFailures++
+                val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
+                backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
+                _syncMetrics.update {
+                    it.copy(
+                        currentCursor = effectiveCursor,
+                        consecutiveFailures = consecutiveFailures,
+                    )
+                }
+                val error = SyncStatus.Error("$syncFailureMessage (backing off ${delayMs / 1000}s)")
+                _syncState.value = error
+                return@withContext error
+            }
 
             consecutiveFailures = 0
             backoffUntilMs = 0L
@@ -378,6 +402,7 @@ object StreamifySyncEngine : KoinComponent {
             _syncState.value = success
             success
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             consecutiveFailures++
             val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
             backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
@@ -976,6 +1001,7 @@ object StreamifySyncEngine : KoinComponent {
                 limit = 500,
                 deviceId = deviceId
             ).getOrElse { err ->
+                if (err is CancellationException) throw err
                 if (err.message?.contains("CURSOR_EXPIRED", ignoreCase = true) == true) {
                     dataStoreManager.putString("streamify_sync_cursor_v3", "0")
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
@@ -983,7 +1009,10 @@ object StreamifySyncEngine : KoinComponent {
                 return false
             }
 
+            pullResult.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
+
             val pendingByEntityKey = syncOutboxRepository.getPending(1000).associateBy { it.entity to it.entityKey }
+            var allOpsApplied = true
             withContext(withSyncApplying()) {
                 for (op in pullResult.ops) {
                     val localPending = pendingByEntityKey[op.entity to op.key]
@@ -991,8 +1020,15 @@ object StreamifySyncEngine : KoinComponent {
                     if (localPending != null && localPending.changedAt >= opHlc) {
                         continue
                     }
-                    applyDeltaOp(op)
+                    if (!applyDeltaOp(op)) {
+                        allOpsApplied = false
+                    }
                 }
+            }
+
+            if (!allOpsApplied) {
+                Logger.w(TAG, "Delta pull page had failed op(s); holding cursor at $cursor for retry")
+                return false
             }
 
             cursor = pullResult.cursor
@@ -1013,7 +1049,8 @@ object StreamifySyncEngine : KoinComponent {
         val changeId: String,
     )
 
-    private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long) {
+    private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long): Boolean {
+        var allChunksSucceeded = true
         try {
             // 1. Drain pending outbox changes (up to 500)
             val pendingChanges = syncOutboxRepository.getPending(500)
@@ -1370,6 +1407,7 @@ object StreamifySyncEngine : KoinComponent {
                         val chunkOps = chunk.map { it.op }
                         val pushRes = SupabaseLibrarySync.syncPush(JsonArray(chunkOps), deviceId).getOrNull()
                         if (pushRes != null) {
+                            pushRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
                             val appliedChangeIds = mutableSetOf<String>()
                             val rejectedChangeIds = mutableSetOf<String>()
 
@@ -1405,6 +1443,8 @@ object StreamifySyncEngine : KoinComponent {
                                 )
                             }
                             // Pull cursor is NEVER advanced by sync_push
+                        } else {
+                            allChunksSucceeded = false
                         }
                     }
                 }
@@ -1412,10 +1452,12 @@ object StreamifySyncEngine : KoinComponent {
                 val sevenDaysAgo = Clock.System.now().toEpochMilliseconds() - 7 * 24 * 60 * 60 * 1000L
                 syncOutboxRepository.pruneSent(sevenDaysAgo)
             }
+            return allChunksSucceeded
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(TAG, "syncOutboxPushInternal failed: ${e.message}")
+            return false
         }
     }
 
@@ -1473,9 +1515,11 @@ object StreamifySyncEngine : KoinComponent {
 
     /**
      * Applies an incoming SyncPullOp to local Room SQLite.
+     * Returns `true` if applied cleanly, or `false` if an exception occurred (so the pull cursor
+     * is held back for retry instead of silently dropping the mutation).
      */
-    private suspend fun applyDeltaOp(op: SyncPullOp) {
-        try {
+    private suspend fun applyDeltaOp(op: SyncPullOp): Boolean {
+        return try {
             when (op.entity) {
                 "like" -> {
                     if (op.op == "D") {
@@ -1653,7 +1697,12 @@ object StreamifySyncEngine : KoinComponent {
                     updateLocalEpisodeState(episodeId, podcastId, pos, comp, opHlc)
                 }
             }
-        } catch (_: Exception) {
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(TAG, "applyDeltaOp failed for entity=${op.entity} key=${op.key}: ${e.message}")
+            false
         }
     }
 
