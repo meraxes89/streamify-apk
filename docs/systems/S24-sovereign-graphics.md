@@ -1,3 +1,13 @@
+---
+id: S24
+title: Sovereign GPU Engine
+tier: client
+status: active
+owner: graphics
+sources: [streamify-modules/streamify-graphics/, docs/gpu/]
+tests: [streamify-modules/streamify-graphics/src/desktopTest/]
+---
+
 # S24 — Sovereign GPU Engine: Apple Silicon & iOS/macOS GPU Spectrum Matrix
 
 * System: `S24` — Sovereign GPU Engine (`:streamify-modules:streamify-graphics`)
@@ -7,7 +17,7 @@
 * Specification: [docs/gpu/ARCHITECTURE.md](../gpu/ARCHITECTURE.md) · [docs/gpu/CI_TESTING_SPEC.md](../gpu/CI_TESTING_SPEC.md)
 * Module root: `streamify-modules/streamify-graphics/`
 
-<!-- doc-verified-against: a0d66af2075840431e939de1f286a4cf16f0b07b -->
+<!-- doc-verified-against: b1477154b010bd45c2dc65295f879bf98f9c8152 -->
 
 ---
 
