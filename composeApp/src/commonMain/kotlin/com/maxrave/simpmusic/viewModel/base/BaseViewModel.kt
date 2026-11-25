@@ -54,12 +54,12 @@ abstract class BaseViewModel :
     /**
      * Tag for logging
      */
-    val tag: String = this::class.simpleName ?: "BaseViewModel"
+    protected val tag: String = this::class.simpleName ?: "BaseViewModel"
 
     /**
      * Log with viewModel tag
      */
-    fun log(
+    protected fun log(
         message: String,
         logType: LogLevel = LogLevel.DEBUG,
     ) {

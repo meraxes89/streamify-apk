@@ -1071,7 +1071,7 @@ class SettingsViewModel(
     fun setTranslationLanguage(language: String) {
         viewModelScope.launch {
             dataStoreManager.setTranslationLanguage(language)
-            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.TRANSLATION_LANGUAGE, language)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("translation_language", language)
         }
     }
 
@@ -1089,7 +1089,7 @@ class SettingsViewModel(
     fun setLyricsOffsetMs(offsetMs: Int) {
         viewModelScope.launch {
             dataStoreManager.setLyricsOffsetMs(offsetMs)
-            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LYRICS_OFFSET_MS, offsetMs.toString())
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("lyrics_offset_ms", offsetMs.toString())
         }
     }
 
@@ -1104,7 +1104,7 @@ class SettingsViewModel(
     fun setUseTranslation(useTranslation: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setEnableTranslateLyric(useTranslation)
-            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.USE_TRANSLATION, useTranslation.toString())
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("use_translation_language", useTranslation.toString())
         }
     }
 
@@ -1119,7 +1119,7 @@ class SettingsViewModel(
     fun setLyricsProvider(provider: String) {
         viewModelScope.launch {
             dataStoreManager.setLyricsProvider(provider)
-            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LYRICS_PROVIDER, provider)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("lyrics_provider", provider)
         }
     }
 
@@ -1178,7 +1178,7 @@ class SettingsViewModel(
     fun changeLocation(location: String) {
         viewModelScope.launch {
             dataStoreManager.setLocation(location)
-            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LOCATION, location)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("location", location)
         }
     }
 
@@ -1280,7 +1280,7 @@ class SettingsViewModel(
             log("changeQuality: $qualityItem")
             val q = qualityItem ?: QUALITY.items[2].toString()
             dataStoreManager.setQuality(q)
-            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.QUALITY, q)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("quality", q)
         }
     }
 
