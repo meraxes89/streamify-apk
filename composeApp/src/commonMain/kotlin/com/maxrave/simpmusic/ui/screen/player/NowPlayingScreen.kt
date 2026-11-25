@@ -510,24 +510,33 @@ fun NowPlayingScreenContent(
         }
     }
 
-    // Crossfade: RGB rainbow color cycling when transitioning between tracks
-    val infiniteTransition = rememberInfiniteTransition(label = "crossfadeRainbow")
-    val rainbowHue by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(1000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-        label = "rainbowHue",
-    )
-    val rainbowColor = hsvToColor(rainbowHue, 1f, 1f)
-    val sliderTrackColor by animateColorAsState(
-        targetValue = if (timelineState.isCrossfading) rainbowColor else Color.White,
-        animationSpec = tween(300),
-        label = "sliderCrossfadeColor",
-    )
+    // Crossfade: RGB rainbow color cycling when transitioning between tracks.
+    // Gated behind isCrossfading to avoid unconditional 60/120 Hz recomposition of the shell.
+    val sliderTrackColor by if (timelineState.isCrossfading) {
+        val infiniteTransition = rememberInfiniteTransition(label = "crossfadeRainbow")
+        val rainbowHue by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
+                ),
+            label = "rainbowHue",
+        )
+        val rainbowColor = hsvToColor(rainbowHue, 1f, 1f)
+        animateColorAsState(
+            targetValue = rainbowColor,
+            animationSpec = tween(300),
+            label = "sliderCrossfadeColor",
+        )
+    } else {
+        animateColorAsState(
+            targetValue = Color.White,
+            animationSpec = tween(300),
+            label = "sliderCrossfadeColor",
+        )
+    }
 
     // Show ControlLayout Or Show Artist Badge
     var showHideControlLayout by rememberSaveable {
