@@ -55,8 +55,26 @@ Run the emulator or a physical device (API 26+). For DSP latency work, a physica
 2. **Branch from `main`:** `<type>/<issue-number>-<slug>` (e.g., `fix/45-jni-parity-check`). Types: `fix`, `feat`, `perf`, `refactor`, `docs`, `chore`.
 3. **Small, single-purpose PRs.** Our house style, established by the audit-22 series: one finding → one titled PR → measurement gate if it claims a perf effect. "Perf" PRs without a before/after benchmark will be parked, not merged.
 4. **Tests are part of the change.** New logic ships with tests. Changed interfaces ship with parity/differential tests on both sides of the boundary.
-5. **Docs update in the same PR.** Folder README, engine manual, `CHANGELOG.md` entry. Documentation is part of the definition of done.
+5. **Docs update in the same PR.** Use the [documentation decision table](docs/README.md#which-document-do-i-update) — behaviour changes update an `Sxx` page, irreversible choices get a new ADR, ideas get one row in `docs/IDEA_LOG.md`, shipped behaviour gets a `CHANGELOG.md` entry. Documentation is part of the definition of done.
 6. **CI green → review → squash-merge.** Maintainers protect `main`; expect at least one review on non-trivial changes.
+
+### Documentation contract
+
+Start with the [subsystem index](docs/SYSTEMS.md) and the
+[documentation contract](docs/README.md). Four types only: system page, ADR,
+RFC, playbook. A document's directory is its type.
+
+| You changed… | Update… |
+|---|---|
+| Behaviour of a subsystem | its `Sxx` page **and pin**, same PR |
+| Dependency, schema, API contract, irreversible choice | **new ADR**; never edit an accepted one |
+| Proposal needing review before commitment | **new RFC**; once accepted, follow with a new ADR |
+| Build/test/release workflow | relevant playbook + CI doc |
+| New idea, not committed | one row in `docs/IDEA_LOG.md` (append-only) |
+| Superseded architecture | status flip + `HISTORICAL` banner + superseding ADR |
+
+Subject-line scope uses the subsystem ID where one exists, e.g.
+`docs(S08): add limiter refinement note`.
 
 ### Commit message convention
 
@@ -76,7 +94,7 @@ GitHub auto-fills `.github/PULL_REQUEST_TEMPLATE.md`. Fill every section; "N/A" 
 
 ## What we review hard
 
-- **Native boundary changes** (`NativeBridge.kt`, `native/jni/*`, `rust/src/jni_bridge*`): symbol parity, ABI stability, error handling across FFI (no panic-across-JNI; no unguarded `unwrap()` in production hot paths).
+- **Subsystem boundaries** (see [S01–S23](docs/SYSTEMS.md)): contract parity on both sides and error handling across FFI. The former Rust/C++ JNI layer was retired (commit `50b937f7`, [ADR-009](docs/adr/ADR-009-kotlin-only-audio-pipeline.md)); re-introducing a native core requires a new RFC and ADR.
 - **Consensus & wire formats:** byte-exactness, golden-vector fixtures, election-safety reasoning.
 - **Supabase migrations:** RLS policies reviewed like code; anon-key scoping verified.
 - **Hot-path allocations:** RAII only in C++; zero GC-triggering allocations in Rust audio paths.
@@ -98,7 +116,7 @@ GitHub auto-fills `.github/PULL_REQUEST_TEMPLATE.md`. Fill every section; "N/A" 
 - [ ] Branch name follows `<type>/<issue>-<slug>`
 - [ ] Builds locally (`assembleDebug` + relevant test suites pass)
 - [ ] Tests added/updated for changed behavior and changed boundaries
-- [ ] Docs updated (folder README / engine manual / CHANGELOG)
+- [ ] Docs updated per the decision table (Sxx page + pin / ADR / RFC / playbook / IDEA_LOG / CHANGELOG)
 - [ ] No secrets, keystores, or tokens committed
 - [ ] PR template filled completely
 - [ ] One purpose per PR

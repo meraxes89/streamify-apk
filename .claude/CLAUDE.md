@@ -4,6 +4,15 @@
 
 **Response language**: Always respond in **English**.
 
+## 📚 Documentation contract (read first)
+
+- Canonical subsystem index: `docs/SYSTEMS.md` (S01–S23). Start here for any "where does X live?" question.
+- Rules and decision table: `docs/README.md`. Four types only: system page (`docs/systems/`), ADR (`docs/adr/`), RFC (`docs/rfc/`), playbook (`docs/playbooks/`).
+- Ideas go to `docs/IDEA_LOG.md` as one append-only row; do not create per-idea docs or branches.
+- ADRs are immutable; supersede with a new one. RFCs may be rejected. `docs/archive/` is never authoritative.
+- The Rust/C++ DSP core was retired (commit `50b937f7`, ADR-009). README and engine spec 02 still contain historical prose — do not treat it as current.
+- Every authoritative doc carries `<!-- doc-verified-against: <sha> -->`; update it in the same commit as the code it describes.
+
 ## 📋 Project Overview
 
 **SimpMusic** is a FOSS (Free and Open Source Software) YouTube Music client for Android and Desktop, built with Compose Multiplatform.

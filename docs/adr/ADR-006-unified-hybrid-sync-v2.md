@@ -1,4 +1,4 @@
-# ADR-005: Unified hybrid sync architecture v2 & schema alignment
+# ADR-006: Unified hybrid sync architecture v2 & schema alignment
 
 * Status: Accepted
 * Date: 2026-11-24

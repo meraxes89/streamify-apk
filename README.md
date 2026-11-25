@@ -1,12 +1,14 @@
 # Streamify
 
-Streamify is a free music streaming client: a Kotlin Compose Multiplatform UI
-over a Rust and C++20 native core. It plays YouTube Music catalogs, applies
-studio-grade loudness normalization and true-peak limiting on the native audio
-path, renders synchronized lyrics, and keeps a local-first library that syncs
-to Supabase. The project descends from SimpMusic; the shared data/domain
-modules still arrive through the `core` git submodule (`maxrave-dev/core`)
-with a local patch (`core.patch`) applied on top.
+Streamify is a free music streaming client built with Kotlin Compose
+Multiplatform. It plays YouTube Music catalogs, renders synchronized lyrics,
+and keeps a local-first library that syncs to Supabase. Audio processing is
+Kotlin on Android (`AudioProcessor` chain) and ffmpeg filters through libmpv on
+Desktop; there is no native DSP core in the shipped app
+([ADR-009](docs/adr/ADR-009-kotlin-only-audio-pipeline.md)). Start exploring at
+the [23-subsystem index](docs/SYSTEMS.md). The project descends from SimpMusic;
+the shared data/domain modules arrive through the `core` git submodule
+(`maxrave-dev/core`) with a local patch (`core.patch`) applied on top.
 
 ## UI showcase — Liquid Glass (BETA)
 
@@ -50,22 +52,23 @@ translucent glass surfaces pick up the artwork and feed behind them.
 <sub>Captured against the live wasmJs shell with Liquid Glass (BETA) enabled; viewports 1440 × 900 (desktop) and 390 × 844 (mobile). The phone bottom bar in the wasm demo keeps its flat variant — the folding glass bar ships on the Android/iOS/desktop shells.</sub>
 
 ```
-Platform shells (Kotlin Compose)      androidApp + composeApp (Android)
-                                      desktopApp (Windows/macOS/Linux)
-                                      composeApp wasmJs (browser)
-        │ Koin DI, JNI, UniFFI contract v2
+Platform shells                 androidApp, vivoAndroidApp, desktopApp,
+                                composeApp (wasmJs browser, iOS framework)
+        │ Koin DI, shared settings snapshots (immutable values)
         ▼
-Sovereign Rust core (rust/)           resolver (Innertube tiers), playback
-                                      producer, jam consensus, crypto vault
-        │ f32 stereo, canonical 48 kHz, SPSC write edge
+Playback + DSP                  Android: Media3 AudioProcessor chain (Kotlin)
+                                Desktop: libmpv via JNA + ffmpeg af graphs
+        │ PCM16 (8D also accepts PCM_FLOAT) / platform audio device
         ▼
-Real-time DSP (native/, C++20)        AudioSink SPSC ringbuffer, MasterChain
-        ▼
-Platform audio HAL                    Android Media3/AudioTrack (PCM float),
-                                      WASAPI, PipeWire/ALSA, CoreAudio
-Side planes: Room SQLite (WAL) <-> Supabase Postgres (LWW, RLS)
-             server/ Fastify relay + content-addressed web bundle
+Platform audio output           AudioTrack / mpv audio output / cast
+Side planes: Room SQLite (WAL) <-> Supabase Postgres (LWW, RLS, RPC)
+             server/ Fastify modular monolith (6 slices) + web bundle gate
 ```
+
+> **HISTORICAL:** the `rust/` workspace and `native/` C++20 DSP layer were
+> removed (commit `50b937f7`; [ADR-009](docs/adr/ADR-009-kotlin-only-audio-pipeline.md)).
+> Older prose in `docs/architecture/ARCHITECTURE.md` and engine spec 02
+> describes them as lineage, not current state.
 
 ## Build in 60 seconds (Android debug APK)
 
@@ -86,7 +89,7 @@ and `libmpv` via JNA on Desktop.
 Other targets:
 
 ```bash
-./gradlew :androidApp:testDebugUnitTest -PskipExternalNativeBuild=true   # JVM tests
+./gradlew :androidApp:testDebugUnitTest                                  # JVM tests
 ./gradlew :desktopApp:packageDistributionForCurrentOS                   # desktop installers
 cd server && npm ci && npm start                                         # relay on :3000
 ```
@@ -108,9 +111,13 @@ cd server && npm ci && npm start                                         # relay
 
 ## Documentation index
 
-- [System architecture map](docs/architecture/ARCHITECTURE.md) — the authoritative layer map and measured invariants
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 through ADR-004
-- [Subsystem deep-dives](docs/architecture/engines/) — 13 engine documents
+- [Subsystem index](docs/SYSTEMS.md) — **start here**: S01–S23 with owner, boundaries and links
+- [Documentation contract](docs/README.md) — four doc types, decision table, drift protocol
+- [System architecture map](docs/architecture/ARCHITECTURE.md) — master layer map (contains historical native-core notes)
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 through ADR-009
+- [RFC index](docs/rfc/README.md) — proposals, accepted or rejected
+- [Idea log](docs/IDEA_LOG.md) — append-only intake for daily ideas
+- [Subsystem deep-dives](docs/architecture/engines/) — 13 engine documents (verify against the tree before trusting claims)
 - [Developer playbooks](docs/playbooks/) — feature recipes, CI guide, codebase tour
 - [Project philosophy](docs/PHILOSOPHY.md)
 - [Hybrid sync architecture](supabase/HYBRID_SYNC_ARCHITECTURE.md)
@@ -121,4 +128,4 @@ Releases are published through the unified CI pipeline under
 Streamify is licensed under the [MIT License](LICENSE).
 
 ---
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+<!-- doc-verified-against: 1d387b7ed4d5f3d4cb13f5f2681eb2bcbf1bb05e -->
