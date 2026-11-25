@@ -4,6 +4,7 @@ import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.data.entities.analytics.PlaybackEventEntity
 import com.maxrave.domain.data.entities.sync.SyncChangeEntity
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -73,7 +74,7 @@ class StreamifySyncEngineP0Test {
         val event = PlaybackEventEntity(
             videoId = "vid_abc",
             albumBrowseId = "alb_xyz",
-            timestamp = Instant.fromEpochMilliseconds(1_700_000_000_500L),
+            timestamp = LocalDateTime(2026, 11, 26, 1, 30, 0),
             listenedSecond = 185,
             syncId = "play_sync_456",
         )
@@ -82,6 +83,14 @@ class StreamifySyncEngineP0Test {
             title = "Test Song",
             artistName = listOf("Test Artist"),
             albumName = "Test Album",
+            duration = "3:05",
+            durationSeconds = 185,
+            isAvailable = true,
+            isExplicit = false,
+            likeStatus = "INDIFFERENT",
+            videoType = "MUSIC_VIDEO_TYPE_ATV",
+            category = null,
+            resultType = null,
         )
 
         val op = StreamifySyncEngine.buildHistoryOutboxOp(change = change, event = event, song = song)
