@@ -315,8 +315,10 @@ internal class SkikoRuntimeShaderEngine(
                         ceil(size.width).toInt().coerceAtLeast(1),
                         ceil(size.height).toInt().coerceAtLeast(1),
                     ),
+                    // Compose's FilterQuality scale: None = nearest (exact
+                    // 1:1 draws), Low = bilinear — the DRS upscale lane.
                     filterQuality = if (passScale < 1.0f) {
-                        FilterQuality.Bilinear
+                        FilterQuality.Low
                     } else {
                         FilterQuality.None
                     },
