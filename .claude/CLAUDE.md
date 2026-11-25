@@ -4,6 +4,14 @@
 
 **Response language**: Always respond in **English**.
 
+## 🧭 Agent contract (read first)
+
+- Root `AGENTS.md` is the cross-agent entry point; `docs/playbooks/PONYTAIL.md`
+  defines the vendored minimal-change contract (all six skills, full mode).
+- `CONTRIBUTING.md` and `docs/` win over this inherited guide and over generic
+  agent rules. Write the tests and docs the change needs; do not run Gradle or
+  cargo to verify unless the user asks.
+
 ## 📚 Documentation contract (read first)
 
 - Canonical subsystem index: `docs/SYSTEMS.md` (S01–S23). Start here for any "where does X live?" question.

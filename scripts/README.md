@@ -9,6 +9,7 @@ table). Run `python3 scripts/<name>.py --help` where applicable.
 |---|---|
 | verify_docs.py | Documentation gate: markdown link integrity across the repo plus `doc-verified-against` staleness pins via `git merge-base --is-ancestor` |
 | docs_ledger_check.py | Tier-1 CI lint: workflow refs, release tags, relative links in curated docs, stale-claim denylists, ledger checkbox paths |
+| check_agent_skills.py | Verifies the six vendored Ponytail skills and the OpenCode/Claude command copies; no mirror, because OpenCode also scans `.agents/skills` |
 | jni_parity_check.py | JNI ABI parity tripwire. `--source`: every Kotlin `external fun` has a `Java_*` export and no ghost exports (handles name mangling incl. `com.streamify.core.native_.NativeAudioSink`). `--nm`: diffs exports against the built .so with llvm-nm |
 | jni_panic_boundary_check.py | Every `Java_*` export in Rust JNI TUs calls `catch_unwind` in-body; C++ TUs brace-match `JNI_SHIELD`. Exemptions only via `// panic-boundary-exempt: <reason>` |
 | check_feishin_resolver.py | Vendored resolver integrity (P5-A): file existence, provenance headers, self-contained imports, `getStreamUrl` contract |

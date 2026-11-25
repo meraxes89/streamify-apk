@@ -88,6 +88,7 @@ the report is explicit, not silent. If commit order cannot be determined
 | [ADD_A_FEATURE.md](playbooks/ADD_A_FEATURE.md) | Adding features without breaking contracts; starts with subsystem ID |
 | [CI_TESTING_GUIDE.md](playbooks/CI_TESTING_GUIDE.md) | Hub-and-spoke CI DAG, shards, log inspection |
 | [CODEBASE_GUIDE.md](playbooks/CODEBASE_GUIDE.md) | Folder-by-folder codebase tour |
+| [PONYTAIL.md](playbooks/PONYTAIL.md) | Vendored minimal-change contract, six skills, `shortcut:` markers, update procedure |
 | [BACKEND_DB_SYNC.md](playbooks/BACKEND_DB_SYNC.md) | Supabase ↔ repo reconciliation runbook |
 
 ## Archive
