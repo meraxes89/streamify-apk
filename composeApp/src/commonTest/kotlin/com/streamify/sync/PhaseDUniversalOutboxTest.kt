@@ -282,7 +282,7 @@ class PhaseDUniversalOutboxTest {
         }
 
         val pending = updated.filter { it.serverSeq == null }
-        val sent = updated.filter { it.serverSeq != null && it.serverSeq > 0 }
+        val sent = updated.filter { (it.serverSeq ?: 0L) > 0L }
         val deadLettered = updated.filter { it.serverSeq == -1L }
 
         assertEquals(0, pending.size)
