@@ -40,7 +40,6 @@ import com.maxrave.domain.mediaservice.handler.ToastType
 import com.maxrave.domain.repository.LibrarySyncPhoneRepository
 import com.maxrave.logger.Logger
 import com.maxrave.media3.di.setServiceActivitySession
-import com.maxrave.simpmusic.di.viewModelModule
 import com.maxrave.simpmusic.service.test.notification.NotifyWork
 import com.maxrave.simpmusic.utils.ComposeResUtils
 import com.maxrave.simpmusic.utils.VersionManager
@@ -50,7 +49,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 import org.koin.core.context.loadKoinModules
-import org.koin.core.context.unloadKoinModules
 import org.koin.dsl.module
 import org.simpmusic.crashlytics.pushPlayerError
 import pub.devrel.easypermissions.EasyPermissions
@@ -135,9 +133,6 @@ class MainActivity : AppCompatActivity() {
                 single<AppCompatActivity> { this@MainActivity }
             },
         )
-        // Recreate view model to fix the issue of view model not getting data from the service
-        unloadKoinModules(viewModelModule)
-        loadKoinModules(viewModelModule)
         VersionManager.initialize()
         checkForUpdate()
         if (viewModel.recreateActivity.value || viewModel.isServiceRunning) {
@@ -277,7 +272,6 @@ class MainActivity : AppCompatActivity() {
         if (shouldStopMusicService && shouldUnbind && isFinishing) {
             viewModel.isServiceRunning = false
         }
-        unloadKoinModules(viewModelModule)
         super.onDestroy()
         Logger.d("MainActivity", "onDestroy: ")
     }
