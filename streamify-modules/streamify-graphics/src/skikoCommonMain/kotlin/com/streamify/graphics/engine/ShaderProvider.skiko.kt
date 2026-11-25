@@ -321,9 +321,6 @@ internal class SkikoLiquidGlassProgram internal constructor() {
 /**
  * Tier 1 / Tier 2 engine for the skiko targets.
  *
-/**
- * Tier 1 / Tier 2 engine for the skiko targets.
- *
  * **Offscreen refraction lane (S24 Track B/C)** — when the request carries a
  * [GlassRenderRequest.snapshot] (captured off the draw phase by
  * [rememberGlassBackdrop][com.streamify.graphics.api.rememberGlassBackdrop]),

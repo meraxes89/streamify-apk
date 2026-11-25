@@ -512,6 +512,9 @@ class TierGovernor(
         /** 120 Hz frame budget (ms) — a frame at exactly this value is NOT fast. */
         const val FAST_FRAME_BUDGET_MS = 8.3
 
+        /** Rolling window (frames) over which the P95 demotion gate is evaluated. */
+        const val P95_WINDOW_FRAMES = 60
+
         /** 60 Hz frame budget (ms) — the P95 of the window must stay at or below it. */
         const val P95_FRAME_BUDGET_MS = 16.6
 
