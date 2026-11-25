@@ -386,10 +386,21 @@ index bbffab7..206e8d2 100644
                  if (!is403Video) {
                      // Return video URL with audio as a second EDL stream for merging
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..c143fdf 100644
+index e88affc..871f1d1 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-@@ -657,8 +657,8 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -271,8 +271,9 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                     // Temporary loss (e.g. an incoming call): pause and remember to resume.
+-                    resumeOnFocusGain = internalState == InternalState.PLAYING
++                    val wasPlaying = internalState == InternalState.PLAYING
+                     pause()
++                    resumeOnFocusGain = wasPlaying
+                 }
+ 
+                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+@@ -657,8 +658,8 @@ internal class CrossfadeExoPlayerAdapter(
                          .setBufferDurationsMs(
                              DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
                              DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
@@ -400,6 +411,14 @@ index e88affc..c143fdf 100644
                          ).build(),
                  ).setWakeMode(C.WAKE_MODE_NETWORK)
                  .setHandleAudioBecomingNoisy(true)
+@@ -734,6 +735,7 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+     override fun pause() {
+         Logger.d(TAG, "pause() called (state: $internalState, playWhenReady: $internalPlayWhenReady)")
++        resumeOnFocusGain = false
+         castRemotePlayer?.let { remote ->
+             internalPlayWhenReady = false
+             remote.pause()
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
 index 90f78fb..dfaa9b6 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
