@@ -1225,6 +1225,55 @@ index e88affc..a4a0c9d 100644
                          nextPlayer.volume = fadeInVolume
  
                          // DJ-style filter sweep (alongside volume)
+diff --git a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
+index 64bed3e..70ad004 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
+@@ -1,8 +1,6 @@
+ package com.maxrave.media3.service
+ 
+ import android.app.Activity
+-import android.app.ActivityManager
+-import android.app.ActivityManager.RunningAppProcessInfo
+ import android.app.PendingIntent
+ import android.content.ComponentName
+ import android.content.Context
+@@ -96,13 +94,6 @@ internal class SimpleMediaService :
+                 )
+         }
+ 
+-        simpleMediaServiceHandler.onUpdateNotification = { list ->
+-            val commandButtonList = list.map { it.toCommandButton(this) }
+-            mediaSession?.setMediaButtonPreferences(
+-                commandButtonList,
+-            )
+-        }
+-
+         val sessionToken = SessionToken(this, ComponentName(this, SimpleMediaService::class.java))
+         val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+         controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
+@@ -152,7 +143,7 @@ internal class SimpleMediaService :
+                 mediaSession = null
+                 Logger.w("Service", "Simple Media Service Released")
+             } catch (e: Exception) {
+-                Logger.e("Service", "Error during release")
++                Logger.e("Service", "Error during release", e)
+             }
+         }
+     }
+@@ -211,10 +202,4 @@ internal class SimpleMediaService :
+                 }
+             }
+             .build()
+-
+-    private fun isAppInForeground(): Boolean {
+-        val appProcessInfo = RunningAppProcessInfo()
+-        ActivityManager.getMyMemoryState(appProcessInfo)
+-        return appProcessInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+-    }
+-}
+\ No newline at end of file
++}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
 index 90f78fb..dfaa9b6 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
