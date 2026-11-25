@@ -88,10 +88,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.collectLatest
@@ -159,8 +157,8 @@ class SharedViewModel(
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate
 
-    private var _liked: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    val liked: SharedFlow<Boolean> = _liked.asSharedFlow()
+    private val _liked: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val liked: StateFlow<Boolean> = _liked.asStateFlow()
 
     var isServiceRunning: Boolean = false
 
@@ -170,8 +168,8 @@ class SharedViewModel(
     private var regionCode: String? = null
     private var language: String? = null
 
-    private var _format: MutableStateFlow<NewFormatEntity?> = MutableStateFlow(null)
-    val format: SharedFlow<NewFormatEntity?> = _format.asSharedFlow()
+    private val _format: MutableStateFlow<NewFormatEntity?> = MutableStateFlow(null)
+    val format: StateFlow<NewFormatEntity?> = _format.asStateFlow()
 
     /**
      * Which extractor and cipher decoder produced the current track's URLs, shown in the info sheet.
@@ -1248,9 +1246,9 @@ class SharedViewModel(
                     streamRepository.getFormatFlow(mediaId).cancellable().collectLatest { f ->
                         Logger.d(tag, "Get format for $mediaId: itag ${f?.itag}, expires ${f?.expiredTime}")
                         if (f != null) {
-                            _format.emit(f)
+                            _format.value = f
                         } else {
-                            _format.emit(null)
+                            _format.value = null
                         }
                         // Re-read on every emission: the first one usually lands before the
                         // extractor has finished, so the source is only known on a later pass.
