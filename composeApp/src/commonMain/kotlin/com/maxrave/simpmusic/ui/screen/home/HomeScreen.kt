@@ -318,6 +318,14 @@ fun HomeScreen(
     val openAppTime by sharedViewModel.openAppTime.collectAsStateWithLifecycle()
     val shareLyricsPermissions by sharedViewModel.shareSavedLyrics.collectAsStateWithLifecycle()
 
+    LaunchedEffect(viewModel) {
+        viewModel.showSnackBarErrorState.collect { errorMsg ->
+            if (errorMsg.isNotBlank()) {
+                viewModel.makeToast(errorMsg)
+            }
+        }
+    }
+
     // Launch banner inputs. App.kt's own dialogs, its Now Playing sheet and whether the user has
     // started using the app come down from App.kt; Home's dialogs are read where the banner is drawn.
     val appDialogOpen = LocalAppDialogOpen.current
