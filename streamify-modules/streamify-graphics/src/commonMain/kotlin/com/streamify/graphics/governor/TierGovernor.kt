@@ -327,7 +327,7 @@ class TierGovernor(
             val mustDemote = demotionTier != null && cur.tier > demotionTier
             if (!mustDemote && cur.thermalStatus == status) return // no-op report
 
-            val nextTier = if (mustDemote) demotionTier!! else cur.tier
+            val nextTier = if (mustDemote && demotionTier != null) demotionTier else cur.tier
             val next = GovernorState(
                 tier = nextTier,
                 thermalStatus = status,
