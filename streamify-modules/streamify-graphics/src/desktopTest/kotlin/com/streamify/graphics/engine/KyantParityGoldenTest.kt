@@ -321,13 +321,12 @@ class KyantParityGoldenTest {
             val cr = vr + (tintRed - vr) * tintAlpha
             val cg = vg + (tintGreen - vg) * tintAlpha
             val cb = vb + (tintBlue - vb) * tintAlpha
-            val ca = aC + (tintAlpha - aC) * tintAlpha
 
-            val outR = (cr + rim) * (1f - darkenAmount)
-            val outG = (cg + rim) * (1f - darkenAmount)
-            val outB = (cb + rim) * (1f - darkenAmount)
+            val outR = ((cr + rim) * (1f - darkenAmount)).coerceIn(0f, 1f)
+            val outG = ((cg + rim) * (1f - darkenAmount)).coerceIn(0f, 1f)
+            val outB = ((cb + rim) * (1f - darkenAmount)).coerceIn(0f, 1f)
 
-            return (toByte(ca) shl 24) or (toByte(outR) shl 16) or (toByte(outG) shl 8) or toByte(outB)
+            return (toByte(aC) shl 24) or (toByte(outR) shl 16) or (toByte(outG) shl 8) or toByte(outB)
         }
 
         private fun toByte(v: Float): Int = (v * 255f).roundToInt().coerceIn(0, 255)
