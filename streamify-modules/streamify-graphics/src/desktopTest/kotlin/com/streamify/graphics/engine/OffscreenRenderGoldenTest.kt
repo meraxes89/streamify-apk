@@ -20,34 +20,41 @@ import kotlin.test.assertTrue
 
 /**
  * Phase 4, Track A — Headless Skia Offscreen Render Golden Test
- * (docs/gpu/PHASED_PLAN.md Phase 4; docs/gpu/CI_TESTING_SPEC.md Job 3).
+ * (docs/gpu/CI_TESTING_SPEC.md, Job 3).
  *
  * Renders LiquidGlassCore to an offscreen raster surface across multiple tiers
  * (Tier 1 chromatic dispersion vs Tier 2 single tap) and verifies:
  *  1. Non-zero, spatially varying alpha and color evaluation.
  *  2. Chromatic dispersion delta produces measurable R/B channel divergence at edges.
  *  3. Bounded execution within headless memory and raster constraints.
+ *
+ * Bindings follow the module's proven dialect-gate shapes
+ * (DialectTranspileTest / AgslDialectEquivalenceTest): `Shader
+ * .makeLinearGradient(Gradient(Gradient.Colors(...)))` and the frozen token
+ * names of PrimitiveTokens / SemanticTokens (`lensCurvatureStandard`,
+ * `refractionIndexDefault`, `chromaticSpreadDefault`, `surfaceGlassMuted`).
  */
 class OffscreenRenderGoldenTest {
 
-    private fun createSyntheticBackdrop(width: Int, height: Int): Shader {
-        val colors = intArrayOf(
-            0xFF1E88E5.toInt(), // Deep Blue
-            0xFFD81B60.toInt(), // Vibrant Magenta
-            0xFFFFB300.toInt(), // Amber Gold
-            0xFF43A047.toInt(), // Green
+    private fun createSyntheticBackdrop(width: Int, height: Int): Shader =
+        Shader.makeLinearGradient(
+            0f,
+            0f,
+            width.toFloat(),
+            height.toFloat(),
+            Gradient(
+                Gradient.Colors(
+                    arrayOf(
+                        Color4f(0.12f, 0.53f, 0.90f, 1.0f), // deep blue
+                        Color4f(0.85f, 0.11f, 0.38f, 1.0f), // vibrant magenta
+                        Color4f(1.00f, 0.70f, 0.00f, 1.0f), // amber gold
+                        Color4f(0.26f, 0.64f, 0.28f, 1.0f), // green
+                    ),
+                    null,
+                    FilterTileMode.CLAMP,
+                ),
+            ),
         )
-        val pos = floatArrayOf(0.0f, 0.33f, 0.66f, 1.0f)
-        return Gradient.makeLinear(
-            x0 = 0f,
-            y0 = 0f,
-            x1 = width.toFloat(),
-            y1 = height.toFloat(),
-            colors = colors,
-            positions = pos,
-            mode = FilterTileMode.CLAMP,
-        )
-    }
 
     @Test
     fun renderLiquidGlassHeadlessProducesDeterministicPixels() {
@@ -63,15 +70,15 @@ class OffscreenRenderGoldenTest {
         val builder = RuntimeShaderBuilder(effect)
         builder.child("backdrop", backdropShader)
         builder.uniform("resolution", width.toFloat(), height.toFloat())
-        builder.uniform("lensRadius", PrimitiveTokens.LENS_RADIUS_CORNER_FRACTION)
-        builder.uniform("refractionIndex", PrimitiveTokens.REFRACTION_INDEX)
-        builder.uniform("chromaticSpread", PrimitiveTokens.CHROMATIC_SPREAD_TIER1)
+        builder.uniform("lensRadius", PrimitiveTokens.lensCurvatureStandard)
+        builder.uniform("refractionIndex", PrimitiveTokens.refractionIndexDefault)
+        builder.uniform("chromaticSpread", PrimitiveTokens.chromaticSpreadDefault)
         builder.uniform(
             "tintColor",
-            SemanticTokens.TINT_LIGHT.red,
-            SemanticTokens.TINT_LIGHT.green,
-            SemanticTokens.TINT_LIGHT.blue,
-            SemanticTokens.TINT_LIGHT.alpha,
+            SemanticTokens.surfaceGlassMuted.red,
+            SemanticTokens.surfaceGlassMuted.green,
+            SemanticTokens.surfaceGlassMuted.blue,
+            SemanticTokens.surfaceGlassMuted.alpha,
         )
 
         val paint = Paint().apply {
