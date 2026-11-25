@@ -5,7 +5,6 @@ import kotlinx.browser.window
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.w3c.dom.set
 
 actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
@@ -30,9 +29,9 @@ actual object StreamifyAuthManager {
             val pathname = window.location.pathname
             val redirectUri = "$origin$pathname"
 
-            sessionStorage["pkce_code_verifier"] = verifier
-            sessionStorage["pkce_state"] = state
-            sessionStorage["pkce_redirect_uri"] = redirectUri
+            sessionStorage.setItem("pkce_code_verifier", verifier)
+            sessionStorage.setItem("pkce_state", state)
+            sessionStorage.setItem("pkce_redirect_uri", redirectUri)
 
             val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
                     "provider=google" +
@@ -58,15 +57,15 @@ actual object StreamifyAuthManager {
 
             val code = data.code
             if (!code.isNullOrBlank()) {
-                val verifier = sessionStorage["pkce_code_verifier"]
+                val verifier = sessionStorage.getItem("pkce_code_verifier")
                     ?: return Result.failure(Exception("No pending PKCE code verifier in web session"))
 
-                val expectedState = sessionStorage["pkce_state"]
+                val expectedState = sessionStorage.getItem("pkce_state")
                 if (expectedState != null && data.state != null && data.state != expectedState) {
                     return Result.failure(IllegalStateException("CSRF state mismatch"))
                 }
 
-                val redirectUri = sessionStorage["pkce_redirect_uri"]
+                val redirectUri = sessionStorage.getItem("pkce_redirect_uri")
                     ?: "${window.location.origin}${window.location.pathname}"
 
                 sessionStorage.removeItem("pkce_code_verifier")
