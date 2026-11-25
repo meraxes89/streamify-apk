@@ -81,6 +81,13 @@ the report is explicit, not silent. If commit order cannot be determined
 - [RFC index](rfc/README.md) — proposals with explicit status, including rejected ones
 - [IDEA_LOG.md](IDEA_LOG.md) — the intake funnel: spark → explored → committed
 
+## Agent skill
+
+The executable form of this contract lives at
+`.agents/skills/streamify-docs-contract/SKILL.md`. Agents should load it for any
+code change, feature, ADR/RFC or idea; if it ever disagrees with this file, this
+file wins and the skill is updated in the same PR.
+
 ## Playbooks
 
 | Playbook | Scope |
