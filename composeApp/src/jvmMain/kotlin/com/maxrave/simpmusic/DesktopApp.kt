@@ -65,6 +65,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -219,56 +220,65 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
     }
 
     val dataStoreManager = getKoin().get<DataStoreManager>()
-    runBlocking {
+    val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Offload defaults initialization to background IO dispatcher
+    startupScope.launch {
         com.maxrave.simpmusic.utils.StreamifyDefaultsInitializer.initialize(dataStoreManager)
     }
 
-    val language =
-        runBlocking {
-            dataStoreManager
-                .language
-                .first()
-                .substring(0..1)
+    // Reactively apply locale without blocking main startup
+    startupScope.launch {
+        dataStoreManager.language.collect { lang ->
+            if (lang.length >= 2) {
+                changeLanguageNative(lang.substring(0..1))
+            }
         }
-    changeLanguageNative(language)
+    }
 
     VersionManager.initialize()
     configLastfm(BuildKonfig.lastfmApiKey, BuildKonfig.lastfmSecret)
     if (BuildKonfig.sentryDsn.isNotEmpty()) {
-        val installationId = machineId()
         Sentry.init { options ->
             options.dsn = BuildKonfig.sentryDsn
             options.release = "simpmusic-desktop@${VersionManager.getVersionName()}"
             options.setDiagnosticLevel(SentryLevel.ERROR)
-            options.distinctId = installationId
             options.isSendDefaultPii = true
             options.setTracesSampler { context -> if (context.transactionContext.name == SENTRY_APP_OPEN) 1.0 else 0.0 }
         }
-        // sentry-java fills in no OS context on the JVM (only sentry-android does). The global scope reaches
-        // every event and the app.open transaction, on every thread.
-        Sentry.configureScope(ScopeType.GLOBAL) { it.contexts.setOperatingSystem(desktopOs()) }
-        if (installationId != null) Sentry.setUser(User().apply { id = installationId })
         Sentry.startSession()
         Sentry.startTransaction(SENTRY_APP_OPEN, SENTRY_APP_OPEN).finish()
+
+        // Sentry OS context and machine GUID require external child processes (reg query / ioreg);
+        // offload to IO dispatcher so main thread enters composition without delay.
+        startupScope.launch {
+            val installationId = machineId()
+            val osContext = desktopOs()
+            Sentry.configureScope(ScopeType.GLOBAL) { scope ->
+                scope.contexts.setOperatingSystem(osContext)
+                if (installationId != null) {
+                    scope.user = User().apply { id = installationId }
+                }
+            }
+        }
     }
 
     val mediaPlayerHandler by inject<MediaPlayerHandler>(MediaPlayerHandler::class.java)
     mediaPlayerHandler.showToast = { type ->
-        showToast(
-            when (type) {
-                ToastType.ExplicitContent -> {
-                    runBlocking { getString(Res.string.explicit_content_blocked) }
-                }
-
-                is ToastType.PlayerError -> {
-                    runBlocking { getString(Res.string.time_out_check_internet_connection_or_change_piped_instance_in_settings, type.error) }
-                }
-
-                is ToastType.SponsorBlockSkip -> {
-                    runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.SPONSOR_BLOCK_SKIP, type.category) }
-                }
-            },
-        )
+        startupScope.launch(Dispatchers.Main) {
+            val message = when (type) {
+                ToastType.ExplicitContent -> getString(Res.string.explicit_content_blocked)
+                is ToastType.PlayerError -> getString(
+                    Res.string.time_out_check_internet_connection_or_change_piped_instance_in_settings,
+                    type.error,
+                )
+                is ToastType.SponsorBlockSkip -> ComposeResUtils.getResString(
+                    ComposeResUtils.StringType.SPONSOR_BLOCK_SKIP,
+                    type.category,
+                )
+            }
+            showToast(message)
+        }
     }
     mediaPlayerHandler.pushPlayerError = { error ->
         Sentry.withScope { scope ->
@@ -276,17 +286,23 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
         }
     }
 
-    // Register simpmusic:// protocol handler on Windows (HKCU, no admin needed)
-    WindowsProtocolRegistrar.register()
+    // Register simpmusic:// protocol handler on Windows in background (HKCU, no admin needed)
+    startupScope.launch {
+        WindowsProtocolRegistrar.register()
+    }
 
     val desktopNotificationManager = getKoin().get<DesktopNotificationManager>()
     desktopNotificationManager.initialize()
 
     // Library sync (#2663): reopens the server for paired phones. Off the startup path: it binds a port.
-    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { getKoin().get<LibrarySyncHostRepository>().start() }
+    startupScope.launch {
+        getKoin().get<LibrarySyncHostRepository>().start()
+    }
 
     val sharedViewModel = getKoin().get<SharedViewModel>()
-    sharedViewModel.checkForUpdate()
+    startupScope.launch {
+        sharedViewModel.checkForUpdate()
+    }
 
     // Connect deep link handler to SharedViewModel
     DesktopDeepLinkHandler.listener = { intent ->
