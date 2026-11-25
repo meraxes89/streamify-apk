@@ -79,7 +79,14 @@ class NavigationContractTest {
 
     @Test
     fun bottomNavScreensHaveUniqueDestinations() {
-        val destinations = BottomNavScreen.entries.map { it.destination }
+        val screens = listOf(
+            BottomNavScreen.Home,
+            BottomNavScreen.MixForYou,
+            BottomNavScreen.Analytics,
+            BottomNavScreen.Library,
+            BottomNavScreen.Search,
+        )
+        val destinations = screens.map { it.destination }
         assertEquals(destinations.size, destinations.distinct().size)
     }
 
@@ -102,7 +109,7 @@ class NavigationContractTest {
         assertEquals(fullscreen, decodedFullscreen)
 
         assertEquals(HomeDestination, Json.decodeFromString<HomeDestination>(Json.encodeToString(HomeDestination)))
-        assertEquals(LibraryDestination(), Json.decodeFromString<LibraryDestination>(Json.encodeToString(LibraryDestination())))
+        assertEquals(LibraryDestination, Json.decodeFromString<LibraryDestination>(Json.encodeToString(LibraryDestination)))
         assertEquals(NotificationDestination, Json.decodeFromString<NotificationDestination>(Json.encodeToString(NotificationDestination)))
     }
 }
