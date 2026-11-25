@@ -1141,6 +1141,7 @@ class SharedViewModel(
         }
 
     override fun onCleared() {
+        super.onCleared()
         Logger.w("Check onCleared", "onCleared")
     }
 
