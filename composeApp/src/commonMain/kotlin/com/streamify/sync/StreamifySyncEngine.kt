@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -1296,8 +1296,8 @@ object StreamifySyncEngine : KoinComponent {
                             val rejectedChangeIds = mutableSetOf<String>()
 
                             if (pushRes.results.isNotEmpty()) {
-                                for (result in pushRes.results) {
-                                    val mapping = chunk.getOrNull(result.index)
+                                for ((idx, result) in pushRes.results.withIndex()) {
+                                    val mapping = chunk.getOrNull(idx)
                                     if (mapping != null) {
                                         when (result.status) {
                                             "applied", "stale" -> appliedChangeIds.add(mapping.changeId)
@@ -1318,7 +1318,6 @@ object StreamifySyncEngine : KoinComponent {
                             if (rejectedChangeIds.isNotEmpty()) {
                                 syncOutboxRepository.markRejected(rejectedChangeIds.toList())
                                 _syncState.value = SyncStatus.Error("Sync push rejected ${rejectedChangeIds.size} changes")
-                                SLog.w(TAG, "Outbox changes rejected by server: $rejectedChangeIds")
                             }
                             // Pull cursor is NEVER advanced by sync_push
                         }
