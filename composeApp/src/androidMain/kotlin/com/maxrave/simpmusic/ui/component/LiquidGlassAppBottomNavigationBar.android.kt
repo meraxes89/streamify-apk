@@ -347,7 +347,7 @@ actual fun LiquidGlassAppBottomNavigationBar(
                 },
                 onClose = {
                     viewModel.stopPlayer()
-                    viewModel.isServiceRunning = false
+                    viewModel.setServiceRunning(false)
                 },
             )
         }

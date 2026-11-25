@@ -677,7 +677,7 @@ fun App(
                                         },
                                         onClose = {
                                             viewModel.stopPlayer()
-                                            viewModel.isServiceRunning = false
+                                            viewModel.setServiceRunning(false)
                                         },
                                     )
                                 }
@@ -762,7 +762,7 @@ fun App(
                                 },
                                 onClose = {
                                     viewModel.stopPlayer()
-                                    viewModel.isServiceRunning = false
+                                    viewModel.setServiceRunning(false)
                                 },
                                 // The page lives in the Now Playing panel, so the panel opens with it.
                                 onOpenFullscreenLyrics = {
@@ -1036,12 +1036,12 @@ fun App(
                             isBreaking = UpdateStateHolder.isBreaking,
                             onConfirmUpdate = {
                                 shouldShowUpdateDialog = false
-                                viewModel.showedUpdateDialog = false
+                                viewModel.setShowedUpdateDialog(false)
                                 openUrl(binary.downloadUrl)
                             },
                             onSkipLaunch = {
                                 shouldShowUpdateDialog = false
-                                viewModel.showedUpdateDialog = false
+                                viewModel.setShowedUpdateDialog(false)
                                 hasSkippedUpdateDialog = true
                             },
                         )
