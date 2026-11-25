@@ -371,7 +371,7 @@ class SharedViewModel(
 //            controllerStateJob.join()
         }
 
-        runBlocking {
+        viewModelScope.launch {
             dataStoreManager.getString("miniplayer_guide").first().let {
                 isFirstMiniplayer = it != STATUS_DONE
             }
@@ -816,8 +816,10 @@ class SharedViewModel(
         key: String,
         value: String,
     ) {
-        runBlocking { dataStoreManager.putString(key, value) }
-        com.streamify.sync.StreamifySyncEngine.recordSettingChange(key, value)
+        viewModelScope.launch {
+            dataStoreManager.putString(key, value)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(key, value)
+        }
     }
 
     fun setSleepTimer(minutes: Int) {
@@ -1143,15 +1145,15 @@ class SharedViewModel(
     }
 
     fun getLocation() {
-        val currentLoc = runBlocking { dataStoreManager.location.first() }
-        if (currentLoc.isEmpty() || currentLoc == "VN") {
-            runBlocking {
+        viewModelScope.launch {
+            val currentLoc = dataStoreManager.location.first()
+            if (currentLoc.isEmpty() || currentLoc == "VN") {
                 dataStoreManager.setLocation("IN")
                 dataStoreManager.setChartKey("IN")
             }
+            regionCode = dataStoreManager.location.first()
+            language = dataStoreManager.getString(SELECTED_LANGUAGE).first()
         }
-        regionCode = runBlocking { dataStoreManager.location.first() }
-        language = runBlocking { dataStoreManager.getString(SELECTED_LANGUAGE).first() }
     }
 
     private fun checkAllDownloadingLocalPlaylists() {
@@ -1278,11 +1280,14 @@ class SharedViewModel(
     private var _updateResponse = MutableStateFlow<UpdateData?>(null)
     val updateResponse: StateFlow<UpdateData?> = _updateResponse
 
-    fun checkForUpdate() {
-        // Raised before the coroutine starts, so Home's launch banner, which reads it right after
-        // startup, can never miss a check that is already under way but not yet marked.
-        _isCheckingUpdate.value = true
+    fun checkForUpdate(force: Boolean = false) {
         viewModelScope.launch {
+            if (!force && dataStoreManager.autoCheckForUpdates.first() != TRUE) {
+                return@launch
+            }
+            // Raised before the coroutine starts, so Home's launch banner, which reads it right after
+            // startup, can never miss a check that is already under way but not yet marked.
+            _isCheckingUpdate.value = true
             val updateChannel = dataStoreManager.updateChannel.first()
             dataStoreManager.putString(
                 "CheckForUpdateAt",
@@ -1493,11 +1498,6 @@ class SharedViewModel(
             }
         }
 
-        val shouldSendLyricsToSimpMusic =
-            runBlocking {
-                dataStoreManager.helpBuildLyricsDatabase.first() == TRUE
-            } &&
-                lyricsProvider != LyricsProvider.SIMPMUSIC
         if (_nowPlayingState.value?.songEntity?.videoId == videoId) {
             val track = _nowPlayingState.value?.track
             when (isTranslatedLyrics) {
@@ -1518,25 +1518,28 @@ class SharedViewModel(
                                 ),
                         )
                     }
-                    if (shouldSendLyricsToSimpMusic && track != null) {
+                    if (lyricsProvider != LyricsProvider.SIMPMUSIC && track != null) {
                         viewModelScope.launch {
-                            lyricsCanvasRepository
-                                .insertSimpMusicTranslatedLyrics(
-                                    dataStoreManager,
-                                    track,
-                                    lyrics,
-                                    dataStoreManager.translationLanguage.first(),
-                                ).collect {
-                                    when (it) {
-                                        is Resource.Error -> {
-                                            log("Insert SimpMusic Translated Lyrics Error ${it.message}", LogLevel.WARN)
-                                        }
+                            val shouldSendLyricsToSimpMusic = dataStoreManager.helpBuildLyricsDatabase.first() == TRUE
+                            if (shouldSendLyricsToSimpMusic) {
+                                lyricsCanvasRepository
+                                    .insertSimpMusicTranslatedLyrics(
+                                        dataStoreManager,
+                                        track,
+                                        lyrics,
+                                        dataStoreManager.translationLanguage.first(),
+                                    ).collect {
+                                        when (it) {
+                                            is Resource.Error -> {
+                                                log("Insert SimpMusic Translated Lyrics Error ${it.message}", LogLevel.WARN)
+                                            }
 
-                                        is Resource.Success -> {
-                                            log("Insert SimpMusic Translated Lyrics Success")
+                                            is Resource.Success -> {
+                                                log("Insert SimpMusic Translated Lyrics Success")
+                                            }
                                         }
                                     }
-                                }
+                            }
                         }
                     }
                 }
@@ -1570,25 +1573,28 @@ class SharedViewModel(
                             ),
                         )
                     }
-                    if (shouldSendLyricsToSimpMusic && track != null) {
+                    if (lyricsProvider != LyricsProvider.SIMPMUSIC && track != null) {
                         viewModelScope.launch {
-                            lyricsCanvasRepository
-                                .insertSimpMusicLyrics(
-                                    dataStoreManager,
-                                    track,
-                                    duration,
-                                    lyrics,
-                                ).collect {
-                                    when (it) {
-                                        is Resource.Error -> {
-                                            Logger.w(tag, "Insert SimpMusic Lyrics Error ${it.message}")
-                                        }
+                            val shouldSendLyricsToSimpMusic = dataStoreManager.helpBuildLyricsDatabase.first() == TRUE
+                            if (shouldSendLyricsToSimpMusic) {
+                                lyricsCanvasRepository
+                                    .insertSimpMusicLyrics(
+                                        dataStoreManager,
+                                        track,
+                                        duration,
+                                        lyrics,
+                                    ).collect {
+                                        when (it) {
+                                            is Resource.Error -> {
+                                                Logger.w(tag, "Insert SimpMusic Lyrics Error ${it.message}")
+                                            }
 
-                                        is Resource.Success -> {
-                                            Logger.d(tag, "Insert SimpMusic Lyrics Success")
+                                            is Resource.Success -> {
+                                                Logger.d(tag, "Insert SimpMusic Lyrics Success")
+                                            }
                                         }
                                     }
-                                }
+                            }
                         }
                     }
                 }
@@ -2189,7 +2195,7 @@ class SharedViewModel(
         _reloadDestination.value = null
     }
 
-    fun shouldCheckForUpdate(): Boolean = runBlocking { dataStoreManager.autoCheckForUpdates.first() == TRUE }
+    suspend fun shouldCheckForUpdate(): Boolean = dataStoreManager.autoCheckForUpdates.first() == TRUE
 
     private var _downloadFileProgress = MutableStateFlow<DownloadProgress>(DownloadProgress.INIT)
     val downloadFileProgress: StateFlow<DownloadProgress> get() = _downloadFileProgress
@@ -2367,15 +2373,17 @@ class SharedViewModel(
         }
     }
 
-    fun shouldStopMusicService(): Boolean = runBlocking { dataStoreManager.killServiceOnExit.first() == TRUE }
+    val killServiceOnExit =
+        dataStoreManager
+            .killServiceOnExit
+            .map { it == TRUE }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    fun isUserLoggedIn(): Boolean = runBlocking { dataStoreManager.cookie.first().isNotEmpty() }
+    fun shouldStopMusicService(): Boolean = killServiceOnExit.value
 
     // Flow-based variant of [isUserLoggedIn] so composables can collect login state once
     // instead of calling runBlocking inside composition (used by NowPlayingScreenContent).
     fun isUserLoggedInFlow(): Flow<Boolean> = dataStoreManager.cookie.map { it.isNotEmpty() }
-
-    fun isCombineFavoriteAndYTLiked(): Boolean = runBlocking { dataStoreManager.combineLocalAndYouTubeLiked.first() == TRUE }
 }
 
 sealed class UIEvent {

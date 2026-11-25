@@ -1239,9 +1239,7 @@ class SettingsViewModel(
     fun setSponsorBlockCategories(list: ArrayList<String>) {
         log("setSponsorBlockCategories: $list", LogLevel.WARN)
         viewModelScope.launch {
-            runBlocking(Dispatchers.IO) {
-                dataStoreManager.setSponsorBlockCategories(list)
-            }
+            dataStoreManager.setSponsorBlockCategories(list)
             getSponsorBlockCategories()
         }
     }
@@ -1578,10 +1576,8 @@ class SettingsViewModel(
         val currentAuthUser = dataStoreManager.authUser.first()
         val currentLoggedIn = dataStoreManager.loggedIn.first() == DataStoreManager.TRUE
         try {
-            runBlocking {
-                dataStoreManager.setCookie(cookie, "")
-                dataStoreManager.setLoggedIn(true)
-            }
+            dataStoreManager.setCookie(cookie, "")
+            dataStoreManager.setLoggedIn(true)
             return accountRepository
                 .getAccountInfo(
                     cookie,
@@ -1645,19 +1641,15 @@ class SettingsViewModel(
                     true
                 } ?: run {
                 Logger.w("Auth", "YouTube: sign-in failed, YouTube returned no account for this cookie")
-                runBlocking {
-                    dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
-                    dataStoreManager.setLoggedIn(currentLoggedIn)
-                }
+                dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
+                dataStoreManager.setLoggedIn(currentLoggedIn)
                 false
             }
         } catch (e: Exception) {
             e.printStackTrace()
             Logger.e("Auth", "YouTube: sign-in failed: ${e.message}")
-            runBlocking {
-                dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
-                dataStoreManager.setLoggedIn(currentLoggedIn)
-            }
+            dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
+            dataStoreManager.setLoggedIn(currentLoggedIn)
             return false
         }
     }

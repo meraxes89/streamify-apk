@@ -1472,35 +1472,34 @@ fun SettingScreen(
                 Crossfade(usingProxy) { it ->
                     if (it) {
                         Column {
+                            val proxyTypeTitle = stringResource(Res.string.proxy_type)
+                            val httpLabel = stringResource(Res.string.http)
+                            val socksLabel = stringResource(Res.string.socks)
+                            val changeLabel = stringResource(Res.string.change)
+                            val cancelLabel = stringResource(Res.string.cancel)
                             SettingItem(
-                                title = stringResource(Res.string.proxy_type),
+                                title = proxyTypeTitle,
                                 subtitle =
                                     when (proxyType) {
-                                        DataStoreManager.ProxyType.PROXY_TYPE_HTTP -> stringResource(Res.string.http)
-                                        DataStoreManager.ProxyType.PROXY_TYPE_SOCKS -> stringResource(Res.string.socks)
+                                        DataStoreManager.ProxyType.PROXY_TYPE_HTTP -> httpLabel
+                                        DataStoreManager.ProxyType.PROXY_TYPE_SOCKS -> socksLabel
                                     },
                                 onClick = {
                                     viewModel.setAlertData(
                                         SettingAlertState(
-                                            title = runBlocking { getString(Res.string.proxy_type) },
+                                            title = proxyTypeTitle,
                                             selectOne =
                                                 SettingAlertState.SelectData(
                                                     listSelect =
                                                         listOf(
-                                                            (proxyType == DataStoreManager.ProxyType.PROXY_TYPE_HTTP) to
-                                                                runBlocking {
-                                                                    getString(
-                                                                        Res.string.http,
-                                                                    )
-                                                                },
-                                                            (proxyType == DataStoreManager.ProxyType.PROXY_TYPE_SOCKS) to
-                                                                runBlocking { getString(Res.string.socks) },
+                                                            (proxyType == DataStoreManager.ProxyType.PROXY_TYPE_HTTP) to httpLabel,
+                                                            (proxyType == DataStoreManager.ProxyType.PROXY_TYPE_SOCKS) to socksLabel,
                                                         ),
                                                 ),
                                             confirm =
-                                                runBlocking { getString(Res.string.change) } to { state ->
+                                                changeLabel to { state ->
                                                     viewModel.setProxy(
-                                                        if (state.selectOne?.getSelected() == runBlocking { getString(Res.string.socks) }) {
+                                                        if (state.selectOne?.getSelected() == socksLabel) {
                                                             DataStoreManager.ProxyType.PROXY_TYPE_SOCKS
                                                         } else {
                                                             DataStoreManager.ProxyType.PROXY_TYPE_HTTP
@@ -1509,7 +1508,7 @@ fun SettingScreen(
                                                         proxyPort,
                                                     )
                                                 },
-                                            dismiss = runBlocking { getString(Res.string.cancel) },
+                                            dismiss = cancelLabel,
                                         ),
                                     )
                                 },
