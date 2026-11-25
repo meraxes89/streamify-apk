@@ -350,7 +350,9 @@ data class SyncPushResult(
     val applied: Int = 0,
     val rejected: Int = 0,
     val cursor: Long = 0,
-    val results: List<SyncPushOpResult> = emptyList()
+    val results: List<SyncPushOpResult> = emptyList(),
+    @kotlinx.serialization.Transient
+    val serverTimeMs: Long? = null,
 )
 
 @Serializable
@@ -368,7 +370,9 @@ data class SyncPullResult(
     val cursor: Long = 0,
     @SerialName("has_more")
     val hasMore: Boolean = false,
-    val ops: List<SyncPullOp> = emptyList()
+    val ops: List<SyncPullOp> = emptyList(),
+    @kotlinx.serialization.Transient
+    val serverTimeMs: Long? = null,
 )
 
 @Serializable

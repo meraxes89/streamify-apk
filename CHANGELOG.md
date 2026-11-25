@@ -3,6 +3,12 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **Sync Engine**: Fixed 5 P0 bugs in `StreamifySyncEngine`: honored `DONE` bootstrap checkpoint when server cursor is `0`, clarified `SyncApplyingKey` echo suppression, bounded `syncLibraryTracksInternal` song scan (`2,000` rows + chunked uploads) to prevent OOM, flushed outbox before bootstrap cursor probe, and added fallback history op construction when `PlaybackEventEntity` is missing (#332).
+- **Sync Engine**: Fixed 5 follow-up P0 data-plane bugs: held pull cursor on `applyDeltaOp` failures, propagated `CancellationException` in `syncAll` and all `SupabaseLibrarySync` RPC wrappers, fed `HybridLogicalClock.updateServerTime` from `syncPull`/`syncPush` HTTP `Date` headers, and surfaced `SyncStatus.Error` when delta pull or outbox push fails (#333).
+
 ## [1.0.3-beta] — 2026-11-23: Cloudflare Quick Tunnels, Elite Audio & Zero-Token Delivery
 
 The third public beta release of Streamify introduces native zero-config Cloudflare Quick Tunnel hosting with Termux auto-installation, strict elite audio quality enforcement, lookahead chunk window capping to prevent upstream YouTube 403 throttles, clean client abort lifecycle teardown, zero-token static CDN bundle resolution with SemVer ordering, continuous GitHub Pages deployment for Compose Multiplatform Web WASM with offline demo fixtures, and liquid glass branding refinement.

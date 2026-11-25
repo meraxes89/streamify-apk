@@ -23,6 +23,11 @@ tests: [streamify-modules/supabase/src/commonTest/]
 ## Current truth
 
 - Hybrid logical clocks with deterministic tiebreak; server contract v4 is the governing decision.
+- `StreamifySyncEngine` gates delta sync on `localCursor > 0L || bootstrapCheckpoint == "DONE"` so an empty server changelog (`cursor = 0`) does not re-trigger cold bootstrap.
+- Cold bootstrap flushes pending outbox changes via `syncOutboxPushInternal` before probing the server cursor, and bounds `syncLibraryTracksInternal` local song scans (`MAX_BOOTSTRAP_LIBRARY_SONGS = 2_000`).
+- Echo suppression during Room writes relies on `SyncApplyingKey` (`withSyncApplying()`); missing `PlaybackEventEntity` rows for `SyncKind.HISTORY` outbox entries fall back to outbox metadata rather than being rejected.
+- `applyDeltaOp` returns `Boolean` and `syncDeltaInternal` holds the pull cursor back on any failed op so unapplied inbound mutations are retried; failed delta pulls/pushes surface `SyncStatus.Error` instead of `SyncStatus.Success`.
+- `CancellationException` is rethrown across `StreamifySyncEngine` and all `SupabaseLibrarySync` RPC wrappers; live `syncPull`/`syncPush` HTTP `Date` headers feed `HybridLogicalClock.updateServerTime`.
 
 ## Interfaces
 
@@ -43,4 +48,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
+<!-- doc-verified-against: 5e3b7e635567f92827f98b29e5210f77dd0fb47d -->
