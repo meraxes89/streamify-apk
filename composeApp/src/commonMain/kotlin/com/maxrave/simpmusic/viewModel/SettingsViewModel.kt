@@ -281,9 +281,22 @@ class SettingsViewModel(
         getHelpBuildLyricsDatabase()
     }
 
+    private var hasLoadedData = false
+
     fun getAudioSessionId() = mediaPlayerHandler.player.audioSessionId
 
-    fun getData() {
+    fun getData(force: Boolean = false) {
+        if (hasLoadedData && !force) {
+            viewModelScope.launch {
+                calculateDataFraction(
+                    cacheRepository,
+                )?.let {
+                    _fraction.value = it
+                }
+            }
+            return
+        }
+        hasLoadedData = true
         getLocation()
         getLanguage()
         getQuality()
@@ -299,7 +312,6 @@ class SettingsViewModel(
         getSponsorBlockEnabled()
         getSponsorBlockCategories()
         getTranslationLanguage()
-        getYoutubeSubtitleLanguage()
         getLyricsProvider()
         getLyricsOffsetMs()
         getUseTranslation()
@@ -1166,7 +1178,6 @@ class SettingsViewModel(
     fun changeLocation(location: String) {
         viewModelScope.launch {
             dataStoreManager.setLocation(location)
-            getLocation()
         }
     }
 
@@ -1260,7 +1271,6 @@ class SettingsViewModel(
             if (VIDEO_QUALITY.items.contains(item)) {
                 dataStoreManager.setVideoQuality(item)
             }
-            getVideoQuality()
         }
     }
 
@@ -1268,7 +1278,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             log("changeQuality: $qualityItem")
             dataStoreManager.setQuality(qualityItem ?: QUALITY.items[2].toString())
-            getQuality()
         }
     }
 
@@ -1423,7 +1432,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             dataStoreManager.putString(SELECTED_LANGUAGE, code)
             Logger.w("SettingsViewModel", "changeLanguage: $code")
-            getLanguage()
             changeLanguageNative(code)
         }
     }
