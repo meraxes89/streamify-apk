@@ -61,18 +61,24 @@ actual object ShaderProvider {
 
     /** Cached per process — `by lazy` is synchronized; safe from any thread. */
     private val cachedProbe: CapabilityProbe by lazy {
+        val failureReason = try {
+            RuntimeEffect.makeForShader(LiquidGlassSource.SKSL).close()
+            null
+        } catch (t: Throwable) {
+            // Track B parity: record why the canonical source failed to
+            // compile on this host — the skiko twin of the Android probe's
+            // failure reason, surfaced through
+            // CapabilityProbe.compileProbeFailureReason.
+            "${t.javaClass.simpleName}: ${t.message}"
+        }
         CapabilityProbe(
             // Non-Android target: API level is meaningless (probe contract).
             apiLevel = 0,
             // Software-rasterizer detection needs the live renderer string
             // (Phase 4 / CI_TESTING_SPEC Job 4); empty stays conservative.
             rendererDescription = "",
-            runtimeShaderCompileSupported = try {
-                RuntimeEffect.makeForShader(LiquidGlassSource.SKSL).close()
-                true
-            } catch (t: Throwable) {
-                false
-            },
+            runtimeShaderCompileSupported = failureReason == null,
+            compileProbeFailureReason = failureReason,
         )
     }
 

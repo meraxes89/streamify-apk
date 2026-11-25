@@ -45,6 +45,7 @@ uniform float  chromaticSpread;   // Dispersion delta (Tier 1 only)
 uniform half4  tintColor;
 
 half4 main(float2 coord) {
+    // Geometry: highp — normals and tap offsets must stay sub-pixel.
     float2 uv = coord / resolution;
     float2 p  = uv - 0.5;
     float  d  = length(p);
@@ -57,6 +58,7 @@ half4 main(float2 coord) {
 
     float2 off = n.xy * (refractionIndex - 1.0) * 0.05 * resolution;
 
+    // Color path: mediump — the sampled channels are 8-bit targets.
     // Tier 1: 3-tap chromatic dispersion
     // Tier 2: Single-tap refraction (chromaticSpread set to 0.0)
     half3 c = half3(
@@ -66,31 +68,49 @@ half4 main(float2 coord) {
     );
     half a = backdrop.eval(coord + off).a;
 
-    // Schlick Fresnel approximation
-    float fr = pow(1.0 - max(n.z, 0.0), 3.0);
+    // Schlick Fresnel approximation — the highp -> mediump boundary.
+    half fr = half(pow(1.0 - max(n.z, 0.0), 3.0));
     return mix(half4(c, a), tintColor, tintColor.a) + half4(1.0) * fr * 0.35;
 }
 ```
 
 The small dialect variances between AGSL (`setInputBuffer`) and SkSL (`child("backdrop", ...)`) are handled inside the platform-specific `ShaderProvider` implementations.
 
+### 2a. Precision Contract (Track A — mediump / highp)
+
+Older Mali (Midgard/Bifrost) and Adreno 5xx unified-ALU parts run 16-bit (`half`/mediump) color arithmetic at **2× the 32-bit (highp) rate**; forcing highp across the fragment shader halves arithmetic instruction throughput on exactly the devices the universal matrix targets. The canonical shader therefore splits precision along the data's actual needs:
+
+| Path | Type | Why |
+|---|---|---|
+| Geometry: `uv`, `p`, `d`, `e`, `off`, normals | `float` (highp) | 32-bit mantissas keep edge-curved normals smooth and the refraction offset sub-pixel accurate at any panel density. On a 2560px panel a mediump `uv` would quantize to ~1.25px steps — visible banding. |
+| Color path: backdrop taps `c`/`a`, tint mix, Fresnel `fr`, specular add | `half` (mediump) | 8-bit output depth cannot resolve a 10-bit mantissa, so the downgrade is visually free. On modern GPUs `half` compiles to the same SASS with zero cost. |
+| The highp → mediump boundary | `half fr = half(...)` | One deliberate precision gate — the Schlick exponent is evaluated on the proven float overload (one highp scalar op) and stored onto the half path; everything downstream is half arithmetic. |
+
+`AgslDialect.validatePrecisionContract` is the fail-fast gate over this table: it lints the canonical source (comments stripped) and rejects any regression — `float3`/`float` taps, a dropped `half fr` boundary, or a `float(...)` cast re-promoting the color path — so the throughput win cannot be silently reverted. The gate runs in the desktop CI suite (`UniversalAndroidMatrixTest`) and the Android startup probe lane.
+
+On AGSL both `half` and `float` are 32-bit aliases (`half` is a GPU-targeting hint), so the same source compiles identically on the Android and Skia lanes — pinned by the `AgslDialectEquivalenceTest` pixel gate.
+
 ---
 
 ## 3. The 4-Tier Hardware Capability Matrix
 
 ### Tier Determination Logic
-The engine **never** relies on GPU marketing names (e.g., Adreno 506 vs Mali-G71). Tiering is evaluated along three orthogonal axes:
+The engine **never** relies on GPU marketing names (e.g., Adreno 506 vs Mali-G71) — the one surgical exception is the Track D denylist below, which names *proven compiler defects*, never performance judgments. Tiering is evaluated along three orthogonal axes:
 1. **API / Driver Capability**:
    - Android API $\ge 33$: AGSL capable $\to$ Tier 1/2 candidate.
    - Android API 31–32: `RenderEffect.createBlurEffect()` $\to$ Tier 2.
    - Android API $< 31$ (**Vivo 1712 / Android 8.1 / API 27**): Bypasses shaders $\to$ **Tier 3 (Legacy)**.
    - Skia: `RuntimeEffect.makeForShader()` validation.
+   - **Startup compile probe (Track B)**: on API 33+ the probe compiles the *canonical* transpiled `LiquidGlassCore` source — not a minimal synthetic program — through the real `RuntimeShader` compiler once at process start, isolated inside the `@RequiresApi(33)` `Agsl33Isolated` lane. Any `Throwable` (OEM driver crash inside `glCompileShader`, AGSL rejection of valid syntax) is caught, recorded in `CapabilityProbe.compileProbeFailureReason`, and the device degrades to the blur (Tier 2) or scrim (Tier 3) lane **before the Compose tree ever calls `drawBehind`** — the Koin graph resolves the probe at engine construction, which precedes the first draw.
 2. **Raster Kind**:
    - If GL vendor or renderer contains `SwiftShader`, `llvmpipe`, or `Software`, immediately pin to **Tier 4 (Safe)**.
 3. **Runtime Governor & Thermals**:
    - Measures rolling $P_{95}$ frame render times over 60-frame windows.
    - Android `PowerManager.getThermalHeadroom()` / `addThermalStatusListener`.
    - Cold starts at **Tier 2 (Balanced)**. Promotes to **Tier 1** only after 120 consecutive frames at $<8.3\text{ ms}$ (120 Hz). Demotes immediately to **Tier 3** if thermal status reaches `MODERATE` or frame spikes exceed budget. Hysteresis (300 frames) prevents visual bouncing.
+4. **Known Driver Quirks (Track D)** — a surgical denylist of *proven* driver compiler defects, keyed to renderer markers that identify the broken driver revision:
+   - Emulator software-GLES renderers with broken half-float division / NaN handling (`SwiftShader (Software)`, `ANGLE (Android Emulator, Vulkan)` markers) $\to$ pinned to **Tier 4 (Safe)**.
+   - The table **only demotes**: a quirk hit can pin Tier 4 but can never lift a device above its probed capability, and a compliant GPU — which simply does not carry the marker — is never penalized. A healthy Adreno 5xx / Mali-G52 still classifies `RUNTIME_SHADER` at Tier 1; the denylist never tiers whole marketing families.
 
 ---
 

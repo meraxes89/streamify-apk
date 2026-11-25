@@ -28,6 +28,24 @@ internal object LiquidGlassSource {
 // child("backdrop", ...)) are resolved inside the platform ShaderProvider
 // adapters, never by editing this file.
 //
+// Precision contract (Track A, docs/gpu/ARCHITECTURE.md §2a):
+//   float (highp) — the normal vector and the geometry feeding it (uv, p,
+//     d, e, off, and the Schlick exponent): 32-bit mantissas keep
+//     edge-curved normals smooth and the refraction offset sub-pixel
+//     accurate at any panel density. On a 2560px panel a mediump uv would
+//     quantize to ~1.25px steps — visible banding — so the geometric
+//     chain stays highp end to end.
+//   half (mediump) — every color-path value: the sampled backdrop
+//     channels (c, a), the Fresnel scalar fr once computed, the tint mix
+//     and the specular add. 8-bit output depth cannot resolve a 10-bit
+//     mantissa, so the downgrade is visually free; on unified-ALU mobile
+//     parts (Adreno 5xx, Mali Midgard/Bifrost) half-typed color math runs
+//     at 2x the highp ALU rate, and on modern GPUs it costs nothing.
+//   The highp -> mediump boundary is the `half fr =` declaration: the
+//   Schlick exponent is evaluated on the proven float overload (one
+//   highp scalar op) and stored onto the half path, after which every
+//   arithmetic op in the composite is half-typed.
+//
 // Tier semantics of `chromaticSpread`:
 //   Tier 1 (Premium)      > 0.0  → 3-tap chromatic dispersion (R/G/B offsets)
 //   Tier 2 (Balanced)     0.0    → single-tap refraction, dispersion collapses
@@ -40,6 +58,7 @@ uniform float  chromaticSpread;   // Dispersion delta (Tier 1 only)
 uniform half4  tintColor;
 
 half4 main(float2 coord) {
+    // Geometry: highp — normals and tap offsets must stay sub-pixel.
     float2 uv = coord / resolution;
     float2 p  = uv - 0.5;
     float  d  = length(p);
@@ -52,6 +71,7 @@ half4 main(float2 coord) {
 
     float2 off = n.xy * (refractionIndex - 1.0) * 0.05 * resolution;
 
+    // Color path: mediump — the sampled channels are 8-bit targets.
     // Tier 1: 3-tap chromatic dispersion
     // Tier 2: Single-tap refraction (chromaticSpread set to 0.0)
     half3 c = half3(
@@ -61,8 +81,17 @@ half4 main(float2 coord) {
     );
     half a = backdrop.eval(coord + off).a;
 
-    // Schlick Fresnel approximation
-    float fr = pow(1.0 - max(n.z, 0.0), 3.0);
+    // Schlick Fresnel approximation — the highp -> mediump boundary:
+    // the [0,1] result crosses onto the half path through the explicit
+    // half(...) constructor (the documented scalar conversion — the same
+    // constructor syntax the taps above use), and everything downstream
+    // (the tint mix, the specular add) is half arithmetic.
+    half fr = half(pow(1.0 - max(n.z, 0.0), 3.0));
+
+    // Tint mix + specular add: all-half on the color path. tintColor binds
+    // half4 on Skia and float4 on the AGSL lane (the dialect's one
+    // documented uniform promotion); both dialects treat half and float
+    // as interchangeable 32-bit types, so the mix resolves identically.
     return mix(half4(c, a), tintColor, tintColor.a) + half4(1.0) * fr * 0.35;
 }
 """.trimIndent()

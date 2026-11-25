@@ -32,6 +32,20 @@ package com.streamify.graphics.engine.adapter
  * signature-only rename is a compile error — the first iteration of this
  * shim did exactly that and was caught by the equivalence gate, which is
  * the gate's job.
+ *
+ * **Precision contract (Track A, docs/gpu/ARCHITECTURE.md section 2a)** —
+ * the canonical source keeps highp geometry (`float2/float3` normals,
+ * tap offsets) and a mediump color path (`half3`/`half` taps, the `half fr`
+ * Fresnel boundary, all-half composite). [validatePrecisionContract] is
+ * the fail-fast gate over that contract: it lints the canonical source
+ * (comment-stripped — the prose header is not code) and throws on a
+ * regression so the Adreno 5xx / Mali Midgard-Bifrost throughput win
+ * cannot be silently reverted by a future shader edit. It is a
+ * *canonical-source contract*, deliberately outside [transpile] (which
+ * synthetic lint fixtures must still be able to exercise), and it runs
+ * in the Android startup probe
+ * (`Agsl33Isolated.probeCompile` -> `AgslDialect.transpile` lane) and in
+ * the desktop CI gates.
  */
 object AgslDialect {
 
@@ -81,4 +95,73 @@ object AgslDialect {
                 "from both AGSL and runtime SkSL"
         }
     }
+
+    /**
+     * Track A precision-contract gate (docs/gpu/ARCHITECTURE.md section
+     * 2a). The canonical source must keep its color path on `half`:
+     *
+     *  * the backdrop taps build a `half3` / `half` (never `float3` /
+     *    `float`) — mediump loads feed the mix directly;
+     *  * the highp -> mediump boundary crosses at the `half fr =` Fresnel
+     *    declaration, the one deliberate precision gate;
+     *  * no `float(...)` casts appear in the code (comments stripped
+     *    first) — they would re-promote mediump values to 32-bit and
+     *    silently cost the unified-ALU throughput win on Adreno 5xx /
+     *    Mali Midgard-Bifrost.
+     *
+     * Throws [IllegalArgumentException] naming the regression so the
+     * failure is reviewable in a CI log, not a silent visual drift.
+     */
+    fun validatePrecisionContract(source: String) {
+        require(HALF3_TAPS in source) {
+            "AGSL transpile: precision contract regression — the backdrop " +
+                "taps must construct `half3 c = half3(...)` so the color " +
+                "path stays mediump (docs/gpu/ARCHITECTURE.md section 2a)"
+        }
+        require(MEDIUMP_BOUNDARY_DECLARATION.containsMatchIn(source)) {
+            "AGSL transpile: precision contract regression — the highp -> " +
+                "mediump boundary must cross at the `half fr =` Fresnel " +
+                "declaration (docs/gpu/ARCHITECTURE.md section 2a)"
+        }
+        require(!FLOAT_CAST_OF_COLOR.containsMatchIn(stripComments(source))) {
+            "AGSL transpile: precision contract regression — `float(...)` " +
+                "casts re-promote the mediump color path to highp and cost " +
+                "the unified-ALU throughput win (docs/gpu/ARCHITECTURE.md " +
+                "section 2a)"
+        }
+    }
+
+    /**
+     * The mediump boundary gate of the precision contract: the canonical
+     * source must cross highp -> mediump at the `half fr =` Fresnel
+     * declaration — the single deliberate precision gate.
+     */
+    private val MEDIUMP_BOUNDARY_DECLARATION = Regex("""(?m)^\s*half\s+fr\s*=""")
+
+    /**
+     * The mediump backdrop-tap construction the canonical source must
+     * keep: `half3 c = half3(` — the exact text shape the lint pins.
+     */
+    private const val HALF3_TAPS = "half3 c = half3("
+
+    /**
+     * `float(...)` casts in the color path are the precision regression.
+     * Linted only over comment-stripped text: the canonical source's
+     * header prose legitimately mentions `float (highp)` in prose, and a
+     * comment is not a cast.
+     */
+    private val FLOAT_CAST_OF_COLOR = Regex("""\bfloat\s*\(""")
+
+    /**
+     * Strips `// line comments` and `/* block comments */` so lints run
+     * over code only. (The canonical source uses `//` comments only, but
+     * both forms are handled for future edits.)
+     */
+    private fun stripComments(source: String): String =
+        source
+            .replace(LINE_COMMENT, "")
+            .replace(BLOCK_COMMENT, "")
+
+    private val LINE_COMMENT = Regex("""//[^\n]*""")
+    private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
 }
