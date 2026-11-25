@@ -1,12 +1,14 @@
 package com.streamify.sync
 
 import com.maxrave.common.Config
+import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.PlaylistEntity
 import com.maxrave.domain.data.entities.SearchHistory
 import com.maxrave.domain.data.entities.SongEntity
+import com.maxrave.domain.data.entities.analytics.PlaybackEventEntity
 import com.maxrave.domain.data.entities.sync.SyncChangeEntity
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.repository.AlbumRepository
@@ -27,6 +29,7 @@ import com.streamify.supabase.SyncPullOp
 import com.streamify.supabase.SyncPullResult
 import com.streamify.supabase.SyncPushResult
 import com.streamify.supabase.resolvePlatformDeviceInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -67,7 +70,8 @@ import org.koin.core.component.inject
  *
  * Guarantees:
  * 1. Local-first offline-first operations (zero UI latency).
- * 2. Echo suppression (isSyncActive prevents infinite ping-pong loops).
+ * 2. Echo suppression via [SyncApplyingKey] ([withSyncApplying]) during Room writes;
+ *    [isSyncActive] exposes engine-level sync execution state.
  * 3. Last-Write-Wins (LWW) conflict resolution.
  * 4. Resilient batching: failures on individual entities do not abort or corrupt the database.
  */
@@ -87,7 +91,18 @@ object StreamifySyncEngine : KoinComponent {
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private const val TAG = "StreamifySyncEngine"
     private const val TELEMETRY_INTERVAL_MS = 3_600_000L // 1 hour keep-alive floor
+    internal const val BOOTSTRAP_DONE = "DONE"
+    internal const val MAX_BOOTSTRAP_LIBRARY_SONGS = 2_000
+
+    /**
+     * Returns true when initial bootstrap has completed (either a positive server cursor
+     * has been persisted or the explicit [BOOTSTRAP_DONE] checkpoint was recorded, e.g.
+     * when the server changelog is empty and returns cursor = 0).
+     */
+    internal fun shouldRunDeltaSync(localCursor: Long, bootstrapCheckpoint: String): Boolean =
+        localCursor > 0L || bootstrapCheckpoint == BOOTSTRAP_DONE
 
     private val SYNCABLE_SETTINGS_KEYS = listOf(
         // Appearance & Themes
@@ -239,10 +254,12 @@ object StreamifySyncEngine : KoinComponent {
             val deviceId = getOrCreateDeviceId()
             val hlc = HybridLogicalClock.now()
             val localCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
+            val bootstrapCheckpoint = dataStoreManager.getString("streamify_bootstrap_checkpoint_v3").firstOrNull() ?: ""
+            var effectiveCursor = localCursor
 
             var likedCount = 0
 
-            if (localCursor > 0L) {
+            if (shouldRunDeltaSync(localCursor, bootstrapCheckpoint)) {
                 // V3 Delta Sync path (cursor-based delta pull)
                 _syncState.value = SyncStatus.Syncing("Pulling delta changes...")
                 syncDeltaInternal(targetUserId, deviceId)
@@ -251,10 +268,11 @@ object StreamifySyncEngine : KoinComponent {
                 _syncState.value = SyncStatus.Syncing("Pushing changes...")
                 syncOutboxPushInternal(targetUserId, deviceId, hlc)
 
+                effectiveCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: localCursor
                 likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
             } else {
                 // Cold Bootstrap Sync with Resumable Stage Checkpointing (Step 8)
-                val resumeStage = dataStoreManager.getString("streamify_bootstrap_checkpoint_v3").firstOrNull() ?: ""
+                val resumeStage = bootstrapCheckpoint
                 val stages = listOf(
                     "LIKES",
                     "ARTISTS",
@@ -327,11 +345,17 @@ object StreamifySyncEngine : KoinComponent {
                     likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
                 }
 
+                // Flush locally-pending outbox changes before probing the server cursor so the
+                // recorded cursor reflects all bootstrap and outbox writes.
+                _syncState.value = SyncStatus.Syncing("Pushing pending changes...")
+                syncOutboxPushInternal(targetUserId, deviceId, hlc)
+
                 // Record latest changelog cursor upon bootstrap completion
                 val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
                 val latestCursor = pullRes?.cursor ?: 0L
+                effectiveCursor = latestCursor
                 dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
-                dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "DONE")
+                dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", BOOTSTRAP_DONE)
             }
 
             // Sync presence via heartbeat_presence with HLC guard
@@ -346,7 +370,7 @@ object StreamifySyncEngine : KoinComponent {
             _syncMetrics.update {
                 it.copy(
                     lastSyncTimestamp = System.currentTimeMillis(),
-                    currentCursor = localCursor,
+                    currentCursor = effectiveCursor,
                     consecutiveFailures = 0,
                 )
             }
@@ -523,7 +547,9 @@ object StreamifySyncEngine : KoinComponent {
             val cloudLibrary = SupabaseLibrarySync.fetchCloudLibraryTracks(targetUserId)
             val cloudTrackIds = cloudLibrary.map { it.trackId }.toSet()
 
-            val localSongs = songRepository.getAllSongs(Int.MAX_VALUE).firstOrNull() ?: emptyList()
+            // SongRepository.getAllSongs(limit) has no offset parameter (core/ is external to this module),
+            // so bound the scan to avoid loading unbounded libraries into RAM and causing OOM during bootstrap.
+            val localSongs = songRepository.getAllSongs(MAX_BOOTSTRAP_LIBRARY_SONGS).firstOrNull() ?: emptyList()
             val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
             val localLibraryIds = localInLibrary.map { it.videoId }.toSet()
 
@@ -554,12 +580,17 @@ object StreamifySyncEngine : KoinComponent {
                 }
             }
 
-            // Outbox: push local library tracks not yet in cloud
+            // Outbox: push local library tracks not yet in cloud in bounded batches
             val pendingUploads = localInLibrary.filter { it.videoId !in cloudTrackIds && !it.videoId.startsWith("trk_") }
             if (pendingUploads.isNotEmpty()) {
-                SupabaseLibrarySync.uploadLibraryTracksBatch(pendingUploads.map { it.videoId }, targetUserId)
+                for (batch in pendingUploads.chunked(500)) {
+                    SupabaseLibrarySync.uploadLibraryTracksBatch(batch.map { it.videoId }, targetUserId)
+                }
             }
-        } catch (_: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(TAG, "syncLibraryTracksInternal failed: ${e.message}")
         }
     }
 
@@ -1275,29 +1306,11 @@ object StreamifySyncEngine : KoinComponent {
 
                         SyncKind.HISTORY -> {
                             val ev = historyEvents[change.entityKey]
-                            if (ev != null) {
-                                val song = songRepository.getSongById(ev.videoId).firstOrNull()
-                                val clientEventId = ev.syncId ?: change.entityKey
-                                opMappings.add(OutboxOpMapping(buildJsonObject {
-                                    put("entity", "history")
-                                    put("op", "I")
-                                    put("key", clientEventId)
-                                    put("hlc", changeHlc)
-                                    put("data", buildJsonObject {
-                                        put("client_event_id", clientEventId)
-                                        put("track_id", ev.videoId)
-                                        put("listened_duration_sec", ev.listenedSecond)
-                                        put("artist_id", "")
-                                        put("album_id", ev.albumBrowseId ?: "")
-                                        put("title", song?.title ?: "")
-                                        put("artist_name", song?.artistName?.firstOrNull() ?: "")
-                                        put("album_name", song?.albumName ?: "")
-                                        put("listened_at", ev.timestamp.toString())
-                                    })
-                                }, change.changeId))
-                            } else {
-                                unhandledChangeIds.add(change.changeId)
+                            val song = ev?.let { songRepository.getSongById(it.videoId).firstOrNull() }
+                            if (ev == null) {
+                                Logger.w(TAG, "PlaybackEvent missing for history outbox key=${change.entityKey}; using fallback op")
                             }
+                            opMappings.add(OutboxOpMapping(buildHistoryOutboxOp(change, ev, song), change.changeId))
                         }
 
                         SyncKind.SETTINGS -> {
@@ -1399,7 +1412,62 @@ object StreamifySyncEngine : KoinComponent {
                 val sevenDaysAgo = Clock.System.now().toEpochMilliseconds() - 7 * 24 * 60 * 60 * 1000L
                 syncOutboxRepository.pruneSent(sevenDaysAgo)
             }
-        } catch (_: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(TAG, "syncOutboxPushInternal failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Builds a `history` sync_push operation from [change], enriching with [event] and [song]
+     * when available and falling back to [change]'s own metadata if [event] is missing (e.g. null
+     * `PlaybackEventEntity.syncId` or migration gap) so offline plays are never silently rejected.
+     */
+    internal fun buildHistoryOutboxOp(
+        change: SyncChangeEntity,
+        event: PlaybackEventEntity?,
+        song: SongEntity?,
+    ): JsonObject {
+        val clientEventId = event?.syncId ?: change.entityKey
+        val fallbackMeta = if (event == null && !change.value.isNullOrBlank()) {
+            try {
+                Json.parseToJsonElement(change.value!!).jsonObject
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+        val trackId = event?.videoId
+            ?: fallbackMeta?.get("track_id")?.jsonPrimitive?.contentOrNull
+            ?: ""
+        val listenedDurationSec = event?.listenedSecond
+            ?: fallbackMeta?.get("listened_duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: 0
+        val albumId = event?.albumBrowseId
+            ?: fallbackMeta?.get("album_id")?.jsonPrimitive?.contentOrNull
+            ?: ""
+        val listenedAt = event?.timestamp?.toString()
+            ?: fallbackMeta?.get("listened_at")?.jsonPrimitive?.contentOrNull
+            ?: Instant.fromEpochMilliseconds(change.changedAt).toString()
+
+        return buildJsonObject {
+            put("entity", "history")
+            put("op", "I")
+            put("key", clientEventId)
+            put("hlc", change.changedAt)
+            put("data", buildJsonObject {
+                put("client_event_id", clientEventId)
+                put("track_id", trackId)
+                put("listened_duration_sec", listenedDurationSec)
+                put("artist_id", "")
+                put("album_id", albumId)
+                put("title", song?.title ?: "")
+                put("artist_name", song?.artistName?.firstOrNull() ?: "")
+                put("album_name", song?.albumName ?: "")
+                put("listened_at", listenedAt)
+            })
         }
     }
 
