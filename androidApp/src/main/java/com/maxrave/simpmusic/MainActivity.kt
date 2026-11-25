@@ -214,7 +214,7 @@ class MainActivity : AppCompatActivity() {
                 PeriodicWorkRequestBuilder<NotifyWork>(
                     12L,
                     TimeUnit.HOURS,
-                ).addTag("Worker Test")
+                ).addTag("Artist Worker")
                     .setConstraints(
                         Constraints
                             .Builder()
@@ -290,21 +290,23 @@ class MainActivity : AppCompatActivity() {
             pushPlayerError(it)
         }
         mediaPlayerHandler.showToast = { type ->
-            viewModel.makeToast(
-                when (type) {
-                    is ToastType.ExplicitContent -> {
-                        runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.EXPLICIT_CONTENT_BLOCKED) }
-                    }
+            lifecycleScope.launch {
+                viewModel.makeToast(
+                    when (type) {
+                        is ToastType.ExplicitContent -> {
+                            ComposeResUtils.getResString(ComposeResUtils.StringType.EXPLICIT_CONTENT_BLOCKED)
+                        }
 
-                    is ToastType.PlayerError -> {
-                        runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.TIME_OUT_ERROR, type.error) }
-                    }
+                        is ToastType.PlayerError -> {
+                            ComposeResUtils.getResString(ComposeResUtils.StringType.TIME_OUT_ERROR, type.error)
+                        }
 
-                    is ToastType.SponsorBlockSkip -> {
-                        runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.SPONSOR_BLOCK_SKIP, type.category) }
-                    }
-                },
-            )
+                        is ToastType.SponsorBlockSkip -> {
+                            ComposeResUtils.getResString(ComposeResUtils.StringType.SPONSOR_BLOCK_SKIP, type.category)
+                        }
+                    },
+                )
+            }
         }
         viewModel.setServiceRunning(true)
         shouldUnbind = true

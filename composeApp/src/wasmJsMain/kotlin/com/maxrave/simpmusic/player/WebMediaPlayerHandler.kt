@@ -680,7 +680,12 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
         }
         val isLiked = try {
             val json = kotlinx.browser.localStorage.getItem("streamify_songs")
-            json != null && json.contains("\"videoId\":\"${track.videoId}\"") && json.contains("\"liked\":true")
+            if (!json.isNullOrEmpty()) {
+                val list = Json { ignoreUnknownKeys = true }.decodeFromString<List<StoredWebSong>>(json)
+                list.any { it.videoId == track.videoId && it.liked }
+            } else {
+                false
+            }
         } catch (_: Throwable) {
             false
         }

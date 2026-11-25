@@ -33,6 +33,13 @@ object WindowsProtocolRegistrar {
     fun register() {
         if (!System.getProperty("os.name", "").contains("Windows", ignoreCase = true)) return
 
+        // Skip manual HKCU writes under MSIX/Appx packages where protocol schemes are
+        // declared statically in conveyor.conf and HKCU writes are virtualized.
+        if (isMsixPackage()) {
+            Logger.d(TAG, "Running in MSIX container; protocols registered via manifest")
+            return
+        }
+
         val exePath = resolveExePath() ?: run {
             Logger.e(TAG, "Could not resolve executable path, skipping protocol registration")
             return
@@ -42,6 +49,10 @@ object WindowsProtocolRegistrar {
         register(SCHEME, "URL:SimpMusic Protocol", exePath)
         register(LASTFM_SCHEME, "URL:SimpMusic Last.fm Callback", exePath)
     }
+
+    private fun isMsixPackage(): Boolean =
+        !System.getenv("PACKAGE_FAMILY_NAME").isNullOrBlank() ||
+            !System.getenv("APPX_PACKAGE_NAME").isNullOrBlank()
 
     private fun register(
         scheme: String,
