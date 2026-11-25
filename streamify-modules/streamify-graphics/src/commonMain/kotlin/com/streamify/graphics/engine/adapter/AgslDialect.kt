@@ -155,13 +155,27 @@ object AgslDialect {
     /**
      * Strips `// line comments` and `/* block comments */` so lints run
      * over code only. (The canonical source uses `//` comments only, but
-     * both forms are handled for future edits.)
+     * both forms are handled for future edits.) Character-scan, no regex
+     * flags — portable across every KMP target's RegexOption surface.
      */
-    private fun stripComments(source: String): String =
-        source
-            .replace(LINE_COMMENT, "")
-            .replace(BLOCK_COMMENT, "")
-
-    private val LINE_COMMENT = Regex("""//[^\n]*""")
-    private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
+    private fun stripComments(source: String): String {
+        val out = StringBuilder(source.length)
+        var i = 0
+        while (i < source.length) {
+            val c = source[i]
+            if (c == '/' && i + 1 < source.length && source[i + 1] == '/') {
+                // line comment: skip to end of line (the newline stays)
+                while (i < source.length && source[i] != '\n') i++
+            } else if (c == '/' && i + 1 < source.length && source[i + 1] == '*') {
+                // block comment: skip to the closing */ (or end of source)
+                i += 2
+                while (i + 1 < source.length && !(source[i] == '*' && source[i + 1] == '/')) i++
+                i = (i + 1).coerceAtMost(source.length - 1) + 1
+            } else {
+                out.append(c)
+                i++
+            }
+        }
+        return out.toString()
+    }
 }

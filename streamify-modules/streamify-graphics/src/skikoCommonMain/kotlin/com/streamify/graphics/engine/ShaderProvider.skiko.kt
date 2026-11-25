@@ -68,8 +68,9 @@ actual object ShaderProvider {
             // Track B parity: record why the canonical source failed to
             // compile on this host — the skiko twin of the Android probe's
             // failure reason, surfaced through
-            // CapabilityProbe.compileProbeFailureReason.
-            "${t.javaClass.simpleName}: ${t.message}"
+            // CapabilityProbe.compileProbeFailureReason. `simpleName` over
+            // `javaClass` (JVM-only): skikoCommonMain spans wasmJs too.
+            "${t::class.simpleName ?: "Throwable"}: ${t.message}"
         }
         CapabilityProbe(
             // Non-Android target: API level is meaningless (probe contract).
