@@ -319,31 +319,12 @@ actual object StreamifyAuthManager {
 
             val uri = Uri.parse(authUrl)
 
-            // Primary: Chrome Custom Tabs (shares active browser session cookies)
-            try {
-                val customTabsIntent = CustomTabsIntent.Builder()
-                    .setShowTitle(true)
-                    .build()
-                customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                customTabsIntent.launchUrl(context, uri)
-                return
-            } catch (_: Exception) {
-                // Custom Tabs unavailable on device, fall back to resolved default browser package
-            }
-
-            val resolveInfo = context.packageManager.resolveActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://")),
-                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
-            )
-            val browserPackage = resolveInfo?.activityInfo?.packageName
-            if (!browserPackage.isNullOrBlank() && browserPackage != "android") {
-                val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-                    addCategory(Intent.CATEGORY_BROWSABLE)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    setPackage(browserPackage)
-                }
-                context.startActivity(fallbackIntent)
-            }
+            // Secure web launch via CustomTabsIntent (avoids implicit intent leaks and shares session cookies)
+            val customTabsIntent = CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+            customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            customTabsIntent.launchUrl(context, uri)
         } catch (_: Exception) {
         }
     }
