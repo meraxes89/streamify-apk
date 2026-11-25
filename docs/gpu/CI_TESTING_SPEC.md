@@ -124,7 +124,7 @@ jobs:
 
   ios-native-graphics:
     name: "Graphics: iOS Simulator Test"
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
