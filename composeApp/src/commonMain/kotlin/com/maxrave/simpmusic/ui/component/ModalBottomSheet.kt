@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -143,6 +144,7 @@ import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.expect.ui.persistPickedImage
 import com.maxrave.simpmusic.expect.ui.photoPickerResult
 import com.maxrave.simpmusic.extension.displayNameRes
+import com.maxrave.simpmusic.extension.getScreenSizeInfo
 import com.maxrave.simpmusic.extension.greyScale
 import com.maxrave.simpmusic.ui.icon.AccessAlarm
 import com.maxrave.simpmusic.ui.icon.Add
@@ -345,7 +347,7 @@ fun InfoPlayerBottomSheet(
         dragHandle = {},
         scrimColor = Color.Black.copy(alpha = .5f),
         sheetState = sheetState,
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.fillMaxWidth().heightIn(max = (getScreenSizeInfo().hDP * 0.95f).dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
@@ -1055,7 +1057,7 @@ fun QueueBottomSheet(
         dragHandle = {},
         scrimColor = Color.Black.copy(alpha = .5f),
         sheetState = sheetState,
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.fillMaxWidth().heightIn(max = (getScreenSizeInfo().hDP * 0.95f).dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
@@ -1621,7 +1623,8 @@ fun NowPlayingBottomSheet(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .wrapContentHeight(),
+                        .wrapContentHeight()
+                        .heightIn(max = (getScreenSizeInfo().hDP * 0.85f).dp),
                 shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
                 colors = CardDefaults.cardColors().copy(containerColor = rememberSurfaceDarkColors().container),
             ) {
