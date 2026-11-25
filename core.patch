@@ -410,6 +410,22 @@ index 0000000..3e0ac06
 +        return Result.failure(lastError ?: IllegalStateException("Exhausted retries"))
 +    }
 +}
+diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
+index 5566589..74f32ca 100644
+--- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
++++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
+@@ -463,6 +463,11 @@ class MpvPlayer private constructor(
+                     lib.mpv_wait_event(ctx, 0.1)
+                 } catch (e: Throwable) {
+                     Logger.e(TAG, "mpv_wait_event threw: ${e.message}")
++                    if (pumpRunning) {
++                        try {
++                            eventListener?.error(this)
++                        } catch (_: Throwable) {}
++                    }
+                     return
+                 } ?: continue
+ 
 diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
 index bbffab7..206e8d2 100644
 --- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
