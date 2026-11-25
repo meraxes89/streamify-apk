@@ -221,9 +221,10 @@ fun NowPlayingScreenContent(
     // The pager wraps the Canvas + Thumbnail layers. Controller layout below stays fixed.
     val nowPlayingState by sharedViewModel.nowPlayingState.collectAsStateWithLifecycle()
     val queueDataState by sharedViewModel.getQueueDataState().collectAsStateWithLifecycle()
-    val artworkQueue by remember {
-        derivedStateOf { queueDataState?.data?.listTracks ?: emptyList() }
-    }
+    val artworkQueue =
+        remember(queueDataState) {
+            queueDataState?.data?.listTracks ?: emptyList()
+        }
     // Note: Use track.videoId (already prefix-stripped at MediaServiceHandlerImpl.kt:386).
     // Do NOT use mediaItem.mediaId — it carries the "Video" prefix for video items.
     val nowPlayingVideoId: String? = nowPlayingState?.track?.videoId
