@@ -241,6 +241,7 @@ jobs:
           $PG -f supabase/schema.sql
           $PG -f supabase/sql/tests/01_grants.sql
           $PG -f supabase/sql/tests/rls_test.sql
+          $PG -f supabase/sql/tests/02_migration_chain_replay.sql
 
   # =========================================================================
   # TIER 3: The Single Blocking Merge Gate
