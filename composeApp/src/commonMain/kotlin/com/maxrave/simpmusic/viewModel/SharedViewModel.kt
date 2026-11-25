@@ -197,6 +197,9 @@ class SharedViewModel(
     private val _intent: MutableStateFlow<GenericIntent?> = MutableStateFlow(null)
     val intent: StateFlow<GenericIntent?> = _intent
 
+    private val _intentSeq = MutableStateFlow(0L)
+    val intentSeq: StateFlow<Long> = _intentSeq
+
     private val _showNotificationPermissionDialog = MutableStateFlow(false)
     val showNotificationPermissionDialog: StateFlow<Boolean> = _showNotificationPermissionDialog
 
@@ -657,6 +660,9 @@ class SharedViewModel(
 
     fun setIntent(intent: GenericIntent?) {
         _intent.value = intent
+        if (intent != null) {
+            _intentSeq.value = _intentSeq.value + 1L
+        }
     }
 
     /**

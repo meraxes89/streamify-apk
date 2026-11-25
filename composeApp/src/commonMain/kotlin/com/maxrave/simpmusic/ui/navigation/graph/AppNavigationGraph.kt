@@ -43,10 +43,10 @@ fun AppNavigationGraph(
         navController,
         startDestination = startDestination,
         enterTransition = {
-            fadeIn() + slideInHorizontally { -it }
+            fadeIn() + slideInHorizontally { it }
         },
         exitTransition = {
-            fadeOut() + slideOutHorizontally { it }
+            fadeOut() + slideOutHorizontally { -it }
         },
         popEnterTransition = {
             fadeIn() + slideInHorizontally { -it }

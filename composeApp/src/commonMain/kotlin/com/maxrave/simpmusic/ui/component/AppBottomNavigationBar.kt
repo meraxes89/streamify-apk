@@ -103,6 +103,11 @@ fun AppBottomNavigationBar(
             selectedIndex = BottomNavScreen.Home.ordinal
         }
     }
+    LaunchedEffect(currentBackStackEntry, bottomNavScreens) {
+        findMatchedTabOrdinal(currentBackStackEntry, bottomNavScreens)?.let {
+            selectedIndex = it
+        }
+    }
     val selectTab: (BottomNavScreen) -> Unit = { screen ->
         if (selectedIndex == screen.ordinal) {
             if (currentBackStackEntry?.destination?.hierarchy?.any {
@@ -472,6 +477,11 @@ fun AppNavigationRail(
             selectedIndex = BottomNavScreen.Home.ordinal
         }
     }
+    LaunchedEffect(currentBackStackEntry, bottomNavScreens) {
+        findMatchedTabOrdinal(currentBackStackEntry, bottomNavScreens)?.let {
+            selectedIndex = it
+        }
+    }
     // Transparent, not the default `surface`: the rail sits on the Desktop window (pure black/white)
     // and on the page background on tablets, and must read as part of whatever is behind it.
     NavigationRail(containerColor = Color.Transparent) {
@@ -528,3 +538,13 @@ fun AppNavigationRail(
         Spacer(Modifier.height(32.dp))
     }
 }
+
+internal fun findMatchedTabOrdinal(
+    currentBackStackEntry: androidx.navigation.NavBackStackEntry?,
+    screens: List<BottomNavScreen>,
+): Int? =
+    screens.firstOrNull { screen ->
+        currentBackStackEntry?.destination?.hierarchy?.any {
+            it.hasRoute(screen.destination::class)
+        } == true
+    }?.ordinal
