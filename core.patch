@@ -44,6 +44,36 @@ index 157c0d8..1c04c59 100644
 +    }
  }
 \ No newline at end of file
+diff --git a/common/src/commonMain/kotlin/com/maxrave/common/Config.kt b/common/src/commonMain/kotlin/com/maxrave/common/Config.kt
+index e52f961..2efdfb3 100644
+--- a/common/src/commonMain/kotlin/com/maxrave/common/Config.kt
++++ b/common/src/commonMain/kotlin/com/maxrave/common/Config.kt
+@@ -342,19 +342,22 @@ object QUALITY {
+         mapOf(
+             // Split into the Opus and AAC families; the plain "High" was always the Opus one.
+             "High - 256kps (YT Premium)" to items[2].toString(),
++            "HIGH" to items[2].toString(),
++            "High" to items[2].toString(),
++            "high" to items[2].toString(),
+         )
+ 
+     /**
+      * The stored label as a currently-valid one: itself when still valid, its replacement when it
+-     * is a known older label, and [items]`[0]` for anything unrecognised.
++     * is a known older label, and [items]`[2]` (best quality) for anything unrecognised.
+      *
+      * Migration is lazy on purpose — nothing rewrites the stored value, so a read never races a
+      * write. The stored text is replaced the next time the user picks an entry themselves.
+      */
+     fun normalize(saved: String?): String {
+-        val label = saved ?: return items[0].toString()
++        val label = saved ?: return items[2].toString()
+         if (items.any { it.toString() == label }) return label
+-        return LEGACY_ITEMS[label] ?: items[0].toString()
++        return LEGACY_ITEMS[label] ?: items[2].toString()
+     }
+ 
+     /** The itag a stored label selects. Goes through [normalize], so older labels still resolve. */
 diff --git a/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
 new file mode 100644
 index 0000000..09e84b4

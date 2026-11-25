@@ -174,7 +174,7 @@ Informational dialog with dismiss button only:
 2. Set `"popupModalEnabled": true`.
 3. Add a new announcement entry with a unique `id` and your Markdown copy in `content.en.body`.
 4. Ensure the `action.url` complies with the `DeepLinkAllowlist`.
-5. Ensure `signatureHex` is a valid 128-character hexadecimal string.
+5. Sign the manifest using `node scripts/sign_manifest.js` to compute the authentic Ed25519 signature.
 6. Commit and merge to `main`.
 
 ### Scenario C: Emergency Kill-Switch for a Malformed Announcement

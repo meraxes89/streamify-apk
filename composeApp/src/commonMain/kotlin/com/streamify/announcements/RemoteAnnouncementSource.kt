@@ -85,8 +85,13 @@ class RemoteAnnouncementSource(
 
             val manifest = json.decodeFromString<SignedManifest>(bodyText)
 
-            // Verify authenticity using pinned Ed25519 public key
+            // Verify authenticity using pinned Ed25519 public key (canonical payload with raw fallback)
+            val canonicalPayload = json.encodeToString(manifest.copy(signatureHex = ""))
             val verified = verifier.verify(
+                payload = canonicalPayload,
+                signatureHex = manifest.signatureHex,
+                pinnedPublicKeyHex = PinnedManifestSignatureVerifier.PINNED_STREAMIFY_RELEASE_PUBKEY_HEX
+            ) || verifier.verify(
                 payload = bodyText,
                 signatureHex = manifest.signatureHex,
                 pinnedPublicKeyHex = PinnedManifestSignatureVerifier.PINNED_STREAMIFY_RELEASE_PUBKEY_HEX
