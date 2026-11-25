@@ -63,7 +63,14 @@ BEGIN
   IF tg_op = 'DELETE'
      OR (tg_op = 'UPDATE' AND new.deleted_at IS NOT NULL AND old.deleted_at IS NULL) THEN
     v_op := 'D';
-    v_row := null;
+    IF tg_table_name = 'playlist_tracks' THEN
+      v_row := jsonb_build_object(
+        'playlist_id', coalesce(new.playlist_id, old.playlist_id),
+        'track_id', coalesce(new.track_id, old.track_id)
+      );
+    ELSE
+      v_row := null;
+    END IF;
   ELSE
     v_op := CASE tg_op WHEN 'INSERT' THEN 'I' ELSE 'U' END;
   END IF;

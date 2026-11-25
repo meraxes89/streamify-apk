@@ -280,22 +280,30 @@ BEGIN
             v_status := 'stale';
           END IF;
         ELSE
-          -- Remove any stale tombstones for this (playlist_id, track_id) to avoid clutter
+          -- Remove any stale tombstones for this (playlist_id, track_id) to avoid clutter,
+          -- guarded by ownership and LWW so delayed older adds cannot destroy newer deletes.
           DELETE FROM public.playlist_tracks
            WHERE playlist_id = (v_d ->> 'playlist_id')::uuid
              AND track_id = coalesce(v_d ->> 'track_id', v_key)
-             AND deleted_at IS NOT NULL;
+             AND deleted_at IS NOT NULL
+             AND (modified_hlc IS NULL OR (modified_hlc, modified_by) < (v_hlc, v_device_id))
+             AND EXISTS (SELECT 1 FROM public.playlists p
+                          WHERE p.id = (v_d ->> 'playlist_id')::uuid
+                            AND (p.user_id = v_uid OR v_uid = ANY (p.collaborator_ids)));
 
           INSERT INTO public.playlist_tracks
                 (id, playlist_id, track_id, position, added_by, added_at,
                  modified_hlc, modified_by, deleted_at)
-          VALUES (coalesce(nullif(v_d ->> 'id', '')::uuid, gen_random_uuid()),
-                  (v_d ->> 'playlist_id')::uuid,
-                  coalesce(v_d ->> 'track_id', v_key),
-                  coalesce((v_d ->> 'position')::int, 0),
-                  v_uid,
-                  coalesce((v_d ->> 'added_at')::timestamptz, now()),
-                  v_hlc, v_device_id, null)
+          SELECT coalesce(nullif(v_d ->> 'id', '')::uuid, gen_random_uuid()),
+                 (v_d ->> 'playlist_id')::uuid,
+                 coalesce(v_d ->> 'track_id', v_key),
+                 coalesce((v_d ->> 'position')::int, 0),
+                 v_uid,
+                 coalesce((v_d ->> 'added_at')::timestamptz, now()),
+                 v_hlc, v_device_id, null
+           WHERE EXISTS (SELECT 1 FROM public.playlists p
+                          WHERE p.id = (v_d ->> 'playlist_id')::uuid
+                            AND (p.user_id = v_uid OR v_uid = ANY (p.collaborator_ids)))
           ON CONFLICT (playlist_id, track_id) WHERE deleted_at IS NULL DO UPDATE
              SET position     = excluded.position,
                  track_id     = excluded.track_id,

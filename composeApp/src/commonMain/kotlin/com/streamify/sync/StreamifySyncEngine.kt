@@ -272,7 +272,8 @@ object StreamifySyncEngine : KoinComponent {
 
                 for (idx in resumeIdx until stages.size) {
                     val stage = stages[idx]
-                    when (stage) {
+                    withContext(withSyncApplying()) {
+                        when (stage) {
                         "LIKES" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
                             likedCount = syncLikesInternal(targetUserId)
@@ -313,9 +314,10 @@ object StreamifySyncEngine : KoinComponent {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping podcast episode progress...")
                             syncPodcastEpisodeStateInternal(targetUserId)
                         }
-                        "SEARCH" -> {
-                            _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
-                            syncSearchHistoryInternal(targetUserId)
+                            "SEARCH" -> {
+                                _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
+                                syncSearchHistoryInternal(targetUserId)
+                            }
                         }
                     }
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", stage)
@@ -942,10 +944,22 @@ object StreamifySyncEngine : KoinComponent {
                 since = cursor,
                 limit = 500,
                 deviceId = deviceId
-            ).getOrNull() ?: return false
+            ).getOrElse { err ->
+                if (err.message?.contains("CURSOR_EXPIRED", ignoreCase = true) == true) {
+                    dataStoreManager.putString("streamify_sync_cursor_v3", "0")
+                    dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
+                }
+                return false
+            }
 
+            val pendingByEntityKey = syncOutboxRepository.getPending(1000).associateBy { it.entity to it.entityKey }
             withContext(withSyncApplying()) {
                 for (op in pullResult.ops) {
+                    val localPending = pendingByEntityKey[op.entity to op.key]
+                    val opHlc = op.hlc ?: 0L
+                    if (localPending != null && localPending.changedAt >= opHlc) {
+                        continue
+                    }
                     applyDeltaOp(op)
                 }
             }
@@ -1210,7 +1224,7 @@ object StreamifySyncEngine : KoinComponent {
                                 opMappings.add(OutboxOpMapping(buildJsonObject {
                                     put("entity", "playlist_track")
                                     put("op", "D")
-                                    put("key", trackKey)
+                                    put("key", videoId.ifEmpty { change.entityKey })
                                     put("hlc", changeHlc)
                                     put("data", buildJsonObject {
                                         put("playlist_id", plSyncId)

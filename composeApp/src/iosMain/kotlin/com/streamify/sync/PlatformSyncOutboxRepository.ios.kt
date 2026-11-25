@@ -52,3 +52,5 @@ class IosRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
 }
 
 actual fun createPlatformSyncOutboxRepository(): SyncOutboxRepository = IosRoomSyncOutboxRepository()
+
+actual fun withSyncApplying(): kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext
