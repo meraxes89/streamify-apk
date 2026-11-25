@@ -7,6 +7,10 @@ Checks, across all markdown files outside legacy/vendored trees:
      ancestor of origin/main (staleness protocol, docs/adr/README.md).
      A non-ancestor pin is an ERROR; a pin older than the tip of
      origin/main is reported as STALE (warning, listed for follow-up).
+  3. SYSTEM PAGES — docs/systems/Sxx-*.md carry the required frontmatter,
+     their ID matches the filename, they are indexed in docs/SYSTEMS.md,
+     they carry a pin, and every repo-root-relative `sources:` path exists.
+  4. RFC INDEX — every RFC file is listed in docs/rfc/README.md.
 
 Exit codes: 0 = clean, 1 = errors found.
 """
@@ -20,11 +24,77 @@ SKIP_DIRS = {".git", ".claude", ".github", "node_modules", "legacy", "build",
              "bundles", ".state", "public", "target", "gradle", "nano"}
 PIN_RE = re.compile(r"<!--\s*doc-verified-against:\s*([0-9a-f]{40})\s*-->")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)[^)]*\)")
+SYSTEMS_DIR = REPO / "docs" / "systems"
+RFC_DIR = REPO / "docs" / "rfc"
+SYSTEM_FIELDS = ("id", "title", "tier", "status", "owner", "sources", "tests")
+ROW_ID_RE = re.compile(r"^\|\s*(S\d{2})\s*\|", re.M)
 
 
 def git(args):
     return subprocess.run(["git", "-C", str(REPO)] + args,
                           capture_output=True, text=True)
+
+
+def parse_list(raw):
+    """Parse a frontmatter value like `[a, b]` into individual paths."""
+    raw = raw.strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    return [item.strip().strip("`\"'") for item in raw.split(",") if item.strip()]
+
+
+def check_system_pages(errors):
+    index = REPO / "docs" / "SYSTEMS.md"
+    index_text = index.read_text(encoding="utf-8") if index.exists() else ""
+    if not index_text:
+        errors.append("docs/SYSTEMS.md: missing subsystem index")
+        index_ids = set()
+    else:
+        index_ids = set(ROW_ID_RE.findall(index_text))
+
+    pages = sorted(SYSTEMS_DIR.glob("S??-*.md")) if SYSTEMS_DIR.exists() else []
+    if not pages:
+        errors.append("docs/systems/: no Sxx system pages found")
+        return set()
+
+    submodule_live = (REPO / "core" / "common" / "build.gradle.kts").exists()
+    page_ids = set()
+    for page in pages:
+        rel = page.relative_to(REPO)
+        text = page.read_text(encoding="utf-8", errors="replace")
+        if not text.startswith("---\n"):
+            errors.append(f"{rel}: missing YAML frontmatter")
+            continue
+        frontmatter = text.split("---", 2)[1]
+        fields = dict(re.findall(r"^([a-z_]+):\s*(.*)$", frontmatter, re.M))
+        for key in SYSTEM_FIELDS:
+            if key not in fields:
+                errors.append(f"{rel}: frontmatter missing `{key}`")
+        sid = fields.get("id", "").strip()
+        page_ids.add(sid)
+        if sid and not page.name.startswith(sid + "-"):
+            errors.append(f"{rel}: id `{sid}` does not match filename")
+        if sid and sid not in index_ids:
+            errors.append(f"{rel}: id `{sid}` missing from docs/SYSTEMS.md")
+        if not PIN_RE.search(text):
+            errors.append(f"{rel}: missing doc-verified-against pin")
+        for source in parse_list(fields.get("sources", "")):
+            if source.startswith("core/") and not submodule_live:
+                continue  # submodule not materialized in this checkout
+            if not (REPO / source).exists():
+                errors.append(f"{rel}: source path does not exist -> {source}")
+
+    for sid in sorted(index_ids - page_ids):
+        errors.append(f"docs/SYSTEMS.md: `{sid}` has no system page")
+    return page_ids
+
+
+def check_rfc_index(errors):
+    index = RFC_DIR / "README.md"
+    text = index.read_text(encoding="utf-8") if index.exists() else ""
+    for rfc in sorted(RFC_DIR.glob("RFC-*.md")):
+        if rfc.name not in text:
+            errors.append(f"docs/rfc/README.md: {rfc.name} not listed")
 
 
 def main():
@@ -66,8 +136,11 @@ def main():
             if not resolved.exists():
                 errors.append(f"{f.relative_to(REPO)}: broken link -> {target}")
 
+    page_ids = check_system_pages(errors)
+    check_rfc_index(errors)
+
     print(f"verify_docs: scanned {len(md_files)} markdown files, "
-          f"{pins} verification pins")
+          f"{pins} verification pins, {len(page_ids)} system pages")
     for s in stale:
         print(f"  STALE  {s}")
     for e in errors:

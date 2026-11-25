@@ -2,7 +2,19 @@
 
 Step-by-step recipes for the most common changes. Each recipe lists
 the exact files to touch, in order. When in doubt about *where*
-something belongs, check [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) §3 rules.
+something belongs, check the [subsystem index](../SYSTEMS.md) and
+[ARCHITECTURE.md](../architecture/ARCHITECTURE.md) §3 rules.
+
+## Step 0 — before any recipe
+
+1. Find your subsystem ID in [SYSTEMS.md](../SYSTEMS.md) and open its `Sxx` page.
+2. If this is a new idea rather than a feature request, append one row to
+   [IDEA_LOG.md](../IDEA_LOG.md) first — a spark costs one line, not a document.
+3. Decide whether the change needs an [RFC](../rfc/README.md) (spans subsystems
+   or needs review) or an [ADR](../adr/README.md) (expensive to reverse).
+4. Plan to update the `Sxx` page **and its pin** in the same PR, plus the
+   `CHANGELOG.md` entry if it ships to users. See the
+   [decision table](../README.md#which-document-do-i-update).
 
 ---
 

@@ -2,7 +2,7 @@
 
 * Status: Accepted
 * Date: 2026-11-25
-* Supersedes: Partial sync specifications in ADR-005 (v2) and ADR-007
+* Supersedes: Partial sync specifications in ADR-006 (v2) and ADR-007
 * Verified against: d6a48d617334f75289889d833ad0f5d0df058897 (staleness protocol in docs/adr/README.md)
 
 ## Context

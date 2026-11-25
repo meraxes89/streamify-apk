@@ -147,10 +147,11 @@ jobs:
       - name: Docs-vs-reality lint (TRUTH-02)
         run: python3 scripts/docs_ledger_check.py
 
-      # Mechanical documentation gate: validates all markdown link targets
-      # across the repo and enforces doc-verified-against commit ancestry pins.
-      # Runs on every event and fails fast in < 2 seconds.
-      - name: Documentation integrity & staleness gate (verify_docs)
+      # Mechanical documentation gate: validates all markdown link targets,
+      # doc-verified-against commit ancestry pins, the S01–S23 system-page
+      # contract (frontmatter, index coverage, source paths) and RFC index
+      # coverage. Runs on every event and fails fast in < 2 seconds.
+      - name: Documentation integrity, subsystem index & staleness gate
         run: python3 scripts/verify_docs.py
 
       # P5-A: the canonical resolver integrity check. The feishin resolver
