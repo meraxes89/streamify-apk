@@ -354,18 +354,18 @@ fun SearchScreen(
             }
     }
 
-    //On search icon click while on search screen, open keyboard. Android only feature
-    if (getPlatform() == Platform.Android) {
-        val reloadDestination by sharedViewModel.reloadDestination.collectAsStateWithLifecycle()
-        LaunchedEffect(reloadDestination) {
-            if (reloadDestination == SearchDestination::class) {
-                if (!selectionState.isActive && searchUIType == SearchUIType.EMPTY) {
-                    isExpanded = true
-                    focusRequester.requestFocus()
+    // On search icon click while on search screen, expand search bar and focus input.
+    val reloadDestination by sharedViewModel.reloadDestination.collectAsStateWithLifecycle()
+    LaunchedEffect(reloadDestination) {
+        if (reloadDestination == SearchDestination::class) {
+            if (!selectionState.isActive && searchUIType == SearchUIType.EMPTY) {
+                isExpanded = true
+                focusRequester.requestFocus()
+                if (getPlatform() == Platform.Android) {
                     keyboardController?.show()
                 }
-                sharedViewModel.reloadDestinationDone()
             }
+            sharedViewModel.reloadDestinationDone()
         }
     }
 
