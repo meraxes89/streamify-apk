@@ -102,9 +102,11 @@ kotlin {
         // without racing the template.
         val iosArm64Main by getting {
             dependsOn(skikoCommonMain)
+            kotlin.srcDir("src/iosMain/kotlin")
         }
         val iosSimulatorArm64Main by getting {
             dependsOn(skikoCommonMain)
+            kotlin.srcDir("src/iosMain/kotlin")
         }
 
         val desktopTest by getting {
@@ -126,11 +128,13 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
             }
+            kotlin.srcDir("src/iosTest/kotlin")
         }
         val iosSimulatorArm64Test by getting {
             dependencies {
                 implementation(libs.kotlin.test)
             }
+            kotlin.srcDir("src/iosTest/kotlin")
         }
     }
 }
