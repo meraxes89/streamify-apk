@@ -122,11 +122,6 @@ jobs:
             echo "Successfully applied core.patch to core submodule"
           fi
 
-      # audit #44 P0-1 — fail FAST on any external fun in NativeBridge.kt
-      # with no JNI export, before any runner time is spent on Gradle.
-      - name: Check JNI ABI parity
-        run: python3 scripts/jni_parity_check.py --source
-
       - name: Set up JDK 21
         uses: actions/setup-java@v6
         with:
@@ -147,24 +142,6 @@ jobs:
             :androidApp:processDebugResources \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache
-
-      # Build-once / fan-out: the engine spoke already cross-compiled these.
-      - name: Download jniLibs bundles (arm64-v8a, x86_64)
-        uses: actions/download-artifact@v8
-        with:
-          pattern: jniLibs-*
-          path: staged-jni
-
-      - name: Stage prebuilt .so
-        run: |
-          for ABI in arm64-v8a x86_64; do
-            mkdir -p androidApp/src/main/jniLibs/$ABI
-            mkdir -p vivoAndroidApp/src/main/jniLibs/$ABI
-            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} androidApp/src/main/jniLibs/$ABI/ \;
-            find staged-jni/jniLibs-$ABI -name "*.so" -exec cp -vf {} vivoAndroidApp/src/main/jniLibs/$ABI/ \;
-          done
-          echo "Staged JNI libraries:"
-          ls -lR androidApp/src/main/jniLibs
 
       - name: "Decode release keystore"
         if: inputs.release_mode
@@ -190,7 +167,6 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew :androidApp:assembleDebug \
-            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/androidApp/src/main/jniLibs" \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
@@ -205,7 +181,6 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew :androidApp:assembleRelease :vivoAndroidApp:assembleRelease \
-            -PciPrebuiltNativeDir="$GITHUB_WORKSPACE/androidApp/src/main/jniLibs" \
             -PskipExternalNativeBuild=true \
             --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
@@ -226,15 +201,6 @@ jobs:
             unzip -l "$APK" | grep -q "lib/$ABI/" || { echo "FATAL: missing $ABI in $APK" >&2; exit 1; }
           done
           echo "Verified universal APK contains arm64-v8a and x86_64."
-
-      # audit #44 P0-1 — authoritative link-time parity gate on the shipped .so.
-      - name: Verify JNI exports
-        run: |
-          NDK_DIR="${ANDROID_NDK_HOME:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/ndk/26.1.10909125}"
-          NM="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
-          if [ ! -x "$NM" ]; then NM=nm; fi
-          python3 scripts/jni_parity_check.py --nm --nm-bin "$NM" \
-            --so-glob 'androidApp/src/main/jniLibs/**/*.so'
 
       - name: Upload build log (debug aid)
         if: always()

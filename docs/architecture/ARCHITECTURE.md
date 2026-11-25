@@ -83,7 +83,7 @@ render path uses no Tokio: the producer runs on a plain OS thread
 (`streamify-playback/src/producer.rs`): fetch (64 KiB ranges, 3 retries) ->
 decode (symphonia: AAC, ISO-MP4, OGG, PCM, WAV; no Opus) -> resample
 (`rubato::SincFixedOut`, 256-tap sinc, canonical 48 kHz) -> LUFS -> SPSC
-write. See [rust/README.md](../../rust/README.md).
+write. (Historical note: the `rust/` workspace was removed in favor of the pure-Kotlin/Media3 and Desktop `libmpv` pipelines.)
 
 The resolver is a multi-tier YouTube Innertube client: anonymous
 `ANDROID_VR` 1.65.10 primary, authenticated `WEB_REMIX` fallback, legacy
@@ -115,8 +115,7 @@ overlap, -70 LUFS absolute gate, -10 LU relative gate; default target
 -14 LUFS, correction clamp ±12 dB) -> mono downmix / constant-power balance
 -> true-peak soft-knee limiter (ceiling -1.0 dBFS, 4 dB knee, C1-continuous
 tanh curve, 4x-oversampled sidechain, 3 ms lookahead schedule, 80 ms
-release). The full invariants with quoted code are in
-[native/README.md](../../native/README.md).
+release). (Historical note: the `native/` C++20 DSP layer was removed in favor of the pure-Kotlin Media3 `AudioProcessor` pipeline.)
 
 Presentation clock: HAL render cores publish
 `(dac_frame_position, sample_rate, monotonic_ns)` through single-writer

@@ -12,10 +12,6 @@ this module hosts it.
   64).
 - ABI split is release-only: `armeabi-v7a`, `arm64-v8a`, `x86_64` plus a
   universal APK; debug builds are unsplitted.
-- Native libraries are not committed. CI builds them (cargo-ndk + CMake/NDK
-  in `_ci-engine.yml`) and stages them into `src/main/jniLibs` via
-  `-PciPrebuiltNativeDir`; locally, build them with the commands in
-  [rust/README.md](../rust/README.md) and [native/README.md](../native/README.md).
 - `jniLibs.useLegacyPackaging = true`; the kuromoji dictionary is excluded
   from packaging and fetched on demand.
 - Signing: debug keystore committed for debug; release reads
@@ -60,10 +56,7 @@ git -C core apply ../core.patch    # required: patches the core submodule
 ./scripts/build_and_sign_apk.sh --release --full      # signed release (env keystore)
 ```
 
-CI lane: `_ci-android.yml` runs the unit suite, the JNI parity gates
-(`scripts/jni_parity_check.py --source` fail-fast, then `--nm` on the built
-.so), and APK assembly; release mode verifies the universal APK contains
-`lib/arm64-v8a/` and `lib/x86_64/`.
+CI lane: `_ci-android.yml` runs the unit suite and APK assembly; release mode verifies the universal APK contains `lib/arm64-v8a/` and `lib/x86_64/`.
 
 ---
 Verified against commit 8b858b1c. Staleness protocol: docs/adr/README.md.

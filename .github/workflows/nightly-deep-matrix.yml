@@ -45,180 +45,6 @@ permissions:
   contents: write
 
 jobs:
-  engine-nightly:
-    name: "Rust core: nextest (nightly deep matrix)"
-    uses: ./.github/workflows/_ci-engine.yml
-    with:
-      run_tests: true
-      build_android_native: false
-      build_linux_native: false
-      nextest_profile: nightly
-
-  native-deep-fuzz:
-    name: "Native C++20 LibFuzzer x3 (cached corpora, C7)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-
-      # Same infra-resilience discipline as the _ci-engine.yml sanitizer
-      # lane: a runner archive/DNS incident must neither burn 15+ minutes
-      # in apt's internal retry storm nor red the nightly. cmake/ninja ship
-      # on the image; clang-17 is preferred with the image's preinstalled
-      # clang (20/21/22) as fallback; ccache is a speedup, not a dependency.
-      - name: Install Clang & LibFuzzer toolchain (DNS-flake resilient)
-        run: |
-          DNS_OK=1
-          if ! timeout 15 getent hosts azure.archive.ubuntu.com >/dev/null 2>&1; then
-            DNS_OK=0
-            echo "::warning::runner DNS resolution is down — apt skipped; the image's preinstalled toolchain carries the lane"
-          fi
-
-          apt_install() {
-            if [ "$DNS_OK" -ne 1 ]; then return 1; fi
-            for attempt in 1 2 3; do
-              if sudo timeout 180 apt-get install -y -o Acquire::Retries=2 "$@"; then
-                return 0
-              fi
-              echo "apt install (attempt ${attempt}/3) failed — runner network flake? retrying after backoff"
-              sudo timeout 120 apt-get update -o Acquire::Retries=2 >/dev/null 2>&1 || true
-              sleep $((attempt * 10))
-            done
-            return 1
-          }
-
-          if [ "$DNS_OK" -eq 1 ]; then
-            sudo timeout 180 apt-get update -o Acquire::Retries=2 \
-              || echo "::warning::apt-get update failed — trying installs anyway (cached indexes)"
-          fi
-
-          SANI_CC=""; SANI_CXX=""
-          if apt_install clang-17 libstdc++-13-dev \
-             && command -v clang-17 >/dev/null 2>&1; then
-            SANI_CC="$(command -v clang-17)"
-            SANI_CXX="$(command -v clang++-17)"
-          else
-            for v in 22 21 20 19 18; do
-              if command -v clang-$v >/dev/null 2>&1 && command -v clang++-$v >/dev/null 2>&1; then
-                SANI_CC="$(command -v clang-$v)"
-                SANI_CXX="$(command -v clang++-$v)"
-                echo "::warning::clang-17 unavailable (apt flake) — running the lane on the image's clang-$v"
-                break
-              fi
-            done
-          fi
-          if [ -z "$SANI_CC" ] || [ -z "$SANI_CXX" ]; then
-            echo "::error::No usable clang on the runner (apt failed AND no preinstalled clang) — cannot run the fuzz lane."
-            exit 1
-          fi
-          echo "Fuzz toolchain: $SANI_CXX ($($SANI_CXX --version | head -n1))"
-
-          apt_install ccache \
-            || echo "::warning::ccache unavailable — building without the compile cache"
-
-          echo "SANI_CC=$SANI_CC"   >> "$GITHUB_ENV"
-          echo "SANI_CXX=$SANI_CXX" >> "$GITHUB_ENV"
-
-      - name: Setup CCache for fuzzer compilation
-        uses: hendrikmuhs/ccache-action@v1.2.25
-        continue-on-error: true
-        with:
-          key: ${{ runner.os }}-ccache-native-fuzz
-          restore-keys: |
-            ${{ runner.os }}-ccache-native-
-          max-size: 500M
-
-      # WS-C (C7): one cached corpus PER HARNESS — the audio-sink and
-      # frame-palette surfaces accumulate their own coverage instead of
-      # cross-pollinating a single corpus grown for the DSP entry.
-      - name: Restore dsp fuzzer seed corpus
-        uses: actions/cache@v6
-        with:
-          path: native/fuzz/corpus
-          key: libfuzzer-corpus-dsp-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            libfuzzer-corpus-dsp-
-
-      - name: Restore audio-sink fuzzer seed corpus
-        uses: actions/cache@v6
-        with:
-          path: native/fuzz/corpus-audio-sink
-          key: libfuzzer-corpus-audio-sink-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            libfuzzer-corpus-audio-sink-
-
-      - name: Restore frame-palette fuzzer seed corpus
-        uses: actions/cache@v6
-        with:
-          path: native/fuzz/corpus-frame-palette
-          key: libfuzzer-corpus-frame-palette-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            libfuzzer-corpus-frame-palette-
-
-      # Timed-out fuzz runs still exit 0; only crashes fail the job. Every
-      # harness runs its full budget even after another one found a crash
-      # (more signal per night); a crash in ANY harness fails the job.
-      - name: Compile & run the three LibFuzzer harnesses
-        id: fuzz_test
-        run: |
-          mkdir -p native/build native/fuzz/corpus native/fuzz/corpus-audio-sink \
-                   native/fuzz/corpus-frame-palette native/fuzz/artifacts
-          cd native/build
-          # ccache is a speedup, not a dependency (same discipline as the
-          # engine lanes): attach the launcher only when ccache is on PATH.
-          CCACHE_ARGS=""
-          if command -v ccache >/dev/null 2>&1; then
-            CCACHE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-          else
-            echo "::warning::ccache unavailable — building without the compile cache"
-          fi
-          # shellcheck disable=SC2086
-          cmake -DCMAKE_CXX_COMPILER="$SANI_CXX" \
-                -DCMAKE_C_COMPILER="$SANI_CC" \
-                $CCACHE_ARGS \
-                -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -O2 -g" \
-                -DSTREAMIFY_BUILD_FUZZERS=ON \
-                -G Ninja ..
-          ninja dsp_fuzzer_harness audio_sink_fuzz_harness frame_palette_fuzz_harness
-          # Budget: 3 x 480s = 24 min inside the 60-min job timeout
-          # (compile ~8-10 min on the cached lane), vs the pre-C7 single
-          # 900s budget for one harness.
-          FUZZ_TIME=480
-          run_one() {
-            local bin="$1" corpus="$2" log="$3"
-            echo "native-deep-fuzz: $bin - ${FUZZ_TIME}s against $corpus"
-            ./$bin "$corpus" -max_len=4096 -max_total_time=$FUZZ_TIME \
-                -artifact_prefix=../fuzz/artifacts/ > "../$log" 2>&1 || true
-            if ls ../fuzz/artifacts/crash-* 1> /dev/null 2>&1; then
-              echo "FUZZER_FOUND_CRASH=true" >> "$GITHUB_ENV"
-              echo "CRASHING_HARNESS=$bin" >> "$GITHUB_ENV"
-            fi
-          }
-          run_one dsp_fuzzer_harness         ../fuzz/corpus                fuzz-run-dsp.log
-          run_one audio_sink_fuzz_harness    ../fuzz/corpus-audio-sink     fuzz-run-audio-sink.log
-          run_one frame_palette_fuzz_harness ../fuzz/corpus-frame-palette  fuzz-run-frame-palette.log
-
-      - name: Upload crash artifacts on fault
-        if: env.FUZZER_FOUND_CRASH == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: libfuzzer-crash-dumps
-          path: native/fuzz/artifacts/
-
-      - name: Upload fuzzer logs
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: log-native-libfuzzer
-          path: native/fuzz-run-*.log
-          if-no-files-found: ignore
-
-      - name: Fail on crash
-        if: env.FUZZER_FOUND_CRASH == 'true'
-        run: |
-          echo "FATAL: LibFuzzer found a crash in ${{ env.CRASHING_HARNESS }} - see libfuzzer-crash-dumps artifact" >&2
-          exit 1
-
 # TRUTH-01c / TEST-01: the connected Android lane. One API-34 x86_64
 # emulator on a KVM-enabled ubuntu-latest runner (hardware acceleration
 # on Linux actually works — unlike the retired macos-15 ARM64 legs, which
@@ -278,7 +104,7 @@ jobs:
   aggregate-and-publish-logs:
     name: Aggregate & commit to testing-log
     runs-on: ubuntu-latest
-    needs: [engine-nightly, native-deep-fuzz, android-connected]
+    needs: [android-connected]
     if: always()
     steps:
       - uses: actions/checkout@v7
@@ -301,7 +127,7 @@ jobs:
 
           # CANCELLED siblings are NOT failures (concurrency races prove
           # nothing about the code): only an explicit failure gates.
-          RESULTS="${{ needs.engine-nightly.result }},${{ needs.native-deep-fuzz.result }},${{ needs.android-connected.result }}"
+          RESULTS="${{ needs.android-connected.result }}"
           if printf '%s\n' "$RESULTS" | grep -q '^failure$'; then
             echo "OVERALL_TEST_RESULT=FAILED" >> "$GITHUB_ENV"
           elif printf '%s\n' "$RESULTS" | grep -q '^cancelled$'; then

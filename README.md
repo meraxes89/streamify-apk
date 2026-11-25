@@ -80,19 +80,14 @@ git -C core apply ../core.patch     # same patch CI applies to the submodule
 # androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-The native libraries (`libstreamify_core_rs.so`, `libstreamify_native_core.so`)
-are not committed. The APK assembles without them and runs on the Media3 audio
-path; the full DSP path requires them, which CI builds with cargo-ndk and
-CMake and stages via `-PciPrebuiltNativeDir`. Build them locally with the
-commands in [rust/README.md](rust/README.md) and [native/README.md](native/README.md).
+Audio playback runs on the Kotlin Media3 `AudioProcessor` pipeline on Android
+and `libmpv` via JNA on Desktop.
 
 Other targets:
 
 ```bash
 ./gradlew :androidApp:testDebugUnitTest -PskipExternalNativeBuild=true   # JVM tests
 ./gradlew :desktopApp:packageDistributionForCurrentOS                   # desktop installers
-cd rust && cargo test --all-targets && cargo clippy --all-targets -- -D warnings
-cd native && cmake -B build -S . -DENABLE_TESTS=ON && cmake --build build && ctest --test-dir build --output-on-failure
 cd server && npm ci && npm start                                         # relay on :3000
 ```
 
@@ -102,8 +97,6 @@ cd server && npm ci && npm start                                         # relay
 |---|---|
 | [androidApp/](androidApp/README.md) | Android shell: manifest, Media3 services, widgets, release signing, vivo store variant |
 | [composeApp/](composeApp/README.md) | Compose Multiplatform UI, ViewModels, navigation, Koin graph, sync engine |
-| [rust/](rust/README.md) | Sovereign core: 10 crates, resolver, playback, jam, UniFFI contract |
-| [native/](native/README.md) | C++20 real-time DSP: SPSC ringbuffer, LUFS, limiter, desktop HALs |
 | [streamify-modules/](streamify-modules/README.md) | Downstream extension suite (Koin IoC, media HAL, lyrics, Supabase, jam, ffmpeg shim) |
 | [desktopApp/](desktopApp/README.md) | Compose Desktop entry point, Conveyor packaging, memory tuning |
 | [server/](server/README.md) | Fastify relay, stream gateway, content-addressed WASM bundle delivery |

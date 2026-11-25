@@ -28,7 +28,6 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.koin.core)
-                implementation(project(":streamify-core-bridge"))
             }
         }
         androidMain {
