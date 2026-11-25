@@ -82,10 +82,18 @@ index 0000000..09e84b4
 @@ -0,0 +1 @@
 +package com.maxrave.common
 diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
-index 6a30090..c452fe5 100644
+index 6a30090..293b87c 100644
 --- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
 +++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
-@@ -1647,7 +1647,7 @@ internal class MediaServiceHandlerImpl(
+@@ -110,6 +110,7 @@ import kotlinx.coroutines.runBlocking
+ import kotlinx.coroutines.sync.Mutex
+ import kotlinx.coroutines.sync.withLock
+ import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeoutOrNull
+ import kotlinx.serialization.json.Json
+ import org.koin.mp.KoinPlatform.getKoin
+ import java.util.concurrent.atomic.AtomicBoolean
+@@ -1647,7 +1648,7 @@ internal class MediaServiceHandlerImpl(
                                              ),
                                      )
                                  }
@@ -94,7 +102,7 @@ index 6a30090..c452fe5 100644
                                      Logger.w(TAG, "loadMore: Endless Queue")
                                      val lastTrack =
                                          queueData.value.data.listTracks
-@@ -1677,28 +1677,28 @@ internal class MediaServiceHandlerImpl(
+@@ -1677,28 +1678,28 @@ internal class MediaServiceHandlerImpl(
                          }
                  }
              }
@@ -144,6 +152,34 @@ index 6a30090..c452fe5 100644
          }
      }
  
+@@ -2496,8 +2497,8 @@ internal class MediaServiceHandlerImpl(
+     }
+ 
+     override fun mayBeSavePlaybackState() {
+-        if (runBlocking { dataStoreManager.saveStateOfPlayback.first() } == TRUE) {
+-            runBlocking {
++        coroutineScope.launch {
++            if (dataStoreManager.saveStateOfPlayback.first() == TRUE) {
+                 dataStoreManager.recoverShuffleAndRepeatKey(
+                     player.shuffleModeEnabled,
+                     player.repeatMode,
+@@ -2652,9 +2653,13 @@ internal class MediaServiceHandlerImpl(
+         }
+ 
+     override fun shouldReleaseOnTaskRemoved() =
+-        runBlocking {
+-            dataStoreManager.killServiceOnExit.first() == TRUE
+-        }
++        runCatching {
++            runBlocking(Dispatchers.IO) {
++                withTimeoutOrNull(500) {
++                    dataStoreManager.killServiceOnExit.first() == TRUE
++                }
++            }
++        }.getOrNull() ?: false
+ 
+     override fun release() {
+         Logger.w("ServiceHandler", "Starting release process")
 diff --git a/data/src/commonMain/kotlin/DatabaseDao.kt b/data/src/commonMain/kotlin/DatabaseDao.kt
 index db029df..1e1929c 100644
 --- a/data/src/commonMain/kotlin/DatabaseDao.kt
@@ -234,7 +270,7 @@ index 3903b7e..bbc1166 100644
      }
  
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
-index 4024528..a7b5a84 100644
+index 4024528..cca7841 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 @@ -3,6 +3,9 @@ package com.maxrave.data.di
@@ -247,7 +283,17 @@ index 4024528..a7b5a84 100644
  import androidx.sqlite.driver.bundled.BundledSQLiteDriver
  import com.maxrave.data.dataStore.DataStoreManagerImpl
  import com.maxrave.data.dataStore.createDataStoreInstance
-@@ -37,6 +40,24 @@ val databaseModule =
+@@ -29,64 +32,82 @@ import org.simpmusic.autoeq.AutoEq
+ @OptIn(ExperimentalTime::class)
+ val databaseModule =
+     module {
+-        single(createdAtStart = true) {
++        single {
+             Converters()
+         }
+         // Database
+-        single(createdAtStart = true) {
++        single {
              getDatabaseBuilder(
                  get<Converters>()
              )
@@ -272,7 +318,45 @@ index 4024528..a7b5a84 100644
                  .setDriver(BundledSQLiteDriver())
                  .setQueryCoroutineContext(Dispatchers.IO)
                  .build()
-@@ -74,19 +95,19 @@ val databaseModule =
+         }
+         // DatabaseDao
+-        single(createdAtStart = true) {
++        single {
+             get<MusicDatabase>().getDatabaseDao()
+         }
+         // Library sync (#2663): its own small preferences file, its DAO, and the recorder every
+         // write to a synced item goes through.
+-        single(createdAtStart = true) {
++        single {
+             get<MusicDatabase>().getSyncDao()
+         }
+-        single(createdAtStart = true) {
++        single {
+             SyncPrefs(createLibrarySyncDataStore())
+         }
+-        single(createdAtStart = true) {
++        single {
+             SyncChangeRecorder(get<SyncDao>(), get<SyncPrefs>())
+         }
+         // LocalDataSource
+-        single(createdAtStart = true) {
++        single {
+             LocalDataSource(get<DatabaseDao>(), get<MusicDatabase>(), get<SyncChangeRecorder>())
+         }
+         // AnalyticsDatasource
+-        single(createdAtStart = true) {
++        single {
+             AnalyticsDatasource(get<DatabaseDao>(), get<SyncChangeRecorder>())
+         }
+         // Datastore
+-        single(createdAtStart = true) {
++        single {
+             createDataStoreInstance()
+         }
+         // DatastoreManager
+-        single<DataStoreManager>(createdAtStart = true) {
++        single<DataStoreManager> {
+             DataStoreManagerImpl(get<DataStore<Preferences>>())
          }
  
          // Move YouTube from Singleton to Koin DI
@@ -1104,6 +1188,167 @@ index 0000000..aea0a2d
 +        outputBuffer.flip()
 +    }
 +}
+diff --git a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
+index 62c93a5..b950462 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
+@@ -84,6 +84,7 @@ import kotlinx.coroutines.flow.firstOrNull
+ import kotlinx.coroutines.flow.lastOrNull
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.runBlocking
++import kotlinx.coroutines.withTimeoutOrNull
+ import okhttp3.OkHttpClient
+ import okhttp3.logging.HttpLoggingInterceptor
+ import org.koin.android.ext.koin.androidApplication
+@@ -105,28 +106,33 @@ private val mediaServiceModule =
+         // Service
+         // CoroutineScope for service
+         single<CoroutineScope>(
+-            createdAtStart = true,
+             qualifier = named(SERVICE_SCOPE),
+         ) {
+             CoroutineScope(Dispatchers.Main + SupervisorJob())
+         }
+         // Cache
+-        single<DatabaseProvider>(
+-            createdAtStart = true,
+-        ) {
++        single<DatabaseProvider> {
+             provideDatabaseProvider(androidContext())
+         }
+         // Player Cache
+-        single<SimpleCache>(qualifier = named(PLAYER_CACHE), createdAtStart = true) {
++        single<SimpleCache>(qualifier = named(PLAYER_CACHE)) {
++            val cacheSize =
++                runCatching {
++                    runBlocking(Dispatchers.IO) {
++                        withTimeoutOrNull(500) {
++                            get<DataStoreManager>().maxSongCacheSize.first()
++                        }
++                    }
++                }.getOrNull() ?: 512L
+             provideSimpleCache(
+                 context = androidContext(),
+                 cacheName = "exoplayer",
+-                cacheSize = runBlocking { get<DataStoreManager>().maxSongCacheSize.first() },
++                cacheSize = cacheSize,
+                 databaseProvider = get<DatabaseProvider>(),
+             )
+         }
+         // Download Cache
+-        single<SimpleCache>(qualifier = named(DOWNLOAD_CACHE), createdAtStart = true) {
++        single<SimpleCache>(qualifier = named(DOWNLOAD_CACHE)) {
+             provideSimpleCache(
+                 context = androidContext(),
+                 cacheName = "download",
+@@ -135,7 +141,7 @@ private val mediaServiceModule =
+             )
+         }
+         // Spotify Canvas Cache
+-        single<SimpleCache>(qualifier = named(CANVAS_CACHE), createdAtStart = true) {
++        single<SimpleCache>(qualifier = named(CANVAS_CACHE)) {
+             provideSimpleCache(
+                 context = androidContext(),
+                 cacheName = "spotifyCanvas",
+@@ -144,7 +150,7 @@ private val mediaServiceModule =
+             )
+         }
+         // DownloadUtils
+-        single<DownloadHandler>(createdAtStart = true) {
++        single<DownloadHandler> {
+             DownloadUtils(
+                 context = androidContext(),
+                 playerCache = get(named(PLAYER_CACHE)),
+@@ -157,11 +163,11 @@ private val mediaServiceModule =
+         }
+ 
+         // AudioAttributes
+-        single<AudioAttributes>(createdAtStart = true) {
++        single<AudioAttributes> {
+             provideAudioAttributes()
+         }
+ 
+-        single<MergingMediaSourceFactory>(createdAtStart = true) {
++        single<MergingMediaSourceFactory> {
+             provideMergingMediaSource(
+                 androidContext(),
+                 get(named(DOWNLOAD_CACHE)),
+@@ -172,7 +178,7 @@ private val mediaServiceModule =
+             )
+         }
+ 
+-        single<DefaultRenderersFactory>(createdAtStart = true) {
++        single<DefaultRenderersFactory> {
+             provideRendererFactory(androidContext())
+         }
+ 
+@@ -187,7 +193,7 @@ private val mediaServiceModule =
+         }
+ 
+         // CoilBitmapLoader
+-        single<CoilBitmapLoader>(createdAtStart = true) {
++        single<CoilBitmapLoader> {
+             provideCoilBitmapLoader(androidContext(), get(named(SERVICE_SCOPE)))
+         }
+ 
+@@ -209,7 +215,7 @@ private val mediaServiceModule =
+             )
+         }
+ 
+-        single<MediaPlayerInterface>(createdAtStart = true) {
++        single<MediaPlayerInterface> {
+             CrossfadeExoPlayerAdapter(
+                 context = androidContext(),
+                 coroutineScope = get(named(SERVICE_SCOPE)),
+@@ -223,7 +229,7 @@ private val mediaServiceModule =
+ 
+         // Local ↔ Cast receiver handoff. No-op when wrapWithCastPlayer returned the plain
+         // ForwardingPlayer (FOSS build or no GMS on the device).
+-        single<CastHandoffManager>(createdAtStart = true) {
++        single<CastHandoffManager> {
+             CastHandoffManager(
+                 adapter = get<MediaPlayerInterface>() as CrossfadeExoPlayerAdapter,
+                 sessionPlayer = get(qualifier = named(MAIN_PLAYER)),
+@@ -233,7 +239,7 @@ private val mediaServiceModule =
+         }
+ 
+         // MediaSession Callback for main player
+-        single<MediaLibrarySession.Callback>(createdAtStart = true) {
++        single<MediaLibrarySession.Callback> {
+             SimpleMediaSessionCallback(
+                 androidApplication(),
+                 get<CoroutineScope>(named(SERVICE_SCOPE)),
+@@ -247,7 +253,7 @@ private val mediaServiceModule =
+             )
+         }
+ 
+-        single<CacheRepository>(createdAtStart = true) {
++        single<CacheRepository> {
+             CacheRepositoryImpl(
+                 playerCache = get(named(PLAYER_CACHE)),
+                 downloadCache = get(named(DOWNLOAD_CACHE)),
+@@ -628,10 +634,18 @@ fun startService(
+     try {
+         context.startService(intent)
+     } catch (e: IllegalStateException) {
+-        // BackgroundServiceStartNotAllowedException (Android 12+)
+-        ContextCompat.startForegroundService(context, intent)
++        // BackgroundServiceStartNotAllowedException / ForegroundServiceStartNotAllowedException (Android 12+)
++        runCatching {
++            ContextCompat.startForegroundService(context, intent)
++        }.onFailure { fgsError ->
++            Logger.w("Service", "Failed to start service from background: ${fgsError.message}")
++        }
++    }
++    runCatching {
++        context.bindService(intent, serviceConnection, BIND_AUTO_CREATE)
++    }.onFailure { bindError ->
++        Logger.w("Service", "Failed to bind service: ${bindError.message}")
+     }
+-    context.bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+     Logger.d("Service", "Service started")
+ }
+ 
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 index e88affc..a4a0c9d 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
@@ -1226,7 +1471,7 @@ index e88affc..a4a0c9d 100644
  
                          // DJ-style filter sweep (alongside volume)
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
-index 64bed3e..70ad004 100644
+index 64bed3e..f13b274 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
 @@ -1,8 +1,6 @@
@@ -1261,6 +1506,18 @@ index 64bed3e..70ad004 100644
              }
          }
      }
+@@ -175,9 +166,9 @@ internal class SimpleMediaService :
+     override fun onTaskRemoved(rootIntent: Intent?) {
+         Logger.w("Service", "Simple Media Service Task Removed")
+         if (simpleMediaServiceHandler.shouldReleaseOnTaskRemoved()) {
+-            release()
+             super.onTaskRemoved(rootIntent)
+-            exitProcess(0)
++            release()
++            stopSelf()
+         }
+     }
+ 
 @@ -211,10 +202,4 @@ internal class SimpleMediaService :
                  }
              }

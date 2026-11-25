@@ -275,7 +275,7 @@
         <service
             android:name="com.maxrave.media3.service.download.MusicDownloadService"
             android:exported="false"
-            android:foregroundServiceType="dataSync">
+            android:foregroundServiceType="dataSync|mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" />
 

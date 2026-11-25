@@ -40,16 +40,10 @@
     </style>
     <script>
         window.onerror = function(msg, url, line, col, error) {
-            var d = document.createElement('div');
-            d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#1a0505;color:#ff6b6b;padding:24px;font-family:monospace;white-space:pre-wrap;z-index:999999;overflow:auto;font-size:14px;';
-            d.innerHTML = '<h3>⚠️ Runtime Launch Error</h3><p><b>' + msg + '</b></p><p>' + (error && error.stack ? error.stack : (url + ':' + line + ':' + col)) + '</p>';
-            document.body.appendChild(d);
+            console.error("Runtime Launch Error: " + msg, error || (url + ':' + line + ':' + col));
         };
         window.onunhandledrejection = function(e) {
-            var d = document.createElement('div');
-            d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#1a0505;color:#ff6b6b;padding:24px;font-family:monospace;white-space:pre-wrap;z-index:999999;overflow:auto;font-size:14px;';
-            d.innerHTML = '<h3>⚠️ Unhandled Promise / WASM Rejection</h3><p><b>' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '</b></p><pre>' + (e.reason && e.reason.stack ? e.reason.stack : '') + '</pre>';
-            document.body.appendChild(d);
+            console.warn("Unhandled Promise rejection (suppressed overlay):", e.reason);
         };
     </script>
 </head>
