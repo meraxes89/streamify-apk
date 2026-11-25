@@ -12,7 +12,6 @@
 - ADRs are immutable; supersede with a new one. RFCs may be rejected. `docs/archive/` is never authoritative.
 - The Rust/C++ DSP core was retired (commit `50b937f7`, ADR-009). README and engine spec 02 still contain historical prose — do not treat it as current.
 - Every authoritative doc carries `<!-- doc-verified-against: <sha> -->`; update it in the same commit as the code it describes.
-- Agents: load the `streamify-docs-contract` skill (`.agents/skills/streamify-docs-contract/SKILL.md`) before changing code or writing docs.
 
 ## 📋 Project Overview
 
