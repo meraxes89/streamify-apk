@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.maxrave.simpmusic.expect.ui.PlatformBackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.kmpalette.rememberPaletteState
@@ -397,6 +398,7 @@ fun NowPlayingScreenContent(
         mutableStateOf(false)
     }
     val fullscreenLyricsRequested by sharedViewModel.fullscreenLyricsRequest.collectAsStateWithLifecycle()
+    PlatformBackHandler(enabled = true, onBack = onDismiss)
     LaunchedEffect(fullscreenLyricsRequested) {
         if (fullscreenLyricsRequested) {
             showFullscreenLyrics = true

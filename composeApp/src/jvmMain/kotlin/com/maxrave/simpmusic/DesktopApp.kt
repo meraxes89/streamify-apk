@@ -376,6 +376,15 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
             onCloseRequest = {
                 isVisible = false
             },
+            onKeyEvent = { event ->
+                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                    event.key == androidx.compose.ui.input.key.Key.Escape
+                ) {
+                    com.maxrave.simpmusic.expect.ui.DesktopBackHandlerRegistry.handleBack()
+                } else {
+                    false
+                }
+            },
             title = stringResource(Res.string.app_name),
             icon = painterResource(Res.drawable.circle_app_icon),
             undecorated = !nativeTitleBar,
