@@ -61,16 +61,30 @@ actual object ShaderProvider {
     /**
      * Cached per process — `by lazy` is synchronized, so the probe is safe
      * to request from the Koin graph, any draw pass and any thread.
+     *
+     * Track B: the compile probe runs the **canonical** source (through
+     * the [AgslDialect] transpile), not a minimal synthetic program — a
+     * driver that compiles toy shaders but rejects valid LiquidGlass
+     * source is exactly the failure this probe exists to catch. The probe
+     * runs once, at startup, inside the isolated API 33 lane
+     * ([Agsl33Isolated.probeCompile]); any Throwable (driver crash,
+     * rejected syntax) is caught there, recorded in
+     * [CapabilityProbe.compileProbeFailureReason], and the classification
+     * degrades to the RENDER_EFFECT / scrim lanes **before the Compose
+     * tree ever calls drawBehind** — this object is resolved by the Koin
+     * graph at engine construction time, which precedes any first draw.
      */
     private val cachedProbe: CapabilityProbe by lazy {
+        val sdk = Build.VERSION.SDK_INT
+        val probeResult = if (sdk >= 33) Agsl33Isolated.probeCompile() else null
         CapabilityProbe(
-            apiLevel = Build.VERSION.SDK_INT,
+            apiLevel = sdk,
             // GL_RENDERER requires a live EGL context — not available at
             // bootstrap. The software-rasterizer axis (axis 2) is fed by the
             // facade/Phase 4 lane; empty keeps the classifier conservative.
             rendererDescription = "",
-            runtimeShaderCompileSupported =
-                if (Build.VERSION.SDK_INT >= 33) Agsl33Isolated.compileProbe() else false,
+            runtimeShaderCompileSupported = probeResult?.compiled ?: false,
+            compileProbeFailureReason = probeResult?.failureReason,
         )
     }
 
@@ -146,19 +160,40 @@ actual object ShaderProvider {
 private object Agsl33Isolated {
 
     /**
-     * The compile probe behind `runtimeShaderCompileSupported`: a minimal
-     * AGSL program through the platform compiler. Conservative by contract —
-     * any Throwable (unavailable AGSL, driver rejection) means unsupported.
+     * Outcome of the isolated startup compile probe (Track B): the
+     * canonical `LiquidGlassCore` source, transpiled for AGSL, run through
+     * the platform's real `RuntimeShader` compiler once at startup.
+     * [failureReason] records *why* the probe failed so the demotion is a
+     * reviewable diagnostic, never a silent cliff.
      */
-    fun compileProbe(): Boolean = try {
-        // Keep this inlined in this isolated type only — the probe must not
-        // reference the canonical source (that compile belongs to the engine).
-        android.graphics.RuntimeShader(
-            "half4 main(float2 fragCoord) { return half4(0.0, 0.0, 0.0, 1.0); }",
-        )
-        true
+    data class CompileProbeResult(
+        val compiled: Boolean,
+        val failureReason: String?,
+    )
+
+    /**
+     * The preflight compile probe (Track B). Runs the **canonical**
+     * transpiled source — not a minimal synthetic program — through the
+     * real platform compiler, isolated in this API-33-only type so the
+     * probe can never class-link `RuntimeShader` on older devices.
+     *
+     * Non-blocking by construction: one compile attempt, bounded by the
+     * driver's own compile path, executed once per process before the
+     * first draw (the provider resolves it from the Koin graph at engine
+     * construction, ahead of any `drawBehind`). Conservative by contract:
+     * any `Throwable` — OEM driver crash inside `glCompileShader`, AGSL
+     * syntax rejection, anything — means unsupported, with the reason
+     * recorded for telemetry and logs.
+     */
+    fun probeCompile(): CompileProbeResult = try {
+        android.graphics.RuntimeShader(AgslDialect.transpile(LiquidGlassSource.SKSL))
+        CompileProbeResult(compiled = true, failureReason = null)
     } catch (t: Throwable) {
-        false
+        // Swallowed deliberately: a broken vendor BSP must degrade the
+        // lane (Tier 2 blur / Tier 3 scrim), never crash startup. The
+        // reason is recorded and surfaced through
+        // CapabilityProbe.compileProbeFailureReason.
+        CompileProbeResult(compiled = false, failureReason = "${t.javaClass.simpleName}: ${t.message}")
     }
 
     /** Constructs the AGSL engine; a source compile failure throws and the
