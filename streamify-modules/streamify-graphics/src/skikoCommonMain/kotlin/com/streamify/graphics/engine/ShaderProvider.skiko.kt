@@ -48,7 +48,7 @@ import kotlin.math.ceil
  * The canonical source's `uniform shader backdrop` child is bound through
  * `RuntimeShaderBuilder.child("backdrop", ...)` — the Skia dialect's
  * counterpart of Android AGSL's setInputBuffer lane (ARCHITECTURE.md
- * section 2). All six uniforms bind through [SkikoLiquidGlassProgram].
+ * section 2). All nine uniforms bind through [SkikoLiquidGlassProgram].
  *
  * ## Tier 1/2 application seam
  *
@@ -194,12 +194,22 @@ internal class SkikoLiquidGlassProgram internal constructor() {
     }
 
     /**
-     * Binds all five non-child uniforms:
+     * Binds all eight non-child uniforms:
      *  * `resolution` (float2) — the drawing surface size,
      *  * `lensRadius` / `refractionIndex` / `chromaticSpread` (float) —
      *    lens curvature boundary, IOR and dispersion delta,
      *  * `tintColor` (half4, promoted to float4 by the AGSL dialect on
-     *    Android) — the translucent surface fill.
+     *    Android) — the translucent surface fill,
+     *  * `vibrancy` / `darkenAmount` / `specularIntensity` (float) — the
+     *    Kyant parity pillars: 1.5x luminance-preserving saturation, the
+     *    adaptive "đục đen" scrim alpha and the directional 45° rim
+     *    strength.
+     *
+     * The S24 defaults resolve from the frozen token layer so a caller that
+     * names nothing but the chromatic spread and the tint still renders
+     * with full Kyant parity. `darkenAmount` defaults to 0 (no scrim) — the
+     * engine always binds the value [AdaptiveLuminanceScrim] computes from
+     * the request's live backdrop luminance.
      */
     fun bindUniforms(
         width: Float,
@@ -211,12 +221,18 @@ internal class SkikoLiquidGlassProgram internal constructor() {
         tintColorG: Float,
         tintColorB: Float,
         tintColorA: Float,
+        vibrancy: Float = PrimitiveTokens.vibrancySaturation,
+        darkenAmount: Float = 0f,
+        specularIntensity: Float = PrimitiveTokens.directionalSpecularIntensity,
     ) {
         builder.uniform("resolution", width, height)
         builder.uniform("lensRadius", lensRadius)
         builder.uniform("refractionIndex", refractionIndex)
         builder.uniform("chromaticSpread", chromaticSpread)
         builder.uniform("tintColor", tintColorR, tintColorG, tintColorB, tintColorA)
+        builder.uniform("vibrancy", vibrancy)
+        builder.uniform("darkenAmount", darkenAmount)
+        builder.uniform("specularIntensity", specularIntensity)
     }
 
     /** Runs the final uniform-layout validation and builds the shader. */
@@ -287,6 +303,11 @@ internal class SkikoRuntimeShaderEngine(
                 tintColorG = tint.green,
                 tintColorB = tint.blue,
                 tintColorA = tint.alpha,
+                // Kyant optical parity (S24): the "đục đen" ramp evaluated on
+                // the CPU from the request's live luminance and bound as the
+                // shader's darkenAmount uniform (vibrancy and the directional
+                // 45° rim strength resolve from the token defaults above).
+                darkenAmount = AdaptiveLuminanceScrim.alphaFor(request.luminance()),
             )
         }
         drawGlassComposite(scope, request)
@@ -370,6 +391,10 @@ private fun drawGlassComposite(scope: DrawScope, request: GlassRenderRequest) {
             if (request.tint != Color.Unspecified) {
                 drawRect(color = request.tint)
             }
+            // Kyant parity (S24): the adaptive "đục đen" scrim over the
+            // composite — over bright artwork the surface deepens so
+            // overlaying typography stays legible.
+            drawAdaptiveScrim(request)
         }
 
         // 1px optical highlight stroke along the glass rim.

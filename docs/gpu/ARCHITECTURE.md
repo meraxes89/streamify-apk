@@ -37,12 +37,25 @@ Native GPU Driver (Dispatched via Skia / HWUI)
 SkSL is Skia's native shading language; Android's AGSL is a direct dialect. The entire refraction and liquid glass pipeline is defined in a single canonical shader (`LiquidGlassCore.sksl`):
 
 ```glsl
+// LiquidGlassCore — canonical Sovereign GPU Engine refraction shader.
+//
+// Kyant optical parity (S24): the five optical pillars of the
+// io.github.kyant0:backdrop catalog look —
+//   1. Directional 45° specular rim (top-left light, cosine falloff,
+//      subtle ambient rim on the opposite side)
+//   2. Vibrancy: luminance-preserving saturation (1.5x) before the tint
+//   3. Edge-only curvature (refraction strictly inside the lensRadius band)
+//   4. Adaptive luminance scrim ("đục đen" ramp bound as darkenAmount)
+//   5. Fluid spring & touch glow (facade-level, not in this shader)
 uniform shader backdrop;          // Captured, pre-blurred backdrop layer
 uniform float2 resolution;
 uniform float  lensRadius;        // Edge curvature boundary
 uniform float  refractionIndex;   // IOR (e.g. 1.25)
 uniform float  chromaticSpread;   // Dispersion delta (Tier 1 only)
 uniform half4  tintColor;
+uniform float  vibrancy;          // Luminance-preserving saturation multiplier (Kyant parity: 1.5)
+uniform float  darkenAmount;      // Adaptive luminance scrim, 0..1 ("đục đen" ramp)
+uniform float  specularIntensity; // Directional 45° rim strength (Kyant parity: 0.35)
 
 half4 main(float2 coord) {
     // Geometry: highp — normals and tap offsets must stay sub-pixel.
@@ -51,6 +64,10 @@ half4 main(float2 coord) {
     float  d  = length(p);
     float3 n  = float3(0.0, 0.0, 1.0);
 
+    // Pillar 3 — edge-only curvature: the lens normal bends strictly inside
+    // the lensRadius band along the boundary (d > 0.5 - lensRadius). The
+    // interior core keeps the flat (0, 0, 1) normal, so its refraction
+    // offset is zero and the content behind it samples undisplaced.
     if (d > 0.5 - lensRadius) {
         float e = (d - (0.5 - lensRadius)) / lensRadius;
         n = normalize(float3(p * e, 1.0 - e));
@@ -70,7 +87,35 @@ half4 main(float2 coord) {
 
     // Schlick Fresnel approximation — the highp -> mediump boundary.
     half fr = half(pow(1.0 - max(n.z, 0.0), 3.0));
-    return mix(half4(c, a), tintColor, tintColor.a) + half4(1.0) * fr * 0.35;
+
+    // Pillar 2 — vibrancy: the Kyant colorControls saturation pass, applied
+    // before the tint mix. c' = luma + (c - luma) * vibrancy preserves
+    // luminance while deepening chroma, so bright artwork reads through the
+    // glass instead of collapsing into milky white fog.
+    half  luma = dot(c, half3(0.2126, 0.7152, 0.0722));
+    half3 vibrant = clamp(mix(half3(luma), c, half3(vibrancy)), half3(0.0), half3(1.0));
+
+    // Pillar 1 — directional 45° specular rim. Light travels from the
+    // top-left: the boundary whose outward radial direction faces the light
+    // receives the full highlight with a cosine falloff (Kyant
+    // HighlightStyle.Default: angle 45°, falloff 1.0), while the opposite
+    // boundary keeps a subtle ambient rim (25% of the lit term). The Schlick
+    // Fresnel term stays as the grazing-angle envelope, so the rim still
+    // peaks exactly at the edge and never bleeds into the flat core.
+    float2 lightDir = normalize(float2(-1.0, -1.0));
+    float2 radial = p / max(d, 1e-6);
+    float  lit = clamp(dot(radial, lightDir), 0.0, 1.0);
+    half   rim = fr * half(lit + 0.25 * (1.0 - lit)) * half(specularIntensity);
+
+    half3 composite = mix(vibrant, tintColor.rgb, tintColor.a);
+
+    // Pillar 4 — adaptive luminance scrim: the "đục đen" darkening ramp,
+    // bound by the platform adapters from the backdrop luminance. Applied
+    // after the tint and the rim exactly like Kyant's onDrawSurface scrim
+    // rect, so over bright album art the surface deepens instead of washing
+    // out and overlaying typography stays legible.
+    half3 darkened = clamp((composite + half3(rim)) * half3(1.0 - darkenAmount), half3(0.0), half3(1.0));
+    return half4(darkened, a);
 }
 ```
 
@@ -89,6 +134,8 @@ Older Mali (Midgard/Bifrost) and Adreno 5xx unified-ALU parts run 16-bit (`half`
 `AgslDialect.validatePrecisionContract` is the fail-fast gate over this table: it lints the canonical source (comments stripped) and rejects any regression — `float3`/`float` taps, a dropped `half fr` boundary, or a `float(...)` cast re-promoting the color path — so the throughput win cannot be silently reverted. The gate runs in the desktop CI suite (`UniversalAndroidMatrixTest`) and the Android startup probe lane.
 
 On AGSL both `half` and `float` are 32-bit aliases (`half` is a GPU-targeting hint), so the same source compiles identically on the Android and Skia lanes — pinned by the `AgslDialectEquivalenceTest` pixel gate.
+
+**Kyant optical parity (S24).** The three S24 uniforms are bound by both platform adapters from the frozen token layer: `vibrancy` = 1.5x (`colorControls` saturation parity), `darkenAmount` = the CPU-evaluated `lerp(0.12, 0.50, clamp((luminance - 0.3) / 0.5))` "đục đen" ramp, and `specularIntensity` = 0.35. The ramp keeps white text legible over bright album art instead of letting the glass wash out. Pixel-for-pixel equivalence with the reference model is gated in CI by `KyantParityGoldenTest` (MSE < 5e-4 across light, dark and saturated backdrops); pre-rendered comparison twins live in `docs/gpu/parity/`.
 
 ---
 

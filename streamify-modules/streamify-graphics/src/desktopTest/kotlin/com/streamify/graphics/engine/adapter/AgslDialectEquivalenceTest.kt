@@ -1,5 +1,6 @@
 package com.streamify.graphics.engine.adapter
 
+import com.streamify.graphics.tokens.PrimitiveTokens
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -169,6 +170,11 @@ class AgslDialectEquivalenceTest {
         builder.uniform("refractionIndex", REFRACTIVE_INDEX)
         builder.uniform("chromaticSpread", chromaticSpread)
         builder.uniform("tintColor", TINT_R, TINT_G, TINT_B, TINT_A)
+        // The S24 Kyant-parity uniforms — bound identically on both texts so
+        // the pixel comparison still exercises the full nine-uniform path.
+        builder.uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+        builder.uniform("darkenAmount", DARKEN_AMOUNT)
+        builder.uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         builder.child("backdrop", backdropGradient())
 
         val surface = Surface.makeRasterN32Premul(WIDTH, HEIGHT)
@@ -240,5 +246,8 @@ class AgslDialectEquivalenceTest {
         private const val TINT_G = 0.97f
         private const val TINT_B = 1.00f
         private const val TINT_A = 0.08f
+
+        /** Deterministic mid-ramp scrim for the pixel-equivalence renders. */
+        private const val DARKEN_AMOUNT = 0.25f
     }
 }

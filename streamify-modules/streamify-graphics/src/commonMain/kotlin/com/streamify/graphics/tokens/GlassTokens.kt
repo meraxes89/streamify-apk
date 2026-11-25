@@ -102,6 +102,66 @@ object PrimitiveTokens {
     val blurRadiusNone: Dp = 0.dp
 
     // ------------------------------------------------------------------
+    // Kyant optical parity (S24) — the five-pillar constants mirrored from
+    // composeApp's io.github.kyant0:backdrop reference
+    // (LiquidGlassContainer.kt). Additive only; every pre-existing token
+    // above is untouched.
+    // ------------------------------------------------------------------
+
+    /**
+     * Luminance-preserving saturation multiplier applied to the sampled
+     * backdrop before the tint mix (Kyant `colorControls(saturation = 1.5)`).
+     * 1.5x deepens chroma without shifting luminance, preventing the
+     * milky-white washout over bright artwork.
+     */
+    const val vibrancySaturation: Float = 1.5f
+
+    /** Darkening ramp floor — the scrim alpha over pitch-black content. */
+    const val scrimDarkenMin: Float = 0.12f
+
+    /** Darkening ramp ceiling — the scrim alpha over pure-white content. */
+    const val scrimDarkenMax: Float = 0.5f
+
+    /** Backdrop luminance where the "đục đen" ramp starts rising. */
+    const val scrimLuminanceFloor: Float = 0.3f
+
+    /** Backdrop luminance span over which the ramp rises from floor to ceiling. */
+    const val scrimLuminanceRange: Float = 0.5f
+
+    /**
+     * Fixed mid-luminance default for surfaces that do not sample their
+     * background (Kyant's non-adapting `liquidGlass` overload pins 0.5).
+     */
+    const val defaultBackdropLuminance: Float = 0.5f
+
+    /**
+     * Directional 45° rim strength bound to the shader's
+     * `specularIntensity` uniform. Same magnitude as
+     * [fresnelIntensityDefault] — the Schlick envelope is unchanged; only
+     * the rim's angular distribution became directional.
+     */
+    const val directionalSpecularIntensity: Float = 0.35f
+
+    // ------------------------------------------------------------------
+    // Fluid press interaction (S24 Track C) — spring & glow constants
+    // ------------------------------------------------------------------
+
+    /** Press swell scale target (Kyant press target 1.12x). */
+    const val pressScaleSwell: Float = 1.12f
+
+    /** Press spring damping ratio (Kyant press spec 0.5 — underdamped). */
+    const val pressSpringDampingRatio: Float = 0.5f
+
+    /** Press spring stiffness (Kyant press spec 300). */
+    const val pressSpringStiffness: Float = 300f
+
+    /** Peak alpha of the touch-tracking radial glow. */
+    const val pressGlowAlpha: Float = 0.18f
+
+    /** Glow radius as a fraction of the surface's min dimension (1.2x). */
+    const val pressGlowRadiusFraction: Float = 1.2f
+
+    // ------------------------------------------------------------------
     // Rim stroke
     // ------------------------------------------------------------------
 
@@ -152,6 +212,32 @@ object SemanticTokens {
         green = 0.09f,
         blue = 0.13f,
         alpha = PrimitiveTokens.legacyScrimAlpha,
+    )
+
+    /**
+     * Touch-tracking press glow (S24 Track C): radial white light drawn with
+     * `BlendMode.Plus` at the pointer position while a glass surface is
+     * pressed. Peak alpha comes from [PrimitiveTokens.pressGlowAlpha] and is
+     * scaled by the spring-animated press progress at draw time.
+     */
+    val pressGlowHighlight: Color = Color(
+        red = 1.00f,
+        green = 1.00f,
+        blue = 1.00f,
+        alpha = PrimitiveTokens.pressGlowAlpha,
+    )
+
+    /**
+     * Shaded-side stop of the Tier 3 dual-stop directional rim gradient
+     * (S24 Track D): the bottom-right boundary of the 45° sweep, sitting at
+     * 25% of the lit stop's alpha — the hardware-gradient stand-in for the
+     * shader's subtle ambient rim.
+     */
+    val specularRimShaded: Color = Color(
+        red = 1.00f,
+        green = 1.00f,
+        blue = 1.00f,
+        alpha = PrimitiveTokens.specularHighlightAlpha * 0.25f,
     )
 }
 
