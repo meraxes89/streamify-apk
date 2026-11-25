@@ -376,9 +376,10 @@ internal class SkikoRuntimeShaderEngine(
         if (snapshot != null) {
             val widthPx = ceil(scope.size.width).toInt()
             val heightPx = ceil(scope.size.height).toInt()
+            val darkenAmount = AdaptiveLuminanceScrim.alphaFor(request.luminance())
             val refracted = runCatching {
                 snapshot.latestInternal?.let { latest ->
-                    offscreenPass.render(latest, widthPx, heightPx, tint)
+                    offscreenPass.render(latest, widthPx, heightPx, tint, darkenAmount)
                 }
             }.getOrNull()
             if (refracted != null) {
@@ -389,6 +390,7 @@ internal class SkikoRuntimeShaderEngine(
 
         val drsPass = dynamicResolutionPass
         if (drsPass != null && program.hasBoundBackdrop) {
+            val darkenAmount = AdaptiveLuminanceScrim.alphaFor(request.luminance())
             val composite = runCatching {
                 drsPass.render(
                     program = program,
@@ -396,6 +398,7 @@ internal class SkikoRuntimeShaderEngine(
                     destinationHeightPx = scope.size.height,
                     chromaticSpread = chromaticSpread,
                     tint = tint,
+                    darkenAmount = darkenAmount,
                 )
             }.getOrNull()
             if (composite != null) {

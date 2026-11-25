@@ -80,6 +80,7 @@ internal class DynamicResolutionOffscreenPass(
         destinationHeightPx: Float,
         chromaticSpread: Float,
         tint: Color,
+        darkenAmount: Float = 0f,
     ): ImageBitmap? {
         val reducedWidth = ceil(destinationWidthPx * captureScale).toInt().coerceAtLeast(1)
         val reducedHeight = ceil(destinationHeightPx * captureScale).toInt().coerceAtLeast(1)
@@ -99,6 +100,7 @@ internal class DynamicResolutionOffscreenPass(
             tintColorG = tint.green,
             tintColorB = tint.blue,
             tintColorA = tint.alpha,
+            darkenAmount = darkenAmount,
         )
 
         paint.shader = program.makeShader()

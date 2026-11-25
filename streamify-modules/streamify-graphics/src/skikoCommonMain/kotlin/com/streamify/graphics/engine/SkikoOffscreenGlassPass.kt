@@ -2,6 +2,7 @@ package com.streamify.graphics.engine
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import com.streamify.graphics.tokens.PrimitiveTokens
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Matrix33
@@ -94,6 +95,7 @@ internal class SkikoOffscreenGlassPass(
         widthPx: Int,
         heightPx: Int,
         tint: Color,
+        darkenAmount: Float = AdaptiveLuminanceScrim.alphaFor(PrimitiveTokens.defaultBackdropLuminance),
     ): ImageBitmap? {
         val w = passWidthFor(widthPx)
         val h = passHeightFor(heightPx)
@@ -117,7 +119,7 @@ internal class SkikoOffscreenGlassPass(
         convertedFrom = backdrop
         convertedImage = skiaBackdrop
 
-        val result = runCatching { renderFresh(skiaBackdrop, w, h, tint) }.getOrNull()
+        val result = runCatching { renderFresh(skiaBackdrop, w, h, tint, darkenAmount) }.getOrNull()
         if (result != null) {
             renderedFrom = skiaBackdrop
             cachedResult = result
@@ -125,7 +127,13 @@ internal class SkikoOffscreenGlassPass(
         return result
     }
 
-    private fun renderFresh(backdrop: Image, w: Int, h: Int, tint: Color): ImageBitmap? {
+    private fun renderFresh(
+        backdrop: Image,
+        w: Int,
+        h: Int,
+        tint: Color,
+        darkenAmount: Float,
+    ): ImageBitmap? {
         // The backdrop child samples the FULL-resolution source; the local
         // matrix rescales pass coordinates (0..w) onto source pixels
         // (0..widthPx) — this is exactly the offscreen downsampling step,
@@ -146,6 +154,7 @@ internal class SkikoOffscreenGlassPass(
             tintColorG = tint.green,
             tintColorB = tint.blue,
             tintColorA = tint.alpha,
+            darkenAmount = darkenAmount,
         )
 
         val target = surface?.takeIf { passWidth == w && passHeight == h }

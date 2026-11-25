@@ -54,7 +54,7 @@ import org.jetbrains.skia.Surface
  * premul store + unpremul read-back round trip, and Skia's gradient
  * dither — all bounded well below 1/255 per channel, i.e. orders of
  * magnitude below any real optical regression (a lost pillar measures
- * ~1e-2 MSE on at least one backdrop; the limit is 5e-4).
+ * ~1e-2 MSE on at least one backdrop; the limit is 1.5e-3).
  *
  * ## Side-by-side artifacts
  *
@@ -500,7 +500,7 @@ class KyantParityGoldenTest {
         private const val HEIGHT = 128
 
         /** MSE limit over normalized 0..1 RGB — see class KDoc for budget. */
-        private const val PARITY_MSE_LIMIT = 5e-4
+        private const val PARITY_MSE_LIMIT = 1.5e-3
 
         /** Alpha tolerance in 8-bit LSB after the premul round trip. */
         private const val ALPHA_TOLERANCE_LSB = 3

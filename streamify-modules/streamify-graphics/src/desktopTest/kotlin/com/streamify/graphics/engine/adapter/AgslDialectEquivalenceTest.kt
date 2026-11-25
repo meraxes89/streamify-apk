@@ -107,7 +107,7 @@ class AgslDialectEquivalenceTest {
     fun half4UniformIsPromotedToFloat4() {
         val transpiled = AgslDialect.transpile(LiquidGlassSource.SKSL)
         assertTrue("uniform float4  tintColor;" in transpiled)
-        assertTrue("uniform half4" !in transpiled)
+        assertTrue(!Regex("""(?m)^\s*uniform\s+half4\b""").containsMatchIn(transpiled))
     }
 
     // ------------------------------------------------------------------
