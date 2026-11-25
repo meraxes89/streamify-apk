@@ -1157,12 +1157,13 @@ object StreamifySyncEngine : KoinComponent {
                             val parts = change.entityKey.split("|")
                             val plSyncId = parts.getOrNull(0) ?: ""
                             val videoId = parts.getOrNull(1) ?: ""
+                            val trackKey = if (videoId.isNotEmpty()) "$plSyncId|$videoId" else change.entityKey
                             val inPlaylist = change.op != SyncOp.DELETE && change.value != "0"
                             if (!inPlaylist) {
                                 opMappings.add(OutboxOpMapping(buildJsonObject {
                                     put("entity", "playlist_track")
                                     put("op", "D")
-                                    put("key", videoId)
+                                    put("key", trackKey)
                                     put("hlc", changeHlc)
                                     put("data", buildJsonObject {
                                         put("playlist_id", plSyncId)
@@ -1173,7 +1174,7 @@ object StreamifySyncEngine : KoinComponent {
                                 opMappings.add(OutboxOpMapping(buildJsonObject {
                                     put("entity", "playlist_track")
                                     put("op", "U")
-                                    put("key", videoId)
+                                    put("key", trackKey)
                                     put("hlc", changeHlc)
                                     put("data", buildJsonObject {
                                         put("playlist_id", plSyncId)
@@ -1190,10 +1191,11 @@ object StreamifySyncEngine : KoinComponent {
                                 val orderedTrackIds = syncOutboxRepository.getPlaylistTrackOrder(localPl.id)
                                 if (orderedTrackIds.isNotEmpty()) {
                                     for ((idx, trkId) in orderedTrackIds.withIndex()) {
+                                        val trackKey = "${change.entityKey}|$trkId"
                                         opMappings.add(OutboxOpMapping(buildJsonObject {
                                             put("entity", "playlist_track")
                                             put("op", "U")
-                                            put("key", trkId)
+                                            put("key", trackKey)
                                             put("hlc", changeHlc)
                                             put("data", buildJsonObject {
                                                 put("playlist_id", change.entityKey)
