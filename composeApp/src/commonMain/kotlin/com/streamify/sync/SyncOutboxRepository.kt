@@ -53,6 +53,7 @@ interface SyncOutboxRepository {
     suspend fun recordPending(change: SyncChangeEntity)
     suspend fun getPending(limit: Int = 500): List<SyncChangeEntity>
     suspend fun markSent(changeIds: List<String>, seq: Long)
+    suspend fun markRejected(changeIds: List<String>)
     suspend fun pruneSent(beforeTimestamp: Long)
     suspend fun getPlaybackEventsBySyncIds(syncIds: List<String>): List<PlaybackEventEntity>
     suspend fun getLocalPlaylistBySyncId(syncId: String): LocalPlaylistEntity?

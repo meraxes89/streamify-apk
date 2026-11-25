@@ -254,6 +254,19 @@ index 1fcea31..7d6729f 100644
              UpdateRepositoryImpl(get())
          }
  
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
+index cd39fe9..e18f459 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
+@@ -22,7 +22,7 @@ internal class SyncChangeRecorder(
+     private val prefs: SyncPrefs,
+ ) {
+     /** Whether a change made now would be recorded. Cheap; lets callers skip reads they only need for sync. */
+-    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null && prefs.current().paired
++    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null
+ 
+     suspend fun flag(
+         kind: String,
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
