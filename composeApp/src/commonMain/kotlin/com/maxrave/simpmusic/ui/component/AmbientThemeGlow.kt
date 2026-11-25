@@ -106,7 +106,8 @@ fun AmbientThemeGlow(
  */
 @Composable
 fun rememberNowPlayingGlowTint(thumbnailUrl: String?): Color? {
-    val networkLoader = rememberNetworkLoader(HttpClient(CIO))
+    val httpClient = remember { HttpClient(CIO) }
+    val networkLoader = rememberNetworkLoader(httpClient)
     val dominantColorState =
         rememberDominantColorState(
             defaultColor = Color.Unspecified,

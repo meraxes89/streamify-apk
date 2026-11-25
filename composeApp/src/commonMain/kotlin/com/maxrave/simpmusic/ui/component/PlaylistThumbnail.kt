@@ -322,29 +322,30 @@ private fun EmptyPlaylistCover(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val gradientColors = playlistTitleGradient(title)
+    val linearBrush = remember(title) {
+        Brush.linearGradient(
+            colors = playlistTitleGradient(title),
+            start = Offset.Zero,
+            end = Offset.Infinite,
+        )
+    }
+    val radialBrush = remember {
+        Brush.radialGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color.Black.copy(alpha = 0.35f),
+            ),
+        )
+    }
     BoxWithConstraints(
         modifier = modifier
-            .background(
-                brush = Brush.linearGradient(
-                    colors = gradientColors,
-                    start = Offset.Zero,
-                    end = Offset.Infinite,
-                ),
-            ),
+            .background(brush = linearBrush),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.35f),
-                        ),
-                    ),
-                ),
+                .background(brush = radialBrush),
         )
 
         val isTiny = maxWidth < 56.dp
@@ -389,14 +390,14 @@ fun PlaylistThumbnail(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val gradientColors = generateGradientFromTitle(title)
+    val gradientBrush = remember(title) {
+        Brush.linearGradient(
+            colors = generateGradientFromTitle(title),
+        )
+    }
     Box(
         modifier = modifier
-            .background(
-                brush = Brush.linearGradient(
-                    colors = gradientColors
-                )
-            )
+            .background(brush = gradientBrush)
     ) {
 
         // Title in bottom right
@@ -487,8 +488,6 @@ private class PlaylistThumbnailPainter(
                 size.height.toInt(),
             ),
         ))
-        Logger.d("PlaylistThumbnailPainter", "Drawing icon $title")
-        Logger.d("PlaylistThumbnailPainter", "Colors: ${colors.map { it.toArgb() }}")
         val centerX = size.width * 0.9f
         val centerY = size.height * 0.1f
         val circleRadius = size.width * 0.1f / 2
@@ -561,13 +560,15 @@ fun painterPlaylistThumbnail(
             )
         }
     val painterRes = painterResource(Res.drawable.monochrome)
-    return PlaylistThumbnailPainter(
-        size = Size(
-            width = with(density) { sizeDp.first.toPx() },
-            height = with(density) { sizeDp.second.toPx() },
-        ),
-        title = title,
-        textLayoutResult = textLayoutResult,
-        iconPainter = painterRes
-    )
+    return remember(density, sizeDp, title, textLayoutResult, painterRes) {
+        PlaylistThumbnailPainter(
+            size = Size(
+                width = with(density) { sizeDp.first.toPx() },
+                height = with(density) { sizeDp.second.toPx() },
+            ),
+            title = title,
+            textLayoutResult = textLayoutResult,
+            iconPainter = painterRes
+        )
+    }
 }

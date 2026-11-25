@@ -361,7 +361,8 @@ fun HomeScreen(
     // leaving the tint as it was.
     val headerImage by viewModel.homeBackground.collectAsStateWithLifecycle()
     var headerImageFailed by remember(headerImage) { mutableStateOf(false) }
-    val networkLoader = rememberNetworkLoader(HttpClient(CIO))
+    val httpClient = remember { HttpClient(CIO) }
+    val networkLoader = rememberNetworkLoader(httpClient)
     val dominantColorState =
         rememberDominantColorState(
             defaultColor = backgroundColor,
@@ -725,6 +726,13 @@ fun HomeScreen(
                         }) { index, item ->
                             Box {
                                 if (index == 0) {
+                                    val glowGradient = remember(animatedColor, pageBackground) {
+                                        listOf(animatedColor, pageBackground)
+                                    }
+                                    val headerOverlayColors = remember(pageBackground) {
+                                        listOf(pageBackground.copy(alpha = 0.6f), pageBackground)
+                                    }
+                                    val scrimBrush = remember(pageBackground) { artworkScrimBrush(pageBackground) }
                                     Box(
                                         modifier =
                                             Modifier
@@ -746,16 +754,19 @@ fun HomeScreen(
                                                     val placeable =
                                                         measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
                                                     layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
-                                                }.angledGradientBackground(listOf(animatedColor, pageBackground), 25f),
+                                                }.angledGradientBackground(glowGradient, 25f),
                                     ) {
                                         if (headerImage != null && !headerImageFailed) {
+                                            val context = LocalPlatformContext.current
+                                            val headerImageRequest = remember(headerImage, context) {
+                                                ImageRequest
+                                                    .Builder(context)
+                                                    .data(headerImage)
+                                                    .crossfade(550)
+                                                    .build()
+                                            }
                                             AsyncImage(
-                                                model =
-                                                    ImageRequest
-                                                        .Builder(LocalPlatformContext.current)
-                                                        .data(headerImage)
-                                                        .crossfade(550)
-                                                        .build(),
+                                                model = headerImageRequest,
                                                 contentDescription = null,
                                                 contentScale = ContentScale.Crop,
                                                 onError = { headerImageFailed = true },
@@ -768,7 +779,7 @@ fun HomeScreen(
                                             Box(
                                                 Modifier
                                                     .fillMaxSize()
-                                                    .angledGradientBackground(listOf(pageBackground.copy(alpha = 0.6f), pageBackground), 25f),
+                                                    .angledGradientBackground(headerOverlayColors, 25f),
                                             )
                                         }
                                         Box(
@@ -780,7 +791,7 @@ fun HomeScreen(
                                                     // dropped off in one short step.
                                                     .fillMaxHeight(0.6f)
                                                     .align(Alignment.BottomCenter)
-                                                    .background(artworkScrimBrush(pageBackground)),
+                                                    .background(scrimBrush),
                                         )
                                     }
                                 }
