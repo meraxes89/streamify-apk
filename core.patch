@@ -447,18 +447,92 @@ index 1fcea31..7d6729f 100644
          }
  
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
-index cd39fe9..e18f459 100644
+index cd39fe9..958ba2b 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
-@@ -22,7 +22,7 @@ internal class SyncChangeRecorder(
+@@ -21,8 +21,16 @@ internal class SyncChangeRecorder(
+     private val dao: SyncDao,
      private val prefs: SyncPrefs,
  ) {
++    private var lastRecordedAtMs: Long = 0L
++
++    private fun monotonicNowMillis(): Long {
++        val now = nowMillis()
++        val next = if (now > lastRecordedAtMs) now else lastRecordedAtMs
++        lastRecordedAtMs = next
++        return next
++    }
      /** Whether a change made now would be recorded. Cheap; lets callers skip reads they only need for sync. */
 -    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null && prefs.current().paired
 +    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null
  
      suspend fun flag(
          kind: String,
+@@ -45,9 +53,31 @@ internal class SyncChangeRecorder(
+     ) {
+         if (!active()) return
+         val syncId = playlistSyncId(playlistId) ?: return
+-        record(SyncKind.LOCAL_PLAYLIST_TRACK, "$syncId|$videoId", SyncOp.SET, if (inPlaylist) ON else OFF)
+-        // An added song lands at the end; the order is what puts it where the user sees it.
+-        record(SyncKind.LOCAL_PLAYLIST_ORDER, syncId, SyncOp.SET, null)
++        val ts = monotonicNowMillis()
++        val devId = prefs.deviceId()
++        storeBatch(
++            listOf(
++                SyncChangeEntity(
++                    changeId = newSyncId(),
++                    entity = SyncKind.LOCAL_PLAYLIST_TRACK,
++                    entityKey = "$syncId|$videoId",
++                    op = SyncOp.SET,
++                    value = if (inPlaylist) ON else OFF,
++                    changedAt = ts,
++                    deviceId = devId,
++                ),
++                // An added song lands at the end; the order is what puts it where the user sees it.
++                SyncChangeEntity(
++                    changeId = newSyncId(),
++                    entity = SyncKind.LOCAL_PLAYLIST_ORDER,
++                    entityKey = syncId,
++                    op = SyncOp.SET,
++                    value = null,
++                    changedAt = ts,
++                    deviceId = devId,
++                ),
++            ),
++        )
+     }
+ 
+     /** Songs moved in the playlist; the order itself is read when sent, so a run of moves sends one. */
+@@ -100,12 +130,16 @@ internal class SyncChangeRecorder(
+                 entityKey = key,
+                 op = op,
+                 value = value,
+-                changedAt = nowMillis(),
++                changedAt = monotonicNowMillis(),
+                 deviceId = prefs.deviceId(),
+             ),
+         )
+     }
+ 
++    private suspend fun storeBatch(changes: List<SyncChangeEntity>) {
++        changes.forEach { store(it) }
++    }
++
+     private suspend fun store(change: SyncChangeEntity) {
+         try {
+             if (prefs.current().phones.isNotEmpty()) dao.recordLogged(change) else dao.recordPending(change)
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt
+index 9c816fc..dab2664 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt
+@@ -96,6 +96,7 @@ internal class SyncEngine(
+                 snapshot.playlistChanges(playlist, deviceId, nowMillis()).forEach { dao.recordPending(it) }
+             }
+         }
++        // Advance sequence cursor immediately after applying changes, before pruning history.
+         prefs.update { it.copy(lastServerSeq = reply.newSeq, lastSyncAt = nowMillis()) }
+         reply.settings?.let { settings.receive(it, desktopName) }
+         dao.pruneSent(nowMillis() - SENT_KEPT_MS)
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
 index 18fac82..3e58472 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
