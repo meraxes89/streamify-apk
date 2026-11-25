@@ -33,6 +33,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.lastOrNull
@@ -149,6 +150,19 @@ object StreamifySyncEngine : KoinComponent {
 
     private val _syncState = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncState: StateFlow<SyncStatus> = _syncState.asStateFlow()
+
+    data class SyncMetrics(
+        val lastSyncTimestamp: Long = 0L,
+        val pendingOutboxCount: Int = 0,
+        val totalAppliedOps: Long = 0L,
+        val totalRejectedOps: Long = 0L,
+        val totalStaleOps: Long = 0L,
+        val currentCursor: Long = 0L,
+        val consecutiveFailures: Int = 0,
+    )
+
+    private val _syncMetrics = MutableStateFlow(SyncMetrics())
+    val syncMetrics: StateFlow<SyncMetrics> = _syncMetrics.asStateFlow()
 
     @Volatile
     private var backoffUntilMs: Long = 0L
@@ -327,6 +341,13 @@ object StreamifySyncEngine : KoinComponent {
 
             consecutiveFailures = 0
             backoffUntilMs = 0L
+            _syncMetrics.update {
+                it.copy(
+                    lastSyncTimestamp = System.currentTimeMillis(),
+                    currentCursor = localCursor,
+                    consecutiveFailures = 0,
+                )
+            }
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
             success
@@ -334,6 +355,9 @@ object StreamifySyncEngine : KoinComponent {
             consecutiveFailures++
             val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
             backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
+            _syncMetrics.update {
+                it.copy(consecutiveFailures = consecutiveFailures)
+            }
             val error = SyncStatus.Error("${e.message ?: "Sync encountered an unexpected error"} (backing off ${delayMs / 1000}s)")
             _syncState.value = error
             error
@@ -1345,6 +1369,13 @@ object StreamifySyncEngine : KoinComponent {
                             if (rejectedChangeIds.isNotEmpty()) {
                                 syncOutboxRepository.markRejected(rejectedChangeIds.toList())
                                 _syncState.value = SyncStatus.Error("Sync push rejected ${rejectedChangeIds.size} changes")
+                            }
+                            _syncMetrics.update {
+                                it.copy(
+                                    totalAppliedOps = it.totalAppliedOps + appliedChangeIds.size,
+                                    totalRejectedOps = it.totalRejectedOps + rejectedChangeIds.size,
+                                    pendingOutboxCount = maxOf(0, it.pendingOutboxCount - appliedChangeIds.size),
+                                )
                             }
                             // Pull cursor is NEVER advanced by sync_push
                         }
