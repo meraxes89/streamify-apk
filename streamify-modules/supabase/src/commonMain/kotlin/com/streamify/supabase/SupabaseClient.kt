@@ -199,7 +199,6 @@ object SupabaseClient {
     }
 
     /**
-    /**
      * Refreshes the active user session using the stored refresh token.
      */
     suspend fun refreshSession(explicitRefreshToken: String? = null): Result<String> = withContext(ioDispatcher) {
