@@ -33,6 +33,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.lastOrNull
@@ -150,6 +151,33 @@ object StreamifySyncEngine : KoinComponent {
     private val _syncState = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncState: StateFlow<SyncStatus> = _syncState.asStateFlow()
 
+    data class SyncMetrics(
+        val lastSyncTimestamp: Long = 0L,
+        val pendingOutboxCount: Int = 0,
+        val totalAppliedOps: Long = 0L,
+        val totalRejectedOps: Long = 0L,
+        val totalStaleOps: Long = 0L,
+        val currentCursor: Long = 0L,
+        val consecutiveFailures: Int = 0,
+    )
+
+    private val _syncMetrics = MutableStateFlow(SyncMetrics())
+    val syncMetrics: StateFlow<SyncMetrics> = _syncMetrics.asStateFlow()
+
+    @Volatile
+    private var backoffUntilMs: Long = 0L
+
+    @Volatile
+    private var consecutiveFailures: Int = 0
+
+    private val backoffPolicy = com.maxrave.domain.utils.RetryPolicy(
+        maxAttempts = 5,
+        initialDelayMs = 1_000L,
+        maxDelayMs = 60_000L,
+        backoffMultiplier = 2.0,
+        fullJitter = true,
+    )
+
     private fun SupervisorJob() = kotlinx.coroutines.SupervisorJob()
 
     /**
@@ -193,6 +221,10 @@ object StreamifySyncEngine : KoinComponent {
      * Suspending orchestrator that executes all sync stages with V3 delta sync & HLC.
      */
     suspend fun syncAll(userId: String? = null): SyncStatus = withContext(Dispatchers.IO) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        if (now < backoffUntilMs) {
+            return@withContext _syncState.value
+        }
         if (!mutex.tryLock()) {
             return@withContext _syncState.value
         }
@@ -307,11 +339,26 @@ object StreamifySyncEngine : KoinComponent {
             // V4.1 Fleet Telemetry: Sync device and version telemetry
             syncDeviceTelemetryInternal(targetUserId, deviceId)
 
+            consecutiveFailures = 0
+            backoffUntilMs = 0L
+            _syncMetrics.update {
+                it.copy(
+                    lastSyncTimestamp = System.currentTimeMillis(),
+                    currentCursor = localCursor,
+                    consecutiveFailures = 0,
+                )
+            }
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
             success
         } catch (e: Exception) {
-            val error = SyncStatus.Error(e.message ?: "Sync encountered an unexpected error")
+            consecutiveFailures++
+            val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
+            backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
+            _syncMetrics.update {
+                it.copy(consecutiveFailures = consecutiveFailures)
+            }
+            val error = SyncStatus.Error("${e.message ?: "Sync encountered an unexpected error"} (backing off ${delayMs / 1000}s)")
             _syncState.value = error
             error
         } finally {
@@ -729,7 +776,9 @@ object StreamifySyncEngine : KoinComponent {
                         channelIds = channelIds,
                         albumBrowseId = albumId,
                         durationSecond = cloudItem.listenedDurationSec.toLong(),
-                        listenedSecond = cloudItem.listenedDurationSec.toLong()
+                        listenedSecond = cloudItem.listenedDurationSec.toLong(),
+                        syncId = cloudEventId,
+                        recordSync = false,
                     ).firstOrNull()
                 }
             }
@@ -1155,12 +1204,13 @@ object StreamifySyncEngine : KoinComponent {
                             val parts = change.entityKey.split("|")
                             val plSyncId = parts.getOrNull(0) ?: ""
                             val videoId = parts.getOrNull(1) ?: ""
+                            val trackKey = if (videoId.isNotEmpty()) "$plSyncId|$videoId" else change.entityKey
                             val inPlaylist = change.op != SyncOp.DELETE && change.value != "0"
                             if (!inPlaylist) {
                                 opMappings.add(OutboxOpMapping(buildJsonObject {
                                     put("entity", "playlist_track")
                                     put("op", "D")
-                                    put("key", videoId)
+                                    put("key", trackKey)
                                     put("hlc", changeHlc)
                                     put("data", buildJsonObject {
                                         put("playlist_id", plSyncId)
@@ -1171,7 +1221,7 @@ object StreamifySyncEngine : KoinComponent {
                                 opMappings.add(OutboxOpMapping(buildJsonObject {
                                     put("entity", "playlist_track")
                                     put("op", "U")
-                                    put("key", videoId)
+                                    put("key", trackKey)
                                     put("hlc", changeHlc)
                                     put("data", buildJsonObject {
                                         put("playlist_id", plSyncId)
@@ -1188,10 +1238,11 @@ object StreamifySyncEngine : KoinComponent {
                                 val orderedTrackIds = syncOutboxRepository.getPlaylistTrackOrder(localPl.id)
                                 if (orderedTrackIds.isNotEmpty()) {
                                     for ((idx, trkId) in orderedTrackIds.withIndex()) {
+                                        val trackKey = "${change.entityKey}|$trkId"
                                         opMappings.add(OutboxOpMapping(buildJsonObject {
                                             put("entity", "playlist_track")
                                             put("op", "U")
-                                            put("key", trkId)
+                                            put("key", trackKey)
                                             put("hlc", changeHlc)
                                             put("data", buildJsonObject {
                                                 put("playlist_id", change.entityKey)
@@ -1319,6 +1370,13 @@ object StreamifySyncEngine : KoinComponent {
                                 syncOutboxRepository.markRejected(rejectedChangeIds.toList())
                                 _syncState.value = SyncStatus.Error("Sync push rejected ${rejectedChangeIds.size} changes")
                             }
+                            _syncMetrics.update {
+                                it.copy(
+                                    totalAppliedOps = it.totalAppliedOps + appliedChangeIds.size,
+                                    totalRejectedOps = it.totalRejectedOps + rejectedChangeIds.size,
+                                    pendingOutboxCount = maxOf(0, it.pendingOutboxCount - appliedChangeIds.size),
+                                )
+                            }
                             // Pull cursor is NEVER advanced by sync_push
                         }
                     }
@@ -1326,146 +1384,6 @@ object StreamifySyncEngine : KoinComponent {
 
                 val sevenDaysAgo = Clock.System.now().toEpochMilliseconds() - 7 * 24 * 60 * 60 * 1000L
                 syncOutboxRepository.pruneSent(sevenDaysAgo)
-            }
-
-            // 2. Snapshot reconciliation fallback
-            val ops = mutableListOf<JsonObject>()
-
-            // Liked songs
-            val localLiked = songRepository.getLikedSongs().firstOrNull() ?: emptyList()
-            for (song in localLiked) {
-                if (song.videoId.isBlank() || song.videoId.startsWith("trk_")) continue
-                ops.add(buildJsonObject {
-                    put("entity", "like")
-                    put("op", "U")
-                    put("key", song.videoId)
-                    put("hlc", hlc)
-                    put("data", buildJsonObject {
-                        put("created_at", song.favoriteAt?.toString())
-                        put("meta", buildJsonObject {
-                            put("title", song.title)
-                            put("artist", song.artistName?.firstOrNull() ?: "Unknown")
-                            put("album", song.albumName ?: "Streamify")
-                            put("duration_sec", song.durationSeconds)
-                            put("thumb_url", song.thumbnails ?: "")
-                        })
-                    })
-                })
-            }
-
-            // Followed artists
-            val localArtists = artistRepository.getFollowedArtists().firstOrNull() ?: emptyList()
-            for (artist in localArtists) {
-                if (artist.channelId.isBlank() || !artist.followed) continue
-                ops.add(buildJsonObject {
-                    put("entity", "favorite")
-                    put("op", "U")
-                    put("key", "artist:${artist.channelId}")
-                    put("hlc", hlc)
-                    put("data", buildJsonObject {
-                        put("item_type", "artist")
-                        put("item_id", artist.channelId)
-                        put("name", artist.name)
-                    })
-                })
-            }
-
-            // Liked albums
-            val localLikedAlbums = try {
-                albumRepository.getLikedAlbums().firstOrNull() ?: emptyList()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            for (album in localLikedAlbums) {
-                if (album.browseId.isBlank() || !album.liked) continue
-                ops.add(buildJsonObject {
-                    put("entity", "favorite")
-                    put("op", "U")
-                    put("key", "album:${album.browseId}")
-                    put("hlc", hlc)
-                    put("data", buildJsonObject {
-                        put("item_type", "album")
-                        put("item_id", album.browseId)
-                        put("title", album.title)
-                    })
-                })
-            }
-
-            // Library tracks
-            val localSongs = songRepository.getAllSongs(Int.MAX_VALUE).firstOrNull() ?: emptyList()
-            val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
-            for (song in localInLibrary) {
-                if (song.videoId.isBlank() || song.videoId.startsWith("trk_")) continue
-                ops.add(buildJsonObject {
-                    put("entity", "library_track")
-                    put("op", "U")
-                    put("key", song.videoId)
-                    put("hlc", hlc)
-                    put("data", buildJsonObject {
-                        put("added_at", song.inLibrary.toString())
-                    })
-                })
-            }
-
-            // Saved YouTube playlists
-            val localLikedPlaylists = playlistRepository.getLikedPlaylists().firstOrNull() ?: emptyList()
-            for (pl in localLikedPlaylists) {
-                if (pl.id.isBlank() || !pl.liked) continue
-                ops.add(buildJsonObject {
-                    put("entity", "favorite")
-                    put("op", "U")
-                    put("key", "playlist:${pl.id}")
-                    put("hlc", hlc)
-                    put("data", buildJsonObject {
-                        put("item_type", "playlist")
-                        put("item_id", pl.id)
-                        put("metadata", buildJsonObject {
-                            put("title", pl.title)
-                            put("thumbnail", pl.thumbnails)
-                            put("track_count", pl.trackCount.toString())
-                        })
-                    })
-                })
-            }
-
-            // Favorite podcasts
-            val localFavPodcasts = podcastRepository.getFavoritePodcasts().firstOrNull() ?: emptyList()
-            for (pod in localFavPodcasts) {
-                if (pod.podcastId.isBlank() || !pod.isFavorite) continue
-                ops.add(buildJsonObject {
-                    put("entity", "favorite")
-                    put("op", "U")
-                    put("key", "podcast:${pod.podcastId}")
-                    put("hlc", hlc)
-                    put("data", buildJsonObject {
-                        put("item_type", "podcast")
-                        put("item_id", pod.podcastId)
-                        put("title", pod.title)
-                    })
-                })
-            }
-
-            // Podcast episode states
-            val localEpStates = getLocalEpisodeStates()
-            for ((epId, ep) in localEpStates) {
-                if (epId.isBlank()) continue
-                ops.add(buildJsonObject {
-                    put("entity", "episode_state")
-                    put("op", "U")
-                    put("key", epId)
-                    put("hlc", ep.modifiedHlc)
-                    put("data", buildJsonObject {
-                        put("podcast_id", ep.podcastId)
-                        put("position_sec", ep.positionSec)
-                        put("completed", ep.completed)
-                    })
-                })
-            }
-
-            if (ops.isNotEmpty()) {
-                for (chunk in ops.chunked(100)) {
-                    SupabaseLibrarySync.syncPush(JsonArray(chunk), deviceId).getOrNull()
-                }
             }
         } catch (_: Exception) {
         }

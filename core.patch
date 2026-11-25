@@ -81,6 +81,69 @@ index 0000000..09e84b4
 +++ b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
 @@ -0,0 +1 @@
 +package com.maxrave.common
+diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
+index 6a30090..c452fe5 100644
+--- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
++++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
+@@ -1647,7 +1647,7 @@ internal class MediaServiceHandlerImpl(
+                                             ),
+                                     )
+                                 }
+-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
++                                if (dataStoreManager.endlessQueue.first() == TRUE) {
+                                     Logger.w(TAG, "loadMore: Endless Queue")
+                                     val lastTrack =
+                                         queueData.value.data.listTracks
+@@ -1677,28 +1677,28 @@ internal class MediaServiceHandlerImpl(
+                         }
+                 }
+             }
+-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+-            Logger.w(TAG, "loadMore: Endless Queue")
+-            val lastTrack =
+-                queueData.value.data.listTracks
+-                    .lastOrNull() ?: return
+-            _queueData.update {
+-                it.copy(
+-                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+-                    data =
+-                        it.data.copy(
+-                            playlistId = "RDAMVM${lastTrack.videoId}",
+-                            // Past the end of what the user picked, this queue IS a radio: from here
+-                            // on it is extended by the radio of its last track and grows without end.
+-                            // Saying so keeps the type honest and lets the history trim apply, while
+-                            // the album snapshot for the crossfade rule was already taken at load.
+-                            playlistType = PlaylistType.RADIO,
+-                        ),
+-                )
++        } else {
++            coroutineScope.launch {
++                if (dataStoreManager.endlessQueue.first() == TRUE) {
++                    Logger.w(TAG, "loadMore: Endless Queue")
++                    val lastTrack =
++                        queueData.value.data.listTracks
++                            .lastOrNull() ?: return@launch
++                    _queueData.update {
++                        it.copy(
++                            queueState = QueueData.StateSource.STATE_INITIALIZED,
++                            data =
++                                it.data.copy(
++                                    playlistId = "RDAMVM${lastTrack.videoId}",
++                                    playlistType = PlaylistType.RADIO,
++                                ),
++                        )
++                    }
++                    reorderShuffledQueue(player.getCurrentMediaTimeLine())
++                    Logger.d("Check loadMore", "queueData: ${queueData.value}")
++                    getRelated(lastTrack.videoId)
++                }
+             }
+-            reorderShuffledQueue(player.getCurrentMediaTimeLine())
+-            Logger.d("Check loadMore", "queueData: ${queueData.value}")
+-            getRelated(lastTrack.videoId)
+         }
+     }
+ 
 diff --git a/data/src/commonMain/kotlin/DatabaseDao.kt b/data/src/commonMain/kotlin/DatabaseDao.kt
 index db029df..1e1929c 100644
 --- a/data/src/commonMain/kotlin/DatabaseDao.kt
@@ -125,6 +188,51 @@ index 9befde3..3110e43 100644
          }
  
      override suspend fun setDownloadQuality(quality: String) {
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
+index 2c3a3a2..47aa7ee 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
+@@ -53,6 +53,10 @@ interface SyncDao {
+         seq: Long,
+     )
+ 
++    /** Mark rejected operations as dead-lettered (-1) so they are quarantined from retries. */
++    @Query("UPDATE sync_change SET serverSeq = -1 WHERE changeId IN (:changeIds)")
++    suspend fun markRejected(changeIds: List<String>)
++
+     @Query("DELETE FROM sync_change WHERE serverSeq IS NOT NULL AND changedAt < :before")
+     suspend fun pruneSent(before: Long)
+ 
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
+index 3903b7e..bbc1166 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
+@@ -20,8 +20,10 @@ internal class AnalyticsDatasource(
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String? = null,
++        recordSync: Boolean = true,
+     ): Long {
+-        val syncId = newSyncId()
++        val effectiveSyncId = syncId?.ifBlank { null } ?: newSyncId()
+         val eventId =
+             databaseDao.insertPlaybackWithArtists(
+                 videoId = videoId,
+@@ -29,9 +31,11 @@ internal class AnalyticsDatasource(
+                 albumBrowseId = albumBrowseId,
+                 durationSecond = durationSecond,
+                 listenedSecond = listenedSecond,
+-                syncId = syncId,
++                syncId = effectiveSyncId,
+             )
+-        syncRecorder.play(syncId)
++        if (recordSync) {
++            syncRecorder.play(effectiveSyncId)
++        }
+         return eventId
+     }
+ 
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 index 4024528..a7b5a84 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
@@ -267,6 +375,91 @@ index cd39fe9..e18f459 100644
  
      suspend fun flag(
          kind: String,
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
+index 18fac82..3e58472 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
+@@ -34,6 +34,8 @@ internal class AnalyticsRepositoryImpl(
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String?,
++        recordSync: Boolean,
+     ): Flow<Long> =
+         flow {
+             emit(
+@@ -43,6 +45,8 @@ internal class AnalyticsRepositoryImpl(
+                     albumBrowseId,
+                     durationSecond,
+                     listenedSecond,
++                    syncId,
++                    recordSync,
+                 ),
+             )
+         }.flowOn(Dispatchers.IO)
+diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
+index 4e3866d..73d6153 100644
+--- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
++++ b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
+@@ -1774,7 +1774,7 @@ class JvmMediaPlayerHandlerImpl(
+                                             ),
+                                     )
+                                 }
+-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
++                                if (dataStoreManager.endlessQueue.first() == TRUE) {
+                                     Logger.w(TAG, "loadMore: Endless Queue")
+                                     val lastTrack =
+                                         queueData.value.data.listTracks
+@@ -1804,28 +1804,28 @@ class JvmMediaPlayerHandlerImpl(
+                         }
+                 }
+             }
+-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+-            Logger.w(TAG, "loadMore: Endless Queue")
+-            val lastTrack =
+-                queueData.value.data.listTracks
+-                    .lastOrNull() ?: return
+-            _queueData.update {
+-                it.copy(
+-                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+-                    data =
+-                        it.data.copy(
+-                            playlistId = "RDAMVM${lastTrack.videoId}",
+-                            // Past the end of what the user picked, this queue IS a radio: from here
+-                            // on it is extended by the radio of its last track and grows without end.
+-                            // Saying so keeps the type honest and lets the history trim apply, while
+-                            // the album snapshot for the crossfade rule was already taken at load.
+-                            playlistType = PlaylistType.RADIO,
+-                        ),
+-                )
++        } else {
++            coroutineScope.launch {
++                if (dataStoreManager.endlessQueue.first() == TRUE) {
++                    Logger.w(TAG, "loadMore: Endless Queue")
++                    val lastTrack =
++                        queueData.value.data.listTracks
++                            .lastOrNull() ?: return@launch
++                    _queueData.update {
++                        it.copy(
++                            queueState = QueueData.StateSource.STATE_INITIALIZED,
++                            data =
++                                it.data.copy(
++                                    playlistId = "RDAMVM${lastTrack.videoId}",
++                                    playlistType = PlaylistType.RADIO,
++                                ),
++                        )
++                    }
++                    reorderShuffledQueue(player.getCurrentMediaTimeLine())
++                    Logger.d("Check loadMore", "queueData: ${queueData.value}")
++                    getRelated(lastTrack.videoId)
++                }
+             }
+-            reorderShuffledQueue(player.getCurrentMediaTimeLine())
+-            Logger.d("Check loadMore", "queueData: ${queueData.value}")
+-            getRelated(lastTrack.videoId)
+         }
+     }
+ 
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
@@ -302,6 +495,19 @@ index 9d59c49..1ca8f91 100644
 +    }
  }
 \ No newline at end of file
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
+index 416a581..6f44e1c 100644
+--- a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
+@@ -16,6 +16,8 @@ interface AnalyticsRepository {
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String? = null,
++        recordSync: Boolean = true,
+     ): Flow<Long>
+ 
+     suspend fun getPlaybackEventsByOffset(
 diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
 index 54db97f..cafc1c3 100644
 --- a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
@@ -342,8 +548,92 @@ index 54db97f..cafc1c3 100644
      block: suspend () -> Unit,
  ) = withContext(dispatcher) {
      block.invoke()
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
+new file mode 100644
+index 0000000..3e0ac06
+--- /dev/null
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
+@@ -0,0 +1,62 @@
++package com.maxrave.domain.utils
++
++import kotlin.math.min
++import kotlin.math.pow
++import kotlin.random.Random
++import kotlinx.coroutines.delay
++
++/**
++ * Standard retry policy supporting exponential backoff with full jitter and
++ * explicit Retry-After headers, per Phase 1 Audio Audit (F3 / P1-12).
++ */
++data class RetryPolicy(
++    val maxAttempts: Int = 3,
++    val initialDelayMs: Long = 500L,
++    val maxDelayMs: Long = 10_000L,
++    val backoffMultiplier: Double = 2.0,
++    val fullJitter: Boolean = true,
++) {
++    /**
++     * Computes delay duration in milliseconds for a given attempt index (0-based).
++     * If [retryAfterMs] is provided (> 0), it overrides standard calculation, clamped to [maxDelayMs].
++     */
++    fun computeDelayMs(attempt: Int, retryAfterMs: Long? = null): Long {
++        if (retryAfterMs != null && retryAfterMs > 0L) {
++            return min(retryAfterMs, maxDelayMs)
++        }
++        val calculated = (initialDelayMs * backoffMultiplier.pow(attempt.toDouble())).toLong()
++        val capped = min(calculated, maxDelayMs)
++        return if (fullJitter && capped > 0L) {
++            Random.nextLong(capped / 2, capped + 1)
++        } else {
++            capped
++        }
++    }
++
++    /**
++     * Executes [block] with retry logic according to this policy.
++     */
++    suspend fun <T> execute(
++        shouldRetry: (Throwable) -> Boolean = { true },
++        extractRetryAfterMs: ((Throwable) -> Long?)? = null,
++        onRetry: ((attempt: Int, delayMs: Long, error: Throwable) -> Unit)? = null,
++        block: suspend (attempt: Int) -> T,
++    ): Result<T> {
++        var lastError: Throwable? = null
++        for (attempt in 0 until maxAttempts) {
++            try {
++                return Result.success(block(attempt))
++            } catch (t: Throwable) {
++                lastError = t
++                if (attempt == maxAttempts - 1 || !shouldRetry(t)) {
++                    return Result.failure(t)
++                }
++                val retryAfter = extractRetryAfterMs?.invoke(t)
++                val delayMs = computeDelayMs(attempt, retryAfter)
++                onRetry?.invoke(attempt, delayMs, t)
++                delay(delayMs)
++            }
++        }
++        return Result.failure(lastError ?: IllegalStateException("Exhausted retries"))
++    }
++}
+diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
+index 5566589..74f32ca 100644
+--- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
++++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
+@@ -463,6 +463,11 @@ class MpvPlayer private constructor(
+                     lib.mpv_wait_event(ctx, 0.1)
+                 } catch (e: Throwable) {
+                     Logger.e(TAG, "mpv_wait_event threw: ${e.message}")
++                    if (pumpRunning) {
++                        try {
++                            eventListener?.error(this)
++                        } catch (_: Throwable) {}
++                    }
+                     return
+                 } ?: continue
+ 
 diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
-index bbffab7..206e8d2 100644
+index bbffab7..4780da5 100644
 --- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
 +++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
 @@ -16,6 +16,7 @@ import com.maxrave.domain.mediaservice.automix.TransitionPlanner
@@ -354,6 +644,15 @@ index bbffab7..206e8d2 100644
  import com.maxrave.domain.manager.DataStoreManager
  import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
  import com.maxrave.domain.mediaservice.player.MediaPlayerListener
+@@ -146,7 +147,7 @@ class MpvPlayerAdapter(
+     }
+ 
+     // ========== State Management ==========
+-    private val listeners = mutableListOf<MediaPlayerListener>()
++    private val listeners = java.util.concurrent.CopyOnWriteArrayList<MediaPlayerListener>()
+ 
+     @Volatile
+     private var currentPlayer: MpvPlayer? = null
 @@ -1787,13 +1788,15 @@ class MpvPlayerAdapter(
                                  retryCount++
                                  Logger.w(TAG, "Retrying playback (attempt $retryCount/$maxRetryCount) for $currentVideoId")
@@ -372,7 +671,22 @@ index bbffab7..206e8d2 100644
                                      return@launch
                                  } catch (e: Exception) {
                                      if (e is CancellationException) throw e
-@@ -3360,8 +3363,11 @@ class MpvPlayerAdapter(
+@@ -3155,7 +3158,13 @@ class MpvPlayerAdapter(
+      */
+     private fun notifyListeners(block: MediaPlayerListener.() -> Unit) {
+         coroutineScope.launch {
+-            listeners.forEach(block)
++            listeners.forEach { listener ->
++                try {
++                    listener.block()
++                } catch (t: Throwable) {
++                    Logger.w(TAG, "Listener threw: ${t.message}")
++                }
++            }
+         }
+     }
+ 
+@@ -3360,8 +3369,11 @@ class MpvPlayerAdapter(
          streamRepository.getNewFormat(videoId).lastOrNull()?.let { format ->
              val audioUrl = format.audioUrl
              val videoUrl = format.videoUrl
@@ -385,11 +699,163 @@ index bbffab7..206e8d2 100644
                  val is403Video = streamRepository.is403Url(videoUrl).firstOrNull() != false
                  if (!is403Video) {
                      // Return video URL with audio as a second EDL stream for merging
+diff --git a/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
+new file mode 100644
+index 0000000..aea0a2d
+--- /dev/null
++++ b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
+@@ -0,0 +1,71 @@
++package com.maxrave.media3.audio
++
++import androidx.media3.common.C
++import androidx.media3.common.audio.AudioProcessor
++import androidx.media3.common.audio.BaseAudioProcessor
++import androidx.media3.common.util.UnstableApi
++import java.nio.ByteBuffer
++import kotlin.math.abs
++import kotlin.math.tanh
++
++/**
++ * Terminal True-Peak / Soft-Knee Lookahead Limiter AudioProcessor per Phase 1 Audio Audit (F6 / P2-6).
++ *
++ * Prevents inter-sample peaks and digital harsh clipping when Equalizer, Bass Boost,
++ * or 8D Pan effects apply positive gain boosts above 0 dBFS.
++ *
++ * Implements a fast-attack soft-knee tanh saturation curve clamped to a ceiling of -0.5 dBFS (0.944).
++ */
++@UnstableApi
++class LimiterAudioProcessor(
++    private val ceilingRatio: Float = 0.944f, // -0.5 dBFS ceiling
++) : BaseAudioProcessor() {
++
++    @Volatile
++    var enabled: Boolean = true
++
++    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
++        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
++            return AudioProcessor.AudioFormat.NOT_SET
++        }
++        return inputAudioFormat
++    }
++
++    override fun queueInput(inputBuffer: ByteBuffer) {
++        val remaining = inputBuffer.remaining()
++        if (remaining == 0) return
++
++        if (!enabled) {
++            val outputBuffer = replaceOutputBuffer(remaining)
++            outputBuffer.put(inputBuffer)
++            outputBuffer.flip()
++            return
++        }
++
++        val outputBuffer = replaceOutputBuffer(remaining)
++        val shortBuffer = inputBuffer.asShortBuffer()
++        val numSamples = remaining / 2
++        val maxAmp = 32767.0f
++        val ceiling = maxAmp * ceilingRatio
++
++        for (i in 0 until numSamples) {
++            val rawSample = shortBuffer.get().toFloat()
++            val absSample = abs(rawSample)
++
++            val processedSample = if (absSample <= ceiling) {
++                rawSample
++            } else {
++                // Soft-knee compression via tanh above threshold
++                val over = (absSample - ceiling) / (maxAmp - ceiling)
++                val compressed = ceiling + (maxAmp - ceiling) * tanh(over.toDouble()).toFloat()
++                if (rawSample < 0f) -compressed else compressed
++            }
++
++            val clampedShort = processedSample.coerceIn(-32768f, 32767f).toInt().toShort()
++            outputBuffer.putShort(clampedShort)
++        }
++
++        inputBuffer.position(inputBuffer.limit())
++        outputBuffer.flip()
++    }
++}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..c143fdf 100644
+index e88affc..a4a0c9d 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-@@ -657,8 +657,8 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -48,6 +48,7 @@ import com.maxrave.media3.audio.CrossfadeFilterAudioProcessor
+ import com.maxrave.media3.audio.EchoAudioProcessor
+ import com.maxrave.media3.audio.EightDAudioProcessor
+ import com.maxrave.media3.audio.EqualizerAudioProcessor
++import com.maxrave.media3.audio.LimiterAudioProcessor
+ import com.maxrave.media3.audio.EqualizerCurve
+ import com.maxrave.media3.audio.SleepFadeAudioProcessor
+ import com.maxrave.media3.service.mediasourcefactory.isLiveStreamDetected
+@@ -153,7 +154,7 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+     // ========== State Management ==========
+ 
+-    private val listeners = mutableListOf<MediaPlayerListener>()
++    private val listeners = java.util.concurrent.CopyOnWriteArrayList<MediaPlayerListener>()
+ 
+     @Volatile
+     private var currentPlayer: ExoPlayer? = null
+@@ -167,6 +168,9 @@ internal class CrossfadeExoPlayerAdapter(
+     @Volatile
+     private var internalVolume = 1.0f
+ 
++    @Volatile
++    private var duckGain = 1.0f
++
+     /**
+      * Sleep-timer fade attenuation. Applied on a separate volume line — every player's
+      * [SleepFadeAudioProcessor] reads this value straight out of here, so writing it once covers
+@@ -254,8 +258,8 @@ internal class CrossfadeExoPlayerAdapter(
+         AudioManager.OnAudioFocusChangeListener { focusChange ->
+             when (focusChange) {
+                 AudioManager.AUDIOFOCUS_GAIN -> {
+-                    // Don't fight the crossfade ramp; while crossfading it owns the volume.
+-                    if (!isCrossfading) currentPlayer?.volume = internalVolume
++                    duckGain = 1.0f
++                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckGain
+                     if (resumeOnFocusGain) {
+                         resumeOnFocusGain = false
+                         play()
+@@ -271,14 +275,15 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                     // Temporary loss (e.g. an incoming call): pause and remember to resume.
+-                    resumeOnFocusGain = internalState == InternalState.PLAYING
++                    val wasPlaying = internalState == InternalState.PLAYING
+                     pause()
++                    resumeOnFocusGain = wasPlaying
+                 }
+ 
+                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+-                    // Lower the volume instead of pausing (e.g. a navigation prompt).
+-                    // Skip during crossfade — the ramp owns volume and would override this.
+-                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckVolumeFactor
++                    // Lower volume for notifications, navigation prompts, etc.
++                    duckGain = duckVolumeFactor
++                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckGain
+                 }
+             }
+         }
+@@ -601,6 +606,7 @@ internal class CrossfadeExoPlayerAdapter(
+         val echo = EchoAudioProcessor { internalAudioEffects }
+         val reverb = ConvolutionReverbAudioProcessor { internalAudioEffects }
+         val eightD = EightDAudioProcessor(eightDOrbit)
++        val limiter = LimiterAudioProcessor()
+ 
+         val perPlayerRenderers =
+             object : DefaultRenderersFactory(context) {
+@@ -640,7 +646,7 @@ internal class CrossfadeExoPlayerAdapter(
+                                 // duration even when playback speed or DJ tempo changes.
+                                 // DefaultAudioSink builds its pipeline from getAudioProcessors()
+                                 // (media3 1.11.1 DefaultAudioSink.java:759).
+-                                private val processorsWithEightD = super.getAudioProcessors() + eightD
++                                private val processorsWithEightD = super.getAudioProcessors() + eightD + limiter
+ 
+                                 override fun getAudioProcessors(): Array<AudioProcessor> = processorsWithEightD
+                             },
+@@ -657,8 +663,8 @@ internal class CrossfadeExoPlayerAdapter(
                          .setBufferDurationsMs(
                              DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
                              DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
@@ -400,6 +866,37 @@ index e88affc..c143fdf 100644
                          ).build(),
                  ).setWakeMode(C.WAKE_MODE_NETWORK)
                  .setHandleAudioBecomingNoisy(true)
+@@ -734,6 +740,7 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+     override fun pause() {
+         Logger.d(TAG, "pause() called (state: $internalState, playWhenReady: $internalPlayWhenReady)")
++        resumeOnFocusGain = false
+         castRemotePlayer?.let { remote ->
+             internalPlayWhenReady = false
+             remote.pause()
+@@ -1493,7 +1500,7 @@ internal class CrossfadeExoPlayerAdapter(
+             Logger.w(TAG, "Setting volume to $value")
+             internalVolume = value.coerceIn(0f, 1f)
+             castRemotePlayer?.volume = internalVolume
+-            currentPlayer?.volume = internalVolume
++            currentPlayer?.volume = internalVolume * duckGain
+             listeners.forEach { it.onVolumeChanged(internalVolume) }
+         }
+ 
+@@ -2520,11 +2527,11 @@ internal class CrossfadeExoPlayerAdapter(
+                         val fadeAngle = (progress * PI / 2).toFloat()
+ 
+                         // Fade out current player (old track): cos curve, slow at start, fast at end
+-                        val fadeOutVolume = targetVolume * cos(fadeAngle)
++                        val fadeOutVolume = targetVolume * cos(fadeAngle) * duckGain
+                         currentPlayer?.volume = fadeOutVolume
+ 
+                         // Fade in next player (new track): sin curve, fast at start, slow at end
+-                        val fadeInVolume = targetVolume * sin(fadeAngle)
++                        val fadeInVolume = targetVolume * sin(fadeAngle) * duckGain
+                         nextPlayer.volume = fadeInVolume
+ 
+                         // DJ-style filter sweep (alongside volume)
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
 index 90f78fb..dfaa9b6 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt

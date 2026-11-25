@@ -22,14 +22,14 @@ class HybridLogicalClockTest {
         assertTrue(t2 > t1, "t2 should be greater than t1")
         assertTrue(t3 > t2, "t3 should be greater than t2")
 
-        // Counter increments in lowest 16 bits
-        assertEquals((t1 and 0xFFFFL) + 1L, t2 and 0xFFFFL)
-        assertEquals((t2 and 0xFFFFL) + 1L, t3 and 0xFFFFL)
+        // Counter increments in lowest 22 bits
+        assertEquals(HybridLogicalClock.unpackCounter(t1) + 1, HybridLogicalClock.unpackCounter(t2))
+        assertEquals(HybridLogicalClock.unpackCounter(t2) + 1, HybridLogicalClock.unpackCounter(t3))
 
-        // Physical time packed in upper 48 bits
-        assertEquals(physical, t1 ushr 16)
-        assertEquals(physical, t2 ushr 16)
-        assertEquals(physical, t3 ushr 16)
+        // Physical time packed in upper 42 bits
+        assertEquals(physical, HybridLogicalClock.unpackPhysical(t1))
+        assertEquals(physical, HybridLogicalClock.unpackPhysical(t2))
+        assertEquals(physical, HybridLogicalClock.unpackPhysical(t3))
     }
 
     @Test
@@ -39,11 +39,11 @@ class HybridLogicalClockTest {
 
         val t1 = HybridLogicalClock.now(p1)
         val t2 = HybridLogicalClock.now(p1)
-        assertEquals(1L, t2 and 0xFFFFL)
+        assertEquals(1, HybridLogicalClock.unpackCounter(t2))
 
         val t3 = HybridLogicalClock.now(p2)
-        assertEquals(p2, t3 ushr 16)
-        assertEquals(0L, t3 and 0xFFFFL)
+        assertEquals(p2, HybridLogicalClock.unpackPhysical(t3))
+        assertEquals(0, HybridLogicalClock.unpackCounter(t3))
     }
 
     @Test
