@@ -3,9 +3,18 @@ package com.streamify.announcements
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class GovernanceConfig(
+    val globalCooldownMs: Long = 24L * 60 * 60 * 1000L,
+    val emergencyPriorityThreshold: Int = 500,
+    val defaultSnoozeCooldownMs: Long = 7L * 24 * 60 * 60 * 1000L,
+    val allowedExtraDomains: List<String> = emptyList()
+)
+
+@Serializable
 data class SignedManifest(
     val version: Int,
     val popupModalEnabled: Boolean = false,
+    val governance: GovernanceConfig = GovernanceConfig(),
     val issuedAtEpochMs: Long,
     val announcements: List<Announcement>,
     val revokedIds: List<String> = emptyList(),

@@ -6,15 +6,23 @@ package com.streamify.announcements
  */
 class FrequencyGovernor(
     private val store: AnnouncementStore,
-    private val globalCooldownMs: Long = 24L * 60 * 60 * 1000L // Max 1 announcement every 24 hours across the app
+    private val globalCooldownMs: Long = 24L * 60 * 60 * 1000L // Default fallback: Max 1 announcement every 24 hours across the app
 ) {
 
-    suspend fun isEligible(announcement: Announcement, nowEpochMs: Long): Boolean {
-        // Global budget check: high-priority announcements (priority >= 500) bypass global cooldown
-        if (announcement.priority < 500) {
+    suspend fun isEligible(
+        announcement: Announcement,
+        nowEpochMs: Long,
+        governance: GovernanceConfig = GovernanceConfig(globalCooldownMs = globalCooldownMs)
+    ): Boolean {
+        val effectiveEmergencyThreshold = governance.emergencyPriorityThreshold
+        // Defensive clamping: coerce cooldown to safe range (0 to 365 days)
+        val effectiveCooldownMs = governance.globalCooldownMs.coerceIn(0L, 365L * 24 * 60 * 60 * 1000L)
+
+        // Global budget check: high-priority announcements bypass global cooldown
+        if (announcement.priority < effectiveEmergencyThreshold) {
             val globalLastShown = store.getGlobalLastShownEpochMs()
             // Protect against clock-skew / rollback: only enforce cooldown if now is forward of last shown
-            if (globalLastShown > 0L && nowEpochMs >= globalLastShown && (nowEpochMs - globalLastShown) < globalCooldownMs) {
+            if (globalLastShown > 0L && nowEpochMs >= globalLastShown && (nowEpochMs - globalLastShown) < effectiveCooldownMs) {
                 return false
             }
         }
@@ -58,13 +66,23 @@ class FrequencyGovernor(
         )
     }
 
-    suspend fun recordDismissed(announcement: Announcement, nowEpochMs: Long, snooze: Boolean) {
+    suspend fun recordDismissed(
+        announcement: Announcement,
+        nowEpochMs: Long,
+        snooze: Boolean,
+        governance: GovernanceConfig = GovernanceConfig()
+    ) {
         val current = store.getRecord(announcement.id)
         if (snooze && announcement.dismissPolicy == DismissPolicy.LATER_SNOOZE) {
+            val snoozeCooldown = if (announcement.frequency.cooldownMs > 0L) {
+                announcement.frequency.cooldownMs
+            } else {
+                governance.defaultSnoozeCooldownMs.coerceAtLeast(0L)
+            }
             store.saveRecord(
                 current.copy(
                     state = MessageState.SNOOZED,
-                    snoozeUntil = nowEpochMs + announcement.frequency.cooldownMs
+                    snoozeUntil = nowEpochMs + snoozeCooldown
                 )
             )
         } else {

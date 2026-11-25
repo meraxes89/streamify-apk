@@ -202,4 +202,119 @@ class LaunchPopupControlTest {
         )
         assertTrue(governor.isEligible(emergency, t0 + 1000L))
     }
+
+    @Test
+    fun testSignedManifestDeserializationWithGovernance() {
+        val payload = """
+            {
+              "version": 1,
+              "popupModalEnabled": true,
+              "governance": {
+                "globalCooldownMs": 43200000,
+                "emergencyPriorityThreshold": 300,
+                "defaultSnoozeCooldownMs": 172800000,
+                "allowedExtraDomains": ["status.streamify.app", "docs.streamify.app/guides"]
+              },
+              "issuedAtEpochMs": 1732485600000,
+              "signatureHex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "revokedIds": [],
+              "announcements": []
+            }
+        """.trimIndent()
+
+        val manifest = json.decodeFromString<SignedManifest>(payload)
+
+        assertEquals(43200000L, manifest.governance.globalCooldownMs)
+        assertEquals(300, manifest.governance.emergencyPriorityThreshold)
+        assertEquals(172800000L, manifest.governance.defaultSnoozeCooldownMs)
+        assertEquals(2, manifest.governance.allowedExtraDomains.size)
+        assertTrue(manifest.governance.allowedExtraDomains.contains("status.streamify.app"))
+    }
+
+    @Test
+    fun testFrequencyGovernorWithCustomGovernanceCooldown() = runBlocking {
+        val store = AnnouncementStore()
+        val governor = FrequencyGovernor(store)
+
+        val t0 = 100000L
+        store.updateGlobalLastShownEpochMs(t0)
+
+        val routine = Announcement(
+            id = "routine_governance_cooldown",
+            priority = 50,
+            content = emptyMap()
+        )
+
+        // Set remote cooldown to 12 hours (43_200_000 ms)
+        val customGovernance = GovernanceConfig(globalCooldownMs = 12L * 60 * 60 * 1000L)
+
+        // 10 hours later: still within 12h cooldown -> ineligible
+        assertFalse(governor.isEligible(routine, t0 + 10L * 60 * 60 * 1000L, governance = customGovernance))
+
+        // 13 hours later: cooldown has elapsed -> eligible
+        assertTrue(governor.isEligible(routine, t0 + 13L * 60 * 60 * 1000L, governance = customGovernance))
+    }
+
+    @Test
+    fun testFrequencyGovernorWithCustomEmergencyThreshold() = runBlocking {
+        val store = AnnouncementStore()
+        val governor = FrequencyGovernor(store)
+
+        val t0 = 100000L
+        store.updateGlobalLastShownEpochMs(t0)
+
+        val customGovernance = GovernanceConfig(emergencyPriorityThreshold = 300)
+
+        val subThreshold = Announcement(
+            id = "p299_announcement",
+            priority = 299,
+            content = emptyMap()
+        )
+        val atThreshold = Announcement(
+            id = "p300_announcement",
+            priority = 300,
+            content = emptyMap()
+        )
+
+        // 299 is below threshold -> blocked by cooldown
+        assertFalse(governor.isEligible(subThreshold, t0 + 1000L, governance = customGovernance))
+
+        // 300 meets threshold -> bypasses cooldown
+        assertTrue(governor.isEligible(atThreshold, t0 + 1000L, governance = customGovernance))
+    }
+
+    @Test
+    fun testDeepLinkAllowlistDynamicDomains() {
+        val testUrl = "https://status.streamify.app/changelog"
+        assertFalse(DeepLinkAllowlist.isAllowed(testUrl))
+
+        DeepLinkAllowlist.setDynamicAllowedDomains(listOf("status.streamify.app"))
+        assertTrue(DeepLinkAllowlist.isAllowed(testUrl))
+
+        val subpathUrl = "https://docs.streamify.app/guides/setup"
+        assertFalse(DeepLinkAllowlist.isAllowed(subpathUrl))
+
+        DeepLinkAllowlist.setDynamicAllowedDomains(listOf("status.streamify.app", "docs.streamify.app/guides"))
+        assertTrue(DeepLinkAllowlist.isAllowed(subpathUrl))
+    }
+
+    @Test
+    fun testBackwardCompatibilityWithoutGovernanceBlock() {
+        val payload = """
+            {
+              "version": 1,
+              "popupModalEnabled": true,
+              "issuedAtEpochMs": 1732485600000,
+              "signatureHex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "announcements": []
+            }
+        """.trimIndent()
+
+        val manifest = json.decodeFromString<SignedManifest>(payload)
+
+        assertEquals(24L * 60 * 60 * 1000L, manifest.governance.globalCooldownMs)
+        assertEquals(500, manifest.governance.emergencyPriorityThreshold)
+        assertEquals(7L * 24 * 60 * 60 * 1000L, manifest.governance.defaultSnoozeCooldownMs)
+        assertTrue(manifest.governance.allowedExtraDomains.isEmpty())
+    }
 }
