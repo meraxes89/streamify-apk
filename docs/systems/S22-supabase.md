@@ -22,7 +22,7 @@ tests: [supabase/sql/tests/]
 
 ## Current truth
 
-- Contract v4 and deterministic LWW are governed by ADR-008; RFC-002 is the target-schema proposal.
+- Contract v4 and deterministic LWW are governed by ADR-008 (`2026_11_p8_v4_server_contract_and_lww_hardening.sql`); RFC-002 is the target-schema proposal.
 
 ## Interfaces
 
@@ -43,4 +43,4 @@ tests: [supabase/sql/tests/]
 
 - Keep migration numbering and RLS tests in the same PR as RPC changes.
 
-<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

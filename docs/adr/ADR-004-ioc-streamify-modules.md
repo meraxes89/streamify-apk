@@ -70,4 +70,4 @@ vendored-file integrity; the guarded include keeps an upstream-pure build
 constructible.
 
 ---
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

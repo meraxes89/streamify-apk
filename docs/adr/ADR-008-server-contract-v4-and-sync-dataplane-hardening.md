@@ -110,4 +110,4 @@ We establish **Server Contract v4** and execute migration `2026_11_p8_v4_server_
 - Tested in `supabase/sql/tests/`.
 
 ---
-<!-- doc-verified-against: d6a48d617334f75289889d833ad0f5d0df058897 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
