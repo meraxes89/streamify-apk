@@ -8,7 +8,7 @@ class HlcTamperAndTieBreakTest {
 
     @Test
     fun testMonotonicityUnderEqualPhysicalTime() {
-        HybridLogicalClock.resetForTesting(lastMs = 1000L, counter = 0)
+        HybridLogicalClock.resetForTesting(lastMs = 0L, counter = 0)
         val hlc1 = HybridLogicalClock.now(1000L)
         val hlc2 = HybridLogicalClock.now(1000L)
         val hlc3 = HybridLogicalClock.now(1000L)

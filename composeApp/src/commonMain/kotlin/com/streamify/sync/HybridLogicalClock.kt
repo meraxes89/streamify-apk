@@ -26,13 +26,13 @@ object HybridLogicalClock {
     private var logicalCounter: Int = 0
 
     @Volatile
-    private var serverTimeOffsetMs: Long = 0L
+    private var lastKnownServerTimeMs: Long = 0L
 
     /**
-     * Updates recorded offset relative to trusted server time from Date/Timestamp headers.
+     * Updates recorded server time from Date/Timestamp headers.
      */
     fun updateServerTime(serverEpochMs: Long, localNowMs: Long = Clock.System.now().toEpochMilliseconds()) {
-        serverTimeOffsetMs = serverEpochMs - localNowMs
+        lastKnownServerTimeMs = serverEpochMs
     }
 
     /**
@@ -40,9 +40,8 @@ object HybridLogicalClock {
      */
     fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long =
         synchronizedLock(lock) {
-            val serverEstimatedNow = physicalMillis + serverTimeOffsetMs
-            val clampedPhysical = if (physicalMillis > serverEstimatedNow + MAX_SKEW_MS) {
-                serverEstimatedNow + MAX_SKEW_MS
+            val clampedPhysical = if (lastKnownServerTimeMs > 0L && physicalMillis > lastKnownServerTimeMs + MAX_SKEW_MS) {
+                lastKnownServerTimeMs + MAX_SKEW_MS
             } else {
                 physicalMillis
             }
@@ -98,10 +97,10 @@ object HybridLogicalClock {
         return (hlc and COUNTER_MASK).toInt()
     }
 
-    internal fun resetForTesting(lastMs: Long = 0L, counter: Int = 0, serverOffset: Long = 0L) {
+    internal fun resetForTesting(lastMs: Long = 0L, counter: Int = 0, serverTime: Long = 0L) {
         lastPhysicalMs = lastMs
         logicalCounter = counter
-        serverTimeOffsetMs = serverOffset
+        lastKnownServerTimeMs = serverTime
     }
 
     /**
