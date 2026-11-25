@@ -571,64 +571,54 @@ expect fun KeepScreenOn()
 
 @Composable
 fun LazyListState.isScrollingUp(): State<Boolean> {
-    var previousIndex by remember(this) { mutableIntStateOf(firstVisibleItemIndex) }
-    var previousScrollOffset by remember(this) { mutableIntStateOf(firstVisibleItemScrollOffset) }
+    val isScrollingUp = remember(this) { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
-        snapshotFlow { layoutInfo.totalItemsCount }.collect {
-            Logger.w("isScrollingUp", "firstVisibleItemIndex: $firstVisibleItemIndex")
-            previousIndex = firstVisibleItemIndex
-            previousScrollOffset = firstVisibleItemScrollOffset
-        }
-    }
-
-    return remember(this) {
-        derivedStateOf {
-            if (firstVisibleItemIndex > 0) {
-                if (previousIndex != firstVisibleItemIndex) {
-                    previousIndex > firstVisibleItemIndex
+    LaunchedEffect(this) {
+        var previousIndex = firstVisibleItemIndex
+        var previousScrollOffset = firstVisibleItemScrollOffset
+        snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }
+            .collect { (currentIndex, currentOffset) ->
+                if (currentIndex > 0) {
+                    isScrollingUp.value = if (previousIndex != currentIndex) {
+                        previousIndex > currentIndex
+                    } else {
+                        previousScrollOffset >= currentOffset
+                    }
                 } else {
-                    previousScrollOffset >= firstVisibleItemScrollOffset
-                }.also {
-                    previousIndex = firstVisibleItemIndex
-                    previousScrollOffset = firstVisibleItemScrollOffset
+                    isScrollingUp.value = true
                 }
-            } else {
-                true
+                previousIndex = currentIndex
+                previousScrollOffset = currentOffset
             }
-        }
     }
+
+    return isScrollingUp
 }
 
 @Composable
 fun LazyGridState.isScrollingUp(): State<Boolean> {
-    var previousIndex by remember(this) { mutableIntStateOf(firstVisibleItemIndex) }
-    var previousScrollOffset by remember(this) { mutableIntStateOf(firstVisibleItemScrollOffset) }
+    val isScrollingUp = remember(this) { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
-        snapshotFlow { layoutInfo.totalItemsCount }.collect {
-            Logger.w("isScrollingUp", "firstVisibleItemIndex: $firstVisibleItemIndex")
-            previousIndex = firstVisibleItemIndex
-            previousScrollOffset = firstVisibleItemScrollOffset
-        }
-    }
-
-    return remember(this) {
-        derivedStateOf {
-            if (firstVisibleItemIndex > 0) {
-                if (previousIndex != firstVisibleItemIndex) {
-                    previousIndex > firstVisibleItemIndex
+    LaunchedEffect(this) {
+        var previousIndex = firstVisibleItemIndex
+        var previousScrollOffset = firstVisibleItemScrollOffset
+        snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }
+            .collect { (currentIndex, currentOffset) ->
+                if (currentIndex > 0) {
+                    isScrollingUp.value = if (previousIndex != currentIndex) {
+                        previousIndex > currentIndex
+                    } else {
+                        previousScrollOffset >= currentOffset
+                    }
                 } else {
-                    previousScrollOffset >= firstVisibleItemScrollOffset
-                }.also {
-                    previousIndex = firstVisibleItemIndex
-                    previousScrollOffset = firstVisibleItemScrollOffset
+                    isScrollingUp.value = true
                 }
-            } else {
-                true
+                previousIndex = currentIndex
+                previousScrollOffset = currentOffset
             }
-        }
     }
+
+    return isScrollingUp
 }
 
 fun Palette?.getColorFromPalette(): Color {
