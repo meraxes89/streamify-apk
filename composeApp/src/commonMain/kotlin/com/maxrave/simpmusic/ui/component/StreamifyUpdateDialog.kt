@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.maxrave.simpmusic.data.update.ResolvedPlatformBinary
+import com.maxrave.simpmusic.data.update.UpdateDownloadState
+import com.maxrave.simpmusic.data.update.UpdateUrgency
 import com.maxrave.simpmusic.data.update.UpdateSanitizer
 import com.maxrave.simpmusic.ui.theme.fontFamily
 import com.maxrave.simpmusic.ui.theme.typo
@@ -60,18 +62,20 @@ fun StreamifyUpdateDialog(
     changelog: String?,
     binary: ResolvedPlatformBinary,
     isBreaking: Boolean = false,
+    urgency: UpdateUrgency = if (isBreaking) UpdateUrgency.ENFORCED else UpdateUrgency.SOFT,
+    remainingHours: Int = 48,
+    downloadState: UpdateDownloadState = UpdateDownloadState.Idle,
+    onRetryDownload: () -> Unit = {},
     onConfirmUpdate: () -> Unit,
     onSkipLaunch: () -> Unit,
 ) {
-    // 3-second micro-delay only if flagged as breaking change; otherwise 0
-    var countdownSeconds by remember { mutableIntStateOf(if (isBreaking) 3 else 0) }
+    val isEnforced = urgency == UpdateUrgency.ENFORCED
+    var countdownSeconds by remember(urgency) { mutableIntStateOf(urgency.skipCooldownSeconds) }
 
-    LaunchedEffect(isBreaking) {
-        if (isBreaking) {
-            while (countdownSeconds > 0) {
-                delay(1000L)
-                countdownSeconds--
-            }
+    LaunchedEffect(urgency) {
+        while (countdownSeconds > 0) {
+            delay(1000L)
+            countdownSeconds--
         }
     }
 
@@ -90,11 +94,11 @@ fun StreamifyUpdateDialog(
         }
 
     Dialog(
-        onDismissRequest = { if (countdownSeconds == 0) onSkipLaunch() },
+        onDismissRequest = { if (!isEnforced && countdownSeconds == 0) onSkipLaunch() },
         properties =
             DialogProperties(
-                dismissOnBackPress = countdownSeconds == 0,
-                dismissOnClickOutside = countdownSeconds == 0,
+                dismissOnBackPress = !isEnforced && countdownSeconds == 0,
+                dismissOnClickOutside = !isEnforced && countdownSeconds == 0,
                 usePlatformDefaultWidth = false,
             ),
     ) {
@@ -245,7 +249,82 @@ fun StreamifyUpdateDialog(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
                 )
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // In-place download progress & integrity status
+                when (downloadState) {
+                    is UpdateDownloadState.Downloading -> {
+                        val mbDone = (downloadState.bytesDownloaded / (1024f * 1024f))
+                        val mbTotal = (downloadState.totalBytes / (1024f * 1024f))
+                        val progressLabel = if (downloadState.totalBytes > 0L) {
+                            "${(mbDone * 10).toInt() / 10f} MB / ${(mbTotal * 10).toInt() / 10f} MB"
+                        } else {
+                            "${(mbDone * 10).toInt() / 10f} MB"
+                        }
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = "Downloading update...",
+                                    style = typo().labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = progressLabel,
+                                    style = typo().labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            if (downloadState.totalBytes > 0L) {
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    progress = { downloadState.progress },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                )
+                            } else {
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+                    is UpdateDownloadState.Verifying -> {
+                        Text(
+                            text = "Verifying package integrity...",
+                            style = typo().labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    is UpdateDownloadState.Error -> {
+                        Text(
+                            text = "Download paused: ${downloadState.message}",
+                            style = typo().labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    else -> {
+                        if (urgency == UpdateUrgency.URGENT_10S) {
+                            Text(
+                                text = "Update required in ${remainingHours}h to keep streaming uninterrupted.",
+                                style = typo().labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                        } else if (urgency == UpdateUrgency.ENFORCED) {
+                            Text(
+                                text = "Update required to continue online streaming. Offline downloads remain accessible.",
+                                style = typo().labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+                }
 
                 // 4. Action Bar (Optical Alignment & Psychological Choice Architecture)
                 Row(
@@ -253,26 +332,44 @@ fun StreamifyUpdateDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Secondary Action: Skip (with graceful countdown if breaking)
-                    TextButton(
-                        onClick = onSkipLaunch,
-                        enabled = countdownSeconds == 0,
-                    ) {
-                        Text(
-                            text = if (countdownSeconds > 0) "Skip in ${countdownSeconds}s" else "Skip this launch",
-                            style = typo().bodySmall,
-                            color =
-                                if (countdownSeconds == 0) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    Color.Gray
-                                },
-                        )
+                    // Secondary Action: Skip (hidden when ENFORCED)
+                    if (!isEnforced) {
+                        TextButton(
+                            onClick = onSkipLaunch,
+                            enabled = countdownSeconds == 0,
+                        ) {
+                            Text(
+                                text = if (countdownSeconds > 0) "Skip in ${countdownSeconds}s" else "Skip this launch",
+                                style = typo().bodySmall,
+                                color =
+                                    if (countdownSeconds == 0) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        Color.Gray
+                                    },
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
                     }
 
-                    // Primary Action: 1-Click Update
+                    // Primary Action: 1-Click Install / Download / Retry
+                    val primaryLabel = when (downloadState) {
+                        is UpdateDownloadState.Ready -> "Install Now"
+                        is UpdateDownloadState.Downloading -> "Downloading..."
+                        is UpdateDownloadState.Verifying -> "Verifying..."
+                        is UpdateDownloadState.Error -> "Resume Download"
+                        is UpdateDownloadState.Idle -> binary.buttonLabel.ifBlank { "Update Now" }
+                    }
                     Button(
-                        onClick = onConfirmUpdate,
+                        onClick = {
+                            if (downloadState is UpdateDownloadState.Error) {
+                                onRetryDownload()
+                            } else {
+                                onConfirmUpdate()
+                            }
+                        },
+                        enabled = downloadState !is UpdateDownloadState.Downloading && downloadState !is UpdateDownloadState.Verifying,
                         shape = RoundedCornerShape(10.dp),
                         colors =
                             ButtonDefaults.buttonColors(
@@ -282,7 +379,7 @@ fun StreamifyUpdateDialog(
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
                     ) {
                         Text(
-                            text = binary.buttonLabel.ifBlank { "Update Now" },
+                            text = primaryLabel,
                             style = typo().labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         )
                     }

@@ -1318,6 +1318,36 @@ class SharedViewModel(
                     val data = response.data
                     when (response) {
                         is Resource.Success if (data != null) -> {
+                            val nowMs = System.currentTimeMillis()
+                            val manifest = com.maxrave.simpmusic.data.update.UpdateStateHolder.latestManifest
+                            val seenVer = dataStoreManager.getString("UPDATE_FIRST_SEEN_VERSION").first()
+                            val seenAtStr = dataStoreManager.getString("UPDATE_FIRST_SEEN_AT_MS").first()
+                            val firstSeenAtMs = if (seenVer == data.tagName && !seenAtStr.isNullOrBlank()) {
+                                seenAtStr.toLongOrNull() ?: nowMs
+                            } else {
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_VERSION", data.tagName)
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_AT_MS", nowMs.toString())
+                                nowMs
+                            }
+                            val graceHours = manifest?.graceHours ?: 48
+                            val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                                com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                                com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+
+                            // Network-bound background pre-fetch (resumable via HTTP Range)
+                            val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
+                                tag = data.tagName,
+                                artifacts = manifest?.artifacts ?: emptyMap(),
+                            )
+                            val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                            com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                tag = data.tagName,
+                                url = binary.downloadUrl,
+                                expectedSha256 = sha,
+                            )
+
                             _updateResponse.value = data
                             showedUpdateDialog = true
                         }
@@ -1333,6 +1363,36 @@ class SharedViewModel(
                     val data = response.data
                     when (response) {
                         is Resource.Success if (data != null) -> {
+                            val nowMs = System.currentTimeMillis()
+                            val manifest = com.maxrave.simpmusic.data.update.UpdateStateHolder.latestManifest
+                            val seenVer = dataStoreManager.getString("UPDATE_FIRST_SEEN_VERSION").first()
+                            val seenAtStr = dataStoreManager.getString("UPDATE_FIRST_SEEN_AT_MS").first()
+                            val firstSeenAtMs = if (seenVer == data.tagName && !seenAtStr.isNullOrBlank()) {
+                                seenAtStr.toLongOrNull() ?: nowMs
+                            } else {
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_VERSION", data.tagName)
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_AT_MS", nowMs.toString())
+                                nowMs
+                            }
+                            val graceHours = manifest?.graceHours ?: 48
+                            val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                                com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                                com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+
+                            // Network-bound background pre-fetch (resumable via HTTP Range)
+                            val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
+                                tag = data.tagName,
+                                artifacts = manifest?.artifacts ?: emptyMap(),
+                            )
+                            val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                            com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                tag = data.tagName,
+                                url = binary.downloadUrl,
+                                expectedSha256 = sha,
+                            )
+
                             _updateResponse.value = data
                             showedUpdateDialog = true
                         }

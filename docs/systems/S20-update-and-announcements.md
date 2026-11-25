@@ -22,7 +22,8 @@ tests: [composeApp/src/commonTest/kotlin/com/maxrave/simpmusic/data/update/, com
 
 ## Current truth
 
-- Update resolver lives in commonMain with per-platform binary resolvers.
+- Update resolver lives in commonMain with per-platform binary resolvers and resumable `PlatformUpdater` (HTTP `Range` + SHA-256 verification).
+- 48-hour `UpdateUrgency` escalation (`SOFT` 0–12h, `ACTIVE_5S` 12–36h, `URGENT_10S` 36–48h, `ENFORCED` 48h+ or `isBreaking`).
 
 ## Interfaces
 

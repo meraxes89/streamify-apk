@@ -1019,12 +1019,14 @@ fun App(
                         )
                     } else if (shouldShowUpdateDialog) {
                         val response = updateData ?: return@Scaffold
+                        val manifest = UpdateStateHolder.latestManifest
                         val binary = remember(response.tagName) {
                             resolveDeviceBinary(
                                 tag = response.tagName,
-                                artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                                artifacts = manifest?.artifacts ?: emptyMap(),
                             )
                         }
+                        val downloadState by com.maxrave.simpmusic.data.update.PlatformUpdater.state.collectAsStateWithLifecycle()
                         val currentVersion = remember { VersionManager.getVersionName() }
                         StreamifyUpdateDialog(
                             targetVersion = response.tagName,
@@ -1033,10 +1035,31 @@ fun App(
                             changelog = response.body,
                             binary = binary,
                             isBreaking = UpdateStateHolder.isBreaking,
+                            urgency = UpdateStateHolder.urgency,
+                            remainingHours = UpdateStateHolder.remainingHours,
+                            downloadState = downloadState,
+                            onRetryDownload = {
+                                val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                                com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                    tag = response.tagName,
+                                    url = binary.downloadUrl,
+                                    expectedSha256 = sha,
+                                )
+                            },
                             onConfirmUpdate = {
-                                shouldShowUpdateDialog = false
-                                viewModel.setShowedUpdateDialog(false)
-                                openUrl(binary.downloadUrl)
+                                if (downloadState is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) {
+                                    com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
+                                        onFallbackOpenUrl = { url -> openUrl(url) },
+                                        fallbackUrl = binary.downloadUrl,
+                                    )
+                                } else {
+                                    val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                                    com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                        tag = response.tagName,
+                                        url = binary.downloadUrl,
+                                        expectedSha256 = sha,
+                                    )
+                                }
                             },
                             onSkipLaunch = {
                                 shouldShowUpdateDialog = false
