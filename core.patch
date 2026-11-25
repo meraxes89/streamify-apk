@@ -44,36 +44,6 @@ index 157c0d8..1c04c59 100644
 +    }
  }
 \ No newline at end of file
-diff --git a/common/src/commonMain/kotlin/com/maxrave/common/Config.kt b/common/src/commonMain/kotlin/com/maxrave/common/Config.kt
-index e52f961..2efdfb3 100644
---- a/common/src/commonMain/kotlin/com/maxrave/common/Config.kt
-+++ b/common/src/commonMain/kotlin/com/maxrave/common/Config.kt
-@@ -342,19 +342,22 @@ object QUALITY {
-         mapOf(
-             // Split into the Opus and AAC families; the plain "High" was always the Opus one.
-             "High - 256kps (YT Premium)" to items[2].toString(),
-+            "HIGH" to items[2].toString(),
-+            "High" to items[2].toString(),
-+            "high" to items[2].toString(),
-         )
- 
-     /**
-      * The stored label as a currently-valid one: itself when still valid, its replacement when it
--     * is a known older label, and [items]`[0]` for anything unrecognised.
-+     * is a known older label, and [items]`[2]` (best quality) for anything unrecognised.
-      *
-      * Migration is lazy on purpose — nothing rewrites the stored value, so a read never races a
-      * write. The stored text is replaced the next time the user picks an entry themselves.
-      */
-     fun normalize(saved: String?): String {
--        val label = saved ?: return items[0].toString()
-+        val label = saved ?: return items[2].toString()
-         if (items.any { it.toString() == label }) return label
--        return LEGACY_ITEMS[label] ?: items[0].toString()
-+        return LEGACY_ITEMS[label] ?: items[2].toString()
-     }
- 
-     /** The itag a stored label selects. Goes through [normalize], so older labels still resolve. */
 diff --git a/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
 new file mode 100644
 index 0000000..09e84b4
@@ -397,6 +367,334 @@ index 18fac82..3e58472 100644
                  ),
              )
          }.flowOn(Dispatchers.IO)
+diff --git a/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt b/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt
+index bc3bcfb..4dedd05 100644
+--- a/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt
++++ b/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt
+@@ -1,15 +1,20 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
+diff --git a/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt b/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt
+index bc3bcfb..84a22a6 100644
+--- a/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt
++++ b/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt
+@@ -1,15 +1,208 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.data.entities.NewFormatEntity
++import com.maxrave.domain.data.model.browse.album.Track
++import com.maxrave.domain.data.model.mediaService.SponsorSkipSegments
++import com.maxrave.domain.data.player.AudioEffects
++import com.maxrave.domain.data.player.AudioOutput
++import com.maxrave.domain.data.player.EightDEffect
++import com.maxrave.domain.data.player.GenericCastState
++import com.maxrave.domain.data.player.GenericCommandButton
++import com.maxrave.domain.data.player.GenericMediaItem
++import com.maxrave.domain.data.player.GenericPlaybackParameters
++import com.maxrave.domain.data.player.PlayerError
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.ControlState
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.mediaservice.handler.NowPlayingTrackState
++import com.maxrave.domain.mediaservice.handler.PlayerEvent
++import com.maxrave.domain.mediaservice.handler.QueueData
++import com.maxrave.domain.mediaservice.handler.RepeatState
++import com.maxrave.domain.mediaservice.handler.SimpleMediaState
++import com.maxrave.domain.mediaservice.handler.SleepTimerState
++import com.maxrave.domain.mediaservice.handler.ToastType
++import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
++import com.maxrave.domain.mediaservice.player.MediaPlayerListener
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asStateFlow
++
++object NoOpMediaPlayerInterface : MediaPlayerInterface {
++    override fun play() {}
++    override fun pause() {}
++    override fun stop() {}
++    override fun seekTo(positionMs: Long) {}
++    override fun seekTo(mediaItemIndex: Int, positionMs: Long) {}
++    override fun seekBack() {}
++    override fun seekForward() {}
++    override fun seekToNext() {}
++    override fun seekToPrevious() {}
++    override fun seekToPreviousMediaItem() {}
++    override fun prepare() {}
++    override fun setMediaItem(mediaItem: GenericMediaItem) {}
++    override fun addMediaItem(mediaItem: GenericMediaItem) {}
++    override fun addMediaItem(index: Int, mediaItem: GenericMediaItem) {}
++    override fun removeMediaItem(index: Int) {}
++    override fun removeMediaItems(fromIndex: Int, toIndex: Int, onRemoved: (removedIds: List<String>) -> Unit) {
++        onRemoved(emptyList())
++    }
++    override fun moveMediaItem(fromIndex: Int, toIndex: Int) {}
++    override fun moveShuffledItem(fromShuffledIndex: Int, toShuffledIndex: Int) {}
++    override fun clearMediaItems() {}
++    override fun replaceMediaItem(index: Int, mediaItem: GenericMediaItem) {}
++    override fun getMediaItemAt(index: Int): GenericMediaItem? = null
++    override fun getCurrentMediaTimeLine(): List<GenericMediaItem> = emptyList()
++    override fun getUnshuffledIndex(shuffledIndex: Int): Int = shuffledIndex
++
++    override val isPlaying: Boolean = false
++    override val currentPosition: Long = 0L
++    override val duration: Long = 0L
++    override val bufferedPosition: Long = 0L
++    override val bufferedPercentage: Int = 0
++    override val currentMediaItem: GenericMediaItem? = null
++    override val currentMediaItemIndex: Int = 0
++    override val mediaItemCount: Int = 0
++    override val contentPosition: Long = 0L
++    override val playbackState: Int = 1 // STATE_IDLE
++
++    override fun hasNextMediaItem(): Boolean = false
++    override fun hasPreviousMediaItem(): Boolean = false
++
++    override var shuffleModeEnabled: Boolean = false
++    override var repeatMode: Int = 0
++    override var playWhenReady: Boolean = false
++    override var playbackParameters: GenericPlaybackParameters = GenericPlaybackParameters(1f, 1f)
++
++    override val audioSessionId: Int = 0
++    override var volume: Float = 1f
++    override var sleepFadeFactor: Float = 1f
++    override var crossfadeSuppressed: Boolean = false
++    override var albumTrackIds: Set<String> = emptySet()
++    override var skipSilenceEnabled: Boolean = false
++
++    override fun setEqualizer(bandsDb: List<Float>, preampDb: Float) {}
++    override fun setAudioEffects(effects: AudioEffects) {}
++    override fun setEightD(effect: EightDEffect?) {}
++    override val eightDAvailable: StateFlow<Boolean> = MutableStateFlow(false)
++    override val audioOutputs: StateFlow<List<AudioOutput>> = MutableStateFlow(emptyList())
++    override fun selectAudioOutput(id: String?) {}
++    override fun refreshAudioOutputs() {}
++    override suspend fun loadWaveform(mediaId: String, onProgress: (FloatArray) -> Unit): FloatArray? = null
++
++    override fun addListener(listener: MediaPlayerListener) {}
++    override fun removeListener(listener: MediaPlayerListener) {}
++    override fun release() {}
++}
++
++class NoOpMediaPlayerHandler : MediaPlayerHandler {
++    override val player: MediaPlayerInterface = NoOpMediaPlayerInterface
++
++    private val _simpleMediaState = MutableStateFlow<SimpleMediaState>(SimpleMediaState.Initial)
++    override val simpleMediaState: StateFlow<SimpleMediaState> = _simpleMediaState.asStateFlow()
++
++    private val _nowPlaying = MutableStateFlow<GenericMediaItem?>(null)
++    override val nowPlaying: StateFlow<GenericMediaItem?> = _nowPlaying.asStateFlow()
++
++    private val _queueData = MutableStateFlow<QueueData?>(null)
++    override val queueData: StateFlow<QueueData?> = _queueData.asStateFlow()
++
++    private val _controlState = MutableStateFlow(
++        ControlState(
++            isPlaying = false,
++            isShuffle = false,
++            repeatState = RepeatState.None,
++            isLiked = false,
++            isNextAvailable = false,
++            isPreviousAvailable = false,
++            isCrossfading = false,
++            volume = 1f,
++        ),
++    )
++    override val controlState: StateFlow<ControlState> = _controlState.asStateFlow()
++
++    private val _nowPlayingState = MutableStateFlow(NowPlayingTrackState.initial())
++    override val nowPlayingState: StateFlow<NowPlayingTrackState> = _nowPlayingState.asStateFlow()
++
++    private val _sleepTimerState = MutableStateFlow(SleepTimerState(isDone = false, timeRemaining = 0))
++    override val sleepTimerState: StateFlow<SleepTimerState> = _sleepTimerState.asStateFlow()
++
++    private val _skipSegments = MutableStateFlow<List<SponsorSkipSegments>?>(null)
++    override val skipSegments: StateFlow<List<SponsorSkipSegments>?> = _skipSegments.asStateFlow()
++
++    private val _format = MutableStateFlow<NewFormatEntity?>(null)
++    override val format: StateFlow<NewFormatEntity?> = _format.asStateFlow()
++
++    private val _currentSongIndex = MutableStateFlow(0)
++    override val currentSongIndex: StateFlow<Int> = _currentSongIndex.asStateFlow()
++
++    private val _castState = MutableStateFlow(GenericCastState(isRemote = false, deviceName = null))
++    override val castState: StateFlow<GenericCastState> = _castState.asStateFlow()
++
++    override var onUpdateNotification: (List<GenericCommandButton>) -> Unit = {}
++    override var pushPlayerError: (PlayerError) -> Unit = {}
++    override var showToast: (ToastType) -> Unit = {}
++
++    override suspend fun onPlayerEvent(playerEvent: PlayerEvent) {}
++    override fun toggleRadio() {}
++    override fun toggleLike() {}
++    override fun like(liked: Boolean) {}
++    override fun resetSongAndQueue() {}
++    override fun sleepStart(minutes: Int) {}
++    override fun sleepStop() {}
++    override fun removeMediaItem(position: Int) {}
++    override fun addMediaItem(mediaItem: GenericMediaItem, playWhenReady: Boolean) {}
++    override fun clearMediaItems() {}
++    override fun addMediaItemList(mediaItemList: List<GenericMediaItem>) {}
++    override fun playMediaItemInMediaSource(index: Int) {}
++    override fun currentSongIndex(): Int = 0
++    override fun currentOrderIndex(): Int = 0
++    override suspend fun swap(from: Int, to: Int) {}
++    override fun resetCrossfade() {}
++    override fun shufflePlaylist(randomTrackIndex: Int) {}
++    override fun loadMore() {}
++    override fun getRelated(videoId: String) {}
++    override fun setQueueData(queueData: QueueData.Data) {}
++    override fun getCurrentMediaItem(): GenericMediaItem? = null
++    override suspend fun moveItemUp(position: Int) {}
++    override suspend fun moveItemDown(position: Int) {}
++    override suspend fun moveItemToPlayNext(position: Int) {}
++    override fun addFirstMediaItemToIndex(mediaItem: GenericMediaItem?, index: Int) {}
++    override fun reset() {}
++    override suspend fun load(downloaded: Int, index: Int?) {}
++    override suspend fun loadMoreCatalog(listTrack: ArrayList<Track>, isAddToQueue: Boolean) {}
++    override suspend fun updateCatalog(downloaded: Int, index: Int?): Boolean = false
++    override fun addQueueToPlayer() {}
++    override fun loadPlaylistOrAlbum(index: Int?) {}
++    override fun setCurrentSongIndex(index: Int) {}
++    override suspend fun playNext(track: Track) {}
++    override suspend fun <T> loadMediaItem(anyTrack: T, type: String, index: Int?) {}
++    override fun getPlayerDuration(): Long = 0L
++    override fun getProgress(): Long = 0L
++    override fun startProgressUpdate() {}
++    override fun stopProgressUpdate() {}
++    override fun startBufferedUpdate() {}
++    override fun stopBufferedUpdate() {}
++    override fun mayBeNormalizeVolume() {}
++    override fun mayBeSaveRecentSong(runBlocking: Boolean) {}
++    override fun mayBeSavePlaybackState() {}
++    override fun mayBeRestoreQueue() {}
++    override suspend fun restoreQueueAndPlay(): Boolean = false
++    override fun shouldReleaseOnTaskRemoved(): Boolean = false
++    override fun release() {}
++}
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
+diff --git a/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt b/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt
+index bc3bcfb..4dedd05 100644
+--- a/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt
++++ b/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt
+@@ -1,15 +1,20 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
+diff --git a/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt b/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt
+index bc3bcfb..4dedd05 100644
+--- a/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt
++++ b/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt
+@@ -1,15 +1,20 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
 diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
 index 4e3866d..73d6153 100644
 --- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
