@@ -111,6 +111,7 @@ compose-material3-lib = { group = "androidx.compose.material3", name = "material
 compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "material3-multiplatform" }
 compose-material3-adaptive = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive", version.ref = "adaptive" }
 compose-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "composeMultiplatform" }
+compose-animation = { group = "org.jetbrains.compose.animation", name = "animation", version.ref = "composeMultiplatform" }
 compose-material-ripple = { group = "org.jetbrains.compose.material", name = "material-ripple", version.ref = "composeMultiplatform" }
 compose-linux-arm64 = { module = "org.jetbrains.compose.desktop:desktop-jvm-linux-arm64", version.ref = "composeMultiplatform" }
 compose-linux-x64 = { module = "org.jetbrains.compose.desktop:desktop-jvm-linux-x64", version.ref = "composeMultiplatform" }

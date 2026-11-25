@@ -56,6 +56,15 @@ kotlin {
                 // Compose Multiplatform — pure draw-phase Modifier
                 implementation(libs.runtime)
                 implementation(libs.compose.ui)
+
+                // Kyant optical parity (S24, Track C): the fluid press
+                // interaction needs foundation's observe-only gesture
+                // primitives (awaitEachGesture / awaitFirstDown) and
+                // animation's Animatable + spring for the 0.5/300 press
+                // swell. Same composeMultiplatform version as ui/runtime —
+                // still a pure draw-phase, zero-recomposition facade.
+                implementation(libs.foundation)
+                implementation(libs.compose.animation)
             }
         }
 
