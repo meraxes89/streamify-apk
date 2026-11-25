@@ -15,6 +15,7 @@ Crucially, it guarantees rock-solid stability and locked 60 FPS on low-end hardw
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | **Developer & Extension Playbook**: Practical guide for UI devs to offload rendering to the GPU and GPU devs to extend shaders, hardware, and SPI effects. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Full technical specification: Skia/HWUI pipeline, SkSL universal IR (with the precision contract), 4-tier capability matrix, and zero-allocation FFT data-texture visualizer. |
 | [CI_TESTING_SPEC.md](CI_TESTING_SPEC.md) | Automated testing specification triggered when GPU files change: software-raster tests (Tier 4), headless Skia tests, API 27 emulation, and shader-failover gates. |
+| [parity/](parity/) | **S24 Kyant optical parity evidence**: side-by-side golden renders (Kyant reference / S24 / pre-upgrade) across light, dark and saturated backdrops. |
 
 The Phase 1–4 roadmap (`PHASED_PLAN.md`) was retired with the plan's completion; the phase history lives in the integration branch's merged PRs.
 
@@ -24,9 +25,9 @@ The Phase 1–4 roadmap (`PHASED_PLAN.md`) was retired with the plan's completio
 
 | Tier | Name | Target Environments | Shader / Render Strategy | Performance Target |
 |---|---|---|---|---|
-| **Tier 1** | **Ultra** | Modern Android (API 33+, Vulkan), Apple Metal 2+, Desktop dGPU | Single-pass Dual-Kawase blur + 3-tap chromatic dispersion + normal-map refraction + Schlick Fresnel reflection | 120 FPS ($P_{95} < 8.3\text{ ms}$) |
+| **Tier 1** | **Ultra** | Modern Android (API 33+, Vulkan), Apple Metal 2+, Desktop dGPU | Single-pass Dual-Kawase blur + 3-tap chromatic dispersion + normal-map refraction + directional 45° specular rim + 1.5× vibrancy + adaptive "đục đen" scrim (Kyant parity, S24) | 120 FPS ($P_{95} < 8.3\text{ ms}$) |
 | **Tier 2** | **Balanced** | Android 12–13 (API 31–32), Windows Intel HD 520+, WebGL2 | Skia 2-pass Gaussian blur + single-tap lens refraction (no chromatic spread) | 60 FPS ($P_{95} < 16.6\text{ ms}$) |
-| **Tier 3** | **Legacy** | **Vivo 1712 (Android 8.1 / API 27)**, legacy `armeabi-v7a`, weak iGPUs | **Zero blur passes**: Hardware-cached translucent acrylic scrim + 1px optical highlight stroke | 60 FPS (0% thermal throttling) |
+| **Tier 3** | **Legacy** | **Vivo 1712 (Android 8.1 / API 27)**, legacy `armeabi-v7a`, weak iGPUs | **Zero blur passes**: Hardware-cached translucent acrylic scrim + dual-stop directional 45° rim stroke + adaptive scrim floor (S24 Kyant-parity stand-ins) | 60 FPS (0% thermal throttling) |
 | **Tier 4** | **Safe** | Software rasters (SwiftShader, LLVMpipe, headless CI), shader compile fail | Solid translucent tint, all shader pipelines bypassed | Rock-solid failover |
 
 ---

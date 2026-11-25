@@ -101,17 +101,23 @@ fun LiquidGlassPlayerBar(
             contentBehind()
         }
 
-        // 2. Render the glass surface over the recorded backdrop
+        // 2. Render the glass surface over the recorded backdrop.
+        //    `streamifyGlass` = static Kyant-parity surface (S24: adaptive
+        //    "đục đen" scrim + vibrancy + directional 45° rim).
+        //    `streamifyInteractiveGlass` = the same surface plus the fluid
+        //    press response (1.12x spring swell, damping 0.5 / stiffness
+        //    300, and the pointer-tracking radial glow).
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(ComponentTokens.PLAYER_BAR_HEIGHT)
-                .padding(ComponentTokens.SCREEN_EDGE_MARGIN)
-                .streamifyGlass(
+                .height(64.dp)
+                .padding(ComponentTokens.navBarScreenInset)
+                .streamifyInteractiveGlass(
                     backdrop = backdropLayer,
-                    shape = ComponentTokens.PLAYER_BAR_SHAPE,
-                    tint = SemanticTokens.TINT_SURFACE
+                    shape = RoundedCornerShape(ComponentTokens.navBarCornerRadius),
+                    tint = SemanticTokens.surfaceGlassActive,
+                    scrimColor = if (isDarkTheme) Color.Black else Color.White,
                 )
         ) {
             playerControls()
@@ -120,11 +126,24 @@ fun LiquidGlassPlayerBar(
 }
 ```
 
+For surfaces that sample their background luminance (mini player, bottom
+bar), pass the `luminance` lambda — it is read during drawing, so the
+adaptive darkening ramp follows the artwork without recomposing:
+
+```kotlin
+Modifier.streamifyGlass(
+    backdrop = backdropLayer,
+    shape = shape,
+    tint = SemanticTokens.surfaceGlassMuted,
+    luminance = { sampledBackdropLuminance.value }, // 0..1, draw-phase read
+)
+```
+
 #### Automatic Graceful Degradation
 You do **not** need to write conditional `if (isAndroid8) ... else ...` branches:
 - On **Android 13+ (API 33+)** and **Desktop/iOS**: Executes full Tier 1 / Tier 2 AGSL/SkSL normal-map refraction with chromatic dispersion.
 - On **Android 12 (API 31-32)**: Automatically executes hardware `RenderEffect` GPU blur passes.
-- On **Android 8.1–11 (Vivo 1712 / API 26-30)**: Automatically bypasses shaders and falls back to a hardware-cached translucent acrylic scrim with 1px optical rim.
+- On **Android 8.1–11 (Vivo 1712 / API 26-30)**: Automatically bypasses shaders and falls back to a hardware-cached translucent acrylic scrim with the dual-stop directional 45° rim (the S24 Tier-3 stand-in for the specular sweep).
 - On **Headless/Software Renderers (`llvmpipe`, `swiftshader`)**: Automatically falls back to a solid tint.
 
 ---
