@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.viewModel
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewModelScope
 import com.maxrave.common.Config
@@ -281,6 +282,7 @@ class AlbumViewModel(
     }
 }
 
+@Immutable
 data class AlbumUIState(
     val browseId: String = "",
     val audioPlaylistId: String = "",

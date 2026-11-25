@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.viewModel
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewModelScope
 import androidx.paging.LoadState
@@ -1086,6 +1087,7 @@ sealed class LocalPlaylistUIEvent {
     data object ShuffleClick : LocalPlaylistUIEvent()
 }
 
+@Immutable
 data class LocalPlaylistState(
     val id: Long,
     val title: String,
