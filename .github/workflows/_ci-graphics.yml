@@ -18,9 +18,15 @@
 #   demotion / 300-frame hysteresis) plus the Phase 1-A dialect
 #   transpilation gate on the desktop JVM lane.
 #
-# REMAINING (Phase 2-A Track A / Phase 4): Jobs 2-5 of the matrix — API 27
-#   (Vivo 1712) Robolectric, headless Skia offscreen golden vector,
-#   software-raster fallback gate, shader-compilation-failure fallback —
+# S24 SCOPE (desktop GPU spectrum matrix): Job 4 is live —
+#   `testSoftwareRasterFallback` forks a dedicated test JVM with
+#   LIBGL_ALWAYS_SOFTWARE=1 so the live renderer-description seam resolves
+#   a Mesa CPU rasterizer and the engine clamps to Tier 4 (Safe) end to
+#   end. `testDesktopUnitTest` additionally carries the S24 Track B/C/E
+#   suites: DRS half-res golden renders, fractional-density physical-pixel
+#   resolution gates, and the forRefreshRate 60/144/240 Hz budget matrix.
+#
+# REMAINING: Jobs 2-3 of the matrix — API 27 (Vivo 1712) Robolectric —
 #   slot in below without touching the hub wiring.
 #
 # Mirrors the _ci-android.yml jvm-unit lane's proven setup: recursive
@@ -94,12 +100,29 @@ jobs:
             --parallel --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
 
+      # CI_TESTING_SPEC.md section 2, Job 4 — software-raster fallback gate:
+      # dedicated Test JVM fork with LIBGL_ALWAYS_SOFTWARE=1 (Mesa onto a
+      # CPU rasterizer). Runs after the healthy-host suite so a clamp
+      # failure reads as a separate step, and --rerun (Gradle 7.6+, wrapper
+      # is 9.8.1) so the filtered execution can never be served from an
+      # up-to-date cache instead of actually forking the gate JVM.
+      - name: "Software-raster fallback gate (Job 4, LIBGL_ALWAYS_SOFTWARE=1)"
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :streamify-modules:streamify-graphics:testSoftwareRasterFallback \
+            --rerun \
+            -PskipExternalNativeBuild=true \
+            --stacktrace 2>&1 | tee software-raster-gate.log
+
       - name: Upload build log (debug aid)
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: graphics-build-log
-          path: build.log
+          path: |
+            build.log
+            software-raster-gate.log
           if-no-files-found: ignore
 
       - name: Upload test reports (debug aid)
