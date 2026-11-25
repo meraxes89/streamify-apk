@@ -1603,7 +1603,9 @@ fun NowPlayingBottomSheet(
         )
     }
 
-    if (isBottomSheetVisible) {
+    val hasChildSheetOpen =
+        addToAPlaylist || artist || mainLyricsProvider || sleepTimer || sleepTimerWarning || changePlaybackSpeedPitch
+    if (isBottomSheetVisible && !hasChildSheetOpen) {
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = modelBottomSheetState,
@@ -2934,7 +2936,7 @@ fun PlaylistBottomSheet(
             {
                 coroutineScope.launch {
                     showEditTitleSheetState.hide()
-                    onDismiss()
+                    showEditTitle = false
                 }
             }
         ModalBottomSheet(
@@ -3126,7 +3128,7 @@ fun LocalPlaylistBottomSheet(
             {
                 coroutineScope.launch {
                     showEditTitleSheetState.hide()
-                    onDismiss()
+                    showEditTitle = false
                 }
             }
         ModalBottomSheet(
