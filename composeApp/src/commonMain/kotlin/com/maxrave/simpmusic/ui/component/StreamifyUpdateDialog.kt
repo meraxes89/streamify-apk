@@ -22,9 +22,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Warning
+import com.maxrave.simpmusic.ui.icon.Error
+import com.maxrave.simpmusic.ui.icon.Info
+import com.maxrave.simpmusic.ui.icon.SimpIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -356,7 +356,7 @@ fun StreamifyUpdateDialog(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.Warning,
+                                        imageVector = SimpIcons.Error,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.size(16.dp),
@@ -376,7 +376,7 @@ fun StreamifyUpdateDialog(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Rounded.Info,
+                                            imageVector = SimpIcons.Info,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.tertiary,
                                             modifier = Modifier.size(16.dp),
@@ -394,7 +394,7 @@ fun StreamifyUpdateDialog(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Rounded.Warning,
+                                            imageVector = SimpIcons.Error,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.error,
                                             modifier = Modifier.size(16.dp),
