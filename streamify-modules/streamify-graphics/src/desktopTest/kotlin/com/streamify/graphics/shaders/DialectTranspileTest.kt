@@ -10,6 +10,7 @@ import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 import org.jetbrains.skia.Shader
 import org.jetbrains.skia.Surface
+import com.streamify.graphics.tokens.PrimitiveTokens
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -61,10 +62,11 @@ class DialectTranspileTest {
     }
 
     // -------------------------------------------------------------------------
-    // 2. Uniform & child bindings — all six uniforms declared by the shader
-    //    (backdrop, resolution, lensRadius, refractionIndex, chromaticSpread,
-    //    tintColor) accept values with no parser or layout errors, and the
-    //    `backdrop` child shader binds through the Skia dialect's
+    // 2. Uniform & child bindings — all nine uniforms declared by the S24
+    //    shader (backdrop, resolution, lensRadius, refractionIndex,
+    //    chromaticSpread, tintColor, vibrancy, darkenAmount,
+    //    specularIntensity) accept values with no parser or layout errors,
+    //    and the `backdrop` child shader binds through the Skia dialect's
     //    child("backdrop", ...) seam.
     // -------------------------------------------------------------------------
     @Test
@@ -77,6 +79,9 @@ class DialectTranspileTest {
         builder.uniform("refractionIndex", REFRACTIVE_INDEX)
         builder.uniform("chromaticSpread", CHROMATIC_SPREAD_TIER1)
         builder.uniform("tintColor", TINT_R, TINT_G, TINT_B, TINT_A)
+        builder.uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+        builder.uniform("darkenAmount", DARKEN_AMOUNT)
+        builder.uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         builder.child("backdrop", backdropGradient())
 
         // makeShader() runs the final uniform-layout validation pass.
@@ -128,6 +133,9 @@ class DialectTranspileTest {
         builder.uniform("refractionIndex", REFRACTIVE_INDEX)
         builder.uniform("chromaticSpread", 0.0f)
         builder.uniform("tintColor", TINT_R, TINT_G, TINT_B, TINT_A)
+        builder.uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+        builder.uniform("darkenAmount", DARKEN_AMOUNT)
+        builder.uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         builder.child("backdrop", backdropGradient())
 
         val surface = Surface.makeRasterN32Premul(WIDTH, HEIGHT)
@@ -175,6 +183,9 @@ class DialectTranspileTest {
         builder.uniform("refractionIndex", REFRACTIVE_INDEX)
         builder.uniform("chromaticSpread", CHROMATIC_SPREAD_TIER1)
         builder.uniform("tintColor", TINT_R, TINT_G, TINT_B, TINT_A)
+        builder.uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+        builder.uniform("darkenAmount", DARKEN_AMOUNT)
+        builder.uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         builder.child("backdrop", backdropGradient())
 
         val surface = Surface.makeRasterN32Premul(WIDTH, HEIGHT)
@@ -220,6 +231,9 @@ class DialectTranspileTest {
         private const val TINT_G = 0.97f
         private const val TINT_B = 1.00f
         private const val TINT_A = 0.08f
+
+        /** Deterministic mid-ramp scrim for the binding gates. */
+        private const val DARKEN_AMOUNT = 0.25f
 
         /** Pixel roughly on the diagonal rim, well past the 0.38 falloff. */
         private const val RIM_X = 12

@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.layer.GraphicsLayer
+import com.streamify.graphics.tokens.PrimitiveTokens
 
 /**
  * Frozen render request passed from the `Modifier.streamifyGlass` facade to
@@ -27,12 +28,22 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
  * (with Dynamic Resolution Scaling on the Tier 2 lane); when absent, the
  * engine keeps its stable stopgap composite. `null` by default — the
  * frozen Phase 1 call sites are unaffected.
+ * @property luminance Draw-phase backdrop luminance estimate, 0..1. Read
+ * per draw pass (never recomposes) and fed into the adaptive "đục đen"
+ * darkening ramp: `lerp(0.12, 0.50, clamp((luminance - 0.3) / 0.5))`.
+ * Surfaces that do not sample their background keep the fixed mid-luminance
+ * default, mirroring Kyant's non-adapting overload. (Additive S24 field.)
+ * @property scrimColor Color the adaptive scrim darkens toward — black for
+ * dark-theme glass, white for the light theme (Kyant's `isDark` branch).
+ * (Additive S24 field.)
  */
 class GlassRenderRequest(
     val backdrop: GraphicsLayer,
     val shape: Shape,
     val tint: Color,
     val snapshot: GlassBackdropSnapshot? = null,
+    val luminance: () -> Float = { PrimitiveTokens.defaultBackdropLuminance },
+    val scrimColor: Color = Color.Black,
 )
 
 /**

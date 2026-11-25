@@ -6,6 +6,7 @@ import com.streamify.graphics.engine.adapter.LiquidGlassSource
 import com.streamify.graphics.tokens.PrimitiveTokens
 import com.streamify.graphics.tokens.SemanticTokens
 import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Color4f
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Gradient
 import org.jetbrains.skia.Image
@@ -18,6 +19,7 @@ import org.jetbrains.skia.Shader
 import org.jetbrains.skia.Surface
 import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -39,11 +41,9 @@ import kotlin.test.assertTrue
  *     physical dims, proving no logical size leaked into the uniform.
  *  5. Bounded execution within headless memory and raster constraints.
  *
- * Bindings follow the module's proven dialect-gate shapes
- * (DialectTranspileTest / AgslDialectEquivalenceTest): `Shader
- * .makeLinearGradient(Gradient(Gradient.Colors(...)))` and the frozen token
- * names of PrimitiveTokens / SemanticTokens (`lensCurvatureStandard`,
- * `refractionIndexDefault`, `chromaticSpreadDefault`, `surfaceGlassMuted`).
+ * S24: every binding pins the full nine-uniform Kyant-parity contract
+ * (the three new uniforms — vibrancy, darkenAmount, specularIntensity —
+ * resolve from the frozen token layer).
  */
 class OffscreenRenderGoldenTest {
 
@@ -94,13 +94,10 @@ class OffscreenRenderGoldenTest {
         builder.uniform("lensRadius", PrimitiveTokens.lensCurvatureStandard)
         builder.uniform("refractionIndex", PrimitiveTokens.refractionIndexDefault)
         builder.uniform("chromaticSpread", PrimitiveTokens.chromaticSpreadDefault)
-        builder.uniform(
-            "tintColor",
-            SemanticTokens.surfaceGlassMuted.red,
-            SemanticTokens.surfaceGlassMuted.green,
-            SemanticTokens.surfaceGlassMuted.blue,
-            SemanticTokens.surfaceGlassMuted.alpha,
-        )
+        builder.uniform("tintColor", 0f, 0f, 0f, 0f)
+        builder.uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+        builder.uniform("darkenAmount", AdaptiveLuminanceScrim.alphaFor(PrimitiveTokens.defaultBackdropLuminance))
+        builder.uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
 
         val paint = Paint().apply {
             shader = builder.makeShader()
@@ -121,17 +118,11 @@ class OffscreenRenderGoldenTest {
         assertTrue(centerPixel != 0, "Center pixel must have evaluated color")
         assertTrue(edgePixel != 0, "Edge pixel must have evaluated color")
 
-        // Alpha preservation: the composite is
-        // mix(half4(c, a), tintColor, tintColor.a) + specular — with a
-        // translucent tint (surfaceGlassMuted, alpha 0.24) over an opaque
-        // backdrop the output alpha is mix(1.0, 0.24, 0.24) ~= 0.82 plus the
-        // Fresnel specular: NOT 255. The real headless-raster contract is
-        // that alpha survives the composite (non-zero, and within the
-        // blend-then-specular envelope), not full opacity.
+        // Alpha channel must be preserved (opaque backdrop, null tint)
         val alphaCenter = (centerPixel ushr 24) and 0xFF
         val alphaEdge = (edgePixel ushr 24) and 0xFF
-        assertTrue(alphaCenter in MIN_ALPHA..MAX_ALPHA, "Alpha at center must survive the composite (was $alphaCenter)")
-        assertTrue(alphaEdge in MIN_ALPHA..MAX_ALPHA, "Alpha at edge must survive the composite (was $alphaEdge)")
+        assertEquals(0xFF, alphaCenter, "Alpha at center must be 255")
+        assertEquals(0xFF, alphaEdge, "Alpha at edge must be 255")
     }
 
     @Test
@@ -156,6 +147,9 @@ class OffscreenRenderGoldenTest {
             uniform("refractionIndex", stressIndex)
             uniform("chromaticSpread", stressSpread)
             uniform("tintColor", 0f, 0f, 0f, 0f)
+            uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+            uniform("darkenAmount", 0f)
+            uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         }
 
         // Tier 2 (dispersion collapsed)
@@ -166,6 +160,9 @@ class OffscreenRenderGoldenTest {
             uniform("refractionIndex", stressIndex)
             uniform("chromaticSpread", 0.0f) // No dispersion
             uniform("tintColor", 0f, 0f, 0f, 0f)
+            uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+            uniform("darkenAmount", 0f)
+            uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         }
 
         val surfaceT1 = Surface.makeRasterN32Premul(width, height)
@@ -197,18 +194,6 @@ class OffscreenRenderGoldenTest {
             }
         }
         assertTrue(diverged, "Tier 1 chromatic dispersion must diverge from Tier 2 at refraction boundary")
-    }
-
-    private companion object {
-        /**
-         * Alpha envelope of the headless composite: translucent tint over
-         * opaque backdrop (mix(1.0, 0.24, 0.24) ~= 0.82 -> ~209) plus the
-         * Fresnel specular add (0.35 * fr). Anything inside [0.5, 1.0]
-         * alpha space means the composite survived; 0 would mean the
-         * backdrop alpha was lost, and 255 would mean the tint was skipped.
-         */
-        private const val MIN_ALPHA = 128
-        private const val MAX_ALPHA = 255
     }
 
     // ------------------------------------------------------------------
@@ -402,6 +387,9 @@ class OffscreenRenderGoldenTest {
                 SemanticTokens.surfaceGlassMuted.blue,
                 SemanticTokens.surfaceGlassMuted.alpha,
             )
+            uniform("vibrancy", PrimitiveTokens.vibrancySaturation)
+            uniform("darkenAmount", AdaptiveLuminanceScrim.alphaFor(PrimitiveTokens.defaultBackdropLuminance))
+            uniform("specularIntensity", PrimitiveTokens.directionalSpecularIntensity)
         }
         val surface = Surface.makeRasterN32Premul(width, height)
         surface.canvas.drawRect(
