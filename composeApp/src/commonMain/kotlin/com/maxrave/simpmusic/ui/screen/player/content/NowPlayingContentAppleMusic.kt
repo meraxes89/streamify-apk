@@ -831,14 +831,17 @@ internal fun BoxScope.AppleMusicArtworkBackdrop(
     // exactly this reason (isLyricsBlurSupported), and Crop + fillMaxSize means the artwork is
     // scaled far past its own resolution — at this blur that costs nothing visually.
     if (!backdropUrl.isNullOrBlank()) {
+        val context = LocalPlatformContext.current
+        val backdropRequest = remember(backdropUrl, context) {
+            ImageRequest
+                .Builder(context)
+                .data(backdropUrl)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .build()
+        }
         AsyncImage(
-            model =
-                ImageRequest
-                    .Builder(LocalPlatformContext.current)
-                    .data(backdropUrl)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCacheKey(backdropUrl + "BIGGER")
-                    .build(),
+            model = backdropRequest,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             onSuccess = { actions.onArtworkBitmap(it.result.image.toImageBitmap()) },

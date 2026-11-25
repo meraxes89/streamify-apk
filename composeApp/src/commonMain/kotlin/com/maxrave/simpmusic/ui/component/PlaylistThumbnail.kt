@@ -172,13 +172,17 @@ private fun SingleArtworkCover(
 ) {
     val context = LocalPlatformContext.current
     val fallback = rememberHolderPainter(square = true)
-    AsyncImage(
-        model = ImageRequest.Builder(context)
+    val imageRequest = remember(url, context) {
+        ImageRequest.Builder(context)
             .data(url)
+            .size(512, 512)
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
-            .crossfade(400)
-            .build(),
+            .crossfade(200)
+            .build()
+    }
+    AsyncImage(
+        model = imageRequest,
         contentDescription = title,
         contentScale = ContentScale.Crop,
         modifier = modifier.fillMaxSize(),
@@ -200,16 +204,53 @@ private fun QuadCollageCover(
     val seamWidth = 0.75.dp
     val fallback = rememberHolderPainter(square = true)
 
+    val url0 = urls.getOrNull(0)
+    val url1 = urls.getOrNull(1)
+    val url2 = urls.getOrNull(2)
+    val url3 = urls.getOrNull(3)
+
+    val req0 = remember(url0, context) {
+        ImageRequest.Builder(context)
+            .data(url0)
+            .size(256, 256)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(150)
+            .build()
+    }
+    val req1 = remember(url1, context) {
+        ImageRequest.Builder(context)
+            .data(url1)
+            .size(256, 256)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(150)
+            .build()
+    }
+    val req2 = remember(url2, context) {
+        ImageRequest.Builder(context)
+            .data(url2)
+            .size(256, 256)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(150)
+            .build()
+    }
+    val req3 = remember(url3, context) {
+        ImageRequest.Builder(context)
+            .data(url3)
+            .size(256, 256)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(150)
+            .build()
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
             Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
                 AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(urls[0])
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .crossfade(350)
-                        .build(),
+                    model = req0,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -227,12 +268,7 @@ private fun QuadCollageCover(
             )
             Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
                 AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(urls.getOrNull(1))
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .crossfade(350)
-                        .build(),
+                    model = req1,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -251,12 +287,7 @@ private fun QuadCollageCover(
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
             Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
                 AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(urls.getOrNull(2))
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .crossfade(350)
-                        .build(),
+                    model = req2,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -273,12 +304,7 @@ private fun QuadCollageCover(
             )
             Box(modifier = Modifier.fillMaxHeight().weight(1f)) {
                 AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(urls.getOrNull(3))
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .crossfade(350)
-                        .build(),
+                    model = req3,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
