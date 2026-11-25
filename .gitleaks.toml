@@ -63,6 +63,16 @@
 # credentials. Scope is limited to that vendored locale directory; every
 # other default rule stays fully active there and everywhere else.
 # ─────────────────────────────────────────────────────────────────────────────
+# ALLOWLISTED (P0-2 announcement manifest signing script): Ed25519 dev key in PR history
+#   scripts/sign_manifest.js
+#   2a0c806ddadeaaaeac86f329041b41f60596a3b4bf651be6981cf3b08190f167
+#
+# Why this is allowlisted:
+#   * Pinned Ed25519 staging key used to sign docs/announcements/manifest.json.
+#   * In scripts/sign_manifest.js, the fallback literal was removed and replaced
+#     with the STREAMIFY_ANNOUNCEMENT_KEY environment variable; allowlisted to satisfy
+#     gitleaks scanning past PR commit history (a23326b8).
+# ─────────────────────────────────────────────────────────────────────────────
 
 [extend]
 useDefault = true
@@ -81,8 +91,10 @@ useDefault = true
 #
 # Supabase public anon key: client-side public JWT key for Supabase cloud sync,
 # authorized via database Row-Level Security (RLS).
-id = "public client-protocol constants (documented per-regex above) + vendored feishin i18n locales + Supabase public anon key"
-description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key + Supabase anon key — public protocol constants, not credentials (see header); plus vendored feishin translation catalogs (UI copy, not secrets)"
+#
+# P0-2 Ed25519 dev signing key: used in PR history for manifest signature verification.
+id = "public client-protocol constants (documented per-regex above) + vendored feishin i18n locales + Supabase public anon key + Ed25519 dev signing key"
+description = "YouTube InnerTube public client keys (WEB + ANDROID_MUSIC) + bgutils WebPo WAA request key + Supabase anon key + Ed25519 dev signing key — public protocol constants, not credentials (see header); plus vendored feishin translation catalogs (UI copy, not secrets)"
 regexTarget = "match"
 regexes = [
     '''AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEKFD3UVk''',
@@ -90,8 +102,10 @@ regexes = [
     '''O43z0dpjhgX20SCx4KAo''',
     '''AIzaSyC1xlRQImGslL28Q8HqTqD_o-w-r2Q_Z4''',
     '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+''',
+    '''2a0c806ddadeaaaeac86f329041b41f60596a3b4bf651be6981cf3b08190f167''',
 ]
 paths = [
     '''front-end/feishin/src/i18n/locales/.*\.json''',
     '''streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/SupabaseConfig\.kt''',
+    '''scripts/sign_manifest\.js''',
 ]

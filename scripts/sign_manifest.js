@@ -8,7 +8,12 @@ const fs = require('fs');
 const path = require('path');
 
 const MANIFEST_PATH = path.resolve(__dirname, '../docs/announcements/manifest.json');
-const rawPrivHex = process.env.STREAMIFY_ANNOUNCEMENT_KEY || '2a0c806ddadeaaaeac86f329041b41f60596a3b4bf651be6981cf3b08190f167';
+const rawPrivHex = process.env.STREAMIFY_ANNOUNCEMENT_KEY;
+
+if (!rawPrivHex) {
+  console.error('STREAMIFY_ANNOUNCEMENT_KEY environment variable is required to sign manifest.json');
+  process.exit(1);
+}
 
 const privBytes = Buffer.from(rawPrivHex, 'hex');
 const pkcs8Prefix = Buffer.from('302e020100300506032b657004220420', 'hex');
