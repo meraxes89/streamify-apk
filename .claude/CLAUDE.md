@@ -8,6 +8,9 @@
 
 - Root `AGENTS.md` is the cross-agent entry point; `docs/playbooks/PONYTAIL.md`
   defines the vendored minimal-change contract (all six skills, full mode).
+- `.claude/skills/powersync/` is the pinned vendored official PowerSync skill
+  for S11 (SQLite ↔ Supabase sync) evaluation. Read its `REPO_OVERLAY.md`
+  first; the repo has not adopted PowerSync.
 - `CONTRIBUTING.md` and `docs/` win over this inherited guide and over generic
   agent rules. Write the tests and docs the change needs; do not run Gradle or
   cargo to verify unless the user asks.
@@ -1226,6 +1229,6 @@ After completing any of the following types of changes, the AI agent **MUST** up
 
 *This document helps AI Agents quickly understand the SimpMusic project. Update regularly when there are major changes to architecture or structure.*
 
-**Last updated**: 2026-11-23
+**Last updated**: 2026-11-26
 **Project version**: Check latest release on GitHub
 **Maintained by**: maxrave-dev and contributors
