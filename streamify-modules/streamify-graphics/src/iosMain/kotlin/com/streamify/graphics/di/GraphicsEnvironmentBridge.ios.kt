@@ -7,6 +7,7 @@ import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.isLowPowerModeEnabled
 import platform.darwin.NSObjectProtocol
 
 /**
@@ -32,11 +33,12 @@ import platform.darwin.NSObjectProtocol
  * budgets to the 60 Hz lane (the display link itself is capped at 60 Hz
  * in this mode).
  *
- * Binding note: the Kotlin binding imports ObjC's
- * `@property (getter=isLowPowerModeEnabled) BOOL lowPowerModeEnabled`
- * as the `isLowPowerModeEnabled()` accessor function — neither spelling
- * resolves as a Kotlin property; the `is`-prefixed form in Swift is
- * sugar only.
+ * Binding note: cinterop imports ObjC properties with custom getter
+ * names (@property (getter=isLowPowerModeEnabled) BOOL
+ * lowPowerModeEnabled) as package extensions, NOT class members — the
+ * extension must be imported explicitly
+ * (import platform.Foundation.isLowPowerModeEnabled) before
+ * NSProcessInfo.processInfo.isLowPowerModeEnabled() resolves.
  *
  * ## Reentrancy guard
  *
