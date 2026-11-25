@@ -81,13 +81,6 @@ the report is explicit, not silent. If commit order cannot be determined
 - [RFC index](rfc/README.md) — proposals with explicit status, including rejected ones
 - [IDEA_LOG.md](IDEA_LOG.md) — the intake funnel: spark → explored → committed
 
-## Agent skill
-
-The executable form of this contract lives at
-`.agents/skills/streamify-docs-contract/SKILL.md`. Agents should load it for any
-code change, feature, ADR/RFC or idea; if it ever disagrees with this file, this
-file wins and the skill is updated in the same PR.
-
 ## Playbooks
 
 | Playbook | Scope |
@@ -100,7 +93,8 @@ file wins and the skill is updated in the same PR.
 ## Archive
 
 `archive/` preserves lineage and audit material; nothing in it is
-authoritative. Retired roadmaps, status ledgers, external reviews, and the
-pre-multiplatform Rust analysis live there.
+authoritative. Retired roadmaps, status ledgers, external reviews, the
+pre-multiplatform Rust analysis, the `universal_migration/` plan/ledger, and
+the KMP data-layer audit live there.
 
 <!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
