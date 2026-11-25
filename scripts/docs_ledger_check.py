@@ -55,6 +55,10 @@ CURATED_DOCS = [
     "SECURITY.md",
     "docs/playbooks/CI_TESTING_GUIDE.md",
     "docs/architecture/ARCHITECTURE.md",
+    "docs/SYSTEMS.md",
+    "docs/rfc/README.md",
+    "docs/IDEA_LOG.md",
+    "docs/adr/README.md",
     "docs/archive/MULTIPLATFORM_CHECKBOX.MD",
     ".github/ISSUE_TEMPLATE/config.yml",
 ]
@@ -73,6 +77,10 @@ STALE_CLAIMS = {
         "extreme-test-matrix.yml",
         "18-shard",
         "18 shard",
+        # The native DSP/Rust core was retired at 50b937f7; present-tense
+        # claims about it are drift (ADR-009).
+        "over a Rust and C++20 native core",
+        "studio-grade loudness normalization and true-peak limiting on the native audio path",
     ],
     "docs/playbooks/CI_TESTING_GUIDE.md": [
         "extreme-test-matrix.yml",

@@ -15,10 +15,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.net.toUri
 import androidx.core.os.LocaleListCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -38,16 +40,16 @@ import com.maxrave.domain.mediaservice.handler.ToastType
 import com.maxrave.domain.repository.LibrarySyncPhoneRepository
 import com.maxrave.logger.Logger
 import com.maxrave.media3.di.setServiceActivitySession
-import com.maxrave.simpmusic.di.viewModelModule
 import com.maxrave.simpmusic.service.test.notification.NotifyWork
 import com.maxrave.simpmusic.utils.ComposeResUtils
 import com.maxrave.simpmusic.utils.VersionManager
 import com.maxrave.simpmusic.viewModel.SharedViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 import org.koin.core.context.loadKoinModules
-import org.koin.core.context.unloadKoinModules
 import org.koin.dsl.module
 import org.simpmusic.crashlytics.pushPlayerError
 import pub.devrel.easypermissions.EasyPermissions
@@ -122,15 +124,16 @@ class MainActivity : AppCompatActivity() {
 
     @ExperimentalFoundationApi
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        var isReady = false
+        splashScreen.setKeepOnScreenCondition { !isReady }
+
         super.onCreate(savedInstanceState)
         loadKoinModules(
             module {
                 single<AppCompatActivity> { this@MainActivity }
             },
         )
-        // Recreate view model to fix the issue of view model not getting data from the service
-        unloadKoinModules(viewModelModule)
-        loadKoinModules(viewModelModule)
         VersionManager.initialize()
         checkForUpdate()
         if (viewModel.recreateActivity.value || viewModel.isServiceRunning) {
@@ -152,46 +155,45 @@ class MainActivity : AppCompatActivity() {
         Logger.d("Italy", "Key: ${Locale.ITALY.toLanguageTag()}")
 
         // Check if the migration has already been done or not
-        if (getString(FIRST_TIME_MIGRATION) != STATUS_DONE) {
-            Logger.d("Locale Key", "onCreate: ${Locale.getDefault().toLanguageTag()}")
-            if (SUPPORTED_LANGUAGE.codes.contains(Locale.getDefault().toLanguageTag())) {
-                Logger.d(
-                    "Contains",
-                    "onCreate: ${
-                        SUPPORTED_LANGUAGE.codes.contains(
-                            Locale.getDefault().toLanguageTag(),
-                        )
-                    }",
-                )
-                putString(SELECTED_LANGUAGE, Locale.getDefault().toLanguageTag())
-                if (SUPPORTED_LOCATION.items.contains(Locale.getDefault().country)) {
-                    putString("location", Locale.getDefault().country)
+        lifecycleScope.launch {
+            if (dataStoreManager.getString(FIRST_TIME_MIGRATION).first() != STATUS_DONE) {
+                Logger.d("Locale Key", "onCreate: ${Locale.getDefault().toLanguageTag()}")
+                if (SUPPORTED_LANGUAGE.codes.contains(Locale.getDefault().toLanguageTag())) {
+                    Logger.d(
+                        "Contains",
+                        "onCreate: ${
+                            SUPPORTED_LANGUAGE.codes.contains(
+                                Locale.getDefault().toLanguageTag(),
+                            )
+                        }",
+                    )
+                    putString(SELECTED_LANGUAGE, Locale.getDefault().toLanguageTag())
+                    if (SUPPORTED_LOCATION.items.contains(Locale.getDefault().country)) {
+                        putString("location", Locale.getDefault().country)
+                    } else {
+                        putString("location", "US")
+                    }
                 } else {
-                    putString("location", "US")
+                    putString(SELECTED_LANGUAGE, "en-US")
                 }
-            } else {
-                putString(SELECTED_LANGUAGE, "en-US")
+                // Fetch the selected language from wherever it was stored. In this case its SharedPref
+                dataStoreManager.getString(SELECTED_LANGUAGE).first()?.let {
+                    Logger.d("Locale Key", "getString: $it")
+                    // Set this locale using the AndroidX library that will handle the storage itself
+                    val localeList = LocaleListCompat.forLanguageTags(it)
+                    AppCompatDelegate.setApplicationLocales(localeList)
+                    // Set the migration flag to ensure that this is executed only once
+                    putString(FIRST_TIME_MIGRATION, STATUS_DONE)
+                }
             }
-            // Fetch the selected language from wherever it was stored. In this case its SharedPref
-            getString(SELECTED_LANGUAGE)?.let {
-                Logger.d("Locale Key", "getString: $it")
-                // Set this locale using the AndroidX library that will handle the storage itself
-                val localeList = LocaleListCompat.forLanguageTags(it)
-                AppCompatDelegate.setApplicationLocales(localeList)
-                // Set the migration flag to ensure that this is executed only once
-                putString(FIRST_TIME_MIGRATION, STATUS_DONE)
+            val currentSelectedLanguage = dataStoreManager.getString(SELECTED_LANGUAGE).first()
+            if (AppCompatDelegate.getApplicationLocales().toLanguageTags() != currentSelectedLanguage) {
+                Logger.d(
+                    "Locale Key",
+                    "onCreate: ${AppCompatDelegate.getApplicationLocales().toLanguageTags()}",
+                )
+                putString(SELECTED_LANGUAGE, AppCompatDelegate.getApplicationLocales().toLanguageTags())
             }
-        }
-        if (AppCompatDelegate.getApplicationLocales().toLanguageTags() !=
-            getString(
-                SELECTED_LANGUAGE,
-            )
-        ) {
-            Logger.d(
-                "Locale Key",
-                "onCreate: ${AppCompatDelegate.getApplicationLocales().toLanguageTags()}",
-            )
-            putString(SELECTED_LANGUAGE, AppCompatDelegate.getApplicationLocales().toLanguageTags())
         }
 
         enableEdgeToEdge(
@@ -205,24 +207,28 @@ class MainActivity : AppCompatActivity() {
                 ),
         )
         viewModel.checkIsRestoring()
-        val request =
-            PeriodicWorkRequestBuilder<NotifyWork>(
-                12L,
-                TimeUnit.HOURS,
-            ).addTag("Worker Test")
-                .setConstraints(
-                    Constraints
-                        .Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build(),
-                ).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "Artist Worker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request,
-        )
-        // Ensure any legacy blog worker from SimpMusic RSS is cancelled
-        WorkManager.getInstance(this).cancelUniqueWork("Blog RSS Worker")
+
+        // Offload WorkManager initialization and unique work enqueueing to background thread
+        lifecycleScope.launch(Dispatchers.IO) {
+            val request =
+                PeriodicWorkRequestBuilder<NotifyWork>(
+                    12L,
+                    TimeUnit.HOURS,
+                ).addTag("Worker Test")
+                    .setConstraints(
+                        Constraints
+                            .Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build(),
+                    ).build()
+            WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+                "Artist Worker",
+                ExistingPeriodicWorkPolicy.KEEP,
+                request,
+            )
+            // Ensure any legacy blog worker from SimpMusic RSS is cancelled
+            WorkManager.getInstance(applicationContext).cancelUniqueWork("Blog RSS Worker")
+        }
 
         if (!EasyPermissions.hasPermissions(this, Manifest.permission.POST_NOTIFICATIONS)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -230,14 +236,18 @@ class MainActivity : AppCompatActivity() {
                 if (doNotAsk != "true") {
                     val wasAsked = getString("notification_permission_asked")
                     if (wasAsked != "true") {
-                        // First time: request system permission
-                        EasyPermissions.requestPermissions(
-                            this,
-                            runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.NOTIFICATION_REQUEST) },
-                            1,
-                            Manifest.permission.POST_NOTIFICATIONS,
-                        )
-                        putString("notification_permission_asked", "true")
+                        // First time: request system permission asynchronously without blocking main thread
+                        lifecycleScope.launch {
+                            val rationale =
+                                ComposeResUtils.getResString(ComposeResUtils.StringType.NOTIFICATION_REQUEST)
+                            EasyPermissions.requestPermissions(
+                                this@MainActivity,
+                                rationale,
+                                1,
+                                Manifest.permission.POST_NOTIFICATIONS,
+                            )
+                            putString("notification_permission_asked", "true")
+                        }
                     } else {
                         // Already asked before: show custom dialog with "Don't show again"
                         viewModel.showNotificationPermissionDialog()
@@ -248,6 +258,9 @@ class MainActivity : AppCompatActivity() {
         viewModel.getLocation()
 
         setContent {
+            SideEffect {
+                isReady = true
+            }
             App(viewModel)
         }
     }
@@ -258,9 +271,8 @@ class MainActivity : AppCompatActivity() {
 
         // Always unbind service if it was bound to prevent MusicBinder leak
         if (shouldStopMusicService && shouldUnbind && isFinishing) {
-            viewModel.isServiceRunning = false
+            viewModel.setServiceRunning(false)
         }
-        unloadKoinModules(viewModelModule)
         super.onDestroy()
         Logger.d("MainActivity", "onDestroy: ")
     }
@@ -294,15 +306,13 @@ class MainActivity : AppCompatActivity() {
                 },
             )
         }
-        viewModel.isServiceRunning = true
+        viewModel.setServiceRunning(true)
         shouldUnbind = true
         Logger.d("Service", "Service started")
     }
 
     private fun checkForUpdate() {
-        if (viewModel.shouldCheckForUpdate()) {
-            viewModel.checkForUpdate()
-        }
+        viewModel.checkForUpdate()
     }
 
     private fun putString(

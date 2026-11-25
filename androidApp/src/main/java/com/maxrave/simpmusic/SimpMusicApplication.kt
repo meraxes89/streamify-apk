@@ -65,7 +65,7 @@ class SimpMusicApplication :
         // Before Koin: DiscordRepository is created at start and reads which login this build uses.
         configDiscord(BuildKonfig.discordClientId)
         startKoin {
-            androidLogger(level = Level.DEBUG)
+            androidLogger(level = if (BuildConfig.DEBUG) Level.DEBUG else Level.ERROR)
             androidContext(this@SimpMusicApplication)
             loadAllModules(
                 AppIdentity(

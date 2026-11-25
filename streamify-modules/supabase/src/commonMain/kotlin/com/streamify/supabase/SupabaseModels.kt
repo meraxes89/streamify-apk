@@ -73,8 +73,40 @@ data class CloudUserItemFavorite(
     val itemType: String = "",
     @SerialName("item_id")
     val itemId: String = "",
+    val metadata: Map<String, String>? = null,
     @SerialName("created_at")
     val createdAt: String? = null
+)
+
+@Serializable
+data class CloudLibraryTrack(
+    @SerialName("track_id")
+    val trackId: String,
+    @SerialName("user_id")
+    val userId: String? = null,
+    @SerialName("added_at")
+    val addedAt: String? = null,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
+    @SerialName("modified_hlc")
+    val modifiedHlc: Long? = null
+)
+
+@Serializable
+data class CloudEpisodeState(
+    @SerialName("episode_id")
+    val episodeId: String,
+    @SerialName("podcast_id")
+    val podcastId: String = "",
+    @SerialName("position_sec")
+    val positionSec: Int = 0,
+    val completed: Boolean = false,
+    @SerialName("modified_hlc")
+    val modifiedHlc: Long? = null,
+    @SerialName("updated_at")
+    val updatedAt: String? = null,
+    @SerialName("user_id")
+    val userId: String? = null
 )
 
 @Serializable
@@ -99,8 +131,26 @@ data class CloudListeningHistoryItem(
     val artistId: String? = null,
     @SerialName("listened_duration_sec")
     val listenedDurationSec: Int = 0,
+    @SerialName("client_event_id")
+    val clientEventId: String? = null,
     @SerialName("created_at")
     val createdAt: String? = null
+)
+
+@Serializable
+data class PlaybackHistoryBatchItem(
+    @SerialName("track_id")
+    val trackId: String,
+    @SerialName("listened_duration_sec")
+    val durationSec: Int,
+    @SerialName("client_event_id")
+    val clientEventId: String? = null,
+    @SerialName("album_id")
+    val albumId: String? = null,
+    @SerialName("artist_id")
+    val artistId: String? = null,
+    @SerialName("created_at")
+    val createdAtIso: String? = null
 )
 
 @Serializable
@@ -128,6 +178,8 @@ data class CloudSearchQuery(
     val query: String,
     @SerialName("searched_at")
     val searchedAt: String? = null,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
     @SerialName("is_deleted")
     val isDeleted: Boolean = false
 )
@@ -283,4 +335,103 @@ data class AdminTelemetry(
     val rpcHealthy: Boolean,
     val engineMode: String,
     val latencyMs: Long
+)
+
+@Serializable
+data class SyncPushOpResult(
+    val key: String = "",
+    val entity: String = "",
+    val status: String = "applied", // "applied", "stale", "rejected"
+    val error: String? = null
+)
+
+@Serializable
+data class SyncPushResult(
+    val applied: Int = 0,
+    val rejected: Int = 0,
+    val cursor: Long = 0,
+    val results: List<SyncPushOpResult> = emptyList()
+)
+
+@Serializable
+data class SyncPullOp(
+    val seq: Long = 0,
+    val entity: String = "",
+    val op: String = "", // "I", "U", "D"
+    val key: String = "",
+    val hlc: Long? = null,
+    val data: kotlinx.serialization.json.JsonObject? = null
+)
+
+@Serializable
+data class SyncPullResult(
+    val cursor: Long = 0,
+    @SerialName("has_more")
+    val hasMore: Boolean = false,
+    val ops: List<SyncPullOp> = emptyList()
+)
+
+@Serializable
+data class CloudPresence(
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("device_id")
+    val deviceId: String = "",
+    @SerialName("track_id")
+    val trackId: String? = null,
+    @SerialName("position_ms")
+    val positionMs: Long = 0L,
+    @SerialName("is_playing")
+    val isPlaying: Boolean = false,
+    @SerialName("queue_ids")
+    val queueIds: List<String> = emptyList(),
+    @SerialName("modified_hlc")
+    val modifiedHlc: Long = 0L,
+    @SerialName("updated_at")
+    val updatedAt: String = ""
+)
+
+@Serializable
+data class CloudDeviceSession(
+    @SerialName("user_id")
+    val userId: String = "",
+    @SerialName("device_id")
+    val deviceId: String = "",
+    val platform: String = "",
+    @SerialName("app_version")
+    val appVersion: String = "",
+    @SerialName("version_code")
+    val versionCode: Int = 0,
+    @SerialName("git_sha")
+    val gitSha: String = "",
+    @SerialName("build_flavor")
+    val buildFlavor: String = "standard",
+    @SerialName("device_model")
+    val deviceModel: String = "",
+    @SerialName("os_version")
+    val osVersion: String = "",
+    val architecture: String = "",
+    @SerialName("first_seen_at")
+    val firstSeenAt: String? = null,
+    @SerialName("last_seen")
+    val lastSeen: String? = null,
+    @SerialName("last_active_at")
+    val lastActiveAt: String? = null,
+    @SerialName("is_revoked")
+    val isRevoked: Boolean = false
+)
+
+@Serializable
+data class DeviceRegistrationResult(
+    val status: String = "",
+    @SerialName("is_revoked")
+    val isRevoked: Boolean = false
+)
+
+@Serializable
+data class DeviceRevocationResult(
+    val status: String = "",
+    @SerialName("device_id")
+    val deviceId: String = "",
+    val revoked: Boolean = false
 )

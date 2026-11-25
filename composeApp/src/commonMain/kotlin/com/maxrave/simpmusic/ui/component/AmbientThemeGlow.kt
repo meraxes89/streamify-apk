@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -106,7 +107,8 @@ fun AmbientThemeGlow(
  */
 @Composable
 fun rememberNowPlayingGlowTint(thumbnailUrl: String?): Color? {
-    val networkLoader = rememberNetworkLoader(HttpClient(CIO))
+    val httpClient = remember { HttpClient(CIO) }
+    val networkLoader = rememberNetworkLoader(httpClient)
     val dominantColorState =
         rememberDominantColorState(
             defaultColor = Color.Unspecified,

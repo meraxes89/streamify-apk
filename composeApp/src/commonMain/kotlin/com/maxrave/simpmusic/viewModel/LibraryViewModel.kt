@@ -238,8 +238,6 @@ class LibraryViewModel(
         }
     }
 
-    fun getYouTubeLoggedIn(): Boolean = runBlocking { dataStoreManager.loggedIn.first() } == DataStoreManager.TRUE
-
     fun getPlaylistFavorite() {
         viewModelScope.launch {
             albumRepository.getLikedAlbums().collect { album ->
@@ -399,7 +397,11 @@ class LibraryViewModel(
 
     fun createPlaylist(title: String) {
         viewModelScope.launch {
-            val localPlaylistEntity = LocalPlaylistEntity(title = title)
+            val syncId = com.streamify.sync.HybridLogicalClock.randomUuid()
+            val localPlaylistEntity = LocalPlaylistEntity(
+                title = title,
+                syncId = syncId,
+            )
             val newId = localPlaylistRepository
                 .insertLocalPlaylist(
                     localPlaylistEntity,
@@ -408,7 +410,7 @@ class LibraryViewModel(
             newId?.let {
                 log("Created playlist with id: $it")
                 com.streamify.supabase.SupabaseLibrarySync.syncPlaylist(
-                    playlistId = "local_pl_$it",
+                    playlistId = syncId,
                     name = title,
                     trackIds = emptyList(),
                 )

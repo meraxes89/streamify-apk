@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -143,6 +144,7 @@ import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.expect.ui.persistPickedImage
 import com.maxrave.simpmusic.expect.ui.photoPickerResult
 import com.maxrave.simpmusic.extension.displayNameRes
+import com.maxrave.simpmusic.extension.getScreenSizeInfo
 import com.maxrave.simpmusic.extension.greyScale
 import com.maxrave.simpmusic.ui.icon.AccessAlarm
 import com.maxrave.simpmusic.ui.icon.Add
@@ -329,9 +331,11 @@ fun InfoPlayerBottomSheet(
         )
 
     val screenDataState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()
-    val songEntity by sharedViewModel.nowPlayingState.map { it?.songEntity }.collectAsState(null)
-    val format by sharedViewModel.format.collectAsState(null)
-    val extractSource by sharedViewModel.extractSource.collectAsState()
+    val songEntity by remember(sharedViewModel) {
+        sharedViewModel.nowPlayingState.map { it?.songEntity }
+    }.collectAsStateWithLifecycle(null)
+    val format by sharedViewModel.format.collectAsStateWithLifecycle(null)
+    val extractSource by sharedViewModel.extractSource.collectAsStateWithLifecycle()
     val downloadProgress by sharedViewModel.downloadFileProgress.collectAsStateWithLifecycle()
 
     ModalBottomSheet(
@@ -343,7 +347,7 @@ fun InfoPlayerBottomSheet(
         dragHandle = {},
         scrimColor = Color.Black.copy(alpha = .5f),
         sheetState = sheetState,
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.fillMaxWidth().heightIn(max = (getScreenSizeInfo().hDP * 0.95f).dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
@@ -1053,7 +1057,7 @@ fun QueueBottomSheet(
         dragHandle = {},
         scrimColor = Color.Black.copy(alpha = .5f),
         sheetState = sheetState,
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.fillMaxWidth().heightIn(max = (getScreenSizeInfo().hDP * 0.95f).dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
@@ -1603,7 +1607,9 @@ fun NowPlayingBottomSheet(
         )
     }
 
-    if (isBottomSheetVisible) {
+    val hasChildSheetOpen =
+        addToAPlaylist || artist || mainLyricsProvider || sleepTimer || sleepTimerWarning || changePlaybackSpeedPitch
+    if (isBottomSheetVisible && !hasChildSheetOpen) {
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = modelBottomSheetState,
@@ -1617,7 +1623,8 @@ fun NowPlayingBottomSheet(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .wrapContentHeight(),
+                        .wrapContentHeight()
+                        .heightIn(max = (getScreenSizeInfo().hDP * 0.85f).dp),
                 shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
                 colors = CardDefaults.cardColors().copy(containerColor = rememberSurfaceDarkColors().container),
             ) {
@@ -1958,12 +1965,12 @@ fun NowPlayingBottomSheet(
 fun rememberAddToQueueBlock(): AddToQueueBlock? {
     val handler = koinInject<MediaPlayerHandler>()
     val dataStoreManager = koinInject<DataStoreManager>()
-    val queueData by handler.queueData.collectAsState()
+    val queueData by handler.queueData.collectAsStateWithLifecycle()
     val endlessQueueFlow =
         remember(dataStoreManager) {
             dataStoreManager.endlessQueue.map { it == DataStoreManager.TRUE }
         }
-    val endlessQueue by endlessQueueFlow.collectAsState(false)
+    val endlessQueue by endlessQueueFlow.collectAsStateWithLifecycle(false)
     return queueData.addToQueueBlock(endlessQueue)
 }
 
@@ -1973,7 +1980,7 @@ fun rememberAddToQueueBlock(): AddToQueueBlock? {
  */
 @Composable
 fun AddToQueueBlock?.addToQueueLabel(): StringResource {
-    val queueData by koinInject<MediaPlayerHandler>().queueData.collectAsState()
+    val queueData by koinInject<MediaPlayerHandler>().queueData.collectAsStateWithLifecycle()
     return when (this) {
         null -> if (queueData?.data?.listTracks.isNullOrEmpty()) Res.string.create_new_queue_and_play else Res.string.add_to_queue
         AddToQueueBlock.RADIO -> Res.string.add_to_queue_disabled_radio
@@ -2732,7 +2739,7 @@ fun AddToPlaylistModalBottomSheet(
                         Crossfade(isYouTubePlaylistClicked, modifier = listModifier) { clicked ->
                             if (clicked) {
                                 LazyColumn {
-                                    items(shownYouTubePlaylist) { playlist ->
+                                    items(shownYouTubePlaylist, key = { it.browseId }) { playlist ->
                                         Box(
                                             modifier =
                                                 Modifier
@@ -2764,7 +2771,7 @@ fun AddToPlaylistModalBottomSheet(
                                 }
                             } else {
                                 LazyColumn {
-                                    items(shownLocalPlaylist) { playlist ->
+                                    items(shownLocalPlaylist, key = { it.id }) { playlist ->
                                         Box(
                                             modifier =
                                                 Modifier
@@ -2867,7 +2874,7 @@ fun ArtistModalBottomSheet(
                     ) {}
                     Spacer(modifier = Modifier.height(5.dp))
                     LazyColumn {
-                        items(artists) { artist ->
+                        items(artists, key = { it.id ?: it.name }) { artist ->
                             Box(
                                 modifier =
                                     Modifier
@@ -2934,7 +2941,7 @@ fun PlaylistBottomSheet(
             {
                 coroutineScope.launch {
                     showEditTitleSheetState.hide()
-                    onDismiss()
+                    showEditTitle = false
                 }
             }
         ModalBottomSheet(
@@ -3126,7 +3133,7 @@ fun LocalPlaylistBottomSheet(
             {
                 coroutineScope.launch {
                     showEditTitleSheetState.hide()
-                    onDismiss()
+                    showEditTitle = false
                 }
             }
         ModalBottomSheet(

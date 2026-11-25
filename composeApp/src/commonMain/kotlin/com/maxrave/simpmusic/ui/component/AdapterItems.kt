@@ -659,95 +659,96 @@ fun HomeItemContentPlaylist(
                     else -> null
                 }
             Box {
-                AsyncImage(
-                    model =
-                        ImageRequest
-                            .Builder(LocalPlatformContext.current)
-                            .data(thumb)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .diskCacheKey(thumb)
-                            .crossfade(550)
-                            .build(),
-                    placeholder =
-                        when (data) {
-                            is LocalPlaylistEntity -> {
-                                painterPlaylistThumbnail(
-                                    data.title,
-                                    style = typo().bodySmall,
-                                    thumbSize * 0.9f to thumbSize * 0.9f,
+                if (data is LocalPlaylistEntity) {
+                    PlaylistArtwork(
+                        playlist = data,
+                        modifier =
+                            (if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.size(thumbSize))
+                                .aspectRatio(1f)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                    shape = ArtworkShape,
                                 )
-                            }
+                                .clip(
+                                    ArtworkShape,
+                                ).hoverZoom(hovered),
+                    )
+                } else {
+                    AsyncImage(
+                        model =
+                            ImageRequest
+                                .Builder(LocalPlatformContext.current)
+                                .data(thumb)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .diskCacheKey(thumb)
+                                .crossfade(550)
+                                .build(),
+                        placeholder =
+                            when (data) {
+                                is ChartItem -> {
+                                    painterPlaylistThumbnail(
+                                        data.name,
+                                        style = typo().bodySmall,
+                                        thumbSize * 0.9f to thumbSize * 0.9f,
+                                    )
+                                }
 
-                            is ChartItem -> {
-                                painterPlaylistThumbnail(
-                                    data.name,
-                                    style = typo().bodySmall,
-                                    thumbSize * 0.9f to thumbSize * 0.9f,
+                                // A month whose top song has no artwork still has a name, and the
+                                // deterministic title tile reads as a playlist where the grey holder
+                                // reads as a failed load.
+                                is MonthlyRecapItem -> {
+                                    painterPlaylistThumbnail(
+                                        data.title,
+                                        style = typo().bodySmall,
+                                        thumbSize * 0.9f to thumbSize * 0.9f,
+                                    )
+                                }
+
+                                else -> {
+                                    rememberHolderPainter()
+                                }
+                            },
+                        error =
+                            when (data) {
+                                is ChartItem -> {
+                                    painterPlaylistThumbnail(
+                                        data.name,
+                                        style = typo().bodySmall,
+                                        thumbSize * 0.9f to thumbSize * 0.9f,
+                                    )
+                                }
+
+                                // A month whose top song has no artwork still has a name, and the
+                                // deterministic title tile reads as a playlist where the grey holder
+                                // reads as a failed load.
+                                is MonthlyRecapItem -> {
+                                    painterPlaylistThumbnail(
+                                        data.title,
+                                        style = typo().bodySmall,
+                                        thumbSize * 0.9f to thumbSize * 0.9f,
+                                    )
+                                }
+
+                                else -> {
+                                    rememberHolderPainter()
+                                }
+                            },
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            (if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.size(thumbSize))
+                                .aspectRatio(1f)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
+                                    shape = ArtworkShape,
                                 )
-                            }
-
-                            // A month whose top song has no artwork still has a name, and the
-                            // deterministic title tile reads as a playlist where the grey holder
-                            // reads as a failed load.
-                            is MonthlyRecapItem -> {
-                                painterPlaylistThumbnail(
-                                    data.title,
-                                    style = typo().bodySmall,
-                                    thumbSize * 0.9f to thumbSize * 0.9f,
-                                )
-                            }
-
-                            else -> {
-                                rememberHolderPainter()
-                            }
-                        },
-                    error =
-                        when (data) {
-                            is LocalPlaylistEntity -> {
-                                painterPlaylistThumbnail(
-                                    data.title,
-                                    style = typo().bodySmall,
-                                    thumbSize * 0.9f to thumbSize * 0.9f,
-                                )
-                            }
-
-                            is ChartItem -> {
-                                painterPlaylistThumbnail(
-                                    data.name,
-                                    style = typo().bodySmall,
-                                    thumbSize * 0.9f to thumbSize * 0.9f,
-                                )
-                            }
-
-                            // A month whose top song has no artwork still has a name, and the
-                            // deterministic title tile reads as a playlist where the grey holder
-                            // reads as a failed load.
-                            is MonthlyRecapItem -> {
-                                painterPlaylistThumbnail(
-                                    data.title,
-                                    style = typo().bodySmall,
-                                    thumbSize * 0.9f to thumbSize * 0.9f,
-                                )
-                            }
-
-                            else -> {
-                                rememberHolderPainter()
-                            }
-                        },
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        (if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.size(thumbSize))
-                            .aspectRatio(1f)
-                            .border(
-                                width = 1.dp,
-                                color = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f),
-                                shape = ArtworkShape,
-                            )
-                            .clip(
-                                ArtworkShape,
-                            ).hoverZoom(hovered),
-                )
+                                .clip(
+                                    ArtworkShape,
+                                ).hoverZoom(hovered),
+                    )
+                }
                 if (onPlay != null) HoverPlayButton(visible = hovered, onClick = onPlay)
             }
             Text(

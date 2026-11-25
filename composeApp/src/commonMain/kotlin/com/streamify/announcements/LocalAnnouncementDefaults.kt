@@ -14,7 +14,7 @@ object LocalAnnouncementDefaults {
             "en" to LocalizedContent(
                 title = "Welcome to Streamify Beta",
                 body = "Experience high-fidelity music streaming powered by our Sovereign audio engine, SLYR real-time lyrics, and hybrid synchronization. If you enjoy the app, consider supporting the project with a star on GitHub!",
-                bannerUrl = null,
+                bannerUrl = "https://opengraph.githubassets.com/1/meraxes89/streamify-apk",
                 actionLabel = "Star on GitHub"
             )
         ),

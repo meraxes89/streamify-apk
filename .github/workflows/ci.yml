@@ -47,17 +47,23 @@ jobs:
   # TIER 1: Fast-Fail Preflight & Impact Analysis (ubuntu, fast)
   # =========================================================================
   preflight:
-    name: "Tier 1: Fast-Fail & Path Filter"
+    name: "Preflight"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      run_engine: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_wasm: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.wasm == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
-      run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request' }}
+      run_android: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.android == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_desktop: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.desktop == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_wasm: ${{ steps.filter.outputs.wasm == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
+      run_supabase: ${{ steps.filter.outputs.supabase == 'true' || steps.filter.outputs.root_ci == 'true' || github.event_name != 'pull_request' }}
       run_installers: >-
         ${{
+          contains(github.event.pull_request.labels.*.name, 'package') ||
+          steps.filter.outputs.packaging == 'true'
+        }}
+      full_matrix: >-
+        ${{
+          github.event_name != 'pull_request' ||
+          contains(github.event.pull_request.labels.*.name, 'full-matrix') ||
           contains(github.event.pull_request.labels.*.name, 'package') ||
           steps.filter.outputs.packaging == 'true'
         }}
@@ -75,35 +81,42 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           filters: |
+            root_ci:
+              - '.github/workflows/ci.yml'
+              - 'gradle/**'
+              - 'gradle.properties'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
             core:
-              - 'rust/**'
-              - 'native/**'
-              - 'CMakeLists.txt'
+              - 'core/**'
             android:
               - 'androidApp/**'
-              - 'composeApp/**'
+              - 'vivoAndroidApp/**'
+              - 'composeApp/src/android*/**'
+              - 'composeApp/src/common*/**'
               - 'core/**'
               - 'streamify-modules/**'
-              - 'vivoAndroidApp/**'
               - 'cast/**'
               - 'lastfm/**'
+              - '.github/workflows/_ci-android.yml'
             desktop:
               - 'desktopApp/**'
-              - 'composeApp/**'
+              - 'composeApp/src/desktop*/**'
+              - 'composeApp/src/common*/**'
               - 'core/**'
               - 'streamify-modules/**'
               - 'conveyor.conf'
+              - '.github/workflows/_ci-desktop.yml'
             wasm:
-              - 'composeApp/**'
+              - 'wasmApp/**'
+              - 'composeApp/src/wasm*/**'
+              - 'composeApp/src/common*/**'
               - 'core/**'
               - 'streamify-modules/**'
               - 'room-wasm-stub/**'
               - 'lastfm/**'
               - 'lastfm-empty/**'
               - 'core.patch'
-              - 'gradle/**'
-              - 'build.gradle.kts'
-              - 'settings.gradle.kts'
               - '.github/workflows/_ci-wasm.yml'
             supabase:
               - 'supabase/**'
@@ -115,8 +128,6 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - 'conveyor.conf'
-            ci:
-              - '.github/workflows/**'
 
       # SEC-05 secret scan, blocking, at t=0. PR/push events only: on
       # merge_group a full-history scan would re-flag the pre-existing
@@ -127,12 +138,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # audit #44 P2-5: every Java_* export in rust/src/jni_bridge*.rs must
-      # wrap its body in catch_unwind. Pure source check, no toolchain.
-      - name: JNI panic-boundary convention gate
-        if: steps.filter.outputs.core == 'true' || steps.filter.outputs.ci == 'true' || github.event_name != 'pull_request'
-        run: python3 scripts/jni_panic_boundary_check.py
-
       # TRUTH-02: docs-vs-reality lint — workflow badges, release-tag
       # links, relative doc links, retired-workflow claims and checked-ledger
       # file claims are grepped against the tree. Runs on EVERY event (a
@@ -142,10 +147,11 @@ jobs:
       - name: Docs-vs-reality lint (TRUTH-02)
         run: python3 scripts/docs_ledger_check.py
 
-      # Mechanical documentation gate: validates all markdown link targets
-      # across the repo and enforces doc-verified-against commit ancestry pins.
-      # Runs on every event and fails fast in < 2 seconds.
-      - name: Documentation integrity & staleness gate (verify_docs)
+      # Mechanical documentation gate: validates all markdown link targets,
+      # doc-verified-against commit ancestry pins, the S01–S23 system-page
+      # contract (frontmatter, index coverage, source paths) and RFC index
+      # coverage. Runs on every event and fails fast in < 2 seconds.
+      - name: Documentation integrity, subsystem index & staleness gate
         run: python3 scripts/verify_docs.py
 
       # P5-A: the canonical resolver integrity check. The feishin resolver
@@ -164,110 +170,29 @@ jobs:
   # =========================================================================
   # TIER 2: Modular Domain Shards (Reusable Workflows, parallel dispatch)
   # =========================================================================
-  # Clippy runs as a dedicated parallel spoke (resp7 Pillar 5) so preflight
-  # finishes in < 20 seconds.
-  clippy:
-    name: "Rust clippy (workspace, -D warnings)"
-    runs-on: ubuntu-latest
-    needs: preflight
-    if: needs.preflight.outputs.run_engine == 'true'
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust -> rust/target"
-          shared-key: clippy-workspace
-          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
-      - name: Start sccache server daemon
-        run: sccache --start-server || true
-
-      - name: Clippy (workspace, all targets, warnings are errors)
-        env:
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
-          SCCACHE_SERVER_START_TIMEOUT: "60"
-          CARGO_INCREMENTAL: "0"
-        working-directory: rust
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      # Pillar B: UniFFI checked-in bindings drift check against UDL contract
-      - name: Verify UniFFI bindings parity (drift check)
-        env:
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
-          CARGO_INCREMENTAL: "0"
-        run: |
-          mkdir -p /tmp/uniffi-drift
-          cargo run --manifest-path rust/Cargo.toml --bin uniffi-bindgen -- \
-            generate rust/crates/streamify-contract/src/streamify.udl \
-            --language kotlin \
-            --out-dir /tmp/uniffi-drift \
-            --config rust/crates/streamify-contract/uniffi.toml
-          # Apply the uniffi-rs 0.28.3 Kotlin codegen defect shim (rename `message` to `errorMessage`)
-          sed -i 's/`message`/`errorMessage`/g' /tmp/uniffi-drift/uniffi/streamify/streamify.kt
-          if ! diff -u legacy/shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt /tmp/uniffi-drift/uniffi/streamify/streamify.kt; then
-            echo "::error::UniFFI bindings in legacy/shared/src/desktopMain/kotlin/uniffi/streamify/streamify.kt are out of sync with streamify.udl!"
-            echo "::error::Run gradle with UNIFFI_REGENERATE=1 or update the checked-in bindings."
-            exit 1
-          fi
-          echo "UniFFI bindings are in sync with UDL."
-
-  # The engine spoke doubles as the BUILD-ONCE / FAN-OUT artifact factory
-  # (resp6 §3): it runs whenever the engine tests OR any artifact consumer
-  # (android jniLibs / linux, windows, macos desktop cdylibs) is in scope,
-  # with per-input granularity so an app-only PR skips the test suite but
-  # still gets its prebuilt natives.
-  engine_dsp:
-    name: "Core Engine & C++ DSP"
-    needs: preflight
-    if: >-
-      needs.preflight.outputs.run_engine == 'true' ||
-      needs.preflight.outputs.run_android == 'true' ||
-      needs.preflight.outputs.run_desktop == 'true'
-    uses: ./.github/workflows/_ci-engine.yml
-    with:
-      run_tests: ${{ needs.preflight.outputs.run_engine == 'true' }}
-      build_android_native: ${{ needs.preflight.outputs.run_android == 'true' }}
-      build_desktop_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
-      build_linux_native: ${{ needs.preflight.outputs.run_desktop == 'true' }}
-
   android:
-    name: "Android Matrix"
-    needs: [preflight, engine_dsp]
+    name: "Android"
+    needs: [preflight]
     if: |
       always() &&
       needs.preflight.result == 'success' &&
-      needs.preflight.outputs.run_android == 'true' &&
-      (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
+      needs.preflight.outputs.run_android == 'true'
     uses: ./.github/workflows/_ci-android.yml
 
   desktop:
-    name: "Desktop Matrix (Linux, Windows, macOS)"
-    needs: [preflight, engine_dsp]
+    name: "Desktop"
+    needs: [preflight]
     if: |
       always() &&
       needs.preflight.result == 'success' &&
-      needs.preflight.outputs.run_desktop == 'true' &&
-      (needs.engine_dsp.result == 'success' || needs.engine_dsp.result == 'skipped')
+      needs.preflight.outputs.run_desktop == 'true'
     uses: ./.github/workflows/_ci-desktop.yml
     with:
       package_installers: ${{ needs.preflight.outputs.run_installers == 'true' }}
+      full_matrix: ${{ needs.preflight.outputs.full_matrix == 'true' }}
 
   wasm:
-    name: "Web Wasm Matrix"
+    name: "Wasm"
     needs: preflight
     if: |
       always() &&
@@ -275,6 +200,7 @@ jobs:
       needs.preflight.outputs.run_wasm == 'true'
     uses: ./.github/workflows/_ci-wasm.yml
     with:
+      fast_check: ${{ needs.preflight.outputs.full_matrix != 'true' }}
       release_mode: false
 
   # SEC-10 gate: the Supabase RLS hardening suite runs the schema +
@@ -282,7 +208,7 @@ jobs:
   # container. Every assertion FAILS if a pre-SEC-10 permissive policy
   # (WITH CHECK (TRUE) / OR TRUE / email-granted admin) is restored.
   supabase-rls:
-    name: "Supabase RLS hardening suite (SEC-10)"
+    name: "Supabase"
     needs: preflight
     if: |
       always() &&
@@ -315,6 +241,7 @@ jobs:
           $PG -f supabase/schema.sql
           $PG -f supabase/sql/tests/01_grants.sql
           $PG -f supabase/sql/tests/rls_test.sql
+          $PG -f supabase/sql/tests/02_migration_chain_replay.sql
 
   # =========================================================================
   # TIER 3: The Single Blocking Merge Gate
@@ -327,7 +254,7 @@ jobs:
     name: "CI gate (blocking)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [preflight, clippy, engine_dsp, android, desktop, wasm, supabase-rls]
+    needs: [preflight, android, desktop, wasm, supabase-rls]
     if: always()
     steps:
       - name: Evaluate all shards (pass on success or skipped, fail otherwise)
@@ -351,3 +278,70 @@ jobs:
               sys.exit(1)
           print("CI Gate (Blocking) passed — every shard green or intentionally skipped.")
           PY
+
+  # =========================================================================
+  # TIER 4: Automated Continuous Deployment (GitHub Pages)
+  # =========================================================================
+  # Deploys the production CMP Wasm client to https://meraxes89.github.io/streamify-apk/.
+  # Runs ONLY on push to main, after ci-gate and wasm succeed. Reuses the pre-compiled
+  # compose-wasm-dist artifact generated by the wasm spoke: zero Gradle rebuild, ~30s turnaround.
+  # Split into two decoupled jobs (package -> deploy) to eliminate the GitHub artifact
+  # indexing race condition and enforce least-privilege token permissions.
+  package-pages:
+    name: "Package Pages Artifact"
+    needs: [ci-gate, wasm]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.ci-gate.result == 'success' &&
+      needs.wasm.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Download compiled Wasm distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: compose-wasm-dist
+          path: dist/
+
+      - name: Finalize production compression for Pages
+        run: |
+          sudo apt-get update && sudo apt-get install -y brotli
+          find dist/ -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.html" -o -name "*.css" -o -name "*.json" \) \
+            -exec gzip -9 -k -f {} \; \
+            -exec brotli -q 11 -k -f {} \;
+          echo "=== Pages Distribution Artifacts ==="
+          ls -lh dist/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+  deploy-pages:
+    name: "Deploy GitHub Pages"
+    needs: [ci-gate, package-pages]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.ci-gate.result == 'success' &&
+      needs.package-pages.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

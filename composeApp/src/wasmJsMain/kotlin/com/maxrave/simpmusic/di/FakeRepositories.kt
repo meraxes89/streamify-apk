@@ -1461,6 +1461,8 @@ class FakeAnalyticsRepository(
         albumBrowseId: String?,
         durationSecond: Long,
         listenedSecond: Long,
+        syncId: String?,
+        recordSync: Boolean,
     ): Flow<Long> = flow {
         songRepository.updateListenCount(videoId)
         emit(1L)

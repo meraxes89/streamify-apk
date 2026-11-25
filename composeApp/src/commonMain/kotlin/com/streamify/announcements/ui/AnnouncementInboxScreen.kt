@@ -48,6 +48,8 @@ import coil3.compose.AsyncImage
 import com.maxrave.simpmusic.ui.icon.ArrowBackIosNew
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.theme.typo
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownTypography
 import com.streamify.announcements.Announcement
 import com.streamify.announcements.AnnouncementAction
 import com.streamify.announcements.AnnouncementInboxRepository
@@ -178,10 +180,14 @@ fun AnnouncementInboxScreen(
                             }
 
                             Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = content.body,
-                                style = typo().bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                            Markdown(
+                                content = content.body,
+                                typography = markdownTypography(
+                                    text = typo().bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)),
+                                    paragraph = typo().bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)),
+                                    bullet = typo().bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
+                                ),
+                                modifier = Modifier.fillMaxWidth()
                             )
 
                             if (item.action !is AnnouncementAction.None) {

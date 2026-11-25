@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.maxrave.simpmusic.expect.ui.PlatformBackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.kmpalette.rememberPaletteState
@@ -220,9 +221,10 @@ fun NowPlayingScreenContent(
     // The pager wraps the Canvas + Thumbnail layers. Controller layout below stays fixed.
     val nowPlayingState by sharedViewModel.nowPlayingState.collectAsStateWithLifecycle()
     val queueDataState by sharedViewModel.getQueueDataState().collectAsStateWithLifecycle()
-    val artworkQueue by remember {
-        derivedStateOf { queueDataState?.data?.listTracks ?: emptyList() }
-    }
+    val artworkQueue =
+        remember(queueDataState) {
+            queueDataState?.data?.listTracks ?: emptyList()
+        }
     // Note: Use track.videoId (already prefix-stripped at MediaServiceHandlerImpl.kt:386).
     // Do NOT use mediaItem.mediaId — it carries the "Video" prefix for video items.
     val nowPlayingVideoId: String? = nowPlayingState?.track?.videoId
@@ -397,6 +399,7 @@ fun NowPlayingScreenContent(
         mutableStateOf(false)
     }
     val fullscreenLyricsRequested by sharedViewModel.fullscreenLyricsRequest.collectAsStateWithLifecycle()
+    PlatformBackHandler(enabled = true, onBack = onDismiss)
     LaunchedEffect(fullscreenLyricsRequested) {
         if (fullscreenLyricsRequested) {
             showFullscreenLyrics = true
@@ -510,24 +513,33 @@ fun NowPlayingScreenContent(
         }
     }
 
-    // Crossfade: RGB rainbow color cycling when transitioning between tracks
-    val infiniteTransition = rememberInfiniteTransition(label = "crossfadeRainbow")
-    val rainbowHue by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(1000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-        label = "rainbowHue",
-    )
-    val rainbowColor = hsvToColor(rainbowHue, 1f, 1f)
-    val sliderTrackColor by animateColorAsState(
-        targetValue = if (timelineState.isCrossfading) rainbowColor else Color.White,
-        animationSpec = tween(300),
-        label = "sliderCrossfadeColor",
-    )
+    // Crossfade: RGB rainbow color cycling when transitioning between tracks.
+    // Gated behind isCrossfading to avoid unconditional 60/120 Hz recomposition of the shell.
+    val sliderTrackColor by if (timelineState.isCrossfading) {
+        val infiniteTransition = rememberInfiniteTransition(label = "crossfadeRainbow")
+        val rainbowHue by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
+                ),
+            label = "rainbowHue",
+        )
+        val rainbowColor = hsvToColor(rainbowHue, 1f, 1f)
+        animateColorAsState(
+            targetValue = rainbowColor,
+            animationSpec = tween(300),
+            label = "sliderCrossfadeColor",
+        )
+    } else {
+        animateColorAsState(
+            targetValue = Color.White,
+            animationSpec = tween(300),
+            label = "sliderCrossfadeColor",
+        )
+    }
 
     // Show ControlLayout Or Show Artist Badge
     var showHideControlLayout by rememberSaveable {
@@ -593,42 +605,72 @@ fun NowPlayingScreenContent(
         mutableIntStateOf(-1)
     }
 
-    // Canvas subtitle sync
-    LaunchedEffect(timelineState, screenDataState.lyricsData?.lyrics, effectiveLyricsOffsetMs) {
+    // Canvas subtitle sync: fast-path window check and binary search to avoid O(N) loop every 50ms tick
+    LaunchedEffect(timelineState.current, screenDataState.lyricsData?.lyrics, effectiveLyricsOffsetMs) {
         val lyrics = screenDataState.lyricsData?.lyrics
         if (lyrics == null || lyrics.syncType == "UNSYNCED" || lyrics.syncType == null) {
-            currentLyricLineIndex = -1
+            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
             return@LaunchedEffect
         }
         val lines = lyrics.lines ?: return@LaunchedEffect
-        val translatedLines =
-            screenDataState.lyricsData
-                ?.translatedLyrics
-                ?.first
-                ?.lines
-        // What the ear is hearing right now, which is what a lyric answers to. Keyed on the offset
-        // as well so dragging the setting while paused still moves the line.
+        if (lines.isEmpty()) {
+            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
+            return@LaunchedEffect
+        }
         val nowMs = timelineState.current - effectiveLyricsOffsetMs
-        if (nowMs > 0L) {
-            lines.indices.forEach { i ->
-                val startTimeMs = lines[i].startTimeMs.toLongOrNull() ?: 0L
-                val endTimeMs =
-                    if (i < lines.size - 1) {
-                        lines[i + 1].startTimeMs.toLongOrNull() ?: 0L
-                    } else {
-                        startTimeMs + 60000
-                    }
-                if (nowMs in startTimeMs..endTimeMs) {
-                    currentLyricLineIndex = i
-                }
+        if (nowMs <= 0L) {
+            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
+            return@LaunchedEffect
+        }
+        val firstStart = lines[0].startTimeMs.toLongOrNull() ?: 0L
+        if (nowMs < firstStart) {
+            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
+            return@LaunchedEffect
+        }
+
+        // Fast path: if ear is still within current lyric line's window, do nothing
+        val curIdx = currentLyricLineIndex
+        if (curIdx in lines.indices) {
+            val curStart = lines[curIdx].startTimeMs.toLongOrNull() ?: 0L
+            val curEnd = if (curIdx < lines.size - 1) {
+                lines[curIdx + 1].startTimeMs.toLongOrNull() ?: 0L
+            } else {
+                curStart + 60000L
             }
-            if (lines.isNotEmpty() &&
-                nowMs in 0..(lines.getOrNull(0)?.startTimeMs?.toLongOrNull() ?: 0L)
-            ) {
-                currentLyricLineIndex = -1
+            if (nowMs in curStart..curEnd) {
+                return@LaunchedEffect
             }
+        }
+
+        // Binary search for the active line index
+        var low = 0
+        var high = lines.size - 1
+        var bestIdx = -1
+        while (low <= high) {
+            val mid = (low + high).ushr(1)
+            val midStart = lines[mid].startTimeMs.toLongOrNull() ?: 0L
+            if (midStart <= nowMs) {
+                bestIdx = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+
+        val targetIdx = if (bestIdx in lines.indices) {
+            val startMs = lines[bestIdx].startTimeMs.toLongOrNull() ?: 0L
+            val endMs = if (bestIdx < lines.size - 1) {
+                lines[bestIdx + 1].startTimeMs.toLongOrNull() ?: 0L
+            } else {
+                startMs + 60000L
+            }
+            if (nowMs in startMs..endMs) bestIdx else -1
         } else {
-            currentLyricLineIndex = -1
+            -1
+        }
+
+        if (currentLyricLineIndex != targetIdx) {
+            currentLyricLineIndex = targetIdx
         }
     }
 
@@ -668,77 +710,81 @@ fun NowPlayingScreenContent(
             videoAspectRatio = rememberVideoAspectRatio(MAIN_PLAYER) ?: 16f / 9,
             videoId = commentsVideoId,
         )
+    val currentSliderValue by rememberUpdatedState(sliderValue)
+    val currentScreenDataState by rememberUpdatedState(screenDataState)
     val actions =
-        NowPlayingContentActions(
-            onUIEvent = { sharedViewModel.onUIEvent(it) },
-            onSeekToQueueIndex = { index ->
-                mediaPlayerHandler.playMediaItemInMediaSource(index)
-            },
-            onArtworkBitmap = { sharedViewModel.setBitmap(it) },
-            onSliderChange = { newValue ->
-                isSliding = true
-                sliderValue = newValue
-            },
-            onSliderChangeFinished = {
-                isSliding = false
-                sharedViewModel.onUIEvent(
-                    UIEvent.UpdateProgress(sliderValue),
-                )
-            },
-            onToggleControls = {
-                showHideJob = true
-                showHideControlLayout = !showHideControlLayout
-            },
-            onNavigateToArtist = {
-                val song = sharedViewModel.nowPlayingState.value?.songEntity
-                (
-                    song?.artistId?.firstOrNull()?.takeIf { it.isNotEmpty() }
-                        ?: screenDataState.songInfoData?.authorId
-                )?.let { channelId ->
-                    onDismiss()
-                    navController.navigate(
-                        ArtistDestination(
-                            channelId = channelId,
-                        ),
+        remember(sharedViewModel, mediaPlayerHandler, navController, onDismiss, coroutineScope) {
+            NowPlayingContentActions(
+                onUIEvent = { sharedViewModel.onUIEvent(it) },
+                onSeekToQueueIndex = { index ->
+                    mediaPlayerHandler.playMediaItemInMediaSource(index)
+                },
+                onArtworkBitmap = { sharedViewModel.setBitmap(it) },
+                onSliderChange = { newValue ->
+                    isSliding = true
+                    sliderValue = newValue
+                },
+                onSliderChangeFinished = {
+                    isSliding = false
+                    sharedViewModel.onUIEvent(
+                        UIEvent.UpdateProgress(currentSliderValue),
                     )
-                }
-            },
-            onOpenListenTogether = {
-                onDismiss()
-                navController.navigate(ListenTogetherDestination)
-            },
-            onAddToYouTubeLiked = { sharedViewModel.addToYouTubeLiked() },
-            onShowMoreSheet = { showSheet = true },
-            onShowQueue = { showQueueBottomSheet = true },
-            onShowInfo = { showInfoBottomSheet = true },
-            onShowAddToPlaylist = { showAddToPlaylistDirectly = true },
-            onShowComments = {
-                commentDraft = ""
-                showCommentsSheet = true
-            },
-            onWriteComment = { draft ->
-                commentDraft = draft
-                showCommentsSheet = true
-            },
-            onShowFullscreenLyrics = { showFullscreenLyrics = true },
-            onShowVoteDialog = { showVoteDialog = true },
-            onLyricsOffsetChange = { sharedViewModel.setLyricsOffsetMs(it) },
-            onEnterFullscreenVideo = {
-                onDismiss()
-                navController.navigate(FullscreenDestination)
-            },
-            onDismiss = onDismiss,
-            onToolbarVisibilityChange = { shouldShowToolbar = it },
-            onMoveQueueItem = { from, to ->
-                coroutineScope.launch {
-                    mediaPlayerHandler.swap(from, to)
-                }
-            },
-            onRemoveQueueItem = { index ->
-                mediaPlayerHandler.removeMediaItem(index)
-            },
-            onQueueItemMore = { index, track -> queueMoreFor = index to track },
-        )
+                },
+                onToggleControls = {
+                    showHideJob = true
+                    showHideControlLayout = !showHideControlLayout
+                },
+                onNavigateToArtist = {
+                    val song = sharedViewModel.nowPlayingState.value?.songEntity
+                    (
+                        song?.artistId?.firstOrNull()?.takeIf { it.isNotEmpty() }
+                            ?: currentScreenDataState.songInfoData?.authorId
+                    )?.let { channelId ->
+                        onDismiss()
+                        navController.navigate(
+                            ArtistDestination(
+                                channelId = channelId,
+                            ),
+                        )
+                    }
+                },
+                onOpenListenTogether = {
+                    onDismiss()
+                    navController.navigate(ListenTogetherDestination)
+                },
+                onAddToYouTubeLiked = { sharedViewModel.addToYouTubeLiked() },
+                onShowMoreSheet = { showSheet = true },
+                onShowQueue = { showQueueBottomSheet = true },
+                onShowInfo = { showInfoBottomSheet = true },
+                onShowAddToPlaylist = { showAddToPlaylistDirectly = true },
+                onShowComments = {
+                    commentDraft = ""
+                    showCommentsSheet = true
+                },
+                onWriteComment = { draft ->
+                    commentDraft = draft
+                    showCommentsSheet = true
+                },
+                onShowFullscreenLyrics = { showFullscreenLyrics = true },
+                onShowVoteDialog = { showVoteDialog = true },
+                onLyricsOffsetChange = { sharedViewModel.setLyricsOffsetMs(it) },
+                onEnterFullscreenVideo = {
+                    onDismiss()
+                    navController.navigate(FullscreenDestination)
+                },
+                onDismiss = onDismiss,
+                onToolbarVisibilityChange = { shouldShowToolbar = it },
+                onMoveQueueItem = { from, to ->
+                    coroutineScope.launch {
+                        mediaPlayerHandler.swap(from, to)
+                    }
+                },
+                onRemoveQueueItem = { index ->
+                    mediaPlayerHandler.removeMediaItem(index)
+                },
+                onQueueItemMore = { index, track -> queueMoreFor = index to track },
+            )
+        }
 
     // Below `state`/`actions`: the landscape lyrics layout renders the current style's own track row
     // and playback controls, so it takes the same contract the style content does.

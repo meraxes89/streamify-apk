@@ -47,7 +47,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.singleOrNull
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.koin.core.component.inject
 import org.simpmusic.lastfm.isLastfmAvailable
@@ -281,9 +280,22 @@ class SettingsViewModel(
         getHelpBuildLyricsDatabase()
     }
 
+    private var hasLoadedData = false
+
     fun getAudioSessionId() = mediaPlayerHandler.player.audioSessionId
 
-    fun getData() {
+    fun getData(force: Boolean = false) {
+        if (hasLoadedData && !force) {
+            viewModelScope.launch {
+                calculateDataFraction(
+                    cacheRepository,
+                )?.let {
+                    _fraction.value = it
+                }
+            }
+            return
+        }
+        hasLoadedData = true
         getLocation()
         getLanguage()
         getQuality()
@@ -299,7 +311,6 @@ class SettingsViewModel(
         getSponsorBlockEnabled()
         getSponsorBlockCategories()
         getTranslationLanguage()
-        getYoutubeSubtitleLanguage()
         getLyricsProvider()
         getLyricsOffsetMs()
         getUseTranslation()
@@ -1060,7 +1071,7 @@ class SettingsViewModel(
     fun setTranslationLanguage(language: String) {
         viewModelScope.launch {
             dataStoreManager.setTranslationLanguage(language)
-            getTranslationLanguage()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("translation_language", language)
         }
     }
 
@@ -1078,6 +1089,7 @@ class SettingsViewModel(
     fun setLyricsOffsetMs(offsetMs: Int) {
         viewModelScope.launch {
             dataStoreManager.setLyricsOffsetMs(offsetMs)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("lyrics_offset_ms", offsetMs.toString())
         }
     }
 
@@ -1092,7 +1104,7 @@ class SettingsViewModel(
     fun setUseTranslation(useTranslation: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setEnableTranslateLyric(useTranslation)
-            getUseTranslation()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("use_translation_language", useTranslation.toString())
         }
     }
 
@@ -1107,7 +1119,7 @@ class SettingsViewModel(
     fun setLyricsProvider(provider: String) {
         viewModelScope.launch {
             dataStoreManager.setLyricsProvider(provider)
-            getLyricsProvider()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("lyrics_provider", provider)
         }
     }
 
@@ -1166,7 +1178,7 @@ class SettingsViewModel(
     fun changeLocation(location: String) {
         viewModelScope.launch {
             dataStoreManager.setLocation(location)
-            getLocation()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("location", location)
         }
     }
 
@@ -1239,9 +1251,7 @@ class SettingsViewModel(
     fun setSponsorBlockCategories(list: ArrayList<String>) {
         log("setSponsorBlockCategories: $list", LogLevel.WARN)
         viewModelScope.launch {
-            runBlocking(Dispatchers.IO) {
-                dataStoreManager.setSponsorBlockCategories(list)
-            }
+            dataStoreManager.setSponsorBlockCategories(list)
             getSponsorBlockCategories()
         }
     }
@@ -1262,15 +1272,15 @@ class SettingsViewModel(
             if (VIDEO_QUALITY.items.contains(item)) {
                 dataStoreManager.setVideoQuality(item)
             }
-            getVideoQuality()
         }
     }
 
     fun changeQuality(qualityItem: String?) {
         viewModelScope.launch {
             log("changeQuality: $qualityItem")
-            dataStoreManager.setQuality(qualityItem ?: QUALITY.items[2].toString())
-            getQuality()
+            val q = qualityItem ?: QUALITY.items[2].toString()
+            dataStoreManager.setQuality(q)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("quality", q)
         }
     }
 
@@ -1303,7 +1313,7 @@ class SettingsViewModel(
     fun clearDownloadedCache() {
         viewModelScope.launch {
             cacheRepository.clearCache(Config.DOWNLOAD_CACHE)
-            songRepository.getDownloadedSongs().singleOrNull()?.let { songs ->
+            songRepository.getDownloadedSongs().firstOrNull()?.let { songs ->
                 songs.forEach { song ->
                     songRepository.updateDownloadState(song.videoId, DownloadState.STATE_NOT_DOWNLOADED)
                 }
@@ -1424,8 +1434,8 @@ class SettingsViewModel(
     fun changeLanguage(code: String) {
         viewModelScope.launch {
             dataStoreManager.putString(SELECTED_LANGUAGE, code)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(SELECTED_LANGUAGE, code)
             Logger.w("SettingsViewModel", "changeLanguage: $code")
-            getLanguage()
             changeLanguageNative(code)
         }
     }
@@ -1578,10 +1588,8 @@ class SettingsViewModel(
         val currentAuthUser = dataStoreManager.authUser.first()
         val currentLoggedIn = dataStoreManager.loggedIn.first() == DataStoreManager.TRUE
         try {
-            runBlocking {
-                dataStoreManager.setCookie(cookie, "")
-                dataStoreManager.setLoggedIn(true)
-            }
+            dataStoreManager.setCookie(cookie, "")
+            dataStoreManager.setLoggedIn(true)
             return accountRepository
                 .getAccountInfo(
                     cookie,
@@ -1645,19 +1653,15 @@ class SettingsViewModel(
                     true
                 } ?: run {
                 Logger.w("Auth", "YouTube: sign-in failed, YouTube returned no account for this cookie")
-                runBlocking {
-                    dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
-                    dataStoreManager.setLoggedIn(currentLoggedIn)
-                }
+                dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
+                dataStoreManager.setLoggedIn(currentLoggedIn)
                 false
             }
         } catch (e: Exception) {
             e.printStackTrace()
             Logger.e("Auth", "YouTube: sign-in failed: ${e.message}")
-            runBlocking {
-                dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
-                dataStoreManager.setLoggedIn(currentLoggedIn)
-            }
+            dataStoreManager.setCookie(currentCookie, currentPageId, currentAuthUser)
+            dataStoreManager.setLoggedIn(currentLoggedIn)
             return false
         }
     }
@@ -2201,6 +2205,8 @@ data class SettingAlertState(
         val listSelect: List<Pair<Boolean, String>>,
     ) {
         fun getSelected(): String = listSelect.firstOrNull { it.first }?.second ?: ""
+
+        fun getSelectedIndex(): Int = listSelect.indexOfFirst { it.first }
 
         fun getListSelected(): List<String> = listSelect.filter { it.first }.map { it.second }
     }

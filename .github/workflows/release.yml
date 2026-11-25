@@ -49,18 +49,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  engine:
-    name: "Engine (release artifacts)"
-    uses: ./.github/workflows/_ci-engine.yml
-    with:
-      run_tests: false
-      build_android_native: true
-      build_linux_native: true
-      build_desktop_native: true
+  preflight:
+    name: "Preflight (monotonicity & validation)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Version Code Monotonicity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CANDIDATE_CODE=$(python3 -c '
+          import re, pathlib
+          text = pathlib.Path("gradle/libs.versions.toml").read_text()
+          m = re.search(r"version-code\s*=\s*[\"\x27]?(\d+)", text)
+          print(int(m.group(1)) if m else 0)
+          ')
+          echo "Candidate versionCode: $CANDIDATE_CODE"
+          if [ "$CANDIDATE_CODE" -le 0 ]; then
+            echo "::error::Invalid or missing versionCode in gradle/libs.versions.toml"
+            exit 1
+          fi
+
+          MAX_PUBLISHED_CODE=0
+          if command -v gh >/dev/null 2>&1 && [ -n "$GH_TOKEN" ]; then
+            RELEASES=$(gh api repos/${{ github.repository }}/releases?per_page=20 --jq '.[].tag_name' 2>/dev/null || true)
+            for tag in $RELEASES; do
+              CODE=$(gh api "repos/${{ github.repository }}/releases/tags/$tag" --jq '.assets[] | select(.name=="version.json") | .browser_download_url' 2>/dev/null | xargs -r curl -sL | jq -r '.versionCode // 0' 2>/dev/null || echo 0)
+              if [ "$CODE" -gt "$MAX_PUBLISHED_CODE" ]; then
+                MAX_PUBLISHED_CODE=$CODE
+              fi
+            done
+          fi
+
+          echo "Highest published versionCode: $MAX_PUBLISHED_CODE"
+          if [ "$MAX_PUBLISHED_CODE" -gt 0 ] && [ "$CANDIDATE_CODE" -le "$MAX_PUBLISHED_CODE" ]; then
+            echo "::error::Release blocked: Candidate versionCode ($CANDIDATE_CODE) is not strictly greater than highest published code ($MAX_PUBLISHED_CODE)."
+            echo "::error::Increment version-code in gradle/libs.versions.toml to at least $(( MAX_PUBLISHED_CODE + 1 ))."
+            exit 1
+          fi
+          echo "Version code monotonicity check passed."
 
   android:
     name: "Android release APK"
-    needs: engine
+    needs: preflight
     uses: ./.github/workflows/_ci-android.yml
     with:
       release_mode: true
@@ -68,11 +103,12 @@ jobs:
 
   desktop:
     name: "Desktop installers (.deb / .rpm / .msi / .dmg)"
-    needs: engine
+    needs: preflight
     uses: ./.github/workflows/_ci-desktop.yml
     with:
       package_installers: true
       release_mode: true
+      full_matrix: true
 
   wasm:
     name: "Web Wasm distribution"
@@ -82,14 +118,14 @@ jobs:
 
   ios:
     name: "Apple iOS release (Frameworks & Distribution)"
-    needs: engine
+    needs: preflight
     uses: ./.github/workflows/_ci-ios.yml
     with:
       release_mode: true
 
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [engine, android, desktop, wasm, ios]
+    needs: [android, desktop, wasm, ios]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -176,6 +212,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --sums release/SHA256SUMS \
             --notes release_body.md \
+            --git-sha "${{ github.sha }}" \
             --output release/version.json $EXTRA_FLAGS
           cat release/version.json
 

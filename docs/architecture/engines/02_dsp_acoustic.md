@@ -1,5 +1,11 @@
 # 🎛️ DIGITAL SIGNAL PROCESSING (DSP), LOUDNESS & ACOUSTIC ENGINE — Engineering Documentation
 
+> **HISTORICAL — not current state.** The Rust/C++ DSP layer described below
+> was removed at commit `50b937f7`. This document is kept for lineage and
+> algorithm reference only. Current truth is
+> [S08](../../systems/S08-dsp-and-acoustics.md) and
+> [ADR-009](../../adr/ADR-009-kotlin-only-audio-pipeline.md).
+
 > **Streamify's real-time audio mastering, psychoacoustic normalization, and spectral analysis engine.**
 > A high-performance C++, NEON SIMD, and Rust DSP pipeline living directly on the ExoPlayer/AudioTrack
 > rendering path — delivering broadcast-grade ITU-R BS.1770-4 EBU R128 loudness normalization, true-peak

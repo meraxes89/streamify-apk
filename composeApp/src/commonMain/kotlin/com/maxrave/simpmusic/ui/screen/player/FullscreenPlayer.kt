@@ -115,10 +115,10 @@ fun FullscreenPlayer(
         onLaunch = {
             hideNavBar()
             isFullScreen = true
-            sharedViewModel.isFullScreen = true
+            sharedViewModel.setFullScreen(true)
         },
         onDispose = {
-            sharedViewModel.isFullScreen = false
+            sharedViewModel.setFullScreen(false)
             isFullScreen = false
             showNavBar()
         },

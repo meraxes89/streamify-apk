@@ -89,7 +89,7 @@
             android:supportsPictureInPicture="true"
             android:enableOnBackInvokedCallback="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.SimpMusic"
+            android:theme="@style/Theme.App.Starting"
             tools:ignore="DiscouragedApi,LockedOrientationActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -274,7 +274,7 @@
         </service>
         <service
             android:name="com.maxrave.media3.service.download.MusicDownloadService"
-            android:exported="true"
+            android:exported="false"
             android:foregroundServiceType="dataSync">
             <intent-filter>
                 <action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" />

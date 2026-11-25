@@ -178,13 +178,18 @@ fun MiniPlayer(
     // The Desktop capsule's quality line between its timestamps — see toAudioQualityLabel.
     val formatState by sharedViewModel.format.collectAsStateWithLifecycle(initialValue = null)
 
+    val (songEntity, setSongEntity) =
+        remember {
+            mutableStateOf<SongEntity?>(null)
+        }
+
     val layer = rememberGraphicsLayer()
 
     // Glass needs both the luminance sampling loop that drives it and the theme-following text
     // colour; without the loop the glass sits at luminance 0, a 2dp blur and a 0.12 darken, which
     // reads as a smear. The setting governs the Android card and the Desktop capsule alike.
     val useGlassSurface = isLiquidGlassEnabled == DataStoreManager.TRUE
-    val luminance = rememberGlassLuminance(layer, enabled = useGlassSurface && isVisible)
+    val luminance = rememberGlassLuminance(layer, enabled = useGlassSurface && isVisible, trigger = songEntity?.videoId)
 
     val isDarkTheme = LocalIsDarkTheme.current
     val textColor by animateColorAsState(
@@ -200,10 +205,6 @@ fun MiniPlayer(
         animationSpec = tween(500),
     )
 
-    val (songEntity, setSongEntity) =
-        remember {
-            mutableStateOf<SongEntity?>(null)
-        }
     val (liked, setLiked) =
         remember {
             mutableStateOf(false)

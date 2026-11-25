@@ -24,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -147,8 +148,10 @@ fun LibraryItem(
             Crossfade(targetState = state.isLoading, label = "Loading") { isLoading ->
                 if (!isLoading) {
                     if (state.type is LibraryItemType.RecentlyAdded) {
+                        val recentlyItems = remember(state.data) { state.data.filterIsInstance<RecentlyType>() }
+                        val radioText = stringResource(Res.string.radio)
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            state.data.filterIsInstance<RecentlyType>().forEach { item ->
+                            recentlyItems.forEach { item ->
                                 when (item.objectType()) {
                                     RecentlyType.Type.SONG -> {
                                         SongFullWidthItems(
@@ -165,7 +168,7 @@ fun LibraryItem(
                                                         listTracks = arrayListOf(item.toTrack()),
                                                         firstPlayedTrack = item.toTrack(),
                                                         playlistId = "RDAMVM${item.videoId}",
-                                                        playlistName = "\"${item.title}\" ${runBlocking { getString(Res.string.radio) }}",
+                                                        playlistName = "\"${item.title}\" $radioText",
                                                         playlistType = DomainPlaylistType.RADIO,
                                                         continuation = null,
                                                     ),
@@ -249,7 +252,7 @@ fun LibraryItem(
                                 ).mouseDragScroll(canvasRowState),
                             state = canvasRowState,
                         ) {
-                            items(state.data) { item ->
+                            items(state.data, key = { (it as? SongEntity)?.videoId ?: it.hashCode() }) { item ->
                                 val song = item as? SongEntity ?: return@items
                                 Box(
                                     Modifier
@@ -274,15 +277,18 @@ fun LibraryItem(
                                             )
                                         },
                                 ) {
+                                    val context = LocalPlatformContext.current
+                                    val canvasRequest = remember(item.canvasThumbUrl, context) {
+                                        ImageRequest
+                                            .Builder(context)
+                                            .data(item.canvasThumbUrl)
+                                            .diskCachePolicy(CachePolicy.ENABLED)
+                                            .diskCacheKey(item.canvasThumbUrl)
+                                            .crossfade(true)
+                                            .build()
+                                    }
                                     AsyncImage(
-                                        model =
-                                            ImageRequest
-                                                .Builder(LocalPlatformContext.current)
-                                                .data(item.canvasThumbUrl)
-                                                .diskCachePolicy(CachePolicy.ENABLED)
-                                                .diskCacheKey(item.canvasThumbUrl)
-                                                .crossfade(true)
-                                                .build(),
+                                        model = canvasRequest,
                                         placeholder = rememberHolderPainter(),
                                         error = rememberHolderPainter(),
                                         contentDescription = null,
@@ -348,7 +354,16 @@ fun LibraryItem(
                     } else {
                         if (state.data.isNotEmpty()) {
                             LazyRow {
-                                items(items = state.data) { item ->
+                                items(
+                                    items = state.data,
+                                    key = { item ->
+                                        when (item) {
+                                            is LocalPlaylistEntity -> "local_${item.id}"
+                                            is PlaylistsResult -> "yt_${item.browseId}"
+                                            else -> item.hashCode()
+                                        }
+                                    },
+                                ) { item ->
                                     Box(modifier = Modifier.animateItem()) {
                                         HomeItemContentPlaylist(
                                             onClick = {
@@ -429,6 +444,7 @@ fun LibraryItem(
     }
 }
 
+@Immutable
 sealed class LibraryItemType {
     data object CanvasSong : LibraryItemType()
 
@@ -453,6 +469,7 @@ sealed class LibraryItemType {
     ) : LibraryItemType()
 }
 
+@Immutable
 data class LibraryItemState(
     val type: LibraryItemType,
     val data: List<LibraryType>,

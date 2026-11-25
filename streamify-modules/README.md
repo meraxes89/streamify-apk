@@ -22,8 +22,7 @@ through three mechanisms (decision record:
 
 | Module | Gradle path | Provides |
 |---|---|---|
-| core-bridge | `:streamify-core-bridge` | JNI surface: `NativeBridge.kt` loads `streamify_core_rs`, `streamify_native_core`, `streamify_core` (each guarded); `NativeAudioSink.kt` declares the frozen 7-symbol sink ABI; `RustAudioSinkJni.kt` is the probe-guarded seam. Contract constants: 48 kHz, 2 ch, 32768-frame ring, -14 LUFS, -1.0 dBTP |
-| media-hal | `:streamify-media-hal` | Android: Media3 `AudioProcessorChain` factory inserting the native DSP processor (`StreamifyAudioProcessor`, targetLufs -14.0, limiter ceiling -1.0 dBFS) plus Dolby detection. JVM: `DesktopHalAudioBridge` loads `streamify_desktop_hal` (WASAPI/PipeWire). Common: `DacClockBridge`, `AudioSinkRingbufferBridge` (SPSC stats + generational flush protocol) |
+| media-hal | `:streamify-media-hal` | Android: `DolbySpatialManager` & `StreamifyMedia3Module.init(context)` capability detection. JVM/iOS/Wasm: `DolbySpatialManager` + empty `mediaHalModule` Koin bindings |
 | lyrics-slyr | `:streamify-lyrics-slyr` | SLYR lyric engine (see below) |
 | supabase | `:streamify-supabase` | Ktor Supabase client: auth, library sync, friends, admin client, hybrid home repository; Koin `SupabaseModule` |
 | jam | `:streamify-jam` | `StreamifyJamCoordinator` — a pure-Kotlin `StateFlow` room state machine (create/join via 6-char code, transport/track broadcast keyed to `DacPresentationClock` timestamps) — plus the `BlendGenerator` (Jaccard blend score `jaccard*60+40`, clamped 45-98). Note: this module does not wrap the Rust jam engine; the two coexist (see ADR-004) |

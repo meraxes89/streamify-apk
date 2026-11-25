@@ -91,6 +91,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -142,6 +143,7 @@ import com.maxrave.simpmusic.ui.component.LiquidGlassIconButton
 import com.maxrave.simpmusic.ui.component.LoadingDialog
 import com.maxrave.simpmusic.ui.component.LocalPlaylistBottomSheet
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
+import com.maxrave.simpmusic.ui.component.PlaylistArtwork
 import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.component.SongFullWidthItems
 import com.maxrave.simpmusic.ui.component.selection.SelectedSongsBottomSheet
@@ -244,17 +246,7 @@ fun LocalPlaylistScreen(
             ),
         label = "shimmer",
     )
-    val infiniteTransition = rememberInfiniteTransition(label = "rotation")
-    val angle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(5000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-        label = "rotation",
-    )
+
 
     val lazyState = rememberLazyListState()
     val firstItemVisible by remember {
@@ -274,11 +266,15 @@ fun LocalPlaylistScreen(
     var showSelectionAddToPlaylist by rememberSaveable { mutableStateOf(false) }
     var shouldShowSuggestButton by rememberSaveable { mutableStateOf(false) }
 
-    val playingTrack by sharedViewModel.nowPlayingState
-        .mapLatest {
-            it?.songEntity
-        }.collectAsState(initial = null)
-    val isPlaying by sharedViewModel.controllerState.map { it.isPlaying }.collectAsState(initial = false)
+    val playingTrack by remember(sharedViewModel) {
+        sharedViewModel.nowPlayingState
+            .mapLatest {
+                it?.songEntity
+            }
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val isPlaying by remember(sharedViewModel) {
+        sharedViewModel.controllerState.map { it.isPlaying }
+    }.collectAsStateWithLifecycle(initialValue = false)
 
     val queueData by sharedViewModel.getQueueDataState().collectAsStateWithLifecycle()
     val playingPlaylistId by remember {
@@ -287,7 +283,9 @@ fun LocalPlaylistScreen(
         }
     }
 
-    val suggestedTracks by viewModel.uiState.map { it.suggestions?.songs ?: emptyList() }.collectAsState(initial = emptyList())
+    val suggestedTracks by remember(viewModel) {
+        viewModel.uiState.map { it.suggestions?.songs ?: emptyList() }
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     val suggestionsLoading by viewModel.loading.collectAsStateWithLifecycle()
     var showSyncAlertDialog by rememberSaveable { mutableStateOf(false) }
     var showUnsyncAlertDialog by rememberSaveable { mutableStateOf(false) }
@@ -382,13 +380,18 @@ fun LocalPlaylistScreen(
     var paletteGeneratedFor by remember {
         mutableStateOf<String?>(null)
     }
-    val currentThumbnail = uiState.thumbnail
+    val trackThumbnails = remember(trackPagingItems.itemCount) {
+        trackPagingItems.itemSnapshotList.items
+            .mapNotNull { it.first.thumbnails }
+            .filter { it.isNotBlank() }
+    }
+    val paletteKey = uiState.thumbnail ?: "${uiState.id}_${trackThumbnails.firstOrNull().orEmpty()}"
 
     LaunchedEffect(bitmap) {
         val bm = bitmap
-        if (bm != null && paletteGeneratedFor != currentThumbnail) {
+        if (bm != null && paletteGeneratedFor != paletteKey) {
             paletteState.generate(bm)
-            paletteGeneratedFor = currentThumbnail
+            paletteGeneratedFor = paletteKey
         }
     }
 
@@ -542,24 +545,14 @@ fun LocalPlaylistScreen(
                             ) {
                                 // Inner Box — backdrop SOURCE (artwork + overlays only, NO glass)
                                 Box(modifier = Modifier.fillMaxSize().layerBackdrop(artworkBackdrop)) {
-                                    AsyncImage(
-                                        model =
-                                            ImageRequest
-                                                .Builder(LocalPlatformContext.current)
-                                                .data(uiState.thumbnail)
-                                                .diskCachePolicy(CachePolicy.ENABLED)
-                                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                                .diskCacheKey(uiState.thumbnail)
-                                                .memoryCacheKey(uiState.thumbnail)
-                                                .crossfade(550)
-                                                .build(),
-                                        placeholder = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                        error = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                        fallback = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        onSuccess = {
-                                            bitmap = it.result.image.toImageBitmap()
+                                    PlaylistArtwork(
+                                        title = uiState.title,
+                                        thumbnailUrl = uiState.thumbnail,
+                                        trackIds = uiState.tracks,
+                                        resolvedThumbnails = trackThumbnails,
+                                        shape = RectangleShape,
+                                        onSuccessBitmap = {
+                                            bitmap = it
                                         },
                                         modifier = Modifier.fillMaxSize(),
                                     )
@@ -741,24 +734,14 @@ fun LocalPlaylistScreen(
                                         horizontalArrangement = Arrangement.spacedBy(24.dp),
                                         verticalAlignment = Alignment.Top,
                                     ) {
-                                        AsyncImage(
-                                            model =
-                                                ImageRequest
-                                                    .Builder(LocalPlatformContext.current)
-                                                    .data(uiState.thumbnail)
-                                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                                    .diskCacheKey(uiState.thumbnail)
-                                                    .memoryCacheKey(uiState.thumbnail)
-                                                    .crossfade(550)
-                                                    .build(),
-                                            placeholder = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                            error = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                            fallback = painterPlaylistThumbnail(uiState.title, style = typo().labelMedium, 250.dp to 250.dp),
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            onSuccess = {
-                                                bitmap = it.result.image.toImageBitmap()
+                                        PlaylistArtwork(
+                                            title = uiState.title,
+                                            thumbnailUrl = uiState.thumbnail,
+                                            trackIds = uiState.tracks,
+                                            resolvedThumbnails = trackThumbnails,
+                                            shape = ArtworkShape,
+                                            onSuccessBitmap = {
+                                                bitmap = it
                                             },
                                             modifier =
                                                 Modifier
@@ -1344,8 +1327,14 @@ fun LocalPlaylistScreen(
             }
         }
         items(count = trackPagingItems.itemCount, key = { index ->
-            val item = trackPagingItems[index]
-            (item?.first?.videoId ?: "") + "item_$index" + item?.second?.inPlaylist + item?.second?.position
+            val pair = trackPagingItems[index]
+            val mapId = pair?.second?.id
+            if (mapId != null && mapId != 0) {
+                "track_item_$mapId"
+            } else {
+                val videoId = pair?.first?.videoId
+                if (!videoId.isNullOrEmpty()) "video_$videoId" else "index_$index"
+            }
         }) { index ->
             val item = trackPagingItems[index]?.first
             if (item != null) {

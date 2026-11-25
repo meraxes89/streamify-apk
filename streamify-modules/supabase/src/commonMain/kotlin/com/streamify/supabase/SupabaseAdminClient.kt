@@ -185,7 +185,7 @@ object SupabaseAdminClient {
     suspend fun getTopSongs(limit: Int = 30): Result<List<CloudTrack>> = withContext(ioDispatcher) {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
-                parameter("select", "id,title,artist,album,duration_sec,cover_url,stream_url,bpm,key_signature,play_count,like_count")
+                parameter("select", "id,title,artist,album,duration_sec,cover_url,play_count,like_count")
                 parameter("order", "play_count.desc,like_count.desc")
                 parameter("limit", limit.toString())
                 header("apikey", SupabaseConfig.ANON_KEY)

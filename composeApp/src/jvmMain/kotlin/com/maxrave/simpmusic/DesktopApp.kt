@@ -1,11 +1,13 @@
 package com.maxrave.simpmusic
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,6 +16,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -282,9 +286,7 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { getKoin().get<LibrarySyncHostRepository>().start() }
 
     val sharedViewModel = getKoin().get<SharedViewModel>()
-    if (sharedViewModel.shouldCheckForUpdate()) {
-        sharedViewModel.checkForUpdate()
-    }
+    sharedViewModel.checkForUpdate()
 
     // Connect deep link handler to SharedViewModel
     DesktopDeepLinkHandler.listener = { intent ->
@@ -376,6 +378,15 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
             onCloseRequest = {
                 isVisible = false
             },
+            onKeyEvent = { event ->
+                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                    event.key == androidx.compose.ui.input.key.Key.Escape
+                ) {
+                    com.maxrave.simpmusic.expect.ui.DesktopBackHandlerRegistry.handleBack()
+                } else {
+                    false
+                }
+            },
             title = stringResource(Res.string.app_name),
             icon = painterResource(Res.drawable.circle_app_icon),
             undecorated = !nativeTitleBar,
@@ -383,6 +394,10 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
             state = windowState,
             visible = isVisible,
         ) {
+            SideEffect {
+                window.background = java.awt.Color(0x06, 0x06, 0x08)
+                window.contentPane.background = java.awt.Color(0x06, 0x06, 0x08)
+            }
             // Returning from macOS System Settings is the only reliable time to learn whether the
             // user enabled notifications after denying the one-shot system prompt.
             DisposableEffect(window) {
@@ -454,6 +469,7 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .background(Color(0xFF060608))
                         .then(
                             if (!nativeTitleBar) {
                                 Modifier.clip(RoundedCornerShape(12.dp))

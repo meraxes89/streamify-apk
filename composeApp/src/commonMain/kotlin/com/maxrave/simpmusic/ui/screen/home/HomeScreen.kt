@@ -221,16 +221,13 @@ import simpmusic.composeapp.generated.resources.all
 import simpmusic.composeapp.generated.resources.cancel
 import simpmusic.composeapp.generated.resources.chart
 import simpmusic.composeapp.generated.resources.commute
-import simpmusic.composeapp.generated.resources.do_not_show_again
 import simpmusic.composeapp.generated.resources.energize
 import simpmusic.composeapp.generated.resources.feel_good
 import simpmusic.composeapp.generated.resources.focus
-import simpmusic.composeapp.generated.resources.go_to_log_in_page
 import simpmusic.composeapp.generated.resources.guest
 import simpmusic.composeapp.generated.resources.let_s_pick_a_playlist_for_you
 import simpmusic.composeapp.generated.resources.let_s_start_with_a_radio
 import simpmusic.composeapp.generated.resources.log_in_to_YouTube
-import simpmusic.composeapp.generated.resources.log_in_warning
 import simpmusic.composeapp.generated.resources.mood
 import simpmusic.composeapp.generated.resources.notification
 import simpmusic.composeapp.generated.resources.party
@@ -318,10 +315,16 @@ fun HomeScreen(
     val homeListState by viewModel.homeListState.collectAsStateWithLifecycle()
     val continuation by viewModel.continuation.collectAsStateWithLifecycle()
 
-    val shouldShowLogInAlert by viewModel.showLogInAlert.collectAsStateWithLifecycle()
-
     val openAppTime by sharedViewModel.openAppTime.collectAsStateWithLifecycle()
     val shareLyricsPermissions by sharedViewModel.shareSavedLyrics.collectAsStateWithLifecycle()
+
+    LaunchedEffect(viewModel) {
+        viewModel.showSnackBarErrorState.collect { errorMsg ->
+            if (errorMsg.isNotBlank()) {
+                viewModel.makeToast(errorMsg)
+            }
+        }
+    }
 
     // Launch banner inputs. App.kt's own dialogs, its Now Playing sheet and whether the user has
     // started using the app come down from App.kt; Home's dialogs are read where the banner is drawn.
@@ -358,7 +361,8 @@ fun HomeScreen(
     // leaving the tint as it was.
     val headerImage by viewModel.homeBackground.collectAsStateWithLifecycle()
     var headerImageFailed by remember(headerImage) { mutableStateOf(false) }
-    val networkLoader = rememberNetworkLoader(HttpClient(CIO))
+    val httpClient = remember { HttpClient(CIO) }
+    val networkLoader = rememberNetworkLoader(httpClient)
     val dominantColorState =
         rememberDominantColorState(
             defaultColor = backgroundColor,
@@ -462,7 +466,7 @@ fun HomeScreen(
 
 
     val otherDialogOpen =
-        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || shouldShowLogInAlert || (activeAnnouncement != null)
+        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || activeAnnouncement != null
 
     LaunchedEffect(openAppTime, otherDialogOpen) {
         val platformName = when (getPlatform()) {
@@ -470,7 +474,7 @@ fun HomeScreen(
             else -> "android"
         }
         val uiContext = com.streamify.announcements.UiContext(
-            isPlaying = false,
+            isPlaying = sharedViewModel.controllerState.value.isPlaying,
             isModalActive = otherDialogOpen,
             isOnboarding = false
         )
@@ -514,50 +518,47 @@ fun HomeScreen(
 //        )
 //    }
 
-    if (showReviewDialog) {
-        ReviewDialog(
-            onDismissRequest = {
-                sharedViewModel.onDoneReview(
-                    isDismissOnly = true,
-                )
-                showReviewDialog = false
-            },
-            onDoneReview = {
-                sharedViewModel.onDoneReview(
-                    isDismissOnly = false,
-                )
-                showReviewDialog = false
-            },
-        )
-    }
-
-    if (showRequestShareLyricsPermissions) {
-        ShareSavedLyricsDialog(
-            onDismissRequest = {
-                showRequestShareLyricsPermissions = false
-                sharedViewModel.onDoneReview(
-                    isDismissOnly = true,
-                )
-            },
-            onConfirm = { contributor ->
-                sharedViewModel.onDoneRequestingShareLyrics(
-                    contributor,
-                )
-            },
-        )
-    }
-
-    // Sovereign In-App Message Engine — Modal Renderer (comm19)
-    activeAnnouncement?.let { announcement ->
-        com.streamify.announcements.ui.StreamifyAnnouncementModal(
-            announcement = announcement,
-            onDismiss = { snooze ->
-                announcementEngine.onDismiss(announcement, snooze = snooze)
-            },
-            onAction = {
-                announcementEngine.onAction(announcement)
-            }
-        )
+    if (!appDialogOpen) {
+        if (showReviewDialog) {
+            ReviewDialog(
+                onDismissRequest = {
+                    sharedViewModel.onDoneReview(
+                        isDismissOnly = true,
+                    )
+                    showReviewDialog = false
+                },
+                onDoneReview = {
+                    sharedViewModel.onDoneReview(
+                        isDismissOnly = false,
+                    )
+                    showReviewDialog = false
+                },
+            )
+        } else if (showRequestShareLyricsPermissions) {
+            ShareSavedLyricsDialog(
+                onDismissRequest = {
+                    showRequestShareLyricsPermissions = false
+                },
+                onConfirm = { contributor ->
+                    sharedViewModel.onDoneRequestingShareLyrics(
+                        contributor,
+                    )
+                },
+            )
+        } else if (activeAnnouncement != null) {
+            // Sovereign In-App Message Engine — Modal Renderer (comm19)
+            val announcement = activeAnnouncement!!
+            com.streamify.announcements.ui.StreamifyAnnouncementModal(
+                announcement = announcement,
+                language = language,
+                onDismiss = { snooze ->
+                    announcementEngine.onDismiss(announcement, snooze = snooze)
+                },
+                onAction = {
+                    announcementEngine.onAction(announcement)
+                }
+            )
+        }
     }
 
     // The launch banner, decided once per launch. It waits for Home to settle on its own dialogs (the
@@ -628,7 +629,7 @@ fun HomeScreen(
     // Whatever the user starts before the banner's turn puts it off to a later launch, uncounted.
     LaunchedEffect(userStarted) {
         val pending = promoBanner
-        if (userStarted && pending != null) {
+        if (userStarted && pending != null && promoClearFor == null) {
             Logger.i("Promo", "Put off ${pending.id}: the user started before its turn")
             promoBanner = null
         }
@@ -666,59 +667,6 @@ fun HomeScreen(
             onFailed = {
                 Logger.w("Promo", "Picture failed to load for ${banner.id}; closed without counting it")
                 promoBanner = null
-            },
-        )
-    }
-
-    if (shouldShowLogInAlert) {
-        var doNotShowAgain by rememberSaveable {
-            mutableStateOf(false)
-        }
-        AlertDialog(
-            title = {
-                Text(stringResource(Res.string.warning))
-            },
-            text = {
-                Column {
-                    Text(text = stringResource(Res.string.log_in_warning))
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier =
-                            Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    doNotShowAgain = !doNotShowAgain
-                                }.fillMaxWidth(),
-                    ) {
-                        Checkbox(
-                            checked = doNotShowAgain,
-                            onCheckedChange = {
-                                doNotShowAgain = it
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(stringResource(Res.string.do_not_show_again))
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.doneShowLogInAlert(doNotShowAgain)
-                    navController.navigate(LoginDestination)
-                }) {
-                    Text(stringResource(Res.string.go_to_log_in_page))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    viewModel.doneShowLogInAlert(doNotShowAgain)
-                }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            onDismissRequest = {
-                viewModel.doneShowLogInAlert()
             },
         )
     }
@@ -774,10 +722,17 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
                         itemsIndexed(homeShelves, key = { _, item ->
-                            item.hashCode().toString() + (mainHomeThumbnail ?: "nothumb")
+                            "shelf_${item.title}_${item.channelId ?: item.moreEndpoint?.browseId ?: item.hashCode()}"
                         }) { index, item ->
                             Box {
                                 if (index == 0) {
+                                    val glowGradient = remember(animatedColor, pageBackground) {
+                                        listOf(animatedColor, pageBackground)
+                                    }
+                                    val headerOverlayColors = remember(pageBackground) {
+                                        listOf(pageBackground.copy(alpha = 0.6f), pageBackground)
+                                    }
+                                    val scrimBrush = remember(pageBackground) { artworkScrimBrush(pageBackground) }
                                     Box(
                                         modifier =
                                             Modifier
@@ -799,16 +754,19 @@ fun HomeScreen(
                                                     val placeable =
                                                         measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
                                                     layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
-                                                }.angledGradientBackground(listOf(animatedColor, pageBackground), 25f),
+                                                }.angledGradientBackground(glowGradient, 25f),
                                     ) {
                                         if (headerImage != null && !headerImageFailed) {
+                                            val context = LocalPlatformContext.current
+                                            val headerImageRequest = remember(headerImage, context) {
+                                                ImageRequest
+                                                    .Builder(context)
+                                                    .data(headerImage)
+                                                    .crossfade(550)
+                                                    .build()
+                                            }
                                             AsyncImage(
-                                                model =
-                                                    ImageRequest
-                                                        .Builder(LocalPlatformContext.current)
-                                                        .data(headerImage)
-                                                        .crossfade(550)
-                                                        .build(),
+                                                model = headerImageRequest,
                                                 contentDescription = null,
                                                 contentScale = ContentScale.Crop,
                                                 onError = { headerImageFailed = true },
@@ -821,7 +779,7 @@ fun HomeScreen(
                                             Box(
                                                 Modifier
                                                     .fillMaxSize()
-                                                    .angledGradientBackground(listOf(pageBackground.copy(alpha = 0.6f), pageBackground), 25f),
+                                                    .angledGradientBackground(headerOverlayColors, 25f),
                                             )
                                         }
                                         Box(
@@ -833,7 +791,7 @@ fun HomeScreen(
                                                     // dropped off in one short step.
                                                     .fillMaxHeight(0.6f)
                                                     .align(Alignment.BottomCenter)
-                                                    .background(artworkScrimBrush(pageBackground)),
+                                                    .background(scrimBrush),
                                         )
                                     }
                                 }
@@ -907,7 +865,7 @@ fun HomeScreen(
                             }
                         }
                         if (homeListState == ListState.PAGINATION_EXHAUST) {
-                            items(newRelease, key = { it.title.ifEmpty { "new_release_${it.hashCode()}" } }) {
+                            items(newRelease, key = { "new_release_${it.title}_${it.channelId ?: it.moreEndpoint?.browseId ?: it.hashCode()}" }) {
                                 AnimatedVisibility(
                                     visible = newRelease.isNotEmpty(),
                                 ) {

@@ -709,6 +709,16 @@ private fun SidebarLibraryRow(
 @Composable
 private fun SidebarCover(item: LibrarySidebarItem) {
     val shape = if (item.kind == LibrarySidebarKind.ARTIST) CircleShape else ArtworkShape
+    if (item.kind == LibrarySidebarKind.PLAYLIST && (item.tracks != null || !item.thumbnail.isNullOrEmpty())) {
+        PlaylistArtwork(
+            title = item.title,
+            thumbnailUrl = item.thumbnail,
+            trackIds = item.tracks,
+            shape = shape,
+            modifier = Modifier.size(48.dp),
+        )
+        return
+    }
     if (item.thumbnail.isNullOrEmpty()) {
         // A local playlist with no artwork: the gradient its title tile has in the Library grid,
         // without the title and badge, which that tile sizes for 150dp and which cannot be read at 48.

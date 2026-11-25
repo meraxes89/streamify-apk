@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.flowOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -152,7 +153,7 @@ fun SongFullWidthItems(
             flowOf(null)
         }
     }
-    val storedSong by songFlow.collectAsState(initial = null)
+    val storedSong by songFlow.collectAsStateWithLifecycle(initialValue = null)
     val downloadState = storedSong?.downloadState ?: DownloadState.STATE_NOT_DOWNLOADED
     // The list's own model says what its source said; the stored row adds what playback learned
     // since, which is the only way a queue row is marked — the queue response shows no LIVE chip.
@@ -666,24 +667,31 @@ fun PlaylistFullWidthItems(
         ) {
             Spacer(modifier = Modifier.width(8.dp))
             Box(modifier = Modifier.size(48.dp)) {
-                AsyncImage(
-                    model =
-                        ImageRequest
-                            .Builder(LocalPlatformContext.current)
-                            .data(thumb)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .diskCacheKey(thumb)
-                            .crossfade(true)
-                            .build(),
-                    placeholder = rememberHolderPainter(),
-                    error = rememberHolderPainter(),
-                    contentDescription = null,
-                    contentScale = ContentScale.FillWidth,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .clip(ArtworkShape),
-                )
+                if (data is LocalPlaylistEntity) {
+                    PlaylistArtwork(
+                        playlist = data,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    AsyncImage(
+                        model =
+                            ImageRequest
+                                .Builder(LocalPlatformContext.current)
+                                .data(thumb)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .diskCacheKey(thumb)
+                                .crossfade(true)
+                                .build(),
+                        placeholder = rememberHolderPainter(),
+                        error = rememberHolderPainter(),
+                        contentDescription = null,
+                        contentScale = ContentScale.FillWidth,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .clip(ArtworkShape),
+                    )
+                }
             }
             Column(
                 Modifier

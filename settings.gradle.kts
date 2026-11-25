@@ -99,14 +99,12 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 val streamifyDir = File(rootDir, "streamify-modules")
 if (streamifyDir.exists()) {
     include(
-        ":streamify-core-bridge",
         ":streamify-media-hal",
         ":streamify-lyrics-slyr",
         ":streamify-supabase",
         ":streamify-jam",
         ":streamify-ffmpeg-compat-shim"
     )
-    project(":streamify-core-bridge").projectDir = File(streamifyDir, "core-bridge")
     project(":streamify-media-hal").projectDir = File(streamifyDir, "media-hal")
     project(":streamify-lyrics-slyr").projectDir = File(streamifyDir, "lyrics-slyr")
     project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")

@@ -82,10 +82,9 @@ actual fun LiquidGlassAppBottomNavigationBar(
 ) {
     val layer = rememberGraphicsLayer()
     val searchFabInteraction = rememberGlassInteraction()
-    // Only the glass reads what is behind it.
-    val luminance = rememberGlassLuminance(layer, enabled = liquidGlass)
-
     val nowPlayingData by viewModel.nowPlayingState.collectAsStateWithLifecycle()
+    // Only the glass reads what is behind it.
+    val luminance = rememberGlassLuminance(layer, enabled = liquidGlass, trigger = nowPlayingData?.songEntity?.videoId)
     // MiniPlayer visibility: derived, never stored.
     //
     // This is a second copy of the rule App.kt applies to the plain bottom bar, and it carried the
@@ -348,7 +347,7 @@ actual fun LiquidGlassAppBottomNavigationBar(
                 },
                 onClose = {
                     viewModel.stopPlayer()
-                    viewModel.isServiceRunning = false
+                    viewModel.setServiceRunning(false)
                 },
             )
         }

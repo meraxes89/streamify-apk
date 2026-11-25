@@ -1,6 +1,7 @@
 package com.maxrave.simpmusic
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -130,7 +131,6 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format
@@ -232,11 +232,18 @@ fun App(
         mutableStateOf(true)
     }
 
-    // Every dialog this file raises on its own. Home's launch banner waits until none is up; see
-    // LocalAppDialogOpen. (The banner waits for a running update check by itself.)
+    val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
+    val isEntranceBlocking = isSplashVisible || streamifyAuthState is AuthState.Loading
+
+    // Every dialog this file raises on its own, plus blocking entrance animations.
+    // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
     val appDialogOpen =
-        shouldShowUpdateDialog || showNotificationPermissionDialog ||
-            showDesktopNotificationPermissionDialog || sleepTimerState.isDone
+        isEntranceBlocking ||
+            sleepTimerState.isDone ||
+            shouldShowUpdateDialog ||
+            showNotificationPermissionDialog ||
+            showDesktopNotificationPermissionDialog ||
+            isShowNowPlaylistScreen
 
     // Set by the first press or wheel scroll anywhere in the app this launch, or by opening Now
     // Playing. A launch banner that has not had its turn yet then waits for a later launch.
@@ -483,10 +490,9 @@ fun App(
 
     LaunchedEffect(updateData) {
         val response = updateData ?: return@LaunchedEffect
-        // Only a NEWER release is offered. This used to compare the tags for inequality, which told a
-        // build ahead of the latest release (dev, beta) to "update" back down to it, and told every
-        // F-Droid-channel user to update on each launch: that channel's tag carries no leading "v".
-        if (viewModel.showedUpdateDialog && VersionManager.isBehind(response.tagName)) {
+        // An update is offered if UpdateResolver verified an update manifest (code/hash/revocation)
+        // or if legacy tag string comparison isBehind is true.
+        if (viewModel.showedUpdateDialog && (UpdateStateHolder.latestManifest != null || VersionManager.isBehind(response.tagName))) {
             shouldShowUpdateDialog = true
         }
     }
@@ -556,7 +562,6 @@ fun App(
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
             com.maxrave.simpmusic.data.RemoteGreetingManager.syncRemoteConfig()
         }
-        val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
         LaunchedEffect(streamifyAuthState) {
             if (streamifyAuthState is AuthState.Authenticated) {
                 val user = (streamifyAuthState as AuthState.Authenticated).user
@@ -564,7 +569,7 @@ fun App(
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF060608))) {
             when (streamifyAuthState) {
                 is AuthState.Unauthenticated -> {
                     GoogleOnboardingAuthScreen(
@@ -671,7 +676,7 @@ fun App(
                                         },
                                         onClose = {
                                             viewModel.stopPlayer()
-                                            viewModel.isServiceRunning = false
+                                            viewModel.setServiceRunning(false)
                                         },
                                     )
                                 }
@@ -756,7 +761,7 @@ fun App(
                                 },
                                 onClose = {
                                     viewModel.stopPlayer()
-                                    viewModel.isServiceRunning = false
+                                    viewModel.setServiceRunning(false)
                                 },
                                 // The page lives in the Now Playing panel, so the panel opens with it.
                                 onOpenFullscreenLyrics = {
@@ -949,7 +954,7 @@ fun App(
 
                     if (hasSkippedUpdateDialog && !shouldShowUpdateDialog && !isShowNowPlaylistScreen) {
                         val response = updateData
-                        if (response != null && VersionManager.isBehind(response.tagName)) {
+                        if (response != null && (UpdateStateHolder.latestManifest != null || VersionManager.isBehind(response.tagName))) {
                             UpdateDockedPill(
                                 targetVersion = response.tagName,
                                 onClick = {
@@ -977,72 +982,69 @@ fun App(
                     }
                 }
 
-                if (sleepTimerState.isDone) {
-                    Logger.w("MainActivity", "Sleep Timer Done: $sleepTimerState")
-                    AlertDialog(
-                        properties =
-                            DialogProperties(
-                                dismissOnBackPress = false,
-                                dismissOnClickOutside = false,
-                            ),
-                        onDismissRequest = {
-                            viewModel.stopSleepTimer()
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
+                if (!isEntranceBlocking) {
+                    if (sleepTimerState.isDone) {
+                        Logger.w("MainActivity", "Sleep Timer Done: $sleepTimerState")
+                        AlertDialog(
+                            properties =
+                                DialogProperties(
+                                    dismissOnBackPress = false,
+                                    dismissOnClickOutside = false,
+                                ),
+                            onDismissRequest = {
                                 viewModel.stopSleepTimer()
-                            }) {
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    viewModel.stopSleepTimer()
+                                }) {
+                                    Text(
+                                        stringResource(Res.string.yes),
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                            },
+                            text = {
                                 Text(
-                                    stringResource(Res.string.yes),
+                                    stringResource(Res.string.sleep_timer_off),
+                                    style = typo().labelSmall,
+                                )
+                            },
+                            title = {
+                                Text(
+                                    stringResource(Res.string.good_night),
                                     style = typo().bodySmall,
                                 )
-                            }
-                        },
-                        text = {
-                            Text(
-                                stringResource(Res.string.sleep_timer_off),
-                                style = typo().labelSmall,
-                            )
-                        },
-                        title = {
-                            Text(
-                                stringResource(Res.string.good_night),
-                                style = typo().bodySmall,
-                            )
-                        },
-                    )
-                }
-
-                if (shouldShowUpdateDialog) {
-                    val response = updateData ?: return@Scaffold
-                    val binary = remember(response.tagName) {
-                        resolveDeviceBinary(
-                            tag = response.tagName,
-                            artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                            },
                         )
-                    }
-                    val currentVersion = remember { VersionManager.getVersionName() }
-                    StreamifyUpdateDialog(
-                        targetVersion = response.tagName,
-                        currentVersion = currentVersion,
-                        releaseDate = response.releaseTime,
-                        changelog = response.body,
-                        binary = binary,
-                        isBreaking = UpdateStateHolder.isBreaking,
-                        onConfirmUpdate = {
-                            shouldShowUpdateDialog = false
-                            viewModel.showedUpdateDialog = false
-                            openUrl(binary.downloadUrl)
-                        },
-                        onSkipLaunch = {
-                            shouldShowUpdateDialog = false
-                            viewModel.showedUpdateDialog = false
-                            hasSkippedUpdateDialog = true
-                        },
-                    )
-                }
-
-                if (showNotificationPermissionDialog || showDesktopNotificationPermissionDialog) {
+                    } else if (shouldShowUpdateDialog) {
+                        val response = updateData ?: return@Scaffold
+                        val binary = remember(response.tagName) {
+                            resolveDeviceBinary(
+                                tag = response.tagName,
+                                artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                            )
+                        }
+                        val currentVersion = remember { VersionManager.getVersionName() }
+                        StreamifyUpdateDialog(
+                            targetVersion = response.tagName,
+                            currentVersion = currentVersion,
+                            releaseDate = response.releaseTime,
+                            changelog = response.body,
+                            binary = binary,
+                            isBreaking = UpdateStateHolder.isBreaking,
+                            onConfirmUpdate = {
+                                shouldShowUpdateDialog = false
+                                viewModel.setShowedUpdateDialog(false)
+                                openUrl(binary.downloadUrl)
+                            },
+                            onSkipLaunch = {
+                                shouldShowUpdateDialog = false
+                                viewModel.setShowedUpdateDialog(false)
+                                hasSkippedUpdateDialog = true
+                            },
+                        )
+                    } else if (showNotificationPermissionDialog || showDesktopNotificationPermissionDialog) {
                     var doNotShowAgain by remember { mutableStateOf(false) }
                     val dismissPermissionDialog = {
                         if (showDesktopNotificationPermissionDialog) {
@@ -1124,14 +1126,15 @@ fun App(
                         },
                     )
                 }
+            }
             },
         )
     }
 }
 
         AnimatedVisibility(
-            visible = isSplashVisible || streamifyAuthState is AuthState.Loading,
-            enter = fadeIn(animationSpec = tween(300)),
+            visible = isEntranceBlocking,
+            enter = EnterTransition.None,
             exit = fadeOut(animationSpec = tween(500)),
         ) {
             StreamifySplashScreen(

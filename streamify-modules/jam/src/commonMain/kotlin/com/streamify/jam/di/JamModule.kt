@@ -1,6 +1,5 @@
 package com.streamify.jam.di
 
-import com.streamify.core.di.streamifyCoreBridgeModule
 import com.streamify.jam.BlendGenerator
 import com.streamify.jam.StreamifyJamCoordinator
 import com.streamify.lyrics.slyr.di.slyrModule
@@ -15,7 +14,6 @@ val jamModule = module {
 }
 
 val streamifyAllModules: List<Module> = listOf(
-    streamifyCoreBridgeModule,
     mediaHalModule,
     slyrModule,
     supabaseModule,

@@ -1,11 +1,15 @@
 package com.streamify.announcements.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -21,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import com.maxrave.simpmusic.ui.theme.typo
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownTypography
 import com.streamify.announcements.Announcement
 import com.streamify.announcements.AnnouncementAction
 import com.streamify.announcements.DeepLinkAllowlist
@@ -29,17 +35,25 @@ import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.later
 
 /**
- * Modal renderer for Streamify in-app announcements.
+ * Modal renderer for Streamify in-app announcements with rich Markdown rendering
+ * and responsive scrollable viewport management.
  */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun StreamifyAnnouncementModal(
     announcement: Announcement,
+    language: String = "en",
     onDismiss: (snooze: Boolean) -> Unit,
     onAction: () -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
-    val content = announcement.content["en"] ?: announcement.content.values.firstOrNull() ?: return
+    val normalizedLang = language.trim().lowercase()
+    val baseLang = normalizedLang.substringBefore('-')
+    val content = announcement.content[normalizedLang]
+        ?: announcement.content[baseLang]
+        ?: announcement.content["en"]
+        ?: announcement.content.values.firstOrNull()
+        ?: return
 
     AlertDialog(
         properties = DialogProperties(
@@ -78,11 +92,17 @@ fun StreamifyAnnouncementModal(
         title = {
             Text(
                 text = content.title,
-                style = typo().labelSmall
+                style = typo().titleMedium
             )
         },
         text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 content.bannerUrl?.let { banner ->
                     AsyncImage(
                         model = banner,
@@ -93,12 +113,19 @@ fun StreamifyAnnouncementModal(
                             .aspectRatio(16f / 9f)
                             .clip(RoundedCornerShape(12.dp))
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
-                Text(
-                    text = content.body,
-                    textAlign = TextAlign.Center,
-                    style = typo().bodySmall
+                Markdown(
+                    content = content.body,
+                    typography = markdownTypography(
+                        h1 = typo().labelLarge,
+                        h2 = typo().labelMedium,
+                        h3 = typo().labelSmall,
+                        text = typo().bodySmall.copy(textAlign = TextAlign.Center),
+                        paragraph = typo().bodySmall.copy(textAlign = TextAlign.Center),
+                        bullet = typo().bodySmall
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }

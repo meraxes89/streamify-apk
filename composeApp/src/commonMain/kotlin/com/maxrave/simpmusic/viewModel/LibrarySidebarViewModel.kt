@@ -72,6 +72,7 @@ class LibrarySidebarViewModel(
                             addedAt = it.inLibrary,
                             destination = LocalPlaylistDestination(it.id),
                             queueId = LOCAL_PLAYLIST_ID + it.id,
+                            tracks = it.tracks,
                         )
                     } +
                         playlists.map {
@@ -167,4 +168,5 @@ data class LibrarySidebarItem(
     val queueId: String?,
     // Only local playlists show their size, since they have no author to show instead.
     val trackCount: Int? = null,
+    val tracks: List<String>? = null,
 )

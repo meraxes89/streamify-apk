@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.viewModel
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewModelScope
 import androidx.paging.LoadState
@@ -963,6 +964,7 @@ class LocalPlaylistViewModel(
                                 syncState = pl.syncState,
                                 ytPlaylistId = pl.youtubePlaylistId,
                                 trackCount = pl.tracks?.size ?: 0,
+                                tracks = pl.tracks ?: emptyList(),
                             )
                         }
                         if (refresh) {
@@ -1085,6 +1087,7 @@ sealed class LocalPlaylistUIEvent {
     data object ShuffleClick : LocalPlaylistUIEvent()
 }
 
+@Immutable
 data class LocalPlaylistState(
     val id: Long,
     val title: String,
@@ -1104,6 +1107,7 @@ data class LocalPlaylistState(
     val loadState: PlaylistLoadState = PlaylistLoadState.Loading,
     val filterState: FilterState = FilterState.OlderFirst,
     val suggestions: SuggestionSongs? = null,
+    val tracks: List<String> = emptyList(),
 ) {
     sealed class SuggestionState {
         data object Loading : SuggestionState()

@@ -3,8 +3,18 @@ package com.streamify.announcements
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class GovernanceConfig(
+    val globalCooldownMs: Long = 24L * 60 * 60 * 1000L,
+    val emergencyPriorityThreshold: Int = 500,
+    val defaultSnoozeCooldownMs: Long = 7L * 24 * 60 * 60 * 1000L,
+    val allowedExtraDomains: List<String> = emptyList()
+)
+
+@Serializable
 data class SignedManifest(
     val version: Int,
+    val popupModalEnabled: Boolean = false,
+    val governance: GovernanceConfig = GovernanceConfig(),
     val issuedAtEpochMs: Long,
     val announcements: List<Announcement>,
     val revokedIds: List<String> = emptyList(),
@@ -28,7 +38,8 @@ class PinnedManifestSignatureVerifier : ManifestSignatureVerifier {
     override fun verify(payload: String, signatureHex: String, pinnedPublicKeyHex: String): Boolean {
         if (signatureHex.isBlank() || pinnedPublicKeyHex.isBlank()) return false
         // Hex structure and length validation (Ed25519 signatures are 64 bytes -> 128 hex chars)
-        if (signatureHex.length != 128) return false
+        if (signatureHex.length != 128 || !signatureHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return false
+        if (pinnedPublicKeyHex.length != 64 || !pinnedPublicKeyHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return false
         return true
     }
 }

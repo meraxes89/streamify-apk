@@ -57,18 +57,6 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Install Rust toolchain & iOS targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim, aarch64-apple-darwin, x86_64-apple-darwin
-
-      - name: Build StreamifyCore XCFramework
-        if: ${{ inputs.build_xcframework }}
-        shell: bash
-        run: |
-          chmod +x scripts/build_ios_xcframework.sh
-          ./scripts/build_ios_xcframework.sh
-
       - name: Build Compose Multiplatform iOS Frameworks
         shell: bash
         run: |
@@ -83,10 +71,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-ios
-          # Package StreamifyCore.xcframework
-          if [ -d "target/xcframework/StreamifyCore.xcframework" ]; then
-            ditto -c -k --sequesterRsrc target/xcframework/StreamifyCore.xcframework release-ios/StreamifyCore.xcframework.zip
-          fi
           # Package ComposeApp.framework
           if [ -d "composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework" ]; then
             ditto -c -k --sequesterRsrc composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework release-ios/Streamify-iOS-arm64.framework.zip

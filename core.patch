@@ -81,6 +81,69 @@ index 0000000..09e84b4
 +++ b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
 @@ -0,0 +1 @@
 +package com.maxrave.common
+diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
+index 6a30090..c452fe5 100644
+--- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
++++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
+@@ -1647,7 +1647,7 @@ internal class MediaServiceHandlerImpl(
+                                             ),
+                                     )
+                                 }
+-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
++                                if (dataStoreManager.endlessQueue.first() == TRUE) {
+                                     Logger.w(TAG, "loadMore: Endless Queue")
+                                     val lastTrack =
+                                         queueData.value.data.listTracks
+@@ -1677,28 +1677,28 @@ internal class MediaServiceHandlerImpl(
+                         }
+                 }
+             }
+-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+-            Logger.w(TAG, "loadMore: Endless Queue")
+-            val lastTrack =
+-                queueData.value.data.listTracks
+-                    .lastOrNull() ?: return
+-            _queueData.update {
+-                it.copy(
+-                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+-                    data =
+-                        it.data.copy(
+-                            playlistId = "RDAMVM${lastTrack.videoId}",
+-                            // Past the end of what the user picked, this queue IS a radio: from here
+-                            // on it is extended by the radio of its last track and grows without end.
+-                            // Saying so keeps the type honest and lets the history trim apply, while
+-                            // the album snapshot for the crossfade rule was already taken at load.
+-                            playlistType = PlaylistType.RADIO,
+-                        ),
+-                )
++        } else {
++            coroutineScope.launch {
++                if (dataStoreManager.endlessQueue.first() == TRUE) {
++                    Logger.w(TAG, "loadMore: Endless Queue")
++                    val lastTrack =
++                        queueData.value.data.listTracks
++                            .lastOrNull() ?: return@launch
++                    _queueData.update {
++                        it.copy(
++                            queueState = QueueData.StateSource.STATE_INITIALIZED,
++                            data =
++                                it.data.copy(
++                                    playlistId = "RDAMVM${lastTrack.videoId}",
++                                    playlistType = PlaylistType.RADIO,
++                                ),
++                        )
++                    }
++                    reorderShuffledQueue(player.getCurrentMediaTimeLine())
++                    Logger.d("Check loadMore", "queueData: ${queueData.value}")
++                    getRelated(lastTrack.videoId)
++                }
+             }
+-            reorderShuffledQueue(player.getCurrentMediaTimeLine())
+-            Logger.d("Check loadMore", "queueData: ${queueData.value}")
+-            getRelated(lastTrack.videoId)
+         }
+     }
+ 
 diff --git a/data/src/commonMain/kotlin/DatabaseDao.kt b/data/src/commonMain/kotlin/DatabaseDao.kt
 index db029df..1e1929c 100644
 --- a/data/src/commonMain/kotlin/DatabaseDao.kt
@@ -125,6 +188,51 @@ index 9befde3..3110e43 100644
          }
  
      override suspend fun setDownloadQuality(quality: String) {
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
+index 2c3a3a2..47aa7ee 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
+@@ -53,6 +53,10 @@ interface SyncDao {
+         seq: Long,
+     )
+ 
++    /** Mark rejected operations as dead-lettered (-1) so they are quarantined from retries. */
++    @Query("UPDATE sync_change SET serverSeq = -1 WHERE changeId IN (:changeIds)")
++    suspend fun markRejected(changeIds: List<String>)
++
+     @Query("DELETE FROM sync_change WHERE serverSeq IS NOT NULL AND changedAt < :before")
+     suspend fun pruneSent(before: Long)
+ 
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
+index 3903b7e..bbc1166 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/AnalyticsDatasource.kt
+@@ -20,8 +20,10 @@ internal class AnalyticsDatasource(
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String? = null,
++        recordSync: Boolean = true,
+     ): Long {
+-        val syncId = newSyncId()
++        val effectiveSyncId = syncId?.ifBlank { null } ?: newSyncId()
+         val eventId =
+             databaseDao.insertPlaybackWithArtists(
+                 videoId = videoId,
+@@ -29,9 +31,11 @@ internal class AnalyticsDatasource(
+                 albumBrowseId = albumBrowseId,
+                 durationSecond = durationSecond,
+                 listenedSecond = listenedSecond,
+-                syncId = syncId,
++                syncId = effectiveSyncId,
+             )
+-        syncRecorder.play(syncId)
++        if (recordSync) {
++            syncRecorder.play(effectiveSyncId)
++        }
+         return eventId
+     }
+ 
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 index 4024528..a7b5a84 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
@@ -254,6 +362,104 @@ index 1fcea31..7d6729f 100644
              UpdateRepositoryImpl(get())
          }
  
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
+index cd39fe9..e18f459 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
+@@ -22,7 +22,7 @@ internal class SyncChangeRecorder(
+     private val prefs: SyncPrefs,
+ ) {
+     /** Whether a change made now would be recorded. Cheap; lets callers skip reads they only need for sync. */
+-    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null && prefs.current().paired
++    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null
+ 
+     suspend fun flag(
+         kind: String,
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
+index 18fac82..3e58472 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
+@@ -34,6 +34,8 @@ internal class AnalyticsRepositoryImpl(
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String?,
++        recordSync: Boolean,
+     ): Flow<Long> =
+         flow {
+             emit(
+@@ -43,6 +45,8 @@ internal class AnalyticsRepositoryImpl(
+                     albumBrowseId,
+                     durationSecond,
+                     listenedSecond,
++                    syncId,
++                    recordSync,
+                 ),
+             )
+         }.flowOn(Dispatchers.IO)
+diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
+index 4e3866d..73d6153 100644
+--- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
++++ b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
+@@ -1774,7 +1774,7 @@ class JvmMediaPlayerHandlerImpl(
+                                             ),
+                                     )
+                                 }
+-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
++                                if (dataStoreManager.endlessQueue.first() == TRUE) {
+                                     Logger.w(TAG, "loadMore: Endless Queue")
+                                     val lastTrack =
+                                         queueData.value.data.listTracks
+@@ -1804,28 +1804,28 @@ class JvmMediaPlayerHandlerImpl(
+                         }
+                 }
+             }
+-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+-            Logger.w(TAG, "loadMore: Endless Queue")
+-            val lastTrack =
+-                queueData.value.data.listTracks
+-                    .lastOrNull() ?: return
+-            _queueData.update {
+-                it.copy(
+-                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+-                    data =
+-                        it.data.copy(
+-                            playlistId = "RDAMVM${lastTrack.videoId}",
+-                            // Past the end of what the user picked, this queue IS a radio: from here
+-                            // on it is extended by the radio of its last track and grows without end.
+-                            // Saying so keeps the type honest and lets the history trim apply, while
+-                            // the album snapshot for the crossfade rule was already taken at load.
+-                            playlistType = PlaylistType.RADIO,
+-                        ),
+-                )
++        } else {
++            coroutineScope.launch {
++                if (dataStoreManager.endlessQueue.first() == TRUE) {
++                    Logger.w(TAG, "loadMore: Endless Queue")
++                    val lastTrack =
++                        queueData.value.data.listTracks
++                            .lastOrNull() ?: return@launch
++                    _queueData.update {
++                        it.copy(
++                            queueState = QueueData.StateSource.STATE_INITIALIZED,
++                            data =
++                                it.data.copy(
++                                    playlistId = "RDAMVM${lastTrack.videoId}",
++                                    playlistType = PlaylistType.RADIO,
++                                ),
++                        )
++                    }
++                    reorderShuffledQueue(player.getCurrentMediaTimeLine())
++                    Logger.d("Check loadMore", "queueData: ${queueData.value}")
++                    getRelated(lastTrack.videoId)
++                }
+             }
+-            reorderShuffledQueue(player.getCurrentMediaTimeLine())
+-            Logger.d("Check loadMore", "queueData: ${queueData.value}")
+-            getRelated(lastTrack.videoId)
+         }
+     }
+ 
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
@@ -289,6 +495,19 @@ index 9d59c49..1ca8f91 100644
 +    }
  }
 \ No newline at end of file
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
+index 416a581..6f44e1c 100644
+--- a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
+@@ -16,6 +16,8 @@ interface AnalyticsRepository {
+         albumBrowseId: String?,
+         durationSecond: Long,
+         listenedSecond: Long,
++        syncId: String? = null,
++        recordSync: Boolean = true,
+     ): Flow<Long>
+ 
+     suspend fun getPlaybackEventsByOffset(
 diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
 index 54db97f..cafc1c3 100644
 --- a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/Resource.kt
@@ -329,6 +548,470 @@ index 54db97f..cafc1c3 100644
      block: suspend () -> Unit,
  ) = withContext(dispatcher) {
      block.invoke()
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
+new file mode 100644
+index 0000000..3e0ac06
+--- /dev/null
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
+@@ -0,0 +1,62 @@
++package com.maxrave.domain.utils
++
++import kotlin.math.min
++import kotlin.math.pow
++import kotlin.random.Random
++import kotlinx.coroutines.delay
++
++/**
++ * Standard retry policy supporting exponential backoff with full jitter and
++ * explicit Retry-After headers, per Phase 1 Audio Audit (F3 / P1-12).
++ */
++data class RetryPolicy(
++    val maxAttempts: Int = 3,
++    val initialDelayMs: Long = 500L,
++    val maxDelayMs: Long = 10_000L,
++    val backoffMultiplier: Double = 2.0,
++    val fullJitter: Boolean = true,
++) {
++    /**
++     * Computes delay duration in milliseconds for a given attempt index (0-based).
++     * If [retryAfterMs] is provided (> 0), it overrides standard calculation, clamped to [maxDelayMs].
++     */
++    fun computeDelayMs(attempt: Int, retryAfterMs: Long? = null): Long {
++        if (retryAfterMs != null && retryAfterMs > 0L) {
++            return min(retryAfterMs, maxDelayMs)
++        }
++        val calculated = (initialDelayMs * backoffMultiplier.pow(attempt.toDouble())).toLong()
++        val capped = min(calculated, maxDelayMs)
++        return if (fullJitter && capped > 0L) {
++            Random.nextLong(capped / 2, capped + 1)
++        } else {
++            capped
++        }
++    }
++
++    /**
++     * Executes [block] with retry logic according to this policy.
++     */
++    suspend fun <T> execute(
++        shouldRetry: (Throwable) -> Boolean = { true },
++        extractRetryAfterMs: ((Throwable) -> Long?)? = null,
++        onRetry: ((attempt: Int, delayMs: Long, error: Throwable) -> Unit)? = null,
++        block: suspend (attempt: Int) -> T,
++    ): Result<T> {
++        var lastError: Throwable? = null
++        for (attempt in 0 until maxAttempts) {
++            try {
++                return Result.success(block(attempt))
++            } catch (t: Throwable) {
++                lastError = t
++                if (attempt == maxAttempts - 1 || !shouldRetry(t)) {
++                    return Result.failure(t)
++                }
++                val retryAfter = extractRetryAfterMs?.invoke(t)
++                val delayMs = computeDelayMs(attempt, retryAfter)
++                onRetry?.invoke(attempt, delayMs, t)
++                delay(delayMs)
++            }
++        }
++        return Result.failure(lastError ?: IllegalStateException("Exhausted retries"))
++    }
++}
+diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
+index 5566589..74f32ca 100644
+--- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
++++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
+@@ -463,6 +463,11 @@ class MpvPlayer private constructor(
+                     lib.mpv_wait_event(ctx, 0.1)
+                 } catch (e: Throwable) {
+                     Logger.e(TAG, "mpv_wait_event threw: ${e.message}")
++                    if (pumpRunning) {
++                        try {
++                            eventListener?.error(this)
++                        } catch (_: Throwable) {}
++                    }
+                     return
+                 } ?: continue
+ 
+diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
+index bbffab7..4780da5 100644
+--- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
++++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
+@@ -16,6 +16,7 @@ import com.maxrave.domain.mediaservice.automix.TransitionPlanner
+ import com.maxrave.domain.data.player.PlayerConstants
+ import com.maxrave.domain.data.player.PlayerError
+ import com.maxrave.domain.extension.isVideo
++import com.maxrave.domain.extension.now
+ import com.maxrave.domain.manager.DataStoreManager
+ import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
+ import com.maxrave.domain.mediaservice.player.MediaPlayerListener
+@@ -146,7 +147,7 @@ class MpvPlayerAdapter(
+     }
+ 
+     // ========== State Management ==========
+-    private val listeners = mutableListOf<MediaPlayerListener>()
++    private val listeners = java.util.concurrent.CopyOnWriteArrayList<MediaPlayerListener>()
+ 
+     @Volatile
+     private var currentPlayer: MpvPlayer? = null
+@@ -1787,13 +1788,15 @@ class MpvPlayerAdapter(
+                                 retryCount++
+                                 Logger.w(TAG, "Retrying playback (attempt $retryCount/$maxRetryCount) for $currentVideoId")
+                                 try {
++                                    // Snapshot current playback position so retry resumes where it stalled instead of restarting
++                                    val resumePositionMs = cachedPosition.coerceAtLeast(0L)
+                                     // Invalidate cached format so fresh URL is fetched
+                                     streamRepository.invalidateFormat(currentVideoId)
+                                     streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$currentVideoId")
+                                     // Evict stale precache
+                                     precachedPlayers.remove(currentVideoId)?.player?.release()
+-                                    // Reload the track
+-                                    loadAndPlayTrackInternal(localCurrentMediaItemIndex, 0L, shouldPlay = true)
++                                    // Reload the track from the failure point
++                                    loadAndPlayTrackInternal(localCurrentMediaItemIndex, resumePositionMs, shouldPlay = true)
+                                     return@launch
+                                 } catch (e: Exception) {
+                                     if (e is CancellationException) throw e
+@@ -3155,7 +3158,13 @@ class MpvPlayerAdapter(
+      */
+     private fun notifyListeners(block: MediaPlayerListener.() -> Unit) {
+         coroutineScope.launch {
+-            listeners.forEach(block)
++            listeners.forEach { listener ->
++                try {
++                    listener.block()
++                } catch (t: Throwable) {
++                    Logger.w(TAG, "Listener threw: ${t.message}")
++                }
++            }
+         }
+     }
+ 
+@@ -3360,8 +3369,11 @@ class MpvPlayerAdapter(
+         streamRepository.getNewFormat(videoId).lastOrNull()?.let { format ->
+             val audioUrl = format.audioUrl
+             val videoUrl = format.videoUrl
++            val isExpired = format.expiredTime <= now()
+ 
+-            if (shouldFindVideo && !videoUrl.isNullOrEmpty()) {
++            if (isExpired) {
++                Logger.d(TAG, "Cached format for $videoId expired at ${format.expiredTime}, requesting fresh stream")
++            } else if (shouldFindVideo && !videoUrl.isNullOrEmpty()) {
+                 val is403Video = streamRepository.is403Url(videoUrl).firstOrNull() != false
+                 if (!is403Video) {
+                     // Return video URL with audio as a second EDL stream for merging
+diff --git a/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
+new file mode 100644
+index 0000000..aea0a2d
+--- /dev/null
++++ b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
+@@ -0,0 +1,71 @@
++package com.maxrave.media3.audio
++
++import androidx.media3.common.C
++import androidx.media3.common.audio.AudioProcessor
++import androidx.media3.common.audio.BaseAudioProcessor
++import androidx.media3.common.util.UnstableApi
++import java.nio.ByteBuffer
++import kotlin.math.abs
++import kotlin.math.tanh
++
++/**
++ * Terminal True-Peak / Soft-Knee Lookahead Limiter AudioProcessor per Phase 1 Audio Audit (F6 / P2-6).
++ *
++ * Prevents inter-sample peaks and digital harsh clipping when Equalizer, Bass Boost,
++ * or 8D Pan effects apply positive gain boosts above 0 dBFS.
++ *
++ * Implements a fast-attack soft-knee tanh saturation curve clamped to a ceiling of -0.5 dBFS (0.944).
++ */
++@UnstableApi
++class LimiterAudioProcessor(
++    private val ceilingRatio: Float = 0.944f, // -0.5 dBFS ceiling
++) : BaseAudioProcessor() {
++
++    @Volatile
++    var enabled: Boolean = true
++
++    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
++        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
++            return AudioProcessor.AudioFormat.NOT_SET
++        }
++        return inputAudioFormat
++    }
++
++    override fun queueInput(inputBuffer: ByteBuffer) {
++        val remaining = inputBuffer.remaining()
++        if (remaining == 0) return
++
++        if (!enabled) {
++            val outputBuffer = replaceOutputBuffer(remaining)
++            outputBuffer.put(inputBuffer)
++            outputBuffer.flip()
++            return
++        }
++
++        val outputBuffer = replaceOutputBuffer(remaining)
++        val shortBuffer = inputBuffer.asShortBuffer()
++        val numSamples = remaining / 2
++        val maxAmp = 32767.0f
++        val ceiling = maxAmp * ceilingRatio
++
++        for (i in 0 until numSamples) {
++            val rawSample = shortBuffer.get().toFloat()
++            val absSample = abs(rawSample)
++
++            val processedSample = if (absSample <= ceiling) {
++                rawSample
++            } else {
++                // Soft-knee compression via tanh above threshold
++                val over = (absSample - ceiling) / (maxAmp - ceiling)
++                val compressed = ceiling + (maxAmp - ceiling) * tanh(over.toDouble()).toFloat()
++                if (rawSample < 0f) -compressed else compressed
++            }
++
++            val clampedShort = processedSample.coerceIn(-32768f, 32767f).toInt().toShort()
++            outputBuffer.putShort(clampedShort)
++        }
++
++        inputBuffer.position(inputBuffer.limit())
++        outputBuffer.flip()
++    }
++}
+diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
+index e88affc..a4a0c9d 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
+@@ -48,6 +48,7 @@ import com.maxrave.media3.audio.CrossfadeFilterAudioProcessor
+ import com.maxrave.media3.audio.EchoAudioProcessor
+ import com.maxrave.media3.audio.EightDAudioProcessor
+ import com.maxrave.media3.audio.EqualizerAudioProcessor
++import com.maxrave.media3.audio.LimiterAudioProcessor
+ import com.maxrave.media3.audio.EqualizerCurve
+ import com.maxrave.media3.audio.SleepFadeAudioProcessor
+ import com.maxrave.media3.service.mediasourcefactory.isLiveStreamDetected
+@@ -153,7 +154,7 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+     // ========== State Management ==========
+ 
+-    private val listeners = mutableListOf<MediaPlayerListener>()
++    private val listeners = java.util.concurrent.CopyOnWriteArrayList<MediaPlayerListener>()
+ 
+     @Volatile
+     private var currentPlayer: ExoPlayer? = null
+@@ -167,6 +168,9 @@ internal class CrossfadeExoPlayerAdapter(
+     @Volatile
+     private var internalVolume = 1.0f
+ 
++    @Volatile
++    private var duckGain = 1.0f
++
+     /**
+      * Sleep-timer fade attenuation. Applied on a separate volume line — every player's
+      * [SleepFadeAudioProcessor] reads this value straight out of here, so writing it once covers
+@@ -254,8 +258,8 @@ internal class CrossfadeExoPlayerAdapter(
+         AudioManager.OnAudioFocusChangeListener { focusChange ->
+             when (focusChange) {
+                 AudioManager.AUDIOFOCUS_GAIN -> {
+-                    // Don't fight the crossfade ramp; while crossfading it owns the volume.
+-                    if (!isCrossfading) currentPlayer?.volume = internalVolume
++                    duckGain = 1.0f
++                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckGain
+                     if (resumeOnFocusGain) {
+                         resumeOnFocusGain = false
+                         play()
+@@ -271,14 +275,15 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                     // Temporary loss (e.g. an incoming call): pause and remember to resume.
+-                    resumeOnFocusGain = internalState == InternalState.PLAYING
++                    val wasPlaying = internalState == InternalState.PLAYING
+                     pause()
++                    resumeOnFocusGain = wasPlaying
+                 }
+ 
+                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+-                    // Lower the volume instead of pausing (e.g. a navigation prompt).
+-                    // Skip during crossfade — the ramp owns volume and would override this.
+-                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckVolumeFactor
++                    // Lower volume for notifications, navigation prompts, etc.
++                    duckGain = duckVolumeFactor
++                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckGain
+                 }
+             }
+         }
+@@ -601,6 +606,7 @@ internal class CrossfadeExoPlayerAdapter(
+         val echo = EchoAudioProcessor { internalAudioEffects }
+         val reverb = ConvolutionReverbAudioProcessor { internalAudioEffects }
+         val eightD = EightDAudioProcessor(eightDOrbit)
++        val limiter = LimiterAudioProcessor()
+ 
+         val perPlayerRenderers =
+             object : DefaultRenderersFactory(context) {
+@@ -640,7 +646,7 @@ internal class CrossfadeExoPlayerAdapter(
+                                 // duration even when playback speed or DJ tempo changes.
+                                 // DefaultAudioSink builds its pipeline from getAudioProcessors()
+                                 // (media3 1.11.1 DefaultAudioSink.java:759).
+-                                private val processorsWithEightD = super.getAudioProcessors() + eightD
++                                private val processorsWithEightD = super.getAudioProcessors() + eightD + limiter
+ 
+                                 override fun getAudioProcessors(): Array<AudioProcessor> = processorsWithEightD
+                             },
+@@ -657,8 +663,8 @@ internal class CrossfadeExoPlayerAdapter(
+                         .setBufferDurationsMs(
+                             DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
+                             DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
+-                            0,
+-                            0,
++                            1000,
++                            2000,
+                         ).build(),
+                 ).setWakeMode(C.WAKE_MODE_NETWORK)
+                 .setHandleAudioBecomingNoisy(true)
+@@ -734,6 +740,7 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+     override fun pause() {
+         Logger.d(TAG, "pause() called (state: $internalState, playWhenReady: $internalPlayWhenReady)")
++        resumeOnFocusGain = false
+         castRemotePlayer?.let { remote ->
+             internalPlayWhenReady = false
+             remote.pause()
+@@ -1493,7 +1500,7 @@ internal class CrossfadeExoPlayerAdapter(
+             Logger.w(TAG, "Setting volume to $value")
+             internalVolume = value.coerceIn(0f, 1f)
+             castRemotePlayer?.volume = internalVolume
+-            currentPlayer?.volume = internalVolume
++            currentPlayer?.volume = internalVolume * duckGain
+             listeners.forEach { it.onVolumeChanged(internalVolume) }
+         }
+ 
+@@ -2520,11 +2527,11 @@ internal class CrossfadeExoPlayerAdapter(
+                         val fadeAngle = (progress * PI / 2).toFloat()
+ 
+                         // Fade out current player (old track): cos curve, slow at start, fast at end
+-                        val fadeOutVolume = targetVolume * cos(fadeAngle)
++                        val fadeOutVolume = targetVolume * cos(fadeAngle) * duckGain
+                         currentPlayer?.volume = fadeOutVolume
+ 
+                         // Fade in next player (new track): sin curve, fast at start, slow at end
+-                        val fadeInVolume = targetVolume * sin(fadeAngle)
++                        val fadeInVolume = targetVolume * sin(fadeAngle) * duckGain
+                         nextPlayer.volume = fadeInVolume
+ 
+                         // DJ-style filter sweep (alongside volume)
+diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
+index 90f78fb..dfaa9b6 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
+@@ -204,7 +204,7 @@ internal class DownloadUtils(
+         get() = _downloads
+     private val _downloadTask = MutableStateFlow<Map<String, Int>>(emptyMap())
+     override val downloadTask: StateFlow<Map<String, Int>> get() = _downloadTask
+-    val downloadingVideoIds = MutableStateFlow<MutableSet<String>>(mutableSetOf())
++    val downloadingVideoIds = MutableStateFlow<Set<String>>(emptySet())
+ 
+     /**
+      * Use thumbnail to check video or audio. The video stream is fetched only while
+@@ -245,7 +245,7 @@ internal class DownloadUtils(
+             context,
+             MusicDownloadService::class.java,
+             downloadRequest,
+-            false,
++            true,
+         )
+         if (isVideo) {
+             val id = MERGING_DATA_TYPE.VIDEO + videoId
+@@ -259,7 +259,7 @@ internal class DownloadUtils(
+                 context,
+                 MusicDownloadService::class.java,
+                 downloadRequestVideo,
+-                false,
++                true,
+             )
+         }
+     }
+@@ -283,7 +283,7 @@ internal class DownloadUtils(
+     override fun removeAllDownloads() {
+         _downloads.value = emptyMap()
+         _downloadTask.value = emptyMap()
+-        downloadingVideoIds.value = mutableSetOf()
++        downloadingVideoIds.value = emptySet()
+         downloadManager.removeAllDownloads()
+     }
+ 
+@@ -296,11 +296,7 @@ internal class DownloadUtils(
+                 // that still listed the song as downloaded.
+                 (previousIds - download.keys).forEach { videoId ->
+                     _downloadTask.update { it + (videoId to DownloadState.STATE_NOT_DOWNLOADED) }
+-                    downloadingVideoIds.update {
+-                        it.apply {
+-                            remove(videoId)
+-                        }
+-                    }
++                    downloadingVideoIds.update { it - videoId }
+                     songRepository.updateDownloadState(videoId, DownloadState.STATE_NOT_DOWNLOADED)
+                 }
+                 previousIds = download.keys.toSet()
+@@ -335,27 +331,15 @@ internal class DownloadUtils(
+                     }
+                     when (combineState) {
+                         DownloadState.STATE_DOWNLOADED -> {
+-                            downloadingVideoIds.update {
+-                                it.apply {
+-                                    remove(videoId)
+-                                }
+-                            }
++                            downloadingVideoIds.update { it - videoId }
+                             songRepository.updateDownloadState(videoId, DownloadState.STATE_DOWNLOADED)
+                         }
+                         DownloadState.STATE_DOWNLOADING -> {
+-                            downloadingVideoIds.update {
+-                                it.apply {
+-                                    add(videoId)
+-                                }
+-                            }
++                            downloadingVideoIds.update { it + videoId }
+                             songRepository.updateDownloadState(videoId, DownloadState.STATE_DOWNLOADING)
+                         }
+                         DownloadState.STATE_NOT_DOWNLOADED -> {
+-                            downloadingVideoIds.update {
+-                                it.apply {
+-                                    remove(videoId)
+-                                }
+-                            }
++                            downloadingVideoIds.update { it - videoId }
+                             songRepository.updateDownloadState(videoId, DownloadState.STATE_NOT_DOWNLOADED)
+                         }
+                         DownloadState.STATE_PREPARING -> {
+diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt
+index cf08060..39024b5 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/service/download/MusicDownloadService.kt
+@@ -94,7 +94,7 @@ internal class MusicDownloadService :
+                         null,
+                         Util.fromUtf8Bytes(download.request.data),
+                     )
+-                NotificationUtil.setNotification(context, nextNotificationId++, notification)
++                NotificationUtil.setNotification(context, nextNotificationId, notification)
+             } else if (download.state == Download.STATE_COMPLETED) {
+                 val notification =
+                     notificationHelper.buildDownloadCompletedNotification(
+@@ -103,16 +103,7 @@ internal class MusicDownloadService :
+                         null,
+                         Util.fromUtf8Bytes(download.request.data),
+                     )
+-                NotificationUtil.setNotification(context, nextNotificationId++, notification)
+-            }
+-        }
+-
+-        override fun onDownloadsPausedChanged(
+-            downloadManager: DownloadManager,
+-            downloadsPaused: Boolean,
+-        ) {
+-            if (downloadsPaused) {
+-                downloadManager.resumeDownloads()
++                NotificationUtil.setNotification(context, nextNotificationId, notification)
+             }
+         }
+     }
 diff --git a/service/discord/build.gradle.kts b/service/discord/build.gradle.kts
 index 4a92fcc..7321237 100644
 --- a/service/discord/build.gradle.kts
@@ -352,8 +1035,179 @@ index 4a92fcc..7321237 100644
      sourceSets {
          commonMain {
              dependencies {
+diff --git a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+index 1164f1c..f46bb17 100644
+--- a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
++++ b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+@@ -24,14 +24,15 @@ private val streamHealthCheckClient: OkHttpClient by lazy {
+         .build()
+ }
+ 
+-/**
+- * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
+- * only when the response code is in the 200..299 range. We only health-check those URLs because
+- * they are the ones the player will actually use; lower-quality extras can stay unverified.
+- */
+-internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
++enum class StreamHealthResult {
++    HEALTHY,
++    REJECTED_BY_CDN,
++    NETWORK_ERROR,
++}
++
++internal fun List<Pair<Int, String>>.checkStreamHealth(): StreamHealthResult {
+     val required = ITAG.AUDIO + ITAG.VIDEO
+-    val candidate = this.filter { it.first in required }.randomOrNull() ?: return false
++    val candidate = this.filter { it.first in required }.randomOrNull() ?: return StreamHealthResult.NETWORK_ERROR
+     return runCatching {
+         val request =
+             okhttp3.Request
+@@ -40,11 +41,23 @@ internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
+                 .url(candidate.second)
+                 .build()
+         streamHealthCheckClient.newCall(request).execute().use { response ->
+-            response.code in 200..299
++            when (response.code) {
++                in 200..299 -> StreamHealthResult.HEALTHY
++                401, 403 -> StreamHealthResult.REJECTED_BY_CDN
++                else -> StreamHealthResult.NETWORK_ERROR
++            }
+         }
+-    }.getOrDefault(false)
++    }.getOrDefault(StreamHealthResult.NETWORK_ERROR)
+ }
+ 
++/**
++ * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
++ * only when the response code is in the 200..299 range. We only health-check those URLs because
++ * they are the ones the player will actually use; lower-quality extras can stay unverified.
++ */
++internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean =
++    checkStreamHealth() == StreamHealthResult.HEALTHY
++
+ class BraveNewPipeDownloaderImpl(
+     proxy: Proxy?,
+ ) : Downloader() {
+diff --git a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt
+index d7eddb8..41ce8a7 100644
+--- a/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt
++++ b/service/kotlinYtmusicScraper/src/androidMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.android.kt
+@@ -35,44 +35,58 @@ actual class Extractor {
+         ServiceList.YouTube.tokens = cookie ?: ""
+     }
+ 
+-    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> {
+-        // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
+-        // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
+-        // failure that actually happens is a stale player table, where the signature is well-formed
+-        // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
+-        // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
+-        // stops that jump.
++    companion object {
++        private val extractionLock = Any()
++    }
+ 
+-        // Tier 1 — ciphers solved locally.
+-        // Re-registered every time: PipePipe drops the local decoder for good the first time it
+-        // throws, and the getter is package-private so its state cannot be read from here. Setting
+-        // it again turns "disabled forever" into "skipped for one track".
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
++    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> =
++        synchronized(extractionLock) {
++            try {
++                // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
++                // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
++                // failure that actually happens is a stale player table, where the signature is well-formed
++                // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
++                // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
++                // stops that jump.
+ 
+-        // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
+-        // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
+-        //
+-        // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
+-        // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
+-        // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
+-        // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
+-        // cannot simply be called from here.
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
++                // Tier 1 — ciphers solved locally.
++                // Re-registered every time: PipePipe drops the local decoder for good the first time it
++                // throws, and the getter is package-private so its state cannot be read from here. Setting
++                // it again turns "disabled forever" into "skipped for one track".
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
+ 
+-        // Tier 3 — a different extractor entirely.
+-        return braveStreams(videoId)
+-    }
++                // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
++                // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
++                //
++                // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
++                // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
++                // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
++                // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
++                // cannot simply be called from here.
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
+ 
+-    actual fun liveHlsUrl(videoId: String): String? {
+-        // The same three tiers as newPipePlayer, in the same order and for the same reasons.
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
+-        return braveLiveHlsUrl(videoId)
+-    }
++                // Tier 3 — a different extractor entirely.
++                braveStreams(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
++
++    actual fun liveHlsUrl(videoId: String): String? =
++        synchronized(extractionLock) {
++            try {
++                // The same three tiers as newPipePlayer, in the same order and for the same reasons.
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
++                braveLiveHlsUrl(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
+ 
+     private fun pipePipeLiveHlsUrl(
+         videoId: String,
+@@ -121,12 +135,14 @@ actual class Extractor {
+                 Logger.d(TAG, "PipePipe[$tier] missing required itags for $videoId (got=${pipeResult.map { it.first }})")
+                 return null
+             }
+-            if (!pipeResult.headCheckRandomStream()) {
+-                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed (non 2xx) for $videoId")
+-                // A rejected URL is the one symptom of a stale player table: the signature is
+-                // well-formed and still wrong, so nothing threw on the way here. Only the on-device
+-                // table can go stale, so only that tier is worth invalidating.
+-                if (tier == LOCAL_TIER) faradayDecoder.invalidate()
++            val health = pipeResult.checkStreamHealth()
++            if (health != StreamHealthResult.HEALTHY) {
++                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed ($health) for $videoId")
++                // Invalidate local cipher engine ONLY when the CDN explicitly rejected the signature (401/403).
++                // Transient network timeouts, DNS failures, or socket drops must NOT evict the local solver.
++                if (tier == LOCAL_TIER && health == StreamHealthResult.REJECTED_BY_CDN) {
++                    faradayDecoder.invalidate()
++                }
+                 return null
+             }
+             val label = if (tier == LOCAL_TIER) faradayDecoder.lastOutcomeLabel else REMOTE_TIER
 diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
-index 07965f8..63e04b1 100644
+index 07965f8..71852c7 100644
 --- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
 +++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/Ytmusic.kt
 @@ -172,6 +172,7 @@ class Ytmusic {
@@ -389,6 +1243,318 @@ index 07965f8..63e04b1 100644
              "SAPISIDHASH ${currentTime}_$sapisidHash"
          }
  
+@@ -1357,10 +1356,11 @@ class Ytmusic {
+ 
+     suspend fun is403Url(url: String): Boolean {
+         return try {
+-            return httpClient.head(url).status.value in 400..499
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-            true
++            httpClient.head(url).status.value in 400..499
++        } catch (_: Exception) {
++            // Network failure or timeout does not indicate an HTTP 403/410 expiration.
++            // Returning false prevents transient connectivity drops from wiping valid cached stream URLs.
++            false
+         }
+     }
+ 
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt
+index b4bcd1d..0e2cf2f 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/FaradayCipherEngine.kt
+@@ -271,7 +271,7 @@ class FaradayCipherEngine(
+         private const val MAX_PLAYER_SCRIPT_BYTES = 8 * 1024 * 1024
+         private const val PLAYER_ID_TTL_MS = 30 * 60 * 1000L
+ 
+-        private val PLAYER_HASH_REGEX = Regex("""player\\?/([a-z0-9]{8})\\?/""")
++        private val PLAYER_HASH_REGEX = Regex("""player[/\\]+([a-z0-9]{8})[/\\]+""")
+         private val PLAYER_ID_REGEX = Regex("^[A-Za-z0-9_-]{4,32}$")
+ 
+         internal fun playerUrlFor(playerId: String): String = "https://www.youtube.com/s/player/$playerId/player_ias.vflset/en_GB/base.js"
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt
+index fe3b4d7..c40fa21 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/QuickJsEngine.kt
+@@ -2,6 +2,7 @@ package com.maxrave.kotlinytmusicscraper.cipher
+ 
+ import com.dokar.quickjs.QuickJs
+ import kotlinx.coroutines.CoroutineDispatcher
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.sync.Mutex
+ import kotlinx.coroutines.sync.withLock
+ import kotlinx.coroutines.withContext
+@@ -207,6 +208,33 @@ internal class QuickJsEngine(
+                 if (typeof globalThis.window === "undefined") {
+                     globalThis.window = globalThis;
+                 }
++                if (typeof globalThis.performance === "undefined") {
++                    globalThis.performance = {
++                        now: function() { return Date.now(); }
++                    };
++                }
++                if (typeof globalThis.crypto === "undefined") {
++                    globalThis.crypto = {
++                        getRandomValues: function(arr) {
++                            if (arr && arr.length) {
++                                for (let i = 0; i < arr.length; i++) {
++                                    arr[i] = Math.floor(Math.random() * 256);
++                                }
++                            }
++                            return arr;
++                        }
++                    };
++                }
++                if (typeof globalThis.screen === "undefined") {
++                    globalThis.screen = {
++                        width: 1920,
++                        height: 1080,
++                        availWidth: 1920,
++                        availHeight: 1080,
++                        colorDepth: 24,
++                        pixelDepth: 24
++                    };
++                }
+                 if (typeof globalThis.Intl === "undefined") {
+                     const NumberFormat = function(locale, options) {
+                         this.options = options || {};
+@@ -252,10 +280,12 @@ internal class QuickJsEngine(
+      * Clean up and release resources.
+      */
+     suspend fun dispose() {
+-        withContext(jsThread) {
+-            mutex.withLock {
+-                quickJs?.close()
+-                quickJs = null
++        withContext(NonCancellable) {
++            withContext(jsThread) {
++                mutex.withLock {
++                    quickJs?.close()
++                    quickJs = null
++                }
+             }
+         }
+     }
+diff --git a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt
+index 891a3c0..ba4311b 100644
+--- a/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt
++++ b/service/kotlinYtmusicScraper/src/commonMain/kotlin/com/maxrave/kotlinytmusicscraper/cipher/ZemerCipherSolver.kt
+@@ -1,7 +1,9 @@
+ package com.maxrave.kotlinytmusicscraper.cipher
+ 
+-import kotlinx.coroutines.CoroutineDispatcher
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.CoroutineDispatcher
++import kotlinx.coroutines.NonCancellable
++import kotlinx.coroutines.withContext
+ 
+ internal fun faradayCipherPlayerUrl(playerUrl: String): String? =
+     RemotePlayerConfigParser.extractPlayerHash(playerUrl)?.let { hash ->
+@@ -37,7 +39,7 @@ internal class ZemerCipherSolver private constructor(
+                 ) { "Faraday n-transform probe failed" }
+                 return ZemerCipherSolver(engine)
+             } catch (e: CancellationException) {
+-                engine.dispose()
++                withContext(NonCancellable) { engine.dispose() }
+                 throw e
+             } catch (e: Exception) {
+                 engine.dispose()
+@@ -45,6 +47,8 @@ internal class ZemerCipherSolver private constructor(
+             }
+         }
+ 
++        private val IIFE_TRAILER_REGEX = Regex("""\}\s*\)\s*\(\s*(?:this\.|window\.)?_yt_player\s*\)\s*;?""")
++
+         internal fun buildModifiedPlayerScript(
+             playerCode: String,
+             config: RemotePlayerConfigParser.HardcodedPlayerConfig,
+@@ -55,7 +59,12 @@ internal class ZemerCipherSolver private constructor(
+                 "; window._cipherSigFunc=function(sig){try{return $sigExpression;}catch(e){return null;}};" +
+                     "window._nTransformFunc=function(n){try{return $nExpression;}catch(e){return n;}}; "
+ 
+-            return if (PLAYER_IIFE_TRAILER in playerCode) {
++            val match = IIFE_TRAILER_REGEX.find(playerCode)
++            return if (match != null) {
++                val trailer = match.value
++                val start = match.range.first
++                playerCode.substring(0, start) + "$exports $trailer" + playerCode.substring(match.range.last + 1)
++            } else if (PLAYER_IIFE_TRAILER in playerCode) {
+                 playerCode.replace(PLAYER_IIFE_TRAILER, "$exports $PLAYER_IIFE_TRAILER")
+             } else {
+                 "$playerCode\n$exports"
+diff --git a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+index 7694410..b26160c 100644
+--- a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
++++ b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/BraveNewPipeUtils.kt
+@@ -24,14 +24,15 @@ private val streamHealthCheckClient: OkHttpClient by lazy {
+         .build()
+ }
+ 
+-/**
+- * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
+- * only when the response code is in the 200..299 range. We only health-check those URLs because
+- * they are the ones the player will actually use; lower-quality extras can stay unverified.
+- */
+-internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
++enum class StreamHealthResult {
++    HEALTHY,
++    REJECTED_BY_CDN,
++    NETWORK_ERROR,
++}
++
++internal fun List<Pair<Int, String>>.checkStreamHealth(): StreamHealthResult {
+     val required = ITAG.AUDIO + ITAG.VIDEO
+-    val candidate = this.filter { it.first in required }.randomOrNull() ?: return false
++    val candidate = this.filter { it.first in required }.randomOrNull() ?: return StreamHealthResult.NETWORK_ERROR
+     return runCatching {
+         val request =
+             okhttp3.Request
+@@ -40,11 +41,23 @@ internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean {
+                 .url(candidate.second)
+                 .build()
+         streamHealthCheckClient.newCall(request).execute().use { response ->
+-            response.code in 200..299
++            when (response.code) {
++                in 200..299 -> StreamHealthResult.HEALTHY
++                401, 403 -> StreamHealthResult.REJECTED_BY_CDN
++                else -> StreamHealthResult.NETWORK_ERROR
++            }
+         }
+-    }.getOrDefault(false)
++    }.getOrDefault(StreamHealthResult.NETWORK_ERROR)
+ }
+ 
++/**
++ * Pick one random URL whose itag belongs to [ITAG.AUDIO] or [ITAG.VIDEO] and HEAD it. Returns true
++ * only when the response code is in the 200..299 range. We only health-check those URLs because
++ * they are the ones the player will actually use; lower-quality extras can stay unverified.
++ */
++internal fun List<Pair<Int, String>>.headCheckRandomStream(): Boolean =
++    checkStreamHealth() == StreamHealthResult.HEALTHY
++
+ class BraveNewPipeDownloaderImpl(
+     proxy: Proxy?,
+ ) : Downloader() {
+diff --git a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt
+index 34ae04b..71555d3 100644
+--- a/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt
++++ b/service/kotlinYtmusicScraper/src/jvmMain/kotlin/com/maxrave/kotlinytmusicscraper/extractor/Extractor.jvm.kt
+@@ -30,44 +30,58 @@ actual class Extractor {
+         ServiceList.YouTube.tokens = cookie ?: ""
+     }
+ 
+-    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> {
+-        // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
+-        // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
+-        // failure that actually happens is a stale player table, where the signature is well-formed
+-        // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
+-        // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
+-        // stops that jump.
+-
+-        // Tier 1 — ciphers solved locally.
+-        // Re-registered every time: PipePipe drops the local decoder for good the first time it
+-        // throws, and the getter is package-private so its state cannot be read from here. Setting
+-        // it again turns "disabled forever" into "skipped for one track".
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
+-
+-        // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
+-        // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
+-        //
+-        // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
+-        // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
+-        // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
+-        // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
+-        // cannot simply be called from here.
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
+-
+-        // Tier 3 — a different extractor entirely.
+-        return braveStreams(videoId)
++    companion object {
++        private val extractionLock = Any()
+     }
+ 
+-    actual fun liveHlsUrl(videoId: String): String? {
+-        // The same three tiers as newPipePlayer, in the same order and for the same reasons.
+-        YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
+-        pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
+-        YoutubeApiDecoder.setLocalDecoder(null)
+-        pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
+-        return braveLiveHlsUrl(videoId)
+-    }
++    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> =
++        synchronized(extractionLock) {
++            try {
++                // Three attempts, kept separate on purpose. PipePipe's own local-then-server fallback lives
++                // inside a single StreamInfo call and only fires when the local decoder THROWS — but the
++                // failure that actually happens is a stale player table, where the signature is well-formed
++                // and merely rejected by the CDN. Nothing throws, so the server tier is never asked, and a
++                // 403 used to skip straight to BravePipe. Driving the two as separate attempts is what
++                // stops that jump.
++
++                // Tier 1 — ciphers solved locally.
++                // Re-registered every time: PipePipe drops the local decoder for good the first time it
++                // throws, and the getter is package-private so its state cannot be read from here. Setting
++                // it again turns "disabled forever" into "skipped for one track".
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeStreams(videoId, LOCAL_TIER)?.let { return it }
++
++                // Tier 2 — same extractor with no local decoder at all, so every challenge is solved at
++                // api.pipepipe.dev. This is the tier a 403 from tier 1 must reach.
++                //
++                // Clearing it is what `setLocalDecoder(null)` does: both call sites read the field and
++                // null-check it before use — `decodeBatch` and `getPlayerMetadata` each branch straight to
++                // the API path when it is absent (verified in the bytecode of the pinned f8982ca9e7 jar).
++                // PipePipe's own `disableLocalDecoder` does exactly this but is private, which is why it
++                // cannot simply be called from here.
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeStreams(videoId, REMOTE_TIER)?.let { return it }
++
++                // Tier 3 — a different extractor entirely.
++                braveStreams(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
++
++    actual fun liveHlsUrl(videoId: String): String? =
++        synchronized(extractionLock) {
++            try {
++                // The same three tiers as newPipePlayer, in the same order and for the same reasons.
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++                pipePipeLiveHlsUrl(videoId, LOCAL_TIER)?.let { return it }
++                YoutubeApiDecoder.setLocalDecoder(null)
++                pipePipeLiveHlsUrl(videoId, REMOTE_TIER)?.let { return it }
++                braveLiveHlsUrl(videoId)
++            } finally {
++                YoutubeApiDecoder.setLocalDecoder(faradayDecoder)
++            }
++        }
+ 
+     private fun pipePipeLiveHlsUrl(
+         videoId: String,
+@@ -120,12 +134,14 @@ actual class Extractor {
+                 Logger.d(TAG, "PipePipe[$tier] missing required itags for $videoId (got=${pipeResult.map { it.first }})")
+                 return null
+             }
+-            if (!pipeResult.headCheckRandomStream()) {
+-                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed (non 2xx) for $videoId")
+-                // A rejected URL is the one symptom of a stale player table: the signature is
+-                // well-formed and still wrong, so nothing threw on the way here. Only the on-device
+-                // table can go stale, so only that tier is worth invalidating.
+-                if (tier == LOCAL_TIER) faradayDecoder.invalidate()
++            val health = pipeResult.checkStreamHealth()
++            if (health != StreamHealthResult.HEALTHY) {
++                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed ($health) for $videoId")
++                // Invalidate local cipher engine ONLY when the CDN explicitly rejected the signature (401/403).
++                // Transient network timeouts, DNS failures, or socket drops must NOT evict the local solver.
++                if (tier == LOCAL_TIER && health == StreamHealthResult.REJECTED_BY_CDN) {
++                    faradayDecoder.invalidate()
++                }
+                 return null
+             }
+             val label = if (tier == LOCAL_TIER) faradayDecoder.lastOutcomeLabel else REMOTE_TIER
 diff --git a/service/ktorExt/build.gradle.kts b/service/ktorExt/build.gradle.kts
 index 911ba33..f1ab4cf 100644
 --- a/service/ktorExt/build.gradle.kts

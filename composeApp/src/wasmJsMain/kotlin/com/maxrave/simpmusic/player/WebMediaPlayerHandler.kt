@@ -228,6 +228,25 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
     }
 
     init {
+        audioElement.onerror = { _, _, _, _, _ ->
+            val errCode = audioElement.error?.code?.toInt() ?: 0
+            val errName = when (errCode) {
+                1 -> "MEDIA_ERR_ABORTED"
+                2 -> "MEDIA_ERR_NETWORK"
+                3 -> "MEDIA_ERR_DECODE"
+                4 -> "MEDIA_ERR_SRC_NOT_SUPPORTED"
+                else -> "UNKNOWN_MEDIA_ERROR"
+            }
+            pushPlayerError(
+                PlayerError(
+                    errorCode = 404,
+                    errorCodeName = errName,
+                    message = "Audio playback failed: $errName (code $errCode)",
+                ),
+            )
+            _simpleMediaState.value = SimpleMediaState.Initial
+            null
+        }
         audioElement.onended = {
             seekToNext()
         }
@@ -377,7 +396,13 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
         if (durSec > 0) {
             _simpleMediaState.value = SimpleMediaState.Ready(durSec * 1000L)
         }
-        audioElement.src = "/api/stream?id=" + mediaItem.mediaId
+        val uri = mediaItem.uri
+        val streamUrl = if (!uri.isNullOrBlank() && uri != mediaItem.mediaId) {
+            uri
+        } else {
+            "/api/stream?id=" + mediaItem.mediaId
+        }
+        audioElement.src = streamUrl
         if (playWhenReady) {
             player.play()
         }

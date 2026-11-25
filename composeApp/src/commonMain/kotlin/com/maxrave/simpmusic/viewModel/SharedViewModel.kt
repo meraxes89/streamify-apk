@@ -83,15 +83,12 @@ import com.maxrave.simpmusic.utils.decodePromos
 import com.maxrave.simpmusic.utils.shownPromoIds
 import com.maxrave.simpmusic.utils.withShownPromo
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.collectLatest
@@ -149,20 +146,30 @@ class SharedViewModel(
     private val cacheRepository: CacheRepository,
     private val discordRepository: DiscordRepository,
 ) : BaseViewModel() {
-    var isFirstLiked: Boolean = false
-    var isFirstMiniplayer: Boolean = false
-    var isFirstSuggestions: Boolean = false
+    private var isFirstLiked: Boolean = false
+    private var isFirstMiniplayer: Boolean = false
+    private var isFirstSuggestions: Boolean = false
     var showedUpdateDialog: Boolean = false
+        private set
+
+    fun setShowedUpdateDialog(showed: Boolean) {
+        showedUpdateDialog = showed
+    }
 
     private val appIdentity: AppIdentity by inject()
 
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate
 
-    private var _liked: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    val liked: SharedFlow<Boolean> = _liked.asSharedFlow()
+    private val _liked: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val liked: StateFlow<Boolean> = _liked.asStateFlow()
 
     var isServiceRunning: Boolean = false
+        private set
+
+    fun setServiceRunning(running: Boolean) {
+        isServiceRunning = running
+    }
 
     private var _sleepTimerState = MutableStateFlow(SleepTimerState(false, 0))
     val sleepTimerState: StateFlow<SleepTimerState> = _sleepTimerState
@@ -170,8 +177,8 @@ class SharedViewModel(
     private var regionCode: String? = null
     private var language: String? = null
 
-    private var _format: MutableStateFlow<NewFormatEntity?> = MutableStateFlow(null)
-    val format: SharedFlow<NewFormatEntity?> = _format.asSharedFlow()
+    private val _format: MutableStateFlow<NewFormatEntity?> = MutableStateFlow(null)
+    val format: StateFlow<NewFormatEntity?> = _format.asStateFlow()
 
     /**
      * Which extractor and cipher decoder produced the current track's URLs, shown in the info sheet.
@@ -211,9 +218,19 @@ class SharedViewModel(
 
     private var getFormatFlowJob: Job? = null
 
-    var playlistId: MutableStateFlow<String?> = MutableStateFlow(null)
+    private val _playlistId: MutableStateFlow<String?> = MutableStateFlow(null)
+    val playlistId: StateFlow<String?> = _playlistId.asStateFlow()
+
+    fun setPlaylistId(id: String?) {
+        _playlistId.value = id
+    }
 
     var isFullScreen: Boolean = false
+        private set
+
+    fun setFullScreen(fullScreen: Boolean) {
+        isFullScreen = fullScreen
+    }
 
     private var _nowPlayingState = MutableStateFlow<NowPlayingTrackState?>(null)
     val nowPlayingState: StateFlow<NowPlayingTrackState?> = _nowPlayingState
@@ -371,7 +388,7 @@ class SharedViewModel(
 //            controllerStateJob.join()
         }
 
-        runBlocking {
+        viewModelScope.launch {
             dataStoreManager.getString("miniplayer_guide").first().let {
                 isFirstMiniplayer = it != STATUS_DONE
             }
@@ -414,16 +431,20 @@ class SharedViewModel(
                             ?: -1L
                     _timeline.update { it.copy(total = seededTotal) }
                     state.songEntity?.let { track ->
-                        viewModelScope.launch {
-                            com.streamify.supabase.SupabaseFriendSync.reportPlayback(
-                                trackId = track.videoId,
-                                title = track.title,
-                                artist = track.artistName?.joinToString(", ") ?: "",
-                                coverUrl = track.thumbnails ?: "",
-                                durationSec = track.durationSeconds,
-                                positionMs = 0L,
-                                isPlaying = true,
-                            )
+                        launch {
+                            runCatching {
+                                com.streamify.supabase.SupabaseFriendSync.reportPlayback(
+                                    trackId = track.videoId,
+                                    title = track.title,
+                                    artist = track.artistName?.joinToString(", ") ?: "",
+                                    coverUrl = track.thumbnails ?: "",
+                                    durationSec = track.durationSeconds,
+                                    positionMs = 0L,
+                                    isPlaying = true,
+                                )
+                            }.onFailure { e ->
+                                Logger.w(tag, "Supabase friend sync reportPlayback failed: ${e.message}")
+                            }
                         }
                         _nowPlayingScreenData.value =
                             NowPlayingScreenData(
@@ -571,6 +592,7 @@ class SharedViewModel(
                     mediaPlayerHandler.controlState.collectLatest {
                         Logger.w(tag, "ControlState is $it")
                         _controllerState.value = it
+                        com.streamify.sync.StreamifySyncEngine.setPlaybackActive(it.isPlaying)
                         // Propagate crossfade state to timeline so UI can react
                         _timeline.update { timeline ->
                             timeline.copy(isCrossfading = it.isCrossfading)
@@ -815,7 +837,10 @@ class SharedViewModel(
         key: String,
         value: String,
     ) {
-        runBlocking { dataStoreManager.putString(key, value) }
+        viewModelScope.launch {
+            dataStoreManager.putString(key, value)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(key, value)
+        }
     }
 
     fun setSleepTimer(minutes: Int) {
@@ -1012,9 +1037,7 @@ class SharedViewModel(
                     track.videoId,
                 )
             }
-            withContext(Dispatchers.Main) {
-                mediaPlayerHandler.addMediaItem(track.toGenericMediaItem(), playWhenReady = type != RECOVER_TRACK_QUEUE)
-            }
+            mediaPlayerHandler.addMediaItem(track.toGenericMediaItem(), playWhenReady = type != RECOVER_TRACK_QUEUE)
 
             when (type) {
                 SONG_CLICK -> {
@@ -1137,19 +1160,20 @@ class SharedViewModel(
         }
 
     override fun onCleared() {
+        super.onCleared()
         Logger.w("Check onCleared", "onCleared")
     }
 
     fun getLocation() {
-        val currentLoc = runBlocking { dataStoreManager.location.first() }
-        if (currentLoc.isEmpty() || currentLoc == "VN") {
-            runBlocking {
+        viewModelScope.launch {
+            val currentLoc = dataStoreManager.location.first()
+            if (currentLoc.isEmpty() || currentLoc == "VN") {
                 dataStoreManager.setLocation("IN")
                 dataStoreManager.setChartKey("IN")
             }
+            regionCode = dataStoreManager.location.first()
+            language = dataStoreManager.getString(SELECTED_LANGUAGE).first()
         }
-        regionCode = runBlocking { dataStoreManager.location.first() }
-        language = runBlocking { dataStoreManager.getString(SELECTED_LANGUAGE).first() }
     }
 
     private fun checkAllDownloadingLocalPlaylists() {
@@ -1243,9 +1267,9 @@ class SharedViewModel(
                     streamRepository.getFormatFlow(mediaId).cancellable().collectLatest { f ->
                         Logger.d(tag, "Get format for $mediaId: itag ${f?.itag}, expires ${f?.expiredTime}")
                         if (f != null) {
-                            _format.emit(f)
+                            _format.value = f
                         } else {
-                            _format.emit(null)
+                            _format.value = null
                         }
                         // Re-read on every emission: the first one usually lands before the
                         // extractor has finished, so the source is only known on a later pass.
@@ -1276,11 +1300,14 @@ class SharedViewModel(
     private var _updateResponse = MutableStateFlow<UpdateData?>(null)
     val updateResponse: StateFlow<UpdateData?> = _updateResponse
 
-    fun checkForUpdate() {
-        // Raised before the coroutine starts, so Home's launch banner, which reads it right after
-        // startup, can never miss a check that is already under way but not yet marked.
-        _isCheckingUpdate.value = true
+    fun checkForUpdate(force: Boolean = false) {
         viewModelScope.launch {
+            if (!force && dataStoreManager.autoCheckForUpdates.first() != TRUE) {
+                return@launch
+            }
+            // Raised before the coroutine starts, so Home's launch banner, which reads it right after
+            // startup, can never miss a check that is already under way but not yet marked.
+            _isCheckingUpdate.value = true
             val updateChannel = dataStoreManager.updateChannel.first()
             dataStoreManager.putString(
                 "CheckForUpdateAt",
@@ -1345,9 +1372,13 @@ class SharedViewModel(
 
     fun createLocalPlaylist(title: String) {
         viewModelScope.launch {
+            val syncId = com.streamify.sync.HybridLogicalClock.randomUuid()
             localPlaylistRepository
                 .insertLocalPlaylist(
-                    LocalPlaylistEntity(title = title),
+                    LocalPlaylistEntity(
+                        title = title,
+                        syncId = syncId,
+                    ),
                     getString(Res.string.added_local_playlist),
                 ).lastOrNull()
             makeToast(getString(Res.string.added_local_playlist))
@@ -1457,23 +1488,21 @@ class SharedViewModel(
                         log("Removed out-of-sync translated lyrics for $videoId")
                         val simpMusicLyricsId = lyrics.simpMusicLyrics?.id
                         if (lyricsProvider == LyricsProvider.SIMPMUSIC && !simpMusicLyricsId.isNullOrEmpty()) {
-                            viewModelScope.launch {
-                                lyricsCanvasRepository
-                                    .voteSimpMusicTranslatedLyrics(
-                                        translatedLyricsId = simpMusicLyricsId,
-                                        false,
-                                    ).collectLatest {
-                                        when (it) {
-                                            is Resource.Error -> {
-                                                Logger.w(tag, "Vote SimpMusic Translated Lyrics Error ${it.message}")
-                                            }
+                            lyricsCanvasRepository
+                                .voteSimpMusicTranslatedLyrics(
+                                    translatedLyricsId = simpMusicLyricsId,
+                                    false,
+                                ).collectLatest {
+                                    when (it) {
+                                        is Resource.Error -> {
+                                            Logger.w(tag, "Vote SimpMusic Translated Lyrics Error ${it.message}")
+                                        }
 
-                                            is Resource.Success -> {
-                                                Logger.d(tag, "Vote SimpMusic Translated Lyrics Success")
-                                            }
+                                        is Resource.Success -> {
+                                            Logger.d(tag, "Vote SimpMusic Translated Lyrics Success")
                                         }
                                     }
-                            }
+                                }
                         }
                         nowPlayingScreenData.value.lyricsData?.lyrics?.let {
                             getAITranslationLyrics(
@@ -1487,11 +1516,6 @@ class SharedViewModel(
             }
         }
 
-        val shouldSendLyricsToSimpMusic =
-            runBlocking {
-                dataStoreManager.helpBuildLyricsDatabase.first() == TRUE
-            } &&
-                lyricsProvider != LyricsProvider.SIMPMUSIC
         if (_nowPlayingState.value?.songEntity?.videoId == videoId) {
             val track = _nowPlayingState.value?.track
             when (isTranslatedLyrics) {
@@ -1512,25 +1536,28 @@ class SharedViewModel(
                                 ),
                         )
                     }
-                    if (shouldSendLyricsToSimpMusic && track != null) {
+                    if (lyricsProvider != LyricsProvider.SIMPMUSIC && track != null) {
                         viewModelScope.launch {
-                            lyricsCanvasRepository
-                                .insertSimpMusicTranslatedLyrics(
-                                    dataStoreManager,
-                                    track,
-                                    lyrics,
-                                    dataStoreManager.translationLanguage.first(),
-                                ).collect {
-                                    when (it) {
-                                        is Resource.Error -> {
-                                            log("Insert SimpMusic Translated Lyrics Error ${it.message}", LogLevel.WARN)
-                                        }
+                            val shouldSendLyricsToSimpMusic = dataStoreManager.helpBuildLyricsDatabase.first() == TRUE
+                            if (shouldSendLyricsToSimpMusic) {
+                                lyricsCanvasRepository
+                                    .insertSimpMusicTranslatedLyrics(
+                                        dataStoreManager,
+                                        track,
+                                        lyrics,
+                                        dataStoreManager.translationLanguage.first(),
+                                    ).collect {
+                                        when (it) {
+                                            is Resource.Error -> {
+                                                log("Insert SimpMusic Translated Lyrics Error ${it.message}", LogLevel.WARN)
+                                            }
 
-                                        is Resource.Success -> {
-                                            log("Insert SimpMusic Translated Lyrics Success")
+                                            is Resource.Success -> {
+                                                log("Insert SimpMusic Translated Lyrics Success")
+                                            }
                                         }
                                     }
-                                }
+                            }
                         }
                     }
                 }
@@ -1564,25 +1591,28 @@ class SharedViewModel(
                             ),
                         )
                     }
-                    if (shouldSendLyricsToSimpMusic && track != null) {
+                    if (lyricsProvider != LyricsProvider.SIMPMUSIC && track != null) {
                         viewModelScope.launch {
-                            lyricsCanvasRepository
-                                .insertSimpMusicLyrics(
-                                    dataStoreManager,
-                                    track,
-                                    duration,
-                                    lyrics,
-                                ).collect {
-                                    when (it) {
-                                        is Resource.Error -> {
-                                            Logger.w(tag, "Insert SimpMusic Lyrics Error ${it.message}")
-                                        }
+                            val shouldSendLyricsToSimpMusic = dataStoreManager.helpBuildLyricsDatabase.first() == TRUE
+                            if (shouldSendLyricsToSimpMusic) {
+                                lyricsCanvasRepository
+                                    .insertSimpMusicLyrics(
+                                        dataStoreManager,
+                                        track,
+                                        duration,
+                                        lyrics,
+                                    ).collect {
+                                        when (it) {
+                                            is Resource.Error -> {
+                                                Logger.w(tag, "Insert SimpMusic Lyrics Error ${it.message}")
+                                            }
 
-                                        is Resource.Success -> {
-                                            Logger.d(tag, "Insert SimpMusic Lyrics Success")
+                                            is Resource.Success -> {
+                                                Logger.d(tag, "Insert SimpMusic Lyrics Success")
+                                            }
                                         }
                                     }
-                                }
+                            }
                         }
                     }
                 }
@@ -2128,36 +2158,42 @@ class SharedViewModel(
     fun setLyricsOffsetMs(offsetMs: Int) {
         viewModelScope.launch {
             dataStoreManager.setLyricsOffsetMs(offsetMs)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("lyrics_offset_ms", offsetMs.toString())
         }
     }
 
     fun setThemeMode(mode: String) {
         viewModelScope.launch {
             dataStoreManager.setThemeMode(mode)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("theme_mode", mode)
         }
     }
 
     fun setThemeColorSource(source: String) {
         viewModelScope.launch {
             dataStoreManager.setThemeColorSource(source)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("theme_color_source", source)
         }
     }
 
     fun setCustomThemeColor(argbHex: String) {
         viewModelScope.launch {
             dataStoreManager.setCustomThemeColor(argbHex)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("custom_theme_color", argbHex)
         }
     }
 
     fun setNowPlayingStyle(style: String) {
         viewModelScope.launch {
             dataStoreManager.setNowPlayingStyle(style)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("now_playing_style", style)
         }
     }
 
     fun setLyricsStyle(style: String) {
         viewModelScope.launch {
             dataStoreManager.setLyricsStyle(style)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("lyrics_style", style)
         }
     }
 
@@ -2183,7 +2219,7 @@ class SharedViewModel(
         _reloadDestination.value = null
     }
 
-    fun shouldCheckForUpdate(): Boolean = runBlocking { dataStoreManager.autoCheckForUpdates.first() == TRUE }
+    suspend fun shouldCheckForUpdate(): Boolean = dataStoreManager.autoCheckForUpdates.first() == TRUE
 
     private var _downloadFileProgress = MutableStateFlow<DownloadProgress>(DownloadProgress.INIT)
     val downloadFileProgress: StateFlow<DownloadProgress> get() = _downloadFileProgress
@@ -2361,15 +2397,17 @@ class SharedViewModel(
         }
     }
 
-    fun shouldStopMusicService(): Boolean = runBlocking { dataStoreManager.killServiceOnExit.first() == TRUE }
+    val killServiceOnExit =
+        dataStoreManager
+            .killServiceOnExit
+            .map { it == TRUE }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    fun isUserLoggedIn(): Boolean = runBlocking { dataStoreManager.cookie.first().isNotEmpty() }
+    fun shouldStopMusicService(): Boolean = killServiceOnExit.value
 
     // Flow-based variant of [isUserLoggedIn] so composables can collect login state once
     // instead of calling runBlocking inside composition (used by NowPlayingScreenContent).
     fun isUserLoggedInFlow(): Flow<Boolean> = dataStoreManager.cookie.map { it.isNotEmpty() }
-
-    fun isCombineFavoriteAndYTLiked(): Boolean = runBlocking { dataStoreManager.combineLocalAndYouTubeLiked.first() == TRUE }
 }
 
 sealed class UIEvent {
