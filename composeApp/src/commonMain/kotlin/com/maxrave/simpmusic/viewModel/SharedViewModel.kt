@@ -267,6 +267,12 @@ class SharedViewModel(
         )
     val timeline: StateFlow<TimeLine> = _timeline
 
+    private var _nowPlayingScreenData =
+        MutableStateFlow<NowPlayingScreenData>(
+            NowPlayingScreenData.initial(),
+        )
+    val nowPlayingScreenData: StateFlow<NowPlayingScreenData> = _nowPlayingScreenData
+
     private var lastComputedLyricLineIndex = -1
     val currentLyricLineIndex: StateFlow<Int> =
         combine(
@@ -284,12 +290,6 @@ class SharedViewModel(
             lastComputedLyricLineIndex = nextIdx
             nextIdx
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), -1)
-
-    private var _nowPlayingScreenData =
-        MutableStateFlow<NowPlayingScreenData>(
-            NowPlayingScreenData.initial(),
-        )
-    val nowPlayingScreenData: StateFlow<NowPlayingScreenData> = _nowPlayingScreenData
 
     private var _likeStatus = MutableStateFlow(YouTubeLikeStatus.INDIFFERENT)
     val likeStatus: StateFlow<YouTubeLikeStatus> = _likeStatus

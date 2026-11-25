@@ -446,7 +446,7 @@ fun SongFullWidthItems(
                         imageVector = SimpIcons.MoreVert,
                         fillMaxSize = false,
                         tint = contentColor,
-                        contentDescription = stringResource(Res.string.more),
+                        contentDescription = "More",
                     ) {
                         if (itemVideoId.isNotBlank()) onMoreClickListener.invoke(itemVideoId)
                     }

@@ -2679,7 +2679,7 @@ fun AddToPlaylistModalBottomSheet(
                                     IconButton(onClick = { query = "" }) {
                                         Icon(
                                             imageVector = SimpIcons.Close,
-                                            contentDescription = stringResource(Res.string.clear),
+                                            contentDescription = "Clear",
                                             tint = rememberSurfaceDarkColors().subtitle,
                                             modifier = Modifier.size(20.dp),
                                         )
