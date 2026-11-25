@@ -34,6 +34,9 @@ Respond in English.
 - **No new dependency without a documented rationale** in the PR description.
 - **Do not commit secrets, keystores, local `local.properties`, or local
   `.agents/` workspaces.**
+- **Do not touch `core/`.** `core/` is an external/upstream submodule; never
+  edit, stage, or commit changes inside `core/` unless the user explicitly
+  instructs you to.
 
 ## Ponytail
 
