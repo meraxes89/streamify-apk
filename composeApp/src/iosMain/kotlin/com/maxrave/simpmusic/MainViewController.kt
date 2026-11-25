@@ -30,3 +30,5 @@ fun initKoinIos(versionName: String = BuildKonfig.versionName) {
 }
 
 fun MainViewController() = ComposeUIViewController { App() }
+
+fun handleIosBack(): Boolean = com.maxrave.simpmusic.expect.ui.IosBackHandlerRegistry.handleBack()

@@ -151,10 +151,13 @@ actual fun LiquidGlassAppBottomNavigationBar(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(currentBackStackEntry) {
+    LaunchedEffect(currentBackStackEntry, bottomNavScreens) {
         currentBackStackEntry?.destination?.let { current ->
             Logger.d(TAG, "LiquidGlassAppBottomNavigationBar: current route: ${current.route}")
             isInSearchDestination = current.hasRoute(SearchDestination::class)
+        }
+        findMatchedTabOrdinal(currentBackStackEntry, bottomNavScreens)?.let {
+            selectedIndex = it
         }
     }
 

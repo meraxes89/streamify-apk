@@ -47,4 +47,18 @@ internal actual fun PlatformBackHandler(
 internal actual fun BindNavigationBackHandler(
     navController: NavHostController,
 ) {
+    DisposableEffect(navController) {
+        val handler: () -> Boolean = {
+            if (navController.previousBackStackEntry != null) {
+                navController.popBackStack()
+                true
+            } else {
+                false
+            }
+        }
+        IosBackHandlerRegistry.register(handler)
+        onDispose {
+            IosBackHandlerRegistry.unregister(handler)
+        }
+    }
 }
