@@ -465,7 +465,7 @@ fun HomeScreen(
 
 
     val otherDialogOpen =
-        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions
+        appDialogOpen || showReviewDialog || showRequestShareLyricsPermissions || activeAnnouncement != null
 
     LaunchedEffect(openAppTime, otherDialogOpen) {
         val platformName = when (getPlatform()) {
@@ -473,7 +473,7 @@ fun HomeScreen(
             else -> "android"
         }
         val uiContext = com.streamify.announcements.UiContext(
-            isPlaying = false,
+            isPlaying = sharedViewModel.controllerState.value.isPlaying,
             isModalActive = otherDialogOpen,
             isOnboarding = false
         )
@@ -533,9 +533,7 @@ fun HomeScreen(
                     showReviewDialog = false
                 },
             )
-        }
-
-        if (showRequestShareLyricsPermissions) {
+        } else if (showRequestShareLyricsPermissions) {
             ShareSavedLyricsDialog(
                 onDismissRequest = {
                     showRequestShareLyricsPermissions = false
@@ -546,10 +544,9 @@ fun HomeScreen(
                     )
                 },
             )
-        }
-
-        // Sovereign In-App Message Engine — Modal Renderer (comm19)
-        activeAnnouncement?.let { announcement ->
+        } else if (activeAnnouncement != null) {
+            // Sovereign In-App Message Engine — Modal Renderer (comm19)
+            val announcement = activeAnnouncement!!
             com.streamify.announcements.ui.StreamifyAnnouncementModal(
                 announcement = announcement,
                 language = language,

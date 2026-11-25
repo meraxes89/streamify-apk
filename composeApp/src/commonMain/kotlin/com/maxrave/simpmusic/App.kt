@@ -240,8 +240,11 @@ fun App(
     // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
     val appDialogOpen =
         isEntranceBlocking ||
-            shouldShowUpdateDialog || showNotificationPermissionDialog ||
-            showDesktopNotificationPermissionDialog || sleepTimerState.isDone
+            sleepTimerState.isDone ||
+            shouldShowUpdateDialog ||
+            showNotificationPermissionDialog ||
+            showDesktopNotificationPermissionDialog ||
+            isShowNowPlaylistScreen
 
     // Set by the first press or wheel scroll anywhere in the app this launch, or by opening Now
     // Playing. A launch banner that has not had its turn yet then waits for a later launch.
@@ -980,73 +983,69 @@ fun App(
                     }
                 }
 
-                if (sleepTimerState.isDone) {
-                    Logger.w("MainActivity", "Sleep Timer Done: $sleepTimerState")
-                    AlertDialog(
-                        properties =
-                            DialogProperties(
-                                dismissOnBackPress = false,
-                                dismissOnClickOutside = false,
-                            ),
-                        onDismissRequest = {
-                            viewModel.stopSleepTimer()
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
+                if (!isEntranceBlocking) {
+                    if (sleepTimerState.isDone) {
+                        Logger.w("MainActivity", "Sleep Timer Done: $sleepTimerState")
+                        AlertDialog(
+                            properties =
+                                DialogProperties(
+                                    dismissOnBackPress = false,
+                                    dismissOnClickOutside = false,
+                                ),
+                            onDismissRequest = {
                                 viewModel.stopSleepTimer()
-                            }) {
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    viewModel.stopSleepTimer()
+                                }) {
+                                    Text(
+                                        stringResource(Res.string.yes),
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                            },
+                            text = {
                                 Text(
-                                    stringResource(Res.string.yes),
+                                    stringResource(Res.string.sleep_timer_off),
+                                    style = typo().labelSmall,
+                                )
+                            },
+                            title = {
+                                Text(
+                                    stringResource(Res.string.good_night),
                                     style = typo().bodySmall,
                                 )
-                            }
-                        },
-                        text = {
-                            Text(
-                                stringResource(Res.string.sleep_timer_off),
-                                style = typo().labelSmall,
-                            )
-                        },
-                        title = {
-                            Text(
-                                stringResource(Res.string.good_night),
-                                style = typo().bodySmall,
-                            )
-                        },
-                    )
-                }
-
-                if (!isEntranceBlocking) {
-                    if (shouldShowUpdateDialog) {
-                    val response = updateData ?: return@Scaffold
-                    val binary = remember(response.tagName) {
-                        resolveDeviceBinary(
-                            tag = response.tagName,
-                            artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                            },
                         )
-                    }
-                    val currentVersion = remember { VersionManager.getVersionName() }
-                    StreamifyUpdateDialog(
-                        targetVersion = response.tagName,
-                        currentVersion = currentVersion,
-                        releaseDate = response.releaseTime,
-                        changelog = response.body,
-                        binary = binary,
-                        isBreaking = UpdateStateHolder.isBreaking,
-                        onConfirmUpdate = {
-                            shouldShowUpdateDialog = false
-                            viewModel.showedUpdateDialog = false
-                            openUrl(binary.downloadUrl)
-                        },
-                        onSkipLaunch = {
-                            shouldShowUpdateDialog = false
-                            viewModel.showedUpdateDialog = false
-                            hasSkippedUpdateDialog = true
-                        },
-                    )
-                }
-
-                if (showNotificationPermissionDialog || showDesktopNotificationPermissionDialog) {
+                    } else if (shouldShowUpdateDialog) {
+                        val response = updateData ?: return@Scaffold
+                        val binary = remember(response.tagName) {
+                            resolveDeviceBinary(
+                                tag = response.tagName,
+                                artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                            )
+                        }
+                        val currentVersion = remember { VersionManager.getVersionName() }
+                        StreamifyUpdateDialog(
+                            targetVersion = response.tagName,
+                            currentVersion = currentVersion,
+                            releaseDate = response.releaseTime,
+                            changelog = response.body,
+                            binary = binary,
+                            isBreaking = UpdateStateHolder.isBreaking,
+                            onConfirmUpdate = {
+                                shouldShowUpdateDialog = false
+                                viewModel.showedUpdateDialog = false
+                                openUrl(binary.downloadUrl)
+                            },
+                            onSkipLaunch = {
+                                shouldShowUpdateDialog = false
+                                viewModel.showedUpdateDialog = false
+                                hasSkippedUpdateDialog = true
+                            },
+                        )
+                    } else if (showNotificationPermissionDialog || showDesktopNotificationPermissionDialog) {
                     var doNotShowAgain by remember { mutableStateOf(false) }
                     val dismissPermissionDialog = {
                         if (showDesktopNotificationPermissionDialog) {
