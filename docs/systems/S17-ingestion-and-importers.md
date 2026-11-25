@@ -4,7 +4,7 @@ title: Ingestion & importers
 tier: feature
 status: active
 owner: ingestion
-sources: [core/service/spotify/, core/service/lastfm/, core/service/discord/, core/service/kizzy/, core/service/listenTogether/]
+sources: [core/service/spotify/, core/data/src/commonMain/kotlin/com/maxrave/data/lastfm/, core/service/discord/, core/service/kizzy/, core/service/listenTogether/]
 tests: []
 ---
 
@@ -40,4 +40,4 @@ tests: []
 
 - Document each importer's credential requirements in one table.
 
-<!-- doc-verified-against: ee2590133b8ccf610640278dca3b3374139573b4 -->
+<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
