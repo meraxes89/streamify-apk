@@ -1,6 +1,8 @@
 package com.streamify.graphics.engine
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -9,6 +11,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import com.streamify.graphics.api.GlassRenderRequest
 import com.streamify.graphics.api.SovereignGraphicsEngine
 import com.streamify.graphics.engine.adapter.GlassRenderStrategy
@@ -21,6 +25,7 @@ import com.streamify.graphics.tokens.SemanticTokens
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 import org.jetbrains.skia.Shader
+import kotlin.math.ceil
 
 /**
  * Skiko actual of the platform shader adapter (desktop JVM + wasmJs + iOS shared
@@ -45,17 +50,17 @@ import org.jetbrains.skia.Shader
  * counterpart of Android AGSL's setInputBuffer lane (ARCHITECTURE.md
  * section 2). All six uniforms bind through [SkikoLiquidGlassProgram].
  *
- * ## Tier 1/2 application seam (documented stopgap)
+ * ## Tier 1/2 application seam
  *
  * [SkikoRuntimeShaderEngine] keeps the compiled program live and rebinds
- * request-driven uniforms every draw pass, but the refraction composite —
- * sampling the backdrop layer pixels through the `backdrop` child — needs
- * layer-snapshot access that is only available off the draw phase
- * (`GraphicsLayer.toImageBitmap()` is a suspend API). The stable composite
- * (backdrop draw + tint + 1px rim) renders meanwhile; the facade-level
- * offscreen pipeline that feeds real backdrop snapshots into
- * [SkikoLiquidGlassProgram.bindBackdrop] is the next seam, exactly the
- * pattern the TierGovernedGlassEngine stopgap of Phase 2-B blessed.
+ * request-driven uniforms every draw pass. When the facade feeds a live
+ * [GlassRenderRequest.snapshot] (the S24 Track B offscreen pipeline —
+ * `Modifier.streamifyGlass(rememberGlassBackdrop(layer), …)`), the engine
+ * runs the real backdrop refraction through
+ * [SkikoOffscreenGlassPass]: Tier 1 full-resolution dispersion, Tier 2
+ * 0.5× DRS with bilinear upscale. Without a snapshot the stopgap
+ * composite (backdrop draw + tint + 1px rim) renders, exactly the
+ * Phase 2-B blessed behavior.
  */
 actual object ShaderProvider {
 
@@ -75,9 +80,11 @@ actual object ShaderProvider {
         CapabilityProbe(
             // Non-Android target: API level is meaningless (probe contract).
             apiLevel = 0,
-            // Software-rasterizer detection needs the live renderer string
-            // (Phase 4 / CI_TESTING_SPEC Job 4); empty stays conservative.
-            rendererDescription = "",
+            // S24 Track A: live renderer string — software-rasterizer markers
+            // (llvmpipe / softpipe / swrast / WARP / Basic Render Driver /
+            // rdpbus / SwiftShader) clamp the device to Tier 4 before the
+            // compile axis is even consulted (axis 2 dominates axis 1).
+            rendererDescription = liveRendererDescription(),
             runtimeShaderCompileSupported = failureReason == null,
             compileProbeFailureReason = failureReason,
         )
@@ -121,16 +128,28 @@ actual object ShaderProvider {
             GlassRenderStrategy.BLUR_RENDER_EFFECT -> AcrylicScrimGlassEngine
 
             GlassRenderStrategy.RUNTIME_SHADER_SINGLE_TAP ->
-                programEngine(chromaticSpread = 0f)
+                // Tier 2 (Balanced) on the runtime-shader lane: the UMA iGPU
+                // DRS configuration — 0.5x offscreen pass, bilinear upscale.
+                programEngine(
+                    chromaticSpread = 0f,
+                    passScale = SkikoOffscreenGlassPass.TIER2_BALANCED_SCALE,
+                )
             GlassRenderStrategy.RUNTIME_SHADER_DISPERSION ->
-                programEngine(chromaticSpread = PrimitiveTokens.chromaticSpreadDefault)
+                // Tier 1 (Ultra): full-resolution refraction + dispersion.
+                programEngine(
+                    chromaticSpread = PrimitiveTokens.chromaticSpreadDefault,
+                    passScale = 1.0f,
+                )
         }
 
-    private fun programEngine(chromaticSpread: Float): SovereignGraphicsEngine {
+    private fun programEngine(
+        chromaticSpread: Float,
+        passScale: Float,
+    ): SovereignGraphicsEngine {
         val program = liquidGlassProgram
             // Program failed validation on this host — degrade to the scrim.
             ?: return AcrylicScrimGlassEngine
-        return SkikoRuntimeShaderEngine(program, chromaticSpread)
+        return SkikoRuntimeShaderEngine(program, chromaticSpread, passScale)
     }
 }
 
@@ -207,17 +226,31 @@ internal class SkikoLiquidGlassProgram internal constructor() {
 /**
  * Tier 1 / Tier 2 engine for the skiko targets.
  *
- * Per draw pass the request-driven uniforms are rebound on the shared
- * [SkikoLiquidGlassProgram] (kept live and validated — a bind failure is
- * contained by `runCatching` and never reaches the draw), while the stable
- * composite renders: clipped backdrop draw, optional tint fill, 1px
- * specular rim. See the class-level KDoc of [ShaderProvider] for the
- * facade-side refraction seam this engine is wired for.
+ * **Offscreen refraction lane (S24 Track B)** — when the request carries a
+ * [GlassRenderRequest.snapshot] (captured off the draw phase by
+ * [rememberGlassBackdrop][com.streamify.graphics.api.rememberGlassBackdrop]),
+ * the engine runs [SkikoOffscreenGlassPass] over the live backdrop pixels:
+ * full-resolution dispersion on Tier 1, 0.5× Dynamic Resolution Scaling
+ * with a bilinear upscale on the Tier 2 UMA-iGPU lane. The pass caches its
+ * surface, conversions and result by snapshot identity, so a steady-state
+ * draw is one `drawImage` + rim stroke — zero allocation.
+ *
+ * **Stopgap lane** — without a snapshot the request-driven uniforms are
+ * rebound on the shared [SkikoLiquidGlassProgram] (kept live and
+ * validated — a bind failure is contained by `runCatching` and never
+ * reaches the draw), and the stable composite renders: clipped backdrop
+ * draw, optional tint fill, 1px specular rim.
  */
 internal class SkikoRuntimeShaderEngine(
     private val program: SkikoLiquidGlassProgram,
     private val chromaticSpread: Float,
+    private val passScale: Float,
 ) : SovereignGraphicsEngine {
+
+    /** Lazy offscreen pass — built on the first snapshot-fed draw, reused after. */
+    private val offscreenPass by lazy {
+        SkikoOffscreenGlassPass(program, chromaticSpread, passScale)
+    }
 
     override fun applyGlass(scope: DrawScope, request: GlassRenderRequest) {
         val tint = if (request.tint == Color.Unspecified) {
@@ -225,6 +258,26 @@ internal class SkikoRuntimeShaderEngine(
         } else {
             request.tint
         }
+
+        // Offscreen refraction lane: physical pixel extent of the draw scope
+        // (Compose Desktop records the picture at width * contentScale, so
+        // scope.size already IS the physical buffer size — the Track D
+        // fractional-DPI contract; see SkikoOffscreenGlassPass KDoc).
+        val snapshot = request.snapshot
+        if (snapshot != null) {
+            val widthPx = ceil(scope.size.width).toInt()
+            val heightPx = ceil(scope.size.height).toInt()
+            val refracted = runCatching {
+                snapshot.latestInternal?.let { latest ->
+                    offscreenPass.render(latest, widthPx, heightPx, tint)
+                }
+            }.getOrNull()
+            if (refracted != null) {
+                drawRefractedComposite(scope, request, refracted)
+                return
+            }
+        }
+
         runCatching {
             program.bindUniforms(
                 width = scope.size.width,
@@ -238,26 +291,73 @@ internal class SkikoRuntimeShaderEngine(
         }
         drawGlassComposite(scope, request)
     }
+
+    /**
+     * Clip + refracted backdrop draw + 1px specular rim. The tint is folded
+     * into the shader's `tintColor` mix by the pass, so no separate fill is
+     * drawn on this lane. The 0.5x Tier 2 result is upscaled with bilinear
+     * filtering; the 1.0x Tier 1 result draws 1:1 unfiltered.
+     */
+    private fun drawRefractedComposite(
+        scope: DrawScope,
+        request: GlassRenderRequest,
+        refracted: ImageBitmap,
+    ) {
+        val outlinePath = flattenedOutlinePath(scope, request)
+        with(scope) {
+            clipPath(outlinePath) {
+                drawImage(
+                    image = refracted,
+                    srcOffset = IntOffset.Zero,
+                    srcSize = IntSize(refracted.width, refracted.height),
+                    dstOffset = IntOffset.Zero,
+                    dstSize = IntSize(
+                        ceil(size.width).toInt().coerceAtLeast(1),
+                        ceil(size.height).toInt().coerceAtLeast(1),
+                    ),
+                    filterQuality = if (passScale < 1.0f) {
+                        FilterQuality.Bilinear
+                    } else {
+                        FilterQuality.None
+                    },
+                )
+            }
+            drawOutline(
+                request.shape.createOutline(
+                    size = scope.size,
+                    layoutDirection = scope.layoutDirection,
+                    density = scope,
+                ),
+                SolidColor(SemanticTokens.specularBorderHighlight),
+                style = Stroke(width = PrimitiveTokens.specularStrokeWidth.toPx()),
+            )
+        }
+    }
 }
 
-/** Clip + backdrop draw + optional tint fill + 1px specular rim. */
-private fun drawGlassComposite(scope: DrawScope, request: GlassRenderRequest) {
+/**
+ * Flattens the request's shape outline to a clip path — this Compose
+ * revision has no `clipOutline` on DrawScope, and shapes resolve to
+ * exactly one of three outline variants.
+ */
+private fun flattenedOutlinePath(scope: DrawScope, request: GlassRenderRequest): Path {
     val outline = request.shape.createOutline(
         size = scope.size,
         layoutDirection = scope.layoutDirection,
         density = scope,
     )
-
-    // This Compose revision has no clipOutline on DrawScope — flatten the
-    // outline to a Path (shapes resolve to exactly one of three variants)
-    // and clip through the proven clipPath lane instead.
-    val outlinePath = Path().apply {
+    return Path().apply {
         when (outline) {
             is Outline.Rectangle -> addRect(outline.rect)
             is Outline.Rounded -> addRoundRect(outline.roundRect)
             is Outline.Generic -> addPath(outline.path)
         }
     }
+}
+
+/** Clip + backdrop draw + optional tint fill + 1px specular rim. */
+private fun drawGlassComposite(scope: DrawScope, request: GlassRenderRequest) {
+    val outlinePath = flattenedOutlinePath(scope, request)
 
     with(scope) {
         clipPath(outlinePath) {
@@ -272,7 +372,11 @@ private fun drawGlassComposite(scope: DrawScope, request: GlassRenderRequest) {
 
         // 1px optical highlight stroke along the glass rim.
         drawOutline(
-            outline,
+            request.shape.createOutline(
+                size = scope.size,
+                layoutDirection = scope.layoutDirection,
+                density = scope,
+            ),
             SolidColor(SemanticTokens.specularBorderHighlight),
             style = Stroke(width = PrimitiveTokens.specularStrokeWidth.toPx()),
         )

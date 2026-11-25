@@ -3,6 +3,7 @@ package com.streamify.graphics.governor
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Phase 2, Track B — TierGovernor state-machine gate
@@ -335,6 +336,69 @@ class TierGovernorTest {
         val gov120 = TierGovernor.forRefreshRate(probe, 120.0)
         assertEquals(4.16, gov120.fastFrameBudgetMs, 0.05)
         assertEquals(8.33, gov120.p95FrameBudgetMs, 0.05)
+
+        // S24 Track C: the full desktop monitor spectrum — 144 Hz and 240 Hz
+        // panels scale the budgets proportionally (fast = half frame,
+        // P95 = full frame).
+        val gov144 = TierGovernor.forRefreshRate(probe, 144.0)
+        assertEquals(3.47, gov144.fastFrameBudgetMs, 0.05)
+        assertEquals(6.94, gov144.p95FrameBudgetMs, 0.05)
+
+        val gov240 = TierGovernor.forRefreshRate(probe, 240.0)
+        assertEquals(2.08, gov240.fastFrameBudgetMs, 0.05)
+        assertEquals(4.16, gov240.p95FrameBudgetMs, 0.05)
+    }
+
+    @Test
+    fun refreshRateGovernorFallsBackTo60HzOnInvalidInput() {
+        val probe = tier1CapableProbe()
+        for (invalid in listOf(0.0, -60.0, Double.NaN)) {
+            val governor = TierGovernor.forRefreshRate(probe, invalid)
+            assertEquals(8.3, governor.fastFrameBudgetMs, 0.05, "displayHz=$invalid")
+            assertEquals(16.66, governor.p95FrameBudgetMs, 0.05, "displayHz=$invalid")
+        }
+    }
+
+    @Test
+    fun strugglingIgpuOnA144HzPanelDemotesPromptly() {
+        // 7 ms frames are comfortably inside the 60 Hz fast budget, but on a
+        // 144 Hz panel they are BOTH too slow to promote (fast budget
+        // 3.47 ms) and over the P95 budget (6.94 ms) — an iGPU that cannot
+        // hit its high-refresh target demotes on the frame where the
+        // rolling window fills, not after a 60 Hz-class grace period.
+        val governor = TierGovernor.forRefreshRate(tier1CapableProbe(), 144.0)
+        feedFrames(governor, 59, frameTimeMillis = 7.0)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier) // window not full yet
+        governor.onFrameRendered(7.0) // 60th sample: P95 over 6.94 ms
+        assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
+    }
+
+    @Test
+    fun discreteGpuSustainsTier1At240Hz() {
+        // RTX 40 / Radeon 7000 class: 2 ms frames are inside the 240 Hz
+        // fast budget (2.08 ms) — promotion to Tier 1 Ultra proceeds
+        // seamlessly on the high-refresh panel.
+        val governor = TierGovernor.forRefreshRate(tier1CapableProbe(), 240.0)
+        feedFrames(governor, 119, frameTimeMillis = 2.0)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+        governor.onFrameRendered(2.0) // 120th consecutive sub-budget frame
+        assertEquals(RenderTier.Tier1_Ultra, governor.currentTier)
+    }
+
+    @Test
+    fun slowIgpuFramesNeverPromoteOnA144HzPanel() {
+        // The same 7 ms frames that promote a 60 Hz device (7 < 8.3) must
+        // never promote on 144 Hz — the high-refresh budget is the tighter
+        // bar the panel actually demands. (The P95 gate also demotes the
+        // lane at the first full window; the invariant under test is that
+        // the settled tier is BELOW Tier 2, never at/above it.)
+        val governor = TierGovernor.forRefreshRate(tier1CapableProbe(), 144.0)
+        feedFrames(governor, 1000, frameTimeMillis = 7.0)
+        assertTrue(
+            governor.currentTier < RenderTier.Tier2_Balanced,
+            "7 ms frames must never sustain Tier 2-or-above on a 144 Hz panel",
+        )
+        assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
     }
 
     private companion object {

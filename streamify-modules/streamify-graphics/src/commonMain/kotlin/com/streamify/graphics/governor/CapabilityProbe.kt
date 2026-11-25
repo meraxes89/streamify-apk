@@ -82,10 +82,11 @@ data class DriverQuirk(
  *     * Non-Android targets ([apiLevel] <= 0): Skia `RuntimeEffect`
  *       validation decides between RUNTIME_SHADER and FIXED_FUNCTION.
  *     * API 1–25: below the module's `minSdk = 26` floor — maximally safe.
- *  2. **Raster kind** — [rendererDescription] containing `llvmpipe`,
- *     `SwiftShader` or `Software` (case-insensitive) means a software
- *     rasterizer: pinned to **Tier 4 (Safe)** regardless of every other
- *     signal (docs/gpu/CI_TESTING_SPEC.md, Job 4).
+ *  2. **Raster kind** — [rendererDescription] containing any of the
+ *     software-rasterizer markers (`llvmpipe`, `softpipe`, `swrast`,
+ *     `SwiftShader`, `Software`, `basic render driver`, `WARP`, `rdpbus`)
+ *     means a software rasterizer: pinned to **Tier 4 (Safe)** regardless
+ *     of every other signal (docs/gpu/CI_TESTING_SPEC.md, Job 4).
  *  3. **Known driver quirk** (Track D) — [rendererDescription] matching a
  *     [DriverQuirk] marker means the driver revision itself is broken
  *     (defective half-float division, NaN mishandling, AGSL rejection of
@@ -122,10 +123,16 @@ class CapabilityProbe(
 
     /**
      * Whether the renderer is a software rasterizer. Marker matching is
-     * intentionally a dumb case-insensitive substring scan over the three
-     * strings that actually occur in the wild (Mesa `llvmpipe`, emulator /
-     * headless-GPU `SwiftShader`, generic `Software` renderers) — driver
-     * marketing names are explicitly NOT consulted.
+     * intentionally a dumb case-insensitive substring scan over the strings
+     * that actually occur in the wild across the desktop spectrum — driver
+     * marketing names are explicitly NOT consulted:
+     *
+     *  * Linux / Mesa: `llvmpipe`, `softpipe`, `swrast` (headless CI and
+     *    VMs frequently pin these via `LIBGL_ALWAYS_SOFTWARE=1`).
+     *  * Windows / DirectX: `basic render driver` / `WARP` (Microsoft's
+     *    CPU rasterizer used by RDP sessions and driver-less installs)
+     *    and `rdpbus` (the remote-desktop display adapter).
+     *  * Headless / generic: `SwiftShader`, `Software`.
      */
     val isSoftwareRasterizer: Boolean = SOFTWARE_RASTERIZER_MARKERS.any { marker ->
         rendererDescription.contains(marker, ignoreCase = true)
@@ -197,8 +204,27 @@ class CapabilityProbe(
     }
 
     private companion object {
-        /** Renderer substrings that unambiguously indicate software rasterizing. */
-        val SOFTWARE_RASTERIZER_MARKERS = listOf("llvmpipe", "swiftshader", "software")
+        /**
+         * Renderer substrings that unambiguously indicate software
+         * rasterizing, spanning the Linux/Mesa, Windows/DirectX and
+         * headless/generic lanes of the desktop spectrum. Matching stays a
+         * substring scan so full driver strings like
+         * "llvmpipe (LLVM 15.0.7, 256 bits)" or
+         * "Microsoft Basic Render Driver (WARP)" match their marker.
+         */
+        val SOFTWARE_RASTERIZER_MARKERS = listOf(
+            // Linux / Mesa CPU rasterizers (CI runners, VMs, WSL2).
+            "llvmpipe",
+            "softpipe",
+            "swrast",
+            // Windows / DirectX CPU rasterizers (RDP, driver-less installs).
+            "basic render driver",
+            "warp",
+            "rdpbus",
+            // Headless / generic CPU rasterizers (emulators, CI).
+            "swiftshader",
+            "software",
+        )
 
         /**
          * Track D driver-quirk denylist (docs/gpu/ARCHITECTURE.md section

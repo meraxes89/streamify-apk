@@ -21,11 +21,18 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
  * @property shape Clip geometry of the glass surface.
  * @property tint Optional overlay fill. `Color.Unspecified` means "no tint
  * layer" — implementations skip the fill entirely.
+ * @property snapshot Live backdrop capture driven off the draw phase by
+ * [rememberGlassBackdrop] (S24 Track B). When present, Tier 1/2 engines
+ * sample the real backdrop pixels through the offscreen refraction pass
+ * (with Dynamic Resolution Scaling on the Tier 2 lane); when absent, the
+ * engine keeps its stable stopgap composite. `null` by default — the
+ * frozen Phase 1 call sites are unaffected.
  */
 class GlassRenderRequest(
     val backdrop: GraphicsLayer,
     val shape: Shape,
     val tint: Color,
+    val snapshot: GlassBackdropSnapshot? = null,
 )
 
 /**

@@ -54,17 +54,26 @@ Tier 3 Gate: CI Gate (Blocking)
   - Compares the rendered buffer pixel-by-pixel against a committed golden vector PNG with a strict Root Mean Square Error (RMSE) threshold $< 0.01$.
 
 ### 4. Software-Raster Fallback Gate
-* **Target**: Runner executed with `LIBGL_ALWAYS_SOFTWARE=1` (forcing Mesa LLVMpipe).
+* **Target**: `SoftwareRasterFallbackGateTest.kt`, executed by the dedicated Gradle task
+  `./gradlew :streamify-modules:streamify-graphics:testSoftwareRasterFallback` (a separate Test JVM fork) with `LIBGL_ALWAYS_SOFTWARE=1` (forcing Mesa LLVMpipe).
 * **Invariants**:
-  - `CapabilityProbe` detects software renderer string (`llvmpipe` / `SwiftShader`).
-  - Forces governor to pin to **Tier 4 (Safe)**.
-  - All shader compilation is bypassed; flat solid tint renders cleanly without crash.
+  - `CapabilityProbe` detects the software renderer marker — the full desktop spectrum (`llvmpipe` / `softpipe` / `swrast` / `basic render driver` / `WARP` / `rdpbus` / `SwiftShader` / `Software`) is pinned by `SkikoShaderProviderTest`, while this gate proves the **live** seam resolves the forced environment.
+  - Forces governor to pin to **Tier 4 (Safe)** — axis 2 (raster kind) dominates even a successful CPU-side `makeForShader()` compile, and no promotion can escape the raster ceiling.
+  - All shader compilation is bypassed (0-program execution plan, flat solid tint engine); rendering never crashes.
+  - The unit suite also carries the deterministic injection lane: `streamify.graphics.renderer` system property overrides the renderer string without a GPU.
 
 ### 5. Shader Compilation Failure Fallback Test
 * **Target**: `ShaderFailureFallbackTest.kt`
 * **Invariants**:
   - Simulates a corrupt or unsupported shader string.
   - Confirms the engine catches `IllegalArgumentException` / compilation error gracefully and falls back to **Tier 4** without causing an application crash.
+
+### 6. Desktop Spectrum Suite (S24)
+* **Target**: `TierGovernorTest.kt`, `OffscreenRenderGoldenTest.kt` (both under `testDesktopUnitTest`)
+* **Invariants**:
+  - `TierGovernor.forRefreshRate` budget matrix: 60 Hz → 8.3/16.66 ms, 120 Hz → 4.16/8.33 ms, 144 Hz → 3.47/6.94 ms, 240 Hz → 2.08/4.16 ms; a struggling iGPU on a 144 Hz panel demotes promptly (7 ms frames are over the 6.94 ms P95 bar), a discrete GPU sustaining 2 ms frames promotes to Tier 1 at 240 Hz.
+  - Tier 2 DRS golden gate: the offscreen pass renders at 0.5× width/height and upscales bilinearly to a clean full-size composite; unchanged backdrops return the cached result by identity (zero steady-state allocation).
+  - Fractional pixel density gate: at 1.25 (500×400 physical) and 1.5 (450×300 physical) densities the `resolution` uniform receives the **physical pixel buffer dimensions** — pass output matches a hand-driven direct render at the same physical extent.
 
 ---
 
