@@ -18,10 +18,15 @@ import com.streamify.graphics.api.SovereignGraphicsEngine
 import com.streamify.graphics.engine.adapter.GlassRenderStrategy
 import com.streamify.graphics.engine.adapter.LiquidGlassSource
 import com.streamify.graphics.engine.adapter.ShaderTierLadder
+import com.streamify.graphics.governor.BackdropResolutionPolicy
 import com.streamify.graphics.governor.CapabilityProbe
 import com.streamify.graphics.governor.RenderTier
 import com.streamify.graphics.tokens.PrimitiveTokens
 import com.streamify.graphics.tokens.SemanticTokens
+import kotlin.concurrent.Volatile
+import org.jetbrains.skia.Color4f
+import org.jetbrains.skia.FilterTileMode
+import org.jetbrains.skia.Gradient
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 import org.jetbrains.skia.Shader
@@ -29,9 +34,9 @@ import kotlin.math.ceil
 
 /**
  * Skiko actual of the platform shader adapter (desktop JVM + wasmJs + iOS shared
- * skikoCommonMain source set) — Track A deliverable 2 of
- * docs/gpu/PHASED_PLAN.md Phase 2, per ARCHITECTURE.md section 1's
- * [Adapters] skikoCommonMain -> Skia RuntimeShaderBuilder (SkSL) line.
+ * skikoCommonMain source set) — the skiko adapter lane of
+ * docs/gpu/ARCHITECTURE.md section 1 and the Apple matrix of
+ * docs/systems/S24-sovereign-graphics.md.
  *
  * ## Capability axis
  *
@@ -41,7 +46,11 @@ import kotlin.math.ceil
  * `RuntimeEffect.makeForShader()` on the live skiko backend. A successful
  * compile classifies `RUNTIME_SHADER` (Tier 1 ceiling); any Throwable
  * classifies `FIXED_FUNCTION` (Tier 3 ceiling) — the conservative-by-
- * contract rule of [CapabilityProbe].
+ * contract rule of [CapabilityProbe]. The probe's renderer description
+ * carries the environment diagnostics of [skikoRendererDescription]
+ * (headless JVM / iOS Simulator detection, Track D) — deliberately free
+ * of the software-rasterizer marker vocabulary, so headless CI and the
+ * simulator stay on the full capability matrix.
  *
  * ## The Skia dialect seam
  *
@@ -49,6 +58,16 @@ import kotlin.math.ceil
  * `RuntimeShaderBuilder.child("backdrop", ...)` — the Skia dialect's
  * counterpart of Android AGSL's setInputBuffer lane (ARCHITECTURE.md
  * section 2). All nine uniforms bind through [SkikoLiquidGlassProgram].
+ *
+ * ## TBDR-friendly dynamic resolution scaling (Track C)
+ *
+ * The Tier 2 (single-tap) engine is constructed with the capture scale
+ * [BackdropResolutionPolicy] yields for the target's display density
+ * ([skikoDisplayDensityScale]): on Retina 2x/3x displays the engine owns a
+ * [DynamicResolutionOffscreenPass] that renders the refraction composite
+ * at logical-1x resolution whenever a backdrop snapshot is bound, cutting
+ * Apple-Silicon tile-buffer flushes by ~75%. Tier 1 (earned full-res) and
+ * the scrim lanes construct no pass.
  *
  * ## Tier 1/2 application seam
  *
@@ -84,7 +103,7 @@ actual object ShaderProvider {
             // (llvmpipe / softpipe / swrast / WARP / Basic Render Driver /
             // rdpbus / SwiftShader) clamp the device to Tier 4 before the
             // compile axis is even consulted (axis 2 dominates axis 1).
-            rendererDescription = liveRendererDescription(),
+            rendererDescription = liveRendererDescription().ifEmpty { skikoRendererDescription() },
             runtimeShaderCompileSupported = failureReason == null,
             compileProbeFailureReason = failureReason,
         )
@@ -128,28 +147,36 @@ actual object ShaderProvider {
             GlassRenderStrategy.BLUR_RENDER_EFFECT -> AcrylicScrimGlassEngine
 
             GlassRenderStrategy.RUNTIME_SHADER_SINGLE_TAP ->
-                // Tier 2 (Balanced) on the runtime-shader lane: the UMA iGPU
-                // DRS configuration — 0.5x offscreen pass, bilinear upscale.
                 programEngine(
                     chromaticSpread = 0f,
-                    passScale = SkikoOffscreenGlassPass.TIER2_BALANCED_SCALE,
+                    tier = RenderTier.Tier2_Balanced,
                 )
             GlassRenderStrategy.RUNTIME_SHADER_DISPERSION ->
-                // Tier 1 (Ultra): full-resolution refraction + dispersion.
                 programEngine(
                     chromaticSpread = PrimitiveTokens.chromaticSpreadDefault,
-                    passScale = 1.0f,
+                    tier = RenderTier.Tier1_Ultra,
                 )
         }
 
     private fun programEngine(
         chromaticSpread: Float,
-        passScale: Float,
+        tier: RenderTier,
     ): SovereignGraphicsEngine {
         val program = liquidGlassProgram
             // Program failed validation on this host — degrade to the scrim.
             ?: return AcrylicScrimGlassEngine
-        return SkikoRuntimeShaderEngine(program, chromaticSpread, passScale)
+        // Track C: the Tier 2 (single-tap) engine on a Retina-class display
+        // renders its refraction composite through the DRS offscreen pass
+        // at logical-1x capture scale; Tier 1 earned full resolution.
+        val captureScale = BackdropResolutionPolicy.captureScale(
+            tier = tier,
+            displayDensityScale = skikoDisplayDensityScale(),
+        )
+        return SkikoRuntimeShaderEngine(
+            program = program,
+            chromaticSpread = chromaticSpread,
+            passScale = captureScale,
+        )
     }
 }
 
@@ -176,6 +203,17 @@ internal val liquidGlassProgram: SkikoLiquidGlassProgram? by lazy {
  * The [effect] handle and the [RuntimeShaderBuilder] are constructed once
  * and reused; per-draw work is uniform rebinding only (zero allocation,
  * honoring the port's draw-phase invariant).
+ *
+ * ## Pipeline-state validation (S24 Track D)
+ *
+ * The constructor validates the **full** pipeline, not just the source
+ * compile: after `RuntimeEffect.makeForShader` it binds a trivial backdrop
+ * child and materializes one shader through `makeShader()` with trivial
+ * uniforms. Any unexpected pipeline-state creation error (Metal backend
+ * included) therefore throws *here*, the `liquidGlassProgram` lazy holder
+ * converts it to `null`, and every engine lane degrades to
+ * [AcrylicScrimGlassEngine] — never a draw-phase crash on an
+ * uninitialized Metal layer or a headless framebuffer.
  */
 internal class SkikoLiquidGlassProgram internal constructor() {
 
@@ -184,13 +222,54 @@ internal class SkikoLiquidGlassProgram internal constructor() {
 
     private val builder: RuntimeShaderBuilder = RuntimeShaderBuilder(effect)
 
+    init {
+        // Track D: full pipeline-state validation (see class KDoc). The
+        // trivial child/uniform values are irrelevant — this exercises the
+        // child binding + shader materialization path once, off any draw.
+        builder.child(
+            "backdrop",
+            Shader.makeLinearGradient(
+                0f,
+                0f,
+                1f,
+                0f,
+                Gradient(
+                    Gradient.Colors(
+                        arrayOf(
+                            Color4f(0f, 0f, 0f, 1.0f),
+                            Color4f(1f, 1f, 1f, 1.0f),
+                        ),
+                        null,
+                        FilterTileMode.CLAMP,
+                    ),
+                ),
+            ),
+        )
+        builder.uniform("resolution", 1f, 1f)
+        builder.uniform("lensRadius", 0.25f)
+        builder.uniform("refractionIndex", 1.25f)
+        builder.uniform("chromaticSpread", 0f)
+        builder.uniform("tintColor", 1f, 1f, 1f, 1f)
+        builder.makeShader().close()
+    }
+
+    /** Whether a backdrop child is currently bound (the offscreen snapshot seam). */
+    @Volatile
+    private var backdropBound: Boolean = false
+
+    /** True once [bindBackdrop] has bound a snapshot shader for this program. */
+    val hasBoundBackdrop: Boolean
+        get() = backdropBound
+
     /**
      * The Skia dialect seam: binds the caller's backdrop as the shader's
      * `backdrop` child — `child("backdrop", ...)` where the Android lane
-     * uses setInputBuffer (ARCHITECTURE.md section 2).
+     * uses setInputBuffer (ARCHITECTURE.md section 2). Binding also arms
+     * the Tier 2 engine's dynamic-resolution path (S24 Track C).
      */
     fun bindBackdrop(backdrop: Shader) {
         builder.child("backdrop", backdrop)
+        backdropBound = true
     }
 
     /**
@@ -242,14 +321,23 @@ internal class SkikoLiquidGlassProgram internal constructor() {
 /**
  * Tier 1 / Tier 2 engine for the skiko targets.
  *
- * **Offscreen refraction lane (S24 Track B)** — when the request carries a
+/**
+ * Tier 1 / Tier 2 engine for the skiko targets.
+ *
+ * **Offscreen refraction lane (S24 Track B/C)** — when the request carries a
  * [GlassRenderRequest.snapshot] (captured off the draw phase by
  * [rememberGlassBackdrop][com.streamify.graphics.api.rememberGlassBackdrop]),
  * the engine runs [SkikoOffscreenGlassPass] over the live backdrop pixels:
- * full-resolution dispersion on Tier 1, 0.5× Dynamic Resolution Scaling
- * with a bilinear upscale on the Tier 2 UMA-iGPU lane. The pass caches its
+ * full-resolution dispersion on Tier 1, Dynamic Resolution Scaling (0.5x / 0.33x)
+ * with a bilinear upscale on the Tier 2 lane. The pass caches its
  * surface, conversions and result by snapshot identity, so a steady-state
  * draw is one `drawImage` + rim stroke — zero allocation.
+ *
+ * **TBDR dynamic resolution path** — when [backdropCaptureScale] is below 1.0
+ * and the program carries a bound backdrop snapshot shader, the refraction
+ * composite renders through [DynamicResolutionOffscreenPass] at the reduced
+ * capture resolution and is upscaled back into the destination outline with
+ * hardware bilinear filtering.
  *
  * **Stopgap lane** — without a snapshot the request-driven uniforms are
  * rebound on the shared [SkikoLiquidGlassProgram] (kept live and
@@ -260,13 +348,21 @@ internal class SkikoLiquidGlassProgram internal constructor() {
 internal class SkikoRuntimeShaderEngine(
     private val program: SkikoLiquidGlassProgram,
     private val chromaticSpread: Float,
-    private val passScale: Float,
+    passScale: Float = 1.0f,
+    backdropCaptureScale: Float = passScale,
 ) : SovereignGraphicsEngine {
+
+    val passScale: Float = if (backdropCaptureScale != 1.0f && passScale == 1.0f) backdropCaptureScale else passScale
+    val backdropCaptureScale: Float get() = this.passScale
 
     /** Lazy offscreen pass — built on the first snapshot-fed draw, reused after. */
     private val offscreenPass by lazy {
-        SkikoOffscreenGlassPass(program, chromaticSpread, passScale)
+        SkikoOffscreenGlassPass(program, chromaticSpread, this.passScale)
     }
+
+    /** Instantiated lazily-once at construction — only when the policy downsamples. */
+    private val dynamicResolutionPass: DynamicResolutionOffscreenPass? =
+        if (this.passScale < 1f) DynamicResolutionOffscreenPass(this.passScale) else null
 
     override fun applyGlass(scope: DrawScope, request: GlassRenderRequest) {
         val tint = if (request.tint == Color.Unspecified) {
@@ -292,6 +388,25 @@ internal class SkikoRuntimeShaderEngine(
                 drawRefractedComposite(scope, request, refracted)
                 return
             }
+        }
+
+        val drsPass = dynamicResolutionPass
+        if (drsPass != null && program.hasBoundBackdrop) {
+            val composite = runCatching {
+                drsPass.render(
+                    program = program,
+                    destinationWidthPx = scope.size.width,
+                    destinationHeightPx = scope.size.height,
+                    chromaticSpread = chromaticSpread,
+                    tint = tint,
+                )
+            }.getOrNull()
+            if (composite != null) {
+                drawRefractedComposite(scope, request, composite)
+                return
+            }
+            // Pass failure on this host — fall through to the stable
+            // composite; a draw must never crash (Track D).
         }
 
         runCatching {

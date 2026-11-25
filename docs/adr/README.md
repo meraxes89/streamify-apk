@@ -15,6 +15,7 @@ decision requires a new ADR that links back.
 | [ADR-005](ADR-005-vivo-package-identity-and-oauth-resolution.md) | Vivo package identity, Web OAuth callback, and resilient update resolution | Accepted |
 | [ADR-006](ADR-005-unified-hybrid-sync-v2.md) | Unified hybrid sync architecture v2 & schema alignment | Accepted |
 | [ADR-007](ADR-007-user-graph-alignment-and-cross-device-continuity.md) | User graph alignment and cross-device continuity | Accepted |
+| [ADR-010](ADR-010-sovereign-gpu-engine.md) | Sovereign GPU Engine capability matrix over Skia (Apple thermal/ProMotion/TBDR) | Accepted |
 
 ## Format
 

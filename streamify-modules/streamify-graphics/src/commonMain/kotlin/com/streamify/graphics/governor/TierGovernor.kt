@@ -57,8 +57,9 @@ enum class ThermalStatus {
 
 /**
  * Reactive 4-tier state machine governing the Sovereign GPU Engine
- * (docs/gpu/PHASED_PLAN.md, Phase 2-B; docs/gpu/ARCHITECTURE.md, section 3,
- * axis 3 "Runtime Governor & Thermals"; docs/gpu/CI_TESTING_SPEC.md, Job 1).
+ * (docs/gpu/ARCHITECTURE.md, section 3, axis 3 "Runtime Governor &
+ * Thermals"; docs/gpu/CI_TESTING_SPEC.md, Job 1;
+ * docs/systems/S24-sovereign-graphics.md).
  *
  * ## Transition contract
  *
@@ -68,14 +69,32 @@ enum class ThermalStatus {
  *    The cold-start tier never exceeds the probe's
  *    [CapabilityProbe.hardwareCeiling].
  *  * **Promotion** — to `min(Tier1_Ultra, hardwareCeiling)` only after
- *    [PROMOTION_FRAME_COUNT] *consecutive* frames rendered under
- *    [FAST_FRAME_BUDGET_MS] (the 120 Hz frame budget) while the thermal
- *    status is [ThermalStatus.NOMINAL].
- *  * **Demotion** — immediately (synchronously, from whichever thread
- *    observes the event) to [RenderTier.Tier3_Legacy] when the thermal
- *    status reaches [ThermalStatus.MODERATE], or on the frame where the
- *    nearest-rank P95 of the last [P95_WINDOW_FRAMES] frame times exceeds
- *    [P95_FRAME_BUDGET_MS] (the 60 Hz frame budget).
+ *    [PROMOTION_FRAME_COUNT] *consecutive* frames rendered under the live
+ *    fast-frame budget (the display-cadence budget, [fastFrameBudgetMs])
+ *    while the thermal status is [ThermalStatus.NOMINAL].
+ *  * **Thermal demotion** — immediate (synchronous, from whichever thread
+ *    observes the event): [ThermalStatus.MODERATE] / [ThermalStatus.SEVERE]
+ *    demote to [RenderTier.Tier3_Legacy]; [ThermalStatus.CRITICAL] /
+ *    [ThermalStatus.EMERGENCY] demote all the way to
+ *    [RenderTier.Tier4_Safe]. On Apple platforms these statuses are fed by
+ *    `NSProcessInfo.thermalState` through the iosMain environment bridge
+ *    (`serious` maps to MODERATE, `critical` to CRITICAL — see
+ *    [AppleThermalStateMapping]); Android feeds them from
+ *    `PowerManager.OnThermalStatusChangedListener`.
+ *  * **P95 demotion (stepped)** — on the frame where the nearest-rank P95
+ *    of the last [P95_WINDOW_FRAMES] frame times exceeds the live P95
+ *    budget, the governor steps down **exactly one tier**
+ *    (Tier 1 → Tier 2 single-tap → Tier 3) instead of dropping straight to
+ *    the legacy lane. A ProMotion device whose liquid-glass pass falls from
+ *    120 FPS to 90 FPS therefore lands on the cheaper single-tap shader and
+ *    keeps rendering glass, rather than visually bouncing to the scrim.
+ *  * **Low Power Mode** — [onLowPowerModeEnabled] (Apple
+ *    `NSProcessInfo.isLowPowerModeEnabled`, observed via
+ *    `NSProcessInfoPowerStateDidChangeNotification`) caps the promotion
+ *    ceiling at [RenderTier.Tier2_Balanced], demotes any live Tier 1
+ *    synchronously, and pins the frame budgets to the 60 Hz lane.
+ *  * **Display cadence** — [onDisplayRefreshRateChanged] recalibrates both
+ *    budgets to a new display-link frequency (ProMotion 10–120 Hz).
  *  * **Hysteresis** — every tier transition re-arms a
  *    [HYSTERESIS_FRAME_COUNT]-frame cooldown during which no promotion is
  *    attempted, preventing Tier3/Tier1 visual flickering.
@@ -103,12 +122,20 @@ enum class ThermalStatus {
  *
  * @param probe Static capability classification of the device; its ceiling
  * clamps every promotion and its signals pick the cold-start tier.
+ * @param initialFastFrameBudgetMs Construction-time fast-frame budget (ms);
+ * the live value adapts later via [onDisplayRefreshRateChanged] and
+ * [onLowPowerModeEnabled].
+ * @param initialP95FrameBudgetMs Construction-time P95 budget (ms); adapts
+ * the same way.
+ * @param initialRefreshRateHz Construction-time display refresh rate (Hz)
+ * the budgets are calibrated against; 60.0 when unknown.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class TierGovernor(
     val probe: CapabilityProbe,
-    val fastFrameBudgetMs: Double = FAST_FRAME_BUDGET_MS,
-    val p95FrameBudgetMs: Double = P95_FRAME_BUDGET_MS,
+    initialFastFrameBudgetMs: Double = FAST_FRAME_BUDGET_MS,
+    initialP95FrameBudgetMs: Double = P95_FRAME_BUDGET_MS,
+    initialRefreshRateHz: Double = DEFAULT_REFRESH_RATE_HZ,
 ) {
 
     /**
@@ -130,10 +157,60 @@ class TierGovernor(
     val thermalStatus: ThermalStatus
         get() = state.load().thermalStatus
 
-    /** Highest tier promotions may ever reach (device ceiling clamp). */
-    private val promotionCeiling: RenderTier = minOf(RenderTier.Tier1_Ultra, probe.hardwareCeiling)
+    /**
+     * Live fast-frame budget (ms) — the display-cadence-calibrated budget a
+     * frame must beat to count toward promotion. Starts at the
+     * construction-time value and is recalibrated by
+     * [onDisplayRefreshRateChanged] / [onLowPowerModeEnabled]; readable from
+     * any thread.
+     */
+    val fastFrameBudgetMs: Double
+        get() = fastBudgetMs
+
+    /**
+     * Live P95 budget (ms) the rolling window must stay at or under. Starts
+     * at the construction-time value and is recalibrated the same way.
+     */
+    val p95FrameBudgetMs: Double
+        get() = p95BudgetMs
+
+    /**
+     * Highest tier promotions may ever reach — the device ceiling
+     * ([CapabilityProbe.hardwareCeiling]), further clamped to
+     * [RenderTier.Tier2_Balanced] while Low Power Mode is engaged.
+     */
+    private val hardwarePromotionCeiling: RenderTier = minOf(RenderTier.Tier1_Ultra, probe.hardwareCeiling)
+
+    private val promotionCeiling: RenderTier
+        get() =
+            if (lowPowerModeEnabled) {
+                minOf(hardwarePromotionCeiling, RenderTier.Tier2_Balanced)
+            } else {
+                hardwarePromotionCeiling
+            }
 
     private val initialTier: RenderTier = coldStartTier(probe)
+
+    // ------------------------------------------------------------------
+    // Volatile runtime calibration (see docs/systems/S24-sovereign-graphics.md)
+    // ------------------------------------------------------------------
+
+    /** Live fast-frame budget — volatile; recalibrated off the frame thread. */
+    @Volatile
+    private var fastBudgetMs: Double = initialFastFrameBudgetMs
+
+    /** Live P95 budget — volatile; recalibrated off the frame thread. */
+    @Volatile
+    private var p95BudgetMs: Double = initialP95FrameBudgetMs
+
+    /** Display-link frequency the budgets are calibrated against. */
+    @Volatile
+    private var activeRefreshRateHz: Double =
+        if (initialRefreshRateHz <= 0.0) DEFAULT_REFRESH_RATE_HZ else initialRefreshRateHz
+
+    /** Apple Low Power Mode / Android battery-saver clamp — see [onLowPowerModeEnabled]. */
+    @Volatile
+    private var lowPowerModeEnabled: Boolean = false
 
     /** Single source of truth for all cross-thread state; CAS-transitioned. */
     private val state = AtomicReference(
@@ -190,9 +267,12 @@ class TierGovernor(
                 frameWindowCount == P95_WINDOW_FRAMES &&
                 p95ExceedsBudget()
             ) {
-                // P95 frame time over the last full window exceeded the
-                // 60 Hz budget — immediate demotion to the legacy lane.
-                nextTier = RenderTier.Tier3_Legacy
+                // P95 frame time over the last full window exceeded the live
+                // budget — stepped demotion: exactly one lane down (Tier 1
+                // -> Tier 2 single-tap -> Tier 3), so a ProMotion device
+                // that loses its 120 Hz budget keeps the (cheaper) shader
+                // lane instead of bouncing visually to the scrim.
+                nextTier = RenderTier.entries[cur.tier.ordinal - 1]
             } else if (promotionCeiling > cur.tier &&
                 consecutiveFastFrames >= PROMOTION_FRAME_COUNT &&
                 cur.thermalStatus == ThermalStatus.NOMINAL &&
@@ -226,20 +306,28 @@ class TierGovernor(
     }
 
     /**
-     * Reports a new thermal status. Safe from any thread. When the status
-     * is [ThermalStatus.MODERATE] or worse and the current tier is above
-     * [RenderTier.Tier3_Legacy], demotes to Tier 3 **synchronously** (no
-     * frame boundary is waited for) and re-arms the full hysteresis
-     * cooldown. Status reports below the threshold only update the
-     * promotion gate.
+     * Reports a new thermal status. Safe from any thread; the demotion is
+     * **synchronous** (no frame boundary is waited for).
+     *
+     * Demotion ladder (docs/gpu/ARCHITECTURE.md section 3, axis 3):
+     *  * [ThermalStatus.MODERATE] / [ThermalStatus.SEVERE] — demote to
+     *    [RenderTier.Tier3_Legacy] (Apple `thermalState == serious` and
+     *    Android `THERMAL_STATUS_MODERATE`/`_SEVERE`).
+     *  * [ThermalStatus.CRITICAL] / [ThermalStatus.EMERGENCY] — demote all
+     *    the way to [RenderTier.Tier4_Safe] (Apple `thermalState ==
+     *    critical`, Android `THERMAL_STATUS_CRITICAL`/`_EMERGENCY`).
+     *
+     * Every demotion re-arms the full hysteresis cooldown. Status reports
+     * below the threshold only update the promotion gate.
      */
     fun onThermalStatusChanged(status: ThermalStatus) {
         while (true) {
             val cur = state.load()
-            val mustDemote = status >= ThermalStatus.MODERATE && cur.tier > RenderTier.Tier3_Legacy
+            val demotionTier = thermalDemotionTier(status)
+            val mustDemote = demotionTier != null && cur.tier > demotionTier
             if (!mustDemote && cur.thermalStatus == status) return // no-op report
 
-            val nextTier = if (mustDemote) RenderTier.Tier3_Legacy else cur.tier
+            val nextTier = if (mustDemote) demotionTier!! else cur.tier
             val next = GovernorState(
                 tier = nextTier,
                 thermalStatus = status,
@@ -251,6 +339,96 @@ class TierGovernor(
             }
             // CAS failed — the frame thread transitioned concurrently;
             // retry against the fresh state.
+        }
+    }
+
+    /**
+     * Target tier of a thermal report, or `null` when the status is below
+     * the demotion threshold ([ThermalStatus.LIGHT] or better).
+     */
+    private fun thermalDemotionTier(status: ThermalStatus): RenderTier? =
+        when {
+            status >= ThermalStatus.CRITICAL -> RenderTier.Tier4_Safe
+            status >= ThermalStatus.MODERATE -> RenderTier.Tier3_Legacy
+            else -> null
+        }
+
+    /**
+     * Reports a Low Power Mode toggle (Apple `NSProcessInfo
+     * .isLowPowerModeEnabled`, observed through
+     * `NSProcessInfoPowerStateDidChangeNotification`; Android battery
+     * saver maps here too). Safe from any thread.
+     *
+     * Enabling Low Power Mode:
+     *  * caps the promotion ceiling at [RenderTier.Tier2_Balanced],
+     *  * demotes a live [RenderTier.Tier1_Ultra] synchronously to
+     *    [RenderTier.Tier2_Balanced] (re-arming the hysteresis cooldown),
+     *  * pins both frame budgets to the 60 Hz lane — the display link is
+     *    capped at 60 Hz in this mode, so a ProMotion device stops being
+     *    judged against the 8.33 ms budget.
+     *
+     * Disabling it restores the display-cadence budgets (last reported via
+     * [onDisplayRefreshRateChanged] or the construction-time rate) and the
+     * hardware promotion ceiling; re-promotion then follows the normal
+     * streak + cooldown contract.
+     */
+    fun onLowPowerModeEnabled(enabled: Boolean) {
+        if (lowPowerModeEnabled == enabled) return
+        lowPowerModeEnabled = enabled
+        applyBudgetCalibration()
+        if (enabled) {
+            demoteToTierAtMost(RenderTier.Tier2_Balanced)
+        }
+    }
+
+    /**
+     * Reports a display-link refresh-rate change (ProMotion 10–120 Hz
+     * cadence shifts, external-display plug events). Safe from any thread.
+     * Recalibrates both frame budgets to the new cadence — a 120 Hz
+     * ProMotion link budgets 4.16 ms fast / 8.33 ms P95, a 60 Hz link
+     * 8.3 ms / 16.66 ms — unless Low Power Mode is engaged, in which case
+     * the 60 Hz lane stays pinned. Non-positive rates fall back to 60 Hz.
+     */
+    fun onDisplayRefreshRateChanged(refreshRateHz: Double) {
+        activeRefreshRateHz =
+            if (refreshRateHz <= 0.0) DEFAULT_REFRESH_RATE_HZ else refreshRateHz
+        applyBudgetCalibration()
+    }
+
+    /**
+     * Recomputes the live budgets from [activeRefreshRateHz] and the Low
+     * Power Mode clamp. Volatile writes only — the frame thread reads the
+     * budgets per frame; no CAS is needed because budgets are advisory
+     * inputs to frame decisions, not transitioned state.
+     */
+    private fun applyBudgetCalibration() {
+        if (lowPowerModeEnabled) {
+            fastBudgetMs = LOW_POWER_FAST_FRAME_BUDGET_MS
+            p95BudgetMs = LOW_POWER_P95_FRAME_BUDGET_MS
+        } else {
+            val frameTimeMs = 1000.0 / activeRefreshRateHz
+            fastBudgetMs = minOf(FAST_FRAME_BUDGET_MS, frameTimeMs * 0.5)
+            p95BudgetMs = frameTimeMs
+        }
+    }
+
+    /**
+     * Synchronous clamp of the live tier to at most [ceiling] (Low Power
+     * Mode demotion path) — same CAS retry shape as the thermal demotion.
+     */
+    private fun demoteToTierAtMost(ceiling: RenderTier) {
+        while (true) {
+            val cur = state.load()
+            if (cur.tier <= ceiling) return
+            val next = GovernorState(
+                tier = ceiling,
+                thermalStatus = cur.thermalStatus,
+                cooldownFramesRemaining = HYSTERESIS_FRAME_COUNT,
+            )
+            if (state.compareAndSet(cur, next)) {
+                notifyTierChanged(cur.tier, ceiling)
+                return
+            }
         }
     }
 
@@ -270,7 +448,7 @@ class TierGovernor(
     private fun p95ExceedsBudget(): Boolean {
         var overBudget = 0
         for (i in 0 until P95_WINDOW_FRAMES) {
-            if (frameWindow[i] > p95FrameBudgetMs) {
+            if (frameWindow[i] > p95BudgetMs) {
                 overBudget++
                 if (overBudget > P95_TOLERATED_SPIKES) return true
             }
@@ -283,7 +461,7 @@ class TierGovernor(
         frameWindowHead = (frameWindowHead + 1) % P95_WINDOW_FRAMES
         if (frameWindowCount < P95_WINDOW_FRAMES) frameWindowCount++
         consecutiveFastFrames =
-            if (frameTimeMillis < fastFrameBudgetMs) {
+            if (frameTimeMillis < fastBudgetMs) {
                 // Cap at the promotion threshold: once reached, ">= 120"
                 // holds forever without the counter ever overflowing Int.
                 minOf(consecutiveFastFrames + 1, PROMOTION_FRAME_COUNT)
@@ -328,17 +506,23 @@ class TierGovernor(
     )
 
     companion object {
-        /** Consecutive sub-[FAST_FRAME_BUDGET_MS] frames required for promotion. */
+        /** Consecutive sub-fast-budget frames required for promotion. */
         const val PROMOTION_FRAME_COUNT = 120
 
         /** 120 Hz frame budget (ms) — a frame at exactly this value is NOT fast. */
         const val FAST_FRAME_BUDGET_MS = 8.3
 
-        /** Rolling window (frames) over which the P95 demotion gate is evaluated. */
-        const val P95_WINDOW_FRAMES = 60
-
         /** 60 Hz frame budget (ms) — the P95 of the window must stay at or below it. */
         const val P95_FRAME_BUDGET_MS = 16.6
+
+        /** 60 Hz fast-frame budget (ms) — pinned while Low Power Mode is engaged. */
+        const val LOW_POWER_FAST_FRAME_BUDGET_MS = FAST_FRAME_BUDGET_MS
+
+        /** 60 Hz P95 budget (ms) — pinned while Low Power Mode is engaged. */
+        const val LOW_POWER_P95_FRAME_BUDGET_MS = P95_FRAME_BUDGET_MS
+
+        /** Display refresh rate (Hz) assumed when the real cadence is unknown. */
+        const val DEFAULT_REFRESH_RATE_HZ = 60.0
 
         /**
          * Spike frames per window tolerated by the nearest-rank P95:
@@ -379,16 +563,19 @@ class TierGovernor(
          */
         fun forRefreshRate(
             probe: CapabilityProbe,
-            displayHz: Double = 60.0,
+            refreshRateHz: Double = DEFAULT_REFRESH_RATE_HZ,
+            displayHz: Double = refreshRateHz,
         ): TierGovernor {
-            val safeHz = if (displayHz.isNaN() || displayHz <= 0.0) 60.0 else displayHz
+            val effectiveHz = if (displayHz != DEFAULT_REFRESH_RATE_HZ && refreshRateHz == DEFAULT_REFRESH_RATE_HZ) displayHz else refreshRateHz
+            val safeHz = if (effectiveHz.isNaN() || effectiveHz <= 0.0) DEFAULT_REFRESH_RATE_HZ else effectiveHz
             val frameTimeMs = 1000.0 / safeHz
             val fastBudget = minOf(FAST_FRAME_BUDGET_MS, frameTimeMs * 0.5)
             val p95Budget = frameTimeMs
             return TierGovernor(
                 probe = probe,
-                fastFrameBudgetMs = fastBudget,
-                p95FrameBudgetMs = p95Budget,
+                initialFastFrameBudgetMs = fastBudget,
+                initialP95FrameBudgetMs = p95Budget,
+                initialRefreshRateHz = safeHz,
             )
         }
     }
