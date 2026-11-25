@@ -150,6 +150,20 @@ object StreamifySyncEngine : KoinComponent {
     private val _syncState = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncState: StateFlow<SyncStatus> = _syncState.asStateFlow()
 
+    @Volatile
+    private var backoffUntilMs: Long = 0L
+
+    @Volatile
+    private var consecutiveFailures: Int = 0
+
+    private val backoffPolicy = com.maxrave.domain.utils.RetryPolicy(
+        maxAttempts = 5,
+        initialDelayMs = 1_000L,
+        maxDelayMs = 60_000L,
+        backoffMultiplier = 2.0,
+        fullJitter = true,
+    )
+
     private fun SupervisorJob() = kotlinx.coroutines.SupervisorJob()
 
     /**
@@ -193,6 +207,10 @@ object StreamifySyncEngine : KoinComponent {
      * Suspending orchestrator that executes all sync stages with V3 delta sync & HLC.
      */
     suspend fun syncAll(userId: String? = null): SyncStatus = withContext(Dispatchers.IO) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        if (now < backoffUntilMs) {
+            return@withContext _syncState.value
+        }
         if (!mutex.tryLock()) {
             return@withContext _syncState.value
         }
@@ -307,11 +325,16 @@ object StreamifySyncEngine : KoinComponent {
             // V4.1 Fleet Telemetry: Sync device and version telemetry
             syncDeviceTelemetryInternal(targetUserId, deviceId)
 
+            consecutiveFailures = 0
+            backoffUntilMs = 0L
             val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
             _syncState.value = success
             success
         } catch (e: Exception) {
-            val error = SyncStatus.Error(e.message ?: "Sync encountered an unexpected error")
+            consecutiveFailures++
+            val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
+            backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
+            val error = SyncStatus.Error("${e.message ?: "Sync encountered an unexpected error"} (backing off ${delayMs / 1000}s)")
             _syncState.value = error
             error
         } finally {
