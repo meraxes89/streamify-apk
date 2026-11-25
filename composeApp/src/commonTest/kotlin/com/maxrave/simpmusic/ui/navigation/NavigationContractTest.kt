@@ -104,10 +104,7 @@ class NavigationContractTest {
         val decodedArtist = Json.decodeFromString<ArtistDestination>(Json.encodeToString(artist))
         assertEquals(artist, decodedArtist)
 
-        val fullscreen = FullscreenDestination(videoId = "dQw4w9WgXcQ", isVideo = true)
-        val decodedFullscreen = Json.decodeFromString<FullscreenDestination>(Json.encodeToString(fullscreen))
-        assertEquals(fullscreen, decodedFullscreen)
-
+        assertEquals(FullscreenDestination, Json.decodeFromString<FullscreenDestination>(Json.encodeToString(FullscreenDestination)))
         assertEquals(HomeDestination, Json.decodeFromString<HomeDestination>(Json.encodeToString(HomeDestination)))
         assertEquals(LibraryDestination, Json.decodeFromString<LibraryDestination>(Json.encodeToString(LibraryDestination)))
         assertEquals(NotificationDestination, Json.decodeFromString<NotificationDestination>(Json.encodeToString(NotificationDestination)))
