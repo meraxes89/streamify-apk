@@ -1072,7 +1072,7 @@ class SettingsViewModel(
     fun setTranslationLanguage(language: String) {
         viewModelScope.launch {
             dataStoreManager.setTranslationLanguage(language)
-            getTranslationLanguage()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.TRANSLATION_LANGUAGE, language)
         }
     }
 
@@ -1090,6 +1090,7 @@ class SettingsViewModel(
     fun setLyricsOffsetMs(offsetMs: Int) {
         viewModelScope.launch {
             dataStoreManager.setLyricsOffsetMs(offsetMs)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LYRICS_OFFSET_MS, offsetMs.toString())
         }
     }
 
@@ -1104,7 +1105,7 @@ class SettingsViewModel(
     fun setUseTranslation(useTranslation: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setEnableTranslateLyric(useTranslation)
-            getUseTranslation()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.USE_TRANSLATION, useTranslation.toString())
         }
     }
 
@@ -1119,7 +1120,7 @@ class SettingsViewModel(
     fun setLyricsProvider(provider: String) {
         viewModelScope.launch {
             dataStoreManager.setLyricsProvider(provider)
-            getLyricsProvider()
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LYRICS_PROVIDER, provider)
         }
     }
 
@@ -1178,6 +1179,7 @@ class SettingsViewModel(
     fun changeLocation(location: String) {
         viewModelScope.launch {
             dataStoreManager.setLocation(location)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.LOCATION, location)
         }
     }
 
@@ -1277,7 +1279,9 @@ class SettingsViewModel(
     fun changeQuality(qualityItem: String?) {
         viewModelScope.launch {
             log("changeQuality: $qualityItem")
-            dataStoreManager.setQuality(qualityItem ?: QUALITY.items[2].toString())
+            val q = qualityItem ?: QUALITY.items[2].toString()
+            dataStoreManager.setQuality(q)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(DataStoreManager.QUALITY, q)
         }
     }
 
@@ -1431,6 +1435,7 @@ class SettingsViewModel(
     fun changeLanguage(code: String) {
         viewModelScope.launch {
             dataStoreManager.putString(SELECTED_LANGUAGE, code)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange(SELECTED_LANGUAGE, code)
             Logger.w("SettingsViewModel", "changeLanguage: $code")
             changeLanguageNative(code)
         }
