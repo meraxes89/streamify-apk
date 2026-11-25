@@ -65,4 +65,4 @@ Read order:
 4. On removal, set `status: removed`, record the removal commit and successor,
    and keep the page. Never delete the page or renumber the ID.
 
-<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

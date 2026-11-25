@@ -42,4 +42,4 @@ tests: [core/media/media3/src/test/java/com/maxrave/media3/audio/, core/domain/s
 
 - Add a lookahead limiter, an EQ frequency-response test, and an oversampled quality path if a native core is reconsidered.
 
-<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

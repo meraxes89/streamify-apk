@@ -41,4 +41,4 @@ tests: [core/media/media3/src/test/]
 
 - Add an attention-matrix test and an explicit limiter stage to the processor chain.
 
-<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

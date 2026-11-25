@@ -42,4 +42,4 @@ tests: []
 
 - Re-verify manifest permissions against current targetSdk.
 
-<!-- doc-verified-against: 03d70dac6c9ad016aace5c9688c0690013fb22d8 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
