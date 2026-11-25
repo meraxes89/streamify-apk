@@ -188,4 +188,106 @@ class PhaseDUniversalOutboxTest {
         val sentRows = updatedOutbox.filter { it.serverSeq == 42L }
         assertEquals(3, sentRows.size)
     }
+
+    @Test
+    fun testGuestUserIdFiltering() {
+        fun isGuestUserId(userId: String?): Boolean {
+            if (userId.isNullOrBlank()) return true
+            return userId == "guest" || userId.startsWith("guest")
+        }
+
+        assertTrue(isGuestUserId(null))
+        assertTrue(isGuestUserId(""))
+        assertTrue(isGuestUserId("   "))
+        assertTrue(isGuestUserId("guest"))
+        assertTrue(isGuestUserId("guest_1732520000"))
+        assertTrue(isGuestUserId("guest_desktop"))
+        assertTrue(isGuestUserId("guest_wasm"))
+        assertTrue(isGuestUserId("guest_ios"))
+
+        assertFalse(isGuestUserId("dbgtvzgwixerhnwvhtil"))
+        assertFalse(isGuestUserId("a74b8eb0-578d-4453-bd19-0b0da2d9ff89"))
+    }
+
+    @Test
+    fun testOutboxOpMappingPreservesChangeIdAlignment() {
+        data class OutboxOpEntry(val op: String, val changeId: String)
+
+        val pendingChanges = listOf(
+            SyncChangeEntity("ch_like", SyncKind.SONG_LIKE, "vid_1", SyncOp.SET, "1", 100L, "d1"),
+            SyncChangeEntity("ch_order", SyncKind.LOCAL_PLAYLIST_ORDER, "pl_1", SyncOp.SET, "3_tracks", 200L, "d1"),
+            SyncChangeEntity("ch_hist", SyncKind.HISTORY, "evt_1", SyncOp.ADD, null, 300L, "d1")
+        )
+
+        val entries = mutableListOf<OutboxOpEntry>()
+        for (ch in pendingChanges) {
+            when (ch.entity) {
+                SyncKind.SONG_LIKE -> entries.add(OutboxOpEntry("like_op", ch.changeId))
+                SyncKind.LOCAL_PLAYLIST_ORDER -> {
+                    // Simulating 3 tracks in order for this one change
+                    entries.add(OutboxOpEntry("pl_trk_1", ch.changeId))
+                    entries.add(OutboxOpEntry("pl_trk_2", ch.changeId))
+                    entries.add(OutboxOpEntry("pl_trk_3", ch.changeId))
+                }
+                SyncKind.HISTORY -> entries.add(OutboxOpEntry("hist_op", ch.changeId))
+            }
+        }
+
+        assertEquals(5, entries.size)
+        // Verify every entry carries its exact source changeId
+        assertEquals("ch_like", entries[0].changeId)
+        assertEquals("ch_order", entries[1].changeId)
+        assertEquals("ch_order", entries[2].changeId)
+        assertEquals("ch_order", entries[3].changeId)
+        assertEquals("ch_hist", entries[4].changeId)
+    }
+
+    @Test
+    fun testAckAppliedAndDeadLetterRejected() {
+        val outbox = mutableListOf(
+            SyncChangeEntity("ch_ok1", SyncKind.SONG_LIKE, "v1", SyncOp.SET, "1", 100L, "d1"),
+            SyncChangeEntity("ch_bad", SyncKind.SONG_LIKE, "v2", SyncOp.SET, "1", 200L, "d1"),
+            SyncChangeEntity("ch_stale", SyncKind.SONG_LIKE, "v3", SyncOp.SET, "1", 300L, "d1")
+        )
+
+        // Mock RPC response
+        val results = listOf(
+            Pair(0, "applied"),
+            Pair(1, "rejected"),
+            Pair(2, "stale")
+        )
+
+        val appliedChangeIds = mutableSetOf<String>()
+        val rejectedChangeIds = mutableSetOf<String>()
+
+        for ((idx, status) in results) {
+            val change = outbox.getOrNull(idx) ?: continue
+            when (status) {
+                "applied", "stale" -> appliedChangeIds.add(change.changeId)
+                "rejected" -> rejectedChangeIds.add(change.changeId)
+            }
+        }
+        appliedChangeIds.removeAll(rejectedChangeIds)
+
+        assertEquals(setOf("ch_ok1", "ch_stale"), appliedChangeIds)
+        assertEquals(setOf("ch_bad"), rejectedChangeIds)
+
+        // Mark sent for applied/stale with server cursor 55, rejected with -1
+        val updated = outbox.map { ch ->
+            when (ch.changeId) {
+                in appliedChangeIds -> ch.copy(serverSeq = 55L)
+                in rejectedChangeIds -> ch.copy(serverSeq = -1L)
+                else -> ch
+            }
+        }
+
+        val pending = updated.filter { it.serverSeq == null }
+        val sent = updated.filter { (it.serverSeq ?: 0L) > 0L }
+        val deadLettered = updated.filter { it.serverSeq == -1L }
+
+        assertEquals(0, pending.size)
+        assertEquals(2, sent.size)
+        assertEquals(1, deadLettered.size)
+        assertEquals("ch_bad", deadLettered.first().changeId)
+    }
 }

@@ -24,6 +24,12 @@ class IosRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
         }
     }
 
+    override suspend fun markRejected(changeIds: List<String>) {
+        if (changeIds.isNotEmpty()) {
+            syncDao.markSent(changeIds, -1L)
+        }
+    }
+
     override suspend fun pruneSent(beforeTimestamp: Long) {
         syncDao.pruneSent(beforeTimestamp)
     }

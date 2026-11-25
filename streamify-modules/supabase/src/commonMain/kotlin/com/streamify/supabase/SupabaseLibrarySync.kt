@@ -114,6 +114,7 @@ object SupabaseLibrarySync {
             while (true) {
                 val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
                     parameter("user_id", "eq.$targetUserId")
+                    parameter("deleted_at", "is.null")
                     parameter("select", "track_id,created_at")
                     parameter("limit", limit.toString())
                     parameter("offset", offset.toString())
@@ -241,6 +242,7 @@ object SupabaseLibrarySync {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_item_favorites") {
                 parameter("user_id", "eq.$targetUserId")
                 parameter("item_type", "eq.$itemType")
+                parameter("deleted_at", "is.null")
                 parameter("select", "item_id")
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
@@ -265,6 +267,7 @@ object SupabaseLibrarySync {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_item_favorites") {
                 parameter("user_id", "eq.$targetUserId")
                 parameter("item_type", "eq.$itemType")
+                parameter("deleted_at", "is.null")
                 parameter("select", "user_id,item_type,item_id,metadata,created_at")
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
@@ -522,6 +525,7 @@ object SupabaseLibrarySync {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_podcast_episode_state") {
                 parameter("user_id", "eq.$targetUserId")
+                parameter("deleted_at", "is.null")
                 parameter("select", "episode_id,podcast_id,position_sec,completed,modified_hlc,updated_at,user_id")
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
@@ -638,6 +642,7 @@ object SupabaseLibrarySync {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlists") {
                 parameter("user_id", "eq.$targetUserId")
+                parameter("deleted_at", "is.null")
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
             }
@@ -658,6 +663,7 @@ object SupabaseLibrarySync {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlist_tracks") {
                 parameter("playlist_id", "eq.$playlistId")
+                parameter("deleted_at", "is.null")
                 parameter("order", "position.asc")
                 parameter("select", "id,playlist_id,track_id,position,tracks(*)")
                 header("apikey", SupabaseConfig.ANON_KEY)
@@ -680,6 +686,7 @@ object SupabaseLibrarySync {
         try {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/playlist_tracks") {
                 parameter("playlist_id", "eq.$playlistId")
+                parameter("deleted_at", "is.null")
                 parameter("order", "position.asc")
                 parameter("select", "track_id")
                 header("apikey", SupabaseConfig.ANON_KEY)
@@ -735,6 +742,7 @@ object SupabaseLibrarySync {
             val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_settings") {
                 parameter("select", "user_id,settings,updated_at")
                 parameter("user_id", "eq.$userId")
+                parameter("deleted_at", "is.null")
                 header("apikey", SupabaseConfig.ANON_KEY)
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
             }

@@ -18,6 +18,10 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
         changes.removeAll { it.changeId in changeIds }
     }
 
+    override suspend fun markRejected(changeIds: List<String>) {
+        changes.removeAll { it.changeId in changeIds }
+    }
+
     override suspend fun pruneSent(beforeTimestamp: Long) {}
 
     override suspend fun getPlaybackEventsBySyncIds(syncIds: List<String>): List<PlaybackEventEntity> = emptyList()
