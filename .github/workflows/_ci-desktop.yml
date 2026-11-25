@@ -56,38 +56,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust -> rust/target"
-          shared-key: desktop-linux
-          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
-      - name: Start sccache
-        run: sccache --start-server || true
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      - name: Download Linux engine
-        uses: actions/download-artifact@v8
-        with:
-          name: engine-linux-x86_64
-          path: staged-engine
-
-      - name: Set engine environment
-        shell: bash
-        run: |
-          echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.so" >> "$GITHUB_ENV"
 
       - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
@@ -95,7 +67,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :composeApp:jvmTest \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Package installers
@@ -104,7 +75,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :desktopApp:packageDistributionForCurrentOS \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Verify size budget
@@ -129,14 +99,6 @@ jobs:
             desktopApp/build/compose/binaries/main/app/**
             desktopApp/build/appimage/**
           if-no-files-found: warn
-
-      - name: Upload uniffi bindings
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-uniffi-bindings-linux
-          path: composeApp/build/generated/uniffi/
-          if-no-files-found: ignore
 
       - name: Upload test reports
         if: failure()
@@ -173,38 +135,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust -> rust/target"
-          shared-key: desktop-windows
-          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
-      - name: Start sccache
-        run: sccache --start-server || true
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      - name: Download Windows engine
-        uses: actions/download-artifact@v8
-        with:
-          name: engine-windows-x86_64
-          path: staged-engine
-
-      - name: Set engine environment
-        shell: bash
-        run: |
-          echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/streamify_core_rs.dll" >> "$GITHUB_ENV"
 
       - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
@@ -212,7 +146,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :composeApp:jvmTest \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Install WiX Toolset 3.14
@@ -233,7 +166,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :desktopApp:packageDistributionForCurrentOS \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Verify size budget
@@ -258,14 +190,6 @@ jobs:
             desktopApp/build/compose/binaries/main/app/**
             desktopApp/build/appimage/**
           if-no-files-found: warn
-
-      - name: Upload uniffi bindings
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-uniffi-bindings-windows
-          path: composeApp/build/generated/uniffi/
-          if-no-files-found: ignore
 
       - name: Upload test reports
         if: failure()
@@ -302,38 +226,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust -> rust/target"
-          shared-key: desktop-macos
-          key: ${{ hashFiles('rust-toolchain.toml', 'rust/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
-      - name: Start sccache
-        run: sccache --start-server || true
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      - name: Download macOS engine
-        uses: actions/download-artifact@v8
-        with:
-          name: engine-macos-universal
-          path: staged-engine
-
-      - name: Set engine environment
-        shell: bash
-        run: |
-          echo "PREBUILT_ENGINE=${{ github.workspace }}/staged-engine/libstreamify_core_rs.dylib" >> "$GITHUB_ENV"
 
       - name: Run desktop tests
         if: ${{ !inputs.release_mode }}
@@ -341,7 +237,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :composeApp:jvmTest \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Package installers
@@ -350,7 +245,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :desktopApp:packageDistributionForCurrentOS \
-            -Pstreamify.prebuiltEngineLib="${PREBUILT_ENGINE}" \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Verify size budget
@@ -375,14 +269,6 @@ jobs:
             desktopApp/build/compose/binaries/main/app/**
             desktopApp/build/appimage/**
           if-no-files-found: warn
-
-      - name: Upload uniffi bindings
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-uniffi-bindings-macos
-          path: composeApp/build/generated/uniffi/
-          if-no-files-found: ignore
 
       - name: Upload test reports
         if: failure()

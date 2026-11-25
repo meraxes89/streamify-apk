@@ -143,7 +143,6 @@ kotlin {
             implementation(projects.data)
 
             // Streamify Sovereign Modules
-            api(projects.streamifyCoreBridge)
             api(projects.streamifyMediaHal)
             api(projects.streamifyLyricsSlyr)
             api(projects.streamifySupabase)

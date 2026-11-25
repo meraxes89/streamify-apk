@@ -93,20 +93,9 @@ jobs:
           fi
           echo "Version code monotonicity check passed."
 
-  engine:
-    name: "Engine (release artifacts)"
-    needs: preflight
-    uses: ./.github/workflows/_ci-engine.yml
-    with:
-      run_tests: false
-      build_android_native: true
-      build_linux_native: true
-      build_desktop_native: true
-      build_full_desktop: true
-
   android:
     name: "Android release APK"
-    needs: engine
+    needs: preflight
     uses: ./.github/workflows/_ci-android.yml
     with:
       release_mode: true
@@ -114,7 +103,7 @@ jobs:
 
   desktop:
     name: "Desktop installers (.deb / .rpm / .msi / .dmg)"
-    needs: engine
+    needs: preflight
     uses: ./.github/workflows/_ci-desktop.yml
     with:
       package_installers: true
@@ -129,14 +118,14 @@ jobs:
 
   ios:
     name: "Apple iOS release (Frameworks & Distribution)"
-    needs: engine
+    needs: preflight
     uses: ./.github/workflows/_ci-ios.yml
     with:
       release_mode: true
 
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [engine, android, desktop, wasm, ios]
+    needs: [android, desktop, wasm, ios]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
