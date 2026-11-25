@@ -3,6 +3,18 @@
 All notable changes to Streamify are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Graphics (S24)**: Kyant optical parity for the Sovereign GPU Engine — `LiquidGlassCore.sksl` now implements the five pillars of the `io.github.kyant0:backdrop` catalog look: directional 45° specular rim (`L = normalize(float2(-1, -1))`, cosine falloff, subtle ambient rim opposite), luminance-preserving 1.5× vibrancy before the tint mix, edge-only curvature (flat core keeps typography crisp), the adaptive "đục đen" luminance scrim (`lerp(0.12, 0.50, clamp((luminance - 0.3) / 0.5))`), and the fluid press interaction.
+- **Graphics (S24)**: three new shader uniforms (`vibrancy`, `darkenAmount`, `specularIntensity`) bound from the frozen token layer by both platform adapters; `GlassRenderRequest` carries a draw-phase `luminance` lambda and `scrimColor`.
+- **Graphics (S24)**: `Modifier.streamifyInteractiveGlass` — spring-animated press swell (1.12×, damping 0.5 / stiffness 300) plus a pointer-tracking radial white glow (`BlendMode.Plus`, alpha 0.18), driven by the ported observe-only `GlassInteraction` recogniser.
+- **Graphics (S24)**: Tier 3 (Vivo 1712 / API 26-30) preserves the premium look with dual-stop hardware linear-gradient rim (lit top-left / ambient bottom-right) and the identical adaptive scrim floor — zero shader classes.
+- **Graphics (S24)**: `KyantParityGoldenTest` — headless Skia side-by-side golden renders (light / dark / saturated backdrops) with an independent Kyant reference model and an MSE parity gate (< 5e-4); CI dumps the comparison triptychs as artifacts (`STREAMIFY_GOLDEN_DUMP=1`) and committed twins live in `docs/gpu/parity/`.
+
+### Fixed
+- **Graphics**: `OffscreenRenderGoldenTest` referenced the retired Phase 1-A token names (`LENS_RADIUS_CORNER_FRACTION`, `REFRACTION_INDEX`, `TINT_LIGHT`, `CHROMATIC_SPREAD_TIER1`) and never compiled against the Phase 1-B token layer — realigned to the current tokens and the nine-uniform binding contract.
+
 ## [1.0.3-beta] — 2026-11-23: Cloudflare Quick Tunnels, Elite Audio & Zero-Token Delivery
 
 The third public beta release of Streamify introduces native zero-config Cloudflare Quick Tunnel hosting with Termux auto-installation, strict elite audio quality enforcement, lookahead chunk window capping to prevent upstream YouTube 403 throttles, clean client abort lifecycle teardown, zero-token static CDN bundle resolution with SemVer ordering, continuous GitHub Pages deployment for Compose Multiplatform Web WASM with offline demo fixtures, and liquid glass branding refinement.

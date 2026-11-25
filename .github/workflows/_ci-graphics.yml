@@ -91,6 +91,12 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: "Assemble (all KMP targets) + TierGovernor unit tests"
+        env:
+          # S24 Kyant parity: make KyantParityGoldenTest dump the side-by-side
+          # comparison bitmaps (Kyant reference | S24 | amplified delta) under
+          # build/kyant-parity/ for the artifact upload below — the visual
+          # evidence behind every graphics PR.
+          STREAMIFY_GOLDEN_DUMP: "1"
         run: |
           chmod +x gradlew
           set -o pipefail
@@ -131,4 +137,15 @@ jobs:
         with:
           name: graphics-test-reports
           path: streamify-modules/streamify-graphics/build/test-results/**
+          if-no-files-found: ignore
+
+      # S24 Kyant optical parity: the side-by-side golden bitmaps rendered
+      # from the REAL LiquidGlassCore shader (Kyant reference | S24 |
+      # amplified delta, one triptych per light/dark/saturated backdrop).
+      - name: Upload Kyant parity bitmaps (visual evidence)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kyant-parity-bitmaps
+          path: streamify-modules/streamify-graphics/build/kyant-parity/**
           if-no-files-found: ignore
