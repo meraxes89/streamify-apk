@@ -121,12 +121,7 @@ class SearchViewModel(
 
     private val requestedArtwork = mutableSetOf<String>()
 
-    var regionCode: String? = null
-    var language: String? = null
-
     init {
-        regionCode = runBlocking { dataStoreManager.location.first() }
-        language = runBlocking { dataStoreManager.getString(SELECTED_LANGUAGE).first() }
         getSearchHistory()
         getMoodAndGenres()
         loadLastPlayedSearchTrack()
