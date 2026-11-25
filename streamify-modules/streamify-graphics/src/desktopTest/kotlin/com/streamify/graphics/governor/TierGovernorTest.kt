@@ -7,16 +7,19 @@ import kotlin.test.assertTrue
 
 /**
  * Phase 2, Track B — TierGovernor state-machine gate
- * (docs/gpu/PHASED_PLAN.md Phase 2; docs/gpu/CI_TESTING_SPEC.md Job 1
- * invariants; docs/gpu/ARCHITECTURE.md section 3, axis 3).
+ * (docs/gpu/CI_TESTING_SPEC.md Job 1 invariants; docs/gpu/ARCHITECTURE.md
+ * section 3, axis 3; docs/systems/S24-sovereign-graphics.md).
  *
  * Pins every transition of the 4-tier reactive governor:
  *  * Cold start: Tier 2 (Tier 3 on API 26–30 / Vivo 1712, Tier 4 on
  *    software rasterizers).
- *  * Promotion: Tier 1 only after 120 consecutive sub-8.3 ms frames with
+ *  * Promotion: Tier 1 only after 120 consecutive sub-budget frames with
  *    NOMINAL thermal status.
- *  * Demotion: synchronous Tier 3 on THERMAL_STATUS_MODERATE-or-worse, and
- *    on the frame where the rolling 60-frame P95 exceeds 16.6 ms.
+ *  * Thermal demotion: synchronous Tier 3 on MODERATE/SEVERE, Tier 4 on
+ *    CRITICAL/EMERGENCY (the Apple `serious`/`critical` ladder).
+ *  * P95 demotion (stepped): one tier per violated window — Tier 1 drops
+ *    to the Tier 2 single-tap lane first (S24 Track B).
+ *  * Low Power Mode: Tier 2 ceiling clamp + 60 Hz budget pin.
  *  * Hysteresis: 300-frame cooldown blocks any re-promotion.
  *  * Concurrency: a thermal demotion can never be lost to a promotion.
  *
@@ -200,12 +203,30 @@ class TierGovernorTest {
     }
 
     @Test
-    fun severeAndEmergencyAlsoDemoteToTier3() {
-        for (status in listOf(ThermalStatus.SEVERE, ThermalStatus.EMERGENCY)) {
+    fun severeDemotesToTier3() {
+        val governor = TierGovernor(tier1CapableProbe())
+        governor.onThermalStatusChanged(ThermalStatus.SEVERE)
+        assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
+    }
+
+    @Test
+    fun criticalAndEmergencyDemoteToTier4() {
+        // Apple `thermalState == critical` and Android EMERGENCY land on the
+        // Safe solid-tint lane — the deepest synchronous demotion.
+        for (status in listOf(ThermalStatus.CRITICAL, ThermalStatus.EMERGENCY)) {
             val governor = TierGovernor(tier1CapableProbe())
             governor.onThermalStatusChanged(status)
-            assertEquals(RenderTier.Tier3_Legacy, governor.currentTier, "status=$status")
+            assertEquals(RenderTier.Tier4_Safe, governor.currentTier, "status=$status")
         }
+    }
+
+    @Test
+    fun criticalThermalDeepensAnExistingTier3DemotionToTier4() {
+        val governor = TierGovernor(tier1CapableProbe())
+        governor.onThermalStatusChanged(ThermalStatus.MODERATE)
+        assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
+        governor.onThermalStatusChanged(ThermalStatus.CRITICAL)
+        assertEquals(RenderTier.Tier4_Safe, governor.currentTier)
     }
 
     @Test
@@ -225,6 +246,30 @@ class TierGovernorTest {
         feedFrames(governor, 59, frameTimeMillis = SLOW_FRAME_MS)
         assertEquals(RenderTier.Tier2_Balanced, governor.currentTier) // window not full yet
         governor.onFrameRendered(SLOW_FRAME_MS) // 60th sample: 60/60 over budget
+        assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
+    }
+
+    @Test
+    fun p95ViolationStepsTier1DownToTier2SingleTapNotTier3() {
+        // S24 Track B: an intense liquid-glass pass on an iPhone 13 Pro
+        // dropping from 120 FPS to 90 FPS must land on the cheaper
+        // single-tap shader, not bounce visually to the scrim.
+        val governor = TierGovernor(tier1CapableProbe())
+        feedFrames(governor, 120)
+        assertEquals(RenderTier.Tier1_Ultra, governor.currentTier)
+        feedFrames(governor, 59, frameTimeMillis = SLOW_FRAME_MS)
+        assertEquals(RenderTier.Tier1_Ultra, governor.currentTier) // window not full yet
+        governor.onFrameRendered(SLOW_FRAME_MS) // 60th sample: P95 violated
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier) // ONE lane down
+    }
+
+    @Test
+    fun sustainedP95ViolationsStepAllTheWayDownToTier3() {
+        val governor = TierGovernor(tier1CapableProbe())
+        feedFrames(governor, 120) // Tier 1
+        feedFrames(governor, 60, frameTimeMillis = SLOW_FRAME_MS) // Tier 1 -> Tier 2
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+        feedFrames(governor, 60, frameTimeMillis = SLOW_FRAME_MS) // Tier 2 -> Tier 3
         assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
     }
 
@@ -401,9 +446,110 @@ class TierGovernorTest {
         assertEquals(RenderTier.Tier3_Legacy, governor.currentTier)
     }
 
+    // ------------------------------------------------------------------
+    // 8. Low Power Mode (S24 Track A: Apple isLowPowerModeEnabled)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun lowPowerModeDemotesTier1CapsTheCeilingAndPinsSixtyHzBudgets() {
+        val governor = TierGovernor.forRefreshRate(tier1CapableProbe(), refreshRateHz = 120.0)
+        assertEquals(4.16, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(8.33, governor.p95FrameBudgetMs, 0.05)
+
+        feedFrames(governor, 120, frameTimeMillis = FAST_FRAME_120_MS)
+        assertEquals(RenderTier.Tier1_Ultra, governor.currentTier)
+
+        // Low Power Mode engages: immediate synchronous demotion to the
+        // Tier 2 ceiling, budgets pinned to the 60 Hz lane.
+        governor.onLowPowerModeEnabled(true)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+        assertEquals(8.3, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(16.6, governor.p95FrameBudgetMs, 0.05)
+
+        // Even an arbitrarily long fast streak cannot exceed the Tier 2
+        // ceiling while Low Power Mode holds.
+        feedFrames(governor, 1000, frameTimeMillis = FAST_FRAME_120_MS)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+
+        // Low Power Mode clears: cadence budgets restore and the governor
+        // re-promotes once the streak + cooldown contract is satisfied.
+        governor.onLowPowerModeEnabled(false)
+        assertEquals(4.16, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(8.33, governor.p95FrameBudgetMs, 0.05)
+        feedFrames(governor, 120, frameTimeMillis = FAST_FRAME_120_MS)
+        assertEquals(RenderTier.Tier1_Ultra, governor.currentTier)
+    }
+
+    @Test
+    fun lowPowerModeDoesNotDisturbTiersAtOrBelowTheCap() {
+        val governor = TierGovernor(tier1CapableProbe()) // cold Tier 2
+        governor.onLowPowerModeEnabled(true)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+        governor.onLowPowerModeEnabled(false)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+    }
+
+    // ------------------------------------------------------------------
+    // 9. Display cadence adaptation (S24 Track B: ProMotion 10-120 Hz)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun displayRefreshRateChangesRecalibrateTheLiveBudgets() {
+        val governor = TierGovernor.forRefreshRate(tier1CapableProbe(), refreshRateHz = 120.0)
+        assertEquals(4.16, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(8.33, governor.p95FrameBudgetMs, 0.05)
+
+        // ProMotion downshift to 60 Hz: the budgets follow the cadence.
+        governor.onDisplayRefreshRateChanged(60.0)
+        assertEquals(8.3, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(16.66, governor.p95FrameBudgetMs, 0.05)
+
+        // Low Power Mode pins the 60 Hz lane regardless of cadence reports.
+        governor.onLowPowerModeEnabled(true)
+        governor.onDisplayRefreshRateChanged(120.0)
+        assertEquals(8.3, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(16.6, governor.p95FrameBudgetMs, 0.05)
+
+        // Clearing Low Power Mode restores the last reported cadence...
+        governor.onLowPowerModeEnabled(false)
+        assertEquals(4.16, governor.fastFrameBudgetMs, 0.05)
+
+        // ...and garbage rates fall back to the 60 Hz lane, never a
+        // divide-by-zero or a non-positive budget.
+        governor.onDisplayRefreshRateChanged(0.0)
+        assertEquals(8.3, governor.fastFrameBudgetMs, 0.05)
+        assertEquals(16.66, governor.p95FrameBudgetMs, 0.05)
+    }
+
+    @Test
+    fun demotionUnderProMotionBudgetsLandsOnTheSingleTapLane() {
+        // The full Track B story: a 120 Hz ProMotion device whose frames
+        // run 11.1 ms (90 FPS) — over the 8.33 ms P95 budget but under the
+        // 16.6 ms 60 Hz budget — steps down to the single-tap lane, and a
+        // subsequent 60 Hz cadence report re-legitimizes those frames.
+        val governor = TierGovernor.forRefreshRate(tier1CapableProbe(), refreshRateHz = 120.0)
+        feedFrames(governor, 120, frameTimeMillis = FAST_FRAME_120_MS)
+        assertEquals(RenderTier.Tier1_Ultra, governor.currentTier)
+
+        feedFrames(governor, 60, frameTimeMillis = NINETY_FPS_FRAME_MS)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier)
+
+        // The display link downshifts to 60 Hz — 11.1 ms frames are now
+        // comfortably inside the 16.66 ms P95 budget.
+        governor.onDisplayRefreshRateChanged(60.0)
+        feedFrames(governor, 120, frameTimeMillis = NINETY_FPS_FRAME_MS)
+        assertEquals(RenderTier.Tier2_Balanced, governor.currentTier) // stable, no further demotion
+    }
+
     private companion object {
         /** Comfortably under the 8.3 ms fast-frame budget. */
         private const val FAST_FRAME_MS = 8.0
+
+        /** Comfortably under the 4.16 ms 120 Hz fast-frame budget. */
+        private const val FAST_FRAME_120_MS = 4.0
+
+        /** 90 FPS frame time — over the 120 Hz P95 budget, under the 60 Hz one. */
+        private const val NINETY_FPS_FRAME_MS = 11.1
 
         /** Comfortably over the 16.6 ms P95 budget. */
         private const val SLOW_FRAME_MS = 20.0

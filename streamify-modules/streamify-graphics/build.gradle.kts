@@ -115,6 +115,16 @@ kotlin {
                 implementation(compose.desktop.currentOs)
             }
         }
+
+        // S24 Track E (docs/systems/S24-sovereign-graphics.md): the Apple
+        // thermal-constant weld + governor smoke suite executes on the iOS
+        // Simulator lane (`iosSimulatorArm64Test` on the macOS CI runner —
+        // the test binary runs natively on Apple Silicon hosts).
+        val iosTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
+        }
     }
 }
 

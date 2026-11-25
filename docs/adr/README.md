@@ -17,6 +17,7 @@ decision requires a new ADR that links back.
 | [ADR-007](ADR-007-user-graph-alignment-and-cross-device-continuity.md) | User graph alignment and cross-device continuity | Accepted |
 | [ADR-008](ADR-008-server-contract-v4-and-sync-dataplane-hardening.md) | Server Contract v4 and sync data-plane hardening | Accepted |
 | [ADR-009](ADR-009-kotlin-only-audio-pipeline.md) | Kotlin-only audio pipeline | Accepted (supersedes ADR-001/002 for shipped audio) |
+| [ADR-010](ADR-010-sovereign-gpu-engine.md) | Sovereign GPU Engine capability matrix over Skia (Apple thermal/ProMotion/TBDR) | Accepted |
 
 ## Format
 

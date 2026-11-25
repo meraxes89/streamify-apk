@@ -1,6 +1,6 @@
 # ============================================================================
 # _ci-graphics.yml — Tier 2 reusable spoke: Sovereign GPU Engine module
-# (docs/gpu/CI_TESTING_SPEC.md; docs/gpu/PHASED_PLAN.md Phase 1-B / Phase 4).
+# (docs/gpu/CI_TESTING_SPEC.md; docs/systems/S24-sovereign-graphics.md).
 #
 # Callable ONLY via workflow_call, from ci.yml (PR / merge_group / push-main
 # hub). Dispatched whenever the hub preflight's `graphics` path filter
@@ -12,22 +12,25 @@
 #   wasmJsMain). Per the Phase 1 task book, module builds are verified in
 #   CI, never in a local sandbox.
 #
-# PHASE 2 SCOPE (this PR, Phase 2-B): Job 1 of the CI_TESTING_SPEC.md
-#   section 2 matrix is live — `testDesktopUnitTest` runs the TierGovernor
+# PHASE 2 SCOPE (Phase 2-B): Job 1 of the CI_TESTING_SPEC.md section 2
+#   matrix is live — `testDesktopUnitTest` runs the TierGovernor
 #   state-machine suite (cold start / 120-frame promotion / instant thermal
 #   demotion / 300-frame hysteresis) plus the Phase 1-A dialect
 #   transpilation gate on the desktop JVM lane.
 #
-# S24 SCOPE (desktop GPU spectrum matrix): Job 4 is live —
-#   `testSoftwareRasterFallback` forks a dedicated test JVM with
-#   LIBGL_ALWAYS_SOFTWARE=1 so the live renderer-description seam resolves
-#   a Mesa CPU rasterizer and the engine clamps to Tier 4 (Safe) end to
-#   end. `testDesktopUnitTest` additionally carries the S24 Track B/C/E
-#   suites: DRS half-res golden renders, fractional-density physical-pixel
-#   resolution gates, and the forRefreshRate 60/144/240 Hz budget matrix.
-#
-# REMAINING: Jobs 2-3 of the matrix — API 27 (Vivo 1712) Robolectric —
-#   slot in below without touching the hub wiring.
+# S24 SCOPE: desktop GPU spectrum matrix + Apple native matrix
+#   * Job 4: `testSoftwareRasterFallback` forks a dedicated test JVM with
+#     LIBGL_ALWAYS_SOFTWARE=1 so the live renderer-description seam resolves
+#     a Mesa CPU rasterizer and the engine clamps to Tier 4 (Safe) end to
+#     end. `testDesktopUnitTest` carries the S24 suites: DRS half-res golden
+#     renders, fractional-density physical-pixel resolution gates, and the
+#     forRefreshRate 60/144/240 Hz budget matrix.
+#   * Ubuntu lane: explicit `compileKotlinIosArm64` +
+#     `compileKotlinIosSimulatorArm64` gates — klib compilation of the
+#     iosMain/iosTest source sets needs no Apple host for a library module.
+#   * macOS lane (`ios-native-graphics`): `iosSimulatorArm64Test` runs the
+#     thermal-constant weld + bridge smoke suites natively on the
+#     Apple Silicon runner.
 #
 # Mirrors the _ci-android.yml jvm-unit lane's proven setup: recursive
 # submodule checkout (settings.gradle.kts maps :common/:data/:domain/...
@@ -90,7 +93,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: "Assemble (all KMP targets) + TierGovernor unit tests"
+      - name: "Assemble (all KMP targets) + TierGovernor unit tests + iOS klib compiles"
         env:
           # S24 Kyant parity: make KyantParityGoldenTest dump the side-by-side
           # comparison bitmaps (Kyant reference | S24 | amplified delta) under
@@ -102,6 +105,9 @@ jobs:
           set -o pipefail
           ./gradlew :streamify-modules:streamify-graphics:assemble \
             :streamify-modules:streamify-graphics:testDesktopUnitTest \
+            :streamify-modules:streamify-graphics:compileKotlinIosArm64 \
+            :streamify-modules:streamify-graphics:compileKotlinIosSimulatorArm64 \
+            :streamify-modules:streamify-graphics:compileTestKotlinIosSimulatorArm64 \
             -PskipExternalNativeBuild=true \
             --parallel --build-cache --configuration-cache \
             --stacktrace 2>&1 | tee build.log
@@ -148,4 +154,55 @@ jobs:
         with:
           name: kyant-parity-bitmaps
           path: streamify-modules/streamify-graphics/build/kyant-parity/**
+          if-no-files-found: ignore
+
+  # =========================================================================
+  # S24 Track E — iOS native test lane (docs/gpu/CI_TESTING_SPEC.md Job 6).
+  # The simulator-arm64 test binary runs natively on the Apple Silicon
+  # runner, exercising the real NSProcessInfo/NSNotificationCenter bridge:
+  # the Foundation thermal-constant weld + the bridge smoke suite. This is
+  # the linker half of the S24 DoD ("zero Kotlin/Native linker failures on
+  # both iosArm64 and iosSimulatorArm64") — device-framework linking stays
+  # covered by the _ci-ios.yml composeApp assemble spoke.
+  # =========================================================================
+  ios-native-graphics:
+    name: "Graphics: iOS Simulator Test (S24)"
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Apply core submodule patch if present
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: "Run iosSimulatorArm64Test (thermal weld + bridge smoke)"
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :streamify-modules:streamify-graphics:iosSimulatorArm64Test \
+            -PskipExternalNativeBuild=true \
+            --parallel --build-cache \
+            --stacktrace 2>&1 | tee ios-test.log
+
+      - name: Upload iOS test log (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: graphics-ios-test-log
+          path: ios-test.log
           if-no-files-found: ignore

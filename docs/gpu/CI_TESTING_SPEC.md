@@ -35,9 +35,13 @@ Tier 3 Gate: CI Gate (Blocking)
 * **Target**: `TierGovernorTest.kt`
 * **Invariants**:
   - Starts cold at **Tier 2 (Balanced)**.
-  - Promotes to **Tier 1** only after 120 consecutive simulated frames with render time $< 8.3\text{ ms}$.
-  - Demotes immediately to **Tier 3** upon receiving `PowerManager.THERMAL_STATUS_MODERATE` or $P_{95} > 16.6\text{ ms}$.
+  - Promotes to **Tier 1** only after 120 consecutive simulated frames under the live fast-frame budget (8.3 ms at 60 Hz; 4.16 ms at 120 Hz ProMotion via `forRefreshRate`).
+  - Demotes immediately to **Tier 3** upon receiving `PowerManager.THERMAL_STATUS_MODERATE` / `_SEVERE`, and to **Tier 4** upon `THERMAL_STATUS_CRITICAL` / `_EMERGENCY` (Apple `thermalState` `serious`/`critical` map to those rows via the iosMain bridge).
+  - P95 violations demote **one tier at a time** (Tier 1 → Tier 2 single-tap → Tier 3) — the ProMotion micro-stutter invariant.
+  - Low Power Mode (`onLowPowerModeEnabled(true)`) caps the ceiling at **Tier 2**, demotes a live Tier 1 synchronously, and pins both budgets to the 60 Hz lane.
+  - Display cadence changes (`onDisplayRefreshRateChanged`) recalibrate the live budgets (120 Hz → 4.16/8.33 ms; 60 Hz → 8.3/16.66 ms).
   - Enforces a 300-frame hysteresis delay before any subsequent re-promotion.
+* **Related suites**: `AppleThermalStateMappingTest.kt` (the `nominal`/`fair`/`serious`/`critical` mapping table), `BackdropResolutionPolicyTest.kt` (the (tier × density) DRS decision table), `DynamicResolutionOffscreenPassTest.kt` (the reduced-raster offscreen pass).
 
 ### 2. Android 8.1 / API 27 (Vivo 1712 Profile) Test
 * **Target**: Robolectric test configured with `@Config(sdk = 27)`
@@ -76,6 +80,14 @@ Tier 3 Gate: CI Gate (Blocking)
   - Tier 2 DRS golden gate: the offscreen pass renders at 0.5× width/height and upscales bilinearly to a clean full-size composite; unchanged backdrops return the cached result by identity (zero steady-state allocation).
   - Fractional pixel density gate: at 1.25 (500×400 physical) and 1.5 (450×300 physical) densities the `resolution` uniform receives the **physical pixel buffer dimensions** — pass output matches a hand-driven direct render at the same physical extent.
 
+### 7. iOS Native Compile + Simulator Test Gate (S24)
+* **Targets**: `compileKotlinIosArm64`, `compileKotlinIosSimulatorArm64` (klib compilation on the ubuntu lane — no Apple host required for a library module), `iosSimulatorArm64Test` (macOS runner; the simulator test binary runs natively on Apple Silicon).
+* **Invariants**:
+  - Zero Kotlin/Native compilation warnings and zero linker failures on both `iosArm64` and `iosSimulatorArm64`.
+  - `AppleThermalStateWeldTest.kt` pins the iosMain `NSProcessInfoThermalState` weld against the common `AppleThermalStateMapping` table (the two can never drift).
+  - `GraphicsEnvironmentBridgeTest.kt` exercises the real `NSNotificationCenter` bridge attach/detach/idempotency on the simulator without crashing (simulator/headless parity).
+  - The program's construction-time pipeline validation (Metal pipeline-state errors → scrim lane) runs inside every test that materializes `liquidGlassProgram`.
+
 ---
 
 ## 3. GitHub Actions Reusable Workflow Template (`_ci-graphics.yml`)
@@ -97,8 +109,10 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: "Run Graphics State-Machine & Desktop Tests"
+      - name: "Run Graphics State-Machine & Desktop Tests + iOS klib compiles"
         run: ./gradlew :streamify-modules:streamify-graphics:testDesktopUnitTest
+                    :streamify-modules:streamify-graphics:compileKotlinIosArm64
+                    :streamify-modules:streamify-graphics:compileKotlinIosSimulatorArm64
 
       - name: "Run Android Low-End (API 27) Emulation Tests"
         run: ./gradlew :streamify-modules:streamify-graphics:testDebugUnitTest
@@ -107,4 +121,18 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: ./gradlew :streamify-modules:streamify-graphics:testSoftwareRasterFallback
+
+  ios-native-graphics:
+    name: "Graphics: iOS Simulator Test"
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v3
+
+      - name: "Run iosSimulatorArm64Test (thermal weld + bridge smoke)"
+        run: ./gradlew :streamify-modules:streamify-graphics:iosSimulatorArm64Test --no-daemon
 ```
