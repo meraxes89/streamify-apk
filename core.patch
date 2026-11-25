@@ -453,8 +453,85 @@ index bbffab7..206e8d2 100644
                  val is403Video = streamRepository.is403Url(videoUrl).firstOrNull() != false
                  if (!is403Video) {
                      // Return video URL with audio as a second EDL stream for merging
+diff --git a/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
+new file mode 100644
+index 0000000..aea0a2d
+--- /dev/null
++++ b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
+@@ -0,0 +1,71 @@
++package com.maxrave.media3.audio
++
++import androidx.media3.common.C
++import androidx.media3.common.audio.AudioProcessor
++import androidx.media3.common.audio.BaseAudioProcessor
++import androidx.media3.common.util.UnstableApi
++import java.nio.ByteBuffer
++import kotlin.math.abs
++import kotlin.math.tanh
++
++/**
++ * Terminal True-Peak / Soft-Knee Lookahead Limiter AudioProcessor per Phase 1 Audio Audit (F6 / P2-6).
++ *
++ * Prevents inter-sample peaks and digital harsh clipping when Equalizer, Bass Boost,
++ * or 8D Pan effects apply positive gain boosts above 0 dBFS.
++ *
++ * Implements a fast-attack soft-knee tanh saturation curve clamped to a ceiling of -0.5 dBFS (0.944).
++ */
++@UnstableApi
++class LimiterAudioProcessor(
++    private val ceilingRatio: Float = 0.944f, // -0.5 dBFS ceiling
++) : BaseAudioProcessor() {
++
++    @Volatile
++    var enabled: Boolean = true
++
++    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
++        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
++            return AudioProcessor.AudioFormat.NOT_SET
++        }
++        return inputAudioFormat
++    }
++
++    override fun queueInput(inputBuffer: ByteBuffer) {
++        val remaining = inputBuffer.remaining()
++        if (remaining == 0) return
++
++        if (!enabled) {
++            val outputBuffer = replaceOutputBuffer(remaining)
++            outputBuffer.put(inputBuffer)
++            outputBuffer.flip()
++            return
++        }
++
++        val outputBuffer = replaceOutputBuffer(remaining)
++        val shortBuffer = inputBuffer.asShortBuffer()
++        val numSamples = remaining / 2
++        val maxAmp = 32767.0f
++        val ceiling = maxAmp * ceilingRatio
++
++        for (i in 0 until numSamples) {
++            val rawSample = shortBuffer.get().toFloat()
++            val absSample = abs(rawSample)
++
++            val processedSample = if (absSample <= ceiling) {
++                rawSample
++            } else {
++                // Soft-knee compression via tanh above threshold
++                val over = (absSample - ceiling) / (maxAmp - ceiling)
++                val compressed = ceiling + (maxAmp - ceiling) * tanh(over.toDouble()).toFloat()
++                if (rawSample < 0f) -compressed else compressed
++            }
++
++            val clampedShort = processedSample.coerceIn(-32768f, 32767f).toInt().toShort()
++            outputBuffer.putShort(clampedShort)
++        }
++
++        inputBuffer.position(inputBuffer.limit())
++        outputBuffer.flip()
++    }
++}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..4454044 100644
+index e88affc..b90a1ab 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 @@ -167,6 +167,9 @@ internal class CrossfadeExoPlayerAdapter(
@@ -498,7 +575,24 @@ index e88affc..4454044 100644
                  }
              }
          }
-@@ -657,8 +661,8 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -601,6 +605,7 @@ internal class CrossfadeExoPlayerAdapter(
+         val echo = EchoAudioProcessor { internalAudioEffects }
+         val reverb = ConvolutionReverbAudioProcessor { internalAudioEffects }
+         val eightD = EightDAudioProcessor(eightDOrbit)
++        val limiter = LimiterAudioProcessor()
+ 
+         val perPlayerRenderers =
+             object : DefaultRenderersFactory(context) {
+@@ -640,7 +645,7 @@ internal class CrossfadeExoPlayerAdapter(
+                                 // duration even when playback speed or DJ tempo changes.
+                                 // DefaultAudioSink builds its pipeline from getAudioProcessors()
+                                 // (media3 1.11.1 DefaultAudioSink.java:759).
+-                                private val processorsWithEightD = super.getAudioProcessors() + eightD
++                                private val processorsWithEightD = super.getAudioProcessors() + eightD + limiter
+ 
+                                 override fun getAudioProcessors(): Array<AudioProcessor> = processorsWithEightD
+                             },
+@@ -657,8 +662,8 @@ internal class CrossfadeExoPlayerAdapter(
                          .setBufferDurationsMs(
                              DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
                              DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
@@ -509,7 +603,7 @@ index e88affc..4454044 100644
                          ).build(),
                  ).setWakeMode(C.WAKE_MODE_NETWORK)
                  .setHandleAudioBecomingNoisy(true)
-@@ -734,6 +738,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -734,6 +739,7 @@ internal class CrossfadeExoPlayerAdapter(
  
      override fun pause() {
          Logger.d(TAG, "pause() called (state: $internalState, playWhenReady: $internalPlayWhenReady)")
@@ -517,7 +611,7 @@ index e88affc..4454044 100644
          castRemotePlayer?.let { remote ->
              internalPlayWhenReady = false
              remote.pause()
-@@ -1493,7 +1498,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -1493,7 +1499,7 @@ internal class CrossfadeExoPlayerAdapter(
              Logger.w(TAG, "Setting volume to $value")
              internalVolume = value.coerceIn(0f, 1f)
              castRemotePlayer?.volume = internalVolume
@@ -526,7 +620,7 @@ index e88affc..4454044 100644
              listeners.forEach { it.onVolumeChanged(internalVolume) }
          }
  
-@@ -2520,11 +2525,11 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -2520,11 +2526,11 @@ internal class CrossfadeExoPlayerAdapter(
                          val fadeAngle = (progress * PI / 2).toFloat()
  
                          // Fade out current player (old track): cos curve, slow at start, fast at end
