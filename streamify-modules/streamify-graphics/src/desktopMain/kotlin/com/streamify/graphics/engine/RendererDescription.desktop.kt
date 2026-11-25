@@ -72,11 +72,12 @@ private fun forcedSoftwareEnvironmentMarker(): String? {
  * [SkikoProperties.renderApi] parses `SKIKO_RENDER_API` /
  * `skiko.renderApi` and falls back to the OS default (DIRECT3D on
  * Windows, OPENGL on Linux) — an invalid explicit value throws, so the
- * read is guarded.
+ * read is guarded. (skiko 0.150.2's GraphicsApi has no bare SOFTWARE
+ * constant — its software lanes are SOFTWARE_FAST / SOFTWARE_COMPAT.)
  */
 private fun skikoConfiguredSoftwareApi(): Boolean = runCatching {
     when (SkikoProperties.renderApi) {
-        GraphicsApi.SOFTWARE, GraphicsApi.SOFTWARE_FAST, GraphicsApi.SOFTWARE_COMPAT -> true
+        GraphicsApi.SOFTWARE_FAST, GraphicsApi.SOFTWARE_COMPAT -> true
         else -> false
     }
 }.getOrDefault(false)
