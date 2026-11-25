@@ -3,6 +3,8 @@ package com.streamify.graphics.di
 import com.streamify.graphics.governor.ThermalStatus
 import com.streamify.graphics.governor.TierGovernor
 import com.streamify.graphics.governor.mapThermalState
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSProcessInfo
 import platform.darwin.NSObjectProtocol
@@ -30,74 +32,84 @@ import platform.darwin.NSObjectProtocol
  * budgets to the 60 Hz lane (the display link itself is capped at 60 Hz
  * in this mode).
  *
+ * ## Reentrancy guard
+ *
+ * attach/detach use a `kotlin.concurrent.atomics.AtomicInt` CAS guard —
+ * NOT `synchronized`, which is JVM-only (Kotlin/Native has no monitor
+ * intrinsic; the CI gate caught exactly that). Exactly one registration
+ * per governor lifetime; the current state is synchronized BEFORE the
+ * observers register, so the governor never renders a stale thermal or
+ * power assumption for the first frames.
+ *
  * Notification-name literals: the Foundation constants' runtime string
  * values are defined to equal their symbol names (the `NSNotificationName`
  * convention); the literals keep this bridge compilable against any
  * NSString interop shape and are pinned by the iosTest weld suite.
  */
+@OptIn(ExperimentalAtomicApi::class)
 actual object GraphicsEnvironmentBridge {
 
     /** Notification names — see the class KDoc on the literal choice. */
     private const val THERMAL_STATE_DID_CHANGE = "NSProcessInfoThermalStateDidChangeNotification"
     private const val POWER_STATE_DID_CHANGE = "NSProcessInfoPowerStateDidChangeNotification"
 
-    /** Observer tokens; null while detached. Guarded by the bridge lock. */
+    /** Bridge lifecycle guard: 0 = detached, 1 = attached. */
+    private const val STATE_DETACHED = 0
+    private const val STATE_ATTACHED = 1
+
+    /** CAS-guarded lifecycle state (see the class KDoc). */
+    private val bridgeState = AtomicInt(STATE_DETACHED)
+
+    /** Observer tokens from the block-based NSNotificationCenter API. */
     private var thermalObserver: NSObjectProtocol? = null
     private var powerObserver: NSObjectProtocol? = null
 
-    /** Guards attach/detach against concurrent Koin resolution threads. */
-    private val bridgeLock = Any()
-
     actual fun attach(governor: TierGovernor) {
-        synchronized(bridgeLock) {
-            detachLocked()
+        // Idempotent single registration: concurrent double-attach resolves
+        // with exactly one winner via CAS; the loser returns immediately.
+        if (!bridgeState.compareAndSet(STATE_DETACHED, STATE_ATTACHED)) return
 
-            // Sync the current state BEFORE registering, so the governor
-            // never renders a stale thermal/power assumption for the first
-            // frames (an already-warm or already-throttling device
-            // demotes right away instead of after the first event).
-            runCatching {
+        // Sync the current state BEFORE registering, so the governor
+        // never renders a stale thermal/power assumption for the first
+        // frames (an already-warm or already-throttling device demotes
+        // right away instead of after the first event).
+        runCatching {
+            governor.onThermalStatusChanged(currentThermalStatus())
+            governor.onLowPowerModeEnabled(
+                NSProcessInfo.processInfo.isLowPowerModeEnabled,
+            )
+        }
+
+        val center = NSNotificationCenter.defaultCenter
+
+        // queue = null: synchronous delivery on the posting thread —
+        // the governor's any-thread demotion contract absorbs it.
+        thermalObserver = runCatching {
+            center.addObserverForName(
+                THERMAL_STATE_DID_CHANGE,
+                null,
+                null,
+            ) { _ ->
                 governor.onThermalStatusChanged(currentThermalStatus())
+            }
+        }.getOrNull()
+
+        powerObserver = runCatching {
+            center.addObserverForName(
+                POWER_STATE_DID_CHANGE,
+                null,
+                null,
+            ) { _ ->
                 governor.onLowPowerModeEnabled(
                     NSProcessInfo.processInfo.isLowPowerModeEnabled,
                 )
             }
-
-            val center = NSNotificationCenter.defaultCenter
-
-            // queue = null: synchronous delivery on the posting thread —
-            // the governor's any-thread demotion contract absorbs it.
-            thermalObserver = runCatching {
-                center.addObserverForName(
-                    THERMAL_STATE_DID_CHANGE,
-                    null,
-                    null,
-                ) { _ ->
-                    governor.onThermalStatusChanged(currentThermalStatus())
-                }
-            }.getOrNull()
-
-            powerObserver = runCatching {
-                center.addObserverForName(
-                    POWER_STATE_DID_CHANGE,
-                    null,
-                    null,
-                ) { _ ->
-                    governor.onLowPowerModeEnabled(
-                        NSProcessInfo.processInfo.isLowPowerModeEnabled,
-                    )
-                }
-            }.getOrNull()
-        }
+        }.getOrNull()
     }
 
     actual fun detach() {
-        synchronized(bridgeLock) {
-            detachLocked()
-        }
-    }
-
-    private fun detachLocked() {
+        // Only the attach owner detaches; double-detach is a no-op.
+        if (!bridgeState.compareAndSet(STATE_ATTACHED, STATE_DETACHED)) return
         val center = NSNotificationCenter.defaultCenter
         thermalObserver?.let { token ->
             runCatching { center.removeObserver(token) }
