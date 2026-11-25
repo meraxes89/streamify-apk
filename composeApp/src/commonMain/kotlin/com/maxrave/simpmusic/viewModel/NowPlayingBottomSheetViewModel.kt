@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.viewModel
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.viewModelScope
 import com.maxrave.common.Config
 import com.maxrave.domain.data.entities.DownloadState
@@ -422,6 +423,7 @@ class NowPlayingBottomSheetViewModel(
     }
 }
 
+@Immutable
 data class NowPlayingBottomSheetUIState(
     val songUIState: SongUIState = SongUIState(),
     val listLocalPlaylist: List<LocalPlaylistEntity>,
@@ -429,6 +431,7 @@ data class NowPlayingBottomSheetUIState(
     val mainLyricsProvider: String,
     val sleepTimer: SleepTimerState,
 ) {
+    @Immutable
     data class SongUIState(
         val videoId: String = "",
         val title: String = "",

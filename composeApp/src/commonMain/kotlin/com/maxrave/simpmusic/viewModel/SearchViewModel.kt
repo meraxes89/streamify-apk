@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.viewModel
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.viewModelScope
 import com.maxrave.common.SELECTED_LANGUAGE
 import com.maxrave.domain.data.entities.SearchHistory
@@ -42,6 +43,7 @@ import simpmusic.composeapp.generated.resources.songs
 import simpmusic.composeapp.generated.resources.videos
 
 // State cho tìm kiếm
+@Immutable
 data class SearchScreenState(
     val searchType: SearchType = SearchType.ALL,
     val searchAllResult: List<SearchResultType> = emptyList(),

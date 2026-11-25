@@ -24,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -443,6 +444,7 @@ fun LibraryItem(
     }
 }
 
+@Immutable
 sealed class LibraryItemType {
     data object CanvasSong : LibraryItemType()
 
@@ -467,6 +469,7 @@ sealed class LibraryItemType {
     ) : LibraryItemType()
 }
 
+@Immutable
 data class LibraryItemState(
     val type: LibraryItemType,
     val data: List<LibraryType>,
