@@ -23,6 +23,10 @@ private const val TAG = "OpenUrl"
  * Hence the per-OS launcher below it, and a toast when even that fails.
  */
 actual fun openUrl(url: String) {
+    if (!UrlDispatchPolicy.isDispatchable(url)) {
+        Logger.w(TAG, "Blocked attempt to dispatch disallowed URL: $url")
+        return
+    }
     if (openWithDesktopApi(url)) return
     if (openWithSystemLauncher(url)) return
 

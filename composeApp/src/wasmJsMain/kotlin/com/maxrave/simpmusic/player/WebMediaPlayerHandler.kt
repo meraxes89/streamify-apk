@@ -23,6 +23,7 @@ import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
 import com.maxrave.domain.mediaservice.player.MediaPlayerListener
 import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
+import com.maxrave.logger.Logger
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
@@ -117,8 +118,17 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
 
     override val player: MediaPlayerInterface = object : MediaPlayerInterface {
         override fun play() {
-            audioElement.play()
-            _controlState.value = _controlState.value.copy(isPlaying = true)
+            try {
+                audioElement.play().catch { error ->
+                    Logger.w("WebMediaPlayerHandler", "Playback play() promise rejected: $error")
+                    _controlState.value = _controlState.value.copy(isPlaying = false)
+                    null
+                }
+                _controlState.value = _controlState.value.copy(isPlaying = !audioElement.paused)
+            } catch (e: Throwable) {
+                Logger.w("WebMediaPlayerHandler", "Playback play() exception: ${e.message}")
+                _controlState.value = _controlState.value.copy(isPlaying = false)
+            }
         }
         override fun pause() {
             audioElement.pause()
@@ -270,6 +280,10 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
             if (dur > 0L) {
                 _simpleMediaState.value = SimpleMediaState.Ready(dur)
             }
+            _controlState.value = _controlState.value.copy(isPlaying = true)
+        }
+        audioElement.onpause = {
+            _controlState.value = _controlState.value.copy(isPlaying = false)
         }
         audioElement.ontimeupdate = {
             val curMs = (audioElement.currentTime * 1000).toLong()

@@ -575,7 +575,11 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
  * [requests] to bring itself back to the foreground and pick up any deep link.
  */
 private object DesktopRestoreSignal {
-    private val _requests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val _requests =
+        MutableSharedFlow<Unit>(
+            replay = 1,
+            extraBufferCapacity = 1,
+        )
     val requests: SharedFlow<Unit> = _requests.asSharedFlow()
 
     fun request() {

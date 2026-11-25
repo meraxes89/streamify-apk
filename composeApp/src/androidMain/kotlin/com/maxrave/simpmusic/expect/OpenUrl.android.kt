@@ -8,7 +8,10 @@ import com.maxrave.logger.Logger
 import org.koin.mp.KoinPlatform.getKoin
 
 actual fun openUrl(url: String) {
-    if (url.isBlank()) return
+    if (!UrlDispatchPolicy.isDispatchable(url)) {
+        Logger.w("OpenUrl", "Blocked attempt to dispatch disallowed URL: $url")
+        return
+    }
     runCatching {
         val context: AppCompatActivity = getKoin().get()
         val browserIntent =

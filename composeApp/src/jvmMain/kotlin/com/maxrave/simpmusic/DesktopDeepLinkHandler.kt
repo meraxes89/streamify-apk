@@ -25,7 +25,12 @@ object DesktopDeepLinkHandler {
     private const val TAG = "DesktopDeepLinkHandler"
 
     private val pendingUriFile: File by lazy {
-        File(System.getProperty("java.io.tmpdir"), "simpmusic_pending_deeplink.txt")
+        val userName = System.getProperty("user.name")?.replace(Regex("[^A-Za-z0-9_.-]"), "_") ?: "default"
+        val dir = File(System.getProperty("java.io.tmpdir"), "streamify-$userName")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        File(dir, "simpmusic_pending_deeplink.txt")
     }
 
     private var cached: String? = null
@@ -61,7 +66,16 @@ object DesktopDeepLinkHandler {
      */
     fun writePendingUri(uri: String) {
         try {
-            pendingUriFile.writeText(uri)
+            val dir = pendingUriFile.parentFile
+            if (dir != null && !dir.exists()) {
+                dir.mkdirs()
+            }
+            val tmpFile = File(dir, "${pendingUriFile.name}.tmp")
+            tmpFile.writeText(uri)
+            if (!tmpFile.renameTo(pendingUriFile)) {
+                tmpFile.copyTo(pendingUriFile, overwrite = true)
+                tmpFile.delete()
+            }
             Logger.d(TAG, "Wrote pending URI to file: $uri")
         } catch (e: Exception) {
             Logger.e(TAG, "Failed to write pending URI: ${e.message}")
