@@ -874,6 +874,11 @@ buildkonfig {
         buildConfigField(STRING, "versionName", versionName)
         buildConfigField(INT, "versionCode", "$versionCode")
         buildConfigField(STRING, "gitSha", gitSha)
+        buildConfigField(
+            STRING,
+            "announcementReleasePubkeyHex",
+            "6873a0d164bbddce90eef51edecb5eb01b790806ff44dae2ce8e85fa421dea62"
+        )
 
         if (isFullBuild) {
             try {
