@@ -147,8 +147,10 @@ fun LibraryItem(
             Crossfade(targetState = state.isLoading, label = "Loading") { isLoading ->
                 if (!isLoading) {
                     if (state.type is LibraryItemType.RecentlyAdded) {
+                        val recentlyItems = remember(state.data) { state.data.filterIsInstance<RecentlyType>() }
+                        val radioText = stringResource(Res.string.radio)
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            state.data.filterIsInstance<RecentlyType>().forEach { item ->
+                            recentlyItems.forEach { item ->
                                 when (item.objectType()) {
                                     RecentlyType.Type.SONG -> {
                                         SongFullWidthItems(
@@ -165,7 +167,7 @@ fun LibraryItem(
                                                         listTracks = arrayListOf(item.toTrack()),
                                                         firstPlayedTrack = item.toTrack(),
                                                         playlistId = "RDAMVM${item.videoId}",
-                                                        playlistName = "\"${item.title}\" ${runBlocking { getString(Res.string.radio) }}",
+                                                        playlistName = "\"${item.title}\" $radioText",
                                                         playlistType = DomainPlaylistType.RADIO,
                                                         continuation = null,
                                                     ),
@@ -274,15 +276,18 @@ fun LibraryItem(
                                             )
                                         },
                                 ) {
+                                    val context = LocalPlatformContext.current
+                                    val canvasRequest = remember(item.canvasThumbUrl, context) {
+                                        ImageRequest
+                                            .Builder(context)
+                                            .data(item.canvasThumbUrl)
+                                            .diskCachePolicy(CachePolicy.ENABLED)
+                                            .diskCacheKey(item.canvasThumbUrl)
+                                            .crossfade(true)
+                                            .build()
+                                    }
                                     AsyncImage(
-                                        model =
-                                            ImageRequest
-                                                .Builder(LocalPlatformContext.current)
-                                                .data(item.canvasThumbUrl)
-                                                .diskCachePolicy(CachePolicy.ENABLED)
-                                                .diskCacheKey(item.canvasThumbUrl)
-                                                .crossfade(true)
-                                                .build(),
+                                        model = canvasRequest,
                                         placeholder = rememberHolderPainter(),
                                         error = rememberHolderPainter(),
                                         contentDescription = null,

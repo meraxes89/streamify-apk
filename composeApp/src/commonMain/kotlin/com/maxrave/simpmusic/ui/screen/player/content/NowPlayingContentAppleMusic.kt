@@ -514,12 +514,13 @@ private fun AppleMusicMainView(
                 animationSpec = tween(TOP_WASH_FADE_MS),
                 label = "appleMusicTopWash",
             )
+            val washBrush = remember(topWashAlpha) { topWashBrush(topWashAlpha) }
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .height(topBand)
-                        .background(topWashBrush(topWashAlpha)),
+                        .background(washBrush),
             )
         }
 
@@ -528,6 +529,12 @@ private fun AppleMusicMainView(
         // is still the artwork gradient. Rides controlsAlpha — a scrim is an accessory of the
         // controls, and left painted after they auto-hid it covered most of the canvas for nothing.
         if (fullscreenCanvas && controlsAlpha > 0f) {
+            val topCanvasScrim = remember {
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.55f),
+                    1f to Color.Transparent,
+                )
+            }
             Box(
                 modifier =
                     Modifier
@@ -535,12 +542,7 @@ private fun AppleMusicMainView(
                         .alpha(controlsAlpha)
                         .fillMaxWidth()
                         .fillMaxHeight(0.22f)
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.55f),
-                                1f to Color.Transparent,
-                            ),
-                        ),
+                        .background(topCanvasScrim),
             )
         }
 
@@ -549,6 +551,14 @@ private fun AppleMusicMainView(
         // Height is a FRACTION of this Box, never a dp computed from screenInfo: a zero/stale
         // hDP silently collapsed this scrim to nothing, which is why it kept "not existing".
         if (fullscreenCanvas && controlsAlpha > 0f) {
+            val bottomCanvasScrim = remember {
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.22f to Color.Black.copy(alpha = 0.45f),
+                    0.50f to Color.Black.copy(alpha = 0.82f),
+                    1f to Color.Black.copy(alpha = 0.97f),
+                )
+            }
             Box(
                 modifier =
                     Modifier
@@ -560,16 +570,7 @@ private fun AppleMusicMainView(
                         // faint top of the ramp once the lyric strip and the action row made the
                         // controls taller.
                         .fillMaxHeight(((bottomContentHeightDp.dp / 0.6f) / maxHeight.coerceAtLeast(1.dp)).coerceIn(0.6f, 1f))
-                        .background(
-                            Brush.verticalGradient(
-                                // Ramps harder early: at the old stops the TITLE row sat at only
-                                // ~56% black over the video while the lower controls had 76-92%.
-                                0f to Color.Transparent,
-                                0.22f to Color.Black.copy(alpha = 0.45f),
-                                0.50f to Color.Black.copy(alpha = 0.82f),
-                                1f to Color.Black.copy(alpha = 0.97f),
-                            ),
-                        ),
+                        .background(bottomCanvasScrim),
             )
         }
 
