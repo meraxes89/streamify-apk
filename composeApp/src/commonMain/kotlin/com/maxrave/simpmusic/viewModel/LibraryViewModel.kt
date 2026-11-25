@@ -238,8 +238,6 @@ class LibraryViewModel(
         }
     }
 
-    fun getYouTubeLoggedIn(): Boolean = runBlocking { dataStoreManager.loggedIn.first() } == DataStoreManager.TRUE
-
     fun getPlaylistFavorite() {
         viewModelScope.launch {
             albumRepository.getLikedAlbums().collect { album ->
