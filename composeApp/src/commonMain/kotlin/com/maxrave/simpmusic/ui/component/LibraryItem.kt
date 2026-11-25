@@ -249,7 +249,7 @@ fun LibraryItem(
                                 ).mouseDragScroll(canvasRowState),
                             state = canvasRowState,
                         ) {
-                            items(state.data) { item ->
+                            items(state.data, key = { (it as? SongEntity)?.videoId ?: it.hashCode() }) { item ->
                                 val song = item as? SongEntity ?: return@items
                                 Box(
                                     Modifier
@@ -348,7 +348,16 @@ fun LibraryItem(
                     } else {
                         if (state.data.isNotEmpty()) {
                             LazyRow {
-                                items(items = state.data) { item ->
+                                items(
+                                    items = state.data,
+                                    key = { item ->
+                                        when (item) {
+                                            is LocalPlaylistEntity -> "local_${item.id}"
+                                            is PlaylistsResult -> "yt_${item.browseId}"
+                                            else -> item.hashCode()
+                                        }
+                                    },
+                                ) { item ->
                                     Box(modifier = Modifier.animateItem()) {
                                         HomeItemContentPlaylist(
                                             onClick = {

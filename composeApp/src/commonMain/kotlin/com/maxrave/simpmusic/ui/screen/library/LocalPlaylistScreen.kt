@@ -1331,8 +1331,14 @@ fun LocalPlaylistScreen(
             }
         }
         items(count = trackPagingItems.itemCount, key = { index ->
-            val item = trackPagingItems[index]
-            (item?.first?.videoId ?: "") + "item_$index" + item?.second?.inPlaylist + item?.second?.position
+            val pair = trackPagingItems[index]
+            val mapId = pair?.second?.id
+            if (mapId != null && mapId != 0) {
+                "track_item_$mapId"
+            } else {
+                val videoId = pair?.first?.videoId
+                if (!videoId.isNullOrEmpty()) "video_$videoId" else "index_$index"
+            }
         }) { index ->
             val item = trackPagingItems[index]?.first
             if (item != null) {

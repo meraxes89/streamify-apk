@@ -721,7 +721,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
                         itemsIndexed(homeShelves, key = { _, item ->
-                            item.hashCode().toString() + (mainHomeThumbnail ?: "nothumb")
+                            "shelf_${item.title}_${item.channelId ?: item.moreEndpoint?.browseId ?: item.hashCode()}"
                         }) { index, item ->
                             Box {
                                 if (index == 0) {
@@ -854,7 +854,7 @@ fun HomeScreen(
                             }
                         }
                         if (homeListState == ListState.PAGINATION_EXHAUST) {
-                            items(newRelease, key = { it.title.ifEmpty { "new_release_${it.hashCode()}" } }) {
+                            items(newRelease, key = { "new_release_${it.title}_${it.channelId ?: it.moreEndpoint?.browseId ?: it.hashCode()}" }) {
                                 AnimatedVisibility(
                                     visible = newRelease.isNotEmpty(),
                                 ) {
