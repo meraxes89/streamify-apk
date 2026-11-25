@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""check_agent_skills.py — verify the vendored Ponytail skill set.
+"""check_agent_skills.py — verify the vendored agent skill set.
 
-Canonical copies live in .claude/skills/ponytail* and are read directly by
-OpenCode and Claude Code. This script checks that the six skills and both
-command copies exist and that each command names its skill.
+Canonical copies live in .claude/skills/ and are read directly by OpenCode and
+Claude Code. This script checks that each tracked skill and both command copies
+exist and that each command names its skill.
 
 It deliberately does not mirror the skills into .agents/skills/: OpenCode
 scans that path too, and a copy there would shadow the canonical tree.
@@ -30,6 +30,7 @@ SKILLS = (
     "ponytail-debt",
     "ponytail-gain",
     "ponytail-help",
+    "powersync",
 )
 
 

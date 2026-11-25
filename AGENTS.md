@@ -54,6 +54,16 @@ vendored skills. Run `python3 scripts/check_agent_skills.py` to verify the
 set. See [docs/playbooks/PONYTAIL.md](docs/playbooks/PONYTAIL.md) for
 precedence, markers, and the update procedure.
 
+## Vendored PowerSync skill
+
+`.claude/skills/powersync/` is a pinned, tracked copy of the official PowerSync
+skill for S11 (local SQLite ↔ Supabase sync) work. Both agents discover it
+automatically; `/powersync` works in OpenCode and Claude Code. Load its
+`REPO_OVERLAY.md` first: it forbids mutating cloud commands, credential handling
+through the model, new dependencies or `core/` edits without approval, and
+builds to verify. The repo has **not** adopted PowerSync — S11 still uses
+`StreamifySyncEngine`. See `VENDOR.md` there for the pin and audit caveats.
+
 ## Working agreement
 
 - Keep changes small and single-purpose; one finding per PR.
