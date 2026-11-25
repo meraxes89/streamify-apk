@@ -350,16 +350,38 @@ class TierGovernor(
         const val HYSTERESIS_FRAME_COUNT = 300
 
         /**
-         * Factory producing a [TierGovernor] calibrated to a specific display refresh rate.
+         * Factory producing a [TierGovernor] calibrated to a specific display
+         * refresh rate (S24 Track C — monitor refresh rate dynamic budgeting).
+         *
+         * Frame budgets scale proportionally with [displayHz] — the fast
+         * budget tracks half the frame time (the 120 Hz-class promotion
+         * bar), the P95 budget the full frame time (the demotion bar):
+         *
+         * | displayHz | Fast budget | P95 budget |
+         * |-----------|-------------|------------|
+         * | 60        | 8.3 ms      | 16.66 ms   |
+         * | 120       | 4.16 ms     | 8.33 ms    |
+         * | 144       | 3.47 ms     | 6.94 ms    |
+         * | 240       | 2.08 ms     | 4.16 ms    |
+         *
+         * At 60 Hz the fast budget keeps the module's conservative
+         * [FAST_FRAME_BUDGET_MS] floor (8.3 ms, marginally tighter than the
+         * nominal 8.33 ms) so existing 60 Hz behavior is bit-identical.
+         * High-refresh demotions trigger promptly: a struggling iGPU that
+         * misses its P95 window demotes on the same frame it would at
+         * 60 Hz, while a dGPU sustaining the sub-half-frame budget
+         * promotes to Tier 1 exactly as at 60 Hz. Non-positive or NaN
+         * inputs fall back to the 60 Hz calibration.
          *
          * @param probe Device capability probe.
-         * @param refreshRateHz Display refresh rate in Hz (e.g. 60.0 for standard, 120.0 for ProMotion).
+         * @param displayHz Display refresh rate in Hz (e.g. 60.0 standard,
+         * 120.0 ProMotion, 144.0 / 165.0 / 240.0 / 360.0 gaming panels).
          */
         fun forRefreshRate(
             probe: CapabilityProbe,
-            refreshRateHz: Double = 60.0,
+            displayHz: Double = 60.0,
         ): TierGovernor {
-            val safeHz = if (refreshRateHz <= 0.0) 60.0 else refreshRateHz
+            val safeHz = if (displayHz.isNaN() || displayHz <= 0.0) 60.0 else displayHz
             val frameTimeMs = 1000.0 / safeHz
             val fastBudget = minOf(FAST_FRAME_BUDGET_MS, frameTimeMs * 0.5)
             val p95Budget = frameTimeMs

@@ -117,3 +117,23 @@ tasks.register("testDesktopUnitTest") {
     description = "Runs desktopTest - the CI-documented desktop unit-test entry point."
     dependsOn("desktopTest")
 }
+
+// CI_TESTING_SPEC.md section 2, Job 4 — the software-raster fallback gate.
+// A dedicated Test JVM fork running ONLY SoftwareRasterFallbackGateTest with
+// LIBGL_ALWAYS_SOFTWARE=1 (Mesa onto a CPU rasterizer). The fork isolation
+// matters: ShaderProvider.probe()'s process-lazy classification must resolve
+// *under* the forced environment, which a shared fork with the healthy-host
+// assertions of SkikoShaderProviderTest would race. Framework (JUnit 4, the
+// Gradle default — matching desktopTest, which declares no platform) and
+// classpath mirror the desktopTest task.
+val desktopTestTask = tasks.named<Test>("desktopTest")
+tasks.register<Test>("testSoftwareRasterFallback") {
+    group = "verification"
+    description = "Runs the software-raster fallback gate (CI_TESTING_SPEC.md Job 4) with LIBGL_ALWAYS_SOFTWARE=1."
+    testClassesDirs = desktopTestTask.get().testClassesDirs
+    classpath = desktopTestTask.get().classpath
+    useJUnit()
+    include("com/streamify/graphics/engine/SoftwareRasterFallbackGateTest.class")
+    environment("LIBGL_ALWAYS_SOFTWARE", "1")
+    shouldRunAfter("desktopTest")
+}

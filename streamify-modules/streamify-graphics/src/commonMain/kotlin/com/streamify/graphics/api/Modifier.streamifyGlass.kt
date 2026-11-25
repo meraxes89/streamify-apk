@@ -48,6 +48,35 @@ fun Modifier.streamifyGlass(
 }
 
 /**
+ * Offscreen-refraction variant of [Modifier.streamifyGlass] (S24 Track B):
+ * the facade consumes a [GlassBackdropSnapshot] captured off the draw
+ * phase by [rememberGlassBackdrop] instead of drawing the raw layer.
+ *
+ * On the skiko targets the Tier 1 / Tier 2 engines then run the real
+ * `LiquidGlassCore` refraction over the captured pixels — full resolution
+ * with chromatic dispersion on Tier 1, half-resolution Dynamic Resolution
+ * Scaling with a bilinear upscale on the Tier 2 UMA-iGPU lane. Callers
+ * keep the exact same shape / tint contract as the frozen overload.
+ */
+fun Modifier.streamifyGlass(
+    snapshot: GlassBackdropSnapshot,
+    shape: Shape,
+    tint: Color = Color.Unspecified,
+): Modifier {
+    // Built once per composition, reused across every draw pass — the
+    // engine reads the holder's volatile latest snapshot per frame.
+    val request = GlassRenderRequest(
+        backdrop = snapshot.layer,
+        shape = shape,
+        tint = tint,
+        snapshot = snapshot,
+    )
+    return drawBehind {
+        SovereignGraphicsEngineLocator.engine().applyGlass(this, request)
+    }
+}
+
+/**
  * Draw-phase resolver for the [SovereignGraphicsEngine] port.
  *
  * Resolution order:

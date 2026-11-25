@@ -8,6 +8,7 @@ import com.streamify.graphics.engine.ShaderProvider
 import com.streamify.graphics.governor.CapabilityProbe
 import com.streamify.graphics.governor.RenderTier
 import com.streamify.graphics.governor.TierGovernor
+import com.streamify.graphics.governor.platformDisplayRefreshRateHz
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -41,7 +42,14 @@ val streamifyGraphicsModule: Module = module {
     single { ShaderProvider.probe() }
 
     single {
-        TierGovernor(probe = get()).apply {
+        // S24 Track C: the governor's frame budgets calibrate to the live
+        // display refresh rate (desktop AWT display mode; 60.0 elsewhere),
+        // so high-refresh panels get proportionally scaled promotion and
+        // demotion bars instead of the hardcoded 60 Hz assumption.
+        TierGovernor.forRefreshRate(
+            probe = get(),
+            displayHz = platformDisplayRefreshRateHz(),
+        ).apply {
             // Every tier transition invalidates the facade's cached engine
             // binding so the next draw pass re-resolves through Koin under
             // the new tier. The callback fires on whichever thread performed

@@ -102,15 +102,27 @@ The engine **never** relies on GPU marketing names (e.g., Adreno 506 vs Mali-G71
    - Android API $< 31$ (**Vivo 1712 / Android 8.1 / API 27**): Bypasses shaders $\to$ **Tier 3 (Legacy)**.
    - Skia: `RuntimeEffect.makeForShader()` validation.
    - **Startup compile probe (Track B)**: on API 33+ the probe compiles the *canonical* transpiled `LiquidGlassCore` source — not a minimal synthetic program — through the real `RuntimeShader` compiler once at process start, isolated inside the `@RequiresApi(33)` `Agsl33Isolated` lane. Any `Throwable` (OEM driver crash inside `glCompileShader`, AGSL rejection of valid syntax) is caught, recorded in `CapabilityProbe.compileProbeFailureReason`, and the device degrades to the blur (Tier 2) or scrim (Tier 3) lane **before the Compose tree ever calls `drawBehind`** — the Koin graph resolves the probe at engine construction, which precedes the first draw.
-2. **Raster Kind**:
-   - If GL vendor or renderer contains `SwiftShader`, `llvmpipe`, or `Software`, immediately pin to **Tier 4 (Safe)**.
+2. **Raster Kind** (dominates axis 1 — a software rasterizer pins Tier 4 even when SkSL compiles successfully on the CPU):
+   - Linux / Mesa: `llvmpipe`, `softpipe`, `swrast` (headless CI, Linux VMs, WSL2 — frequently pinned via `LIBGL_ALWAYS_SOFTWARE=1`).
+   - Windows / DirectX: `basic render driver`, `WARP`, `rdpbus` (Microsoft's CPU rasterizer used by driver-less installs and RDP sessions).
+   - Headless / generic: `SwiftShader`, `Software`.
+   - Any of these markers in the renderer description immediately pins **Tier 4 (Safe)**. The desktop adapter sources the live string through a layered seam (`streamify.graphics.renderer` override property → forced-software environment → Skiko `renderApi` graphics backend properties → conservative empty default); a contextless `glGetString` is deliberately **not** attempted (undefined behavior without a current GL context — skiko's JNI wrapper does not null-check the driver's return).
 3. **Runtime Governor & Thermals**:
    - Measures rolling $P_{95}$ frame render times over 60-frame windows.
    - Android `PowerManager.getThermalHeadroom()` / `addThermalStatusListener`.
    - Cold starts at **Tier 2 (Balanced)**. Promotes to **Tier 1** only after 120 consecutive frames at $<8.3\text{ ms}$ (120 Hz). Demotes immediately to **Tier 3** if thermal status reaches `MODERATE` or frame spikes exceed budget. Hysteresis (300 frames) prevents visual bouncing.
+   - **Monitor refresh rate budgeting (S24)**: `TierGovernor.forRefreshRate(probe, displayHz)` scales both budgets proportionally with the live panel rate (120 Hz → 4.16/8.33 ms, 144 Hz → 3.47/6.94 ms, 240 Hz → 2.08/4.16 ms) so struggling iGPUs demote promptly against their real panel target while discrete GPUs sustain Tier 1. The desktop adapter feeds the default screen device's AWT display mode; non-desktop targets keep the 60 Hz calibration.
 4. **Known Driver Quirks (Track D)** — a surgical denylist of *proven* driver compiler defects, keyed to renderer markers that identify the broken driver revision:
    - Emulator software-GLES renderers with broken half-float division / NaN handling (`SwiftShader (Software)`, `ANGLE (Android Emulator, Vulkan)` markers) $\to$ pinned to **Tier 4 (Safe)**.
    - The table **only demotes**: a quirk hit can pin Tier 4 but can never lift a device above its probed capability, and a compliant GPU — which simply does not carry the marker — is never penalized. A healthy Adreno 5xx / Mali-G52 still classifies `RUNTIME_SHADER` at Tier 1; the denylist never tiers whole marketing families.
+
+### Desktop GPU Spectrum (S24): DRS & Backend Safety
+
+**Dynamic Resolution Scaling (Tier 2 UMA lane).** On the skiko targets the Tier 1 / Tier 2 engines run the canonical refraction through `SkikoOffscreenGlassPass`: an offscreen raster surface whose pixel dimensions are the draw scope's **physical buffer dimensions × pass-scale** — 1.0× (dispersion) on Tier 1, **0.5× width/height on Tier 2**. The backdrop child samples the full-resolution captured snapshot (LINEAR-filtered local matrix = the downsampling step), the pass evaluates at ~25% of the pixel count, and the composite upscales the result bilinearly — cutting UMA sampling traffic by ~75% so Intel HD 2000–630 / Iris / AMD Vega iGPUs hold 60 FPS inside Tier 2 instead of dropping to the Tier 3 scrim. The facade feeds the pass through `Modifier.streamifyGlass(rememberGlassBackdrop(layer), shape, tint)`: `GraphicsLayer.toImageBitmap()` is a suspend API, so the capture (and all pass reallocation) runs on the composition frame clock — **never inside the draw phase** — while a steady-state frame is a single cached `drawImage` plus the specular rim (zero allocation, zero querying).
+
+**Physical-pixel resolution uniform.** `uniform float2 resolution` binds to the device pixel dimensions of the surface the shader actually evaluates in. Compose Desktop records its picture at `componentWidth × contentScale` (skiko `SkiaLayer.awt.kt`), so a draw scope's pixel size already *is* the physical buffer size on fractional-scale Wayland / X11 / Windows displays — multiplying by density on top of that would double-scale and warp the lens falloff at 125%/150%. The golden gate pins this by rendering at 1.25/1.5 densities and matching against a hand-driven direct render at the same physical extent.
+
+**Windows Direct3D 11 priority.** `SkikoDesktopBackendConfig.install()` (called from the desktop `main()`) pins `skiko.renderApi=DIRECT3D` on Windows unless the user explicitly forced an API (`skiko.renderApi` / `SKIKO_RENDER_API`). D3D11 is skiko's Windows default and the lane that bypasses the broken legacy Intel OpenGL driver stack (`ig4icd64.dll`); the pin makes the default robust against inherited environment overrides. The config is idempotent and non-throwing on every OS.
 
 ---
 
