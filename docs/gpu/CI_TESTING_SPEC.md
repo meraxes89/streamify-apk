@@ -47,11 +47,12 @@ Tier 3 Gate: CI Gate (Blocking)
   - Allocates 0 GPU shader programs.
 
 ### 3. Headless Desktop Skia Offscreen Golden Vector Test
-* **Target**: `OffscreenRenderGoldenTest.kt` (Desktop JVM on Ubuntu runner)
+* **Target**: `OffscreenRenderGoldenTest.kt` + `KyantParityGoldenTest.kt` (Desktop JVM on Ubuntu runner)
 * **Invariants**:
-  - Initializes headless Skia surface via `org.jetbrains.skia.Surface.makeRasterN32Premul(400, 400)`.
+  - Initializes headless Skia surface via `org.jetbrains.skia.Surface.makeRasterN32Premul`.
   - Executes `LiquidGlassCore.sksl` through `RuntimeEffect.makeForShader()`.
-  - Compares the rendered buffer pixel-by-pixel against a committed golden vector PNG with a strict Root Mean Square Error (RMSE) threshold $< 0.01$.
+  - **Kyant parity (S24)**: renders the upgraded shader side-by-side with the independent straight-float Kyant reference model (the five-pillar math of `LiquidGlassContainer.kt`) across light, dark and saturated backdrops; RGB Mean Squared Error must confirm optical equivalence (MSE < 5e-4, quantization-noise budget), and the "đục đen" ramp must match `lerp(0.12, 0.50, clamp((luminance - 0.3) / 0.5))` exactly.
+  - With `STREAMIFY_GOLDEN_DUMP=1` (CI sets it), the Kyant-reference | S24 | amplified-delta triptychs are written to `build/kyant-parity/` and uploaded as workflow artifacts — the visual comparison evidence for PRs.
 
 ### 4. Software-Raster Fallback Gate
 * **Target**: `SoftwareRasterFallbackGateTest.kt`, executed by the dedicated Gradle task

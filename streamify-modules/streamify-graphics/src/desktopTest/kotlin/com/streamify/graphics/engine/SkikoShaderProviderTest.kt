@@ -32,8 +32,9 @@ import org.jetbrains.skia.Surface
  *  * **tier mapping** — engineFor covers all four tiers with the ladder's
  *    engines and never throws.
  *  * **clean render** — the production program (`liquidGlassProgram`, the
- *    exact pipeline the engine holds) binds the backdrop child + all five
- *    uniforms and renders to a raster Skia canvas without error, producing
+ *    exact pipeline the engine holds) binds the backdrop child + all eight
+ *    non-child uniforms (the S24 Kyant-parity defaults included) and
+ *    renders to a raster Skia canvas without error, producing
  *    spatially varying, alpha-preserving output in both the Tier 1
  *    (dispersion) and Tier 2 (single-tap) configurations.
  */
@@ -213,7 +214,9 @@ class SkikoShaderProviderTest {
     /**
      * Renders through the exact production pipeline: the provider's live
      * [SkikoLiquidGlassProgram] with the backdrop child shader bound and
-     * all five non-child uniforms set from the token layer.
+     * the non-child uniforms set from the token layer — the S24
+     * Kyant-parity defaults (vibrancy 1.5, the directional 0.35 rim)
+     * resolve inside bindUniforms, with a neutral 0 scrim.
      */
     private fun renderThroughProgram(chromaticSpread: Float): Bitmap {
         val program = assertNotNull(
