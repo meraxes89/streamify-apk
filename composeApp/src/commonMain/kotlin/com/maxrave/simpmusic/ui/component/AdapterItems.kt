@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.hoverable
@@ -220,7 +221,10 @@ fun HomeSectionHeader(
                 Modifier
                     .focusable(true)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable {
+                    .clickable(
+                        onClickLabel = data.title,
+                        role = Role.Button,
+                    ) {
                         navController.navigate(
                             ArtistDestination(
                                 channelId = channelId,
@@ -232,7 +236,10 @@ fun HomeSectionHeader(
                 Modifier
                     .focusable(true)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { navController.navigateToMoreEndpoint(moreEndpoint, data.title) }
+                    .clickable(
+                        onClickLabel = data.title,
+                        role = Role.Button,
+                    ) { navController.navigateToMoreEndpoint(moreEndpoint, data.title) }
             } else {
                 Modifier
             },
@@ -311,7 +318,11 @@ fun SectionHeaderButton(
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
-            modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
+            modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(
+                onClickLabel = text,
+                role = Role.Button,
+                onClick = onClick,
+            ),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),

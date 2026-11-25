@@ -378,13 +378,14 @@ internal fun ExpressiveArtworkCardPage(
                                     .background(Color.Black),
                         ) {
                             Box(Modifier.fillMaxSize()) {
+                                val timelineState by state.timelineFlow.collectAsStateWithLifecycle()
                                 MediaPlayerViewWithSubtitle(
                                     playerName = MAIN_PLAYER,
                                     modifier = Modifier.align(Alignment.Center),
                                     shouldShowSubtitle = internalShowSubtitle,
                                     shouldPip = false,
                                     shouldScaleDownSubtitle = true,
-                                    timelineState = state.timelineState,
+                                    timelineState = timelineState,
                                     lyricsData = state.screenData.lyricsData?.lyrics,
                                     translatedLyricsData = state.screenData.lyricsData?.translatedLyrics?.first,
                                     isInPipMode = state.isInPipMode,
@@ -874,10 +875,11 @@ internal fun ExpressiveBelowTheFold(
                         text = state.screenData.songInfoData?.description ?: "",
                         onTimeClicked = { raw ->
                             val timestamp = parseTimestampToMilliseconds(raw)
-                            if (timestamp != 0.0 && timestamp < state.timelineState.total) {
+                            val totalMs = state.timelineFlow.value.total
+                            if (timestamp != 0.0 && timestamp < totalMs) {
                                 actions.onUIEvent(
                                     UIEvent.UpdateProgress(
-                                        ((timestamp * 100) / state.timelineState.total).toFloat(),
+                                        ((timestamp * 100) / totalMs).toFloat(),
                                     ),
                                 )
                             }
@@ -902,13 +904,14 @@ internal fun ExpressiveBelowTheFold(
 
     state.screenData.lyricsData?.let { lyricsData ->
         if (showShareLyricsSheet) {
+            val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
             ShareLyricsSheet(
                 lines = lyricsData.toShareLyricsLines(),
                 songTitle = state.screenData.nowPlayingTitle,
                 artistName = state.screenData.artistName,
                 artwork = state.screenData.bitmap,
                 seedColor = state.startColor.value,
-                initialLineIndex = state.currentLyricLineIndex,
+                initialLineIndex = currentLyricLineIndex,
                 onDismiss = { showShareLyricsSheet = false },
             )
         }
@@ -1025,7 +1028,8 @@ internal fun ExpressiveCollapsedToolbar(
                         actions.onUIEvent(UIEvent.ToggleLike)
                     }
                     Spacer(modifier = Modifier.width(15.dp))
-                    Crossfade(targetState = state.timelineState.loading, label = "") {
+                    val toolbarTimeline by state.timelineFlow.collectAsStateWithLifecycle()
+                    Crossfade(targetState = toolbarTimeline.loading, label = "") {
                         if (it) {
                             Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(
@@ -1052,20 +1056,17 @@ internal fun ExpressiveCollapsedToolbar(
                             .align(Alignment.BottomCenter),
                 ) {
                     LeftToRight {
-                        LinearProgressIndicator(
-                            progress = { state.timelineState.current.toFloat() / state.timelineState.total },
+                        val barTimeline by state.timelineFlow.collectAsStateWithLifecycle()
+                        ProgressRail(
+                            progressProvider = {
+                                if (barTimeline.total > 0L) barTimeline.current.toFloat() / barTimeline.total else 0f
+                            },
+                            color = colorScheme.primary,
+                            trackColor = colorScheme.surfaceContainerHighest,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(
-                                        color = Color.Transparent,
-                                        shape = RoundedCornerShape(4.dp),
-                                    ),
-                            color = colorScheme.primary,
-                            trackColor = colorScheme.surfaceContainerHighest,
-                            strokeCap = StrokeCap.Round,
-                            drawStopIndicator = {},
+                                    .height(1.dp),
                         )
                     }
                 }

@@ -475,16 +475,17 @@ private fun NowPlayingM3ExpressiveLayout(
                                     inlineLyrics.syncType != null &&
                                     inlineLyrics.syncType != "UNSYNCED" &&
                                     inlineLyrics.lines != null
+                            val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
                             val currentLyricLineText =
                                 if (!hasSyncedLyrics ||
                                     state.screenData.fullscreenCanvas() != null ||
-                                    state.currentLyricLineIndex < 0
+                                    currentLyricLineIndex < 0
                                 ) {
                                     ""
                                 } else {
                                     inlineLyrics
                                         ?.lines
-                                        ?.getOrNull(state.currentLyricLineIndex)
+                                        ?.getOrNull(currentLyricLineIndex)
                                         ?.words
                                         ?.stripRichSyncTimestamps()
                                         .orEmpty()
@@ -594,8 +595,9 @@ private fun NowPlayingM3ExpressiveLayout(
                                                 .fillMaxWidth()
                                                 .animateContentSize(),
                                     ) {
+                                        val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
                                         this@Column.AnimatedVisibility(
-                                            visible = state.currentLyricLineIndex > -1,
+                                            visible = currentLyricLineIndex > -1,
                                             enter = fadeIn() + expandVertically(),
                                             exit = fadeOut() + shrinkVertically(),
                                         ) {
@@ -606,7 +608,7 @@ private fun NowPlayingM3ExpressiveLayout(
                                                 state.screenData.lyricsData
                                                     ?.lyrics
                                                     ?.lines
-                                                    ?.getOrNull(state.currentLyricLineIndex)
+                                                    ?.getOrNull(currentLyricLineIndex)
                                                     ?.words
                                                     ?.stripRichSyncTimestamps()
                                             if (!lineText.isNullOrBlank()) {
@@ -633,7 +635,7 @@ private fun NowPlayingM3ExpressiveLayout(
                                                             ?.translatedLyrics
                                                             ?.first
                                                             ?.lines
-                                                            ?.getOrNull(state.currentLyricLineIndex)
+                                                            ?.getOrNull(currentLyricLineIndex)
                                                             ?.words
                                                             ?.stripRichSyncTimestamps()
                                                     if (!translatedLineText.isNullOrBlank()) {
@@ -838,6 +840,16 @@ internal fun ColumnScope.ExpressivePlaybackControls(
     showShuffleAndRepeat: Boolean = false,
 ) = LeftToRight {
     val colorScheme = MaterialTheme.colorScheme
+    val progressState =
+        rememberTimelineProgressState(
+            timelineFlow = state.timelineFlow,
+            onSeekCommit = { actions.onUIEvent(UIEvent.UpdateProgress(it)) },
+        )
+    val crossfadeTrackColor =
+        rememberCrossfadeTrackColor(
+            isCrossfading = progressState.timeline.isCrossfading,
+            defaultColor = colorScheme.primary,
+        )
     Box(
         Modifier
             .padding(
@@ -846,47 +858,33 @@ internal fun ColumnScope.ExpressivePlaybackControls(
             .then(sliderModifier),
     ) {
         WavySeekBar(
-            progressFraction = state.sliderValue / 100f,
+            progressFraction = progressState.sliderValue / 100f,
             isPlaying = state.controllerState.isPlaying,
-            // Classic swaps the slider color to the rainbow while
-            // crossfading (state.sliderTrackColor); tonal primary
-            // otherwise.
             activeColor =
-                if (state.timelineState.isCrossfading) {
-                    state.sliderTrackColor
+                if (progressState.timeline.isCrossfading) {
+                    crossfadeTrackColor
                 } else {
                     colorScheme.primary
                 },
             trackColor = colorScheme.secondaryContainer,
             thumbColor = colorScheme.primary,
-            onSliderChange = actions.onSliderChange,
-            onSliderChangeFinished = actions.onSliderChangeFinished,
+            onSliderChange = progressState.onValueChange,
+            onSliderChangeFinished = progressState.onValueChangeFinished,
         )
     }
-    // Time row — same math and negative guard as Classic
-    // (formatDuration renders any negative as NA:NA).
     Row(
         Modifier
             .fillMaxWidth()
-            // Drawn 8dp closer to the wave without shrinking the
-            // seekbar's 40dp touch target or moving the layout slot:
-            // the same 8dp visually opens the gap to the transport
-            // row below (owner: times sat too far from the slider,
-            // too close to the controls).
             .offset(y = (-8).dp)
             .padding(horizontal = 20.dp),
     ) {
         Text(
-            text = state.timelineState.elapsedLabel(state.sliderValue / 100f),
+            text = progressState.timeline.elapsedLabel(progressState.sliderValue / 100f),
             style = typo().bodyMedium,
             color = state.secondaryTextColor(),
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Left,
         )
-        // Sweep head for the "Crossfading" shimmer, 0..1. Runs
-        // unconditionally: behind the crossfade check it would
-        // restart from zero each time the label appears (same
-        // rationale as the desktop MiniPlayer's crossfadeSweep).
         val sweepTransition = rememberInfiniteTransition(label = "m3eCrossfadeSweep")
         val crossfadeSweep by sweepTransition.animateFloat(
             initialValue = 0f,
@@ -901,11 +899,8 @@ internal fun ColumnScope.ExpressivePlaybackControls(
         AnimatedVisibility(
             enter = fadeIn(),
             exit = fadeOut(),
-            visible = state.timelineState.isCrossfading,
+            visible = progressState.timeline.isCrossfading,
         ) {
-            // Same effect as the desktop MiniPlayer label: a
-            // highlight sweeping through the glyphs via a text
-            // brush — no overlay, no clipping.
             val shimmerSpan = 140f
             val shimmerHead = crossfadeSweep * (shimmerSpan * 3f) - shimmerSpan
             val labelColor = typo().bodyMedium.color
@@ -916,8 +911,6 @@ internal fun ColumnScope.ExpressivePlaybackControls(
                         brush =
                             Brush.horizontalGradient(
                                 0f to labelColor.copy(alpha = 0.45f),
-                                // The sweep head is PURE white, not the resting label colour — the label
-                                // colour is an adaptive grey, and a grey gleam reads as no gleam at all.
                                 0.5f to Color.White,
                                 1f to labelColor.copy(alpha = 0.45f),
                                 startX = shimmerHead,
@@ -929,7 +922,7 @@ internal fun ColumnScope.ExpressivePlaybackControls(
             )
         }
         Text(
-            text = state.timelineState.lengthLabel(),
+            text = progressState.timeline.lengthLabel(),
             style = typo().bodyMedium,
             color = state.secondaryTextColor(),
             modifier = Modifier.weight(1f),
@@ -944,7 +937,7 @@ internal fun ColumnScope.ExpressivePlaybackControls(
     )
     ExpressiveTransportRow(
         controllerState = state.controllerState,
-        loading = state.timelineState.loading,
+        loading = progressState.timeline.loading,
         onUIEvent = actions.onUIEvent,
         modifier = Modifier.padding(horizontal = 20.dp),
         showShuffleAndRepeat = showShuffleAndRepeat,

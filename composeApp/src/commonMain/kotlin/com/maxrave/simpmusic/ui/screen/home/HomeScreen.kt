@@ -1043,10 +1043,11 @@ fun HomeScreen(
                 // strip, so at rest Create sits at the right edge, and a Mood that opens wide pushes it
                 // along instead of sliding under it. On Desktop and in landscape Create stays put at the
                 // right edge, like the avatar.
-                val createPinned = getPlatform() == Platform.Desktop || getScreenSizeInfo().let { it.wDP >= it.hDP }
+                val windowSizeClass = com.maxrave.simpmusic.ui.theme.LocalAppWindowSizeClass.current
+                val createPinned = getPlatform() == Platform.Desktop || !windowSizeClass.isCompact
                 val chipHeadFade by animateFloatAsState(if (chipRowState.canScrollBackward) 1f else 0f)
                 val chipTailFade by animateFloatAsState(if (chipRowState.canScrollForward) 1f else 0f)
-                val isCompactScreen = getScreenSizeInfo().let { it.wDP < 600 }
+                val isCompactScreen = windowSizeClass.isCompact
                 var badgeExpanded by remember { mutableStateOf(false) }
                 // Notifications moved into the avatar menu, Listen Together into the Create sheet.
                 val createActions: @Composable () -> Unit = {
@@ -1373,7 +1374,7 @@ fun QuickPicks(
 ) {
     val lazyListState = rememberLazyGridState()
     val snapperFlingBehavior = rememberSnapFlingBehavior(SnapLayoutInfoProvider(lazyGridState = lazyListState, snapPosition = SnapPosition.Start))
-    val isPortrait = getScreenSizeInfo().let { it.wDP < it.hDP }
+    val isPortrait = com.maxrave.simpmusic.ui.theme.LocalAppWindowSizeClass.current.isCompact
     val density = LocalDensity.current
     var widthDp by remember {
         mutableStateOf(0.dp)
@@ -1438,8 +1439,8 @@ fun QuickPicks(
             }
         }
         LazyHorizontalGrid(
-            rows = GridCells.Fixed(4),
-            // Four 64dp rows; 56dp on Android, where Home packs tighter (QuickPicksItem pads to match).
+            rows = GridCells.Adaptive(minSize = if (compact) 52.dp else 56.dp),
+            // Adaptive rows (~56dp each; compact on Android).
             modifier =
                 Modifier
                     .height(if (compact) 224.dp else 256.dp)
@@ -1516,7 +1517,7 @@ fun MoodMomentAndGenre(
                         .padding(vertical = 5.dp),
             )
             LazyHorizontalGrid(
-                rows = GridCells.Fixed(3),
+                rows = GridCells.Adaptive(minSize = 64.dp),
                 modifier = Modifier.height(210.dp).mouseDragScroll(gridState, flingBehavior),
                 state = gridState,
                 flingBehavior = flingBehavior,
@@ -1577,7 +1578,7 @@ fun ChartData(
     // Start, not the default Center: a centred column leaves the one before it cut through its rank.
     val snapperFlingBehavior2 =
         rememberSnapFlingBehavior(SnapLayoutInfoProvider(lazyGridState = lazyListState2, snapPosition = SnapPosition.Start))
-    val isPortrait = getScreenSizeInfo().let { it.wDP < it.hDP }
+    val isPortrait = com.maxrave.simpmusic.ui.theme.LocalAppWindowSizeClass.current.isCompact
 
     Column(
         Modifier.onGloballyPositioned { coordinates ->
@@ -1633,7 +1634,7 @@ fun ChartData(
                     .padding(vertical = 10.dp),
         )
         LazyHorizontalGrid(
-            rows = GridCells.Fixed(3),
+            rows = GridCells.Adaptive(minSize = 72.dp),
             modifier = Modifier.height(240.dp).mouseDragScroll(lazyListState2, snapperFlingBehavior2),
             state = lazyListState2,
             flingBehavior = snapperFlingBehavior2,
@@ -1677,7 +1678,7 @@ fun ChartData(
             val podcastFlingBehavior =
                 rememberSnapFlingBehavior(SnapLayoutInfoProvider(lazyGridState = podcastGridState, snapPosition = SnapPosition.Start))
             LazyHorizontalGrid(
-                rows = GridCells.Fixed(3),
+                rows = GridCells.Adaptive(minSize = 72.dp),
                 modifier = Modifier.height(240.dp).mouseDragScroll(podcastGridState, podcastFlingBehavior),
                 state = podcastGridState,
                 flingBehavior = podcastFlingBehavior,

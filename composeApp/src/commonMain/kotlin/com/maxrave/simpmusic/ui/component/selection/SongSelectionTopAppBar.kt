@@ -79,7 +79,7 @@ fun SongSelectionTopAppBar(
                 IconButton(onClick = onOpenActions) {
                     Icon(
                         imageVector = SimpIcons.MoreVert,
-                        contentDescription = null,
+                        contentDescription = stringResource(Res.string.more),
                     )
                 }
             }

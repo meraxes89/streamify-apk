@@ -669,8 +669,9 @@ private fun AppleMusicMainView(
                                             } + 16.dp,
                                     ),
                         ) {
+                            val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
                             AnimatedVisibility(
-                                visible = state.currentLyricLineIndex > -1,
+                                visible = currentLyricLineIndex > -1,
                                 enter = fadeIn() + expandVertically(),
                                 exit = fadeOut() + shrinkVertically(),
                             ) {
@@ -678,7 +679,7 @@ private fun AppleMusicMainView(
                                     state.screenData.lyricsData
                                         ?.lyrics
                                         ?.lines
-                                        ?.getOrNull(state.currentLyricLineIndex)
+                                        ?.getOrNull(currentLyricLineIndex)
                                         ?.words
                                         ?.stripRichSyncTimestamps()
                                 if (!lineText.isNullOrBlank()) {
@@ -699,7 +700,7 @@ private fun AppleMusicMainView(
                                                 ?.translatedLyrics
                                                 ?.first
                                                 ?.lines
-                                                ?.getOrNull(state.currentLyricLineIndex)
+                                                ?.getOrNull(currentLyricLineIndex)
                                                 ?.words
                                                 ?.stripRichSyncTimestamps()
                                         if (!translatedLineText.isNullOrBlank()) {
@@ -1059,6 +1060,7 @@ private fun AppleMusicArtworkPage(
                                     // like a card; wide ones run edge to edge and stay square.
                                     .then(if (ratio < 1f) Modifier.clip(ArtworkShape) else Modifier),
                         ) {
+                            val timelineState by state.timelineFlow.collectAsStateWithLifecycle()
                             MediaPlayerViewWithSubtitle(
                                 playerName = MAIN_PLAYER,
                                 // fillMaxWidth, never fillMaxSize: a free height lets the surface's
@@ -1067,7 +1069,7 @@ private fun AppleMusicArtworkPage(
                                 shouldShowSubtitle = showSubtitle,
                                 shouldPip = false,
                                 shouldScaleDownSubtitle = true,
-                                timelineState = state.timelineState,
+                                timelineState = timelineState,
                                 lyricsData = state.screenData.lyricsData?.lyrics,
                                 translatedLyricsData = state.screenData.lyricsData?.translatedLyrics?.first,
                                 isInPipMode = state.isInPipMode,
