@@ -1197,7 +1197,7 @@ index 0000000..aea0a2d
 +    }
 +}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
-index 62c93a5..a51f81f 100644
+index 62c93a5..91c65a1 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
 @@ -62,6 +62,7 @@ import com.maxrave.domain.repository.SearchRepository
@@ -1235,14 +1235,14 @@ index 62c93a5..a51f81f 100644
          // Player Cache
 -        single<SimpleCache>(qualifier = named(PLAYER_CACHE), createdAtStart = true) {
 +        single<SimpleCache>(qualifier = named(PLAYER_CACHE)) {
-+            val cacheSize =
++            val cacheSize: Int =
 +                runCatching {
 +                    runBlocking(Dispatchers.IO) {
 +                        withTimeoutOrNull(500) {
 +                            get<DataStoreManager>().maxSongCacheSize.first()
 +                        }
 +                    }
-+                }.getOrNull() ?: 512L
++                }.getOrNull() ?: 512
              provideSimpleCache(
                  context = androidContext(),
                  cacheName = "exoplayer",

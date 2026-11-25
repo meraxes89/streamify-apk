@@ -200,10 +200,7 @@ Whenever you edit, add, or remove announcements in `docs/announcements/manifest.
 
 1. **Prerequisites**: Node.js v16+ (using native Node `crypto`).
 2. **Execute the Signing Script**:
-   ```bash
-   node scripts/sign_manifest.js
-   ```
-   Or with a custom private key via environment variable:
+   Provide the Ed25519 private key in hexadecimal format via the `STREAMIFY_ANNOUNCEMENT_KEY` environment variable:
    ```bash
    STREAMIFY_ANNOUNCEMENT_KEY="<64_hex_private_key>" node scripts/sign_manifest.js
    ```
