@@ -449,11 +449,10 @@ class KyantParityGoldenTest {
         val dataSize = rowPadded * height
         val fileSize = 54 + dataSize
 
-        val out = File(DUMP_DIR).apply { mkdirs() }
+        val outFile = File(DUMP_DIR).apply { mkdirs() }
             .resolve("kyant_parity_${backdropClass.name.lowercase()}.bmp")
-            .outputStream()
 
-        out.use { stream ->
+        outFile.outputStream().use { stream ->
             // OutputStream.write(Int) — every field below is a low byte.
             fun u16(v: Int) {
                 stream.write(v and 0xFF)
@@ -494,7 +493,7 @@ class KyantParityGoldenTest {
                 stream.write(row)
             }
         }
-        println("kyant-parity: dumped ${out.absolutePath}")
+        println("kyant-parity: dumped ${outFile.absolutePath}")
     }
 
     private companion object {
