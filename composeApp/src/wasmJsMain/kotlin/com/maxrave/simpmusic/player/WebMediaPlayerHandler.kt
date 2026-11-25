@@ -228,7 +228,7 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
     }
 
     init {
-        audioElement.onerror = {
+        audioElement.onerror = { _, _, _, _, _ ->
             val errCode = audioElement.error?.code?.toInt() ?: 0
             val errName = when (errCode) {
                 1 -> "MEDIA_ERR_ABORTED"
@@ -244,7 +244,8 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
                     message = "Audio playback failed: $errName (code $errCode)",
                 ),
             )
-            _simpleMediaState.value = SimpleMediaState.Error
+            _simpleMediaState.value = SimpleMediaState.Initial
+            null
         }
         audioElement.onended = {
             seekToNext()
@@ -395,8 +396,9 @@ class WebMediaPlayerHandler : MediaPlayerHandler {
         if (durSec > 0) {
             _simpleMediaState.value = SimpleMediaState.Ready(durSec * 1000L)
         }
-        val streamUrl = if (!mediaItem.uri.isNullOrBlank() && mediaItem.uri != mediaItem.mediaId) {
-            mediaItem.uri
+        val uri = mediaItem.uri
+        val streamUrl = if (!uri.isNullOrBlank() && uri != mediaItem.mediaId) {
+            uri
         } else {
             "/api/stream?id=" + mediaItem.mediaId
         }
