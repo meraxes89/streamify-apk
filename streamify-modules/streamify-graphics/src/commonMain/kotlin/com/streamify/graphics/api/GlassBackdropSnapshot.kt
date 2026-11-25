@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.layer.GraphicsLayer
+import kotlin.concurrent.Volatile
 
 /**
  * Live offscreen backdrop capture feeding the Sovereign GPU Engine's
