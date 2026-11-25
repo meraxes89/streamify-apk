@@ -193,7 +193,7 @@ private object Agsl33Isolated {
         // lane (Tier 2 blur / Tier 3 scrim), never crash startup. The
         // reason is recorded and surfaced through
         // CapabilityProbe.compileProbeFailureReason.
-        CompileProbeResult(compiled = false, failureReason = "${t.javaClass.simpleName}: ${t.message}")
+        CompileProbeResult(compiled = false, failureReason = "${t::class.simpleName ?: "Throwable"}: ${t.message}")
     }
 
     /** Constructs the AGSL engine; a source compile failure throws and the
