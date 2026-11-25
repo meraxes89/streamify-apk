@@ -188,6 +188,21 @@ index 9befde3..3110e43 100644
          }
  
      override suspend fun setDownloadQuality(quality: String) {
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
+index 2c3a3a2..47aa7ee 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
+@@ -53,6 +53,10 @@ interface SyncDao {
+         seq: Long,
+     )
+ 
++    /** Mark rejected operations as dead-lettered (-1) so they are quarantined from retries. */
++    @Query("UPDATE sync_change SET serverSeq = -1 WHERE changeId IN (:changeIds)")
++    suspend fun markRejected(changeIds: List<String>)
++
+     @Query("DELETE FROM sync_change WHERE serverSeq IS NOT NULL AND changedAt < :before")
+     suspend fun pruneSent(before: Long)
+ 
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 index 4024528..a7b5a84 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
