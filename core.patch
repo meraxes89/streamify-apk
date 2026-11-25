@@ -777,10 +777,18 @@ index 0000000..aea0a2d
 +    }
 +}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..f77874c 100644
+index e88affc..a4a0c9d 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-@@ -153,7 +153,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -48,6 +48,7 @@ import com.maxrave.media3.audio.CrossfadeFilterAudioProcessor
+ import com.maxrave.media3.audio.EchoAudioProcessor
+ import com.maxrave.media3.audio.EightDAudioProcessor
+ import com.maxrave.media3.audio.EqualizerAudioProcessor
++import com.maxrave.media3.audio.LimiterAudioProcessor
+ import com.maxrave.media3.audio.EqualizerCurve
+ import com.maxrave.media3.audio.SleepFadeAudioProcessor
+ import com.maxrave.media3.service.mediasourcefactory.isLiveStreamDetected
+@@ -153,7 +154,7 @@ internal class CrossfadeExoPlayerAdapter(
  
      // ========== State Management ==========
  
@@ -789,7 +797,7 @@ index e88affc..f77874c 100644
  
      @Volatile
      private var currentPlayer: ExoPlayer? = null
-@@ -167,6 +167,9 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -167,6 +168,9 @@ internal class CrossfadeExoPlayerAdapter(
      @Volatile
      private var internalVolume = 1.0f
  
@@ -799,7 +807,7 @@ index e88affc..f77874c 100644
      /**
       * Sleep-timer fade attenuation. Applied on a separate volume line — every player's
       * [SleepFadeAudioProcessor] reads this value straight out of here, so writing it once covers
-@@ -254,8 +257,8 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -254,8 +258,8 @@ internal class CrossfadeExoPlayerAdapter(
          AudioManager.OnAudioFocusChangeListener { focusChange ->
              when (focusChange) {
                  AudioManager.AUDIOFOCUS_GAIN -> {
@@ -810,7 +818,7 @@ index e88affc..f77874c 100644
                      if (resumeOnFocusGain) {
                          resumeOnFocusGain = false
                          play()
-@@ -271,14 +274,15 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -271,14 +275,15 @@ internal class CrossfadeExoPlayerAdapter(
  
                  AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                      // Temporary loss (e.g. an incoming call): pause and remember to resume.
@@ -830,7 +838,7 @@ index e88affc..f77874c 100644
                  }
              }
          }
-@@ -601,6 +605,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -601,6 +606,7 @@ internal class CrossfadeExoPlayerAdapter(
          val echo = EchoAudioProcessor { internalAudioEffects }
          val reverb = ConvolutionReverbAudioProcessor { internalAudioEffects }
          val eightD = EightDAudioProcessor(eightDOrbit)
@@ -838,7 +846,7 @@ index e88affc..f77874c 100644
  
          val perPlayerRenderers =
              object : DefaultRenderersFactory(context) {
-@@ -640,7 +645,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -640,7 +646,7 @@ internal class CrossfadeExoPlayerAdapter(
                                  // duration even when playback speed or DJ tempo changes.
                                  // DefaultAudioSink builds its pipeline from getAudioProcessors()
                                  // (media3 1.11.1 DefaultAudioSink.java:759).
@@ -847,7 +855,7 @@ index e88affc..f77874c 100644
  
                                  override fun getAudioProcessors(): Array<AudioProcessor> = processorsWithEightD
                              },
-@@ -657,8 +662,8 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -657,8 +663,8 @@ internal class CrossfadeExoPlayerAdapter(
                          .setBufferDurationsMs(
                              DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
                              DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
@@ -858,7 +866,7 @@ index e88affc..f77874c 100644
                          ).build(),
                  ).setWakeMode(C.WAKE_MODE_NETWORK)
                  .setHandleAudioBecomingNoisy(true)
-@@ -734,6 +739,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -734,6 +740,7 @@ internal class CrossfadeExoPlayerAdapter(
  
      override fun pause() {
          Logger.d(TAG, "pause() called (state: $internalState, playWhenReady: $internalPlayWhenReady)")
@@ -866,7 +874,7 @@ index e88affc..f77874c 100644
          castRemotePlayer?.let { remote ->
              internalPlayWhenReady = false
              remote.pause()
-@@ -1493,7 +1499,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -1493,7 +1500,7 @@ internal class CrossfadeExoPlayerAdapter(
              Logger.w(TAG, "Setting volume to $value")
              internalVolume = value.coerceIn(0f, 1f)
              castRemotePlayer?.volume = internalVolume
@@ -875,7 +883,7 @@ index e88affc..f77874c 100644
              listeners.forEach { it.onVolumeChanged(internalVolume) }
          }
  
-@@ -2520,11 +2526,11 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -2520,11 +2527,11 @@ internal class CrossfadeExoPlayerAdapter(
                          val fadeAngle = (progress * PI / 2).toFloat()
  
                          // Fade out current player (old track): cos curve, slow at start, fast at end

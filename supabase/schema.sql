@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS public.user_likes (
 -- because albums/artists are client-side derivations)
 CREATE TABLE IF NOT EXISTS public.user_item_favorites (
     user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    item_type TEXT NOT NULL CHECK (item_type IN ('album', 'artist')),
+    item_type TEXT NOT NULL CHECK (item_type IN ('album', 'artist', 'podcast')),
     item_id TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (user_id, item_type, item_id)
@@ -76,6 +76,15 @@ CREATE TABLE IF NOT EXISTS public.user_item_favorites (
 
 CREATE INDEX IF NOT EXISTS idx_user_item_favorites_user
 ON public.user_item_favorites (user_id, created_at DESC);
+
+-- 4c. User Settings (JSONB preferences snapshot with HLC LWW tracking)
+CREATE TABLE IF NOT EXISTS public.user_settings (
+    user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+    settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+    modified_hlc BIGINT,
+    modified_by TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
 
 -- 5. Playlists (Collaborative & Social)
 CREATE TABLE IF NOT EXISTS public.playlists (
@@ -99,8 +108,15 @@ CREATE TABLE IF NOT EXISTS public.playlist_tracks (
     track_id TEXT REFERENCES public.tracks(id) ON DELETE CASCADE,
     position INT NOT NULL,
     added_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    added_at TIMESTAMPTZ DEFAULT NOW()
+    added_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ DEFAULT NULL,
+    modified_hlc BIGINT,
+    modified_by TEXT NOT NULL DEFAULT ''
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_playlist_track_active
+    ON public.playlist_tracks (playlist_id, track_id)
+    WHERE deleted_at IS NULL;
 
 -- 7. Realtime Jam / Live Listening Sessions (Spotify Jam Clone)
 CREATE TABLE IF NOT EXISTS public.listening_sessions (
@@ -241,6 +257,7 @@ CREATE TRIGGER on_auth_user_created
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tracks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.playlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.playlist_tracks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.listening_sessions ENABLE ROW LEVEL SECURITY;
@@ -363,6 +380,10 @@ DROP POLICY IF EXISTS "Users manage own item favorites" ON public.user_item_favo
 CREATE POLICY "Users manage own item favorites" ON public.user_item_favorites FOR ALL USING (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Anyone can view item favorites" ON public.user_item_favorites;
 CREATE POLICY "Anyone can view item favorites" ON public.user_item_favorites FOR SELECT USING (TRUE);
+
+-- User Settings (Sync Data Plane): users manage own preferences
+DROP POLICY IF EXISTS "Users manage own settings" ON public.user_settings;
+CREATE POLICY "Users manage own settings" ON public.user_settings FOR ALL USING (auth.uid() = user_id);
 
 -- Playlists: Public/collaborative access
 DROP POLICY IF EXISTS "View public playlists" ON public.playlists;

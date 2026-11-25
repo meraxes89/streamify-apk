@@ -1,5 +1,6 @@
 package com.streamify.sync
 
+import kotlin.concurrent.Volatile
 import kotlin.math.min
 import kotlin.time.Clock
 
@@ -15,6 +16,8 @@ object HybridLogicalClock {
     const val COUNTER_BITS = 22
     const val COUNTER_MASK = 0x3FFFFFL // (1 shl 22) - 1
     const val MAX_SKEW_MS = 10 * 60 * 1000L // 10 minutes
+
+    private val lock = Any()
 
     @Volatile
     private var lastPhysicalMs: Long = 0L
@@ -35,53 +38,53 @@ object HybridLogicalClock {
     /**
      * Generates the next monotonic 64-bit HLC timestamp.
      */
-    @Synchronized
-    fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long {
-        val serverEstimatedNow = physicalMillis + serverTimeOffsetMs
-        val clampedPhysical = if (physicalMillis > serverEstimatedNow + MAX_SKEW_MS) {
-            serverEstimatedNow + MAX_SKEW_MS
-        } else {
-            physicalMillis
-        }
-
-        if (clampedPhysical > lastPhysicalMs) {
-            lastPhysicalMs = clampedPhysical
-            logicalCounter = 0
-        } else {
-            logicalCounter++
-            if (logicalCounter > COUNTER_MASK) {
-                // Saturated counter: monotonically bump physical millisecond
-                lastPhysicalMs++
-                logicalCounter = 0
+    fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long =
+        synchronizedLock(lock) {
+            val serverEstimatedNow = physicalMillis + serverTimeOffsetMs
+            val clampedPhysical = if (physicalMillis > serverEstimatedNow + MAX_SKEW_MS) {
+                serverEstimatedNow + MAX_SKEW_MS
+            } else {
+                physicalMillis
             }
+
+            if (clampedPhysical > lastPhysicalMs) {
+                lastPhysicalMs = clampedPhysical
+                logicalCounter = 0
+            } else {
+                logicalCounter++
+                if (logicalCounter > COUNTER_MASK) {
+                    // Saturated counter: monotonically bump physical millisecond
+                    lastPhysicalMs++
+                    logicalCounter = 0
+                }
+            }
+            pack(lastPhysicalMs, logicalCounter)
         }
-        return pack(lastPhysicalMs, logicalCounter)
-    }
 
     /**
      * Kulkarni merge algorithm: advance local clock upon receiving a remote HLC timestamp.
      */
-    @Synchronized
-    fun merge(remoteHlc: Long, physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long {
-        val remotePhysical = unpackPhysical(remoteHlc)
-        val remoteCounter = unpackCounter(remoteHlc)
+    fun merge(remoteHlc: Long, physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long =
+        synchronizedLock(lock) {
+            val remotePhysical = unpackPhysical(remoteHlc)
+            val remoteCounter = unpackCounter(remoteHlc)
 
-        val candidatePhysical = maxOf(physicalMillis, remotePhysical)
-        if (candidatePhysical > lastPhysicalMs) {
-            lastPhysicalMs = candidatePhysical
-            logicalCounter = if (candidatePhysical == remotePhysical) remoteCounter + 1 else 0
-        } else if (candidatePhysical == lastPhysicalMs) {
-            logicalCounter = maxOf(logicalCounter, remoteCounter) + 1
-        } else {
-            logicalCounter++
-        }
+            val candidatePhysical = maxOf(physicalMillis, remotePhysical)
+            if (candidatePhysical > lastPhysicalMs) {
+                lastPhysicalMs = candidatePhysical
+                logicalCounter = if (candidatePhysical == remotePhysical) remoteCounter + 1 else 0
+            } else if (candidatePhysical == lastPhysicalMs) {
+                logicalCounter = maxOf(logicalCounter, remoteCounter) + 1
+            } else {
+                logicalCounter++
+            }
 
-        if (logicalCounter > COUNTER_MASK) {
-            lastPhysicalMs++
-            logicalCounter = 0
+            if (logicalCounter > COUNTER_MASK) {
+                lastPhysicalMs++
+                logicalCounter = 0
+            }
+            pack(lastPhysicalMs, logicalCounter)
         }
-        return pack(lastPhysicalMs, logicalCounter)
-    }
 
     fun pack(physicalMs: Long, counter: Int): Long {
         return (physicalMs shl COUNTER_BITS) or (counter.toLong() and COUNTER_MASK)
