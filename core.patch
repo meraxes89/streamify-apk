@@ -446,6 +446,23 @@ index 1fcea31..7d6729f 100644
              UpdateRepositoryImpl(get())
          }
  
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt
+index 39c34ec..5597d2c 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt
+@@ -85,7 +85,11 @@ internal class SyncApplier(
+         change: ChangeWire,
+         sendWhole: MutableSet<Long>,
+     ): Boolean {
+-        val meta = change.value?.let { syncJson.decodeFromString(PlaylistMeta.serializer(), it) } ?: return false
++        val raw = change.value ?: return false
++        val meta =
++            runCatching { syncJson.decodeFromString(PlaylistMeta.serializer(), raw) }
++                .onFailure { Logger.e(TAG, "malformed PlaylistMeta for ${change.key}", it) }
++                .getOrNull() ?: return false
+         val existing = dao.localPlaylistBySyncId(change.key)
+         if (existing == null) {
+             ensurePlaylist(change.key, meta, sendWhole)
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
 index cd39fe9..958ba2b 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
@@ -533,6 +550,55 @@ index 9c816fc..dab2664 100644
          prefs.update { it.copy(lastServerSeq = reply.newSeq, lastSyncAt = nowMillis()) }
          reply.settings?.let { settings.receive(it, desktopName) }
          dao.pruneSent(nowMillis() - SENT_KEPT_MS)
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
+index c113385..233c296 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
+@@ -31,15 +31,28 @@ internal class SyncedSettings(
+     /** Whether this device keeps listening history; off, it neither sends nor takes plays. */
+     suspend fun localTracking(): Boolean = settings.data.first()[stringPreferencesKey("local_tracking_enabled")] == "TRUE"
+ 
++    private suspend fun readValues(): Map<String, SettingWire> =
++        settings.data
++            .first()
++            .asMap()
++            .mapNotNull { (key, value) -> if (key.name in KEYS) encode(value)?.let { key.name to it } else null }
++            .toMap()
++
++    /** Deterministic canonical hash over sorted setting entries (safe to persist across restarts). */
++    private fun canonicalHash(values: Map<String, SettingWire>): Int {
++        var h = 0x811c9dc5.toInt()
++        values.entries.sortedBy { it.key }.forEach { (k, v) ->
++            for (c in k) { h = (h xor c.code) * 0x01000193 }
++            for (c in v.type) { h = (h xor c.code) * 0x01000193 }
++            for (c in v.value) { h = (h xor c.code) * 0x01000193 }
++        }
++        return h
++    }
++
+     /** This device's allowlisted settings, with when they last changed as far as sync has seen. */
+     suspend fun snapshot(): SettingsWire {
+-        val values =
+-            settings.data
+-                .first()
+-                .asMap()
+-                .mapNotNull { (key, value) -> if (key.name in KEYS) encode(value)?.let { key.name to it } else null }
+-                .toMap()
+-        val hash = values.hashCode()
++        val values = readValues()
++        val hash = canonicalHash(values)
+         val state = prefs.current()
+         val changedAt =
+             if (state.settingsHash == hash) {
+@@ -82,7 +95,7 @@ internal class SyncedSettings(
+             }
+         }
+         // Stamped with the other device's time, so this side does not now look newer and send them back.
+-        val hash = snapshot().values.hashCode()
++        val hash = canonicalHash(readValues())
+         prefs.update {
+             it.copy(pendingSettings = null, pendingSettingsFrom = null, settingsHash = hash, settingsChangedAt = pending.changedAt)
+         }
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
 index 18fac82..3e58472 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
