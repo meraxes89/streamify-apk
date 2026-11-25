@@ -76,6 +76,13 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: Apply core submodule patch if present
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
       - name: Set up JDK 21
         if: matrix.language == 'java-kotlin'
         uses: actions/setup-java@v6
