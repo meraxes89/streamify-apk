@@ -313,7 +313,7 @@ internal fun AppleMusicLyricsView(
                 // the card is captured, and would come out blank.
                 artwork = state.screenData.bitmap,
                 seedColor = state.startColor.value,
-                initialLineIndex = state.currentLyricLineIndex,
+                initialLineIndex = state.currentLyricLineIndexFlow.collectAsStateWithLifecycle().value,
                 onDismiss = { showShareSheet = false },
             )
         }

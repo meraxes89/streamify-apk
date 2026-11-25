@@ -3639,7 +3639,7 @@ fun SettingScreen(
                     LazyColumn(
                         Modifier
                             .padding(vertical = 6.dp)
-                            .heightIn(0.dp, 500.dp),
+                            .heightIn(max = com.maxrave.simpmusic.ui.theme.LocalAppWindowSizeClass.current.maxDialogListHeight),
                     ) {
                         items(alertState.selectOne.listSelect, key = { it.second }) { item ->
                             val onSelect = {
