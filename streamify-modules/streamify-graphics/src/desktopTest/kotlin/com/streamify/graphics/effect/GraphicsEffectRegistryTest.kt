@@ -59,9 +59,15 @@ class GraphicsEffectRegistryTest {
         val skiaEffect = RuntimeEffect.makeForShader(effect.canonicalSkSl)
         assertNotNull(skiaEffect)
 
-        // AGSL transpilation and validation
+        // AGSL transpilation and validation. Whitespace-robust check: the
+        // shim's `uniform half4` promotion preserves the canonical source's
+        // alignment, so the promoted declaration reads `uniform float4
+        // <tintColor>` with the original (multi-)spacing intact.
         val agsl = effect.transpileToAgsl()
-        assertTrue(agsl.contains("float4 tintColor"))
+        assertTrue(
+            Regex("""uniform\s+float4\s+tintColor""").containsMatchIn(agsl),
+            "the transpiled AGSL must declare tintColor as (promoted) float4",
+        )
         effect.validateAgslCompatibility()
     }
 
