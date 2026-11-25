@@ -338,10 +338,19 @@ data class AdminTelemetry(
 )
 
 @Serializable
+data class SyncPushOpResult(
+    val key: String = "",
+    val entity: String = "",
+    val status: String = "applied", // "applied", "stale", "rejected"
+    val error: String? = null
+)
+
+@Serializable
 data class SyncPushResult(
     val applied: Int = 0,
     val rejected: Int = 0,
-    val cursor: Long = 0
+    val cursor: Long = 0,
+    val results: List<SyncPushOpResult> = emptyList()
 )
 
 @Serializable
