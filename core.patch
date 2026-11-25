@@ -427,7 +427,7 @@ index 5566589..74f32ca 100644
                  } ?: continue
  
 diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
-index bbffab7..206e8d2 100644
+index bbffab7..4780da5 100644
 --- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
 +++ b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayerAdapter.kt
 @@ -16,6 +16,7 @@ import com.maxrave.domain.mediaservice.automix.TransitionPlanner
@@ -438,6 +438,15 @@ index bbffab7..206e8d2 100644
  import com.maxrave.domain.manager.DataStoreManager
  import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
  import com.maxrave.domain.mediaservice.player.MediaPlayerListener
+@@ -146,7 +147,7 @@ class MpvPlayerAdapter(
+     }
+ 
+     // ========== State Management ==========
+-    private val listeners = mutableListOf<MediaPlayerListener>()
++    private val listeners = java.util.concurrent.CopyOnWriteArrayList<MediaPlayerListener>()
+ 
+     @Volatile
+     private var currentPlayer: MpvPlayer? = null
 @@ -1787,13 +1788,15 @@ class MpvPlayerAdapter(
                                  retryCount++
                                  Logger.w(TAG, "Retrying playback (attempt $retryCount/$maxRetryCount) for $currentVideoId")
@@ -456,7 +465,22 @@ index bbffab7..206e8d2 100644
                                      return@launch
                                  } catch (e: Exception) {
                                      if (e is CancellationException) throw e
-@@ -3360,8 +3363,11 @@ class MpvPlayerAdapter(
+@@ -3155,7 +3158,13 @@ class MpvPlayerAdapter(
+      */
+     private fun notifyListeners(block: MediaPlayerListener.() -> Unit) {
+         coroutineScope.launch {
+-            listeners.forEach(block)
++            listeners.forEach { listener ->
++                try {
++                    listener.block()
++                } catch (t: Throwable) {
++                    Logger.w(TAG, "Listener threw: ${t.message}")
++                }
++            }
+         }
+     }
+ 
+@@ -3360,8 +3369,11 @@ class MpvPlayerAdapter(
          streamRepository.getNewFormat(videoId).lastOrNull()?.let { format ->
              val audioUrl = format.audioUrl
              val videoUrl = format.videoUrl
@@ -547,9 +571,18 @@ index 0000000..aea0a2d
 +    }
 +}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..b90a1ab 100644
+index e88affc..f77874c 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
+@@ -153,7 +153,7 @@ internal class CrossfadeExoPlayerAdapter(
+ 
+     // ========== State Management ==========
+ 
+-    private val listeners = mutableListOf<MediaPlayerListener>()
++    private val listeners = java.util.concurrent.CopyOnWriteArrayList<MediaPlayerListener>()
+ 
+     @Volatile
+     private var currentPlayer: ExoPlayer? = null
 @@ -167,6 +167,9 @@ internal class CrossfadeExoPlayerAdapter(
      @Volatile
      private var internalVolume = 1.0f
