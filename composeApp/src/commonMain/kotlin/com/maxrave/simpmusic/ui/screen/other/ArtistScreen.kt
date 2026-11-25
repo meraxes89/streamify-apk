@@ -609,7 +609,7 @@ fun ArtistScreen(
                                             IconButton(onClick = { showHeaderVideo = !showHeaderVideo }) {
                                                 Icon(
                                                     imageVector = if (showHeaderVideo) SimpIcons.MovieOff else SimpIcons.Movie,
-                                                    contentDescription = null,
+                                                    contentDescription = if (showHeaderVideo) "Hide artist video" else "Show artist video",
                                                     tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                                 )
                                             }

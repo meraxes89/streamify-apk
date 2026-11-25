@@ -664,7 +664,7 @@ private fun SignedInInput(
                     CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(20.dp), color = colors.content, strokeWidth = 2.dp)
                 } else {
                     IconButton(onClick = send) {
-                        Icon(imageVector = SimpIcons.Send, contentDescription = null, tint = colors.content)
+                        Icon(imageVector = SimpIcons.Send, contentDescription = "Send", tint = colors.content)
                     }
                 }
             }

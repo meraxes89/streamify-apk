@@ -110,8 +110,8 @@ private fun Int.toKhzLabel(): String {
 data class NowPlayingContentState(
     val screenData: NowPlayingScreenData,
     val controllerState: ControlState,
-    val timelineState: TimeLine,
     val timelineFlow: StateFlow<TimeLine>,
+    val currentLyricLineIndexFlow: StateFlow<Int>,
     val likeStatus: Boolean,
     val castState: GenericCastState,
     val shouldShowVideo: Boolean,
@@ -123,9 +123,6 @@ data class NowPlayingContentState(
     val endColor: Animatable<Color, AnimationVector4D>,
     val spotShadowColor: Color,
     val gradientOffset: GradientOffset,
-    val sliderTrackColor: Color,
-    val sliderValue: Float,
-    val currentLyricLineIndex: Int,
     val showControlLayout: Boolean,
     val controlLayoutAlpha: Float,
     val showHideMiddleLayout: Boolean,
@@ -137,7 +134,7 @@ data class NowPlayingContentState(
     /** "154 kbps · 48 kHz" for the stream now playing, or null while unknown — see [toAudioQualityLabel]. */
     val audioQualityLabel: String? = null,
     /**
-     * The user's lyrics delay, applied at read time. [currentLyricLineIndex] already has it baked in;
+     * The user's lyrics delay, applied at read time. [currentLyricLineIndexFlow] already has it baked in;
      * this is for anything that times WITHIN a line (the Apple Music lyric strip's word sweep).
      */
     val lyricsOffsetMs: Long = 0L,

@@ -540,6 +540,8 @@ internal fun AppleMusicThinSlider(
 @Composable
 internal fun AppleMusicTimesRow(
     state: NowPlayingContentState,
+    timeline: com.maxrave.domain.data.model.streams.TimeLine,
+    sliderValue: Float,
     typography: AppleMusicTypography,
     modifier: Modifier = Modifier,
 ) {
@@ -548,14 +550,14 @@ internal fun AppleMusicTimesRow(
     // position poll only runs while isPlaying, so no later event arrives to correct it. Deriving
     // elapsed from total therefore zeroed BOTH numbers at once, which is why a restored queue read
     // 00:00 / -00:00: the played time was never actually unknown, TimeLine.current held it.
-    val knownTotal = state.timelineState.total.takeIf { it > 0L }
+    val knownTotal = timeline.total.takeIf { it > 0L }
     val elapsedMs =
         if (knownTotal != null) {
             // Still derived from the slider while the duration IS known, so this number tracks the
             // finger while scrubbing instead of waiting for the player to report the seek back.
-            (knownTotal * (state.sliderValue / 100f)).roundToLong()
+            (knownTotal * (sliderValue / 100f)).roundToLong()
         } else {
-            state.timelineState.current.coerceAtLeast(0L)
+            timeline.current.coerceAtLeast(0L)
         }
     // Clamp BEFORE formatDuration — it renders any negative as "NA:NA", and the remaining time
     // must never show that at the end of a track whose length IS known. An UNKNOWN length is
@@ -569,7 +571,7 @@ internal fun AppleMusicTimesRow(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 // Blank for a live broadcast: where it sits in the broadcast's seek window means nothing.
-                text = if (state.timelineState.isLive) "" else formatDuration(elapsedMs),
+                text = if (timeline.isLive) "" else formatDuration(elapsedMs),
                 style = typography.times,
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Left,
@@ -579,7 +581,7 @@ internal fun AppleMusicTimesRow(
                 // nothing. formatDuration's own out-of-range string is the app's established way to
                 // say "no value here".
                 text =
-                    if (state.timelineState.isLive) {
+                    if (timeline.isLive) {
                         stringResource(Res.string.live_badge)
                     } else {
                         remainingMs?.let { "-" + formatDuration(it) } ?: formatDuration(-1L)
@@ -612,11 +614,11 @@ internal fun AppleMusicTimesRow(
             )
             val quality = state.audioQualityLabel
             val crossfadeLabelAlpha by animateFloatAsState(
-                targetValue = if (state.timelineState.isCrossfading) 1f else 0f,
+                targetValue = if (timeline.isCrossfading) 1f else 0f,
                 label = "appleMusicCrossfadeLabelAlpha",
             )
             val qualityLabelAlpha by animateFloatAsState(
-                targetValue = if (!state.timelineState.isCrossfading && quality != null) 1f else 0f,
+                targetValue = if (!timeline.isCrossfading && quality != null) 1f else 0f,
                 label = "appleMusicQualityLabelAlpha",
             )
             Box(modifier = Modifier.alpha(crossfadeLabelAlpha)) {
@@ -997,19 +999,35 @@ internal fun ColumnScope.AppleMusicPlaybackControls(
     typography: AppleMusicTypography,
     showShuffleAndRepeat: Boolean = false,
 ) = LeftToRight {
+    val progressState =
+        com.maxrave.simpmusic.ui.screen.player.content.rememberTimelineProgressState(
+            timelineFlow = state.timelineFlow,
+            onSeekCommit = { actions.onUIEvent(UIEvent.UpdateProgress(it)) },
+        )
+    val trackColor =
+        com.maxrave.simpmusic.ui.screen.player.content.rememberCrossfadeTrackColor(
+            isCrossfading = progressState.timeline.isCrossfading,
+            defaultColor = AppleMusicTrackActive,
+        )
     // Fixed 18dp shell: the track swells on touch, but inside a CONSTANT footprint —
     // otherwise the growing slider re-measures this whole column and the artwork above
     // it visibly jumps. It also gives the bar a real 18dp touch target instead of 8.4dp.
     Box(modifier = Modifier.fillMaxWidth().height(18.dp), contentAlignment = Alignment.Center) {
         AppleMusicThinSlider(
-            value = state.sliderValue / 100f,
-            activeColor = if (state.timelineState.isCrossfading) state.sliderTrackColor else AppleMusicTrackActive,
-            onValueChange = { actions.onSliderChange(it * 100f) },
-            onValueChangeFinished = actions.onSliderChangeFinished,
+            value = progressState.sliderValue / 100f,
+            activeColor = trackColor,
+            onValueChange = { progressState.onValueChange(it * 100f) },
+            onValueChangeFinished = progressState.onValueChangeFinished,
             modifier = Modifier.fillMaxWidth(),
         )
     }
-    AppleMusicTimesRow(state = state, typography = typography, modifier = Modifier.padding(top = 8.dp))
+    AppleMusicTimesRow(
+        state = state,
+        timeline = progressState.timeline,
+        sliderValue = progressState.sliderValue,
+        typography = typography,
+        modifier = Modifier.padding(top = 8.dp),
+    )
     Spacer(modifier = Modifier.height(22.dp))
     AppleMusicTransportRow(
         controllerState = state.controllerState,

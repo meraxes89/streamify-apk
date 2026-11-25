@@ -442,7 +442,12 @@ fun SongFullWidthItems(
                 // Hidden while selecting: the per-item menu moves up to the selection app bar,
                 // so one tap cannot mean both "act on this song" and "pick this song".
                 if (onMoreClickListener != null && !selectionMode) {
-                    RippleIconButton(imageVector = SimpIcons.MoreVert, fillMaxSize = false, tint = contentColor) {
+                    RippleIconButton(
+                        imageVector = SimpIcons.MoreVert,
+                        fillMaxSize = false,
+                        tint = contentColor,
+                        contentDescription = "More",
+                    ) {
                         if (itemVideoId.isNotBlank()) onMoreClickListener.invoke(itemVideoId)
                     }
                 }
