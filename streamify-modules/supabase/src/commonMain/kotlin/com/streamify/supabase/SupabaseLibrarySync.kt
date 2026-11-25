@@ -110,23 +110,29 @@ object SupabaseLibrarySync {
         val allLikes = mutableMapOf<String, String?>()
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
-            var offset = 0
-            val limit = 1000
+            var lastCreatedAt: String? = null
+            val limit = 500
             while (true) {
                 val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
                     parameter("user_id", "eq.$targetUserId")
                     parameter("deleted_at", "is.null")
                     parameter("select", "track_id,created_at")
+                    parameter("order", "created_at.asc")
+                    if (lastCreatedAt != null) {
+                        parameter("created_at", "gt.$lastCreatedAt")
+                    }
                     parameter("limit", limit.toString())
-                    parameter("offset", offset.toString())
                     header("apikey", SupabaseConfig.ANON_KEY)
                     header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                 }
                 if (!resp.status.isSuccess()) break
                 val list = json.decodeFromString<List<CloudUserLike>>(resp.bodyAsText())
-                list.forEach { allLikes[it.track_id] = it.created_at }
+                if (list.isEmpty()) break
+                list.forEach { 
+                    allLikes[it.track_id] = it.created_at 
+                    if (it.created_at != null) lastCreatedAt = it.created_at
+                }
                 if (list.size < limit) break
-                offset += limit
             }
         } catch (_: Exception) {
         }
