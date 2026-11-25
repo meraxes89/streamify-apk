@@ -386,10 +386,31 @@ index bbffab7..206e8d2 100644
                  if (!is403Video) {
                      // Return video URL with audio as a second EDL stream for merging
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..871f1d1 100644
+index e88affc..4454044 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-@@ -271,8 +271,9 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -167,6 +167,9 @@ internal class CrossfadeExoPlayerAdapter(
+     @Volatile
+     private var internalVolume = 1.0f
+ 
++    @Volatile
++    private var duckGain = 1.0f
++
+     /**
+      * Sleep-timer fade attenuation. Applied on a separate volume line — every player's
+      * [SleepFadeAudioProcessor] reads this value straight out of here, so writing it once covers
+@@ -254,8 +257,8 @@ internal class CrossfadeExoPlayerAdapter(
+         AudioManager.OnAudioFocusChangeListener { focusChange ->
+             when (focusChange) {
+                 AudioManager.AUDIOFOCUS_GAIN -> {
+-                    // Don't fight the crossfade ramp; while crossfading it owns the volume.
+-                    if (!isCrossfading) currentPlayer?.volume = internalVolume
++                    duckGain = 1.0f
++                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckGain
+                     if (resumeOnFocusGain) {
+                         resumeOnFocusGain = false
+                         play()
+@@ -271,14 +274,15 @@ internal class CrossfadeExoPlayerAdapter(
  
                  AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                      // Temporary loss (e.g. an incoming call): pause and remember to resume.
@@ -400,7 +421,16 @@ index e88affc..871f1d1 100644
                  }
  
                  AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-@@ -657,8 +658,8 @@ internal class CrossfadeExoPlayerAdapter(
+-                    // Lower the volume instead of pausing (e.g. a navigation prompt).
+-                    // Skip during crossfade — the ramp owns volume and would override this.
+-                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckVolumeFactor
++                    // Lower volume for notifications, navigation prompts, etc.
++                    duckGain = duckVolumeFactor
++                    if (!isCrossfading) currentPlayer?.volume = internalVolume * duckGain
+                 }
+             }
+         }
+@@ -657,8 +661,8 @@ internal class CrossfadeExoPlayerAdapter(
                          .setBufferDurationsMs(
                              DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
                              DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
@@ -411,7 +441,7 @@ index e88affc..871f1d1 100644
                          ).build(),
                  ).setWakeMode(C.WAKE_MODE_NETWORK)
                  .setHandleAudioBecomingNoisy(true)
-@@ -734,6 +735,7 @@ internal class CrossfadeExoPlayerAdapter(
+@@ -734,6 +738,7 @@ internal class CrossfadeExoPlayerAdapter(
  
      override fun pause() {
          Logger.d(TAG, "pause() called (state: $internalState, playWhenReady: $internalPlayWhenReady)")
@@ -419,6 +449,29 @@ index e88affc..871f1d1 100644
          castRemotePlayer?.let { remote ->
              internalPlayWhenReady = false
              remote.pause()
+@@ -1493,7 +1498,7 @@ internal class CrossfadeExoPlayerAdapter(
+             Logger.w(TAG, "Setting volume to $value")
+             internalVolume = value.coerceIn(0f, 1f)
+             castRemotePlayer?.volume = internalVolume
+-            currentPlayer?.volume = internalVolume
++            currentPlayer?.volume = internalVolume * duckGain
+             listeners.forEach { it.onVolumeChanged(internalVolume) }
+         }
+ 
+@@ -2520,11 +2525,11 @@ internal class CrossfadeExoPlayerAdapter(
+                         val fadeAngle = (progress * PI / 2).toFloat()
+ 
+                         // Fade out current player (old track): cos curve, slow at start, fast at end
+-                        val fadeOutVolume = targetVolume * cos(fadeAngle)
++                        val fadeOutVolume = targetVolume * cos(fadeAngle) * duckGain
+                         currentPlayer?.volume = fadeOutVolume
+ 
+                         // Fade in next player (new track): sin curve, fast at start, slow at end
+-                        val fadeInVolume = targetVolume * sin(fadeAngle)
++                        val fadeInVolume = targetVolume * sin(fadeAngle) * duckGain
+                         nextPlayer.volume = fadeInVolume
+ 
+                         // DJ-style filter sweep (alongside volume)
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
 index 90f78fb..dfaa9b6 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
