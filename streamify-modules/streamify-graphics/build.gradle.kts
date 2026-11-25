@@ -80,7 +80,21 @@ kotlin {
         val wasmJsMain by getting {
             dependsOn(skikoCommonMain)
         }
-        val iosMain by getting {
+
+        // iOS skiko wiring — per-target source sets, NOT the `iosMain`
+        // intermediate. `iosMain` is synthesized by KGP's default hierarchy
+        // template only at afterEvaluate, so an eager `val iosMain by getting`
+        // here throws UnknownDomainObjectException at configuration time
+        // (the "KotlinSourceSet with name 'iosMain' not found" that broke the
+        // Graphics and Wasm CI lanes); per-target sets like iosArm64Main are
+        // created eagerly together with the target declaration, exactly like
+        // desktopMain above. Wiring both iOS targets directly keeps the same
+        // dependency intent (skiko adapter code shared into the iOS lane)
+        // without racing the template.
+        val iosArm64Main by getting {
+            dependsOn(skikoCommonMain)
+        }
+        val iosSimulatorArm64Main by getting {
             dependsOn(skikoCommonMain)
         }
 
