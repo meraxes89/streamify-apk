@@ -67,10 +67,10 @@ class AuthRefreshMutex {
         scope: CoroutineScope,
         refreshAction: suspend () -> Result<TokenSession>
     ): Result<TokenSession> {
-        val (deferred, isLeader) = mutex.withLock {
+        val deferred = mutex.withLock {
             val existing = inFlightDeferred
             if (existing != null && existing.isActive) {
-                Pair(existing, false)
+                existing
             } else {
                 val newDeferred = scope.async {
                     try {
@@ -82,7 +82,7 @@ class AuthRefreshMutex {
                     }
                 }
                 inFlightDeferred = newDeferred
-                Pair(newDeferred, true)
+                newDeferred
             }
         }
         return deferred.await()

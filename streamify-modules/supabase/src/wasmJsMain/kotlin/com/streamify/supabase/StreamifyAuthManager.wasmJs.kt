@@ -63,7 +63,7 @@ actual object StreamifyAuthManager {
 
                 val expectedState = sessionStorage["pkce_state"]
                 if (expectedState != null && data.state != null && data.state != expectedState) {
-                    return Result.failure(SecurityException("CSRF state mismatch"))
+                    return Result.failure(IllegalStateException("CSRF state mismatch"))
                 }
 
                 val redirectUri = sessionStorage["pkce_redirect_uri"]
