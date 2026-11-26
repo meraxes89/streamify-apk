@@ -417,6 +417,7 @@ class SettingsViewModel(
     fun setDownloadQuality(quality: String) {
         viewModelScope.launch {
             dataStoreManager.setDownloadQuality(quality)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("download_quality", quality)
             getDownloadQuality()
         }
     }
@@ -483,6 +484,7 @@ class SettingsViewModel(
     fun setCrossfadeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setCrossfadeEnabled(enabled)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("crossfade_enabled", enabled.toString())
             getCrossfadeEnabled()
         }
     }
@@ -498,6 +500,7 @@ class SettingsViewModel(
     fun setCrossfadeDuration(duration: Int) {
         viewModelScope.launch {
             dataStoreManager.setCrossfadeDuration(duration)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("crossfade_duration", duration.toString())
             getCrossfadeDuration()
         }
     }
@@ -1510,6 +1513,7 @@ class SettingsViewModel(
     fun setNormalizeVolume(normalizeVolume: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setNormalizeVolume(normalizeVolume)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("normalize_volume", normalizeVolume.toString())
             getNormalizeVolume()
         }
     }
@@ -1540,6 +1544,7 @@ class SettingsViewModel(
     fun setSkipSilent(skip: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setSkipSilent(skip)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("skip_silent", skip.toString())
             getSkipSilent()
         }
     }
