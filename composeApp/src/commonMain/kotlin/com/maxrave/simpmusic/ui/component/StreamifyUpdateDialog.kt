@@ -1,6 +1,7 @@
 package com.maxrave.simpmusic.ui.component
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -43,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -288,11 +290,11 @@ fun StreamifyUpdateDialog(
                             .semantics { liveRegion = LiveRegionMode.Polite },
                 ) {
                     AnimatedContent(
-                        targetState = downloadState,
+                        targetState = downloadState::class,
                         transitionSpec = { fadeIn() togetherWith fadeOut() },
                         label = "UpdateDownloadState",
-                    ) { state ->
-                        when (state) {
+                    ) { _ ->
+                        when (val state = downloadState) {
                             is UpdateDownloadState.Downloading -> {
                                 val mbDone = (state.bytesDownloaded / (1024f * 1024f))
                                 val mbTotal = (state.totalBytes / (1024f * 1024f))
@@ -445,6 +447,25 @@ fun StreamifyUpdateDialog(
                         is UpdateDownloadState.Error -> "Resume Download"
                         is UpdateDownloadState.Idle -> binary.buttonLabel.ifBlank { "Update Now" }
                     }
+                    val isReadyToInstall = downloadState is UpdateDownloadState.Ready
+                    val primaryContainerColor by animateColorAsState(
+                        targetValue =
+                            if (isReadyToInstall) {
+                                Color(0xFF1B873F)
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        label = "UpdatePrimaryButtonContainer",
+                    )
+                    val primaryContentColor by animateColorAsState(
+                        targetValue =
+                            if (isReadyToInstall) {
+                                Color.White
+                            } else {
+                                MaterialTheme.colorScheme.onPrimary
+                            },
+                        label = "UpdatePrimaryButtonContent",
+                    )
                     Button(
                         onClick = {
                             if (downloadState is UpdateDownloadState.Error) {
@@ -457,8 +478,8 @@ fun StreamifyUpdateDialog(
                         shape = RoundedCornerShape(10.dp),
                         colors =
                             ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                containerColor = primaryContainerColor,
+                                contentColor = primaryContentColor,
                             ),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
                     ) {

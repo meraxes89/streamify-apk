@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        API 31+ explicit SplashScreen attributes so SystemUI on both phones and tablets
+        always uses the circular inset icon instead of falling back to @mipmap/ic_launcher.
+    -->
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/simpmusic_cold_start_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_app_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.SimpMusic</item>
+        <item name="android:windowSplashScreenBackground">@color/simpmusic_cold_start_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_app_icon</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -718,7 +718,7 @@
     <string name="local_tracking_description">Spara din lyssningshistorik i den lokala databasen</string>
     <string name="blog_notification_title">Aviseringar om blogginlägg</string>
     <string name="blog_notification_description">Få en avisering när ett nytt blogginlägg publiceras</string>
-    <string name="simpmusic_charts">SimpMusic-topplistor</string>
+    <string name="simpmusic_charts">Streamify-topplistor</string>
     <string name="crossfading">Övertoning</string>
     <string name="your_320kbps_url">Din webbadress för 320 kbit/s</string>
     <string name="your_320kbps_url_description">Lämna tomt för att automatiskt välja en fungerande webbadress med hjälp av drifttidskontrollen.</string>

@@ -531,7 +531,7 @@
     <string name="quit_app">Surt de l'aplicació</string>
     <string name="local_tracking_title">Seguiment local de l'historial d'escolta</string>
     <string name="local_tracking_description">Registra l'historial d'escolta a la base de dades local</string>
-    <string name="simpmusic_charts">Llistes d'èxits de SimpMusic</string>
+    <string name="simpmusic_charts">Llistes d'èxits de Streamify</string>
     <string name="crossfading">Transició gradual</string>
     <string name="your_320kbps_url">El teu URL de 320 kbps</string>
     <string name="your_320kbps_url_description">Deixa-ho en blanc per seleccionar automàticament un URL operatiu des del verificador d'estat.</string>

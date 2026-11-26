@@ -82,6 +82,9 @@ import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.BindNavigationBackHandler
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
+import com.maxrave.simpmusic.expect.ui.rememberStartupPermissionRequester
+import com.maxrave.simpmusic.expect.ui.shouldPromptStartupPermissions
+import com.maxrave.simpmusic.expect.ui.shouldPromptUnknownSourcesPermission
 import com.maxrave.simpmusic.extension.copy
 import com.maxrave.simpmusic.ui.component.AppBottomNavigationBar
 import com.maxrave.simpmusic.ui.component.AppNavigationRail
@@ -265,6 +268,57 @@ fun App(
     val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
     val isEntranceBlocking = isSplashVisible || streamifyAuthState is AuthState.Loading
 
+    val startupPermissionRequester = rememberStartupPermissionRequester()
+    var hasCheckedStartupPermissions by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var showUnknownSourcesDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var hasCheckedUnknownSources by rememberSaveable {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(isEntranceBlocking) {
+        if (shouldPromptStartupPermissions(
+                isEntranceBlocking = isEntranceBlocking,
+                hasAllPermissions = startupPermissionRequester.hasAllRequiredPermissions(),
+                doNotAskAgain = viewModel.getString("notification_permission_do_not_ask") == "true",
+                alreadyCheckedThisSession = hasCheckedStartupPermissions,
+            )
+        ) {
+            hasCheckedStartupPermissions = true
+            viewModel.showNotificationPermissionDialog()
+        } else if (!isEntranceBlocking) {
+            hasCheckedStartupPermissions = true
+        }
+    }
+    LaunchedEffect(
+        isEntranceBlocking,
+        showNotificationPermissionDialog,
+        showDesktopNotificationPermissionDialog,
+        shouldShowUpdateDialog,
+        autoInstallCountdownSeconds,
+    ) {
+        val otherDialogOpen =
+            showNotificationPermissionDialog ||
+                showDesktopNotificationPermissionDialog ||
+                shouldShowUpdateDialog ||
+                autoInstallCountdownSeconds != null
+        if (shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = isEntranceBlocking,
+                otherDialogOpen = otherDialogOpen,
+                needsPermission = startupPermissionRequester.needsUnknownSourcesPermission(),
+                doNotAskAgain = viewModel.getString("unknown_sources_permission_do_not_ask") == "true",
+                alreadyCheckedThisSession = hasCheckedUnknownSources,
+            )
+        ) {
+            hasCheckedUnknownSources = true
+            showUnknownSourcesDialog = true
+        } else if (!isEntranceBlocking && !otherDialogOpen) {
+            hasCheckedUnknownSources = true
+        }
+    }
+
     // Every dialog this file raises on its own, plus blocking entrance animations.
     // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
     val appDialogOpen =
@@ -274,6 +328,7 @@ fun App(
             shouldShowUpdateDialog ||
             showNotificationPermissionDialog ||
             showDesktopNotificationPermissionDialog ||
+            showUnknownSourcesDialog ||
             isShowNowPlaylistScreen
 
     // Set by the first press or wheel scroll anywhere in the app this launch, or by opening Now
@@ -295,16 +350,13 @@ fun App(
         if (data != null) {
             if (data.scheme == "streamify" && data.host == "callback") {
                 // Supabase web OAuth callback (e.g. Google Sign-In fallback on Vivo or non-GMS devices):
-                // streamify://callback#access_token=...&refresh_token=...
+                // Dispatch to StreamifyAuthManager's own SupervisorJob scope BEFORE clearing intent,
+                // because setIntent(null) recomposes LaunchedEffect(intent, ...) and would cancel
+                // an inline suspend handleAuthCallback() mid-exchange.
                 val uriString = data.toString()
                 Logger.d("MainActivity", "Streamify auth callback: $uriString")
                 viewModel.setIntent(null)
-                val result = StreamifyAuthManager.handleAuthCallback(uriString, platformContext)
-                if (result.isSuccess) {
-                    Logger.d("MainActivity", "Streamify auth callback success: ${result.getOrNull()?.email}")
-                } else {
-                    Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
-                }
+                StreamifyAuthManager.submitAuthCallback(uriString, platformContext)
             } else if (data.scheme == "wordbyword" && data.host == "lastfm-auth") {
                 // Last.fm sends the user back here after they approve access, carrying the request
                 // token: wordbyword://lastfm-auth?token=xxx. The callback is fixed on the API
@@ -1197,6 +1249,7 @@ fun App(
                                         onOpenDesktopNotificationSettings(doNotShowAgain)
                                     } else {
                                         viewModel.dismissNotificationPermissionDialog(doNotShowAgain)
+                                        startupPermissionRequester.requestMissingPermissions()
                                     }
                                 },
                             ) {
@@ -1212,19 +1265,14 @@ fun App(
                                 )
                             }
                         },
-                        dismissButton =
-                            if (showDesktopNotificationPermissionDialog) {
-                                {
-                                    TextButton(onClick = dismissPermissionDialog) {
-                                        Text(
-                                            stringResource(Res.string.cancel),
-                                            style = typo().bodySmall,
-                                        )
-                                    }
-                                }
-                            } else {
-                                null
-                            },
+                        dismissButton = {
+                            TextButton(onClick = dismissPermissionDialog) {
+                                Text(
+                                    stringResource(Res.string.cancel),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
                         title = {
                             Text(
                                 stringResource(Res.string.notification),
@@ -1235,6 +1283,77 @@ fun App(
                             Column {
                                 Text(
                                     stringResource(Res.string.this_app_needs_to_access_your_notification),
+                                    style = typo().bodySmall,
+                                )
+                                if (!showDesktopNotificationPermissionDialog) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        "Also allows access to local audio files on your device for offline library playback.",
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier =
+                                        Modifier
+                                            .clickable { doNotShowAgain = !doNotShowAgain }
+                                            .fillMaxWidth(),
+                                ) {
+                                    Checkbox(
+                                        checked = doNotShowAgain,
+                                        onCheckedChange = { doNotShowAgain = it },
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        stringResource(Res.string.do_not_show_again),
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                } else if (showUnknownSourcesDialog) {
+                    var doNotShowAgain by remember { mutableStateOf(false) }
+                    val dismissUnknownSources = {
+                        showUnknownSourcesDialog = false
+                        if (doNotShowAgain) {
+                            viewModel.putString("unknown_sources_permission_do_not_ask", "true")
+                        }
+                    }
+                    AlertDialog(
+                        onDismissRequest = dismissUnknownSources,
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    dismissUnknownSources()
+                                    startupPermissionRequester.requestUnknownSourcesPermission()
+                                },
+                            ) {
+                                Text(
+                                    stringResource(Res.string.settings),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = dismissUnknownSources) {
+                                Text(
+                                    stringResource(Res.string.cancel),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
+                        title = {
+                            Text(
+                                "Install app updates",
+                                style = typo().labelSmall,
+                            )
+                        },
+                        text = {
+                            Column {
+                                Text(
+                                    "Allow Streamify to install unknown apps so nightly builds and automatic updates can install directly.",
                                     style = typo().bodySmall,
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
