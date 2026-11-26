@@ -114,9 +114,20 @@ fun evaluateUpdatePolicy(
     )
 }
 
+object UpdatePreferences {
+    const val KEY_NIGHTLY_ENABLED = "STREAMIFY_NIGHTLY_UPDATES"
+    const val KEY_AUTO_INSTALL_ENABLED = "STREAMIFY_AUTO_INSTALL_UPDATES"
+}
+
 object UpdateStateHolder {
     private val _state = MutableStateFlow(UpdatePolicyState())
     val state: StateFlow<UpdatePolicyState> = _state.asStateFlow()
+
+    @Volatile
+    var nightlyEnabled: Boolean = false
+
+    @Volatile
+    var autoInstallEnabled: Boolean = true
 
     val latestManifest: UpdateManifest? get() = _state.value.latestManifest
     val isPolicyVerified: Boolean get() = _state.value.isPolicyVerified

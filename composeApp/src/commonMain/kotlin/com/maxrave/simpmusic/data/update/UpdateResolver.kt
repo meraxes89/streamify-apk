@@ -59,7 +59,37 @@ class UpdateResolver(
     private var t3DisabledUntilMs: Long = 0L
     private var storedEtag: String? = null
 
-    suspend fun resolve(installedCode: Int): UpdateResult {
+    suspend fun resolve(installedCode: Int, includeNightly: Boolean = false): UpdateResult {
+        val official = resolveOfficial(installedCode)
+        if (!includeNightly) return official
+
+        val nightly = resolveNightly(installedCode)
+        return when {
+            official is UpdateResult.Available && nightly is UpdateResult.Available ->
+                if (official.manifest.versionCode > nightly.manifest.versionCode) official else nightly
+            official is UpdateResult.Available -> official
+            nightly is UpdateResult.Available -> nightly
+            else -> official
+        }
+    }
+
+    private suspend fun resolveNightly(installedCode: Int): UpdateResult {
+        return runCatching {
+            val epochBucket = System.currentTimeMillis() / 300_000L
+            val response = cdnClient.get("$baseUrl/releases/download/nightly/version.json?cb=$epochBucket") {
+                header(HttpHeaders.UserAgent, "Streamify-App")
+            }
+            if (response.status == HttpStatusCode.OK) {
+                val rawBody = response.bodyAsText()
+                val manifest = json.decodeFromString<UpdateManifest>(rawBody)
+                verifyAndCompare(rawBody, manifest, installedCode)
+            } else {
+                UpdateResult.UpToDate
+            }
+        }.getOrElse { UpdateResult.UpToDate }
+    }
+
+    private suspend fun resolveOfficial(installedCode: Int): UpdateResult {
         // T1: Unmetered CDN manifest (99.9% happy path)
         // Cache-busting 5-min floor (?cb=<epoch/300_000>) avoids stale CDN edge redirects
         runCatching {

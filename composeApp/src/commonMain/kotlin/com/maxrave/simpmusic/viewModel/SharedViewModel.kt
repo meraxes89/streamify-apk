@@ -158,6 +158,31 @@ class SharedViewModel(
 
     private val appIdentity: AppIdentity by inject()
 
+    private fun scheduleAutoInstallIfEnabled(
+        fallbackUrl: String,
+        hasVerifiedSha: Boolean,
+    ) {
+        if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return
+        if (!com.maxrave.simpmusic.data.update.PlatformUpdater.canAutoInstall()) return
+        if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.isPolicyVerified && !hasVerifiedSha) return
+
+        autoInstallJob?.cancel()
+        autoInstallJob = viewModelScope.launch {
+            val terminal = com.maxrave.simpmusic.data.update.PlatformUpdater.state.first { state ->
+                state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready ||
+                    state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Error
+            }
+            if (terminal !is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) return@launch
+            // Defer silent install until playback is paused/stopped so audio is never interrupted.
+            nowPlayingState.first { it?.isPlaying != true }
+            if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+            com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
+                onFallbackOpenUrl = {},
+                fallbackUrl = fallbackUrl,
+            )
+        }
+    }
+
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate
 
@@ -1334,11 +1359,17 @@ class SharedViewModel(
     private var _updateResponse = MutableStateFlow<UpdateData?>(null)
     val updateResponse: StateFlow<UpdateData?> = _updateResponse
 
+    private var autoInstallJob: kotlinx.coroutines.Job? = null
+
     fun checkForUpdate(force: Boolean = false) {
         viewModelScope.launch {
             if (!force && dataStoreManager.autoCheckForUpdates.first() != TRUE) {
                 return@launch
             }
+            val nightlyPref = dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED).first()
+            com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = nightlyPref == TRUE
+            val autoInstallPref = dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED).first()
+            com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = autoInstallPref != FALSE
             // Raised before the coroutine starts, so Home's launch banner, which reads it right after
             // startup, can never miss a check that is already under way but not yet marked.
             _isCheckingUpdate.value = true
@@ -1386,6 +1417,10 @@ class SharedViewModel(
                                 tag = data.tagName,
                                 url = binary.downloadUrl,
                                 expectedSha256 = sha,
+                            )
+                            scheduleAutoInstallIfEnabled(
+                                fallbackUrl = binary.downloadUrl,
+                                hasVerifiedSha = sha.isNotBlank(),
                             )
 
                             _updateResponse.value = data
@@ -1437,6 +1472,10 @@ class SharedViewModel(
                                 tag = data.tagName,
                                 url = binary.downloadUrl,
                                 expectedSha256 = sha,
+                            )
+                            scheduleAutoInstallIfEnabled(
+                                fallbackUrl = binary.downloadUrl,
+                                hasVerifiedSha = sha.isNotBlank(),
                             )
 
                             _updateResponse.value = data

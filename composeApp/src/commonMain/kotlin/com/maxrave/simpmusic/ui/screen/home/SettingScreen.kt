@@ -560,7 +560,7 @@ private fun isGroupMatch(key: String, query: String): Boolean {
         "sponsor_block" -> "sponsorblock sponsor skip segments adblock music video intros"
         "storage" -> "storage cache download downloaded clear disk space free offline limit"
         "backup" -> "backup restore export import playlist file cloud drive"
-        "about_us" -> "about version update check update channel github telegram discord license source contributor credit"
+        "about_us" -> "about version update check update channel nightly auto install github telegram discord license source contributor credit"
         "developer_option" -> "developer proxy debug log network port host test"
         "streamify_account" -> "streamify account profile user auth login logout session"
         "admin_command_center" -> "admin dashboard broadcast metrics"
@@ -693,6 +693,8 @@ fun SettingScreen(
     val autoBackupMaxFiles by viewModel.autoBackupMaxFiles.collectAsStateWithLifecycle()
     val autoBackupLastTime by viewModel.autoBackupLastTime.collectAsStateWithLifecycle()
     val updateChannel by viewModel.updateChannel.collectAsStateWithLifecycle()
+    val nightlyUpdatesEnabled by viewModel.nightlyUpdatesEnabled.collectAsStateWithLifecycle()
+    val autoInstallUpdates by viewModel.autoInstallUpdates.collectAsStateWithLifecycle()
     val enableLiquidGlass by viewModel.enableLiquidGlass.collectAsStateWithLifecycle()
     val enableSpatialNavigation by viewModel.enableSpatialNavigation.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.getThemeMode().collectAsStateWithLifecycle(DataStoreManager.THEME_MODE_LIGHT)
@@ -3070,6 +3072,16 @@ fun SettingScreen(
                     title = stringResource(Res.string.auto_check_for_update),
                     subtitle = stringResource(Res.string.auto_check_for_update_description),
                     switch = (autoCheckUpdate to { viewModel.setAutoCheckUpdate(it) }),
+                )
+                SettingItem(
+                    title = "Auto-install updates",
+                    subtitle = "Automatically install verified updates once playback stops",
+                    switch = (autoInstallUpdates to { viewModel.setAutoInstallUpdates(it) }),
+                )
+                SettingItem(
+                    title = "Nightly builds",
+                    subtitle = "Receive daily pre-release builds from main in addition to official releases",
+                    switch = (nightlyUpdatesEnabled to { viewModel.setNightlyUpdatesEnabled(it) }),
                 )
                 SettingItem(
                     title = stringResource(Res.string.update_channel),

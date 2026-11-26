@@ -242,12 +242,27 @@ jobs:
           print("✅ All platform binaries correctly mapped with Streamify identity.")
           PY
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.tag_name || github.ref_name }}
-          body_path: release_body.md
-          files: |
-            release/*
-          draft: ${{ inputs.draft || false }}
-          prerelease: ${{ inputs.prerelease || false }}
+      - name: Publish GitHub Release atomically
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          DRAFT="${{ inputs.draft || false }}"
+          PRERELEASE="${{ inputs.prerelease || false }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')
+            if [ "$IS_DRAFT" != "true" ]; then
+              echo "::error::Published non-draft release $TAG already exists; refusing to mutate a live release."
+              exit 1
+            fi
+            gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file release_body.md
+          else
+            gh release create "$TAG" --repo "${{ github.repository }}" \
+              --title "$TAG" --notes-file release_body.md --draft \
+              $([ "$PRERELEASE" = "true" ] && echo "--prerelease" || true)
+          fi
+          gh release upload "$TAG" release/* --repo "${{ github.repository }}" --clobber
+          if [ "$DRAFT" != "true" ]; then
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false
+          fi

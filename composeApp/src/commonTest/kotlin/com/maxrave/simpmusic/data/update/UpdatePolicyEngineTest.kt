@@ -103,4 +103,27 @@ class UpdatePolicyEngineTest {
         UpdateStateHolder.clear()
         assertFalse(UpdateStateHolder.state.value.isOnlineStreamingBlocked)
     }
+
+    @Test
+    fun nightlySameVersionCodeDifferentShaTriggersUpdate() {
+        val resolver = UpdateResolver()
+        val nightlyManifest = UpdateManifest(
+            version = "nightly",
+            versionCode = 104,
+            channel = "nightly",
+            gitSha = "newsha789",
+        )
+        val sameSha = resolver.compareAndReturn(nightlyManifest, installedCode = 104, installedSha = "newsha789")
+        assertIs<UpdateResult.UpToDate>(sameSha)
+
+        val newerSha = resolver.compareAndReturn(nightlyManifest, installedCode = 104, installedSha = "oldsha123")
+        val available = assertIs<UpdateResult.Available>(newerSha)
+        assertEquals("nightly", available.manifest.channel)
+    }
+
+    @Test
+    fun updatePreferencesKeysAndDefaultsAreStable() {
+        assertEquals("STREAMIFY_NIGHTLY_UPDATES", UpdatePreferences.KEY_NIGHTLY_ENABLED)
+        assertEquals("STREAMIFY_AUTO_INSTALL_UPDATES", UpdatePreferences.KEY_AUTO_INSTALL_ENABLED)
+    }
 }
