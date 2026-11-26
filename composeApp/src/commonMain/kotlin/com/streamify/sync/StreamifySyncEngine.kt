@@ -951,7 +951,13 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             if (pendingBatch.isNotEmpty()) {
-                SupabaseLibrarySync.recordPlaybackHistoryBatch(targetUserId, pendingBatch)
+                val deviceId = getOrCreateDeviceId()
+                SupabaseLibrarySync.recordPlaybackHistoryBatch(
+                    userId = targetUserId,
+                    items = pendingBatch,
+                    hlc = HybridLogicalClock.now(),
+                    deviceId = deviceId,
+                )
             }
             return true
         } catch (e: CancellationException) {
@@ -1073,7 +1079,13 @@ object StreamifySyncEngine : KoinComponent {
             // Outbox: push local search queries not yet in cloud
             val pendingUploads = localQueries.filter { it !in cloudQueries && it.isNotBlank() }
             if (pendingUploads.isNotEmpty()) {
-                SupabaseLibrarySync.uploadSearchHistory(pendingUploads, targetUserId)
+                val deviceId = getOrCreateDeviceId()
+                SupabaseLibrarySync.uploadSearchHistory(
+                    queries = pendingUploads,
+                    userId = targetUserId,
+                    hlc = HybridLogicalClock.now(),
+                    deviceId = deviceId,
+                )
             }
             return true
         } catch (e: CancellationException) {
