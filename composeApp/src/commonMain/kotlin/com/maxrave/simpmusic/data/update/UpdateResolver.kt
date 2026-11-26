@@ -2,6 +2,8 @@ package com.maxrave.simpmusic.data.update
 
 import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.simpmusic.utils.VersionManager
+import com.streamify.announcements.ManifestSignatureVerifier
+import com.streamify.announcements.PinnedManifestSignatureVerifier
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -46,6 +48,9 @@ class UpdateResolver(
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val repoOwner: String = "meraxes89",
     private val repoName: String = "streamify-apk",
+    private val signatureVerifier: ManifestSignatureVerifier = PinnedManifestSignatureVerifier(),
+    private val pinnedPublicKeyHex: String = PinnedManifestSignatureVerifier.PINNED_STREAMIFY_RELEASE_PUBKEY_HEX,
+    private val requireSignature: Boolean = false,
 ) {
     private val baseUrl = "https://github.com/$repoOwner/$repoName"
     private val apiLatestUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=1"
@@ -63,8 +68,9 @@ class UpdateResolver(
                 header(HttpHeaders.UserAgent, "Streamify-App")
             }
             if (response.status == HttpStatusCode.OK) {
-                val manifest = json.decodeFromString<UpdateManifest>(response.bodyAsText())
-                return compareAndReturn(manifest, installedCode)
+                val rawBody = response.bodyAsText()
+                val manifest = json.decodeFromString<UpdateManifest>(rawBody)
+                return verifyAndCompare(rawBody, manifest, installedCode)
             }
         }
 
@@ -83,8 +89,9 @@ class UpdateResolver(
                         header(HttpHeaders.UserAgent, "Streamify-App")
                     }
                     if (pinnedRes.status == HttpStatusCode.OK) {
-                        val manifest = json.decodeFromString<UpdateManifest>(pinnedRes.bodyAsText())
-                        return compareAndReturn(manifest, installedCode)
+                        val rawBody = pinnedRes.bodyAsText()
+                        val manifest = json.decodeFromString<UpdateManifest>(rawBody)
+                        return verifyAndCompare(rawBody, manifest, installedCode)
                     }
                     // Legacy release with no version.json: provide tag directly
                     if (VersionManager.isBehind(tag)) {
@@ -137,8 +144,9 @@ class UpdateResolver(
                             header(HttpHeaders.UserAgent, "Streamify-App")
                         }
                         if (pinnedRes.status == HttpStatusCode.OK) {
-                            val pinnedManifest = json.decodeFromString<UpdateManifest>(pinnedRes.bodyAsText())
-                            return@runCatching compareAndReturn(pinnedManifest, installedCode)
+                            val rawBody = pinnedRes.bodyAsText()
+                            val pinnedManifest = json.decodeFromString<UpdateManifest>(rawBody)
+                            return@runCatching verifyAndCompare(rawBody, pinnedManifest, installedCode)
                         }
                     }
                 }
@@ -209,6 +217,32 @@ class UpdateResolver(
         }
     }
 
+    internal fun verifyAndCompare(
+        rawJson: String,
+        manifest: UpdateManifest,
+        installedCode: Int,
+        installedSha: String = try {
+            BuildKonfig.gitSha
+        } catch (_: Exception) {
+            ""
+        },
+    ): UpdateResult {
+        val verified =
+            if (manifest.signatureHex.isNotBlank()) {
+                val canonical = canonicalizeManifestForSigning(rawJson)
+                if (!signatureVerifier.verify(canonical, manifest.signatureHex, pinnedPublicKeyHex)) {
+                    return UpdateResult.Error("Invalid update manifest signature")
+                }
+                true
+            } else {
+                if (requireSignature) {
+                    return UpdateResult.Error("Missing update manifest signature")
+                }
+                false
+            }
+        return compareAndReturn(manifest, installedCode, installedSha, verified)
+    }
+
     internal fun compareAndReturn(
         manifest: UpdateManifest,
         installedCode: Int,
@@ -217,6 +251,7 @@ class UpdateResolver(
         } catch (_: Exception) {
             ""
         },
+        isPolicyVerified: Boolean = false,
     ): UpdateResult {
         val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.contains(installedSha)
 
@@ -235,6 +270,13 @@ class UpdateResolver(
             }
             else -> VersionManager.isBehind(manifest.version)
         }
-        return if (isNewer) UpdateResult.Available(manifest) else UpdateResult.UpToDate
+        return if (isNewer) UpdateResult.Available(manifest, isPolicyVerified) else UpdateResult.UpToDate
+    }
+
+    companion object {
+        private val SIGNATURE_HEX_REGEX = Regex(""""signatureHex"\s*:\s*"[^"]*"""")
+
+        internal fun canonicalizeManifestForSigning(rawJson: String): String =
+            SIGNATURE_HEX_REGEX.replace(rawJson, """"signatureHex": """"")
     }
 }

@@ -3110,7 +3110,7 @@ fun SettingScreen(
                     title = stringResource(Res.string.check_for_update),
                     subtitle = checkForUpdateSubtitle,
                     onClick = {
-                        sharedViewModel.checkForUpdate()
+                        sharedViewModel.checkForUpdate(force = true)
                     },
                 )
                 SettingItem(

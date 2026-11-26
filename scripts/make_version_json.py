@@ -144,6 +144,7 @@ def build_manifest(
         "publishedAt": published_at,
         "changelog": changelog,
         "artifacts": artifacts,
+        "signatureHex": "",
     }
 
 
