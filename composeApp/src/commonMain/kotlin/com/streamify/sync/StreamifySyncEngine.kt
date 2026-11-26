@@ -38,6 +38,8 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
@@ -107,37 +109,38 @@ object StreamifySyncEngine : KoinComponent {
     internal fun shouldRunDeltaSync(localCursor: Long, bootstrapCheckpoint: String): Boolean =
         localCursor > 0L || bootstrapCheckpoint == BOOTSTRAP_DONE
 
-    private val SYNCABLE_SETTINGS_KEYS = listOf(
-        // Appearance & Themes
-        "theme_mode",
-        "theme_color_source",
-        "custom_theme_color",
-        "now_playing_style",
-        "chart_key",
-        // Audio & Playback
-        "quality",
-        "download_quality",
-        "normalize_volume",
-        "skip_silent",
-        "crossfade_enabled",
-        "crossfade_duration",
-        // Content
-        "explicit_content_enabled",
-        "location",
-        "radio_audio_only",
-        "endless_queue",
-        "sponsor_block_enabled",
-        "spotify_canvas",
-        "am_animated_artwork",
-        // Lyrics
-        "lyrics_provider",
-        "lyrics_offset_ms",
-        "translation_language",
-        "use_translation_language",
-        "use_ai_translation",
-        "lyrics_style",
-        "selected_language",
-    )
+    private val SYNCABLE_SETTINGS_KEYS: Set<String>
+        get() = SettingsSyncRegistry.keys
+
+    private val settingsObserverStarted = MutableStateFlow(false)
+
+    @Volatile
+    private var isApplyingRemoteSetting: Boolean = false
+
+    /**
+     * Observes all [SettingsSyncRegistry.specs] Flows reactively and enqueues changes to
+     * [SyncKind.SETTINGS] regardless of which ViewModel or sheet mutated DataStore.
+     */
+    fun startSettingsObserver() {
+        if (!settingsObserverStarted.compareAndSet(expect = false, update = true)) return
+        for (spec in SettingsSyncRegistry.specs) {
+            scope.launch {
+                try {
+                    spec.read(dataStoreManager)
+                        .drop(1)
+                        .distinctUntilChanged()
+                        .collect { value ->
+                            if (!isApplyingRemoteSetting) {
+                                recordSettingChange(spec.key, value)
+                            }
+                        }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
 
     data class LocalEpisodeState(
         val episodeId: String,
@@ -204,6 +207,7 @@ object StreamifySyncEngine : KoinComponent {
      * Executes the complete 3-phase hybrid synchronization pipeline asynchronously.
      */
     fun triggerSync(userId: String? = null) {
+        startSettingsObserver()
         scope.launch {
             syncAll(userId)
         }
@@ -248,6 +252,7 @@ object StreamifySyncEngine : KoinComponent {
             resetForAccountSwitch()
         }
         dataStoreManager.putString("streamify_active_user_id_v3", userId)
+        startSettingsObserver()
     }
 
     /**
@@ -849,18 +854,24 @@ object StreamifySyncEngine : KoinComponent {
             val remoteSettings = remoteResult.getOrDefault(emptyMap())
 
             val localSettings = mutableMapOf<String, String>()
-            for (key in SYNCABLE_SETTINGS_KEYS) {
-                val value = dataStoreManager.getString(key).firstOrNull()
+            for (spec in SettingsSyncRegistry.specs) {
+                val value = spec.read(dataStoreManager).firstOrNull()
                 if (!value.isNullOrBlank()) {
-                    localSettings[key] = value
+                    localSettings[spec.key] = value
                 }
             }
 
-            // Inbound: If local setting is unset but exists in remote, apply it locally
-            for ((key, remoteVal) in remoteSettings) {
-                if (key !in localSettings && remoteVal.isNotBlank()) {
-                    dataStoreManager.putString(key, remoteVal)
+            // Inbound: If local setting is unset or differs on bootstrap, apply remote typed value
+            isApplyingRemoteSetting = true
+            try {
+                for ((key, remoteVal) in remoteSettings) {
+                    val spec = SettingsSyncRegistry.byKey[key] ?: continue
+                    if (key !in localSettings && remoteVal.isNotBlank()) {
+                        spec.write(dataStoreManager, remoteVal)
+                    }
                 }
+            } finally {
+                isApplyingRemoteSetting = false
             }
 
             // Outbox: Merge local into remote and upload if there are newer local settings
@@ -1938,22 +1949,27 @@ object StreamifySyncEngine : KoinComponent {
                 }
                 "settings" -> {
                     val nestedSettings = op.data?.get("settings") as? kotlinx.serialization.json.JsonObject
-                    if (nestedSettings != null) {
-                        for ((k, v) in nestedSettings) {
-                            if (k in SYNCABLE_SETTINGS_KEYS) {
+                    isApplyingRemoteSetting = true
+                    try {
+                        if (nestedSettings != null) {
+                            for ((k, v) in nestedSettings) {
+                                val spec = SettingsSyncRegistry.byKey[k] ?: continue
                                 val strVal = (v as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
                                 if (strVal != null) {
-                                    dataStoreManager.putString(k, strVal)
+                                    spec.write(dataStoreManager, strVal)
                                 }
                             }
+                        } else {
+                            val key = op.data?.get("key")?.jsonPrimitive?.contentOrNull ?: op.key
+                            val value = op.data?.get("value")?.jsonPrimitive?.contentOrNull
+                                ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
+                            val spec = SettingsSyncRegistry.byKey[key]
+                            if (spec != null && value != null) {
+                                spec.write(dataStoreManager, value)
+                            }
                         }
-                    } else {
-                        val key = op.data?.get("key")?.jsonPrimitive?.contentOrNull ?: op.key
-                        val value = op.data?.get("value")?.jsonPrimitive?.contentOrNull
-                            ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
-                        if (key in SYNCABLE_SETTINGS_KEYS && value != null) {
-                            dataStoreManager.putString(key, value)
-                        }
+                    } finally {
+                        isApplyingRemoteSetting = false
                     }
                 }
                 "search" -> {
