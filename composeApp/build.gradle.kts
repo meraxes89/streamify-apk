@@ -877,7 +877,7 @@ buildkonfig {
         buildConfigField(
             STRING,
             "announcementReleasePubkeyHex",
-            "6873a0d164bbddce90eef51edecb5eb01b790806ff44dae2ce8e85fa421dea62"
+            "04104d5f8918121cf3806f72dc6d63c90babde59a0f2294483a4080ea1d18f44"
         )
 
         if (isFullBuild) {
