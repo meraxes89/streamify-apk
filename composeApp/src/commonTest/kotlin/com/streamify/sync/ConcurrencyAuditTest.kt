@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 class ConcurrencyAuditTest {
 
     @Test
-    fun hybridLogicalClockRemainsStrictlyUniqueAndMonotonicUnderConcurrentCalls() = runBlocking {
+    fun hybridLogicalClockRemainsStrictlyUniqueAndMonotonicUnderConcurrentCalls(): Unit = runBlocking {
         HybridLogicalClock.resetForTesting(lastMs = 1_700_000_000_000L, counter = 0, serverTime = 1_700_000_000_000L)
 
         val workers = 16
@@ -50,7 +50,7 @@ class ConcurrencyAuditTest {
     }
 
     @Test
-    fun presentationArbiterAndAnnouncementStoreHandleConcurrentAccessSafely() = runBlocking {
+    fun presentationArbiterAndAnnouncementStoreHandleConcurrentAccessSafely(): Unit = runBlocking {
         val arbiter = PresentationArbiter()
         val store = AnnouncementStore(dataStoreManager = null)
         val idleCtx = UiContext(isPlaying = false, isModalActive = false, isOnboarding = false)
@@ -72,5 +72,6 @@ class ConcurrencyAuditTest {
             }
         }
         jobs.awaitAll()
+        Unit
     }
 }
