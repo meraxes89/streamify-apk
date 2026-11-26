@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Inset the circular Streamify icon by 18% on each side so the circle sits cleanly inside
+    Android 12+'s 2/3 circular SplashScreen safe zone and stays circular on pre-API 31 and
+    OEM tablet starting windows.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/circle_app_icon"
+    android:inset="18%" />
