@@ -1,6 +1,11 @@
 package com.maxrave.simpmusic.data.update
 
+import android.content.Context
 import android.os.Build
+import com.maxrave.common.AppIdentity
+import org.koin.core.context.GlobalContext
+
+private const val VIVO_PACKAGE_ID = "com.spotify.music"
 
 actual fun resolveDeviceBinary(
     tag: String,
@@ -19,9 +24,25 @@ actual fun resolveDeviceBinary(
     val isArmV7 = abis.any { it.contains("armeabi", ignoreCase = true) || it.contains("armv7", ignoreCase = true) }
     val isX86_64 = abis.any { it.contains("x86_64", ignoreCase = true) }
 
-    val isVivo = Build.MANUFACTURER.contains("vivo", ignoreCase = true) ||
+    val installedPackageId =
+        runCatching {
+            GlobalContext.getOrNull()?.let { koin ->
+                koin.getOrNull<AppIdentity>()?.applicationId ?: koin.getOrNull<Context>()?.packageName
+            }
+        }.getOrNull()
+
+    val isVivoHardware = Build.MANUFACTURER.contains("vivo", ignoreCase = true) ||
         Build.BRAND.contains("vivo", ignoreCase = true) ||
         Build.FINGERPRINT.contains("vivo", ignoreCase = true)
+
+    // Match the currently installed package flavor first (Vivo Origin Island uses com.spotify.music).
+    // Only fall back to hardware heuristic when Koin/Context is unavailable (e.g., unit tests).
+    val isVivoFlavor =
+        when (installedPackageId) {
+            VIVO_PACKAGE_ID -> true
+            null -> isVivoHardware
+            else -> false
+        }
 
     val hasVivoArtifact = artifacts.containsKey("android-vivo-arm64") ||
         artifacts.containsKey("android-vivo-arm64-v8a") ||
@@ -33,7 +54,7 @@ actual fun resolveDeviceBinary(
     val releasePageUrl = "https://github.com/meraxes89/streamify-apk/releases/tag/$tag"
 
     return when {
-        isVivo && hasVivoArtifact -> {
+        isVivoFlavor && hasVivoArtifact -> {
             val url: String = (
                 if (isArm64) {
                     artifacts["android-vivo-arm64"]?.url
@@ -60,6 +81,14 @@ actual fun resolveDeviceBinary(
                 downloadUrl = url,
                 buttonLabel = "Download APK ($archName)",
                 architectureName = archName,
+            )
+        }
+        isVivoFlavor && !hasVivoArtifact -> {
+            // Never fall back to com.streamify.app APK when com.spotify.music (Vivo) is installed.
+            ResolvedPlatformBinary(
+                downloadUrl = releasePageUrl,
+                buttonLabel = "Download Vivo APK",
+                architectureName = "Vivo Edition",
             )
         }
         isArm64 -> {
