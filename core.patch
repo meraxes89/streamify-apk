@@ -1800,7 +1800,7 @@ index 64bed3e..a001c9d 100644
                  }
                  // Release handler (contains coroutines and jobs, which also releases the adapter)
                  simpleMediaServiceHandler.release()
-+                artworkEnrichingPlayer?.release()
++                artworkEnrichingPlayer?.releaseArtworkLoader()
 +                artworkEnrichingPlayer = null
                  mediaSession = null
                  Logger.w("Service", "Simple Media Service Released")
@@ -1929,7 +1929,7 @@ index 64bed3e..a001c9d 100644
 +            }
 +        }
 +
-+        fun release() {
++        fun releaseArtworkLoader() {
 +            scope.cancel()
 +            listeners.clear()
 +        }
