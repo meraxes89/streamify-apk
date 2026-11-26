@@ -5,13 +5,14 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.streamify.graphics.api.EffectRenderRequest
@@ -484,7 +485,19 @@ internal class SkikoRuntimeShaderEngine(
             }
             with(scope) {
                 clipPath(path) {
-                    drawRect(brush = ShaderBrush(shader))
+                    drawIntoCanvas { canvas ->
+                        val skiaPaint = org.jetbrains.skia.Paint().apply {
+                            this.shader = shader
+                        }
+                        try {
+                            canvas.nativeCanvas.drawRect(
+                                org.jetbrains.skia.Rect.makeWH(size.width, size.height),
+                                skiaPaint,
+                            )
+                        } finally {
+                            skiaPaint.close()
+                        }
+                    }
                 }
             }
         } catch (_: Throwable) {
