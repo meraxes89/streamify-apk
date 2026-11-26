@@ -37,6 +37,51 @@ internal data class TimelineProgressState(
 )
 
 /**
+ * Pure state machine for seek-bar scrubbing and timeline updates.
+ * Keeps [sliderValue] synchronously up-to-date so a tap or quick drag-release
+ * in the same frame always commits the latest scrub position rather than a
+ * pre-recomposition snapshot.
+ */
+internal class TimelineScrubController(
+    initialSliderValue: Float = 0f,
+) {
+    var isSliding: Boolean = false
+        private set
+
+    var sliderValue: Float = initialSliderValue.coerceIn(0f, 100f)
+        private set
+
+    fun onTimelineUpdate(timeline: TimeLine): Float {
+        if (!isSliding) {
+            sliderValue = progressPercentOf(timeline)
+        }
+        return sliderValue
+    }
+
+    fun onValueChange(newValue: Float): Float {
+        isSliding = true
+        sliderValue = newValue.coerceIn(0f, 100f)
+        return sliderValue
+    }
+
+    fun onValueChangeFinished(onSeekCommit: (Float) -> Unit): Float {
+        isSliding = false
+        val target = sliderValue
+        onSeekCommit(target)
+        return target
+    }
+
+    companion object {
+        fun progressPercentOf(timeline: TimeLine): Float =
+            if (timeline.total > 0L) {
+                (timeline.current.toFloat() * 100f / timeline.total.toFloat()).coerceIn(0f, 100f)
+            } else {
+                0f
+            }
+    }
+}
+
+/**
  * Collects [timelineFlow] locally inside a leaf composable so 50 ms playback ticks
  * do not recompose the player shell or sibling controls.
  */
@@ -46,21 +91,13 @@ internal fun rememberTimelineProgressState(
     onSeekCommit: (Float) -> Unit,
 ): TimelineProgressState {
     val timeline by timelineFlow.collectAsStateWithLifecycle()
-    var isSliding by rememberSaveable { mutableStateOf(false) }
+    val controller = remember { TimelineScrubController() }
     var sliderValue by rememberSaveable { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(timeline, isSliding) {
-        if (!isSliding) {
-            sliderValue =
-                if (timeline.total > 0L) {
-                    timeline.current.toFloat() * 100f / timeline.total.toFloat()
-                } else {
-                    0f
-                }
-        }
+    LaunchedEffect(timeline) {
+        sliderValue = controller.onTimelineUpdate(timeline)
     }
 
-    val currentSliderValue by rememberUpdatedState(sliderValue)
     val currentOnSeekCommit by rememberUpdatedState(onSeekCommit)
 
     return remember(timeline, sliderValue) {
@@ -68,12 +105,10 @@ internal fun rememberTimelineProgressState(
             timeline = timeline,
             sliderValue = sliderValue,
             onValueChange = { newValue ->
-                isSliding = true
-                sliderValue = newValue
+                sliderValue = controller.onValueChange(newValue)
             },
             onValueChangeFinished = {
-                isSliding = false
-                currentOnSeekCommit(currentSliderValue)
+                controller.onValueChangeFinished(currentOnSeekCommit)
             },
         )
     }
