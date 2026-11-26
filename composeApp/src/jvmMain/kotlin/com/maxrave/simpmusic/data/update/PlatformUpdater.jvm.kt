@@ -129,8 +129,18 @@ actual object PlatformUpdater {
         val osName = System.getProperty("os.name", "").lowercase()
         return when {
             osName.contains("win") -> true
-            osName.contains("linux") -> !System.getenv("APPIMAGE").isNullOrBlank()
-            osName.contains("mac") -> currentMacAppBundle() != null
+            osName.contains("linux") -> {
+                val appImage = System.getenv("APPIMAGE")?.takeIf { it.isNotBlank() } ?: return false
+                val target = Path.of(appImage)
+                val parent = target.parent ?: return false
+                Files.isWritable(parent) && (!Files.exists(target) || Files.isWritable(target))
+            }
+            osName.contains("mac") -> {
+                val bundle = currentMacAppBundle() ?: return false
+                val target = Path.of(bundle)
+                val parent = target.parent ?: return false
+                Files.isWritable(parent) && Files.isWritable(target)
+            }
             else -> false
         }
     }
@@ -178,13 +188,21 @@ actual object PlatformUpdater {
     private fun installLinuxAppImage(file: File): Boolean {
         val appImageEnv = System.getenv("APPIMAGE")?.takeIf { it.isNotBlank() } ?: return false
         return runCatching {
-            file.setExecutable(true)
             val target = Path.of(appImageEnv)
-            runCatching {
-                Files.move(file.toPath(), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            }.getOrElse {
-                Files.copy(file.toPath(), target, StandardCopyOption.REPLACE_EXISTING)
-                target.toFile().setExecutable(true)
+            val parent = target.parent ?: return false
+            if (!Files.isWritable(parent)) return false
+            val staged = Files.createTempFile(parent, ".streamify-update-", ".AppImage")
+            try {
+                Files.copy(file.toPath(), staged, StandardCopyOption.REPLACE_EXISTING)
+                staged.toFile().setExecutable(true)
+                runCatching {
+                    Files.move(staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                }.getOrElse {
+                    Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING)
+                }
+            } catch (t: Throwable) {
+                runCatching { Files.deleteIfExists(staged) }
+                throw t
             }
             ProcessBuilder(appImageEnv).start()
             true
@@ -194,42 +212,74 @@ actual object PlatformUpdater {
     private fun installWindowsPackage(file: File): Boolean =
         runCatching {
             val pid = ProcessHandle.current().pid()
-            val quotedPath = file.absolutePath.replace("\"", "\"\"")
-            val installCmd =
-                if (file.name.endsWith(".msi", ignoreCase = true)) {
-                    "msiexec /i \"$quotedPath\" /qn /norestart"
-                } else {
-                    "\"$quotedPath\" /S"
-                }
+            val psPath = file.absolutePath.replace("'", "''")
             val script =
-                "while (Get-Process -Id $pid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }; " +
-                    "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','$installCmd' -WindowStyle Hidden"
+                if (file.name.endsWith(".msi", ignoreCase = true)) {
+                    """
+                    ${'$'}i = 0
+                    while ((Get-Process -Id $pid -ErrorAction SilentlyContinue) -and (${'$'}i -lt 60)) { Start-Sleep -Milliseconds 300; ${'$'}i++ }
+                    ${'$'}p = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', '$psPath', '/qn', '/norestart') -WindowStyle Hidden -Wait -PassThru
+                    if (${'$'}p.ExitCode -ne 0) {
+                      Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', '$psPath', '/qb', '/norestart')
+                    }
+                    """.trimIndent()
+                } else {
+                    """
+                    ${'$'}i = 0
+                    while ((Get-Process -Id $pid -ErrorAction SilentlyContinue) -and (${'$'}i -lt 60)) { Start-Sleep -Milliseconds 300; ${'$'}i++ }
+                    ${'$'}p = Start-Process -FilePath '$psPath' -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
+                    if (${'$'}p.ExitCode -ne 0) {
+                      Start-Process -FilePath '$psPath'
+                    }
+                    """.trimIndent()
+                }
             ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script).start()
             true
         }.getOrDefault(false)
 
     private fun installMacOsDmg(file: File): Boolean {
         val appBundle = currentMacAppBundle() ?: return false
+        val bundlePath = Path.of(appBundle)
+        val parent = bundlePath.parent ?: return false
+        if (!Files.isWritable(parent) || !Files.isWritable(bundlePath)) return false
         return runCatching {
             val pid = ProcessHandle.current().pid()
             val mountDir = Files.createTempDirectory("streamify-dmg").toAbsolutePath().toString()
+            val qMount = shellQuote(mountDir)
+            val qDmg = shellQuote(file.absolutePath)
+            val qBundle = shellQuote(appBundle)
+            val qNew = shellQuote("$appBundle.new")
+            val qBak = shellQuote("$appBundle.bak")
             val script =
                 """
-                while kill -0 $pid 2>/dev/null; do sleep 0.3; done
-                hdiutil attach -nobrowse -quiet -mountpoint "$mountDir" "${file.absolutePath}" || exit 1
-                SRC_APP=$(ls -d "$mountDir"/*.app 2>/dev/null | head -n 1)
-                if [ -n "${'$'}SRC_APP" ]; then
-                  rm -rf "$appBundle"
-                  cp -R "${'$'}SRC_APP" "$appBundle"
-                  open "$appBundle"
+                i=0
+                while kill -0 $pid 2>/dev/null && [ ${'$'}i -lt 60 ]; do sleep 0.3; i=$((i+1)); done
+                if hdiutil attach -nobrowse -quiet -mountpoint $qMount $qDmg; then
+                  SRC_APP=$(ls -d $qMount/*.app 2>/dev/null | head -n 1)
+                  if [ -n "${'$'}SRC_APP" ]; then
+                    rm -rf $qNew $qBak
+                    if ditto "${'$'}SRC_APP" $qNew; then
+                      if mv $qBundle $qBak && mv $qNew $qBundle; then
+                        rm -rf $qBak
+                        open $qBundle
+                      else
+                        [ -d $qBak ] && [ ! -d $qBundle ] && mv $qBak $qBundle || true
+                        rm -rf $qNew
+                      fi
+                    else
+                      rm -rf $qNew
+                    fi
+                  fi
+                  hdiutil detach -quiet $qMount || true
                 fi
-                hdiutil detach -quiet "$mountDir" || true
-                rmdir "$mountDir" 2>/dev/null || true
+                rmdir $qMount 2>/dev/null || true
                 """.trimIndent()
             ProcessBuilder("/bin/sh", "-c", script).start()
             true
         }.getOrDefault(false)
     }
+
+    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\"'\"'") + "'"
 
     private fun currentMacAppBundle(): String? {
         val cmd = ProcessHandle.current().info().command().orElse(null) ?: return null
