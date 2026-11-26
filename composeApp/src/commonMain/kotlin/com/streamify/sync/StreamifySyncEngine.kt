@@ -267,8 +267,8 @@ object StreamifySyncEngine : KoinComponent {
 
     internal fun normalizeToHlc(rawChangedAt: Long): Long {
         if (rawChangedAt <= 0L) return 0L
-        // Plain Unix epoch millis (~2001..2286) sit well below packed 64-bit HLCs (ms << 22).
-        return if (rawChangedAt < (1L shl HybridLogicalClock.COUNTER_BITS) * 1000L) {
+        // Plain Unix epoch millis (up to year 5138: < 1e14) sit well below packed 64-bit HLCs (ms << 22).
+        return if (rawChangedAt < 100_000_000_000_000L) {
             HybridLogicalClock.pack(rawChangedAt, 0)
         } else {
             rawChangedAt

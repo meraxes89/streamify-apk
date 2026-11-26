@@ -14,8 +14,9 @@ private data class WasmOutboxRecord(
     val entity: String,
     val entityKey: String,
     val op: String,
-    val payload: String?,
+    val value: String? = null,
     val changedAt: Long,
+    val deviceId: String = "",
     val serverSeq: Long? = null,
 )
 
@@ -47,8 +48,9 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
                     entity = it.entity,
                     entityKey = it.entityKey,
                     op = it.op,
-                    payload = it.payload,
+                    value = it.value,
                     changedAt = it.changedAt,
+                    deviceId = it.deviceId,
                     serverSeq = it.serverSeq,
                 )
             },
@@ -66,8 +68,9 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
                         entity = it.entity,
                         entityKey = it.entityKey,
                         op = it.op,
-                        payload = it.payload,
+                        value = it.value,
                         changedAt = it.changedAt,
+                        deviceId = it.deviceId,
                         serverSeq = it.serverSeq,
                     )
                 },
