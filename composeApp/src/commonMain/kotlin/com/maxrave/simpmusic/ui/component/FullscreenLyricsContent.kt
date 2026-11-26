@@ -573,8 +573,6 @@ fun FullscreenLyricsContent(
                     }
                 }
             }
-        }
-    }
     if (showQueueBottomSheet) {
         QueueBottomSheet(
             onDismiss = {
