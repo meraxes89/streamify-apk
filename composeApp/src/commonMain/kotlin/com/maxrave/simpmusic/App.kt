@@ -536,10 +536,7 @@ fun App(
     val currentPolicy by remember {
         derivedStateOf { ScreenPolicyRegistry.policyFor(currentDestinationClass(navBackStackEntry)) }
     }
-    val isNavBarVisible =
-        currentPolicy.chrome.showNavBar &&
-            !isShowNowPlaylistScreen &&
-            !(isTabletLandscape && isShowNowPlaylistScreen)
+    val isNavBarVisible = currentPolicy.chrome.showNavBar && !isShowNowPlaylistScreen
     LaunchedEffect(navBackStackEntry) {
         Logger.d("MainActivity", "Current destination: ${navBackStackEntry?.destination?.route}")
         if (navBackStackEntry?.destination?.hierarchy?.any {

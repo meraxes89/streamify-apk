@@ -21,7 +21,6 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import com.maxrave.simpmusic.ui.theme.ForceDarkContent
-import kotlin.reflect.KClass
 
 /**
  * RFC-003 §3.4 composition locals.

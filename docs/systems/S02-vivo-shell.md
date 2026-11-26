@@ -32,6 +32,11 @@ tests: []
 
 - Decision: [ADR-005-vivo-package-identity-and-oauth-resolution](../adr/ADR-005-vivo-package-identity-and-oauth-resolution.md)
 
+## Current truth additions (RFC-003, #355)
+
+- The shared Compose UI now derives navigation transitions per destination from the `ScreenPolicyRegistry` (`composeApp/.../ui/navigation/ScreenPolicy.kt`), and shell chrome (bottom bar / rail / mini player) reactively from `currentBackStackEntryAsState()` — the imperative `hideNavBar`/`showNavBar` callbacks are gone. All of it is behind the `enableSpatialNavigation` beta toggle (Settings → Appearance), off by default; the single `NavHost` tree is never swapped when the flag flips, so the back stack survives toggling.
+- Predictive back runs through `PlatformPredictiveBackHandler` (expect/actual in `composeApp`), with overlays settling linearly on release; hero morphing (`Modifier.sharedHero`) is gated for Tier 4 software rasterizers and reduced motion.
+
 ## Known limits / debt
 
 - Store-specific QA is manual and not in the deep matrix.
