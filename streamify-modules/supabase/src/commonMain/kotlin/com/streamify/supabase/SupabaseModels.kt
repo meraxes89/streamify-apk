@@ -368,6 +368,8 @@ data class SyncPullOp(
 @Serializable
 data class SyncPullResult(
     val cursor: Long = 0,
+    @SerialName("head_cursor")
+    val headCursor: Long? = null,
     @SerialName("has_more")
     val hasMore: Boolean = false,
     val ops: List<SyncPullOp> = emptyList(),

@@ -42,6 +42,7 @@ DECLARE
   v_last   bigint := p_since;
   v_cap    int := least(coalesce(p_limit, 500), 1000);
   v_min_id bigint;
+  v_head_id bigint;
   rec      record;
 BEGIN
   IF v_uid IS NULL THEN
@@ -71,8 +72,11 @@ BEGIN
     v_last := rec.id;
   END LOOP;
 
+  SELECT coalesce(max(id), 0) INTO v_head_id FROM public.sync_changelog WHERE user_id = v_uid;
+
   RETURN jsonb_build_object(
     'cursor', v_last,
+    'head_cursor', v_head_id,
     'has_more', jsonb_array_length(v_ops) = v_cap,
     'ops', v_ops);
 END $function$;
