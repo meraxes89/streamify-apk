@@ -9,6 +9,7 @@ immutable. Keep rejected RFCs — the "why not" is the valuable part.
 |---|---|---|---|---|
 | [RFC-001](RFC-001-sovereign-gpu-offload.md) | Sovereign direct GPU offload | Draft | — | Core engineering |
 | [RFC-002](RFC-002-backend-cloud-graph.md) | Backend cloud graph / V4 schema + contract v3 | Draft for review | [ADR-008](../adr/ADR-008-server-contract-v4-and-sync-dataplane-hardening.md) (partial) | Backend architecture |
+| [RFC-003](RFC-003-kmp-spatial-navigation.md) | KMP spatial navigation, predictive back & shared elements | Draft | — | Core engineering |
 
 ## Rules
 
