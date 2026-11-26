@@ -429,6 +429,9 @@ class FakeDataStoreManager : DataStoreManager {
     override val enableLiquidGlass: Flow<String> get() = getOrInitBool("enableLiquidGlass", false)
     override suspend fun setEnableLiquidGlass(enable: Boolean) { setStoredBool("enableLiquidGlass", enable) }
 
+    override val enableSpatialNavigation: Flow<String> get() = getOrInitBool("spatial_navigation", false)
+    override suspend fun setEnableSpatialNavigation(enable: Boolean) { setStoredBool("spatial_navigation", enable) }
+
     override val themeMode: Flow<String> get() = getOrInitString("themeMode", DataStoreManager.THEME_MODE_SYSTEM)
     override suspend fun setThemeMode(mode: String) { setStoredString("themeMode", mode) }
 

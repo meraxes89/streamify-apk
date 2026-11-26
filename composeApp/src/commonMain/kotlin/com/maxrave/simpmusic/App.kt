@@ -104,6 +104,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.player.FullscreenDestination
 import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
+import com.maxrave.simpmusic.ui.navigation.DestinationClassIndex
 import com.maxrave.simpmusic.ui.navigation.ScreenPolicyRegistry
 import com.maxrave.simpmusic.ui.navigation.SpatialCapability
 import com.maxrave.simpmusic.ui.navigation.LocalSharedTransitionScope
