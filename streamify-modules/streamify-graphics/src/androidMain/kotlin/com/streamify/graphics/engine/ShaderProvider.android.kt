@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RenderEffect
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawOutline
@@ -13,8 +14,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
+import com.streamify.graphics.api.EffectRenderRequest
+import com.streamify.graphics.api.EffectUniformSlot
 import com.streamify.graphics.api.GlassRenderRequest
 import com.streamify.graphics.api.SovereignGraphicsEngine
+import com.streamify.graphics.api.drawEffectFallback
+import com.streamify.graphics.effect.GraphicsEffectRegistry
 // All four adapter helpers (AgslDialect, GlassRenderStrategy,
 // LiquidGlassSource, ShaderTierLadder) are consumed here — one wildcard
 // keeps the isolation-file import block short.
@@ -130,9 +135,9 @@ actual object ShaderProvider {
             GlassRenderStrategy.ACRYLIC_SCRIM -> AcrylicScrimGlassEngine
             GlassRenderStrategy.BLUR_RENDER_EFFECT -> blurEngine()
             GlassRenderStrategy.RUNTIME_SHADER_SINGLE_TAP ->
-                agslEngine(chromaticSpread = 0f)
+                agslEngine(chromaticSpread = 0f, tier = RenderTier.Tier2_Balanced)
             GlassRenderStrategy.RUNTIME_SHADER_DISPERSION ->
-                agslEngine(chromaticSpread = PrimitiveTokens.chromaticSpreadDefault)
+                agslEngine(chromaticSpread = PrimitiveTokens.chromaticSpreadDefault, tier = RenderTier.Tier1_Ultra)
         }
 
     /**
@@ -145,8 +150,8 @@ actual object ShaderProvider {
         else AcrylicScrimGlassEngine
 
     /** Double-gated AGSL lane (same reasoning as [blurEngine], for API 33+). */
-    private fun agslEngine(chromaticSpread: Float): SovereignGraphicsEngine =
-        if (Build.VERSION.SDK_INT >= 33) Agsl33Isolated.createEngine(chromaticSpread)
+    private fun agslEngine(chromaticSpread: Float, tier: RenderTier): SovereignGraphicsEngine =
+        if (Build.VERSION.SDK_INT >= 33) Agsl33Isolated.createEngine(chromaticSpread, tier)
         else blurEngine()
 }
 
@@ -198,8 +203,8 @@ private object Agsl33Isolated {
 
     /** Constructs the AGSL engine; a source compile failure throws and the
      * provider's buildEngines degrades the lane to the scrim. */
-    fun createEngine(chromaticSpread: Float): SovereignGraphicsEngine =
-        AgslRuntimeShaderEngine(chromaticSpread)
+    fun createEngine(chromaticSpread: Float, tier: RenderTier): SovereignGraphicsEngine =
+        AgslRuntimeShaderEngine(chromaticSpread, tier)
 }
 
 /** API 31-32 isolated lane — `RenderEffect.createBlurEffect`. */
@@ -228,7 +233,11 @@ private object Blur31Isolated {
 @RequiresApi(33)
 private class AgslRuntimeShaderEngine(
     private val chromaticSpread: Float,
+    private val tier: RenderTier,
 ) : SovereignGraphicsEngine {
+
+    /** Lazy cache of compiled custom [GraphicsEffectRegistry] shaders; `null` marks compile failure. */
+    private val effectShaderCache = HashMap<String, android.graphics.RuntimeShader?>()
 
     /** Throws on an AGSL-incompatible source — deliberate; the provider degrades the lane. */
     private val runtimeShader: android.graphics.RuntimeShader =
@@ -275,6 +284,60 @@ private class AgslRuntimeShaderEngine(
             drawGlassComposite(scope, request, tintFill = false, adaptiveScrim = false)
         } finally {
             request.backdrop.renderEffect = previousEffect
+        }
+    }
+
+    override fun applyEffect(scope: DrawScope, request: EffectRenderRequest) {
+        val effect = GraphicsEffectRegistry.get(request.effectId)
+        if (effect == null || tier < effect.minTier) {
+            drawEffectFallback(scope, request)
+            return
+        }
+        val shader = if (effectShaderCache.containsKey(effect.id)) {
+            effectShaderCache[effect.id]
+        } else {
+            val compiled = runCatching {
+                android.graphics.RuntimeShader(effect.transpileToAgsl())
+            }.getOrNull()
+            effectShaderCache[effect.id] = compiled
+            compiled
+        }
+        if (shader == null) {
+            drawEffectFallback(scope, request)
+            return
+        }
+        try {
+            val resName = request.resolutionUniform
+            if (resName != null) {
+                shader.setFloatUniform(resName, scope.size.width, scope.size.height)
+            }
+            for (slot in request.uniforms) {
+                when (slot) {
+                    is EffectUniformSlot.Float1 -> shader.setFloatUniform(slot.name, slot.value())
+                    is EffectUniformSlot.Float2 -> shader.setFloatUniform(slot.name, slot.x(), slot.y())
+                    is EffectUniformSlot.Float3 -> shader.setFloatUniform(slot.name, slot.x(), slot.y(), slot.z())
+                    is EffectUniformSlot.Float4 -> shader.setFloatUniform(slot.name, slot.x(), slot.y(), slot.z(), slot.w())
+                    is EffectUniformSlot.Color4 -> {
+                        val c = slot.color()
+                        shader.setFloatUniform(slot.name, c.red, c.green, c.blue, c.alpha)
+                    }
+                }
+            }
+            with(scope) {
+                val outline = request.shape.createOutline(size, layoutDirection, this)
+                val path = Path().apply {
+                    when (outline) {
+                        is Outline.Rectangle -> addRect(outline.rect)
+                        is Outline.Rounded -> addRoundRect(outline.roundRect)
+                        is Outline.Generic -> addPath(outline.path)
+                    }
+                }
+                clipPath(path) {
+                    drawRect(brush = ShaderBrush(shader))
+                }
+            }
+        } catch (_: Throwable) {
+            drawEffectFallback(scope, request)
         }
     }
 }

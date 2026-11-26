@@ -1,6 +1,7 @@
 package com.streamify.graphics.di
 
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import com.streamify.graphics.api.EffectRenderRequest
 import com.streamify.graphics.api.GlassRenderRequest
 import com.streamify.graphics.api.SovereignGraphicsEngine
 import com.streamify.graphics.api.SovereignGraphicsEngineLocator
@@ -90,5 +91,9 @@ private class TierGovernedGlassEngine(
 
     override fun applyGlass(scope: DrawScope, request: GlassRenderRequest) {
         engineForTier(governor.currentTier).applyGlass(scope, request)
+    }
+
+    override fun applyEffect(scope: DrawScope, request: EffectRenderRequest) {
+        engineForTier(governor.currentTier).applyEffect(scope, request)
     }
 }

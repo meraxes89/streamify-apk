@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Graphics (S24)**: Pluggable `SovereignGraphicsEngine.applyEffect` + `Modifier.streamifyEffect(...)` draw-phase facade with lazy per-tier `RuntimeShader` (Android API 33+) and `RuntimeEffect` (Skiko) program caching, `minTier` gating, and Tier-4 `fallbackColor` degradation for any registered `GraphicsEffect`.
+- **Agent Skills**: Added project-native `.claude/skills/sovereign-graphics/SKILL.md` and `.claude/skills/kmp-spatial-navigation/SKILL.md`.
 - **Graphics (S24)**: Kyant optical parity for the Sovereign GPU Engine — `LiquidGlassCore.sksl` now implements the five pillars of the `io.github.kyant0:backdrop` catalog look: directional 45° specular rim (`L = normalize(float2(-1, -1))`, cosine falloff, subtle ambient rim opposite), luminance-preserving 1.5× vibrancy before the tint mix, edge-only curvature (flat core keeps typography crisp), the adaptive "đục đen" luminance scrim (`lerp(0.12, 0.50, clamp((luminance - 0.3) / 0.5))`), and the fluid press interaction.
 - **Graphics (S24)**: three new shader uniforms (`vibrancy`, `darkenAmount`, `specularIntensity`) bound from the frozen token layer by both platform adapters; `GlassRenderRequest` carries a draw-phase `luminance` lambda and `scrimColor`.
 - **Graphics (S24)**: `Modifier.streamifyInteractiveGlass` — spring-animated press swell (1.12×, damping 0.5 / stiffness 300) plus a pointer-tracking radial white glow (`BlendMode.Plus`, alpha 0.18), driven by the ported observe-only `GlassInteraction` recogniser.

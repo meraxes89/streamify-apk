@@ -1,8 +1,12 @@
 package com.streamify.graphics.api
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import com.streamify.graphics.tokens.PrimitiveTokens
 
@@ -77,4 +81,74 @@ interface SovereignGraphicsEngine {
      * the surface *behind* the content.
      */
     fun applyGlass(scope: DrawScope, request: GlassRenderRequest)
+
+    /**
+     * Renders a registered [com.streamify.graphics.effect.GraphicsEffect]
+     * for [request] into [scope].
+     *
+     * Default implementation renders [EffectRenderRequest.fallbackColor]
+     * clipped to [EffectRenderRequest.shape] so legacy/Tier-4 engines
+     * degrade gracefully without crashing or requiring boilerplate.
+     */
+    fun applyEffect(scope: DrawScope, request: EffectRenderRequest) {
+        drawEffectFallback(scope, request)
+    }
+}
+
+/**
+ * Draw-phase uniform binding for [EffectRenderRequest].
+ *
+ * Lambdas are evaluated strictly inside the draw pass so animated values
+ * never trigger recomposition.
+ */
+sealed class EffectUniformSlot(val name: String) {
+    class Float1(name: String, val value: () -> Float) : EffectUniformSlot(name)
+    class Float2(name: String, val x: () -> Float, val y: () -> Float) : EffectUniformSlot(name)
+    class Float3(name: String, val x: () -> Float, val y: () -> Float, val z: () -> Float) : EffectUniformSlot(name)
+    class Float4(
+        name: String,
+        val x: () -> Float,
+        val y: () -> Float,
+        val z: () -> Float,
+        val w: () -> Float,
+    ) : EffectUniformSlot(name)
+    class Color4(name: String, val color: () -> Color) : EffectUniformSlot(name)
+}
+
+/**
+ * Immutable composition-scoped render request for [Modifier.streamifyEffect].
+ */
+class EffectRenderRequest(
+    val effectId: String,
+    val shape: Shape = RectangleShape,
+    val fallbackColor: Color = Color.Unspecified,
+    val resolutionUniform: String? = "iResolution",
+    val uniforms: List<EffectUniformSlot> = emptyList(),
+)
+
+/**
+ * Shared Tier-4 / compile-failure fallback for [SovereignGraphicsEngine.applyEffect]:
+ * fills [EffectRenderRequest.fallbackColor] clipped to [EffectRenderRequest.shape]
+ * when specified, or no-ops cleanly.
+ */
+internal fun drawEffectFallback(scope: DrawScope, request: EffectRenderRequest) {
+    val color = request.fallbackColor
+    if (color == Color.Unspecified || color.alpha <= 0f) return
+    with(scope) {
+        val outline = request.shape.createOutline(
+            size = size,
+            layoutDirection = layoutDirection,
+            density = this,
+        )
+        val path = Path().apply {
+            when (outline) {
+                is Outline.Rectangle -> addRect(outline.rect)
+                is Outline.Rounded -> addRoundRect(outline.roundRect)
+                is Outline.Generic -> addPath(outline.path)
+            }
+        }
+        clipPath(path) {
+            drawRect(color = color)
+        }
+    }
 }
