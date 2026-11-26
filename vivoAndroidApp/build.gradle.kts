@@ -187,6 +187,7 @@ dependencies {
     val debugImplementation = "debugImplementation"
     debugImplementation(libs.ui.tooling)
     implementation(libs.activity.compose)
+    implementation(libs.core.splashscreen)
     implementation(libs.customactivityoncrash)
     implementation(libs.easypermissions)
     implementation(libs.legacy.support.v4)
