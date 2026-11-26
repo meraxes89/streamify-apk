@@ -158,6 +158,15 @@ class SharedViewModel(
 
     private val appIdentity: AppIdentity by inject()
 
+    private val _autoInstallCountdownSeconds = MutableStateFlow<Int?>(null)
+    val autoInstallCountdownSeconds: StateFlow<Int?> = _autoInstallCountdownSeconds.asStateFlow()
+
+    fun cancelPendingAutoInstall() {
+        autoInstallJob?.cancel()
+        autoInstallJob = null
+        _autoInstallCountdownSeconds.value = null
+    }
+
     private fun scheduleAutoInstallIfEnabled(
         fallbackUrl: String,
         hasVerifiedSha: Boolean,
@@ -168,27 +177,38 @@ class SharedViewModel(
 
         autoInstallJob?.cancel()
         autoInstallJob = viewModelScope.launch {
-            val terminal = com.maxrave.simpmusic.data.update.PlatformUpdater.state.first { state ->
-                state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready ||
-                    state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Error
-            }
-            if (terminal !is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) return@launch
-            val initialMediaId =
-                nowPlayingState.value?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
-            // Trigger silent install when playback pauses/stops OR when the player/user shifts to the next track.
-            nowPlayingState.first { state ->
-                val currentMediaId = state?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
-                com.maxrave.simpmusic.data.update.shouldTriggerAutoInstall(
-                    initialMediaId = initialMediaId,
-                    currentMediaId = currentMediaId,
-                    isPlaying = state?.isPlaying,
+            try {
+                val terminal = com.maxrave.simpmusic.data.update.PlatformUpdater.state.first { state ->
+                    state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready ||
+                        state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Error
+                }
+                if (terminal !is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) return@launch
+                val initialMediaId =
+                    nowPlayingState.value?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                // Trigger silent install when playback pauses/stops OR when the player/user shifts to the next track.
+                nowPlayingState.first { state ->
+                    val currentMediaId = state?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                    com.maxrave.simpmusic.data.update.shouldTriggerAutoInstall(
+                        initialMediaId = initialMediaId,
+                        currentMediaId = currentMediaId,
+                        isPlaying = state?.isPlaying,
+                    )
+                }
+                if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+                for (sec in 3 downTo 1) {
+                    _autoInstallCountdownSeconds.value = sec
+                    kotlinx.coroutines.delay(1_000L)
+                    if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+                }
+                _autoInstallCountdownSeconds.value = 0
+                com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
+                    onFallbackOpenUrl = {},
+                    fallbackUrl = fallbackUrl,
                 )
+                kotlinx.coroutines.delay(2_000L)
+            } finally {
+                _autoInstallCountdownSeconds.value = null
             }
-            if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
-            com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
-                onFallbackOpenUrl = {},
-                fallbackUrl = fallbackUrl,
-            )
         }
     }
 
