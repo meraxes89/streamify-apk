@@ -672,6 +672,9 @@ fun MiniPlayer(
         )
         val progressColor = textColor
 
+        var isSliding by rememberSaveable {
+            mutableStateOf(false)
+        }
         var showQueueBottomSheet by rememberSaveable {
             mutableStateOf(false)
         }
@@ -927,6 +930,8 @@ fun MiniPlayer(
                     MiniPlayerDesktopTimelineLeaf(
                         sharedViewModel = sharedViewModel,
                         loading = loading,
+                        isSliding = isSliding,
+                        onSlidingChange = { isSliding = it },
                         showScrubber = showScrubber,
                         formatState = formatState,
                         textColor = textColor,
@@ -1376,6 +1381,8 @@ private fun MiniPlayerDesktopCrossfadeCue(
 private fun MiniPlayerDesktopTimelineLeaf(
     sharedViewModel: SharedViewModel,
     loading: Boolean,
+    isSliding: Boolean,
+    onSlidingChange: (Boolean) -> Unit,
     showScrubber: Boolean,
     formatState: com.maxrave.domain.data.entities.NewFormatEntity?,
     textColor: Color,
@@ -1385,7 +1392,6 @@ private fun MiniPlayerDesktopTimelineLeaf(
     modifier: Modifier = Modifier,
 ) {
     val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
-    var isSliding by rememberSaveable { mutableStateOf(false) }
     var sliderValue by rememberSaveable { mutableFloatStateOf(0f) }
 
     LaunchedEffect(timelineState, isSliding) {
@@ -1463,11 +1469,11 @@ private fun MiniPlayerDesktopTimelineLeaf(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
             onValueChange = {
-                isSliding = true
+                onSlidingChange(true)
                 sliderValue = it * 100f
             },
             onValueChangeFinished = {
-                isSliding = false
+                onSlidingChange(false)
                 sharedViewModel.onUIEvent(UIEvent.UpdateProgress(sliderValue))
             },
         )
