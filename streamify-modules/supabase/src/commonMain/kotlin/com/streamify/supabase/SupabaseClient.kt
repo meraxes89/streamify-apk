@@ -40,6 +40,9 @@ object SupabaseClient {
     private val _refreshToken = MutableStateFlow<String?>(null)
     val refreshToken: StateFlow<String?> = _refreshToken.asStateFlow()
 
+    private val _expiresAtEpochMs = MutableStateFlow(0L)
+    val expiresAtEpochMs: StateFlow<Long> = _expiresAtEpochMs.asStateFlow()
+
     val refreshCoordinator = AuthRefreshMutex()
 
     val httpClient: HttpClient by lazy {
@@ -73,18 +76,80 @@ object SupabaseClient {
     /**
      * Updates user session after server authentication.
      */
-    fun setSession(token: String?, profile: UserProfile?, refreshToken: String? = null) {
+    fun setSession(
+        token: String?,
+        profile: UserProfile?,
+        refreshToken: String? = null,
+        expiresAtEpochMs: Long = 0L,
+    ) {
         _accessToken.value = token
         _currentUser.value = profile ?: SupabaseConfig.DEFAULT_USER
         if (refreshToken != null) {
             _refreshToken.value = refreshToken
+        }
+        if (expiresAtEpochMs > 0L) {
+            _expiresAtEpochMs.value = expiresAtEpochMs
         }
     }
 
     fun clearSession() {
         _accessToken.value = null
         _refreshToken.value = null
+        _expiresAtEpochMs.value = 0L
         _currentUser.value = SupabaseConfig.DEFAULT_USER
+        PlatformTokenStore.clear()
+    }
+
+    internal fun persistCurrentSession() {
+        val token = _accessToken.value ?: return
+        if (token.isBlank() || token == SupabaseConfig.ANON_KEY) return
+        val user = _currentUser.value ?: return
+        PlatformTokenStore.save(
+            StoredAuthSession(
+                user = user,
+                accessToken = token,
+                refreshToken = _refreshToken.value,
+                expiresAtEpochMs = _expiresAtEpochMs.value,
+            ),
+        )
+    }
+
+    internal fun restorePersistedSession(): StoredAuthSession? {
+        val stored = PlatformTokenStore.load() ?: return null
+        if (stored.accessToken.isBlank() || stored.accessToken == SupabaseConfig.ANON_KEY) return null
+        setSession(
+            token = stored.accessToken,
+            profile = stored.user,
+            refreshToken = stored.refreshToken,
+            expiresAtEpochMs = stored.expiresAtEpochMs,
+        )
+        return stored
+    }
+
+    /**
+     * Ensures the current access token is fresh, proactively refreshing via [AuthRefreshMutex]
+     * if [AuthRefreshMutex.isTokenExpired] indicates it is within the expiry buffer window.
+     */
+    suspend fun ensureValidAccessToken(): String {
+        val current = _accessToken.value
+        if (current.isNullOrBlank() || current == SupabaseConfig.ANON_KEY) {
+            return SupabaseConfig.ANON_KEY
+        }
+        val expiresAt = _expiresAtEpochMs.value
+        if (expiresAt > 0L && refreshCoordinator.isTokenExpired(expiresAt) && !_refreshToken.value.isNullOrBlank()) {
+            refreshSession()
+        }
+        return getAuthToken()
+    }
+
+    private fun parseExpiresAtEpochMs(rootObj: kotlinx.serialization.json.JsonObject): Long {
+        val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
+        val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
+        return if (expiresAtSec != null && expiresAtSec > 0L) {
+            expiresAtSec * 1000L
+        } else {
+            Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
+        }
     }
 
     fun getAuthToken(): String {
@@ -137,6 +202,7 @@ object SupabaseClient {
                 if (!refreshTokenStr.isNullOrBlank()) {
                     _refreshToken.value = refreshTokenStr
                 }
+                _expiresAtEpochMs.value = parseExpiresAtEpochMs(rootObj)
                 val isAdminUser = fetchServerIsAdmin(userId)
 
                 val profile = UserProfile(
@@ -148,6 +214,7 @@ object SupabaseClient {
                 )
 
                 _currentUser.value = profile
+                persistCurrentSession()
                 ensureProfile(profile)
 
                 Result.success(profile)
@@ -200,6 +267,7 @@ object SupabaseClient {
                 )
 
                 setSession(token, profile, refreshToken?.takeIf { it.isNotBlank() })
+                persistCurrentSession()
                 ensureProfile(profile)
 
                 Result.success(profile)
@@ -238,16 +306,12 @@ object SupabaseClient {
                     val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
                     val newAccessToken = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
                     val newRefreshToken = rootObj["refresh_token"]?.jsonPrimitive?.content ?: tokenToUse
-                    val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
-                    val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
-                    val expiresAt = if (expiresAtSec != null && expiresAtSec > 0) {
-                        expiresAtSec * 1000L
-                    } else {
-                        Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
-                    }
+                    val expiresAt = parseExpiresAtEpochMs(rootObj)
 
                     _accessToken.value = newAccessToken
                     _refreshToken.value = newRefreshToken
+                    _expiresAtEpochMs.value = expiresAt
+                    persistCurrentSession()
                     Result.success(TokenSession(newAccessToken, newRefreshToken, expiresAt))
                 } else {
                     Result.failure(Exception("Token refresh failed: $bodyText"))
@@ -303,6 +367,7 @@ object SupabaseClient {
                 if (!refreshTokenStr.isNullOrBlank()) {
                     _refreshToken.value = refreshTokenStr
                 }
+                _expiresAtEpochMs.value = parseExpiresAtEpochMs(rootObj)
                 val isAdminUser = fetchServerIsAdmin(userId)
 
                 val profile = UserProfile(
@@ -314,6 +379,7 @@ object SupabaseClient {
                 )
 
                 _currentUser.value = profile
+                persistCurrentSession()
                 ensureProfile(profile)
 
                 Result.success(profile)

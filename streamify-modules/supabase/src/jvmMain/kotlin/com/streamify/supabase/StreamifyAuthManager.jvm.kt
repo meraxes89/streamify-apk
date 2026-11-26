@@ -1,6 +1,7 @@
 package com.streamify.supabase
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +22,17 @@ actual object StreamifyAuthManager {
     private var activeCompletionDeferred: CompletableDeferred<Result<UserProfile>>? = null
 
     actual fun init(context: Any?) {
-        if (SupabaseClient.hasValidUserSession()) {
+        PlatformTokenStore.init(context)
+        val restored = SupabaseClient.restorePersistedSession()
+        if (restored != null) {
+            _authState.value = AuthState.Authenticated(restored.user)
+            val refreshToken = restored.refreshToken
+            if (!refreshToken.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    SupabaseClient.refreshSession(refreshToken)
+                }
+            }
+        } else if (SupabaseClient.hasValidUserSession()) {
             val user = SupabaseClient.currentUser.value ?: SupabaseConfig.DEFAULT_USER
             _authState.value = AuthState.Authenticated(user)
         } else {
@@ -189,6 +200,7 @@ actual object StreamifyAuthManager {
             avatarUrl = "",
             isAdmin = false,
         )
+        PlatformTokenStore.clear()
         SupabaseClient.setSession(null, guest)
         _authState.value = AuthState.Authenticated(guest)
         return Result.success(guest)

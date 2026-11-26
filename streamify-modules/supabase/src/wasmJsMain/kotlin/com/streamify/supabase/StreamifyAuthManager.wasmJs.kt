@@ -2,16 +2,46 @@ package com.streamify.supabase
 
 import kotlinx.browser.sessionStorage
 import kotlinx.browser.window
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     actual val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     actual fun init(context: Any?) {
-        if (SupabaseClient.hasValidUserSession()) {
+        PlatformTokenStore.init(context)
+        val href = runCatching { window.location.href }.getOrNull().orEmpty()
+        val callbackData = AuthCallbackParser.parse(href)
+        if (callbackData.isSuccess || callbackData.isError) {
+            _authState.value = AuthState.Loading
+            CoroutineScope(Dispatchers.Default).launch {
+                val result = handleAuthCallback(href, context)
+                runCatching {
+                    val cleanUrl = "${window.location.origin}${window.location.pathname}"
+                    window.history.replaceState(null, "", cleanUrl)
+                }
+                if (result.isFailure) {
+                    _authState.value = AuthState.Unauthenticated
+                }
+            }
+            return
+        }
+
+        val restored = SupabaseClient.restorePersistedSession()
+        if (restored != null) {
+            _authState.value = AuthState.Authenticated(restored.user)
+            val refreshToken = restored.refreshToken
+            if (!refreshToken.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.Default).launch {
+                    SupabaseClient.refreshSession(refreshToken)
+                }
+            }
+        } else if (SupabaseClient.hasValidUserSession()) {
             val user = SupabaseClient.currentUser.value ?: SupabaseConfig.DEFAULT_USER
             _authState.value = AuthState.Authenticated(user)
         } else {
@@ -109,6 +139,7 @@ actual object StreamifyAuthManager {
             avatarUrl = "",
             isAdmin = false,
         )
+        PlatformTokenStore.clear()
         SupabaseClient.setSession(null, guest)
         _authState.value = AuthState.Authenticated(guest)
         return Result.success(guest)

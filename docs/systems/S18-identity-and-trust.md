@@ -22,7 +22,9 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 ## Current truth
 
-- Client-side PKCE with a loopback server on desktop; Vivo has a dedicated callback decision.
+- Client-side PKCE with a loopback server on desktop (`LoopbackAuthServer`); Vivo has a dedicated CustomTabs PKCE callback decision ([ADR-005](../adr/ADR-005-vivo-package-identity-and-oauth-resolution.md)).
+- `PlatformTokenStore` (`expect/actual`) persists `(UserProfile, accessToken, refreshToken, expiresAtEpochMs)` across Android (`AndroidKeyStore` AES-GCM), JVM (`0600` `~/.streamify/auth_session.json`), iOS (`NSUserDefaults`), and Wasm (`localStorage`), and `SupabaseClient` persists rotated refresh tokens after every `refreshSession()`, `exchangeCodeForSession()`, and `signInWithGoogleIdToken()` call.
+- `SupabaseClient.ensureValidAccessToken()` checks `AuthRefreshMutex.isTokenExpired()` proactively before `SupabaseLibrarySync` requests; `wasmJsMain` `init()` handles `?code=` / `#access_token=` callbacks and cleans the URL via `history.replaceState`, and `iosMain` launches `UIApplication.sharedApplication.openURL` with `handleIosAuthCallback` in `MainViewController.kt`.
 
 ## Interfaces
 
@@ -42,4 +44,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Add an auth-flow sequence diagram to the playbook.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: a55167d91ccbd8e2e74be1ee8fe32818a2290735 -->
