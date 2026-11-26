@@ -122,6 +122,15 @@ class ScreenPolicyTest {
     }
 
     @Test
+    fun nullDestinationFallsBackToSafeDefault() {
+        // Splash has no back stack entry yet; chrome must still have a policy.
+        val p = ScreenPolicyRegistry.policyFor(null)
+        assertEquals(TransitionKind.SharedAxisX, p.transition)
+        assertTrue(p.chrome.showNavBar)
+        assertTrue(p.chrome.showMiniPlayer)
+    }
+
+    @Test
     fun transitionResolverPicksTheTargetsAxis() {
         val immersive = ScreenPolicyRegistry.policyFor(WrappedDestination::class)
         val tab = ScreenPolicyRegistry.policyFor(HomeDestination::class)

@@ -151,11 +151,12 @@ object ScreenPolicyRegistry {
     }
 
     /**
-     * The policy for a destination class. Unknown destinations get the drill-down
-     * default: a SharedAxisX push with the full chrome — the safest shape, matching
-     * what the old global NavHost transition did for every route.
+     * The policy for a destination class. Unknown destinations (including null, before
+     * the graph settles on splash) get the drill-down default: a SharedAxisX push with
+     * the full chrome — the safest shape, matching what the old global NavHost
+     * transition did for every route.
      */
-    fun policyFor(destination: KClass<*>): ScreenPolicy = POLICIES[destination] ?: DETAIL
+    fun policyFor(destination: KClass<*>?): ScreenPolicy = destination?.let { POLICIES[it] } ?: DETAIL
 
     /** Every registered destination class — used by the exhaustive coverage test. */
     val registeredDestinations: Set<KClass<*>> = POLICIES.keys
