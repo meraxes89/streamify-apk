@@ -22,7 +22,9 @@ tests: []
 
 ## Current truth
 
-- wasmJs browser target is configured in `composeApp/build.gradle.kts`; local DB is intentionally stubbed.
+- wasmJs browser target is configured in `composeApp/build.gradle.kts`; it is a **browser/demo target** where `:data` is substituted with `:room-wasm-stub` (`WebKoin.kt` + `DemoCatalogLoader.kt`).
+- `room-wasm-stub`'s `UUID.randomUUID()` generates RFC 4122 v4 UUIDs, `isOnUnmeteredNetwork()` fails safe to `false`, and `WasmFakeSyncOutboxRepository` persists pending/rejected outbox state in `localStorage`.
+- `server/src/platform/bundle-gate.mjs` (`verifyMerkle`) fails closed when `.bundle.json` or `rootHash` is missing and verifies `manifest.rootHash` against the content-addressed directory name.
 
 ## Interfaces
 
@@ -45,4 +47,4 @@ tests: []
 
 - State explicitly which features are browser-only no-ops.
 
-<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
+<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->

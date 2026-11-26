@@ -52,6 +52,15 @@ describe('Bundle Gate: Content-Addressed Offline-First Integrity', () => {
     fs.writeFileSync(path.join(testDir, 'index.html'), '<html><body>Tampered</body></html>');
     assert.equal(verifyMerkle(testDir), false);
 
+    // Restore and verify expectedRootHash pinning
+    fs.writeFileSync(path.join(testDir, 'index.html'), '<html><body>Streamify</body></html>');
+    assert.equal(verifyMerkle(testDir, rootHash), true);
+    assert.equal(verifyMerkle(testDir, '0'.repeat(64)), false);
+
+    // Missing manifest must fail closed
+    fs.rmSync(path.join(testDir, '.bundle.json'));
+    assert.equal(verifyMerkle(testDir), false);
+
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
