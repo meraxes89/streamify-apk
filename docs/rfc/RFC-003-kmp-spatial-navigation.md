@@ -1,6 +1,6 @@
 # RFC 003: KMP Spatial Navigation, Predictive Back & Shared-Element Architecture
 
-**Status**: Draft. See the [RFC index](README.md).  
+**Status**: Accepted — implemented in ADR-010 (tracking issue #355). See the [RFC index](README.md).  
 **RFC ID**: 003  
 **Tracking Issue**: [#355](https://github.com/meraxes89/streamify-apk/issues/355)  
 **Authors**: Streamify Core Engineering  

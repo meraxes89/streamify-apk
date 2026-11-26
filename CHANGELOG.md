@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **KMP UI (S01–S05, RFC-003, #355)**: spatial navigation architecture behind the `enableSpatialNavigation` beta toggle (Settings → Appearance, default off) — per-destination `ScreenPolicy` registry (`Fade`/`SharedAxisX`/`SharedAxisZ`/`SlideVertical` + `ChromePolicy`), reactive chrome derivation from the back stack replacing imperative `hideNavBar`/`showNavBar`, `SharedKeys` + `Modifier.sharedHero` shared-element morphing (MiniPlayer ↔ Now Playing, cards → detail headers, Analytics → Wrapped), and `PlatformPredictiveBackHandler` (Android `PredictiveBackHandler`, iOS edge-swipe registry, Desktop/Web Esc/popstate) with linear release settle. Zero new dependencies; the single `NavHost` tree is never swapped, so toggling never resets the back stack.
+
 ### Changed
 - **KMP UI**: Hoisted playback timeline collection and lyric-line indexing out of `NowPlayingScreen` into leaf composables (`PlayerTimelineLeaf.kt`, `SharedViewModel.currentLyricLineIndex`), added `contentDescription` / `Role.Button` semantics across shared controls, and introduced `LocalAppWindowSizeClass` + `GridCells.Adaptive` across `App`, `HomeScreen`, `SearchScreen`, and `SettingScreen` (#336).
 - **Updater**: Added 48-hour `UpdateUrgency` escalation (`SOFT` / `ACTIVE_5S` / `URGENT_10S` / `ENFORCED`) and resumable `PlatformUpdater` downloads with HTTP `Range` and SHA-256 verification.

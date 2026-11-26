@@ -152,6 +152,30 @@ fun NowPlayingScreen(
         }
     }
 
+    // RFC-003 §3.3: this sheet lives OUTSIDE the NavHost, so it drives its own predictive
+    // back. While a gesture drags, the sheet shrinks up to 8% in the DRAW phase (the
+    // graphicsLayer on the ModalBottomSheet below reads the animatable, never recomposing);
+    // a cancelled gesture settles back LINEARLY to rest, a committed one to collapse — no
+    // snapping either way.
+    val predictiveSheetScale = remember { Animatable(1f) }
+    com.maxrave.simpmusic.expect.ui.PlatformPredictiveBackHandler(
+        enabled = true,
+        onProgress = { progress ->
+            coroutineScope.launch { predictiveSheetScale.snapTo(1f - 0.08f * progress) }
+        },
+        onCancel = {
+            coroutineScope.launch {
+                predictiveSheetScale.settlePredictiveRelease(commit = false, scope = coroutineScope)
+            }
+        },
+        onCommit = {
+            coroutineScope.launch {
+                predictiveSheetScale.settlePredictiveRelease(commit = true, scope = coroutineScope)
+            }
+            hideSheet()
+        },
+    )
+
     ModalBottomSheet(
         modifier =
             Modifier
@@ -401,26 +425,6 @@ fun NowPlayingScreenContent(
         mutableStateOf(false)
     }
     val fullscreenLyricsRequested by sharedViewModel.fullscreenLyricsRequest.collectAsStateWithLifecycle()
-    // RFC-003 §3.3: this sheet lives OUTSIDE the NavHost, so it drives its own predictive back.
-    // While a gesture drags, the sheet shrinks up to 8% in the DRAW phase (graphicsLayer below
-    // reads the animatable, never recomposing); a cancelled gesture settles back LINEARLY to 1f,
-    // a committed one runs the sheet's own hide animation — no snapping either way.
-    val predictiveSheetScale = remember { Animatable(1f) }
-    com.maxrave.simpmusic.expect.ui.PlatformPredictiveBackHandler(
-        enabled = true,
-        onProgress = { progress -> coroutineScope.launch { predictiveSheetScale.snapTo(1f - 0.08f * progress) } },
-        onCancel = {
-            coroutineScope.launch {
-                predictiveSheetScale.settlePredictiveRelease(commit = false, scope = coroutineScope)
-            }
-        },
-        onCommit = {
-            coroutineScope.launch {
-                predictiveSheetScale.settlePredictiveRelease(commit = true, scope = coroutineScope)
-            }
-            hideSheet()
-        },
-    )
     LaunchedEffect(fullscreenLyricsRequested) {
         if (fullscreenLyricsRequested) {
             showFullscreenLyrics = true
