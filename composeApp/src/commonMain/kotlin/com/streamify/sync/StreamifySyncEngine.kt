@@ -1121,10 +1121,10 @@ object StreamifySyncEngine : KoinComponent {
 
             pullResult.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
 
-            val pendingByEntityKey = mutableMapOf<Pair<String, String>, HybridLogicalClock.HlcKey>()
+            val pendingByEntityKey = mutableMapOf<Pair<String, String>, HlcKey>()
             for (change in syncOutboxRepository.getPending(1000)) {
                 val normalized = normalizeOutboxToChangelogKey(change.entity, change.entityKey)
-                val key = HybridLogicalClock.HlcKey(
+                val key = HlcKey(
                     hlc = normalizeToHlc(change.changedAt),
                     deviceId = change.deviceId?.ifBlank { null } ?: deviceId,
                 )
@@ -1142,7 +1142,10 @@ object StreamifySyncEngine : KoinComponent {
                     if (opHlc > 0L) {
                         HybridLogicalClock.merge(opHlc)
                     }
-                    val opKey = HybridLogicalClock.HlcKey(opHlc, op.deviceId ?: "")
+                    val opDeviceId = op.data?.get("modified_by")?.jsonPrimitive?.contentOrNull
+                        ?: op.data?.get("device_id")?.jsonPrimitive?.contentOrNull
+                        ?: ""
+                    val opKey = HlcKey(opHlc, opDeviceId)
                     val directLocalKey = pendingByEntityKey[op.entity to op.key]
                     val playlistTrackCompositeKey = if (op.entity == "playlist_track") {
                         val plId = op.data?.get("playlist_id")?.jsonPrimitive?.contentOrNull

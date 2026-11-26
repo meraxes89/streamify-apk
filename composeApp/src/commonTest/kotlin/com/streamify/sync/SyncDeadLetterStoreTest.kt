@@ -39,8 +39,8 @@ class SyncDeadLetterStoreTest {
     @Test
     fun hlcKeyBreaksEqualHlcTiesDeterministicallyByDeviceId() {
         val hlc = HybridLogicalClock.pack(1_760_000_000_000L, 5)
-        val devA = HybridLogicalClock.HlcKey(hlc, "dev_a")
-        val devB = HybridLogicalClock.HlcKey(hlc, "dev_b")
+        val devA = HlcKey(hlc, "dev_a")
+        val devB = HlcKey(hlc, "dev_b")
         assertTrue(devB > devA)
     }
 }
