@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -13,8 +14,12 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import com.streamify.graphics.api.EffectRenderRequest
+import com.streamify.graphics.api.EffectUniformSlot
 import com.streamify.graphics.api.GlassRenderRequest
 import com.streamify.graphics.api.SovereignGraphicsEngine
+import com.streamify.graphics.api.drawEffectFallback
+import com.streamify.graphics.effect.GraphicsEffectRegistry
 import com.streamify.graphics.engine.adapter.GlassRenderStrategy
 import com.streamify.graphics.engine.adapter.LiquidGlassSource
 import com.streamify.graphics.engine.adapter.ShaderTierLadder
@@ -176,6 +181,7 @@ actual object ShaderProvider {
             program = program,
             chromaticSpread = chromaticSpread,
             passScale = captureScale,
+            tier = tier,
         )
     }
 }
@@ -347,7 +353,11 @@ internal class SkikoRuntimeShaderEngine(
     private val chromaticSpread: Float,
     passScale: Float = 1.0f,
     backdropCaptureScale: Float = passScale,
+    private val tier: RenderTier = RenderTier.Tier1_Ultra,
 ) : SovereignGraphicsEngine {
+
+    /** Lazy cache of compiled custom [GraphicsEffectRegistry] programs; `null` marks compile failure. */
+    private val effectProgramCache = HashMap<String, RuntimeEffect?>()
 
     val passScale: Float = if (backdropCaptureScale != 1.0f && passScale == 1.0f) backdropCaptureScale else passScale
     val backdropCaptureScale: Float get() = this.passScale
@@ -426,6 +436,60 @@ internal class SkikoRuntimeShaderEngine(
             )
         }
         drawGlassComposite(scope, request)
+    }
+
+    override fun applyEffect(scope: DrawScope, request: EffectRenderRequest) {
+        val effect = GraphicsEffectRegistry.get(request.effectId)
+        if (effect == null || tier < effect.minTier) {
+            drawEffectFallback(scope, request)
+            return
+        }
+        val runtimeEffect = if (effectProgramCache.containsKey(effect.id)) {
+            effectProgramCache[effect.id]
+        } else {
+            val compiled = runCatching { RuntimeEffect.makeForShader(effect.canonicalSkSl) }.getOrNull()
+            effectProgramCache[effect.id] = compiled
+            compiled
+        }
+        if (runtimeEffect == null) {
+            drawEffectFallback(scope, request)
+            return
+        }
+        try {
+            val builder = RuntimeShaderBuilder(runtimeEffect)
+            val resName = request.resolutionUniform
+            if (resName != null) {
+                builder.uniform(resName, scope.size.width, scope.size.height)
+            }
+            for (slot in request.uniforms) {
+                when (slot) {
+                    is EffectUniformSlot.Float1 -> builder.uniform(slot.name, slot.value())
+                    is EffectUniformSlot.Float2 -> builder.uniform(slot.name, slot.x(), slot.y())
+                    is EffectUniformSlot.Float3 -> builder.uniform(slot.name, slot.x(), slot.y(), slot.z())
+                    is EffectUniformSlot.Float4 -> builder.uniform(slot.name, slot.x(), slot.y(), slot.z(), slot.w())
+                    is EffectUniformSlot.Color4 -> {
+                        val c = slot.color()
+                        builder.uniform(slot.name, c.red, c.green, c.blue, c.alpha)
+                    }
+                }
+            }
+            val shader = builder.makeShader()
+            val outline = request.shape.createOutline(scope.size, scope.layoutDirection, scope)
+            val path = Path().apply {
+                when (outline) {
+                    is Outline.Rectangle -> addRect(outline.rect)
+                    is Outline.Rounded -> addRoundRect(outline.roundRect)
+                    is Outline.Generic -> addPath(outline.path)
+                }
+            }
+            with(scope) {
+                clipPath(path) {
+                    drawRect(brush = ShaderBrush(shader))
+                }
+            }
+        } catch (_: Throwable) {
+            drawEffectFallback(scope, request)
+        }
     }
 
     /**
