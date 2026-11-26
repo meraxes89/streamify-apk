@@ -26,4 +26,4 @@ Former paths `docs/BACKEND_ARCHITECTURE_RFC.md` and
 `docs/architecture/GPU_DIRECT_DRIVER_OFFLOAD_RFC.md` are retired; both RFCs now
 live only in this directory.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 19f03b174d83d85682607dd194f1d4ca6acb58f8 -->
