@@ -10,6 +10,7 @@ immutable. Keep rejected RFCs — the "why not" is the valuable part.
 | [RFC-001](RFC-001-sovereign-gpu-offload.md) | Sovereign direct GPU offload | Draft | — | Core engineering |
 | [RFC-002](RFC-002-backend-cloud-graph.md) | Backend cloud graph / V4 schema + contract v3 | Draft for review | [ADR-008](../adr/ADR-008-server-contract-v4-and-sync-dataplane-hardening.md) (partial) | Backend architecture |
 | [RFC-003](RFC-003-kmp-spatial-navigation.md) | KMP spatial navigation, predictive back & shared elements | Draft | — | Core engineering |
+| [RFC-004](RFC-004-adaptive-auto-dsp.md) | Adaptive auto-DSP reference chain | Draft | — | Core engineering / audio |
 
 ## Rules
 
@@ -26,4 +27,4 @@ Former paths `docs/BACKEND_ARCHITECTURE_RFC.md` and
 `docs/architecture/GPU_DIRECT_DRIVER_OFFLOAD_RFC.md` are retired; both RFCs now
 live only in this directory.
 
-<!-- doc-verified-against: 19f03b174d83d85682607dd194f1d4ca6acb58f8 -->
+<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
