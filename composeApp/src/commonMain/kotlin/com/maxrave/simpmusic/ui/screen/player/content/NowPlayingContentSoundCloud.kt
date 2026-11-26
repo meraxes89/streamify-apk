@@ -157,6 +157,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.comment_placeholder
 import simpmusic.composeapp.generated.resources.crossfading
+import simpmusic.composeapp.generated.resources.live_badge
 import simpmusic.composeapp.generated.resources.soundcloud_play_count_info
 import kotlin.math.abs
 import kotlin.math.roundToInt
