@@ -116,6 +116,10 @@ class UpdatePolicyEngineTest {
         val sameSha = resolver.compareAndReturn(nightlyManifest, installedCode = 104, installedSha = "newsha789")
         assertIs<UpdateResult.UpToDate>(sameSha)
 
+        val fullShaManifest = nightlyManifest.copy(gitSha = "0b1a7e0969e4a5b78668e31c7971bb969d7e17f5")
+        val shortPrefixMatch = resolver.compareAndReturn(fullShaManifest, installedCode = 104, installedSha = "0b1a7e09")
+        assertIs<UpdateResult.UpToDate>(shortPrefixMatch)
+
         val newerSha = resolver.compareAndReturn(nightlyManifest, installedCode = 104, installedSha = "oldsha123")
         val available = assertIs<UpdateResult.Available>(newerSha)
         assertEquals("nightly", available.manifest.channel)

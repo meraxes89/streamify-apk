@@ -283,7 +283,7 @@ class UpdateResolver(
         },
         isPolicyVerified: Boolean = false,
     ): UpdateResult {
-        val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.contains(installedSha)
+        val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.any { shaMatches(it, installedSha) }
 
         val isNewer = when {
             isRecalled -> true
@@ -293,7 +293,7 @@ class UpdateResolver(
                 } else if (manifest.versionCode == installedCode) {
                     // Tie-breaker: If version codes match but gitSha differs,
                     // this is an authoritative re-spun build for the same release cycle.
-                    manifest.gitSha.isNotBlank() && installedSha.isNotBlank() && manifest.gitSha != installedSha
+                    manifest.gitSha.isNotBlank() && installedSha.isNotBlank() && !shaMatches(manifest.gitSha, installedSha)
                 } else {
                     false
                 }
