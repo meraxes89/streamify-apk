@@ -17,7 +17,7 @@ tests: [streamify-modules/streamify-graphics/src/desktopTest/]
 * Specification: [docs/gpu/ARCHITECTURE.md](../gpu/ARCHITECTURE.md) · [docs/gpu/CI_TESTING_SPEC.md](../gpu/CI_TESTING_SPEC.md)
 * Module root: `streamify-modules/streamify-graphics/`
 
-<!-- doc-verified-against: b1477154b010bd45c2dc65295f879bf98f9c8152 -->
+<!-- doc-verified-against: 5286b8486a114eb58d1ce8355baefb6b98602555 -->
 
 ---
 
