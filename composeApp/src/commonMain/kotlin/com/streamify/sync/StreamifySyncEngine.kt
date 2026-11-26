@@ -3,6 +3,8 @@ package com.streamify.sync
 import com.maxrave.common.Config
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.BuildKonfig
+import com.maxrave.domain.data.entities.AlbumEntity
+import com.maxrave.domain.data.entities.ArtistEntity
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.PlaylistEntity
@@ -129,10 +131,12 @@ object StreamifySyncEngine : KoinComponent {
         "am_animated_artwork",
         // Lyrics
         "lyrics_provider",
+        "lyrics_offset_ms",
         "translation_language",
         "use_translation_language",
         "use_ai_translation",
-        "lyrics_style"
+        "lyrics_style",
+        "selected_language",
     )
 
     data class LocalEpisodeState(
@@ -1259,8 +1263,14 @@ object StreamifySyncEngine : KoinComponent {
     private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long): Boolean {
         var allChunksSucceeded = true
         try {
-            // 1. Drain pending outbox changes (up to 500)
-            val pendingChanges = syncOutboxRepository.getPending(500)
+            // 1. Drain pending outbox changes (up to 500), ensuring playlists precede playlist_tracks
+            val pendingChanges = syncOutboxRepository.getPending(500).sortedBy { change ->
+                when (change.entity) {
+                    SyncKind.LOCAL_PLAYLIST -> 0
+                    SyncKind.LOCAL_PLAYLIST_TRACK, SyncKind.LOCAL_PLAYLIST_ORDER -> 2
+                    else -> 1
+                }
+            }
             if (pendingChanges.isNotEmpty()) {
                 val opMappings = mutableListOf<OutboxOpMapping>()
                 val unhandledChangeIds = mutableListOf<String>()
@@ -1741,30 +1751,41 @@ object StreamifySyncEngine : KoinComponent {
                         songRepository.updateLikeStatus(op.key, 0)
                     } else {
                         val existing = songRepository.getSongById(op.key).firstOrNull()
-                        if (existing == null) {
-                            val meta = op.data?.get("snapshot")?.jsonObject
-                                ?: op.data?.get("meta")?.jsonObject
-                            val title = meta?.get("title")?.jsonPrimitive?.contentOrNull ?: "Synced Track"
-                            val artist = meta?.get("artist")?.jsonPrimitive?.contentOrNull ?: "Unknown Artist"
-                            val album = meta?.get("album")?.jsonPrimitive?.contentOrNull ?: "Streamify"
-                            val durationSec = meta?.get("duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
-                            val thumb = meta?.get("thumb")?.jsonPrimitive?.contentOrNull
+                        val meta = op.data?.get("snapshot")?.jsonObject
+                            ?: op.data?.get("meta")?.jsonObject
+                        if (existing == null || (existing.title == "Synced Track" && meta != null)) {
+                            val title = meta?.get("title")?.jsonPrimitive?.contentOrNull ?: existing?.title ?: "Synced Track"
+                            val artist = meta?.get("artist")?.jsonPrimitive?.contentOrNull
+                                ?: existing?.artistName?.firstOrNull()
+                                ?: "Unknown Artist"
+                            val album = meta?.get("album")?.jsonPrimitive?.contentOrNull ?: existing?.albumName ?: "Streamify"
+                            val durationSec = meta?.get("duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: existing?.durationSeconds
+                                ?: 0
+                            val thumb = meta?.get("cover_url")?.jsonPrimitive?.contentOrNull
+                                ?: meta?.get("thumb")?.jsonPrimitive?.contentOrNull
                                 ?: meta?.get("thumb_url")?.jsonPrimitive?.contentOrNull
-                            val entity = SongEntity(
+                                ?: existing?.thumbnails
+                            val entity = (existing ?: SongEntity(
                                 videoId = op.key,
                                 title = title,
-                                artistName = listOf(artist),
-                                albumName = album,
                                 duration = formatDuration(durationSec),
                                 durationSeconds = durationSec,
-                                thumbnails = thumb?.ifBlank { null },
                                 isAvailable = true,
                                 isExplicit = false,
                                 likeStatus = "LIKE",
                                 videoType = "MUSIC_VIDEO_TYPE_ATV",
                                 category = null,
                                 resultType = null,
-                                liked = true
+                            )).copy(
+                                title = title,
+                                artistName = listOf(artist),
+                                albumName = album,
+                                duration = formatDuration(durationSec),
+                                durationSeconds = durationSec,
+                                thumbnails = thumb?.ifBlank { null },
+                                likeStatus = "LIKE",
+                                liked = true,
                             )
                             songRepository.insertSong(entity).lastOrNull()
                         }
@@ -1777,9 +1798,51 @@ object StreamifySyncEngine : KoinComponent {
                     val itemId = op.data?.get("item_id")?.jsonPrimitive?.contentOrNull
                         ?: op.key.substringAfter(":")
                     val isLiked = op.op != "D"
+                    val meta = op.data?.get("metadata")?.jsonObject ?: op.data?.get("meta")?.jsonObject ?: op.data
                     when (itemType) {
-                        "artist" -> artistRepository.updateFollowedStatus(itemId, if (isLiked) 1 else 0)
-                        "album" -> albumRepository.updateAlbumLiked(itemId, if (isLiked) 1 else 0)
+                        "artist" -> {
+                            if (isLiked && artistRepository.getArtistById(itemId).firstOrNull() == null) {
+                                val name = meta?.get("name")?.jsonPrimitive?.contentOrNull
+                                    ?: meta?.get("title")?.jsonPrimitive?.contentOrNull
+                                    ?: "Artist"
+                                val thumb = meta?.get("thumb")?.jsonPrimitive?.contentOrNull
+                                    ?: meta?.get("cover_url")?.jsonPrimitive?.contentOrNull
+                                artistRepository.insertArtist(
+                                    ArtistEntity(
+                                        channelId = itemId,
+                                        name = name,
+                                        thumbnails = thumb?.ifBlank { null },
+                                        followed = true,
+                                    )
+                                )
+                            }
+                            artistRepository.updateFollowedStatus(itemId, if (isLiked) 1 else 0)
+                        }
+                        "album" -> {
+                            if (isLiked && albumRepository.getAlbum(itemId).firstOrNull() == null) {
+                                val title = meta?.get("title")?.jsonPrimitive?.contentOrNull
+                                    ?: meta?.get("name")?.jsonPrimitive?.contentOrNull
+                                    ?: "Album"
+                                val thumb = meta?.get("thumb")?.jsonPrimitive?.contentOrNull
+                                    ?: meta?.get("cover_url")?.jsonPrimitive?.contentOrNull
+                                albumRepository.insertAlbum(
+                                    AlbumEntity(
+                                        browseId = itemId,
+                                        audioPlaylistId = "",
+                                        description = "",
+                                        duration = null,
+                                        durationSeconds = 0,
+                                        thumbnails = thumb?.ifBlank { null },
+                                        title = title,
+                                        trackCount = 0,
+                                        type = "Album",
+                                        year = null,
+                                        liked = true,
+                                    )
+                                ).lastOrNull()
+                            }
+                            albumRepository.updateAlbumLiked(itemId, if (isLiked) 1 else 0)
+                        }
                         "podcast" -> podcastRepository.favoritePodcast(itemId, isLiked).firstOrNull()
                         "playlist" -> playlistRepository.updatePlaylistLiked(itemId, if (isLiked) 1 else 0)
                     }
