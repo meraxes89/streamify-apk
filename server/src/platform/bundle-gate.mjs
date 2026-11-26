@@ -45,16 +45,20 @@ export function verifyWasmMagic(bundleDir) {
  * @param {string} bundleDir
  * @returns {boolean}
  */
-export function verifyMerkle(bundleDir) {
+export function verifyMerkle(bundleDir, expectedRootHash = null) {
   try {
     const manifestPath = path.join(bundleDir, '.bundle.json');
     if (!fs.existsSync(manifestPath)) {
-      // If manifest is missing, ensure index.html & composeApp.js exist at minimum
-      return fs.existsSync(path.join(bundleDir, 'index.html')) &&
-             fs.existsSync(path.join(bundleDir, 'composeApp.js'));
+      return false;
     }
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     if (!manifest.files || typeof manifest.files !== 'object') return false;
+    if (typeof manifest.rootHash !== 'string' || !/^[0-9a-f]{64}$/i.test(manifest.rootHash)) {
+      return false;
+    }
+    if (expectedRootHash && manifest.rootHash !== expectedRootHash) {
+      return false;
+    }
 
     const rootHasher = crypto.createHash('sha256');
     const sortedRelPaths = Object.keys(manifest.files).sort();
@@ -69,7 +73,7 @@ export function verifyMerkle(bundleDir) {
     }
 
     const calculatedRoot = rootHasher.digest('hex');
-    return manifest.rootHash ? calculatedRoot === manifest.rootHash : true;
+    return calculatedRoot === manifest.rootHash;
   } catch {
     return false;
   }
@@ -196,7 +200,7 @@ export function enforceBundleGate(baseDir = SERVER_DIR, { allowDegraded = false 
 
   for (const sha of candidates) {
     const dir = path.join(bundlesDir, sha);
-    if (fs.existsSync(dir) && verifyWasmMagic(dir) && verifyMerkle(dir)) {
+    if (fs.existsSync(dir) && verifyWasmMagic(dir) && verifyMerkle(dir, sha)) {
       atomicSymlink(publicPath, dir);
       if (manifest.current !== sha) {
         manifest.previous = manifest.current;

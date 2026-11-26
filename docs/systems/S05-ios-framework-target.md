@@ -39,10 +39,12 @@ tests: []
 
 ## Known limits / debt
 
-- Several iOS capability stubs report hardcoded capability values (see Phase-1 audit).
+- Core playback (`ExpectMediaHandler.ios.kt`) and several core crypto/scraper actuals in `core/` remain `TODO()` until an iOS host shell + AVPlayer bridge is implemented.
+- `DolbySpatialManager.ios.kt` and `UnmeteredNetwork.ios.kt` fail safe (`false`) rather than fabricating Atmos/head-tracking or unmetered network support.
+- `withSyncApplying()` on iOS is `EmptyCoroutineContext` until a common `SyncApplying` context key is exposed outside `core/`.
 
 ## Refinement backlog
 
 - Document the real iOS capability surface once an app shell exists.
 
-<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
+<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->
