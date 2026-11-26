@@ -2439,7 +2439,7 @@ index 0000000..41ade74
 +
 +actual fun createBrotliEncoder(): ContentEncoder = BrotliEncoder
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-index 94a2a77..109ecbe 100644
+index 94a2a77..a6e2fbc 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
 @@ -1,6 +1,7 @@
@@ -2450,14 +2450,15 @@ index 94a2a77..109ecbe 100644
  import com.maxrave.data.db.MusicDatabase
  import com.maxrave.data.librarysync.SyncChangeRecorder
  import com.maxrave.data.librarysync.SyncKind
-@@ -282,7 +283,10 @@ internal class LocalDataSource(
+@@ -282,7 +283,11 @@ internal class LocalDataSource(
      suspend fun updateSongInLibrary(
          inLibrary: LocalDateTime,
          videoId: String,
 -    ) = databaseDao.updateSongInLibrary(inLibrary, videoId)
-+    ) {
-+        databaseDao.updateSongInLibrary(inLibrary, videoId)
++    ): Int {
++        val updated = databaseDao.updateSongInLibrary(inLibrary, videoId)
 +        syncRecorder.flag(SyncKind.LIBRARY_TRACK, videoId, inLibrary != Config.REMOVED_SONG_DATE_TIME)
++        return updated
 +    }
  
      fun getMostPlayedSongs() = databaseDao.getMostPlayedSongs()
