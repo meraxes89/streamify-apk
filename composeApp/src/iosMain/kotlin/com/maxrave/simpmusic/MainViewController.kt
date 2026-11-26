@@ -8,6 +8,7 @@ import com.streamify.jam.di.streamifyJamModule
 import com.streamify.lyrics.slyr.di.streamifyLyricsSlyrModule
 import com.streamify.media.hal.di.mediaHalModule
 import com.streamify.supabase.di.supabaseModule
+import kotlinx.coroutines.launch
 import org.koin.core.context.startKoin
 
 fun initKoinIos(versionName: String = BuildKonfig.versionName) {
@@ -32,3 +33,9 @@ fun initKoinIos(versionName: String = BuildKonfig.versionName) {
 fun MainViewController() = ComposeUIViewController { App() }
 
 fun handleIosBack(): Boolean = com.maxrave.simpmusic.expect.ui.IosBackHandlerRegistry.handleBack()
+
+fun handleIosAuthCallback(callbackUri: String) {
+    kotlinx.coroutines.MainScope().launch {
+        com.streamify.supabase.StreamifyAuthManager.handleAuthCallback(callbackUri)
+    }
+}

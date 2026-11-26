@@ -1,8 +1,13 @@
 package com.streamify.supabase
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import platform.Foundation.NSURL
+import platform.UIKit.UIApplication
 
 actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
@@ -12,7 +17,17 @@ actual object StreamifyAuthManager {
     private var pendingState: String? = null
 
     actual fun init(context: Any?) {
-        if (SupabaseClient.hasValidUserSession()) {
+        PlatformTokenStore.init(context)
+        val restored = SupabaseClient.restorePersistedSession()
+        if (restored != null) {
+            _authState.value = AuthState.Authenticated(restored.user)
+            val refreshToken = restored.refreshToken
+            if (!refreshToken.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.Default).launch {
+                    SupabaseClient.refreshSession(refreshToken)
+                }
+            }
+        } else if (SupabaseClient.hasValidUserSession()) {
             val user = SupabaseClient.currentUser.value ?: SupabaseConfig.DEFAULT_USER
             _authState.value = AuthState.Authenticated(user)
         } else {
@@ -37,9 +52,10 @@ actual object StreamifyAuthManager {
                     "&state=${state}" +
                     "&prompt=select_account"
 
-            // On iOS, ASWebAuthenticationSession / UIApplication opens the authUrl
-            // and redirects to streamify://callback, routed through handleAuthCallback
-            Result.failure(Exception("iOS sign-in redirected to: $authUrl"))
+            val nsUrl = NSURL.URLWithString(authUrl)
+                ?: return Result.failure(IllegalStateException("Invalid OAuth URL"))
+            UIApplication.sharedApplication.openURL(nsUrl)
+            Result.failure(Exception("Continuing sign-in in browser..."))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -102,6 +118,7 @@ actual object StreamifyAuthManager {
             avatarUrl = "",
             isAdmin = false,
         )
+        PlatformTokenStore.clear()
         SupabaseClient.setSession(null, guest)
         _authState.value = AuthState.Authenticated(guest)
         return Result.success(guest)

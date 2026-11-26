@@ -1042,9 +1042,10 @@ object SupabaseLibrarySync {
         url: String,
         payload: String,
     ): HttpResponse {
+        val initialToken = SupabaseClient.ensureValidAccessToken()
         var resp = SupabaseClient.httpClient.post(url) {
             header("apikey", SupabaseConfig.ANON_KEY)
-            header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+            header("Authorization", "Bearer $initialToken")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
