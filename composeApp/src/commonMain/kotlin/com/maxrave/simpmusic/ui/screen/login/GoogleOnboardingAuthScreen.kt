@@ -45,10 +45,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -86,16 +84,18 @@ fun GoogleOnboardingAuthScreen(
     val appFontFamily = fontFamily()
 
     val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
+    val colorScheme = MaterialTheme.colorScheme
 
-    // Theme adaptive colors
-    val bgColor = if (isDark) Color(0xFF07070A) else Color(0xFFF8F9FD)
-    val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
-    val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-    val mottoColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-    val buttonBg = if (isDark) Color(0xFF16161E) else Color(0xFFFFFFFF)
-    val laserCyan = if (isDark) Color(0xFF00F2FE) else Color(0xFF0284C7)
-    val laserViolet = if (isDark) Color(0xFF8B5CF6) else Color(0xFF7C3AED)
-    val laserMagenta = if (isDark) Color(0xFFFF2A85) else Color(0xFFDB2777)
+    // Theme-adaptive Material 3 tokens
+    val bgColor = colorScheme.background
+    val textPrimary = colorScheme.onBackground
+    val textSecondary = colorScheme.onSurfaceVariant
+    val buttonBg = colorScheme.surfaceContainerLowest
+    val buttonBorder = colorScheme.outlineVariant
+    val buttonTextColor = colorScheme.onSurface
+    val emblemSurface = colorScheme.surfaceContainerLow
+    val emblemOutline = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
+    val accentColor = colorScheme.primary
 
     // Ambient glow pulse
     val transition = rememberInfiniteTransition(label = "auth_ambient")
@@ -141,37 +141,22 @@ fun GoogleOnboardingAuthScreen(
             .navigationBarsPadding(),
         contentAlignment = Alignment.Center,
     ) {
-        // Hardware-Accelerated Ambient Acoustic Mesh
+        // Subtle Theme-Derived Ambient Halo
         Canvas(modifier = Modifier.fillMaxSize()) {
             val centerOffset = Offset(size.width / 2f, size.height * 0.36f)
 
-            // 1. Aperture Bloom
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        laserViolet.copy(alpha = (if (isDark) 0.22f else 0.12f) * (0.8f + 0.3f * pulseProg)),
-                        laserCyan.copy(alpha = (if (isDark) 0.12f else 0.06f) * (0.8f + 0.3f * pulseProg)),
+                        accentColor.copy(alpha = (if (isDark) 0.10f else 0.06f) * (0.85f + 0.15f * pulseProg)),
                         Color.Transparent,
                     ),
                     center = centerOffset,
-                    radius = size.width * 0.85f,
+                    radius = size.width * 0.75f,
                 ),
-                radius = size.width * 0.85f,
+                radius = size.width * 0.75f,
                 center = centerOffset,
             )
-
-            // 2. Concentric Acoustic Soundwave Rings (Vinyl Grooves)
-            val ringCount = 3
-            for (i in 0 until ringCount) {
-                val radius = 72.dp.toPx() + (32.dp.toPx() * (i + 1)) * (0.95f + 0.05f * pulseProg)
-                val alpha = (if (isDark) 0.14f else 0.08f) * (1f - (i * 0.25f)) * (0.8f + 0.2f * pulseProg)
-                drawCircle(
-                    color = if (i % 2 == 0) laserCyan.copy(alpha = alpha) else laserViolet.copy(alpha = alpha),
-                    radius = radius,
-                    center = centerOffset,
-                    style = Stroke(width = 0.8.dp.toPx()),
-                )
-            }
         }
 
         Column(
@@ -181,29 +166,15 @@ fun GoogleOnboardingAuthScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // Hero App Emblem with Iridescent Specular Rim
+            // Hero App Emblem with Neutral 10% Outline
             Box(
                 modifier = Modifier
                     .size(96.dp)
                     .clip(CircleShape)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                if (isDark) Color(0xFF1E1E28) else Color(0xFFFFFFFF),
-                                if (isDark) Color(0xFF101016) else Color(0xFFF1F3F9),
-                            ),
-                        ),
-                    )
+                    .background(emblemSurface)
                     .border(
                         width = 1.dp,
-                        brush = Brush.sweepGradient(
-                            colors = listOf(
-                                laserCyan.copy(alpha = 0.6f),
-                                laserViolet.copy(alpha = 0.7f),
-                                laserMagenta.copy(alpha = 0.5f),
-                                laserCyan.copy(alpha = 0.6f),
-                            ),
-                        ),
+                        color = emblemOutline,
                         shape = CircleShape,
                     ),
                 contentAlignment = Alignment.Center,
@@ -217,51 +188,36 @@ fun GoogleOnboardingAuthScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Brand Wordmark: "STREAMIFY"
+            // Brand Wordmark
             Text(
-                text = "STREAMIFY",
+                text = "Streamify",
                 style = TextStyle(
                     color = textPrimary,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 8.sp,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
                     fontFamily = appFontFamily,
                 ),
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Acoustic Motto: "S O U N D   /   R E D E F I N E D"
+            // Purpose Statement
             Text(
-                text = "S O U N D   /   R E D E F I N E D",
-                style = TextStyle(
-                    color = mottoColor,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 4.0.sp,
-                    fontFamily = appFontFamily,
-                ),
-                textAlign = TextAlign.Center,
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Minimalist Purpose Statement
-            Text(
-                text = "Cloud Sync & High-Fidelity Streaming",
+                text = "Sign in to sync your library and preferences",
                 style = TextStyle(
                     color = textSecondary,
-                    fontSize = 13.5.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Normal,
                     fontFamily = appFontFamily,
                 ),
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(modifier = Modifier.height(44.dp))
+            Spacer(modifier = Modifier.height(40.dp))
 
             if (isLoading) {
                 Column(
@@ -270,30 +226,30 @@ fun GoogleOnboardingAuthScreen(
                     modifier = Modifier.heightIn(min = 52.dp),
                 ) {
                     CircularProgressIndicator(
-                        color = laserViolet,
+                        color = accentColor,
                         strokeWidth = 2.5.dp,
                         modifier = Modifier.size(32.dp),
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Authenticating...",
-                        fontSize = 12.5.sp,
+                        text = "Signing in...",
+                        fontSize = 13.sp,
                         color = textSecondary,
                         fontFamily = appFontFamily,
                     )
                 }
             } else {
-                // Tactile Frosted Google Sign-In Pill
+                // Google Sign-In Pill
                 Button(
                     onClick = { startGoogleSignIn() },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = buttonBg,
-                        contentColor = textPrimary,
+                        contentColor = buttonTextColor,
                     ),
                     shape = RoundedCornerShape(26.dp),
                     border = BorderStroke(
                         width = 0.75.dp,
-                        color = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
+                        color = buttonBorder,
                     ),
                     elevation = ButtonDefaults.buttonElevation(
                         defaultElevation = 0.dp,
@@ -314,7 +270,7 @@ fun GoogleOnboardingAuthScreen(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = appFontFamily,
-                            color = textPrimary,
+                            color = buttonTextColor,
                         )
                     }
                 }
@@ -331,28 +287,13 @@ fun GoogleOnboardingAuthScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             // Studio Signet
             SireenBrandingBadge(
                 prefix = "ENGINEERED BY ",
                 author = "SIREEN",
                 tagline = "INDEPENDENT AUDIO LAB",
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Monospace Engineering Specification
-            Text(
-                text = "STREAMIFY CLOUD · HIGH-FIDELITY AUDIO",
-                style = TextStyle(
-                    color = textSecondary.copy(alpha = 0.65f),
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 2.0.sp,
-                    fontFamily = FontFamily.Monospace,
-                ),
-                textAlign = TextAlign.Center,
             )
         }
     }
