@@ -143,8 +143,8 @@ actual object StreamifyAuthManager {
                     ?: return@withContext Result.failure(Exception("No pending PKCE code verifier in session"))
 
                 val expectedState = pendingState
-                if (expectedState != null && data.state != null && data.state != expectedState) {
-                    val err = Result.failure<UserProfile>(SecurityException("CSRF state mismatch"))
+                if (expectedState.isNullOrBlank() || data.state != expectedState) {
+                    val err = Result.failure<UserProfile>(SecurityException("Missing or mismatched CSRF state"))
                     activeCompletionDeferred?.complete(err)
                     activeServer?.stop()
                     return@withContext err
@@ -161,16 +161,11 @@ actual object StreamifyAuthManager {
                 return@withContext result
             }
 
-            // Legacy implicit token fallback
-            val accessToken = data.accessToken
-            if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken, data.refreshToken)
-                result.onSuccess { profile ->
-                    _authState.value = AuthState.Authenticated(profile)
-                }
-                activeCompletionDeferred?.complete(result)
+            if (!data.accessToken.isNullOrBlank()) {
+                val err = Result.failure<UserProfile>(SecurityException("Implicit access_token flow is disabled; PKCE code required"))
+                activeCompletionDeferred?.complete(err)
                 activeServer?.stop()
-                return@withContext result
+                return@withContext err
             }
 
             val noTokenErr = Result.failure<UserProfile>(Exception("No authorization code or access token found in callback URI"))
@@ -207,8 +202,12 @@ actual object StreamifyAuthManager {
     }
 
     actual fun signOut(context: Any?) {
+        val tokenToRevoke = SupabaseClient.accessToken.value
         _authState.value = AuthState.Unauthenticated
         SupabaseClient.clearSession()
+        CoroutineScope(Dispatchers.IO).launch {
+            SupabaseClient.signOutRemote(tokenToRevoke)
+        }
     }
 
     private fun launchSystemBrowser(url: String) {

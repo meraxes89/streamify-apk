@@ -613,9 +613,15 @@ fun App(
             com.maxrave.simpmusic.data.RemoteGreetingManager.syncRemoteConfig()
         }
         LaunchedEffect(streamifyAuthState) {
-            if (streamifyAuthState is AuthState.Authenticated) {
-                val user = (streamifyAuthState as AuthState.Authenticated).user
-                com.streamify.sync.StreamifySyncEngine.triggerSync(user.id)
+            when (val auth = streamifyAuthState) {
+                is AuthState.Authenticated -> {
+                    com.streamify.sync.StreamifySyncEngine.onAuthenticatedUser(auth.user.id)
+                    com.streamify.sync.StreamifySyncEngine.triggerSync(auth.user.id)
+                }
+                is AuthState.Unauthenticated -> {
+                    com.streamify.sync.StreamifySyncEngine.resetForAccountSwitch()
+                }
+                else -> Unit
             }
         }
 

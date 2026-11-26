@@ -2,7 +2,6 @@ package com.streamify.supabase
 
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.random.Random
 
 /**
  * RFC 7636 Proof Key for Code Exchange (PKCE) cryptographic utilities.
@@ -39,9 +38,10 @@ object PkceCrypto {
      */
     fun generateCodeVerifier(length: Int = 64): String {
         require(length in 43..128) { "code_verifier length must be between 43 and 128 characters, got $length" }
+        val randomBytes = secureRandomBytes(length)
         val chars = CharArray(length)
         for (i in 0 until length) {
-            val idx = Random.nextInt(PKCE_CHARSET.length)
+            val idx = (randomBytes[i].toInt() and 0xFF) % PKCE_CHARSET.length
             chars[i] = PKCE_CHARSET[idx]
         }
         return chars.concatToString()
@@ -64,9 +64,10 @@ object PkceCrypto {
      */
     fun generateState(length: Int = 32): String {
         require(length >= 16) { "state length must be at least 16 characters" }
+        val randomBytes = secureRandomBytes(length)
         val chars = CharArray(length)
         for (i in 0 until length) {
-            val idx = Random.nextInt(HEX_CHARSET.length)
+            val idx = (randomBytes[i].toInt() and 0xFF) % HEX_CHARSET.length
             chars[i] = HEX_CHARSET[idx]
         }
         return chars.concatToString()

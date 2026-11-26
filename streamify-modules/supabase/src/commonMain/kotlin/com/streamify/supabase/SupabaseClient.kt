@@ -84,12 +84,8 @@ object SupabaseClient {
     ) {
         _accessToken.value = token
         _currentUser.value = profile ?: SupabaseConfig.DEFAULT_USER
-        if (refreshToken != null) {
-            _refreshToken.value = refreshToken
-        }
-        if (expiresAtEpochMs > 0L) {
-            _expiresAtEpochMs.value = expiresAtEpochMs
-        }
+        _refreshToken.value = refreshToken
+        _expiresAtEpochMs.value = expiresAtEpochMs
     }
 
     fun clearSession() {
@@ -98,6 +94,23 @@ object SupabaseClient {
         _expiresAtEpochMs.value = 0L
         _currentUser.value = SupabaseConfig.DEFAULT_USER
         PlatformTokenStore.clear()
+    }
+
+    /**
+     * Best-effort remote session revocation via Supabase `/auth/v1/logout`.
+     */
+    suspend fun signOutRemote(token: String?) {
+        if (token.isNullOrBlank() || token == SupabaseConfig.ANON_KEY) return
+        withContext(ioDispatcher) {
+            try {
+                httpClient.post("${SupabaseConfig.SUPABASE_URL}/auth/v1/logout") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer $token")
+                }
+            } catch (_: Exception) {
+                // Best-effort revocation; local session is already cleared.
+            }
+        }
     }
 
     internal fun persistCurrentSession() {
