@@ -161,9 +161,12 @@ object SupabaseClient {
 
     /**
      * Authenticates a user using an access token obtained from Supabase OAuth redirects.
-     * Fetches user profile from /auth/v1/user and verifies admin claims.
+     * Fetches user profile from /auth/v1/user, verifies admin claims, and stores any accompanying refresh token.
      */
-    suspend fun signInWithAccessToken(token: String): Result<UserProfile> = withContext(ioDispatcher) {
+    suspend fun signInWithAccessToken(
+        token: String,
+        refreshToken: String? = null,
+    ): Result<UserProfile> = withContext(ioDispatcher) {
         try {
             val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/user"
             val response = httpClient.get(url) {
@@ -196,7 +199,7 @@ object SupabaseClient {
                     isAdmin = isAdminUser,
                 )
 
-                _currentUser.value = profile
+                setSession(token, profile, refreshToken?.takeIf { it.isNotBlank() })
                 ensureProfile(profile)
 
                 Result.success(profile)

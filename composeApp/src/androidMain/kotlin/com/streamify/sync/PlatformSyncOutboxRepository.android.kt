@@ -42,6 +42,10 @@ class AndroidRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
         return syncDao.localPlaylistBySyncId(syncId)
     }
 
+    override suspend fun setLocalPlaylistSyncId(id: Long, syncId: String) {
+        syncDao.setLocalPlaylistSyncId(id, syncId)
+    }
+
     override suspend fun getPlaylistTrackOrder(playlistId: Long): List<String> {
         return syncDao.playlistOrder(playlistId)
     }

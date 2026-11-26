@@ -278,7 +278,7 @@ actual object StreamifyAuthManager {
             // Fallback for legacy access token in hash fragment
             val accessToken = callbackData.accessToken
             if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken)
+                val result = SupabaseClient.signInWithAccessToken(accessToken, callbackData.refreshToken)
                 if (result.isSuccess) {
                     val profile = result.getOrThrow()
                     saveProfile(profile, accessToken, callbackData.refreshToken)

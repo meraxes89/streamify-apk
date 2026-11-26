@@ -303,8 +303,13 @@ object StreamifySyncEngine : KoinComponent {
                         when (stage) {
                         "LIKES" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
-                            likedCount = syncLikesInternal(targetUserId)
-                            true
+                            val count = syncLikesInternal(targetUserId)
+                            if (count >= 0) {
+                                likedCount = count
+                                true
+                            } else {
+                                false
+                            }
                         }
                         "ARTISTS" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping followed artists...")
@@ -435,7 +440,9 @@ object StreamifySyncEngine : KoinComponent {
      */
     private suspend fun syncLikesInternal(targetUserId: String): Int {
         // 1. Fetch remote cloud liked tracks (excluding any legacy trk_ items)
-        val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracks(targetUserId).filter { !it.id.startsWith("trk_") }
+        val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracksResult(targetUserId)
+            .getOrElse { return -1 }
+            .filter { !it.id.startsWith("trk_") }
         val cloudIds = cloudTracks.map { it.id }.toSet()
 
         // 2. Fetch local liked songs
@@ -749,12 +756,9 @@ object StreamifySyncEngine : KoinComponent {
             // 2. Outbound: push local playlists and their tracks to cloud
             val refreshedPlaylists = localPlaylistRepository.getAllLocalPlaylists().first()
             for (localPl in refreshedPlaylists) {
-                // Ensure valid UUID format for Supabase playlists.id - migrate away from deterministic hex collision IDs
-                val currentSyncId = localPl.syncId
-                val syncId: String = if (currentSyncId.isNullOrBlank() || currentSyncId.startsWith("00000000-0000-4000-8000-")) {
-                    HybridLogicalClock.randomUuid()
-                } else {
-                    currentSyncId
+                // Ensure valid UUID format for Supabase playlists.id and persist it before cloud write
+                val syncId = resolveOrPersistPlaylistSyncId(localPl) { id, generatedId ->
+                    syncOutboxRepository.setLocalPlaylistSyncId(id, generatedId)
                 }
 
                 val tracks = localPlaylistRepository.getFullPlaylistTracks(localPl.id)
@@ -1893,6 +1897,24 @@ object StreamifySyncEngine : KoinComponent {
             Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault())
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Returns the playlist's durable UUID `syncId`, generating and persisting one
+     * if missing or using a legacy deterministic prefix (`00000000-0000-4000-8000-`).
+     */
+    internal suspend fun resolveOrPersistPlaylistSyncId(
+        playlist: LocalPlaylistEntity,
+        persistSyncId: suspend (Long, String) -> Unit,
+    ): String {
+        val currentSyncId = playlist.syncId
+        return if (currentSyncId.isNullOrBlank() || currentSyncId.startsWith("00000000-0000-4000-8000-")) {
+            HybridLogicalClock.randomUuid().also { generatedId ->
+                persistSyncId(playlist.id, generatedId)
+            }
+        } else {
+            currentSyncId
         }
     }
 

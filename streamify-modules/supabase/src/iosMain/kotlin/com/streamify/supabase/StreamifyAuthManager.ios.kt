@@ -74,7 +74,7 @@ actual object StreamifyAuthManager {
 
             val accessToken = data.accessToken
             if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken)
+                val result = SupabaseClient.signInWithAccessToken(accessToken, data.refreshToken)
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
