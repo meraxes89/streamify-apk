@@ -57,6 +57,7 @@ interface SyncOutboxRepository {
     suspend fun pruneSent(beforeTimestamp: Long)
     suspend fun getPlaybackEventsBySyncIds(syncIds: List<String>): List<PlaybackEventEntity>
     suspend fun getLocalPlaylistBySyncId(syncId: String): LocalPlaylistEntity?
+    suspend fun setLocalPlaylistSyncId(id: Long, syncId: String)
     suspend fun getPlaylistTrackOrder(playlistId: Long): List<String>
     suspend fun getPendingCount(): Int
 }

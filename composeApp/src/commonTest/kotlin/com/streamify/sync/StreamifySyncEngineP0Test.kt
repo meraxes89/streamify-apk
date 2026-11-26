@@ -144,4 +144,41 @@ class StreamifySyncEngineP0Test {
         assertEquals(999L, decoded.headCursor)
         assertTrue(decoded.hasMore)
     }
+
+    @Test
+    fun resolveOrPersistPlaylistSyncIdGeneratesAndPersistsForNullOrLegacyId() = runTest {
+        val persisted = mutableListOf<Pair<Long, String>>()
+        val missingSyncId = com.maxrave.domain.data.entities.LocalPlaylistEntity(
+            id = 42L,
+            title = "Road Trip",
+            syncId = null,
+        )
+        val generated1 = StreamifySyncEngine.resolveOrPersistPlaylistSyncId(missingSyncId) { id, syncId ->
+            persisted.add(id to syncId)
+        }
+        assertTrue(generated1.isNotBlank())
+        assertEquals(listOf(42L to generated1), persisted)
+
+        val legacySyncId = com.maxrave.domain.data.entities.LocalPlaylistEntity(
+            id = 43L,
+            title = "Legacy Mix",
+            syncId = "00000000-0000-4000-8000-000000000043",
+        )
+        val generated2 = StreamifySyncEngine.resolveOrPersistPlaylistSyncId(legacySyncId) { id, syncId ->
+            persisted.add(id to syncId)
+        }
+        assertFalse(generated2.startsWith("00000000-0000-4000-8000-"))
+        assertEquals(43L to generated2, persisted.last())
+
+        val validExisting = com.maxrave.domain.data.entities.LocalPlaylistEntity(
+            id = 44L,
+            title = "Already Migrated",
+            syncId = "11111111-2222-4333-8444-555555555555",
+        )
+        val reused = StreamifySyncEngine.resolveOrPersistPlaylistSyncId(validExisting) { id, syncId ->
+            persisted.add(id to syncId)
+        }
+        assertEquals("11111111-2222-4333-8444-555555555555", reused)
+        assertEquals(2, persisted.size)
+    }
 }
