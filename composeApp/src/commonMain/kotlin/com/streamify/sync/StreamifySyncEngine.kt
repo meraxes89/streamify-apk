@@ -291,7 +291,7 @@ object StreamifySyncEngine : KoinComponent {
             runCatching {
                 val staleIds = syncOutboxRepository.getPending(500).map { it.changeId }
                 if (staleIds.isNotEmpty()) {
-                    syncOutboxRepository.ack(staleIds)
+                    syncOutboxRepository.markSent(staleIds, 0L)
                 }
             }
             _syncState.value = SyncStatus.Idle
@@ -2234,7 +2234,7 @@ object StreamifySyncEngine : KoinComponent {
         albumName: String,
         durationSec: Int,
     ) {
-        val nowMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        val nowMs = Clock.System.now().toEpochMilliseconds()
         playbackTracker.onTrackChanged(
             trackId = trackId,
             title = title,
@@ -2254,7 +2254,7 @@ object StreamifySyncEngine : KoinComponent {
         albumName: String,
         durationSec: Int,
     ) {
-        val nowMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        val nowMs = Clock.System.now().toEpochMilliseconds()
         playbackTracker.onProgressTick(
             trackId = trackId,
             title = title,
