@@ -119,4 +119,29 @@ class StreamifySyncEngineP0Test {
         assertEquals("episode_state" to "ep1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.EPISODE_STATE, "ep1"))
         assertEquals("history" to "ev1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.HISTORY, "ev1"))
     }
+
+    @Test
+    fun isStaleByWatermarkRejectsOlderOrEqualOps() {
+        val watermarks = mapOf(
+            "like:vid_1" to 2000L,
+            "playlist_track:pl_1|vid_2" to 3000L,
+        )
+        assertTrue(StreamifySyncEngine.isStaleByWatermark("like", "vid_1", null, 1500L, watermarks))
+        assertTrue(StreamifySyncEngine.isStaleByWatermark("like", "vid_1", null, 2000L, watermarks))
+        assertFalse(StreamifySyncEngine.isStaleByWatermark("like", "vid_1", null, 2001L, watermarks))
+        assertTrue(StreamifySyncEngine.isStaleByWatermark("playlist_track", "row_uuid", "pl_1|vid_2", 2500L, watermarks))
+        assertFalse(StreamifySyncEngine.isStaleByWatermark("playlist_track", "row_uuid", "pl_1|vid_2", 3500L, watermarks))
+        assertFalse(StreamifySyncEngine.isStaleByWatermark("like", "vid_1", null, 0L, watermarks))
+    }
+
+    @Test
+    fun syncPullResultDecodesHeadCursor() {
+        val decoded = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            .decodeFromString<com.streamify.supabase.SyncPullResult>(
+                """{"cursor":10,"head_cursor":999,"has_more":true,"ops":[]}"""
+            )
+        assertEquals(10L, decoded.cursor)
+        assertEquals(999L, decoded.headCursor)
+        assertTrue(decoded.hasMore)
+    }
 }

@@ -366,11 +366,11 @@ object StreamifySyncEngine : KoinComponent {
                 _syncState.value = SyncStatus.Syncing("Pushing pending changes...")
                 syncOutboxPushInternal(targetUserId, deviceId, hlc)
 
-                // Record latest changelog cursor upon bootstrap completion
+                // Record latest changelog head cursor upon bootstrap completion
                 val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
                 if (allStagesSucceeded && pullRes != null) {
                     pullRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
-                    val latestCursor = pullRes.cursor
+                    val latestCursor = pullRes.headCursor ?: pullRes.cursor
                     effectiveCursor = latestCursor
                     dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", BOOTSTRAP_DONE)
@@ -1071,10 +1071,15 @@ object StreamifySyncEngine : KoinComponent {
                     pendingByEntityKey[normalized] = change.changedAt
                 }
             }
+            val watermarks = loadHlcWatermarks()
+            var watermarksDirty = false
             var allOpsApplied = true
             withContext(withSyncApplying()) {
                 for (op in pullResult.ops) {
                     val opHlc = op.hlc ?: 0L
+                    if (opHlc > 0L) {
+                        HybridLogicalClock.merge(opHlc)
+                    }
                     val directChangedAt = pendingByEntityKey[op.entity to op.key]
                     val playlistTrackCompositeKey = if (op.entity == "playlist_track") {
                         val plId = op.data?.get("playlist_id")?.jsonPrimitive?.contentOrNull
@@ -1086,10 +1091,22 @@ object StreamifySyncEngine : KoinComponent {
                     if (localChangedAt != null && localChangedAt >= opHlc) {
                         continue
                     }
+                    if (isStaleByWatermark(op.entity, op.key, playlistTrackCompositeKey, opHlc, watermarks)) {
+                        continue
+                    }
                     if (!applyDeltaOp(op)) {
                         allOpsApplied = false
+                    } else if (opHlc > 0L) {
+                        watermarks["${op.entity}:${op.key}"] = opHlc
+                        if (playlistTrackCompositeKey != null) {
+                            watermarks["${op.entity}:$playlistTrackCompositeKey"] = opHlc
+                        }
+                        watermarksDirty = true
                     }
                 }
+            }
+            if (watermarksDirty) {
+                saveHlcWatermarks(watermarks)
             }
 
             if (!allOpsApplied) {
@@ -1102,7 +1119,53 @@ object StreamifySyncEngine : KoinComponent {
             hasMore = pullResult.hasMore
             pagesFetched++
         }
+        if (hasMore) {
+            Logger.w(TAG, "Delta pull hit 20-page cap with more ops remaining at cursor $cursor")
+            return false
+        }
         return true
+    }
+
+    private suspend fun loadHlcWatermarks(): MutableMap<String, Long> {
+        val raw = dataStoreManager.getString("streamify_entity_hlc_watermarks_v1").firstOrNull() ?: return mutableMapOf()
+        return runCatching {
+            val obj = Json.parseToJsonElement(raw).jsonObject
+            obj.entries.mapNotNull { (k, v) ->
+                v.jsonPrimitive.contentOrNull?.toLongOrNull()?.let { k to it }
+            }.toMap().toMutableMap()
+        }.getOrElse { mutableMapOf() }
+    }
+
+    private suspend fun saveHlcWatermarks(watermarks: Map<String, Long>) {
+        // Bound persisted watermarks to the 5,000 newest entries to prevent unbounded DataStore growth.
+        val bounded = if (watermarks.size > 5000) {
+            watermarks.entries.sortedByDescending { it.value }.take(5000).associate { it.key to it.value }
+        } else {
+            watermarks
+        }
+        val jsonObj = buildJsonObject {
+            for ((k, v) in bounded) {
+                put(k, v)
+            }
+        }
+        dataStoreManager.putString("streamify_entity_hlc_watermarks_v1", jsonObj.toString())
+    }
+
+    internal fun isStaleByWatermark(
+        entity: String,
+        key: String,
+        compositeKey: String?,
+        opHlc: Long,
+        watermarks: Map<String, Long>,
+    ): Boolean {
+        if (opHlc <= 0L) return false
+        val directWatermark = watermarks["$entity:$key"]
+        if (directWatermark != null && opHlc <= directWatermark) return true
+        if (compositeKey != null) {
+            val compositeWatermark = watermarks["$entity:$compositeKey"]
+            if (compositeWatermark != null && opHlc <= compositeWatermark) return true
+        }
+        return false
     }
 
     /**
