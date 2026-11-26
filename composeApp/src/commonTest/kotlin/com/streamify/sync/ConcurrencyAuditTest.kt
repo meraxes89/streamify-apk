@@ -1,9 +1,9 @@
 package com.streamify.sync
 
 import com.streamify.announcements.Announcement
-import com.streamify.announcements.AnnouncementAction
 import com.streamify.announcements.AnnouncementRecord
 import com.streamify.announcements.AnnouncementStore
+import com.streamify.announcements.LocalizedContent
 import com.streamify.announcements.PresentationArbiter
 import com.streamify.announcements.UiContext
 import kotlinx.coroutines.Dispatchers
@@ -60,15 +60,13 @@ class ConcurrencyAuditTest {
             async(Dispatchers.Default) {
                 val item = Announcement(
                     id = "ann_$idx",
-                    title = "Title $idx",
-                    body = "Body $idx",
-                    action = AnnouncementAction(label = "OK", deepLink = null),
+                    content = mapOf("en" to LocalizedContent(title = "Title $idx", body = "Body $idx")),
                 )
                 arbiter.tryPresent(item, if (idx % 2 == 0) busyCtx else idleCtx)
                 arbiter.onContextChanged(idleCtx)
                 arbiter.dismissActive()
 
-                store.saveRecord(AnnouncementRecord(id = "rec_$idx", shownCount = idx))
+                store.saveRecord(AnnouncementRecord(id = "rec_$idx", impressions = idx))
                 val loaded = store.getRecord("rec_$idx")
                 assertEquals("rec_$idx", loaded.id)
             }
