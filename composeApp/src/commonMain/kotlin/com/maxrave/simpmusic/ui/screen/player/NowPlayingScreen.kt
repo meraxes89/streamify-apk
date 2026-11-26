@@ -487,7 +487,6 @@ fun NowPlayingScreenContent(
     }
 
     LaunchedEffect(screenDataState) {
-        Logger.d(TAG, "ScreenDataState: $screenDataState")
         // Only a canvas that fills the page replaces it; animated artwork sits at its top.
         showHideMiddleLayout = screenDataState.fullscreenCanvas() == null
     }

@@ -285,21 +285,30 @@ internal fun rememberSteadyPlayhead(
     rawMs: Long,
     running: Boolean,
 ): State<Long> {
-    val playhead = remember { mutableLongStateOf(rawMs) }
     val latestRaw by rememberUpdatedState(rawMs)
+    return rememberSteadyPlayhead(rawMsProvider = { latestRaw }, running = running)
+}
+
+@Composable
+internal fun rememberSteadyPlayhead(
+    rawMsProvider: () -> Long,
+    running: Boolean,
+): State<Long> {
+    val playhead = remember { mutableLongStateOf(rawMsProvider()) }
     LaunchedEffect(running) {
         if (!running) {
-            snapshotFlow { latestRaw }.collect { playhead.longValue = it }
+            snapshotFlow { rawMsProvider() }.collect { playhead.longValue = it }
             return@LaunchedEffect
         }
-        var position = latestRaw.toDouble()
-        var reported = latestRaw
+        var position = rawMsProvider().toDouble()
+        var reported = rawMsProvider()
         var reportedAt = -1L
         var lastFrame = -1L
         while (true) {
             withInfiniteAnimationFrameNanos { now ->
-                if (reportedAt < 0L || latestRaw != reported) {
-                    reported = latestRaw
+                val latest = rawMsProvider()
+                if (reportedAt < 0L || latest != reported) {
+                    reported = latest
                     reportedAt = now
                 }
                 // ponytail: carries the report forward at 1x; at another playback speed the bars trail
