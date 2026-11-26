@@ -1472,9 +1472,12 @@ class SettingsViewModel(
                     // know about; pairing again starts both from it. A failure here must not stop the restore.
                     runCatching { librarySyncRepository.unpairAll() }
                         .onFailure { Logger.e(tag, "library sync: unpair before restore failed", it) }
+                    val preservedSyncIdentity = com.streamify.sync.StreamifySyncEngine.captureSyncIdentityForRestore()
                     restoreNative(commonRepository, uri) {
                         getData()
                     }
+                    runCatching { com.streamify.sync.StreamifySyncEngine.onPostBackupRestore(preservedSyncIdentity) }
+                        .onFailure { Logger.e(tag, "post-restore sync reconciliation failed", it) }
                 }.onFailure {
                     withContext(Dispatchers.Main) {
                         it.printStackTrace()
