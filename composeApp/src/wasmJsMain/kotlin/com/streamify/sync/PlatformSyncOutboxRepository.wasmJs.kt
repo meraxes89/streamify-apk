@@ -6,20 +6,24 @@ import com.maxrave.domain.data.entities.sync.SyncChangeEntity
 
 class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
     private val changes = mutableListOf<SyncChangeEntity>()
+    private val rejectedIds = mutableSetOf<String>()
 
     override suspend fun recordPending(change: SyncChangeEntity) {
+        rejectedIds.remove(change.changeId)
         changes.removeAll { it.entity == change.entity && it.entityKey == change.entityKey }
         changes.add(change)
     }
 
-    override suspend fun getPending(limit: Int): List<SyncChangeEntity> = changes.take(limit)
+    override suspend fun getPending(limit: Int): List<SyncChangeEntity> =
+        changes.filter { it.changeId !in rejectedIds }.take(limit)
 
     override suspend fun markSent(changeIds: List<String>, seq: Long) {
+        rejectedIds.removeAll(changeIds.toSet())
         changes.removeAll { it.changeId in changeIds }
     }
 
     override suspend fun markRejected(changeIds: List<String>) {
-        changes.removeAll { it.changeId in changeIds }
+        rejectedIds.addAll(changeIds)
     }
 
     override suspend fun pruneSent(beforeTimestamp: Long) {}
@@ -32,7 +36,7 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
 
     override suspend fun getPlaylistTrackOrder(playlistId: Long): List<String> = emptyList()
 
-    override suspend fun getPendingCount(): Int = changes.size
+    override suspend fun getPendingCount(): Int = changes.count { it.changeId !in rejectedIds }
 }
 
 actual fun createPlatformSyncOutboxRepository(): SyncOutboxRepository = WasmFakeSyncOutboxRepository()

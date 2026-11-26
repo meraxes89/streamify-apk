@@ -112,8 +112,14 @@ actual object StreamifyAuthManager {
                 val storedVerifier = AndroidTokenCipher.decrypt(sp?.getString("pending_code_verifier", null))
                 val storedState = AndroidTokenCipher.decrypt(sp?.getString("pending_state", null))
 
-                if (storedState != null && callbackData.state != null && storedState != callbackData.state) {
-                    return@withContext Result.failure(SecurityException("CSRF state mismatch"))
+                // Clean up ephemeral PKCE state immediately on callback receipt
+                sp?.edit()
+                    ?.remove("pending_code_verifier")
+                    ?.remove("pending_state")
+                    ?.apply()
+
+                if (storedState.isNullOrBlank() || callbackData.state != storedState) {
+                    return@withContext Result.failure(SecurityException("Missing or mismatched CSRF state"))
                 }
 
                 if (storedVerifier.isNullOrBlank()) {
@@ -126,26 +132,14 @@ actual object StreamifyAuthManager {
                     redirectUri = "streamify://callback"
                 )
 
-                // Clean up ephemeral PKCE state
-                sp?.edit()
-                    ?.remove("pending_code_verifier")
-                    ?.remove("pending_state")
-                    ?.apply()
-
                 exchangeResult.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
                 return@withContext exchangeResult
             }
 
-            // Fallback for legacy access token in hash fragment
-            val accessToken = callbackData.accessToken
-            if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken, callbackData.refreshToken)
-                result.onSuccess { profile ->
-                    _authState.value = AuthState.Authenticated(profile)
-                }
-                return@withContext result
+            if (!callbackData.accessToken.isNullOrBlank()) {
+                return@withContext Result.failure(SecurityException("Implicit access_token flow is disabled; PKCE code required"))
             }
 
             Result.failure(Exception("No authorization code or access token found in callback URL"))
@@ -222,7 +216,11 @@ actual object StreamifyAuthManager {
         if (ctx != null) {
             PlatformTokenStore.init(ctx)
         }
+        val tokenToRevoke = SupabaseClient.accessToken.value
         SupabaseClient.clearSession()
         _authState.value = AuthState.Unauthenticated
+        CoroutineScope(Dispatchers.IO).launch {
+            SupabaseClient.signOutRemote(tokenToRevoke)
+        }
     }
 }

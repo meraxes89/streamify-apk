@@ -74,12 +74,12 @@ actual object StreamifyAuthManager {
                     ?: return Result.failure(Exception("No pending PKCE code verifier in session"))
 
                 val expectedState = pendingState
-                if (expectedState != null && data.state != null && data.state != expectedState) {
-                    return Result.failure(SecurityException("CSRF state mismatch"))
-                }
-
                 pendingCodeVerifier = null
                 pendingState = null
+
+                if (expectedState.isNullOrBlank() || data.state != expectedState) {
+                    return Result.failure(SecurityException("Missing or mismatched CSRF state"))
+                }
 
                 val result = SupabaseClient.exchangeCodeForSession(code, verifier, "streamify://callback")
                 result.onSuccess { profile ->
@@ -88,13 +88,8 @@ actual object StreamifyAuthManager {
                 return result
             }
 
-            val accessToken = data.accessToken
-            if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken, data.refreshToken)
-                result.onSuccess { profile ->
-                    _authState.value = AuthState.Authenticated(profile)
-                }
-                return result
+            if (!data.accessToken.isNullOrBlank()) {
+                return Result.failure(SecurityException("Implicit access_token flow is disabled; PKCE code required"))
             }
 
             Result.failure(Exception("No authorization code or access token in callback URL"))
@@ -125,7 +120,11 @@ actual object StreamifyAuthManager {
     }
 
     actual fun signOut(context: Any?) {
+        val tokenToRevoke = SupabaseClient.accessToken.value
         _authState.value = AuthState.Unauthenticated
         SupabaseClient.clearSession()
+        CoroutineScope(Dispatchers.Default).launch {
+            SupabaseClient.signOutRemote(tokenToRevoke)
+        }
     }
 }

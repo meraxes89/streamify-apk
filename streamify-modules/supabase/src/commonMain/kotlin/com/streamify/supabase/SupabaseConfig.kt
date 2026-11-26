@@ -18,6 +18,6 @@ object SupabaseConfig {
         displayName = "Sireen Yadav",
         avatarUrl = "https://lh3.googleusercontent.com/a/ACg8ocJOuWED9eB7KM0k_WtdZtQfQxvoT7AOzu00BZhl7e2wFElUgb2f=s96-c",
         bio = "Music lover on Streamify",
-        isAdmin = true
+        isAdmin = false
     )
 }

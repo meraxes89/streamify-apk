@@ -234,6 +234,44 @@ object StreamifySyncEngine : KoinComponent {
     }
 
     /**
+     * Ensures local sync watermarks, cursors, device ID, and dead-letter state are isolated
+     * across user switches (#371 Tier 1 #5).
+     */
+    suspend fun onAuthenticatedUser(userId: String) {
+        if (isGuestUserId(userId)) return
+        val previousUserId = dataStoreManager.getString("streamify_active_user_id_v3").firstOrNull()
+        if (!previousUserId.isNullOrBlank() && previousUserId != userId) {
+            resetForAccountSwitch()
+        }
+        dataStoreManager.putString("streamify_active_user_id_v3", userId)
+    }
+
+    /**
+     * Clears per-user sync cursors, bootstrap checkpoints, device ID, HLC state, and dead-letter
+     * quarantine on logout or account switch (#371 Tier 1 #5).
+     */
+    suspend fun resetForAccountSwitch() {
+        mutex.withLock {
+            isSyncActive = false
+            backoffUntilMs = 0L
+            dataStoreManager.putString("streamify_sync_cursor_v3", "0")
+            dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
+            dataStoreManager.putString("streamify_device_id_v3", "")
+            dataStoreManager.putString("streamify_active_user_id_v3", "")
+            SyncDeadLetterStore.clear(dataStoreManager)
+            HybridLogicalClock.resetForTesting()
+            _syncState.value = SyncStatus.Idle
+        }
+    }
+
+    internal fun isTerminalClientRejection(error: Throwable?): Boolean {
+        val msg = error?.message ?: return false
+        val match = Regex("HTTP (\\d{3})").find(msg) ?: return false
+        val code = match.groupValues[1].toIntOrNull() ?: return false
+        return code in 400..499 && code != 401 && code != 429
+    }
+
+    /**
      * Suspending orchestrator that executes all sync stages with V3 delta sync & HLC.
      */
     suspend fun syncAll(userId: String? = null): SyncStatus = withContext(Dispatchers.IO) {
@@ -1543,7 +1581,8 @@ object StreamifySyncEngine : KoinComponent {
                     val chunkedMappings = opMappings.chunked(100)
                     for (chunk in chunkedMappings) {
                         val chunkOps = chunk.map { it.op }
-                        val pushRes = SupabaseLibrarySync.syncPush(JsonArray(chunkOps), deviceId).getOrNull()
+                        val pushAttempt = SupabaseLibrarySync.syncPush(JsonArray(chunkOps), deviceId)
+                        val pushRes = pushAttempt.getOrNull()
                         if (pushRes != null) {
                             pushRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
                             val appliedChangeIds = mutableSetOf<String>()
@@ -1582,7 +1621,14 @@ object StreamifySyncEngine : KoinComponent {
                             }
                             // Pull cursor is NEVER advanced by sync_push
                         } else {
-                            allChunksSucceeded = false
+                            val err = pushAttempt.exceptionOrNull()
+                            if (isTerminalClientRejection(err)) {
+                                val rejectedIds = chunk.map { it.changeId }
+                                syncOutboxRepository.markRejected(rejectedIds)
+                                _syncState.value = SyncStatus.Error("Sync push rejected ${rejectedIds.size} changes (4xx)")
+                            } else {
+                                allChunksSucceeded = false
+                            }
                         }
                     }
                 }

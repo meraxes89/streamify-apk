@@ -4,18 +4,24 @@ import com.maxrave.data.db.SyncDao
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.analytics.PlaybackEventEntity
 import com.maxrave.domain.data.entities.sync.SyncChangeEntity
+import com.maxrave.domain.manager.DataStoreManager
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 class AndroidRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
     private val syncDao: SyncDao by inject()
+    private val dataStoreManager: DataStoreManager by inject()
 
     override suspend fun recordPending(change: SyncChangeEntity) {
         syncDao.recordPending(change)
     }
 
     override suspend fun getPending(limit: Int): List<SyncChangeEntity> {
-        return syncDao.pending(limit)
+        val quarantined = SyncDeadLetterStore.quarantinedIds(dataStoreManager)
+        if (quarantined.isEmpty()) return syncDao.pending(limit)
+        return syncDao.pending(limit + quarantined.size)
+            .filter { it.changeId !in quarantined }
+            .take(limit)
     }
 
     override suspend fun markSent(changeIds: List<String>, seq: Long) {
@@ -25,9 +31,7 @@ class AndroidRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
     }
 
     override suspend fun markRejected(changeIds: List<String>) {
-        if (changeIds.isNotEmpty()) {
-            syncDao.markSent(changeIds, -1L)
-        }
+        SyncDeadLetterStore.quarantine(dataStoreManager, changeIds)
     }
 
     override suspend fun pruneSent(beforeTimestamp: Long) {
@@ -51,7 +55,8 @@ class AndroidRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
     }
 
     override suspend fun getPendingCount(): Int {
-        return syncDao.pending(1000).size
+        val quarantined = SyncDeadLetterStore.quarantinedIds(dataStoreManager)
+        return syncDao.pending(1000).count { it.changeId !in quarantined }
     }
 }
 
