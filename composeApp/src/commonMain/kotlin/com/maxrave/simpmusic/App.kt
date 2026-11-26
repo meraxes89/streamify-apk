@@ -82,6 +82,8 @@ import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.BindNavigationBackHandler
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
+import com.maxrave.simpmusic.expect.ui.rememberStartupPermissionRequester
+import com.maxrave.simpmusic.expect.ui.shouldPromptStartupPermissions
 import com.maxrave.simpmusic.extension.copy
 import com.maxrave.simpmusic.ui.component.AppBottomNavigationBar
 import com.maxrave.simpmusic.ui.component.AppNavigationRail
@@ -264,6 +266,25 @@ fun App(
 
     val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
     val isEntranceBlocking = isSplashVisible || streamifyAuthState is AuthState.Loading
+
+    val startupPermissionRequester = rememberStartupPermissionRequester()
+    var hasCheckedStartupPermissions by rememberSaveable {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(isEntranceBlocking) {
+        if (shouldPromptStartupPermissions(
+                isEntranceBlocking = isEntranceBlocking,
+                hasAllPermissions = startupPermissionRequester.hasAllRequiredPermissions(),
+                doNotAskAgain = viewModel.getString("notification_permission_do_not_ask") == "true",
+                alreadyCheckedThisSession = hasCheckedStartupPermissions,
+            )
+        ) {
+            hasCheckedStartupPermissions = true
+            viewModel.showNotificationPermissionDialog()
+        } else if (!isEntranceBlocking) {
+            hasCheckedStartupPermissions = true
+        }
+    }
 
     // Every dialog this file raises on its own, plus blocking entrance animations.
     // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
@@ -1197,6 +1218,7 @@ fun App(
                                         onOpenDesktopNotificationSettings(doNotShowAgain)
                                     } else {
                                         viewModel.dismissNotificationPermissionDialog(doNotShowAgain)
+                                        startupPermissionRequester.requestMissingPermissions()
                                     }
                                 },
                             ) {
@@ -1212,19 +1234,14 @@ fun App(
                                 )
                             }
                         },
-                        dismissButton =
-                            if (showDesktopNotificationPermissionDialog) {
-                                {
-                                    TextButton(onClick = dismissPermissionDialog) {
-                                        Text(
-                                            stringResource(Res.string.cancel),
-                                            style = typo().bodySmall,
-                                        )
-                                    }
-                                }
-                            } else {
-                                null
-                            },
+                        dismissButton = {
+                            TextButton(onClick = dismissPermissionDialog) {
+                                Text(
+                                    stringResource(Res.string.cancel),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
                         title = {
                             Text(
                                 stringResource(Res.string.notification),
@@ -1237,6 +1254,13 @@ fun App(
                                     stringResource(Res.string.this_app_needs_to_access_your_notification),
                                     style = typo().bodySmall,
                                 )
+                                if (!showDesktopNotificationPermissionDialog) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        "Also allows access to local audio files on your device for offline library playback.",
+                                        style = typo().bodySmall,
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
