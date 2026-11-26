@@ -48,7 +48,7 @@ object SupabaseFriendSync {
 
             // Increment monotonic listener statistics in `profiles` (listening_seconds, total_plays)
             val rpcPayload = buildJsonObject {
-                put("p_listening_seconds", (positionMs / 1000).toInt().coerceAtLeast(1))
+                put("p_listening_seconds", (positionMs / 1000).toInt().coerceAtLeast(0))
                 put("p_total_plays", 1)
                 put("p_top_track", "$title - $artist")
                 put("p_user_id", targetUserId)
@@ -59,15 +59,6 @@ object SupabaseFriendSync {
                 header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                 contentType(ContentType.Application.Json)
                 setBody(rpcPayload)
-            }
-
-            // Record detailed playback event in `user_listening_history` for Analytics & Wrapped
-            if (trackId.isNotBlank() && !trackId.startsWith("trk_")) {
-                SupabaseLibrarySync.recordPlaybackHistory(
-                    userId = targetUserId,
-                    trackId = trackId,
-                    durationSec = (positionMs / 1000).toInt().coerceAtLeast(1)
-                )
             }
 
             Result.success(true)
