@@ -71,8 +71,6 @@ fun SpotifyLoginScreen(
     navController: NavController,
     viewModel: LogInViewModel = koinViewModel(),
     settingsViewModel: SettingsViewModel = koinViewModel(),
-    hideBottomNavigation: () -> Unit,
-    showBottomNavigation: () -> Unit,
 ) {
     val hazeState = rememberHazeState()
     val spotifyStatus by viewModel.spotifyStatus.collectAsStateWithLifecycle()
@@ -87,17 +85,8 @@ fun SpotifyLoginScreen(
         mutableStateOf(false)
     }
 
-    // Hide bottom navigation when entering this screen
-    LaunchedEffect(Unit) {
-        hideBottomNavigation()
-    }
-
-    // Show bottom navigation when leaving this screen
-    DisposableEffect(Unit) {
-        onDispose {
-            showBottomNavigation()
-        }
-    }
+    // Bottom navigation is hidden while a login destination is current — derived by
+    // App.kt from this destination's ChromePolicy, never set from here (RFC-003 §3.2).
 
     // Handle login success
     LaunchedEffect(spotifyStatus) {

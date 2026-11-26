@@ -223,7 +223,16 @@ fun SearchScreen(
         focusManager.clearFocus()
         keyboardController?.hide()
     }
-    PlatformBackHandler(enabled = isSearchPanelVisible, onBack = dismissSearchPanel)
+    // The search panel is an overlay INSIDE a NavHost destination: a plain BackHandler here
+    // would also block NavHost predictive back while it is enabled. The predictive variant
+    // keeps the system gesture alive; the panel has nothing to scrub, so a completed
+    // gesture commits the dismiss directly (RFC-003 §3.3).
+    com.maxrave.simpmusic.expect.ui.PlatformPredictiveBackHandler(
+        enabled = isSearchPanelVisible,
+        onProgress = { },
+        onCancel = { },
+        onCommit = dismissSearchPanel,
+    )
 
     // The bar floats OVER the content (a Box, not a Column) so there is something behind it to
     // blur — same arrangement HomeScreen uses. Each branch owns a scroll state, hoisted here so

@@ -23,6 +23,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -61,6 +65,9 @@ fun WrappedEntryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The card side of the Analytics→Wrapped morph: keyed by the year, matched by the
+    // reel's root (WrappedScreen). sharedHero no-ops outside a transition scope.
+    val wrappedHeroKey = SharedKeys.hero(SharedKeys.Origin.WRAPPED, wrapped.year.toString())
     EntryCard(
         title = stringResource(Res.string.wrapped_entry_title, wrapped.year.toString()),
         subtitle =
@@ -72,6 +79,7 @@ fun WrappedEntryCard(
         discIcon = SimpIcons.PlayArrow,
         onClick = onClick,
         modifier = modifier,
+        heroKey = wrappedHeroKey,
     ) {
         AsyncImage(
             model = wrapped.entryCover(),
@@ -97,10 +105,18 @@ internal fun EntryCard(
     discIcon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    heroKey: String? = null,
     picture: @Composable BoxScope.() -> Unit,
 ) {
     ElevatedCard(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .then(heroKey?.let { Modifier.sharedHero(it) } ?: Modifier)
+                // Offscreen compositing: during a transition the card is composited once
+                // into its own layer instead of re-rasterizing the miniature receipt.
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
         shape = RoundedCornerShape(CARD_RADIUS),
         elevation = CardDefaults.elevatedCardElevation(),
         // `elevatedCardColors`' own container is `surfaceContainerLow`, which on the Analytics page

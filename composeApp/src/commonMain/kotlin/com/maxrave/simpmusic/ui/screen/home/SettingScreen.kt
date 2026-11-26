@@ -275,6 +275,8 @@ import simpmusic.composeapp.generated.resources.enable_animated_artwork
 import simpmusic.composeapp.generated.resources.enable_canvas
 import simpmusic.composeapp.generated.resources.enable_liquid_glass_effect
 import simpmusic.composeapp.generated.resources.enable_liquid_glass_effect_description
+import simpmusic.composeapp.generated.resources.enable_spatial_navigation
+import simpmusic.composeapp.generated.resources.enable_spatial_navigation_description
 import simpmusic.composeapp.generated.resources.enable_rich_presence
 import simpmusic.composeapp.generated.resources.enable_scrobbling
 import simpmusic.composeapp.generated.resources.enable_sponsor_block
@@ -545,7 +547,7 @@ private fun isGroupMatch(key: String, query: String): Boolean {
     val q = query.trim().lowercase()
     val keywords = when (key) {
         "login_sync_section" -> "sync device pair account library local network login peer"
-        "user_interface" -> "interface theme dark light color dynamic accent liquid glass appearance font now playing lyrics style desktop window amoled"
+        "user_interface" -> "interface theme dark light color dynamic accent liquid glass appearance font now playing lyrics style desktop window amoled spatial navigation transition motion hero shared element predictive back animation"
         "content" -> "content language location explicit country region stream video audio track filter search"
         "audio" -> "audio quality high opus 256kbps dolby atmos equalizer graphic eq delay reverb 8d spatial sound bit depth"
         "playback" -> "playback volume normalize skip silent silence crossfade dj mode gapless fade kill service state cast"
@@ -692,6 +694,7 @@ fun SettingScreen(
     val autoBackupLastTime by viewModel.autoBackupLastTime.collectAsStateWithLifecycle()
     val updateChannel by viewModel.updateChannel.collectAsStateWithLifecycle()
     val enableLiquidGlass by viewModel.enableLiquidGlass.collectAsStateWithLifecycle()
+    val enableSpatialNavigation by viewModel.enableSpatialNavigation.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.getThemeMode().collectAsStateWithLifecycle(DataStoreManager.THEME_MODE_LIGHT)
     val themeColorSource by sharedViewModel.getThemeColorSource().collectAsStateWithLifecycle(DataStoreManager.THEME_COLOR_DEFAULT)
     val customThemeColorHex by sharedViewModel.getCustomThemeColor().collectAsStateWithLifecycle(DataStoreManager.DEFAULT_THEME_COLOR_HEX)
@@ -1161,6 +1164,16 @@ fun SettingScreen(
                         subtitle = stringResource(Res.string.enable_liquid_glass_effect_description),
                         smallSubtitle = true,
                         switch = (enableLiquidGlass to { viewModel.setEnableLiquidGlass(it) }),
+                    )
+                    // The RFC-003 spatial navigation beta sits directly under its sibling glass
+                    // beta: both are experimental look-and-feel toggles for the same user. The
+                    // toggle only changes how navigation animates — the NavHost tree, its back
+                    // stack and the chrome derivation never change shape when it flips.
+                    SettingItem(
+                        title = stringResource(Res.string.enable_spatial_navigation),
+                        subtitle = stringResource(Res.string.enable_spatial_navigation_description),
+                        smallSubtitle = true,
+                        switch = (enableSpatialNavigation to { viewModel.setEnableSpatialNavigation(it) }),
                     )
                 }
                 }

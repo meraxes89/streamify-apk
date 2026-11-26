@@ -574,6 +574,8 @@
     <string name="update_channel">Update channel</string>
     <string name="enable_liquid_glass_effect">Omogući liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Omogući iOS's liquid glass effect in some position (Android 13+)</string>
+    <string name="enable_spatial_navigation">Prostorna navigacija (BETA)</string>
+    <string name="enable_spatial_navigation_description">Omogući prijelaze zajedničkih elemenata, prediktivni povratak i gibanje zajedničke osi u cijeloj aplikaciji</string>
     <string name="your_library">Your library</string>
     <string name="play_explicit_content">Play explicit content</string>
     <string name="play_explicit_content_description">Omogući to play explicit content</string>

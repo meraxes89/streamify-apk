@@ -4,8 +4,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.maxrave.simpmusic.ui.navigation.appComposable
 import com.maxrave.simpmusic.ui.navigation.destination.library.LibraryDynamicPlaylistDestination
 import com.maxrave.simpmusic.ui.screen.library.LibraryDynamicPlaylistScreen
 
@@ -13,8 +13,9 @@ import com.maxrave.simpmusic.ui.screen.library.LibraryDynamicPlaylistScreen
 fun NavGraphBuilder.libraryScreenGraph(
     innerPadding: PaddingValues,
     navController: NavController,
+    spatialEnabled: Boolean = false,
 ) {
-    composable<LibraryDynamicPlaylistDestination> { entry ->
+    appComposable<LibraryDynamicPlaylistDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<LibraryDynamicPlaylistDestination>()
         LibraryDynamicPlaylistScreen(
             innerPadding = innerPadding,

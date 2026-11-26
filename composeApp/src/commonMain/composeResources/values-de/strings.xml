@@ -611,6 +611,8 @@
     <string name="update_channel">Update-Kanal</string>
     <string name="enable_liquid_glass_effect">Liquid-Glass-Effekt aktivieren (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Aktiviere den Liquid-Glass-Effekt von iOS in bestimmten Positionen (Android 13+).</string>
+    <string name="enable_spatial_navigation">Räumliche Navigation (BETA)</string>
+    <string name="enable_spatial_navigation_description">Aktiviert Shared-Element-Übergänge, prädiktives Zurück und Shared-Axis-Bildschirmbewegung in der gesamten App</string>
     <string name="your_library">Deine Bibliothek</string>
     <string name="play_explicit_content">Expliziten Inhalt abspielen</string>
     <string name="play_explicit_content_description">Aktivieren, um explizite Inhalte abzuspielen</string>

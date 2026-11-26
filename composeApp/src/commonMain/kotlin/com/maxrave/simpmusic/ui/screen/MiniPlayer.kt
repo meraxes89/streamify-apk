@@ -118,6 +118,8 @@ import com.maxrave.domain.utils.connectArtists
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
 import com.maxrave.simpmusic.expect.toggleMiniPlayer
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import com.maxrave.simpmusic.expect.ui.PlatformBackdrop
 import com.maxrave.simpmusic.extension.LeftToRight
 import com.maxrave.simpmusic.extension.elapsedLabel
@@ -440,11 +442,26 @@ fun MiniPlayer(
                                         )
                                     },
                         ) {
+                            // The artwork is the MiniPlayer↔NowPlaying hero (RFC-003 §3.4). The
+                            // key carries the track's videoId; sharedHero no-ops unless BOTH the
+                            // shared-transition scope and an animated-visibility scope exist, so
+                            // the phone bar (no scope of its own) simply keeps drawing as-is.
+                            val miniPlayerHeroKey =
+                                songEntity?.videoId?.let {
+                                    SharedKeys.hero(SharedKeys.Origin.NOW_PLAYING_ARTWORK, it)
+                                }
                             Box(
                                 modifier =
                                     Modifier
                                         .size(40.dp)
-                                        .align(Alignment.CenterVertically),
+                                        .align(Alignment.CenterVertically)
+                                        .then(
+                                            if (miniPlayerHeroKey != null) {
+                                                Modifier.sharedHero(miniPlayerHeroKey)
+                                            } else {
+                                                Modifier
+                                            },
+                                        ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (isFlat) {
@@ -825,7 +842,12 @@ fun MiniPlayer(
                                 Modifier
                                     .size(32.dp)
                                     .clip(ArtworkShape)
-                                    .hoverable(artworkInteraction),
+                                    .hoverable(artworkInteraction)
+                                    .then(
+                                        songEntity?.videoId?.let {
+                                            Modifier.sharedHero(SharedKeys.hero(SharedKeys.Origin.NOW_PLAYING_ARTWORK, it))
+                                        } ?: Modifier,
+                                    ),
                             contentAlignment = Alignment.Center,
                         ) {
                             AsyncImage(

@@ -104,6 +104,10 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.player.FullscreenDestination
 import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
+import com.maxrave.simpmusic.ui.navigation.ScreenPolicyRegistry
+import com.maxrave.simpmusic.ui.navigation.SpatialCapability
+import com.maxrave.simpmusic.ui.navigation.LocalSharedTransitionScope
+import com.maxrave.simpmusic.ui.navigation.TransitionKind
 import com.maxrave.simpmusic.ui.navigation.graph.AppNavigationGraph
 import com.maxrave.simpmusic.ui.screen.MiniPlayer
 import com.maxrave.simpmusic.expect.ui.rememberPlatformContext
@@ -157,6 +161,15 @@ import simpmusic.composeapp.generated.resources.update_message
 import simpmusic.composeapp.generated.resources.yes
 import kotlin.time.ExperimentalTime
 
+/**
+ * The destination class of the current entry, used ONLY for policy lookup. Null when
+ * the graph has not settled yet (splash) — the registry then answers the default.
+ */
+fun currentDestinationClass(entry: androidx.navigation.NavBackStackEntry?): kotlin.reflect.KClass<*>? {
+    val route = entry?.destination?.route ?: return null
+    return DestinationClassIndex.classFor(route)
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class, ExperimentalFoundationApi::class)
 @Composable
 fun App(
@@ -179,6 +192,15 @@ fun App(
     val showNotificationPermissionDialog by viewModel.showNotificationPermissionDialog.collectAsStateWithLifecycle()
 
     val isLiquidGlassEnabled by viewModel.getEnableLiquidGlass().collectAsStateWithLifecycle(DataStoreManager.FALSE)
+    // RFC-003 §3.1: the spatial navigation beta. One flag gates transitions, heroes and
+    // predictive back; the NavHost tree itself is never swapped (zero-breakage rollout).
+    val isSpatialNavigationEnabled by viewModel.getEnableSpatialNavigation().collectAsStateWithLifecycle(DataStoreManager.FALSE)
+    // Hero morphing additionally needs the capability gate: Tier 4 software rasterizers
+    // (RFC-001 §3) and reduced-motion settings get the flag's transitions but no morphs.
+    val heroesAllowed = SpatialCapability.heroesAllowed(
+        betaEnabled = isSpatialNavigationEnabled == TRUE,
+        reduceMotion = false,
+    )
     // Analytics only makes sense with local tracking on, so its tab follows that setting (enabled by default).
     val isLocalTrackingEnabled by viewModel.getLocalTrackingEnabled().collectAsStateWithLifecycle(DataStoreManager.TRUE)
     val showAnalyticsTab = isLocalTrackingEnabled != DataStoreManager.FALSE
@@ -218,9 +240,9 @@ fun App(
         mutableStateOf(false)
     }
 
-    var isNavBarVisible by rememberSaveable {
-        mutableStateOf(true)
-    }
+    // Reactive chrome (RFC-003 §3.2): the bar/rail visibility is DERIVED below from the
+    // current entry's ScreenPolicy, never set by screens, so a cancelled predictive back
+    // gesture cannot desync it.
 
     var shouldShowUpdateDialog by rememberSaveable {
         mutableStateOf(false)
@@ -508,6 +530,16 @@ fun App(
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
+    // The one place chrome is decided: the policy of the CURRENT destination. Sheets that
+    // live outside the NavHost (Now Playing) still suppress the bar through the existing
+    // isInFullscreen / isShowNowPlaylistScreen reads below.
+    val currentPolicy by remember {
+        derivedStateOf { ScreenPolicyRegistry.policyFor(currentDestinationClass(navBackStackEntry)) }
+    }
+    val isNavBarVisible =
+        currentPolicy.chrome.showNavBar &&
+            !isShowNowPlaylistScreen &&
+            !(isTabletLandscape && isShowNowPlaylistScreen)
     LaunchedEffect(navBackStackEntry) {
         Logger.d("MainActivity", "Current destination: ${navBackStackEntry?.destination?.route}")
         if (navBackStackEntry?.destination?.hierarchy?.any {
@@ -875,12 +907,7 @@ fun App(
                                             AppNavigationGraph(
                                                 innerPadding = innerPadding,
                                                 navController = navController,
-                                                hideNavBar = {
-                                                    isNavBarVisible = false
-                                                },
-                                                showNavBar = {
-                                                    isNavBarVisible = true
-                                                },
+                                                spatialEnabled = isSpatialNavigationEnabled == TRUE,
                                                 showNowPlayingSheet = {
                                                     isShowNowPlaylistScreen = true
                                                 },

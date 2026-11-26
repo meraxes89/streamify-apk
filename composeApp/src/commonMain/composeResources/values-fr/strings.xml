@@ -611,6 +611,8 @@
     <string name="update_channel">Mettre à jour la chaîne</string>
     <string name="enable_liquid_glass_effect">Activer le verre liquide</string>
     <string name="enable_liquid_glass_effect_description">Activer l'effet « verre liquide » d'iOS dans certaines situations (Android 13 et versions ultérieures)</string>
+    <string name="enable_spatial_navigation">Navigation spatiale (BETA)</string>
+    <string name="enable_spatial_navigation_description">Active les transitions d'éléments partagés, le retour prédictif et le mouvement d'axe partagé dans toute l'app</string>
     <string name="your_library">Votre Bibliothèque</string>
     <string name="play_explicit_content">Lire le contenu explicite</string>
     <string name="play_explicit_content_description">Activer la lecture de contenu explicite</string>

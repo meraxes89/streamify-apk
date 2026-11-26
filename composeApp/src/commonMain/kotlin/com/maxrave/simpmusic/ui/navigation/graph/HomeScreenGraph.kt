@@ -3,8 +3,8 @@ package com.maxrave.simpmusic.ui.navigation.graph
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.maxrave.simpmusic.ui.navigation.appComposable
 import com.maxrave.simpmusic.ui.navigation.destination.home.AdminDashboardDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.AppLogDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.CreditDestination
@@ -13,6 +13,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.home.ListenTogetherSettin
 import com.maxrave.simpmusic.ui.navigation.destination.home.MoodDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.NotificationDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.SettingsDestination
+import com.maxrave.simpmusic.ui.navigation.destination.home.AnnouncementInboxDestination
 import com.maxrave.simpmusic.ui.screen.home.ListenTogetherScreen
 import com.maxrave.simpmusic.ui.screen.home.ListenTogetherSettingsScreen
 import com.maxrave.simpmusic.ui.screen.home.MoodScreen
@@ -25,55 +26,56 @@ import com.maxrave.simpmusic.ui.screen.other.CreditScreen
 fun NavGraphBuilder.homeScreenGraph(
     innerPadding: PaddingValues,
     navController: NavController,
+    spatialEnabled: Boolean = false,
 ) {
-    composable<AdminDashboardDestination> {
+    appComposable<AdminDashboardDestination>(spatialEnabled) {
         AdminDashboardScreen(
             paddingValues = innerPadding,
             navController = navController,
         )
     }
-    composable<CreditDestination> {
+    appComposable<CreditDestination>(spatialEnabled) {
         CreditScreen(
             paddingValues = innerPadding,
             navController = navController,
         )
     }
-    composable<com.maxrave.simpmusic.ui.navigation.destination.home.AnnouncementInboxDestination> {
+    appComposable<AnnouncementInboxDestination>(spatialEnabled) {
         com.streamify.announcements.ui.AnnouncementInboxScreen(
             navController = navController
         )
     }
-    composable<AppLogDestination> {
+    appComposable<AppLogDestination>(spatialEnabled) {
         AppLogScreen(
             paddingValues = innerPadding,
             navController = navController,
         )
     }
-    composable<MoodDestination> { entry ->
+    appComposable<MoodDestination>(spatialEnabled) { entry ->
         val params = entry.toRoute<MoodDestination>().params
         MoodScreen(
             navController = navController,
             params = params,
         )
     }
-    composable<ListenTogetherDestination> {
+    appComposable<ListenTogetherDestination>(spatialEnabled) {
         ListenTogetherScreen(
             navController = navController,
             innerPadding = innerPadding,
         )
     }
-    composable<ListenTogetherSettingsDestination> {
+    appComposable<ListenTogetherSettingsDestination>(spatialEnabled) {
         ListenTogetherSettingsScreen(
             navController = navController,
             innerPadding = innerPadding,
         )
     }
-    composable<NotificationDestination> {
+    appComposable<NotificationDestination>(spatialEnabled) {
         NotificationScreen(
             navController = navController,
         )
     }
-    composable<SettingsDestination> {
+    appComposable<SettingsDestination>(spatialEnabled) {
         SettingScreen(
             navController = navController,
             innerPadding = innerPadding,

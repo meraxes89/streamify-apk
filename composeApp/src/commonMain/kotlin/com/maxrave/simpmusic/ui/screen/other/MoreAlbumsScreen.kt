@@ -38,7 +38,8 @@ import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.ui.component.CenterLoadingBox
 import com.maxrave.simpmusic.ui.component.EndOfPage
-import com.maxrave.simpmusic.ui.component.HomeItemContentPlaylist
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import coil3.compose.AsyncImage
 import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.icon.ArrowBackIosNew
 import com.maxrave.simpmusic.ui.icon.SimpIcons
@@ -123,6 +124,7 @@ fun MoreAlbumsScreen(
                                     ),
                                 )
                             },
+                            heroKey = SharedKeys.hero(SharedKeys.Origin.ALBUM, album.browseId),
                         )
                     }
                     item(
