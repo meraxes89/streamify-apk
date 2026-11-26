@@ -61,8 +61,8 @@ jobs:
         shell: bash
         run: |
           chmod +x ./gradlew
-          ./gradlew :composeApp:assembleComposeAppReleaseFrameworkIosArm64 \
-                    :composeApp:assembleComposeAppReleaseFrameworkIosSimulatorArm64 \
+          ./gradlew :composeApp:linkReleaseFrameworkIosArm64 \
+                    :composeApp:linkReleaseFrameworkIosSimulatorArm64 \
                     --no-daemon \
                     --stacktrace
 
