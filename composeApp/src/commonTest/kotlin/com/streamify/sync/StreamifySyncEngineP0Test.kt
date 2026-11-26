@@ -7,6 +7,9 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.startCoroutine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -145,8 +148,16 @@ class StreamifySyncEngineP0Test {
         assertTrue(decoded.hasMore)
     }
 
+    private fun runImmediateSuspend(block: suspend () -> Unit) {
+        var failure: Throwable? = null
+        block.startCoroutine(Continuation(EmptyCoroutineContext) { result ->
+            failure = result.exceptionOrNull()
+        })
+        failure?.let { throw it }
+    }
+
     @Test
-    fun resolveOrPersistPlaylistSyncIdGeneratesAndPersistsForNullOrLegacyId() = runTest {
+    fun resolveOrPersistPlaylistSyncIdGeneratesAndPersistsForNullOrLegacyId() = runImmediateSuspend {
         val persisted = mutableListOf<Pair<Long, String>>()
         val missingSyncId = com.maxrave.domain.data.entities.LocalPlaylistEntity(
             id = 42L,
