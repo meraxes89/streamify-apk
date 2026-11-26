@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.ResolvedTextDirection
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import com.maxrave.domain.data.model.metadata.Line
@@ -80,13 +81,15 @@ internal fun AppleMusicLyricStrip(
     val syncType = lyrics?.syncType
     val synced = lyrics?.lines != null && syncType != null && syncType != "UNSYNCED"
     val richSynced = synced && syncType == "RICH_SYNCED"
+    val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
+    val timelineState by state.timelineFlow.collectAsStateWithLifecycle()
     // The index is -1 only until the first line starts: once a line has been reached it is held
     // until the next one, and the last is held to the end of the track.
-    val line = if (synced) lyrics.lines?.getOrNull(state.currentLyricLineIndex) else null
+    val line = if (synced) lyrics.lines?.getOrNull(currentLyricLineIndex) else null
 
     val playhead =
         rememberSweepPlayhead(
-            rawMs = state.timelineState.current - state.lyricsOffsetMs,
+            rawMs = timelineState.current - state.lyricsOffsetMs,
             running = line != null && richSynced && state.controllerState.isPlaying,
         )
 

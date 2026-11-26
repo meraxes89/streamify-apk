@@ -180,7 +180,7 @@ fun AddLyricsSheet(
                             Text(text = stringResource(Res.string.save), color = LocalContentColor.current)
                         }
                         IconButton(onClick = close) {
-                            Icon(imageVector = SimpIcons.Close, contentDescription = null, tint = colors.content)
+                            Icon(imageVector = SimpIcons.Close, contentDescription = "Close", tint = colors.content)
                         }
                     }
                     Text(

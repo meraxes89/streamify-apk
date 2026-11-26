@@ -103,6 +103,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
@@ -630,13 +631,14 @@ fun NowPlayingContentSpotify(
                                                         .background(Color.Black),
                                             ) {
                                                 Box(Modifier.fillMaxSize()) {
+                                                    val timelineState by state.timelineFlow.collectAsStateWithLifecycle()
                                                     MediaPlayerViewWithSubtitle(
                                                         playerName = MAIN_PLAYER,
                                                         modifier = Modifier.align(Alignment.Center),
                                                         shouldShowSubtitle = internalShowSubtitle,
                                                         shouldPip = false,
                                                         shouldScaleDownSubtitle = true,
-                                                        timelineState = state.timelineState,
+                                                        timelineState = timelineState,
                                                         lyricsData = state.screenData.lyricsData?.lyrics,
                                                         translatedLyricsData = state.screenData.lyricsData?.translatedLyrics?.first,
                                                         isInPipMode = state.isInPipMode,
@@ -976,17 +978,18 @@ fun NowPlayingContentSpotify(
                                         inlineLyrics.syncType != null &&
                                         inlineLyrics.syncType != "UNSYNCED" &&
                                         inlineLyrics.lines != null
+                                val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
                                 // Canvas mode has its own subtitle overlay — never show both.
                                 val currentLyricLineText =
                                     if (!hasSyncedLyrics ||
                                         state.screenData.fullscreenCanvas() != null ||
-                                        state.currentLyricLineIndex < 0
+                                        currentLyricLineIndex < 0
                                     ) {
                                         ""
                                     } else {
                                         inlineLyrics
                                             ?.lines
-                                            ?.getOrNull(state.currentLyricLineIndex)
+                                            ?.getOrNull(currentLyricLineIndex)
                                             ?.words
                                             ?.stripRichSyncTimestamps()
                                             .orEmpty()
@@ -1224,8 +1227,9 @@ fun NowPlayingContentSpotify(
                                                     .fillMaxWidth()
                                                     .animateContentSize(),
                                         ) {
+                                            val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
                                             this@Column.AnimatedVisibility(
-                                                visible = state.currentLyricLineIndex > -1,
+                                                visible = currentLyricLineIndex > -1,
                                                 enter = fadeIn() + expandVertically(),
                                                 exit = fadeOut() + shrinkVertically(),
                                             ) {
@@ -1234,7 +1238,7 @@ fun NowPlayingContentSpotify(
                                                     state.screenData.lyricsData
                                                         ?.lyrics
                                                         ?.lines
-                                                        ?.getOrNull(state.currentLyricLineIndex)
+                                                        ?.getOrNull(currentLyricLineIndex)
                                                         ?.words
                                                         ?.stripRichSyncTimestamps()
                                                 if (!lineText.isNullOrBlank()) {
@@ -1261,7 +1265,7 @@ fun NowPlayingContentSpotify(
                                                                 ?.translatedLyrics
                                                                 ?.first
                                                                 ?.lines
-                                                                ?.getOrNull(state.currentLyricLineIndex)
+                                                                ?.getOrNull(currentLyricLineIndex)
                                                                 ?.words
                                                                 ?.stripRichSyncTimestamps()
                                                         if (!translatedLineText.isNullOrBlank()) {
@@ -1617,10 +1621,11 @@ fun NowPlayingContentSpotify(
                                         text = state.screenData.songInfoData?.description ?: "",
                                         onTimeClicked = { raw ->
                                             val timestamp = parseTimestampToMilliseconds(raw)
-                                            if (timestamp != 0.0 && timestamp < state.timelineState.total) {
+                                            val totalMs = state.timelineFlow.value.total
+                                            if (timestamp != 0.0 && timestamp < totalMs) {
                                                 actions.onUIEvent(
                                                     UIEvent.UpdateProgress(
-                                                        ((timestamp * 100) / state.timelineState.total).toFloat(),
+                                                        ((timestamp * 100) / totalMs).toFloat(),
                                                     ),
                                                 )
                                             }
@@ -1749,7 +1754,8 @@ fun NowPlayingContentSpotify(
                             actions.onUIEvent(UIEvent.ToggleLike)
                         }
                         Spacer(modifier = Modifier.width(15.dp))
-                        Crossfade(targetState = state.timelineState.loading, label = "") {
+                        val toolbarTimeline by state.timelineFlow.collectAsStateWithLifecycle()
+                        Crossfade(targetState = toolbarTimeline.loading, label = "") {
                             if (it) {
                                 Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(
@@ -1771,20 +1777,17 @@ fun NowPlayingContentSpotify(
                                 .wrapContentSize(Alignment.Center)
                                 .align(Alignment.BottomCenter),
                     ) {
-                        LinearProgressIndicator(
-                            progress = { state.timelineState.current.toFloat() / state.timelineState.total },
+                        val barTimeline by state.timelineFlow.collectAsStateWithLifecycle()
+                        ProgressRail(
+                            progressProvider = {
+                                if (barTimeline.total > 0L) barTimeline.current.toFloat() / barTimeline.total else 0f
+                            },
+                            color = Color.White,
+                            trackColor = Color.Gray.copy(alpha = 0.4f),
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(
-                                        color = Color.Transparent,
-                                        shape = RoundedCornerShape(4.dp),
-                                    ),
-                            color = Color.White,
-                            trackColor = Color.Gray.copy(alpha = 0.4f),
-                            strokeCap = StrokeCap.Round,
-                            drawStopIndicator = {},
+                                    .height(1.dp),
                         )
                     }
                 }
@@ -1794,13 +1797,14 @@ fun NowPlayingContentSpotify(
 
     state.screenData.lyricsData?.let { lyricsData ->
         if (showShareLyricsSheet) {
+            val currentLyricLineIndex by state.currentLyricLineIndexFlow.collectAsStateWithLifecycle()
             ShareLyricsSheet(
                 lines = lyricsData.toShareLyricsLines(),
                 songTitle = state.screenData.nowPlayingTitle,
                 artistName = state.screenData.artistName,
                 artwork = state.screenData.bitmap,
                 seedColor = state.startColor.value,
-                initialLineIndex = state.currentLyricLineIndex,
+                initialLineIndex = currentLyricLineIndex,
                 onDismiss = { showShareLyricsSheet = false },
             )
         }
@@ -1979,6 +1983,12 @@ internal fun ColumnScope.SpotifyPlaybackControls(
             ).padding(horizontal = 20.dp)
             .then(sliderModifier),
     ) {
+        val progressState =
+            rememberTimelineProgressState(
+                timelineFlow = state.timelineFlow,
+                onSeekCommit = { actions.onUIEvent(UIEvent.UpdateProgress(it)) },
+            )
+        val sliderTrackColor = rememberCrossfadeTrackColor(isCrossfading = progressState.timeline.isCrossfading)
         Box(
             modifier =
                 Modifier
@@ -1986,7 +1996,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
                     .height(24.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Crossfade(state.timelineState.loading) {
+            Crossfade(progressState.timeline.loading) {
                 if (it) {
                     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                         LinearProgressIndicator(
@@ -2007,7 +2017,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
                 } else {
                     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                         LinearProgressIndicator(
-                            progress = { state.timelineState.bufferedPercent.toFloat() / 100 },
+                            progress = { progressState.timeline.bufferedPercent.toFloat() / 100 },
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
@@ -2031,21 +2041,12 @@ internal fun ColumnScope.SpotifyPlaybackControls(
         }
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
             Slider(
-                // material3 1.5.0-alpha25 keeps a
-                // binary-compatibility overload of Slider that
-                // accepts valueRange and then forwards without
-                // it, so the slider silently runs on the
-                // default 0f..1f and anything larger is clamped
-                // to a full track. Hand it a fraction instead;
-                // sliderValue stays on the 0..100 scale that
-                // UIEvent.UpdateProgress and the time labels
-                // are built around.
-                value = state.sliderValue / 100f,
+                value = progressState.sliderValue / 100f,
                 onValueChangeFinished = {
-                    actions.onSliderChangeFinished()
+                    progressState.onValueChangeFinished()
                 },
                 onValueChange = {
-                    actions.onSliderChange(it * 100f)
+                    progressState.onValueChange(it * 100f)
                 },
                 modifier =
                     Modifier
@@ -2063,8 +2064,8 @@ internal fun ColumnScope.SpotifyPlaybackControls(
                         sliderState = sliderState,
                         colors =
                             SliderDefaults.colors().copy(
-                                thumbColor = state.sliderTrackColor,
-                                activeTrackColor = state.sliderTrackColor,
+                                thumbColor = sliderTrackColor,
+                                activeTrackColor = sliderTrackColor,
                                 inactiveTrackColor = Color.Transparent,
                             ),
                         thumbTrackGapSize = 0.dp,
@@ -2088,8 +2089,8 @@ internal fun ColumnScope.SpotifyPlaybackControls(
                             },
                         colors =
                             SliderDefaults.colors().copy(
-                                thumbColor = state.sliderTrackColor,
-                                activeTrackColor = state.sliderTrackColor,
+                                thumbColor = sliderTrackColor,
+                                activeTrackColor = sliderTrackColor,
                                 inactiveTrackColor = Color.Transparent,
                             ),
                         enabled = true,
@@ -2099,22 +2100,23 @@ internal fun ColumnScope.SpotifyPlaybackControls(
         }
     }
     // Time Layout
+    val timeProgressState =
+        rememberTimelineProgressState(
+            timelineFlow = state.timelineFlow,
+            onSeekCommit = { actions.onUIEvent(UIEvent.UpdateProgress(it)) },
+        )
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp),
     ) {
         Text(
-            text = state.timelineState.elapsedLabel(state.sliderValue / 100f),
+            text = timeProgressState.timeline.elapsedLabel(timeProgressState.sliderValue / 100f),
             style = typo().bodyMedium,
             color = state.secondaryTextColor(),
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Left,
         )
-        // Sweep head for the "Crossfading" shimmer, 0..1. Runs
-        // unconditionally: behind the crossfade check it would
-        // restart from zero each time the label appears (same
-        // rationale as MiniPlayer's crossfadeSweep).
         val sweepTransition = rememberInfiniteTransition(label = "nowPlayingCrossfadeSweep")
         val crossfadeSweep by sweepTransition.animateFloat(
             initialValue = 0f,
@@ -2129,11 +2131,8 @@ internal fun ColumnScope.SpotifyPlaybackControls(
         AnimatedVisibility(
             enter = fadeIn(),
             exit = fadeOut(),
-            visible = state.timelineState.isCrossfading,
+            visible = timeProgressState.timeline.isCrossfading,
         ) {
-            // Same effect as the desktop MiniPlayer label: a
-            // highlight sweeping through the glyphs via a text
-            // brush — no overlay, no clipping.
             val shimmerSpan = 140f
             val shimmerHead = crossfadeSweep * (shimmerSpan * 3f) - shimmerSpan
             val labelColor = typo().bodyMedium.color
@@ -2144,8 +2143,6 @@ internal fun ColumnScope.SpotifyPlaybackControls(
                         brush =
                             Brush.horizontalGradient(
                                 0f to labelColor.copy(alpha = 0.45f),
-                                // The sweep head is PURE white, not the resting label colour — the label
-                                // colour is an adaptive grey, and a grey gleam reads as no gleam at all.
                                 0.5f to Color.White,
                                 1f to labelColor.copy(alpha = 0.45f),
                                 startX = shimmerHead,
@@ -2158,7 +2155,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
             )
         }
         Text(
-            text = state.timelineState.lengthLabel(),
+            text = timeProgressState.timeline.lengthLabel(),
             style = typo().bodyMedium,
             color = state.secondaryTextColor(),
             modifier = Modifier.weight(1f),

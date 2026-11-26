@@ -55,4 +55,4 @@ error — and (b) reports documents whose pin is older than the tip of
 
 ---
 Verified against commit 7c60ae82. Staleness protocol: docs/adr/README.md.
-<!-- doc-verified-against: 7c60ae82b6459f17876bcdb5d0f168e44c816c5b -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

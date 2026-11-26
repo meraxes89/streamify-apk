@@ -276,6 +276,24 @@ class SharedViewModel(
         )
     val nowPlayingScreenData: StateFlow<NowPlayingScreenData> = _nowPlayingScreenData
 
+    private var lastComputedLyricLineIndex = -1
+    val currentLyricLineIndex: StateFlow<Int> =
+        combine(
+            _timeline,
+            _nowPlayingScreenData,
+            getLyricsOffsetMs(),
+            com.streamify.lyrics.slyr.BluetoothLatencyTracker.dynamicDelayMs,
+        ) { timeline, screenData, lyricsOffsetMs, autoBtDelayMs ->
+            val nextIdx = computeActiveLyricLineIndex(
+                positionMs = timeline.current,
+                lyrics = screenData.lyricsData?.lyrics,
+                offsetMs = lyricsOffsetMs + autoBtDelayMs,
+                previousIndex = lastComputedLyricLineIndex,
+            )
+            lastComputedLyricLineIndex = nextIdx
+            nextIdx
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), -1)
+
     private var _likeStatus = MutableStateFlow(YouTubeLikeStatus.INDIFFERENT)
     val likeStatus: StateFlow<YouTubeLikeStatus> = _likeStatus
     private var likeStatusJob: Job? = null
@@ -2597,3 +2615,56 @@ sealed class VoteState {
  * of a track onwards.
  */
 private fun String.isCanvasVideoUrl(): Boolean = contains(".mp4") || contains(".m3u8")
+
+/**
+ * Computes the active lyric line index for [positionMs] with [offsetMs] audio-delay correction,
+ * using a fast-path window check on [previousIndex] followed by binary search.
+ */
+internal fun computeActiveLyricLineIndex(
+    positionMs: Long,
+    lyrics: Lyrics?,
+    offsetMs: Int,
+    previousIndex: Int = -1,
+): Int {
+    if (lyrics == null || lyrics.syncType == "UNSYNCED" || lyrics.syncType == null) return -1
+    val lines = lyrics.lines
+    if (lines.isNullOrEmpty()) return -1
+
+    val nowMs = positionMs - offsetMs
+    if (nowMs <= 0L) return -1
+    val firstStart = lines[0].startTimeMs.toLongOrNull() ?: 0L
+    if (nowMs < firstStart) return -1
+
+    if (previousIndex in lines.indices) {
+        val curStart = lines[previousIndex].startTimeMs.toLongOrNull() ?: 0L
+        val curEnd = if (previousIndex < lines.size - 1) {
+            lines[previousIndex + 1].startTimeMs.toLongOrNull() ?: 0L
+        } else {
+            curStart + 60_000L
+        }
+        if (nowMs in curStart..curEnd) return previousIndex
+    }
+
+    var low = 0
+    var high = lines.size - 1
+    var bestIdx = -1
+    while (low <= high) {
+        val mid = (low + high).ushr(1)
+        val midStart = lines[mid].startTimeMs.toLongOrNull() ?: 0L
+        if (midStart <= nowMs) {
+            bestIdx = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+
+    if (bestIdx !in lines.indices) return -1
+    val startMs = lines[bestIdx].startTimeMs.toLongOrNull() ?: 0L
+    val endMs = if (bestIdx < lines.size - 1) {
+        lines[bestIdx + 1].startTimeMs.toLongOrNull() ?: 0L
+    } else {
+        startMs + 60_000L
+    }
+    return if (nowMs in startMs..endMs) bestIdx else -1
+}

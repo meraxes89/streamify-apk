@@ -1,8 +1,11 @@
 # ADR-001: Sovereign Rust/C++ core separation
 
-* Status: Accepted
+> [!WARNING]
+> **HISTORICAL** — The sovereign Rust/C++ core described here was retired (see [ADR-009](ADR-009-kotlin-only-audio-pipeline.md)). Preserved for architectural lineage only.
+
+* Status: Superseded by [ADR-009](ADR-009-kotlin-only-audio-pipeline.md)
 * Date: 2026-11-22
-* Verified against: 8b858b1c (staleness protocol in docs/adr/README.md)
+* Verified against: dd58e0b3 (staleness protocol in docs/adr/README.md)
 
 ## Context
 
@@ -71,4 +74,4 @@ panics). `docs/architecture/MULTIPLATFORM_PLAN_27_10.MD` records the
 governing invariants.
 
 ---
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

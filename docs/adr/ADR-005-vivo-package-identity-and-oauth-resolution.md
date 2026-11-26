@@ -57,4 +57,4 @@ Furthermore, in-app update checks for Vivo builds were obstructed:
 - Vivo build authentication requires external browser delegation rather than the native in-app Credential Manager bottom sheet because Google Identity enforces package signature verification.
 
 ---
-<!-- doc-verified-against: 996f7b0ce54e57cc23d646bf408be7cbe0aecada -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

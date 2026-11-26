@@ -1,8 +1,11 @@
 # ADR-002: Lock-free SPSC ringbuffer over the JVM heap
 
-* Status: Accepted
+> [!WARNING]
+> **HISTORICAL** — The C++20 SPSC ringbuffer described here was retired with the native core (see [ADR-009](ADR-009-kotlin-only-audio-pipeline.md)). Preserved for architectural lineage only.
+
+* Status: Superseded by [ADR-009](ADR-009-kotlin-only-audio-pipeline.md)
 * Date: 2026-11-22
-* Verified against: 8b858b1c (staleness protocol in docs/adr/README.md)
+* Verified against: dd58e0b3 (staleness protocol in docs/adr/README.md)
 
 ## Context
 
@@ -92,4 +95,4 @@ CI; the 96-byte stats wire layout is pinned by
 `native/include/streamify_audio_sinks.h` and the legacy smoke lane.
 
 ---
-<!-- doc-verified-against: 8b858b1c89b91f643cd7159180706fbd931f925e -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

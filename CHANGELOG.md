@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **KMP UI**: Hoisted playback timeline collection and lyric-line indexing out of `NowPlayingScreen` into leaf composables (`PlayerTimelineLeaf.kt`, `SharedViewModel.currentLyricLineIndex`), added `contentDescription` / `Role.Button` semantics across shared controls, and introduced `LocalAppWindowSizeClass` + `GridCells.Adaptive` across `App`, `HomeScreen`, `SearchScreen`, and `SettingScreen` (#336).
+- **Updater**: Added 48-hour `UpdateUrgency` escalation (`SOFT` / `ACTIVE_5S` / `URGENT_10S` / `ENFORCED`) and resumable `PlatformUpdater` downloads with HTTP `Range` and SHA-256 verification.
+- **Docs & CI**: Extended `scripts/verify_docs.py` with `git cat-file -e` and edited-doc pin checks, marked `ADR-001` and `ADR-002` as `Superseded` with `HISTORICAL` banners, normalized `RFC-001` status to `Draft`, and re-verified doc pins against `origin/main` (#338).
+
 ### Fixed
 - **Sync Engine**: Fixed 5 P0 bugs in `StreamifySyncEngine`: honored `DONE` bootstrap checkpoint when server cursor is `0`, clarified `SyncApplyingKey` echo suppression, bounded `syncLibraryTracksInternal` song scan (`2,000` rows + chunked uploads) to prevent OOM, flushed outbox before bootstrap cursor probe, and added fallback history op construction when `PlaybackEventEntity` is missing (#332).
 - **Sync Engine**: Fixed 5 follow-up P0 data-plane bugs: held pull cursor on `applyDeltaOp` failures, propagated `CancellationException` in `syncAll` and all `SupabaseLibrarySync` RPC wrappers, fed `HybridLogicalClock.updateServerTime` from `syncPull`/`syncPush` HTTP `Date` headers, and surfaced `SyncStatus.Error` when delta pull or outbox push fails (#333).

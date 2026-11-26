@@ -114,6 +114,7 @@ import com.streamify.supabase.StreamifyAuthManager
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreen
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreenContent
 import com.maxrave.simpmusic.ui.theme.AppTheme
+import com.maxrave.simpmusic.ui.theme.toAppWindowSizeClass
 import com.maxrave.simpmusic.ui.theme.ForceDarkContent
 import com.maxrave.simpmusic.ui.theme.desktopPanelDark
 import com.maxrave.simpmusic.ui.theme.desktopWindowDark
@@ -559,7 +560,8 @@ fun App(
     var isScrolledToTop by rememberSaveable {
         mutableStateOf(false)
     }
-    val isTablet = windowSize.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val appWindowSizeClass = windowSize.toAppWindowSizeClass()
+    val isTablet = !appWindowSizeClass.isCompact
     val isTabletLandscape = isTablet && currentOrientation() == Orientation.LANDSCAPE
 
     AppTheme(
@@ -569,6 +571,9 @@ fun App(
         // The setting governs Desktop too, the same as Android: off, every glass surface draws flat.
         liquidGlassEnabled = isLiquidGlassEnabled == TRUE,
     ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.maxrave.simpmusic.ui.theme.LocalAppWindowSizeClass provides appWindowSizeClass,
+        ) {
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
@@ -1164,6 +1169,7 @@ fun App(
             }
             },
         )
+        }
     }
 }
 

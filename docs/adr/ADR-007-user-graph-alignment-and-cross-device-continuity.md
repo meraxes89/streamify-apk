@@ -73,4 +73,4 @@ Acoustic profiles and Equalizer frequency curves (`equalizer_*`) are intrinsical
 
 ---
 
-<!-- doc-verified-against: 7fc4ed7b5a0848381b20f98763afea4b921ccdde -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

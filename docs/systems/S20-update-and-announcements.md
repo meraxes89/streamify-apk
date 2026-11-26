@@ -41,4 +41,4 @@ tests: [composeApp/src/commonTest/kotlin/com/maxrave/simpmusic/data/update/, com
 
 - Document the end-to-end release-to-update chain in one runbook.
 
-<!-- doc-verified-against: 1961dc73cadbe7a283e12416cef86651ea21f034 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
