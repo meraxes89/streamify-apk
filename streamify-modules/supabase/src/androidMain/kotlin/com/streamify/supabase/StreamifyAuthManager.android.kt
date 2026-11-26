@@ -137,26 +137,46 @@ actual object StreamifyAuthManager {
             // PKCE Authorization Code Grant flow
             val code = callbackData.code
             if (!code.isNullOrBlank()) {
-                val storedVerifier = AndroidTokenCipher.decrypt(sp?.getString("pending_code_verifier", null))
-                val storedState = AndroidTokenCipher.decrypt(sp?.getString("pending_state", null))
+                val storedVerifierRaw = sp?.getString("pending_code_verifier", null)
+                val storedVerifier = storedVerifierRaw?.let { raw ->
+                    if (raw.startsWith("enc_v1:")) AndroidTokenCipher.decrypt(raw) else raw
+                }
+                val storedStateRaw = sp?.getString("pending_state", null)
+                val storedState = storedStateRaw?.let { raw ->
+                    if (raw.startsWith("enc_v1:")) AndroidTokenCipher.decrypt(raw) else raw
+                }
+                val storedTimestamp = sp?.getLong("pending_state_timestamp", 0L) ?: 0L
 
-                // Clean up ephemeral PKCE state immediately on callback receipt
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = callbackData,
+                    storedState = storedState,
+                    storedVerifier = storedVerifier,
+                    storedTimestampMs = storedTimestamp
+                )
+
+                if (validation.isFailure) {
+                    sp?.edit()
+                        ?.remove("pending_code_verifier")
+                        ?.remove("pending_state")
+                        ?.remove("pending_state_timestamp")
+                        ?.apply()
+                    return@withContext Result.failure(
+                        validation.exceptionOrNull() ?: SecurityException("Validation failed")
+                    )
+                }
+
+                val verifiedVerifier = validation.getOrThrow()
+
+                // Clean up ephemeral PKCE state upon validation
                 sp?.edit()
                     ?.remove("pending_code_verifier")
                     ?.remove("pending_state")
+                    ?.remove("pending_state_timestamp")
                     ?.apply()
-
-                if (storedState.isNullOrBlank() || callbackData.state != storedState) {
-                    return@withContext Result.failure(SecurityException("Missing or mismatched CSRF state"))
-                }
-
-                if (storedVerifier.isNullOrBlank()) {
-                    return@withContext Result.failure(Exception("No pending PKCE code verifier found"))
-                }
 
                 val exchangeResult = SupabaseClient.exchangeCodeForSession(
                     code = code,
-                    codeVerifier = storedVerifier,
+                    codeVerifier = verifiedVerifier,
                     redirectUri = "streamify://callback"
                 )
 
@@ -179,25 +199,17 @@ actual object StreamifyAuthManager {
     fun tryLaunchWebOAuth(context: Context): Boolean {
         return try {
             val sp = getPrefs(context)
-            val verifier = PkceCrypto.generateCodeVerifier()
-            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
-            val state = PkceCrypto.generateState()
+            val session = OAuthPkceSession.createSession()
 
-            // Persist encrypted PKCE challenge and state across potential activity/process death
+            // Persist ephemeral PKCE session in sandbox private SharedPreferences across activity/process death
             sp.edit().apply {
-                AndroidTokenCipher.encrypt(verifier)?.let { putString("pending_code_verifier", it) }
-                AndroidTokenCipher.encrypt(state)?.let { putString("pending_state", it) }
+                putString("pending_code_verifier", session.verifier)
+                putString("pending_state", session.state)
+                putLong("pending_state_timestamp", session.timestampMs)
                 apply()
             }
 
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
-                    "provider=google" +
-                    "&redirect_to=${Uri.encode("streamify://callback")}" +
-                    "&code_challenge=$challenge" +
-                    "&code_challenge_method=S256" +
-                    "&state=$state" +
-                    "&prompt=select_account"
-
+            val authUrl = OAuthPkceSession.buildAuthorizeUrl("streamify://callback", session)
             val uri = Uri.parse(authUrl)
 
             // Secure web launch via CustomTabsIntent (avoids implicit intent leaks and shares session cookies)

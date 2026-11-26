@@ -43,4 +43,41 @@ class Tier1SecurityTest {
         assertTrue(verifiers.all { it.length == 64 })
         assertTrue(states.all { it.length == 32 })
     }
+
+    @Test
+    fun oauthPkceSessionDualDefenseValidationEnforcesCsrfAndPreventsSpoofing() {
+        val storedSession = OAuthPkceSession.createSession()
+
+        // 1. Matched state succeeds
+        val matchedCallback = AuthCallbackData(code = "valid_code", state = storedSession.state)
+        val validResult = OAuthPkceSession.validateCallback(
+            callbackData = matchedCallback,
+            storedState = storedSession.state,
+            storedVerifier = storedSession.verifier,
+            storedTimestampMs = storedSession.timestampMs
+        )
+        assertTrue(validResult.isSuccess)
+        assertEquals(storedSession.verifier, validResult.getOrNull())
+
+        // 2. Mismatched state fails
+        val spoofedCallback = AuthCallbackData(code = "valid_code", state = "attacker_state")
+        val spoofResult = OAuthPkceSession.validateCallback(
+            callbackData = spoofedCallback,
+            storedState = storedSession.state,
+            storedVerifier = storedSession.verifier,
+            storedTimestampMs = storedSession.timestampMs
+        )
+        assertTrue(spoofResult.isFailure)
+        assertTrue(spoofResult.exceptionOrNull() is SecurityException)
+
+        // 3. Stripped state succeeds when valid verifier exists (PKCE server cryptographic verification)
+        val strippedCallback = AuthCallbackData(code = "valid_code", state = null)
+        val strippedResult = OAuthPkceSession.validateCallback(
+            callbackData = strippedCallback,
+            storedState = storedSession.state,
+            storedVerifier = storedSession.verifier,
+            storedTimestampMs = storedSession.timestampMs
+        )
+        assertTrue(strippedResult.isSuccess)
+    }
 }

@@ -338,25 +338,43 @@ object SupabaseClient {
 
     /**
      * Exchanges an OAuth PKCE authorization code for an authenticated user session
-     * via POST /auth/v1/token?grant_type=authorization_code.
+     * via POST /auth/v1/token?grant_type=pkce (with fallback to grant_type=authorization_code).
      */
     suspend fun exchangeCodeForSession(
         code: String,
         codeVerifier: String,
-        redirectUri: String
+        redirectUri: String? = null
     ): Result<UserProfile> = withContext(ioDispatcher) {
         try {
-            val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=authorization_code"
-            val payload = buildJsonObject {
+            val pkceUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=pkce"
+            val pkcePayload = buildJsonObject {
                 put("auth_code", code)
                 put("code_verifier", codeVerifier)
-                put("redirect_uri", redirectUri)
             }.toString()
 
-            val response = httpClient.post(url) {
+            var response = httpClient.post(pkceUrl) {
                 header("apikey", SupabaseConfig.ANON_KEY)
                 contentType(ContentType.Application.Json)
-                setBody(payload)
+                setBody(pkcePayload)
+            }
+
+            // Fallback for GoTrue instances expecting grant_type=authorization_code
+            if (!response.status.isSuccess() && !redirectUri.isNullOrBlank()) {
+                val authCodeUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=authorization_code"
+                val authCodePayload = buildJsonObject {
+                    put("auth_code", code)
+                    put("code_verifier", codeVerifier)
+                    put("redirect_uri", redirectUri)
+                }.toString()
+
+                val fallbackResponse = httpClient.post(authCodeUrl) {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    contentType(ContentType.Application.Json)
+                    setBody(authCodePayload)
+                }
+                if (fallbackResponse.status.isSuccess()) {
+                    response = fallbackResponse
+                }
             }
 
             val bodyText = response.bodyAsText()

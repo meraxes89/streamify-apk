@@ -7,9 +7,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import platform.Foundation.NSURL
+import platform.Foundation.NSUserDefaults
 import platform.UIKit.UIApplication
 
 actual object StreamifyAuthManager {
+    private const val KEY_PENDING_VERIFIER = "streamify_pkce_verifier"
+    private const val KEY_PENDING_STATE = "streamify_pkce_state"
+    private const val KEY_PENDING_TIMESTAMP = "streamify_pkce_timestamp"
+
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     actual val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
@@ -22,9 +27,6 @@ actual object StreamifyAuthManager {
     }
 
     actual fun clearAuthError() = flowCoordinator.clearError()
-
-    private var pendingCodeVerifier: String? = null
-    private var pendingState: String? = null
 
     actual fun init(context: Any?) {
         PlatformTokenStore.init(context)
@@ -47,21 +49,13 @@ actual object StreamifyAuthManager {
 
     actual suspend fun signInWithGoogle(context: Any?): Result<UserProfile> {
         return try {
-            val verifier = PkceCrypto.generateCodeVerifier()
-            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
-            val state = PkceCrypto.generateState()
+            val session = OAuthPkceSession.createSession()
+            val defaults = NSUserDefaults.standardUserDefaults
+            defaults.setObject(session.verifier, forKey = KEY_PENDING_VERIFIER)
+            defaults.setObject(session.state, forKey = KEY_PENDING_STATE)
+            defaults.setDouble(session.timestampMs.toDouble(), forKey = KEY_PENDING_TIMESTAMP)
 
-            pendingCodeVerifier = verifier
-            pendingState = state
-
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
-                    "provider=google" +
-                    "&redirect_to=streamify://callback" +
-                    "&code_challenge=${challenge}" +
-                    "&code_challenge_method=S256" +
-                    "&state=${state}" +
-                    "&prompt=select_account"
-
+            val authUrl = OAuthPkceSession.buildAuthorizeUrl("streamify://callback", session)
             val nsUrl = NSURL.URLWithString(authUrl)
                 ?: return Result.failure(IllegalStateException("Invalid OAuth URL"))
             UIApplication.sharedApplication.openURL(nsUrl)
@@ -80,18 +74,31 @@ actual object StreamifyAuthManager {
 
             val code = data.code
             if (!code.isNullOrBlank()) {
-                val verifier = pendingCodeVerifier
-                    ?: return Result.failure(Exception("No pending PKCE code verifier in session"))
+                val defaults = NSUserDefaults.standardUserDefaults
+                val storedVerifier = defaults.stringForKey(KEY_PENDING_VERIFIER)
+                val storedState = defaults.stringForKey(KEY_PENDING_STATE)
+                val storedTimestamp = defaults.doubleForKey(KEY_PENDING_TIMESTAMP).toLong()
 
-                val expectedState = pendingState
-                pendingCodeVerifier = null
-                pendingState = null
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = data,
+                    storedState = storedState,
+                    storedVerifier = storedVerifier,
+                    storedTimestampMs = storedTimestamp
+                )
 
-                if (expectedState.isNullOrBlank() || data.state != expectedState) {
-                    return Result.failure(SecurityException("Missing or mismatched CSRF state"))
+                if (validation.isFailure) {
+                    defaults.removeObjectForKey(KEY_PENDING_VERIFIER)
+                    defaults.removeObjectForKey(KEY_PENDING_STATE)
+                    defaults.removeObjectForKey(KEY_PENDING_TIMESTAMP)
+                    return Result.failure(validation.exceptionOrNull() ?: SecurityException("Validation failed"))
                 }
 
-                val result = SupabaseClient.exchangeCodeForSession(code, verifier, "streamify://callback")
+                val verifiedVerifier = validation.getOrThrow()
+                defaults.removeObjectForKey(KEY_PENDING_VERIFIER)
+                defaults.removeObjectForKey(KEY_PENDING_STATE)
+                defaults.removeObjectForKey(KEY_PENDING_TIMESTAMP)
+
+                val result = SupabaseClient.exchangeCodeForSession(code, verifiedVerifier, "streamify://callback")
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }

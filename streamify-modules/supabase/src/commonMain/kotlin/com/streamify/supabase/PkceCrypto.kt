@@ -74,6 +74,39 @@ object PkceCrypto {
     }
 
     /**
+     * Constant-time string comparison to mitigate timing attacks against CSRF state nonces.
+     */
+    fun constantTimeEquals(a: String, b: String): Boolean {
+        if (a.length != b.length) return false
+        var result = 0
+        for (i in a.indices) {
+            result = result or (a[i].code xor b[i].code)
+        }
+        return result == 0
+    }
+
+    /**
+     * RFC 3986 percent-encoding for URI query parameter components across all KMP targets.
+     */
+    fun urlEncode(value: String): String {
+        val unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+        val bytes = value.encodeToByteArray()
+        val sb = StringBuilder()
+        for (b in bytes) {
+            val c = b.toInt() and 0xFF
+            if (c.toChar() in unreserved) {
+                sb.append(c.toChar())
+            } else {
+                sb.append('%')
+                val hex = c.toString(16).uppercase()
+                if (hex.length == 1) sb.append('0')
+                sb.append(hex)
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
      * Pure Kotlin implementation of FIPS PUB 180-4 SHA-256.
      * Operates deterministically across all Kotlin Multiplatform targets.
      */
