@@ -256,6 +256,48 @@ object StreamifySyncEngine : KoinComponent {
         startSettingsObserver()
     }
 
+    data class RestoredSyncIdentity(
+        val deviceId: String,
+        val activeUserId: String,
+    )
+
+    /**
+     * Captures this device's sync identity before a `.backup` file overwrites DataStore.
+     */
+    suspend fun captureSyncIdentityForRestore(): RestoredSyncIdentity = mutex.withLock {
+        val deviceId = dataStoreManager.getString("streamify_device_id_v3").firstOrNull().orEmpty()
+        val activeUserId = dataStoreManager.getString("streamify_active_user_id_v3").firstOrNull().orEmpty()
+        RestoredSyncIdentity(deviceId = deviceId, activeUserId = activeUserId)
+    }
+
+    /**
+     * Reconciles sync state after a `.backup` restore:
+     * - Preserves this device's own `device_id` (preventing cross-device `origin` collisions)
+     * - Clears stale outbox tombstones frozen inside the restored Room DB
+     * - Resets sync cursor/bootstrap checkpoint so the next sync runs a clean cloud merge
+     */
+    suspend fun onPostBackupRestore(preserved: RestoredSyncIdentity) {
+        mutex.withLock {
+            isSyncActive = false
+            backoffUntilMs = 0L
+            val effectiveDeviceId = preserved.deviceId.ifBlank { "dev_" + HybridLogicalClock.randomUuid() }
+            dataStoreManager.putString("streamify_device_id_v3", effectiveDeviceId)
+            dataStoreManager.putString("streamify_active_user_id_v3", preserved.activeUserId)
+            dataStoreManager.putString("streamify_sync_cursor_v3", "0")
+            dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
+            dataStoreManager.putString("streamify_entity_hlc_watermarks_v1", "{}")
+            SyncDeadLetterStore.clear(dataStoreManager)
+            HybridLogicalClock.resetForTesting()
+            runCatching {
+                val staleIds = syncOutboxRepository.getPending(500).map { it.changeId }
+                if (staleIds.isNotEmpty()) {
+                    syncOutboxRepository.ack(staleIds)
+                }
+            }
+            _syncState.value = SyncStatus.Idle
+        }
+    }
+
     /**
      * Clears per-user sync cursors, bootstrap checkpoints, device ID, HLC state, and dead-letter
      * quarantine on logout or account switch (#371 Tier 1 #5).
