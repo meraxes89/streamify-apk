@@ -61,6 +61,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -107,6 +110,7 @@ import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.add_to_queue
 import simpmusic.composeapp.generated.resources.album
 import simpmusic.composeapp.generated.resources.artists
+import simpmusic.composeapp.generated.resources.more
 import simpmusic.composeapp.generated.resources.play_next
 import simpmusic.composeapp.generated.resources.playlist
 import simpmusic.composeapp.generated.resources.podcasts
@@ -210,7 +214,9 @@ fun SongFullWidthItems(
                     }
                     .background(
                         if (isSelected) seed.copy(alpha = 0.18f) else Color.Transparent,
-                    ).combinedClickable(
+                    ).semantics(mergeDescendants = true) {
+                        role = androidx.compose.ui.semantics.Role.Button
+                    }.combinedClickable(
                         interactionSource = interactionSource,
                         indication = null,
                         onClick = {
@@ -383,7 +389,7 @@ fun SongFullWidthItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AnimatedVisibility(
@@ -448,7 +454,7 @@ fun SongFullWidthItems(
                         imageVector = SimpIcons.MoreVert,
                         fillMaxSize = false,
                         tint = contentColor,
-                        contentDescription = "More",
+                        contentDescription = stringResource(Res.string.more),
                     ) {
                         if (itemVideoId.isNotBlank()) onMoreClickListener.invoke(itemVideoId)
                     }
@@ -575,7 +581,7 @@ fun SuggestItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                 }
             }
@@ -745,7 +751,7 @@ fun PlaylistFullWidthItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                 }
 
@@ -762,7 +768,7 @@ fun PlaylistFullWidthItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                 }
             }
