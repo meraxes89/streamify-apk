@@ -186,14 +186,14 @@ class SharedViewModel(
                 val initialMediaId =
                     nowPlayingState.value?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
                 // Trigger silent install when playback pauses/stops OR when the player/user shifts to the next track.
-                nowPlayingState.first { state ->
-                    val currentMediaId = state?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                combine(nowPlayingState, controllerState) { trackState, ctrlState ->
+                    val currentMediaId = trackState?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
                     com.maxrave.simpmusic.data.update.shouldTriggerAutoInstall(
                         initialMediaId = initialMediaId,
                         currentMediaId = currentMediaId,
-                        isPlaying = state?.isPlaying,
+                        isPlaying = ctrlState.isPlaying,
                     )
-                }
+                }.first { it }
                 if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
                 for (sec in 3 downTo 1) {
                     _autoInstallCountdownSeconds.value = sec
