@@ -92,6 +92,8 @@ import com.maxrave.simpmusic.ui.component.EndOfPage
 import com.maxrave.simpmusic.ui.component.HeartCheckBox
 import com.maxrave.simpmusic.ui.component.HomeItemContentPlaylist
 import com.maxrave.simpmusic.ui.component.LiquidGlassIconButton
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
 import com.maxrave.simpmusic.ui.component.PlaylistBottomSheet
 import com.maxrave.simpmusic.ui.component.RippleIconButton
@@ -284,7 +286,10 @@ fun AlbumScreen(
                                                     onSuccess = {
                                                         bitmap = it.result.image.toImageBitmap()
                                                     },
-                                                    modifier = Modifier.fillMaxSize(),
+                                                    modifier =
+                                                        Modifier
+                                                            .fillMaxSize()
+                                                            .sharedHero(SharedKeys.hero(SharedKeys.Origin.ALBUM, browseId)),
                                                 )
                                                 // Subtle bottom gradient — keeps artwork visible behind
                                                 // the title text and blends artwork edge seamlessly into
@@ -443,7 +448,9 @@ fun AlbumScreen(
                                                         modifier =
                                                             Modifier
                                                                 .size(280.dp)
-                                                                .clip(ArtworkShape),
+                                                                .clip(ArtworkShape)
+                                                                // The landscape header is the same hero as the portrait one.
+                                                                .sharedHero(SharedKeys.hero(SharedKeys.Origin.ALBUM, browseId)),
                                                     )
                                                     Column(
                                                         modifier = Modifier.weight(1f),

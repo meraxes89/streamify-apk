@@ -17,6 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -64,6 +66,8 @@ private val RATIO_COLORS = listOf(Color(0xFF5AB0F0), Color(0xFF5BE0B0), Color(0x
  * exist. Concentric rings put them on a common scale without implying they are parts of each other.
  */
 @Composable
+// Offscreen compositing (RFC-003 §3.5): the chart rasterizes once into its own layer
+// during a navigation transition instead of re-drawing every Canvas path per frame.
 fun MusicRatioChart(
     stats: AnalyticsPeriodStats,
     previous: AnalyticsPeriodStats?,
@@ -79,7 +83,13 @@ fun MusicRatioChart(
     val max = rows.maxOf { it.second }.coerceAtLeast(1)
     val track = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)
 
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Offscreen compositing (RFC-003 §3.5): the Canvas rasterizes once into its own
+    // layer, so a navigation transition animates the layer instead of re-drawing paths.
+    Row(
+        modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Canvas(Modifier.size(diameter)) {
             val stroke = size.minDimension * 0.085f
             rows.forEachIndexed { i, (_, value, _) ->
@@ -136,6 +146,8 @@ fun MusicRatioChart(
  * here is the listener's own previous period, which is arguably the more useful one anyway.
  */
 @Composable
+// Offscreen compositing (RFC-003 §3.5): the chart rasterizes once into its own layer
+// during a navigation transition instead of re-drawing every Canvas path per frame.
 fun FingerprintChart(
     current: ListeningFingerprint,
     previous: ListeningFingerprint?,
@@ -153,7 +165,11 @@ fun FingerprintChart(
     val grid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f)
     val prevColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
 
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Canvas(Modifier.size(diameter)) {
             val radius = size.minDimension / 2f * 0.78f
             fun ring(fraction: Float) = polygonPath(center, radius * fraction, 5)
@@ -248,6 +264,8 @@ private fun valuePath(
  * eye reads a short spoke as a missing tick rather than as "almost nothing here".
  */
 @Composable
+// Offscreen compositing (RFC-003 §3.5): the chart rasterizes once into its own layer
+// during a navigation transition instead of re-drawing every Canvas path per frame.
 fun ListeningClockChart(
     playsByHour: List<Int>,
     modifier: Modifier = Modifier,
@@ -258,7 +276,11 @@ fun ListeningClockChart(
     val max = hours.maxOrNull()?.coerceAtLeast(1) ?: 1
     val track = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)
 
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Canvas(Modifier.size(diameter)) {
             val outer = size.minDimension / 2f
             val inner = outer * 0.46f
@@ -329,6 +351,8 @@ private fun DrawScope.drawWedge(
  * an unknown share of its input is not a distribution.
  */
 @Composable
+// Offscreen compositing (RFC-003 §3.5): the chart rasterizes once into its own layer
+// during a navigation transition instead of re-drawing every Canvas path per frame.
 fun DecadeChart(
     stats: AnalyticsPeriodStats,
     modifier: Modifier = Modifier,

@@ -89,6 +89,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -411,7 +413,9 @@ fun ArtistScreen(
                                                 modifier =
                                                     Modifier
                                                         .fillMaxSize()
-                                                        .graphicsLayer { alpha = artworkAlpha },
+                                                        .graphicsLayer { alpha = artworkAlpha }
+                                                        // The artist header is the card→header hero target.
+                                                        .sharedHero(SharedKeys.hero(SharedKeys.Origin.ARTIST, channelId)),
                                             )
                                             // The artwork's bottom 200dp melts into the page through a
                                             // Modifier.blur copy of it, faded in by a DstIn gradient. At

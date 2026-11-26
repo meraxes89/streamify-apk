@@ -128,6 +128,8 @@ import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LocalForceDarkText
 import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.HomeViewModel
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
@@ -373,13 +375,19 @@ fun HomeContentCard(
                 )
             }, data = temp, fillMaxWidth = fillMaxWidth)
         } else {
-            HomeItemContentPlaylist(onClick = {
-                navController.navigate(
-                    PlaylistDestination(
-                        playlistId = playlistId,
-                    ),
-                )
-            }, data = temp, fillMaxWidth = fillMaxWidth, onPlay = temp.hoverPlay(viewModel))
+            HomeItemContentPlaylist(
+                onClick = {
+                    navController.navigate(
+                        PlaylistDestination(
+                            playlistId = playlistId,
+                        ),
+                    )
+                },
+                data = temp,
+                fillMaxWidth = fillMaxWidth,
+                onPlay = temp.hoverPlay(viewModel),
+                heroKey = SharedKeys.hero(SharedKeys.Origin.PLAYLIST, playlistId),
+            )
         }
     } else if ((browseId != null && temp.videoId == null) || (browseId != null && temp.videoId == "")) {
         if (browseId.startsWith("UC")) {
@@ -391,21 +399,33 @@ fun HomeContentCard(
                 )
             }, data = temp, fillMaxWidth = fillMaxWidth)
         } else if (browseId.startsWith("MPSP")) {
-            HomeItemContentPlaylist(onClick = {
-                navController.navigate(
-                    PodcastDestination(
-                        podcastId = browseId,
-                    ),
-                )
-            }, data = temp, fillMaxWidth = fillMaxWidth, onPlay = temp.hoverPlay(viewModel))
+            HomeItemContentPlaylist(
+                onClick = {
+                    navController.navigate(
+                        PodcastDestination(
+                            podcastId = browseId,
+                        ),
+                    )
+                },
+                data = temp,
+                fillMaxWidth = fillMaxWidth,
+                onPlay = temp.hoverPlay(viewModel),
+                heroKey = SharedKeys.hero(SharedKeys.Origin.PODCAST, browseId),
+            )
         } else {
-            HomeItemContentPlaylist(onClick = {
-                navController.navigate(
-                    AlbumDestination(
-                        browseId = browseId,
-                    ),
-                )
-            }, data = temp, fillMaxWidth = fillMaxWidth, onPlay = temp.hoverPlay(viewModel))
+            HomeItemContentPlaylist(
+                onClick = {
+                    navController.navigate(
+                        AlbumDestination(
+                            browseId = browseId,
+                        ),
+                    )
+                },
+                data = temp,
+                fillMaxWidth = fillMaxWidth,
+                onPlay = temp.hoverPlay(viewModel),
+                heroKey = SharedKeys.hero(SharedKeys.Origin.ALBUM, browseId),
+            )
         }
     } else if (temp.thumbnails.firstOrNull()?.width != temp.thumbnails.firstOrNull()?.height) {
         HomeItemVideo(
@@ -507,6 +527,7 @@ internal fun rememberCardHover(enabled: Boolean): Pair<Modifier, Boolean> {
  */
 @Composable
 internal fun Modifier.hoverZoom(active: Boolean): Modifier {
+    // (hoverZoom stays: it is the pointer-hover scale, unrelated to navigation heroes.)
     val scale by animateFloatAsState(
         targetValue = if (active) 1.06f else 1f,
         animationSpec = tween(200),
@@ -621,6 +642,9 @@ fun HomeItemContentPlaylist(
     fillMaxWidth: Boolean = false,
     // Home's hover play button; null leaves the card exactly as it was.
     onPlay: (() -> Unit)? = null,
+    // RFC-003 §3.4: the card side of a card→detail-header morph. Null on mounts that
+    // never navigate (e.g. a mood shelf), set by the caller that knows the destination.
+    heroKey: String? = null,
 ) {
     val titleColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val textWidth = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier.width(thumbSize)
@@ -757,7 +781,10 @@ fun HomeItemContentPlaylist(
                                 )
                                 .clip(
                                     ArtworkShape,
-                                ).hoverZoom(hovered),
+                                ).hoverZoom(hovered)
+                                .then(
+                                    if (heroKey != null) Modifier.sharedHero(heroKey) else Modifier,
+                                ),
                     )
                 }
                 if (onPlay != null) HoverPlayButton(visible = hovered, onClick = onPlay)

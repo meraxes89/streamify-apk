@@ -508,6 +508,8 @@
     <string name="update_channel">ช่องทางอัพเดต</string>
     <string name="enable_liquid_glass_effect">เปิดใช้งาน Liquid Glass (เบต้า)</string>
     <string name="enable_liquid_glass_effect_description">เปิดใช้งานเอฟเฟกต์ Liquid glass ในบางจุด (Android 13 ขึ้นไป)</string>
+    <string name="enable_spatial_navigation">การนำทางเชิงพื้นที่ (BETA)</string>
+    <string name="enable_spatial_navigation_description">เปิดใช้งานการเปลี่ยนผ่านองค์ประกอบที่แชร์, ย้อนกลับแบบคาดเดา และการเคลื่อนไหวแกนร่วมทั่วทั้งแอป</string>
     <string name="your_library">คลังเพลงของคุณ</string>
     <string name="play_explicit_content">เล่นเนื้อหาที่ไม่เหมาะสม</string>
     <string name="play_explicit_content_description">เปิดใช้งานการเล่นเนื้อหาที่ไม่เหมาะสม</string>

@@ -490,6 +490,8 @@
     <string name="update_channel">更新频道</string>
     <string name="enable_liquid_glass_effect">启用液体玻璃(BETA)</string>
     <string name="enable_liquid_glass_effect_description">在部分区域启用类似于 iOS 的液体玻璃效果 (Android 13+)</string>
+    <string name="enable_spatial_navigation">空间导航 (BETA)</string>
+    <string name="enable_spatial_navigation_description">在整个应用中启用共享元素过渡、预测性返回和共享轴屏幕动效</string>
     <string name="your_library">您的库</string>
     <string name="play_explicit_content">播放限制级内容</string>
     <string name="play_explicit_content_description">允许播放限制级内容</string>

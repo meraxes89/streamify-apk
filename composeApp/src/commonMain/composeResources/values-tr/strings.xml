@@ -508,6 +508,8 @@
     <string name="update_channel">Kanalı güncelle</string>
     <string name="enable_liquid_glass_effect">Sıvı camı etkinleştir (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Belirli bir konumda iOS'un sıvı cam efektini etkinleştirin (Android 13+)</string>
+    <string name="enable_spatial_navigation">Uzamsal gezinme (BETA)</string>
+    <string name="enable_spatial_navigation_description">Paylaşılan öğe geçişlerini, öngörülü geri gitmeyi ve tüm uygulamada paylaşılan eksen hareketini etkinleştir</string>
     <string name="your_library">Kitaplığınız</string>
     <string name="play_explicit_content">Uygunsuz içeriği oynat</string>
     <string name="play_explicit_content_description">Uygunsuz içeriği oynatmayı etkinleştir</string>

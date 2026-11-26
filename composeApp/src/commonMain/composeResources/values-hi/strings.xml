@@ -454,6 +454,8 @@
     <string name="copied_to_clipboard">क्लिपबोर्ड पर कॉपी किया गया</string>
     <string name="update_channel">चैनल अपडेट करें</string>
     <string name="enable_liquid_glass_effect">लिक्विड ग्लास सक्षम करें (बीटा)</string>
+    <string name="enable_spatial_navigation">स्पेशल नेविगेशन (BETA)</string>
+    <string name="enable_spatial_navigation_description">पूरे ऐप में साझा तत्व संक्रमण, प्रेडिक्टिव बैक और साझा-अक्ष स्क्रीन मोशन सक्षम करें</string>
     <string name="your_library">आपकी लाइब्रेरी</string>
     <string name="play_explicit_content">आपत्तिजनक कंटेंट चलाएं</string>
     <string name="play_explicit_content_description">आपत्तिजनक कंटेंट चलाने की अनुमति दें</string>

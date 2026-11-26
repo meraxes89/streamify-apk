@@ -482,6 +482,8 @@
     <string name="update_channel">Canal d'actualitzacions</string>
     <string name="enable_liquid_glass_effect">Activa liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Activa l'efecte de vidre líquid d'iOS en alguna posició (Android 13+)</string>
+    <string name="enable_spatial_navigation">Navegació espacial (BETA)</string>
+    <string name="enable_spatial_navigation_description">Activa transicions d'elements compartits, enrere predictiu i moviment d'eix compartit per tota l'app</string>
     <string name="your_library">La seva biblioteca</string>
     <string name="play_explicit_content">Reprodueix el contingut explícit</string>
     <string name="play_explicit_content_description">Activa per reproduir contingut explícit</string>

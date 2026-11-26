@@ -224,7 +224,15 @@ private fun SoundCloudLyricsPage(
     val paletteColor = state.startColor.value
     val seedColor = if (paletteColor == Color.Black) seed else paletteColor
     val localDensity = LocalDensity.current
-    PlatformBackHandler(enabled = true, onBack = onBack)
+    // Predictive-back aware: a plain BackHandler would consume the system gesture and
+    // disable seeking. There is nothing to scrub here, so progress is ignored and a
+    // completed gesture commits directly (RFC-003 §3.3).
+    com.maxrave.simpmusic.expect.ui.PlatformPredictiveBackHandler(
+        enabled = true,
+        onProgress = { },
+        onCancel = { },
+        onCommit = onBack,
+    )
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AppleMusicArtworkBackdrop(state = state, actions = actions, seedColor = seedColor)
         AppleMusicLyricsView(

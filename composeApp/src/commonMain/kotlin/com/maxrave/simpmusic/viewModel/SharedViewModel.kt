@@ -2222,6 +2222,10 @@ class SharedViewModel(
 
     fun getEnableLiquidGlass() = dataStoreManager.enableLiquidGlass
 
+    // The RFC-003 spatial navigation beta: read by App.kt to gate transitions, shared elements
+    // and predictive back without ever swapping the NavHost tree.
+    fun getEnableSpatialNavigation() = dataStoreManager.enableSpatialNavigation
+
     fun getLocalTrackingEnabled() = dataStoreManager.localTrackingEnabled
 
     // Drives the Mix for you tab: YouTube hands an anonymous session no mixes at all.

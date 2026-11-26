@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.maxrave.simpmusic.ui.navigation.appComposable
 import com.maxrave.simpmusic.ui.navigation.destination.list.AlbumDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.BrowseDestination
@@ -27,29 +27,30 @@ import com.maxrave.simpmusic.ui.screen.other.PodcastScreen
 fun NavGraphBuilder.listScreenGraph(
     innerPadding: PaddingValues,
     navController: NavController,
+    spatialEnabled: Boolean = false,
 ) {
-    composable<AlbumDestination> { entry ->
+    appComposable<AlbumDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<AlbumDestination>()
         AlbumScreen(
             browseId = data.browseId,
             navController = navController,
         )
     }
-    composable<ArtistDestination> { entry ->
+    appComposable<ArtistDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<ArtistDestination>()
         ArtistScreen(
             channelId = data.channelId,
             navController = navController,
         )
     }
-    composable<LocalPlaylistDestination> { entry ->
+    appComposable<LocalPlaylistDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<LocalPlaylistDestination>()
         LocalPlaylistScreen(
             id = data.id,
             navController = navController,
         )
     }
-    composable<MoreAlbumsDestination> { entry ->
+    appComposable<MoreAlbumsDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<MoreAlbumsDestination>()
         MoreAlbumsScreen(
             innerPadding = innerPadding,
@@ -58,7 +59,7 @@ fun NavGraphBuilder.listScreenGraph(
             id = data.id,
         )
     }
-    composable<BrowseDestination> { entry ->
+    appComposable<BrowseDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<BrowseDestination>()
         BrowseScreen(
             innerPadding = innerPadding,
@@ -68,7 +69,7 @@ fun NavGraphBuilder.listScreenGraph(
             title = data.title,
         )
     }
-    composable<PlaylistDestination> { entry ->
+    appComposable<PlaylistDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<PlaylistDestination>()
         PlaylistScreen(
             playlistId = data.playlistId,
@@ -76,7 +77,7 @@ fun NavGraphBuilder.listScreenGraph(
             navController = navController,
         )
     }
-    composable<PodcastDestination> { entry ->
+    appComposable<PodcastDestination>(spatialEnabled) { entry ->
         val data = entry.toRoute<PodcastDestination>()
         PodcastScreen(
             podcastId = data.podcastId,

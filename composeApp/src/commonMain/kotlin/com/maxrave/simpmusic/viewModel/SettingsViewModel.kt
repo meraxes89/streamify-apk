@@ -201,6 +201,9 @@ class SettingsViewModel(
     private var _enableLiquidGlass: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val enableLiquidGlass: StateFlow<Boolean> = _enableLiquidGlass
 
+    private var _enableSpatialNavigation: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val enableSpatialNavigation: StateFlow<Boolean> = _enableSpatialNavigation
+
     private val _explicitContentEnabled = MutableStateFlow(false)
     val explicitContentEnabled: StateFlow<Boolean> = _explicitContentEnabled
 
@@ -344,6 +347,7 @@ class SettingsViewModel(
         getBackupDownloaded()
         getUpdateChannel()
         getEnableLiquidGlass()
+        getEnableSpatialNavigation()
         getExplicitContentEnabled()
         getDiscordLoggedIn()
         getDiscordRichPresenceEnabled()
@@ -691,6 +695,21 @@ class SettingsViewModel(
         viewModelScope.launch {
             dataStoreManager.setEnableLiquidGlass(enableLiquidGlass)
             getEnableLiquidGlass()
+        }
+    }
+
+    private fun getEnableSpatialNavigation() {
+        viewModelScope.launch {
+            dataStoreManager.enableSpatialNavigation.collect { enableSpatialNavigation ->
+                _enableSpatialNavigation.value = enableSpatialNavigation == DataStoreManager.TRUE
+            }
+        }
+    }
+
+    fun setEnableSpatialNavigation(enableSpatialNavigation: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.setEnableSpatialNavigation(enableSpatialNavigation)
+            getEnableSpatialNavigation()
         }
     }
 

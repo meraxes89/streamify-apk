@@ -616,6 +616,8 @@ SimpMusic תמיד בחינם וללא פרסומות \n\nנבנה ב-love מא�
     <string name="update_channel">ערוץ עדכונים</string>
     <string name="enable_liquid_glass_effect">הפעל זכוכית נוזלית (בטא)</string>
     <string name="enable_liquid_glass_effect_description">הפעל את אפקט הזכוכית הנוזלית של iOS בחלק מהמקומות (נדרש Android 13 ומעלה)</string>
+    <string name="enable_spatial_navigation">ניווט מרחבי (BETA)</string>
+    <string name="enable_spatial_navigation_description">הפעלת מעברי אלמנטים משותפים, חזרה חזויה ותנועת ציר משותף בכל האפליקציה</string>
     <string name="your_library">הספרייה שלך</string>
     <string name="play_explicit_content">נגן תוכן מפורש</string>
     <string name="play_explicit_content_description">הפעל כדי לנגן תוכן מפורש</string>

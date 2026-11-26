@@ -203,7 +203,7 @@ index db029df..1e1929c 100644
              a.addAll(
                  fetched,
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
-index 9befde3..3110e43 100644
+index 9befde3..3728bed 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
 @@ -140,7 +140,7 @@ internal class DataStoreManagerImpl(
@@ -224,6 +224,42 @@ index 9befde3..3110e43 100644
          }
  
      override suspend fun setDownloadQuality(quality: String) {
+@@ -1680,6 +1680,26 @@ internal class DataStoreManagerImpl(
+         }
+     }
+ 
++    override val enableSpatialNavigation: Flow<String>
++        get() =
++            settingsDataStore.data.map { preferences ->
++                preferences[SPATIAL_NAVIGATION] ?: FALSE
++            }
++
++    override suspend fun setEnableSpatialNavigation(enable: Boolean) {
++        withContext(Dispatchers.IO) {
++            if (enable) {
++                settingsDataStore.edit { settings ->
++                    settings[SPATIAL_NAVIGATION] = TRUE
++                }
++            } else {
++                settingsDataStore.edit { settings ->
++                    settings[SPATIAL_NAVIGATION] = FALSE
++                }
++            }
++        }
++    }
++
+     override val explicitContentEnabled: Flow<String> =
+         settingsDataStore.data.map { preferences ->
+             preferences[EXPLICIT_CONTENT_ENABLED] ?: TRUE
+@@ -1997,6 +2017,8 @@ internal class DataStoreManagerImpl(
+ 
+         val LIQUID_GLASS = stringPreferencesKey("liquid_glass")
+ 
++        val SPATIAL_NAVIGATION = stringPreferencesKey("spatial_navigation")
++
+         val EXPLICIT_CONTENT_ENABLED = stringPreferencesKey("explicit_content_enabled")
+ 
+         val DISCORD_TOKEN = stringPreferencesKey("discord_token")
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
 index 2c3a3a2..47aa7ee 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
@@ -268,6 +304,31 @@ index 3903b7e..bbc1166 100644
 +        }
          return eventId
      }
+ 
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
+index 94a2a77..a6e2fbc 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
+@@ -1,6 +1,7 @@
+ package com.maxrave.data.db.datasource
+ 
+ import DatabaseDao
++import com.maxrave.common.Config
+ import com.maxrave.data.db.MusicDatabase
+ import com.maxrave.data.librarysync.SyncChangeRecorder
+ import com.maxrave.data.librarysync.SyncKind
+@@ -282,7 +283,11 @@ internal class LocalDataSource(
+     suspend fun updateSongInLibrary(
+         inLibrary: LocalDateTime,
+         videoId: String,
+-    ) = databaseDao.updateSongInLibrary(inLibrary, videoId)
++    ): Int {
++        val updated = databaseDao.updateSongInLibrary(inLibrary, videoId)
++        syncRecorder.flag(SyncKind.LIBRARY_TRACK, videoId, inLibrary != Config.REMOVED_SONG_DATE_TIME)
++        return updated
++    }
+ 
+     fun getMostPlayedSongs() = databaseDao.getMostPlayedSongs()
  
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 index 4024528..cca7841 100644
@@ -550,6 +611,20 @@ index 9c816fc..dab2664 100644
          prefs.update { it.copy(lastServerSeq = reply.newSeq, lastSyncAt = nowMillis()) }
          reply.settings?.let { settings.receive(it, desktopName) }
          dao.pruneSent(nowMillis() - SENT_KEPT_MS)
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
+index 61dc9d2..3eb4f9a 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
+@@ -17,6 +17,9 @@ internal object SyncKind {
+     /** key: videoId, value "1"/"0". */
+     const val SONG_LIKE = "song_like"
+ 
++    /** key: videoId, value "1"/"0". */
++    const val LIBRARY_TRACK = "library_track"
++
+     /** key: channelId, value "1"/"0". */
+     const val ARTIST_FOLLOW = "artist_follow"
+ 
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
 index c113385..233c296 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
@@ -1055,6 +1130,26 @@ index 9d59c49..1ca8f91 100644
 +    }
  }
 \ No newline at end of file
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt
+index 571d943..20546d8 100644
+--- a/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt
+@@ -530,6 +530,15 @@ interface DataStoreManager {
+ 
+     suspend fun setEnableLiquidGlass(enable: Boolean)
+ 
++    /**
++     * The beta toggle for the RFC-003 spatial navigation stack (shared-axis transitions,
++     * shared element heroes, predictive back). Off by default: one flag gates the whole
++     * rollout, and the NavHost tree is never swapped when it flips.
++     */
++    val enableSpatialNavigation: Flow<String>
++
++    suspend fun setEnableSpatialNavigation(enable: Boolean)
++
+     /** One of [THEME_MODE_SYSTEM], [THEME_MODE_DARK], [THEME_MODE_LIGHT]. */
+     val themeMode: Flow<String>
+ 
 diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
 index 416a581..6f44e1c 100644
 --- a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
@@ -2438,42 +2533,3 @@ index 0000000..41ade74
 +}
 +
 +actual fun createBrotliEncoder(): ContentEncoder = BrotliEncoder
-diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-index 94a2a77..a6e2fbc 100644
---- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-+++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-@@ -1,6 +1,7 @@
- package com.maxrave.data.db.datasource
- 
- import DatabaseDao
-+import com.maxrave.common.Config
- import com.maxrave.data.db.MusicDatabase
- import com.maxrave.data.librarysync.SyncChangeRecorder
- import com.maxrave.data.librarysync.SyncKind
-@@ -282,7 +283,11 @@ internal class LocalDataSource(
-     suspend fun updateSongInLibrary(
-         inLibrary: LocalDateTime,
-         videoId: String,
--    ) = databaseDao.updateSongInLibrary(inLibrary, videoId)
-+    ): Int {
-+        val updated = databaseDao.updateSongInLibrary(inLibrary, videoId)
-+        syncRecorder.flag(SyncKind.LIBRARY_TRACK, videoId, inLibrary != Config.REMOVED_SONG_DATE_TIME)
-+        return updated
-+    }
- 
-     fun getMostPlayedSongs() = databaseDao.getMostPlayedSongs()
- 
-diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
-index 61dc9d2..3eb4f9a 100644
---- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
-+++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
-@@ -17,6 +17,9 @@ internal object SyncKind {
-     /** key: videoId, value "1"/"0". */
-     const val SONG_LIKE = "song_like"
- 
-+    /** key: videoId, value "1"/"0". */
-+    const val LIBRARY_TRACK = "library_track"
-+
-     /** key: channelId, value "1"/"0". */
-     const val ARTIST_FOLLOW = "artist_follow"
- 
