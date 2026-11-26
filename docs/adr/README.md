@@ -17,6 +17,7 @@ decision requires a new ADR that links back.
 | [ADR-007](ADR-007-user-graph-alignment-and-cross-device-continuity.md) | User graph alignment and cross-device continuity | Accepted |
 | [ADR-008](ADR-008-server-contract-v4-and-sync-dataplane-hardening.md) | Server Contract v4 and sync data-plane hardening | Accepted |
 | [ADR-009](ADR-009-kotlin-only-audio-pipeline.md) | Kotlin-only audio pipeline | Accepted (supersedes ADR-001/002 for shipped audio) |
+| [ADR-011](ADR-011-sovereign-gpu-engine.md) | Sovereign GPU Engine capability matrix & draw-phase SPI | Proposed (In Beta on `integration/sovereign-graphics`) |
 
 ## Format
 
@@ -54,4 +55,4 @@ When you change code covered by a pinned document, re-verify the document's
 claims against the new tree and update the pin in the same commit.
 
 ---
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: a4a7e0abb36f38ba5b6b8d6dcaa4b1529070a3dc -->
