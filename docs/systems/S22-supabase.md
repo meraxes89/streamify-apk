@@ -42,5 +42,6 @@ tests: [supabase/sql/tests/]
 ## Refinement backlog
 
 - Keep migration numbering and RLS tests in the same PR as RPC changes.
+- Phase P10 (`2026_12_p10_hlc_profiles_history_search.sql`) adds `(modified_hlc, modified_by)` LWW to `user_search_history` / `user_listening_history` and enforces monotonic server-`NOW()` updates on `profiles.last_active_at`.
 
-<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->
+<!-- doc-verified-against: cbf2f9bf8a2f5978a089a58612c5cf9a15ab8d5a -->

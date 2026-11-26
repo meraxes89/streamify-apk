@@ -48,9 +48,10 @@ tests: [streamify-modules/supabase/src/commonTest/]
 ## Known limits / debt
 
 - Earlier audits found full-set diff egress and cursor-corruption defects; ADR-008 is the remediation record.
+- Legacy direct-REST helpers in `SupabaseLibrarySync` now route through `sync_push` with HLC timestamps (`2026_12_p10_hlc_profiles_history_search.sql`).
 
 ## Refinement backlog
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->
+<!-- doc-verified-against: cbf2f9bf8a2f5978a089a58612c5cf9a15ab8d5a -->
