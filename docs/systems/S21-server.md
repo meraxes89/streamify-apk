@@ -42,4 +42,4 @@ tests: [server/test/]
 
 - Keep the no-microservices rule in the ADR before proposing any split.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->
