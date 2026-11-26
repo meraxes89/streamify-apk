@@ -86,10 +86,15 @@ actual object StreamifyAuthManager {
         } catch (e: GetCredentialCancellationException) {
             Result.failure(Exception("Sign-in cancelled."))
         } catch (e: GetCredentialException) {
-            // Credential Manager error (unregistered package on Vivo, missing Play Services, etc.)
-            tryLaunchWebOAuth(ctx)
-            Result.failure(Exception("Google Sign-In unavailable on device. Opening web sign-in..."))
+            // Credential Manager error (unregistered package/SHA-1, Vivo com.spotify.music, missing Play Services, etc.)
+            android.util.Log.w("StreamifyAuth", "CredentialManager failed (${e.type}): ${e.errorMessage}", e)
+            if (tryLaunchWebOAuth(ctx)) {
+                Result.failure(Exception("Google Sign-In unavailable on device. Opening web sign-in..."))
+            } else {
+                Result.failure(Exception("Google Sign-In unavailable (${e.type}) and no browser available for web sign-in."))
+            }
         } catch (e: Exception) {
+            android.util.Log.w("StreamifyAuth", "Google Sign-In failed: ${e.message}", e)
             tryLaunchWebOAuth(ctx)
             Result.failure(e)
         }
@@ -148,8 +153,8 @@ actual object StreamifyAuthManager {
         }
     }
 
-    fun tryLaunchWebOAuth(context: Context) {
-        try {
+    fun tryLaunchWebOAuth(context: Context): Boolean {
+        return try {
             val sp = getPrefs(context)
             val verifier = PkceCrypto.generateCodeVerifier()
             val challenge = PkceCrypto.deriveCodeChallenge(verifier)
@@ -164,7 +169,7 @@ actual object StreamifyAuthManager {
 
             val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
                     "provider=google" +
-                    "&redirect_to=streamify://callback" +
+                    "&redirect_to=${Uri.encode("streamify://callback")}" +
                     "&code_challenge=$challenge" +
                     "&code_challenge_method=S256" +
                     "&state=$state" +
@@ -178,7 +183,10 @@ actual object StreamifyAuthManager {
                 .build()
             customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             customTabsIntent.launchUrl(context, uri)
-        } catch (_: Exception) {
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("StreamifyAuth", "Failed to launch web OAuth", e)
+            false
         }
     }
 
