@@ -25,6 +25,16 @@ actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
     actual val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    private val flowCoordinator = OAuthFlowCoordinator()
+    actual val isAuthenticating: StateFlow<Boolean> = flowCoordinator.isAuthenticating
+    actual val authError: StateFlow<String?> = flowCoordinator.authError
+
+    actual fun submitAuthCallback(callbackUri: String, context: Any?) {
+        flowCoordinator.submitCallback { handleAuthCallback(callbackUri, context) }
+    }
+
+    actual fun clearAuthError() = flowCoordinator.clearError()
+
     private fun getPrefs(context: Context): SharedPreferences = PlatformTokenStore.getPrefs(context)
 
     private fun findActivity(context: Context?): Activity? {
@@ -55,6 +65,7 @@ actual object StreamifyAuthManager {
 
     actual suspend fun signInWithGoogle(context: Any?): Result<UserProfile> = withContext(Dispatchers.Main) {
         val ctx = context as? Context ?: return@withContext Result.failure(Exception("Context required for Google Sign-In"))
+        flowCoordinator.onSignInStarted()
         try {
             PlatformTokenStore.init(ctx)
             val hostActivity = findActivity(ctx) ?: ctx
@@ -81,22 +92,34 @@ actual object StreamifyAuthManager {
             val authResult = SupabaseClient.signInWithGoogleIdToken(googleIdToken)
             authResult.onSuccess { profile ->
                 _authState.value = AuthState.Authenticated(profile)
+                flowCoordinator.onSignInSucceeded()
+            }.onFailure { err ->
+                flowCoordinator.onSignInFailed(err.message)
             }
             authResult
         } catch (e: GetCredentialCancellationException) {
+            flowCoordinator.onSignInCancelled()
             Result.failure(Exception("Sign-in cancelled."))
         } catch (e: GetCredentialException) {
             // Credential Manager error (unregistered package/SHA-1, Vivo com.spotify.music, missing Play Services, etc.)
             android.util.Log.w("StreamifyAuth", "CredentialManager failed (${e.type}): ${e.errorMessage}", e)
             if (tryLaunchWebOAuth(ctx)) {
+                flowCoordinator.onBrowserFallbackLaunched()
                 Result.failure(Exception("Google Sign-In unavailable on device. Opening web sign-in..."))
             } else {
-                Result.failure(Exception("Google Sign-In unavailable (${e.type}) and no browser available for web sign-in."))
+                val msg = "Google Sign-In unavailable (${e.type}) and no browser available for web sign-in."
+                flowCoordinator.onSignInFailed(msg)
+                Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
             android.util.Log.w("StreamifyAuth", "Google Sign-In failed: ${e.message}", e)
-            tryLaunchWebOAuth(ctx)
-            Result.failure(e)
+            if (tryLaunchWebOAuth(ctx)) {
+                flowCoordinator.onBrowserFallbackLaunched()
+                Result.failure(Exception("Opening web sign-in..."))
+            } else {
+                flowCoordinator.onSignInFailed(e.message)
+                Result.failure(e)
+            }
         }
     }
 

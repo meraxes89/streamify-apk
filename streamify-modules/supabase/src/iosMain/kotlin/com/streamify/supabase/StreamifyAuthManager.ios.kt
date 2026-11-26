@@ -13,6 +13,16 @@ actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     actual val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    private val flowCoordinator = OAuthFlowCoordinator()
+    actual val isAuthenticating: StateFlow<Boolean> = flowCoordinator.isAuthenticating
+    actual val authError: StateFlow<String?> = flowCoordinator.authError
+
+    actual fun submitAuthCallback(callbackUri: String, context: Any?) {
+        flowCoordinator.submitCallback { handleAuthCallback(callbackUri, context) }
+    }
+
+    actual fun clearAuthError() = flowCoordinator.clearError()
+
     private var pendingCodeVerifier: String? = null
     private var pendingState: String? = null
 
