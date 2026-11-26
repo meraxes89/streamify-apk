@@ -10,5 +10,9 @@ actual fun rememberStartupPermissionRequester(): StartupPermissionRequester =
             override fun hasAllRequiredPermissions(): Boolean = true
 
             override fun requestMissingPermissions() {}
+
+            override fun needsUnknownSourcesPermission(): Boolean = false
+
+            override fun requestUnknownSourcesPermission() {}
         }
     }
