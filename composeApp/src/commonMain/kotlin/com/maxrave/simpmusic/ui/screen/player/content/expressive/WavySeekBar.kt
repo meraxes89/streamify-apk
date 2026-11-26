@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,8 @@ fun WavySeekBar(
     var isInteracting by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
     var widthPx by remember { mutableIntStateOf(0) }
+    val currentOnSliderChange by rememberUpdatedState(onSliderChange)
+    val currentOnSliderChangeFinished by rememberUpdatedState(onSliderChangeFinished)
 
     val displayedFraction = (if (isInteracting) dragFraction else progressFraction).coerceIn(0f, 1f)
 
@@ -92,8 +95,8 @@ fun WavySeekBar(
                     detectTapGestures { offset ->
                         val fraction = fractionAt(offset.x)
                         dragFraction = fraction
-                        onSliderChange(fraction * 100f)
-                        onSliderChangeFinished()
+                        currentOnSliderChange(fraction * 100f)
+                        currentOnSliderChangeFinished()
                     }
                 }.pointerInput(Unit) {
                     detectHorizontalDragGestures(
@@ -101,15 +104,15 @@ fun WavySeekBar(
                             isInteracting = true
                             val fraction = fractionAt(offset.x)
                             dragFraction = fraction
-                            onSliderChange(fraction * 100f)
+                            currentOnSliderChange(fraction * 100f)
                         },
                         onDragEnd = {
                             isInteracting = false
-                            onSliderChangeFinished()
+                            currentOnSliderChangeFinished()
                         },
                         onDragCancel = {
                             isInteracting = false
-                            onSliderChangeFinished()
+                            currentOnSliderChangeFinished()
                         },
                         onHorizontalDrag = { change, _ ->
                             // Consume so the artwork pager / vertical sheet underneath never
@@ -117,7 +120,7 @@ fun WavySeekBar(
                             change.consume()
                             val fraction = fractionAt(change.position.x)
                             dragFraction = fraction
-                            onSliderChange(fraction * 100f)
+                            currentOnSliderChange(fraction * 100f)
                         },
                     )
                 },

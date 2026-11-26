@@ -93,6 +93,21 @@ index 6a30090..293b87c 100644
  import kotlinx.serialization.json.Json
  import org.koin.mp.KoinPlatform.getKoin
  import java.util.concurrent.atomic.AtomicBoolean
+@@ -1093,7 +1094,13 @@ internal class MediaServiceHandlerImpl(
+             }
+ 
+             is PlayerEvent.UpdateProgress -> {
+-                player.seekTo((player.duration * playerEvent.newProgress / 100).toLong())
++                val durationMs =
++                    player.duration.takeIf { it > 0L }
++                        ?: nowPlayingState.value.songEntity?.durationSeconds?.takeIf { it > 0 }?.toLong()?.times(1000L)
++                if (durationMs != null && durationMs > 0L) {
++                    val targetMs = ((durationMs * playerEvent.newProgress) / 100f).toLong().coerceIn(0L, durationMs)
++                    player.seekTo(targetMs)
++                }
+             }
+ 
+             PlayerEvent.Shuffle -> {
 @@ -1647,7 +1648,7 @@ internal class MediaServiceHandlerImpl(
                                              ),
                                      )
@@ -1707,6 +1722,16 @@ index e88affc..a4a0c9d 100644
          castRemotePlayer?.let { remote ->
              internalPlayWhenReady = false
              remote.pause()
+@@ -1292,8 +1299,8 @@ internal class CrossfadeExoPlayerAdapter(
+         get() {
+             castRemotePlayer?.let { remote ->
+                 return remote.duration.takeIf { it > 0 } ?: 0L
+             }
+-            return currentPlayer?.duration ?: cachedDuration
++            return currentPlayer?.duration?.takeIf { it > 0 } ?: cachedDuration
+         }
+ 
+     override val bufferedPosition: Long
 @@ -1493,7 +1500,7 @@ internal class CrossfadeExoPlayerAdapter(
              Logger.w(TAG, "Setting volume to $value")
              internalVolume = value.coerceIn(0f, 1f)
