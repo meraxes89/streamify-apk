@@ -296,13 +296,15 @@ object StreamifySyncEngine : KoinComponent {
                 )
                 val resumeIdx = stages.indexOf(resumeStage).let { if (it >= 0) it + 1 else 0 }
 
+                var allStagesSucceeded = true
                 for (idx in resumeIdx until stages.size) {
                     val stage = stages[idx]
-                    withContext(withSyncApplying()) {
+                    val stageSucceeded = withContext(withSyncApplying()) {
                         when (stage) {
                         "LIKES" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
                             likedCount = syncLikesInternal(targetUserId)
+                            true
                         }
                         "ARTISTS" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping followed artists...")
@@ -344,7 +346,13 @@ object StreamifySyncEngine : KoinComponent {
                                 _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
                                 syncSearchHistoryInternal(targetUserId)
                             }
+                            else -> true
                         }
+                    }
+                    if (!stageSucceeded) {
+                        allStagesSucceeded = false
+                        Logger.w(TAG, "Bootstrap stage $stage failed; halting checkpoint advancement")
+                        break
                     }
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", stage)
                 }
@@ -360,11 +368,15 @@ object StreamifySyncEngine : KoinComponent {
 
                 // Record latest changelog cursor upon bootstrap completion
                 val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
-                pullRes?.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
-                val latestCursor = pullRes?.cursor ?: 0L
-                effectiveCursor = latestCursor
-                dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
-                dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", BOOTSTRAP_DONE)
+                if (allStagesSucceeded && pullRes != null) {
+                    pullRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
+                    val latestCursor = pullRes.cursor
+                    effectiveCursor = latestCursor
+                    dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
+                    dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", BOOTSTRAP_DONE)
+                } else {
+                    syncFailureMessage = "Bootstrap incomplete; will retry"
+                }
             }
 
             // Sync presence via heartbeat_presence with HLC guard
@@ -439,18 +451,6 @@ object StreamifySyncEngine : KoinComponent {
             if (cloudTrack.id !in localIds) {
                 try {
                     val existing = songRepository.getSongById(cloudTrack.id).firstOrNull()
-                    if (existing != null && !existing.liked) {
-                        // The track exists locally, but the user explicitly unliked it!
-                        // Reconcile: delete from Supabase user_likes instead of resurrecting it locally!
-                        SupabaseLibrarySync.syncLike(
-                            trackId = cloudTrack.id,
-                            title = cloudTrack.title,
-                            artist = cloudTrack.artist,
-                            isLiked = false,
-                            userId = targetUserId
-                        )
-                        continue
-                    }
                     val durationStr = formatDuration(cloudTrack.durationSec)
                     if (existing == null) {
                         val entity = SongEntity(
@@ -511,7 +511,7 @@ object StreamifySyncEngine : KoinComponent {
     /**
      * Phase 2 / Phase 3 Followed Artists Synchronization.
      */
-    private suspend fun syncArtistsInternal(targetUserId: String) {
+    private suspend fun syncArtistsInternal(targetUserId: String): Boolean {
         try {
             val cloudArtistIds = SupabaseLibrarySync.fetchCloudItemFavorites("artist", targetUserId).toSet()
             val localArtists = artistRepository.getFollowedArtists().firstOrNull() ?: emptyList()
@@ -530,14 +530,18 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.syncItemFavorite("artist", localArtist.channelId, true, targetUserId)
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Saved Albums Synchronization.
      */
-    private suspend fun syncAlbumsInternal(targetUserId: String) {
+    private suspend fun syncAlbumsInternal(targetUserId: String): Boolean {
         try {
             val cloudAlbumIds = SupabaseLibrarySync.fetchCloudItemFavorites("album", targetUserId).toSet()
             val localLikedAlbums = try {
@@ -560,14 +564,18 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Library Tracks Synchronization (in-library state independent of likes).
      */
-    private suspend fun syncLibraryTracksInternal(targetUserId: String) {
+    private suspend fun syncLibraryTracksInternal(targetUserId: String): Boolean {
         try {
             val cloudLibrary = SupabaseLibrarySync.fetchCloudLibraryTracks(targetUserId)
             val cloudTrackIds = cloudLibrary.map { it.trackId }.toSet()
@@ -612,17 +620,19 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.uploadLibraryTracksBatch(batch.map { it.videoId }, targetUserId)
                 }
             }
+            return true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(TAG, "syncLibraryTracksInternal failed: ${e.message}")
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Saved YouTube Playlists Synchronization.
      */
-    private suspend fun syncSavedPlaylistsInternal(targetUserId: String) {
+    private suspend fun syncSavedPlaylistsInternal(targetUserId: String): Boolean {
         try {
             val cloudFavorites = SupabaseLibrarySync.fetchCloudItemFavoritesWithMetadata("playlist", targetUserId)
             val cloudPlaylistIds = cloudFavorites.map { it.itemId }.toSet()
@@ -669,14 +679,18 @@ object StreamifySyncEngine : KoinComponent {
                     )
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Playlists Synchronization (Full Inbound & Outbound with UUID linkage).
      */
-    private suspend fun syncPlaylistsInternal(targetUserId: String) {
+    private suspend fun syncPlaylistsInternal(targetUserId: String): Boolean {
         try {
             // 1. Inbound: fetch cloud playlists
             val cloudPlaylists = SupabaseLibrarySync.fetchCloudPlaylists(targetUserId)
@@ -757,14 +771,18 @@ object StreamifySyncEngine : KoinComponent {
                     userId = targetUserId
                 )
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 Outbox & Phase 3 Inbound for User Settings Profile.
      */
-    private suspend fun syncSettingsInternal(targetUserId: String) {
+    private suspend fun syncSettingsInternal(targetUserId: String): Boolean {
         try {
             val remoteResult = SupabaseLibrarySync.fetchUserSettings(targetUserId)
             val remoteSettings = remoteResult.getOrDefault(emptyMap())
@@ -789,7 +807,11 @@ object StreamifySyncEngine : KoinComponent {
             if (merged != remoteSettings && localSettings.isNotEmpty()) {
                 SupabaseLibrarySync.uploadUserSettings(targetUserId, merged)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
@@ -797,7 +819,7 @@ object StreamifySyncEngine : KoinComponent {
      * Phase 3 Inbound & Phase 2 Outbox for Playback History (Analytics & Wrapped).
      * High fidelity: uses client_event_id deduplication, batch uploads, and unconstrained paginated drains.
      */
-    private suspend fun syncListeningHistoryInternal(targetUserId: String) {
+    private suspend fun syncListeningHistoryInternal(targetUserId: String): Boolean {
         try {
             // 1. Inbound: fetch remote cloud listening history with client_event_id fidelity
             val cloudHistory = SupabaseLibrarySync.fetchCloudListeningHistory(targetUserId, limit = 1000)
@@ -873,14 +895,18 @@ object StreamifySyncEngine : KoinComponent {
             if (pendingBatch.isNotEmpty()) {
                 SupabaseLibrarySync.recordPlaybackHistoryBatch(targetUserId, pendingBatch)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Saved Podcasts Synchronization.
      */
-    private suspend fun syncPodcastsInternal(targetUserId: String) {
+    private suspend fun syncPodcastsInternal(targetUserId: String): Boolean {
         try {
             val cloudPodcastIds = SupabaseLibrarySync.fetchCloudItemFavorites("podcast", targetUserId).toSet()
             val localFavPodcasts = podcastRepository.getFavoritePodcasts().firstOrNull() ?: emptyList()
@@ -899,14 +925,18 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.syncItemFavorite("podcast", localPod.podcastId, true, targetUserId)
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Podcast Episode State Synchronization.
      */
-    private suspend fun syncPodcastEpisodeStateInternal(targetUserId: String) {
+    private suspend fun syncPodcastEpisodeStateInternal(targetUserId: String): Boolean {
         try {
             val cloudStates = SupabaseLibrarySync.fetchCloudEpisodeStates(targetUserId)
             val localStates = getLocalEpisodeStates().toMutableMap()
@@ -954,7 +984,11 @@ object StreamifySyncEngine : KoinComponent {
             if (pendingUploads.isNotEmpty()) {
                 SupabaseLibrarySync.uploadEpisodeStatesBatch(pendingUploads, targetUserId)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
@@ -963,7 +997,7 @@ object StreamifySyncEngine : KoinComponent {
      * Defect D8 fix: Insert cloud queries in reverse order (oldest first) so that
      * SQLite rowid sequence reflects chronological searched_at ordering.
      */
-    private suspend fun syncSearchHistoryInternal(targetUserId: String) {
+    private suspend fun syncSearchHistoryInternal(targetUserId: String): Boolean {
         try {
             val cloudSearch = SupabaseLibrarySync.fetchCloudSearchHistory(targetUserId)
             val cloudQueries = cloudSearch.map { it.query }.toSet()
@@ -983,9 +1017,27 @@ object StreamifySyncEngine : KoinComponent {
             if (pendingUploads.isNotEmpty()) {
                 SupabaseLibrarySync.uploadSearchHistory(pendingUploads, targetUserId)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
+
+    internal fun normalizeOutboxToChangelogKey(entity: String, entityKey: String): Pair<String, String> =
+        when (entity) {
+            SyncKind.SONG_LIKE -> "like" to entityKey
+            SyncKind.LIBRARY_TRACK -> "library_track" to entityKey
+            SyncKind.ARTIST_FOLLOW -> "favorite" to "artist:$entityKey"
+            SyncKind.ALBUM_LIKE -> "favorite" to "album:$entityKey"
+            SyncKind.PLAYLIST_LIKE -> "favorite" to "playlist:$entityKey"
+            SyncKind.PODCAST_FAVORITE -> "favorite" to "podcast:$entityKey"
+            SyncKind.LOCAL_PLAYLIST, SyncKind.LOCAL_PLAYLIST_ORDER -> "playlist" to entityKey
+            SyncKind.LOCAL_PLAYLIST_TRACK -> "playlist_track" to entityKey
+            SyncKind.SETTINGS -> "settings" to "settings"
+            else -> entity to entityKey
+        }
 
     /**
      * V3 Delta Sync: pulls changelog delta ops since local cursor, skipping calling device's own ops.
@@ -1011,13 +1063,27 @@ object StreamifySyncEngine : KoinComponent {
 
             pullResult.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
 
-            val pendingByEntityKey = syncOutboxRepository.getPending(1000).associateBy { it.entity to it.entityKey }
+            val pendingByEntityKey = mutableMapOf<Pair<String, String>, Long>()
+            for (change in syncOutboxRepository.getPending(1000)) {
+                val normalized = normalizeOutboxToChangelogKey(change.entity, change.entityKey)
+                val prev = pendingByEntityKey[normalized]
+                if (prev == null || change.changedAt > prev) {
+                    pendingByEntityKey[normalized] = change.changedAt
+                }
+            }
             var allOpsApplied = true
             withContext(withSyncApplying()) {
                 for (op in pullResult.ops) {
-                    val localPending = pendingByEntityKey[op.entity to op.key]
                     val opHlc = op.hlc ?: 0L
-                    if (localPending != null && localPending.changedAt >= opHlc) {
+                    val directChangedAt = pendingByEntityKey[op.entity to op.key]
+                    val playlistTrackCompositeKey = if (op.entity == "playlist_track") {
+                        val plId = op.data?.get("playlist_id")?.jsonPrimitive?.contentOrNull
+                        val trkId = op.data?.get("track_id")?.jsonPrimitive?.contentOrNull
+                        if (!plId.isNullOrBlank() && !trkId.isNullOrBlank()) "$plId|$trkId" else null
+                    } else null
+                    val compositeChangedAt = playlistTrackCompositeKey?.let { pendingByEntityKey["playlist_track" to it] }
+                    val localChangedAt = listOfNotNull(directChangedAt, compositeChangedAt).maxOrNull()
+                    if (localChangedAt != null && localChangedAt >= opHlc) {
                         continue
                     }
                     if (!applyDeltaOp(op)) {
@@ -1659,11 +1725,23 @@ object StreamifySyncEngine : KoinComponent {
                     }
                 }
                 "settings" -> {
-                    val key = op.data?.get("key")?.jsonPrimitive?.contentOrNull ?: op.key
-                    val value = op.data?.get("value")?.jsonPrimitive?.contentOrNull
-                        ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
-                    if (key in SYNCABLE_SETTINGS_KEYS && value != null) {
-                        dataStoreManager.putString(key, value)
+                    val nestedSettings = op.data?.get("settings") as? kotlinx.serialization.json.JsonObject
+                    if (nestedSettings != null) {
+                        for ((k, v) in nestedSettings) {
+                            if (k in SYNCABLE_SETTINGS_KEYS) {
+                                val strVal = (v as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                                if (strVal != null) {
+                                    dataStoreManager.putString(k, strVal)
+                                }
+                            }
+                        }
+                    } else {
+                        val key = op.data?.get("key")?.jsonPrimitive?.contentOrNull ?: op.key
+                        val value = op.data?.get("value")?.jsonPrimitive?.contentOrNull
+                            ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
+                        if (key in SYNCABLE_SETTINGS_KEYS && value != null) {
+                            dataStoreManager.putString(key, value)
+                        }
                     }
                 }
                 "search" -> {
@@ -1677,14 +1755,20 @@ object StreamifySyncEngine : KoinComponent {
                         val artistId = op.data?.get("artist_id")?.jsonPrimitive?.contentOrNull
                         val albumId = op.data?.get("album_id")?.jsonPrimitive?.contentOrNull
                         val dur = op.data?.get("listened_duration_sec")?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                        val cloudEventId = op.data?.get("client_event_id")?.jsonPrimitive?.contentOrNull ?: op.key
                         if (trackId.isNotBlank() && !trackId.startsWith("trk_")) {
-                            analyticsRepository.insertPlaybackEvent(
-                                videoId = trackId,
-                                channelIds = listOfNotNull(artistId),
-                                albumBrowseId = albumId,
-                                durationSecond = dur,
-                                listenedSecond = dur
-                            ).firstOrNull()
+                            val existing = syncOutboxRepository.getPlaybackEventsBySyncIds(listOf(cloudEventId))
+                            if (existing.isEmpty()) {
+                                analyticsRepository.insertPlaybackEvent(
+                                    videoId = trackId,
+                                    channelIds = listOfNotNull(artistId),
+                                    albumBrowseId = albumId,
+                                    durationSecond = dur,
+                                    listenedSecond = dur,
+                                    syncId = cloudEventId,
+                                    recordSync = false,
+                                ).firstOrNull()
+                            }
                         }
                     }
                 }

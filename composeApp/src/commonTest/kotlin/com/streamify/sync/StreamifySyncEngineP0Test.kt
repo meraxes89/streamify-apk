@@ -103,4 +103,20 @@ class StreamifySyncEngineP0Test {
         assertEquals("Test Artist", data["artist_name"]?.jsonPrimitive?.content)
         assertEquals("Test Album", data["album_name"]?.jsonPrimitive?.content)
     }
+
+    @Test
+    fun normalizeOutboxToChangelogKeyMapsAllSyncKinds() {
+        assertEquals("like" to "vid1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.SONG_LIKE, "vid1"))
+        assertEquals("library_track" to "vid2", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.LIBRARY_TRACK, "vid2"))
+        assertEquals("favorite" to "artist:UC1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.ARTIST_FOLLOW, "UC1"))
+        assertEquals("favorite" to "album:MPRE1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.ALBUM_LIKE, "MPRE1"))
+        assertEquals("favorite" to "playlist:VL1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.PLAYLIST_LIKE, "VL1"))
+        assertEquals("favorite" to "podcast:POD1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.PODCAST_FAVORITE, "POD1"))
+        assertEquals("playlist" to "pl_sync_1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.LOCAL_PLAYLIST, "pl_sync_1"))
+        assertEquals("playlist" to "pl_sync_1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.LOCAL_PLAYLIST_ORDER, "pl_sync_1"))
+        assertEquals("playlist_track" to "pl_sync_1|vid1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.LOCAL_PLAYLIST_TRACK, "pl_sync_1|vid1"))
+        assertEquals("settings" to "settings", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.SETTINGS, "theme_mode"))
+        assertEquals("episode_state" to "ep1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.EPISODE_STATE, "ep1"))
+        assertEquals("history" to "ev1", StreamifySyncEngine.normalizeOutboxToChangelogKey(SyncKind.HISTORY, "ev1"))
+    }
 }
