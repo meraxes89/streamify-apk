@@ -310,9 +310,6 @@ private fun NowPlayingSoundCloudLayout(
     val isLive by remember(state.timelineFlow) {
         state.timelineFlow.map { it.isLive }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(state.timelineFlow.value.isLive)
-    val liveLengthLabel by remember(state.timelineFlow) {
-        state.timelineFlow.map { it.lengthLabel() }.distinctUntilChanged()
-    }.collectAsStateWithLifecycle(state.timelineFlow.value.lengthLabel())
     val isPlaying = state.controllerState.isPlaying
     // Paused as the listener sees it. The player also reports "not playing" while it buffers (a track
     // change, a seek), sometimes a beat before it reports loading, so only a pause that lasts shows as
@@ -662,7 +659,7 @@ private fun NowPlayingSoundCloudLayout(
                 Spacer(modifier = Modifier.height(6.dp))
                 if (isLive) {
                     SoundCloudLabel(
-                        text = liveLengthLabel,
+                        text = stringResource(Res.string.live_badge),
                         textStyle = typo().labelMedium,
                         color = colors.onSurface,
                         maxLines = 1,
