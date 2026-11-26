@@ -1,20 +1,13 @@
 # ============================================================================
 # nightly.yml — Rolling nightly prerelease pipeline (Android + Desktop).
 #
-# Triggered on every push to main (ignoring docs/assets), daily at 02:00 UTC,
-# or via workflow_dispatch.
+# Triggered daily at 02:00 UTC or via workflow_dispatch.
 # Publishes to the rolling `nightly` prerelease (`--prerelease --latest=false`)
 # using a draft-while-swapping pattern so partial uploads are never exposed.
 # ============================================================================
 name: Nightly
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      - 'assets/**'
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
