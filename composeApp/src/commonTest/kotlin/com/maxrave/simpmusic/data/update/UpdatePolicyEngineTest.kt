@@ -126,4 +126,12 @@ class UpdatePolicyEngineTest {
         assertEquals("STREAMIFY_NIGHTLY_UPDATES", UpdatePreferences.KEY_NIGHTLY_ENABLED)
         assertEquals("STREAMIFY_AUTO_INSTALL_UPDATES", UpdatePreferences.KEY_AUTO_INSTALL_ENABLED)
     }
+
+    @Test
+    fun autoInstallTriggersOnPauseOrTrackChangeOnly() {
+        assertFalse(shouldTriggerAutoInstall(initialMediaId = "track1", currentMediaId = "track1", isPlaying = true))
+        assertTrue(shouldTriggerAutoInstall(initialMediaId = "track1", currentMediaId = "track1", isPlaying = false))
+        assertTrue(shouldTriggerAutoInstall(initialMediaId = "track1", currentMediaId = "track2", isPlaying = true))
+        assertTrue(shouldTriggerAutoInstall(initialMediaId = null, currentMediaId = null, isPlaying = null))
+    }
 }

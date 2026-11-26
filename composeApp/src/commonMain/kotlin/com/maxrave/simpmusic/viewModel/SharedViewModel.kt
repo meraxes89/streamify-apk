@@ -173,8 +173,17 @@ class SharedViewModel(
                     state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Error
             }
             if (terminal !is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) return@launch
-            // Defer silent install until playback is paused/stopped so audio is never interrupted.
-            nowPlayingState.first { it?.isPlaying != true }
+            val initialMediaId =
+                nowPlayingState.value?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+            // Trigger silent install when playback pauses/stops OR when the player/user shifts to the next track.
+            nowPlayingState.first { state ->
+                val currentMediaId = state?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                com.maxrave.simpmusic.data.update.shouldTriggerAutoInstall(
+                    initialMediaId = initialMediaId,
+                    currentMediaId = currentMediaId,
+                    isPlaying = state?.isPlaying,
+                )
+            }
             if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
             com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
                 onFallbackOpenUrl = {},
