@@ -47,7 +47,6 @@ import com.maxrave.simpmusic.viewModel.SharedViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 import org.koin.core.context.loadKoinModules
 import org.koin.dsl.module

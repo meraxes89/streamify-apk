@@ -210,7 +210,7 @@ fun ArtistScreen(
 
     val playingTrack by remember {
         sharedViewModel.nowPlayingState.map { it?.track?.videoId }
-    }.collectAsState(null)
+    }.collectAsStateWithLifecycle(null)
 
     // Choosing song to show Bottom sheet
     var choosingTrack by remember {
