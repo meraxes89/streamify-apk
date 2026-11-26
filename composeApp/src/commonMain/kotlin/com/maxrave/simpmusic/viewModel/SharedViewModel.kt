@@ -506,6 +506,14 @@ class SharedViewModel(
                             ?: -1L
                     _timeline.update { it.copy(total = seededTotal) }
                     state.songEntity?.let { track ->
+                        com.streamify.sync.StreamifySyncEngine.onPlaybackTrackChanged(
+                            trackId = track.videoId,
+                            title = track.title,
+                            artistName = track.artistName?.joinToString(", ") ?: "",
+                            albumId = track.albumId ?: "",
+                            albumName = track.albumName ?: "",
+                            durationSec = track.durationSeconds,
+                        )
                         launch {
                             runCatching {
                                 com.streamify.supabase.SupabaseFriendSync.reportPlayback(
@@ -584,6 +592,7 @@ class SharedViewModel(
                             }
 
                             SimpleMediaState.Ended -> {
+                                com.streamify.sync.StreamifySyncEngine.flushActivePlaybackSession()
                                 // Park at the end of the track rather than at -1. The only formatter
                                 // for these fields renders any negative as "NA:NA", and nothing here
                                 // is guaranteed to follow: at the end of the queue the player simply
@@ -602,6 +611,18 @@ class SharedViewModel(
 
                             is SimpleMediaState.Progress -> {
                                 if (mediaState.progress >= 0L && mediaState.progress != _timeline.value.current) {
+                                    nowPlayingState.value?.songEntity?.let { activeTrack ->
+                                        if (controllerState.value.isPlaying) {
+                                            com.streamify.sync.StreamifySyncEngine.onPlaybackProgressTick(
+                                                trackId = activeTrack.videoId,
+                                                title = activeTrack.title,
+                                                artistName = activeTrack.artistName?.joinToString(", ") ?: "",
+                                                albumId = activeTrack.albumId ?: "",
+                                                albumName = activeTrack.albumName ?: "",
+                                                durationSec = activeTrack.durationSeconds,
+                                            )
+                                        }
+                                    }
                                     // A live stream never reports a length (ExoPlayer: C.TIME_UNSET), so
                                     // a missing one means "loading" for everything except a live stream.
                                     if (_timeline.value.total > 0L || _timeline.value.isLive) {

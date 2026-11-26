@@ -94,6 +94,7 @@ object StreamifySyncEngine : KoinComponent {
 
     private val mutex = Mutex()
     private val deviceIdMutex = Mutex()
+    private val playbackTracker = PlaybackSessionTracker()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private const val TAG = "StreamifySyncEngine"
@@ -1741,9 +1742,9 @@ object StreamifySyncEngine : KoinComponent {
                 put("listened_duration_sec", listenedDurationSec)
                 put("artist_id", "")
                 put("album_id", albumId)
-                put("title", song?.title ?: "")
-                put("artist_name", song?.artistName?.firstOrNull() ?: "")
-                put("album_name", song?.albumName ?: "")
+                put("title", song?.title ?: fallbackMeta?.get("title")?.jsonPrimitive?.contentOrNull ?: "")
+                put("artist_name", song?.artistName?.firstOrNull() ?: fallbackMeta?.get("artist_name")?.jsonPrimitive?.contentOrNull ?: "")
+                put("album_name", song?.albumName ?: fallbackMeta?.get("album_name")?.jsonPrimitive?.contentOrNull ?: "")
                 put("listened_at", listenedAt)
             })
         }
@@ -2180,6 +2181,80 @@ object StreamifySyncEngine : KoinComponent {
                 hlc = hlc,
                 userId = targetUserId
             )
+        }
+    }
+
+    fun onPlaybackTrackChanged(
+        trackId: String,
+        title: String,
+        artistName: String,
+        albumId: String,
+        albumName: String,
+        durationSec: Int,
+    ) {
+        val nowMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        playbackTracker.onTrackChanged(
+            trackId = trackId,
+            title = title,
+            artistName = artistName,
+            albumId = albumId,
+            albumName = albumName,
+            durationSec = durationSec,
+            nowMs = nowMs,
+        )?.let { enqueuePlaybackFlush(it) }
+    }
+
+    fun onPlaybackProgressTick(
+        trackId: String,
+        title: String,
+        artistName: String,
+        albumId: String,
+        albumName: String,
+        durationSec: Int,
+    ) {
+        val nowMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        playbackTracker.onProgressTick(
+            trackId = trackId,
+            title = title,
+            artistName = artistName,
+            albumId = albumId,
+            albumName = albumName,
+            durationSec = durationSec,
+            nowMs = nowMs,
+        )?.let { enqueuePlaybackFlush(it) }
+    }
+
+    fun flushActivePlaybackSession() {
+        playbackTracker.onPausedOrEnded()?.let { enqueuePlaybackFlush(it) }
+    }
+
+    private fun enqueuePlaybackFlush(flush: PlaybackHistoryFlush) {
+        scope.launch {
+            try {
+                val deviceId = getOrCreateDeviceId()
+                val hlc = HybridLogicalClock.now()
+                val metaJson = buildJsonObject {
+                    put("track_id", flush.trackId)
+                    put("listened_duration_sec", flush.listenedSec)
+                    put("album_id", flush.albumId)
+                    put("title", flush.title)
+                    put("artist_name", flush.artistName)
+                    put("album_name", flush.albumName)
+                    put("listened_at", Instant.fromEpochMilliseconds(flush.startedAtMs).toString())
+                }.toString()
+                syncOutboxRepository.recordPending(
+                    SyncChangeEntity(
+                        changeId = HybridLogicalClock.randomUuid(),
+                        entity = SyncKind.HISTORY,
+                        entityKey = flush.clientEventId,
+                        op = SyncOp.ADD,
+                        value = metaJson,
+                        changedAt = hlc,
+                        deviceId = deviceId,
+                    )
+                )
+            } catch (_: Exception) {
+            }
         }
     }
 
