@@ -39,6 +39,7 @@ tests: [composeApp/src/commonTest/kotlin/com/maxrave/simpmusic/data/update/, com
 
 ## Refinement backlog
 
+- Signed `version.json` policy (`scripts/sign_version_json.js` + `UpdateResolver.verifyAndCompare`), `UpdateStateHolder` `StateFlow`, non-blank SHA-256 enforcement, manual `force = true` checks, and the online-streaming capability gate (`SharedViewModel.loadMediaItemFromTrack`, preserving offline downloads) are implemented per [RFC-005](../rfc/RFC-005-signed-release-policy-and-gates.md) (#372).
 - Document the end-to-end release-to-update chain in one runbook.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 2ef784d84528c94b98a0412d8cc5101453e15b90 -->
