@@ -148,13 +148,16 @@ import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SoundCloudPlayerViewModel
 import com.maxrave.simpmusic.viewModel.UIEvent
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.comment_placeholder
 import simpmusic.composeapp.generated.resources.crossfading
+import simpmusic.composeapp.generated.resources.live_badge
 import simpmusic.composeapp.generated.resources.soundcloud_play_count_info
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -299,17 +302,24 @@ private fun NowPlayingSoundCloudLayout(
     // No scroll and no collapsing toolbar here, as in the Apple Music style.
     LaunchedEffect(Unit) { actions.onToolbarVisibilityChange(false) }
 
-    val timeline by state.timelineFlow.collectAsStateWithLifecycle()
-    val durationMs = timeline.total.coerceAtLeast(0L)
+    val durationMs by remember(state.timelineFlow) {
+        state.timelineFlow.map { it.total.coerceAtLeast(0L) }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(state.timelineFlow.value.total.coerceAtLeast(0L))
+    val isTimelineLoading by remember(state.timelineFlow) {
+        state.timelineFlow.map { it.loading }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(state.timelineFlow.value.loading)
+    val isLive by remember(state.timelineFlow) {
+        state.timelineFlow.map { it.isLive }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(state.timelineFlow.value.isLive)
     val isPlaying = state.controllerState.isPlaying
     // Paused as the listener sees it. The player also reports "not playing" while it buffers (a track
     // change, a seek), sometimes a beat before it reports loading, so only a pause that lasts shows as
     // one; a tap on the card shows its own outcome at once.
-    var paused by remember { mutableStateOf(!isPlaying && !timeline.loading) }
-    LaunchedEffect(isPlaying, timeline.loading) {
+    var paused by remember { mutableStateOf(!isPlaying && !isTimelineLoading) }
+    LaunchedEffect(isPlaying, isTimelineLoading) {
         if (isPlaying) {
             paused = false
-        } else if (!timeline.loading) {
+        } else if (!isTimelineLoading) {
             delay(PAUSE_SETTLE_MS)
             paused = true
         }
@@ -323,15 +333,14 @@ private fun NowPlayingSoundCloudLayout(
     // After a scrub the player takes a moment to report the new spot; holding the scrubbed value
     // until it does keeps the waveform from springing back to where the drag started.
     var pendingSeekMs by remember { mutableStateOf<Long?>(null) }
-    val latestReported by rememberUpdatedState(timeline.current)
     LaunchedEffect(pendingSeekMs) {
         val target = pendingSeekMs ?: return@LaunchedEffect
-        withTimeoutOrNull(SEEK_SETTLE_TIMEOUT_MS) { snapshotFlow { latestReported }.first { abs(it - target) < SEEK_SETTLED_WITHIN_MS } }
+        withTimeoutOrNull(SEEK_SETTLE_TIMEOUT_MS) { state.timelineFlow.first { abs(it.current - target) < SEEK_SETTLED_WITHIN_MS } }
         pendingSeekMs = null
     }
     // Not running while a scrub settles either: it then follows the reports, so it starts again from
     // where the player actually landed instead of gliding there from where the drag began.
-    val playhead = rememberSteadyPlayhead(rawMs = timeline.current, running = isPlaying && !scrubbing && pendingSeekMs == null)
+    val playhead = rememberSteadyPlayhead(rawMsProvider = { state.timelineFlow.value.current }, running = isPlaying && !scrubbing && pendingSeekMs == null)
     // Read where it is used (the waveform draws it every frame) rather than here, so a moving
     // playhead redraws the waveform without recomposing the whole card each frame.
     val position = remember { { if (scrubbing) scrubMs else pendingSeekMs ?: playhead.value } }
@@ -649,9 +658,9 @@ private fun NowPlayingSoundCloudLayout(
                     onClick = onOpenLyrics,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                if (timeline.isLive) {
+                if (isLive) {
                     SoundCloudLabel(
-                        text = timeline.lengthLabel(),
+                        text = stringResource(Res.string.live_badge),
                         textStyle = typo().labelMedium,
                         color = colors.onSurface,
                         maxLines = 1,
@@ -744,7 +753,7 @@ private fun NowPlayingSoundCloudLayout(
 private fun SoundCloudPlaybackStatus(state: NowPlayingContentState) = LeftToRight {
     val colors = MaterialTheme.colorScheme
     val transition = rememberInfiniteTransition(label = "soundCloudCrossfadeSweep")
-    val sweep by transition.animateFloat(
+    val sweepState = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(animation = tween(3200, easing = LinearEasing), repeatMode = RepeatMode.Restart),
@@ -761,7 +770,7 @@ private fun SoundCloudPlaybackStatus(state: NowPlayingContentState) = LeftToRigh
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (crossfading) {
                 val span = 140f
-                val head = sweep * (span * 3f) - span
+                val head = sweepState.value * (span * 3f) - span
                 Text(
                     text = stringResource(Res.string.crossfading),
                     style =

@@ -277,7 +277,7 @@ fun LibraryDynamicPlaylistScreen(
                         } else {
                             data
                         },
-                        key = { it.first.hashCode() },
+                        key = { it.second.channelId },
                     ) { artist ->
                         ArtistFullWidthItems(
                             artist.second,
@@ -312,7 +312,7 @@ fun LibraryDynamicPlaylistScreen(
                         } else {
                             data
                         },
-                        key = { it.first.hashCode() },
+                        key = { it.second.browseId },
                     ) { album ->
                         PlaylistFullWidthItems(
                             album.second,
@@ -347,7 +347,7 @@ fun LibraryDynamicPlaylistScreen(
                         } else {
                             data
                         },
-                        key = { it.hashCode() },
+                        key = { it.second.videoId },
                     ) { song ->
                         SongFullWidthItems(
                             songEntity = song.second,
@@ -507,7 +507,7 @@ fun LibraryDynamicPlaylistScreen(
 
                         else -> emptyList()
                     },
-                    key = { it.hashCode() },
+                    key = { it.videoId },
                 ) { song ->
                     SongFullWidthItems(
                         songEntity = song,

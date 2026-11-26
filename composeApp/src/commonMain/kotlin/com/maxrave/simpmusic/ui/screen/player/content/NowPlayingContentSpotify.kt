@@ -2133,7 +2133,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
             textAlign = TextAlign.Left,
         )
         val sweepTransition = rememberInfiniteTransition(label = "nowPlayingCrossfadeSweep")
-        val crossfadeSweep by sweepTransition.animateFloat(
+        val crossfadeSweepState = sweepTransition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec =
@@ -2149,7 +2149,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
             visible = timeProgressState.timeline.isCrossfading,
         ) {
             val shimmerSpan = 140f
-            val shimmerHead = crossfadeSweep * (shimmerSpan * 3f) - shimmerSpan
+            val shimmerHead = crossfadeSweepState.value * (shimmerSpan * 3f) - shimmerSpan
             val labelColor = typo().bodyMedium.color
             Text(
                 text = stringResource(Res.string.crossfading),
