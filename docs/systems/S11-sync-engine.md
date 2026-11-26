@@ -28,6 +28,8 @@ tests: [streamify-modules/supabase/src/commonTest/]
 - Echo suppression during Room writes relies on `SyncApplyingKey` (`withSyncApplying()`); missing `PlaybackEventEntity` rows for `SyncKind.HISTORY` outbox entries fall back to outbox metadata rather than being rejected.
 - `applyDeltaOp` returns `Boolean` and `syncDeltaInternal` holds the pull cursor back on any failed op so unapplied inbound mutations are retried; failed delta pulls/pushes surface `SyncStatus.Error` instead of `SyncStatus.Success`.
 - `CancellationException` is rethrown across `StreamifySyncEngine` and all `SupabaseLibrarySync` RPC wrappers; live `syncPull`/`syncPush` HTTP `Date` headers feed `HybridLogicalClock.updateServerTime`.
+- `CloudUserLike.user_id` defaults to `""` and `fetchCloudLikesWithTimeResult` / `fetchCloudLikedTracksResult` surface transport/decode errors instead of returning empty cloud likes during `LIKES` bootstrap.
+- `StreamifySyncEngine.resolveOrPersistPlaylistSyncId` persists generated UUID `syncId`s to `LocalPlaylistEntity` before cloud push; `core.patch` records `SyncKind.LIBRARY_TRACK` in `LocalDataSource.updateSongInLibrary`; `SupabaseClient.signInWithAccessToken` stores accompanying OAuth `refreshToken`s across all platforms.
 
 ## Interfaces
 
@@ -48,4 +50,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 19f03b174d83d85682607dd194f1d4ca6acb58f8 -->

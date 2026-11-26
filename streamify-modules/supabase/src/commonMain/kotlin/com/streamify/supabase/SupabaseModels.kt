@@ -58,7 +58,7 @@ data class CloudTrack(
 @Serializable
 data class CloudUserLike(
     @SerialName("user_id")
-    val user_id: String,
+    val user_id: String = "",
     @SerialName("track_id")
     val track_id: String,
     @SerialName("created_at")

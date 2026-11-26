@@ -112,7 +112,14 @@ object SupabaseLibrarySync {
     /**
      * Fetches all cloud-liked track IDs with their like timestamp (`created_at`).
      */
-    suspend fun fetchCloudLikesWithTime(userId: String? = null): Map<String, String?> = withContext(ioDispatcher) {
+    internal fun decodeCloudUserLikes(rawJson: String): List<CloudUserLike> =
+        json.decodeFromString<List<CloudUserLike>>(rawJson)
+
+    /**
+     * Fetches all cloud-liked track IDs with their creation timestamps for LWW resolution.
+     * Distinguishes transport/decode failures from an empty cloud ledger.
+     */
+    suspend fun fetchCloudLikesWithTimeResult(userId: String? = null): Result<Map<String, String?>> = withContext(ioDispatcher) {
         val allLikes = mutableMapOf<String, String?>()
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
@@ -122,15 +129,17 @@ object SupabaseLibrarySync {
                 val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
                     parameter("user_id", "eq.$targetUserId")
                     parameter("deleted_at", "is.null")
-                    parameter("select", "track_id,created_at")
+                    parameter("select", "user_id,track_id,created_at")
                     parameter("order", "created_at.asc,track_id.asc")
                     parameter("offset", offset.toString())
                     parameter("limit", limit.toString())
                     header("apikey", SupabaseConfig.ANON_KEY)
                     header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                 }
-                if (!resp.status.isSuccess()) break
-                val list = json.decodeFromString<List<CloudUserLike>>(resp.bodyAsText())
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value} fetching user_likes"))
+                }
+                val list = decodeCloudUserLikes(resp.bodyAsText())
                 if (list.isEmpty()) break
                 list.forEach {
                     allLikes[it.track_id] = it.created_at
@@ -138,11 +147,18 @@ object SupabaseLibrarySync {
                 offset += list.size
                 if (list.size < limit) break
             }
+            Result.success(allLikes)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
         }
-        allLikes
     }
+
+    /**
+     * Fetches all cloud-liked track IDs with their creation timestamps for LWW resolution.
+     */
+    suspend fun fetchCloudLikesWithTime(userId: String? = null): Map<String, String?> =
+        fetchCloudLikesWithTimeResult(userId).getOrDefault(emptyMap())
 
     /**
      * Fetches all cloud-liked track IDs for this user with automatic pagination beyond PostgREST 1000-row limit.
@@ -214,14 +230,16 @@ object SupabaseLibrarySync {
     }
 
     /**
-     * Fetches full CloudTrack metadata for all liked songs of this user.
+     * Fetches full CloudTrack metadata for all liked songs of this user, preserving failures.
      * Batches requests in chunks of 40 IDs to avoid query string truncation.
      */
-    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> = withContext(ioDispatcher) {
+    suspend fun fetchCloudLikedTracksResult(userId: String? = null): Result<List<CloudTrack>> = withContext(ioDispatcher) {
         try {
-            val likesMap = fetchCloudLikesWithTime(userId)
+            val likesMap = fetchCloudLikesWithTimeResult(userId).getOrElse {
+                return@withContext Result.failure(it)
+            }
             val likedIds = likesMap.keys.toList()
-            if (likedIds.isEmpty()) return@withContext emptyList()
+            if (likedIds.isEmpty()) return@withContext Result.success(emptyList())
 
             val resultTracks = mutableListOf<CloudTrack>()
             val chunks = likedIds.chunked(40)
@@ -232,20 +250,28 @@ object SupabaseLibrarySync {
                     header("apikey", SupabaseConfig.ANON_KEY)
                     header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                 }
-                if (resp.status.isSuccess()) {
-                    val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
-                    resultTracks.addAll(tracks.map { track ->
-                        val likedTime = likesMap[track.id]
-                        if (likedTime != null) track.copy(createdAt = likedTime) else track
-                    })
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value} fetching liked tracks"))
                 }
+                val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
+                resultTracks.addAll(tracks.map { track ->
+                    val likedTime = likesMap[track.id]
+                    if (likedTime != null) track.copy(createdAt = likedTime) else track
+                })
             }
-            resultTracks
+            Result.success(resultTracks)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            emptyList()
+            Result.failure(e)
         }
     }
+
+    /**
+     * Fetches full CloudTrack metadata for all liked songs of this user.
+     * Batches requests in chunks of 40 IDs to avoid query string truncation.
+     */
+    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> =
+        fetchCloudLikedTracksResult(userId).getOrDefault(emptyList())
 
     /**
      * Fetches favorited artist or album IDs from user_item_favorites.
