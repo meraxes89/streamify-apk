@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import com.streamify.graphics.tokens.PrimitiveTokens
+import com.streamify.graphics.visualizer.GpuDataTexture
 
 /**
  * Frozen render request passed from the `Modifier.streamifyGlass` facade to
@@ -102,6 +103,7 @@ interface SovereignGraphicsEngine {
  * never trigger recomposition.
  */
 sealed class EffectUniformSlot(val name: String) {
+    class Int1(name: String, val value: () -> Int) : EffectUniformSlot(name)
     class Float1(name: String, val value: () -> Float) : EffectUniformSlot(name)
     class Float2(name: String, val x: () -> Float, val y: () -> Float) : EffectUniformSlot(name)
     class Float3(name: String, val x: () -> Float, val y: () -> Float, val z: () -> Float) : EffectUniformSlot(name)
@@ -113,6 +115,7 @@ sealed class EffectUniformSlot(val name: String) {
         val w: () -> Float,
     ) : EffectUniformSlot(name)
     class Color4(name: String, val color: () -> Color) : EffectUniformSlot(name)
+    class DataTexture(name: String, val texture: () -> GpuDataTexture?) : EffectUniformSlot(name)
 }
 
 /**
@@ -122,7 +125,7 @@ class EffectRenderRequest(
     val effectId: String,
     val shape: Shape = RectangleShape,
     val fallbackColor: Color = Color.Unspecified,
-    val resolutionUniform: String? = "iResolution",
+    val resolutionUniform: String? = "resolution",
     val uniforms: List<EffectUniformSlot> = emptyList(),
 )
 

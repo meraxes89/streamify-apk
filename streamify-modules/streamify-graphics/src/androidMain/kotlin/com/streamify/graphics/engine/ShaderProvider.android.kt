@@ -28,6 +28,8 @@ import com.streamify.graphics.governor.CapabilityProbe
 import com.streamify.graphics.governor.RenderTier
 import com.streamify.graphics.tokens.PrimitiveTokens
 import com.streamify.graphics.tokens.SemanticTokens
+import com.streamify.graphics.visualizer.GpuDataTexture
+import java.nio.ByteBuffer
 
 /**
  * Android actual of the platform shader adapter
@@ -231,13 +233,30 @@ private object Blur31Isolated {
  * section 1: no CPU pixel stalls).
  */
 @RequiresApi(33)
+private class AgslCachedEffect(
+    val shader: android.graphics.RuntimeShader,
+    val brush: ShaderBrush,
+)
+
+@RequiresApi(33)
+private class AgslCachedDataTexture(
+    val width: Int,
+    val height: Int,
+    val bitmap: android.graphics.Bitmap,
+    val shader: android.graphics.BitmapShader,
+    var lastStamp: Long = -1L,
+)
+
+@RequiresApi(33)
 private class AgslRuntimeShaderEngine(
     private val chromaticSpread: Float,
     private val tier: RenderTier,
 ) : SovereignGraphicsEngine {
 
     /** Lazy cache of compiled custom [GraphicsEffectRegistry] shaders; `null` marks compile failure. */
-    private val effectShaderCache = HashMap<String, android.graphics.RuntimeShader?>()
+    private val effectShaderCache = HashMap<String, AgslCachedEffect?>()
+    private val dataTextureCache = HashMap<String, AgslCachedDataTexture>()
+    private val effectPath = Path()
 
     /** Throws on an AGSL-incompatible source — deliberate; the provider degrades the lane. */
     private val runtimeShader: android.graphics.RuntimeShader =
@@ -293,19 +312,21 @@ private class AgslRuntimeShaderEngine(
             drawEffectFallback(scope, request)
             return
         }
-        val shader = if (effectShaderCache.containsKey(effect.id)) {
+        val cached = if (effectShaderCache.containsKey(effect.id)) {
             effectShaderCache[effect.id]
         } else {
             val compiled = runCatching {
-                android.graphics.RuntimeShader(effect.transpileToAgsl())
+                val rs = android.graphics.RuntimeShader(effect.transpileToAgsl())
+                AgslCachedEffect(rs, ShaderBrush(rs))
             }.getOrNull()
             effectShaderCache[effect.id] = compiled
             compiled
         }
-        if (shader == null) {
+        if (cached == null) {
             drawEffectFallback(scope, request)
             return
         }
+        val shader = cached.shader
         try {
             val resName = request.resolutionUniform
             if (resName != null) {
@@ -313,6 +334,7 @@ private class AgslRuntimeShaderEngine(
             }
             for (slot in request.uniforms) {
                 when (slot) {
+                    is EffectUniformSlot.Int1 -> shader.setIntUniform(slot.name, slot.value())
                     is EffectUniformSlot.Float1 -> shader.setFloatUniform(slot.name, slot.value())
                     is EffectUniformSlot.Float2 -> shader.setFloatUniform(slot.name, slot.x(), slot.y())
                     is EffectUniformSlot.Float3 -> shader.setFloatUniform(slot.name, slot.x(), slot.y(), slot.z())
@@ -321,24 +343,59 @@ private class AgslRuntimeShaderEngine(
                         val c = slot.color()
                         shader.setFloatUniform(slot.name, c.red, c.green, c.blue, c.alpha)
                     }
+                    is EffectUniformSlot.DataTexture -> {
+                        val tex = slot.texture()
+                        if (tex == null) {
+                            drawEffectFallback(scope, request)
+                            return
+                        }
+                        val childShader = uploadDataTexture(slot.name, tex)
+                        shader.setInputShader(slot.name, childShader)
+                    }
                 }
             }
             with(scope) {
                 val outline = request.shape.createOutline(size, layoutDirection, this)
-                val path = Path().apply {
-                    when (outline) {
-                        is Outline.Rectangle -> addRect(outline.rect)
-                        is Outline.Rounded -> addRoundRect(outline.roundRect)
-                        is Outline.Generic -> addPath(outline.path)
-                    }
+                effectPath.reset()
+                when (outline) {
+                    is Outline.Rectangle -> effectPath.addRect(outline.rect)
+                    is Outline.Rounded -> effectPath.addRoundRect(outline.roundRect)
+                    is Outline.Generic -> effectPath.addPath(outline.path)
                 }
-                clipPath(path) {
-                    drawRect(brush = ShaderBrush(shader))
+                clipPath(effectPath) {
+                    drawRect(brush = cached.brush)
                 }
             }
         } catch (_: Throwable) {
             drawEffectFallback(scope, request)
         }
+    }
+
+    private fun uploadDataTexture(slotName: String, tex: GpuDataTexture): android.graphics.BitmapShader {
+        val existing = dataTextureCache[slotName]
+        val entry = if (existing != null && existing.width == tex.textureWidth && existing.height == tex.textureHeight) {
+            existing
+        } else {
+            val bmp = android.graphics.Bitmap.createBitmap(
+                tex.textureWidth,
+                tex.textureHeight,
+                android.graphics.Bitmap.Config.ARGB_8888,
+            )
+            val bs = android.graphics.BitmapShader(
+                bmp,
+                android.graphics.Shader.TileMode.CLAMP,
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+            AgslCachedDataTexture(tex.textureWidth, tex.textureHeight, bmp, bs).also {
+                dataTextureCache[slotName] = it
+            }
+        }
+        val stamp = tex.frameStamp
+        if (entry.lastStamp != stamp) {
+            entry.bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(tex.payload))
+            entry.lastStamp = stamp
+        }
+        return entry.shader
     }
 }
 
