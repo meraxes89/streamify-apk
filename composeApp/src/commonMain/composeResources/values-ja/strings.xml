@@ -715,7 +715,7 @@
     <string name="local_tracking_description">再生履歴をローカルデータベースに記録しま す</string>
     <string name="blog_notification_title">ブログ投稿の通知</string>
     <string name="blog_notification_description">新しいブログ投稿が公開されたときに通知されます</string>
-    <string name="simpmusic_charts">SimpMusic チャート</string>
+    <string name="simpmusic_charts">Streamify チャート</string>
     <string name="crossfading">クロスフェード</string>
     <string name="your_320kbps_url">320kbpsのURL</string>
     <string name="your_320kbps_url_description">アップタイムチェッカーから作業中の URL を自動的に選択するには、空白のままにします。</string>
