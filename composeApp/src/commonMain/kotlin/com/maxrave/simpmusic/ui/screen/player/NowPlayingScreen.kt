@@ -192,10 +192,7 @@ fun NowPlayingScreenContent(
     // ViewModel State
     val controllerState by sharedViewModel.controllerState.collectAsStateWithLifecycle()
     val screenDataState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()
-    val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
-    // Audio-delay correction, read here and applied ONLY to the lyric line below. The seek bar and
-    // the elapsed-time readout keep the raw position: they report where the player is, while a
-    // lyric reports what the ear is hearing, and those two are what the offset separates.
+    // Audio-delay correction, read here for in-line word sweeps (Apple Music lyric strip).
     val lyricsOffsetMs by sharedViewModel.getLyricsOffsetMs().collectAsStateWithLifecycle(0)
     val autoBluetoothDelayMs by com.streamify.lyrics.slyr.BluetoothLatencyTracker.dynamicDelayMs.collectAsStateWithLifecycle()
     val effectiveLyricsOffsetMs = lyricsOffsetMs + autoBluetoothDelayMs
@@ -496,51 +493,6 @@ fun NowPlayingScreenContent(
         Logger.d(TAG, "spotShadowColor: $spotShadowColor")
     }
 
-    var isSliding by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var sliderValue by rememberSaveable {
-        mutableFloatStateOf(0f)
-    }
-    LaunchedEffect(key1 = timelineState, key2 = isSliding) {
-        if (!isSliding) {
-            sliderValue =
-                if (timelineState.total > 0L) {
-                    timelineState.current.toFloat() * 100 / timelineState.total.toFloat()
-                } else {
-                    0f
-                }
-        }
-    }
-
-    // Crossfade: RGB rainbow color cycling when transitioning between tracks.
-    // Gated behind isCrossfading to avoid unconditional 60/120 Hz recomposition of the shell.
-    val sliderTrackColor by if (timelineState.isCrossfading) {
-        val infiniteTransition = rememberInfiniteTransition(label = "crossfadeRainbow")
-        val rainbowHue by infiniteTransition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(1000, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart,
-                ),
-            label = "rainbowHue",
-        )
-        val rainbowColor = hsvToColor(rainbowHue, 1f, 1f)
-        animateColorAsState(
-            targetValue = rainbowColor,
-            animationSpec = tween(300),
-            label = "sliderCrossfadeColor",
-        )
-    } else {
-        animateColorAsState(
-            targetValue = Color.White,
-            animationSpec = tween(300),
-            label = "sliderCrossfadeColor",
-        )
-    }
-
     // Show ControlLayout Or Show Artist Badge
     var showHideControlLayout by rememberSaveable {
         mutableStateOf(true)
@@ -601,79 +553,6 @@ fun NowPlayingScreenContent(
             }
     }
 
-    var currentLyricLineIndex by rememberSaveable {
-        mutableIntStateOf(-1)
-    }
-
-    // Canvas subtitle sync: fast-path window check and binary search to avoid O(N) loop every 50ms tick
-    LaunchedEffect(timelineState.current, screenDataState.lyricsData?.lyrics, effectiveLyricsOffsetMs) {
-        val lyrics = screenDataState.lyricsData?.lyrics
-        if (lyrics == null || lyrics.syncType == "UNSYNCED" || lyrics.syncType == null) {
-            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
-            return@LaunchedEffect
-        }
-        val lines = lyrics.lines ?: return@LaunchedEffect
-        if (lines.isEmpty()) {
-            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
-            return@LaunchedEffect
-        }
-        val nowMs = timelineState.current - effectiveLyricsOffsetMs
-        if (nowMs <= 0L) {
-            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
-            return@LaunchedEffect
-        }
-        val firstStart = lines[0].startTimeMs.toLongOrNull() ?: 0L
-        if (nowMs < firstStart) {
-            if (currentLyricLineIndex != -1) currentLyricLineIndex = -1
-            return@LaunchedEffect
-        }
-
-        // Fast path: if ear is still within current lyric line's window, do nothing
-        val curIdx = currentLyricLineIndex
-        if (curIdx in lines.indices) {
-            val curStart = lines[curIdx].startTimeMs.toLongOrNull() ?: 0L
-            val curEnd = if (curIdx < lines.size - 1) {
-                lines[curIdx + 1].startTimeMs.toLongOrNull() ?: 0L
-            } else {
-                curStart + 60000L
-            }
-            if (nowMs in curStart..curEnd) {
-                return@LaunchedEffect
-            }
-        }
-
-        // Binary search for the active line index
-        var low = 0
-        var high = lines.size - 1
-        var bestIdx = -1
-        while (low <= high) {
-            val mid = (low + high).ushr(1)
-            val midStart = lines[mid].startTimeMs.toLongOrNull() ?: 0L
-            if (midStart <= nowMs) {
-                bestIdx = mid
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
-        }
-
-        val targetIdx = if (bestIdx in lines.indices) {
-            val startMs = lines[bestIdx].startTimeMs.toLongOrNull() ?: 0L
-            val endMs = if (bestIdx < lines.size - 1) {
-                lines[bestIdx + 1].startTimeMs.toLongOrNull() ?: 0L
-            } else {
-                startMs + 60000L
-            }
-            if (nowMs in startMs..endMs) bestIdx else -1
-        } else {
-            -1
-        }
-
-        if (currentLyricLineIndex != targetIdx) {
-            currentLyricLineIndex = targetIdx
-        }
-    }
-
     if (screenDataState.lyricsData != null && controllerState.isPlaying) {
         KeepScreenOn()
     }
@@ -681,8 +560,8 @@ fun NowPlayingScreenContent(
         NowPlayingContentState(
             screenData = screenDataState,
             controllerState = controllerState,
-            timelineState = timelineState,
             timelineFlow = sharedViewModel.timeline,
+            currentLyricLineIndexFlow = sharedViewModel.currentLyricLineIndex,
             likeStatus = likeStatus == YouTubeLikeStatus.LIKE,
             castState = castState,
             shouldShowVideo = shouldShowVideo,
@@ -694,9 +573,6 @@ fun NowPlayingScreenContent(
             endColor = endColor,
             spotShadowColor = spotShadowColor,
             gradientOffset = gradientOffset,
-            sliderTrackColor = sliderTrackColor,
-            sliderValue = sliderValue,
-            currentLyricLineIndex = currentLyricLineIndex,
             showControlLayout = showHideControlLayout,
             controlLayoutAlpha = controlLayoutAlpha,
             showHideMiddleLayout = showHideMiddleLayout,
@@ -710,7 +586,6 @@ fun NowPlayingScreenContent(
             videoAspectRatio = rememberVideoAspectRatio(MAIN_PLAYER) ?: 16f / 9,
             videoId = commentsVideoId,
         )
-    val currentSliderValue by rememberUpdatedState(sliderValue)
     val currentScreenDataState by rememberUpdatedState(screenDataState)
     val actions =
         remember(sharedViewModel, mediaPlayerHandler, navController, onDismiss, coroutineScope) {
@@ -720,16 +595,8 @@ fun NowPlayingScreenContent(
                     mediaPlayerHandler.playMediaItemInMediaSource(index)
                 },
                 onArtworkBitmap = { sharedViewModel.setBitmap(it) },
-                onSliderChange = { newValue ->
-                    isSliding = true
-                    sliderValue = newValue
-                },
-                onSliderChangeFinished = {
-                    isSliding = false
-                    sharedViewModel.onUIEvent(
-                        UIEvent.UpdateProgress(currentSliderValue),
-                    )
-                },
+                onSliderChange = {},
+                onSliderChangeFinished = {},
                 onToggleControls = {
                     showHideJob = true
                     showHideControlLayout = !showHideControlLayout
@@ -950,7 +817,7 @@ fun NowPlayingScreenContent(
                 onTimestamp = { raw ->
                     // The rule the Info card's description follows: only a time inside the track seeks.
                     val timestamp = parseTimestampToMilliseconds(raw)
-                    val total = timelineState.total
+                    val total = sharedViewModel.timeline.value.total
                     if (timestamp != 0.0 && timestamp < total) {
                         sharedViewModel.onUIEvent(UIEvent.UpdateProgress(((timestamp * 100) / total).toFloat()))
                     }

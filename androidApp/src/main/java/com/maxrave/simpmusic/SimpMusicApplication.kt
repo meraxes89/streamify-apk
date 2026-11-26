@@ -2,7 +2,6 @@ package com.maxrave.simpmusic
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.database.CursorWindow
 import android.os.Build
 import android.util.Log
 import androidx.work.Configuration
@@ -45,7 +44,6 @@ import org.simpmusic.crashlytics.configCrashlytics
 import org.simpmusic.discord.configDiscord
 import org.simpmusic.lastfm.configLastfm
 import java.io.File
-import java.lang.reflect.Field
 
 class SimpMusicApplication :
     Application(),
@@ -115,12 +113,6 @@ class SimpMusicApplication :
             .minTimeBetweenCrashesMs(2000) // default: 3000 //default: bug image
             .restartActivity(MainActivity::class.java) // default: null (your app's launch activity)
             .apply()
-
-        @SuppressLint("DiscouragedPrivateApi")
-        val field: Field = CursorWindow::class.java.getDeclaredField("sCursorWindowSize")
-        field.isAccessible = true
-        val expectSize = 100 * 1024 * 1024
-        field.set(null, expectSize)
 
         AppContext.apply {
             set(applicationContext)

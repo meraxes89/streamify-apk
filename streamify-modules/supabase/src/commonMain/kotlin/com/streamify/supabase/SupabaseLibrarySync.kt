@@ -10,10 +10,15 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -99,6 +104,7 @@ object SupabaseLibrarySync {
                 Result.success(resp.status.isSuccess())
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -106,38 +112,53 @@ object SupabaseLibrarySync {
     /**
      * Fetches all cloud-liked track IDs with their like timestamp (`created_at`).
      */
-    suspend fun fetchCloudLikesWithTime(userId: String? = null): Map<String, String?> = withContext(ioDispatcher) {
+    internal fun decodeCloudUserLikes(rawJson: String): List<CloudUserLike> =
+        json.decodeFromString<List<CloudUserLike>>(rawJson)
+
+    /**
+     * Fetches all cloud-liked track IDs with their creation timestamps for LWW resolution.
+     * Distinguishes transport/decode failures from an empty cloud ledger.
+     */
+    suspend fun fetchCloudLikesWithTimeResult(userId: String? = null): Result<Map<String, String?>> = withContext(ioDispatcher) {
         val allLikes = mutableMapOf<String, String?>()
         try {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
-            var lastCreatedAt: String? = null
+            var offset = 0
             val limit = 500
             while (true) {
                 val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes") {
                     parameter("user_id", "eq.$targetUserId")
                     parameter("deleted_at", "is.null")
-                    parameter("select", "track_id,created_at")
-                    parameter("order", "created_at.asc")
-                    if (lastCreatedAt != null) {
-                        parameter("created_at", "gt.$lastCreatedAt")
-                    }
+                    parameter("select", "user_id,track_id,created_at")
+                    parameter("order", "created_at.asc,track_id.asc")
+                    parameter("offset", offset.toString())
                     parameter("limit", limit.toString())
                     header("apikey", SupabaseConfig.ANON_KEY)
                     header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                 }
-                if (!resp.status.isSuccess()) break
-                val list = json.decodeFromString<List<CloudUserLike>>(resp.bodyAsText())
-                if (list.isEmpty()) break
-                list.forEach { 
-                    allLikes[it.track_id] = it.created_at 
-                    if (it.created_at != null) lastCreatedAt = it.created_at
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value} fetching user_likes"))
                 }
+                val list = decodeCloudUserLikes(resp.bodyAsText())
+                if (list.isEmpty()) break
+                list.forEach {
+                    allLikes[it.track_id] = it.created_at
+                }
+                offset += list.size
                 if (list.size < limit) break
             }
-        } catch (_: Exception) {
+            Result.success(allLikes)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
         }
-        allLikes
     }
+
+    /**
+     * Fetches all cloud-liked track IDs with their creation timestamps for LWW resolution.
+     */
+    suspend fun fetchCloudLikesWithTime(userId: String? = null): Map<String, String?> =
+        fetchCloudLikesWithTimeResult(userId).getOrDefault(emptyMap())
 
     /**
      * Fetches all cloud-liked track IDs for this user with automatic pagination beyond PostgREST 1000-row limit.
@@ -203,19 +224,22 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
 
     /**
-     * Fetches full CloudTrack metadata for all liked songs of this user.
+     * Fetches full CloudTrack metadata for all liked songs of this user, preserving failures.
      * Batches requests in chunks of 40 IDs to avoid query string truncation.
      */
-    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> = withContext(ioDispatcher) {
+    suspend fun fetchCloudLikedTracksResult(userId: String? = null): Result<List<CloudTrack>> = withContext(ioDispatcher) {
         try {
-            val likesMap = fetchCloudLikesWithTime(userId)
+            val likesMap = fetchCloudLikesWithTimeResult(userId).getOrElse {
+                return@withContext Result.failure(it)
+            }
             val likedIds = likesMap.keys.toList()
-            if (likedIds.isEmpty()) return@withContext emptyList()
+            if (likedIds.isEmpty()) return@withContext Result.success(emptyList())
 
             val resultTracks = mutableListOf<CloudTrack>()
             val chunks = likedIds.chunked(40)
@@ -226,19 +250,28 @@ object SupabaseLibrarySync {
                     header("apikey", SupabaseConfig.ANON_KEY)
                     header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
                 }
-                if (resp.status.isSuccess()) {
-                    val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
-                    resultTracks.addAll(tracks.map { track ->
-                        val likedTime = likesMap[track.id]
-                        if (likedTime != null) track.copy(createdAt = likedTime) else track
-                    })
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value} fetching liked tracks"))
                 }
+                val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
+                resultTracks.addAll(tracks.map { track ->
+                    val likedTime = likesMap[track.id]
+                    if (likedTime != null) track.copy(createdAt = likedTime) else track
+                })
             }
-            resultTracks
+            Result.success(resultTracks)
         } catch (e: Exception) {
-            emptyList()
+            if (e is CancellationException) throw e
+            Result.failure(e)
         }
     }
+
+    /**
+     * Fetches full CloudTrack metadata for all liked songs of this user.
+     * Batches requests in chunks of 40 IDs to avoid query string truncation.
+     */
+    suspend fun fetchCloudLikedTracks(userId: String? = null): List<CloudTrack> =
+        fetchCloudLikedTracksResult(userId).getOrDefault(emptyList())
 
     /**
      * Fetches favorited artist or album IDs from user_item_favorites.
@@ -261,6 +294,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -285,6 +319,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -332,6 +367,7 @@ object SupabaseLibrarySync {
                 Result.success(resp.status.isSuccess())
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -423,6 +459,7 @@ object SupabaseLibrarySync {
 
             Result.success(plResp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -445,7 +482,8 @@ object SupabaseLibrarySync {
             } else {
                 emptyList()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             emptyList()
         }
     }
@@ -483,6 +521,7 @@ object SupabaseLibrarySync {
                 Result.success(resp.status.isSuccess())
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -520,6 +559,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -542,7 +582,8 @@ object SupabaseLibrarySync {
             } else {
                 emptyList()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             emptyList()
         }
     }
@@ -578,6 +619,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -621,6 +663,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -637,6 +680,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -659,6 +703,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -682,6 +727,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -706,6 +752,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -735,6 +782,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -760,6 +808,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -804,6 +853,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -855,6 +905,7 @@ object SupabaseLibrarySync {
             }
             Result.success(true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -881,6 +932,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -908,6 +960,7 @@ object SupabaseLibrarySync {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
     }
@@ -942,6 +995,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -979,6 +1033,7 @@ object SupabaseLibrarySync {
                 Result.success(null)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1022,12 +1077,15 @@ object SupabaseLibrarySync {
 
             val resp = postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_push", payload)
             if (resp.status.isSuccess()) {
+                val serverTimeMs = parseHttpDateToEpochMs(resp.headers[HttpHeaders.Date])
                 val result = json.decodeFromString<SyncPushResult>(resp.bodyAsText())
+                    .copy(serverTimeMs = serverTimeMs)
                 Result.success(result)
             } else {
                 Result.failure(Exception("sync_push failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1051,12 +1109,15 @@ object SupabaseLibrarySync {
 
             val resp = postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/rpc/sync_pull", payload)
             if (resp.status.isSuccess()) {
+                val serverTimeMs = parseHttpDateToEpochMs(resp.headers[HttpHeaders.Date])
                 val result = json.decodeFromString<SyncPullResult>(resp.bodyAsText())
+                    .copy(serverTimeMs = serverTimeMs)
                 Result.success(result)
             } else {
                 Result.failure(Exception("sync_pull failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1090,6 +1151,7 @@ object SupabaseLibrarySync {
             }
             Result.success(resp.status.isSuccess())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1112,6 +1174,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("get_latest_presence failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1157,6 +1220,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("record_device_session failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1183,6 +1247,7 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("revoke_device_session failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -1205,7 +1270,48 @@ object SupabaseLibrarySync {
                 Result.failure(Exception("get_my_devices failed HTTP ${resp.status.value}: ${resp.bodyAsText()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Parses an HTTP `Date` header (RFC 1123, e.g. `Thu, 26 Nov 2026 01:30:00 GMT`) into epoch ms.
+     * Returns `null` if the header is missing or malformed.
+     */
+    internal fun parseHttpDateToEpochMs(dateHeader: String?): Long? {
+        if (dateHeader.isNullOrBlank()) return null
+        val afterComma = dateHeader.substringAfter(',', dateHeader).trim()
+        val parts = afterComma.split(' ').filter { it.isNotBlank() }
+        if (parts.size < 4) return null
+        val day = parts[0].toIntOrNull() ?: return null
+        val month = when (parts[1].lowercase()) {
+            "jan" -> 1
+            "feb" -> 2
+            "mar" -> 3
+            "apr" -> 4
+            "may" -> 5
+            "jun" -> 6
+            "jul" -> 7
+            "aug" -> 8
+            "sep" -> 9
+            "oct" -> 10
+            "nov" -> 11
+            "dec" -> 12
+            else -> return null
+        }
+        val year = parts[2].toIntOrNull() ?: return null
+        val timeParts = parts[3].split(':')
+        if (timeParts.size != 3) return null
+        val hour = timeParts[0].toIntOrNull() ?: return null
+        val minute = timeParts[1].toIntOrNull() ?: return null
+        val second = timeParts[2].toIntOrNull() ?: return null
+        return try {
+            LocalDateTime(year, month, day, hour, minute, second)
+                .toInstant(TimeZone.UTC)
+                .toEpochMilliseconds()
+        } catch (_: Exception) {
+            null
         }
     }
 

@@ -57,14 +57,11 @@ interface SyncOutboxRepository {
     suspend fun pruneSent(beforeTimestamp: Long)
     suspend fun getPlaybackEventsBySyncIds(syncIds: List<String>): List<PlaybackEventEntity>
     suspend fun getLocalPlaylistBySyncId(syncId: String): LocalPlaylistEntity?
+    suspend fun setLocalPlaylistSyncId(id: Long, syncId: String)
     suspend fun getPlaylistTrackOrder(playlistId: Long): List<String>
     suspend fun getPendingCount(): Int
 }
 
-object SyncApplyingKey : kotlin.coroutines.CoroutineContext.Key<SyncApplying>
-
-object SyncApplying : kotlin.coroutines.AbstractCoroutineContextElement(SyncApplyingKey)
-
-fun withSyncApplying(): kotlin.coroutines.CoroutineContext = SyncApplying
+expect fun withSyncApplying(): kotlin.coroutines.CoroutineContext
 
 expect fun createPlatformSyncOutboxRepository(): SyncOutboxRepository

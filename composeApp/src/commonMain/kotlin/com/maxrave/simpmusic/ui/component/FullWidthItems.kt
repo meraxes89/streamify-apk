@@ -42,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +61,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -106,6 +110,7 @@ import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.add_to_queue
 import simpmusic.composeapp.generated.resources.album
 import simpmusic.composeapp.generated.resources.artists
+import simpmusic.composeapp.generated.resources.more
 import simpmusic.composeapp.generated.resources.play_next
 import simpmusic.composeapp.generated.resources.playlist
 import simpmusic.composeapp.generated.resources.podcasts
@@ -160,15 +165,16 @@ fun SongFullWidthItems(
     val isLive = track?.isLive == true || songEntity?.isLive == true || storedSong?.isLive == true
     val offsetX = remember { Animatable(initialValue = 0f) }
     var heightDp by remember { mutableStateOf(0.dp) }
+    val shouldShowAddToQueue by remember { derivedStateOf { offsetX.value >= maxOffset / 2 } }
 
     Box(
         modifier =
         modifier,
     ) {
         Crossfade(
-            offsetX.value >= maxOffset / 2,
-        ) { shouldShowAddToQueue ->
-            if (shouldShowAddToQueue) {
+            shouldShowAddToQueue,
+        ) { showAddToQueue ->
+            if (showAddToQueue) {
                 // Where Add to queue is blocked the swipe plays the song next instead
                 // (SharedViewModel.addListToQueue), so the icon shows what will happen.
                 val playsNext = rememberAddToQueueBlock() != null
@@ -208,7 +214,9 @@ fun SongFullWidthItems(
                     }
                     .background(
                         if (isSelected) seed.copy(alpha = 0.18f) else Color.Transparent,
-                    ).combinedClickable(
+                    ).semantics(mergeDescendants = true) {
+                        role = androidx.compose.ui.semantics.Role.Button
+                    }.combinedClickable(
                         interactionSource = interactionSource,
                         indication = null,
                         onClick = {
@@ -381,7 +389,7 @@ fun SongFullWidthItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AnimatedVisibility(
@@ -442,7 +450,12 @@ fun SongFullWidthItems(
                 // Hidden while selecting: the per-item menu moves up to the selection app bar,
                 // so one tap cannot mean both "act on this song" and "pick this song".
                 if (onMoreClickListener != null && !selectionMode) {
-                    RippleIconButton(imageVector = SimpIcons.MoreVert, fillMaxSize = false, tint = contentColor) {
+                    RippleIconButton(
+                        imageVector = SimpIcons.MoreVert,
+                        fillMaxSize = false,
+                        tint = contentColor,
+                        contentDescription = stringResource(Res.string.more),
+                    ) {
                         if (itemVideoId.isNotBlank()) onMoreClickListener.invoke(itemVideoId)
                     }
                 }
@@ -568,7 +581,7 @@ fun SuggestItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                 }
             }
@@ -738,7 +751,7 @@ fun PlaylistFullWidthItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                 }
 
@@ -755,7 +768,7 @@ fun PlaylistFullWidthItems(
                                 .basicMarquee(
                                     iterations = Int.MAX_VALUE,
                                     animationMode = MarqueeAnimationMode.Immediately,
-                                ).focusable(),
+                                ),
                     )
                 }
             }

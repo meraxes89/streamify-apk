@@ -197,6 +197,9 @@ class SharedViewModel(
     private val _intent: MutableStateFlow<GenericIntent?> = MutableStateFlow(null)
     val intent: StateFlow<GenericIntent?> = _intent
 
+    private val _intentSeq = MutableStateFlow(0L)
+    val intentSeq: StateFlow<Long> = _intentSeq
+
     private val _showNotificationPermissionDialog = MutableStateFlow(false)
     val showNotificationPermissionDialog: StateFlow<Boolean> = _showNotificationPermissionDialog
 
@@ -272,6 +275,24 @@ class SharedViewModel(
             NowPlayingScreenData.initial(),
         )
     val nowPlayingScreenData: StateFlow<NowPlayingScreenData> = _nowPlayingScreenData
+
+    private var lastComputedLyricLineIndex = -1
+    val currentLyricLineIndex: StateFlow<Int> =
+        combine(
+            _timeline,
+            _nowPlayingScreenData,
+            getLyricsOffsetMs(),
+            com.streamify.lyrics.slyr.BluetoothLatencyTracker.dynamicDelayMs,
+        ) { timeline, screenData, lyricsOffsetMs, autoBtDelayMs ->
+            val nextIdx = computeActiveLyricLineIndex(
+                positionMs = timeline.current,
+                lyrics = screenData.lyricsData?.lyrics,
+                offsetMs = lyricsOffsetMs + autoBtDelayMs,
+                previousIndex = lastComputedLyricLineIndex,
+            )
+            lastComputedLyricLineIndex = nextIdx
+            nextIdx
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), -1)
 
     private var _likeStatus = MutableStateFlow(YouTubeLikeStatus.INDIFFERENT)
     val likeStatus: StateFlow<YouTubeLikeStatus> = _likeStatus
@@ -639,6 +660,9 @@ class SharedViewModel(
 
     fun setIntent(intent: GenericIntent?) {
         _intent.value = intent
+        if (intent != null) {
+            _intentSeq.value = _intentSeq.value + 1L
+        }
     }
 
     /**
@@ -1318,6 +1342,36 @@ class SharedViewModel(
                     val data = response.data
                     when (response) {
                         is Resource.Success if (data != null) -> {
+                            val nowMs = System.currentTimeMillis()
+                            val manifest = com.maxrave.simpmusic.data.update.UpdateStateHolder.latestManifest
+                            val seenVer = dataStoreManager.getString("UPDATE_FIRST_SEEN_VERSION").first()
+                            val seenAtStr = dataStoreManager.getString("UPDATE_FIRST_SEEN_AT_MS").first()
+                            val firstSeenAtMs = if (seenVer == data.tagName && !seenAtStr.isNullOrBlank()) {
+                                seenAtStr.toLongOrNull() ?: nowMs
+                            } else {
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_VERSION", data.tagName)
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_AT_MS", nowMs.toString())
+                                nowMs
+                            }
+                            val graceHours = manifest?.graceHours ?: 48
+                            val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                                com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                                com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+
+                            // Network-bound background pre-fetch (resumable via HTTP Range)
+                            val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
+                                tag = data.tagName,
+                                artifacts = manifest?.artifacts ?: emptyMap(),
+                            )
+                            val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                            com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                tag = data.tagName,
+                                url = binary.downloadUrl,
+                                expectedSha256 = sha,
+                            )
+
                             _updateResponse.value = data
                             showedUpdateDialog = true
                         }
@@ -1333,6 +1387,36 @@ class SharedViewModel(
                     val data = response.data
                     when (response) {
                         is Resource.Success if (data != null) -> {
+                            val nowMs = System.currentTimeMillis()
+                            val manifest = com.maxrave.simpmusic.data.update.UpdateStateHolder.latestManifest
+                            val seenVer = dataStoreManager.getString("UPDATE_FIRST_SEEN_VERSION").first()
+                            val seenAtStr = dataStoreManager.getString("UPDATE_FIRST_SEEN_AT_MS").first()
+                            val firstSeenAtMs = if (seenVer == data.tagName && !seenAtStr.isNullOrBlank()) {
+                                seenAtStr.toLongOrNull() ?: nowMs
+                            } else {
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_VERSION", data.tagName)
+                                dataStoreManager.putString("UPDATE_FIRST_SEEN_AT_MS", nowMs.toString())
+                                nowMs
+                            }
+                            val graceHours = manifest?.graceHours ?: 48
+                            val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                                com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                                com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+
+                            // Network-bound background pre-fetch (resumable via HTTP Range)
+                            val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
+                                tag = data.tagName,
+                                artifacts = manifest?.artifacts ?: emptyMap(),
+                            )
+                            val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                            com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                tag = data.tagName,
+                                url = binary.downloadUrl,
+                                expectedSha256 = sha,
+                            )
+
                             _updateResponse.value = data
                             showedUpdateDialog = true
                         }
@@ -2531,3 +2615,56 @@ sealed class VoteState {
  * of a track onwards.
  */
 private fun String.isCanvasVideoUrl(): Boolean = contains(".mp4") || contains(".m3u8")
+
+/**
+ * Computes the active lyric line index for [positionMs] with [offsetMs] audio-delay correction,
+ * using a fast-path window check on [previousIndex] followed by binary search.
+ */
+internal fun computeActiveLyricLineIndex(
+    positionMs: Long,
+    lyrics: Lyrics?,
+    offsetMs: Int,
+    previousIndex: Int = -1,
+): Int {
+    if (lyrics == null || lyrics.syncType == "UNSYNCED" || lyrics.syncType == null) return -1
+    val lines = lyrics.lines
+    if (lines.isNullOrEmpty()) return -1
+
+    val nowMs = positionMs - offsetMs
+    if (nowMs <= 0L) return -1
+    val firstStart = lines[0].startTimeMs.toLongOrNull() ?: 0L
+    if (nowMs < firstStart) return -1
+
+    if (previousIndex in lines.indices) {
+        val curStart = lines[previousIndex].startTimeMs.toLongOrNull() ?: 0L
+        val curEnd = if (previousIndex < lines.size - 1) {
+            lines[previousIndex + 1].startTimeMs.toLongOrNull() ?: 0L
+        } else {
+            curStart + 60_000L
+        }
+        if (nowMs in curStart..curEnd) return previousIndex
+    }
+
+    var low = 0
+    var high = lines.size - 1
+    var bestIdx = -1
+    while (low <= high) {
+        val mid = (low + high).ushr(1)
+        val midStart = lines[mid].startTimeMs.toLongOrNull() ?: 0L
+        if (midStart <= nowMs) {
+            bestIdx = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+
+    if (bestIdx !in lines.indices) return -1
+    val startMs = lines[bestIdx].startTimeMs.toLongOrNull() ?: 0L
+    val endMs = if (bestIdx < lines.size - 1) {
+        lines[bestIdx + 1].startTimeMs.toLongOrNull() ?: 0L
+    } else {
+        startMs + 60_000L
+    }
+    return if (nowMs in startMs..endMs) bestIdx else -1
+}

@@ -12,8 +12,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Graphics (S24)**: Tier 3 (Vivo 1712 / API 26-30) preserves the premium look with dual-stop hardware linear-gradient rim (lit top-left / ambient bottom-right) and the identical adaptive scrim floor — zero shader classes.
 - **Graphics (S24)**: `KyantParityGoldenTest` — headless Skia side-by-side golden renders (light / dark / saturated backdrops) with an independent Kyant reference model and an MSE parity gate (< 5e-4); CI dumps the comparison triptychs as artifacts (`STREAMIFY_GOLDEN_DUMP=1`) and committed twins live in `docs/gpu/parity/`.
 
+### Changed
+- **KMP UI**: Hoisted playback timeline collection and lyric-line indexing out of `NowPlayingScreen` into leaf composables (`PlayerTimelineLeaf.kt`, `SharedViewModel.currentLyricLineIndex`), added `contentDescription` / `Role.Button` semantics across shared controls, and introduced `LocalAppWindowSizeClass` + `GridCells.Adaptive` across `App`, `HomeScreen`, `SearchScreen`, and `SettingScreen` (#336).
+- **Updater**: Added 48-hour `UpdateUrgency` escalation (`SOFT` / `ACTIVE_5S` / `URGENT_10S` / `ENFORCED`) and resumable `PlatformUpdater` downloads with HTTP `Range` and SHA-256 verification.
+- **Docs & CI**: Extended `scripts/verify_docs.py` with `git cat-file -e` and edited-doc pin checks, marked `ADR-001` and `ADR-002` as `Superseded` with `HISTORICAL` banners, normalized `RFC-001` status to `Draft`, and re-verified doc pins against `origin/main` (#338).
+
 ### Fixed
 - **Graphics**: `OffscreenRenderGoldenTest` referenced the retired Phase 1-A token names (`LENS_RADIUS_CORNER_FRACTION`, `REFRACTION_INDEX`, `TINT_LIGHT`, `CHROMATIC_SPREAD_TIER1`) and never compiled against the Phase 1-B token layer — realigned to the current tokens and the nine-uniform binding contract.
+- **Sync Engine**: Resolved 4 S11 P0 defects: added `SyncKind.LIBRARY_TRACK` outbox recording in `core.patch` (`LocalDataSource.updateSongInLibrary`) (#350), preserved OAuth `refreshToken` in `SupabaseClient.signInWithAccessToken` across Android/JVM/iOS/Wasm (#351), persisted generated playlist UUID `syncId` to Room before cloud push (#352), and fixed `CloudUserLike` decoding and error propagation in `fetchCloudLikesWithTimeResult` / `fetchCloudLikedTracksResult` (#353).
+- **Sync Engine**: Fixed 5 P0 bugs in `StreamifySyncEngine`: honored `DONE` bootstrap checkpoint when server cursor is `0`, clarified `SyncApplyingKey` echo suppression, bounded `syncLibraryTracksInternal` song scan (`2,000` rows + chunked uploads) to prevent OOM, flushed outbox before bootstrap cursor probe, and added fallback history op construction when `PlaybackEventEntity` is missing (#332).
+- **Sync Engine**: Fixed 5 follow-up P0 data-plane bugs: held pull cursor on `applyDeltaOp` failures, propagated `CancellationException` in `syncAll` and all `SupabaseLibrarySync` RPC wrappers, fed `HybridLogicalClock.updateServerTime` from `syncPull`/`syncPush` HTTP `Date` headers, and surfaced `SyncStatus.Error` when delta pull or outbox push fails (#333).
 
 ## [1.0.3-beta] — 2026-11-23: Cloudflare Quick Tunnels, Elite Audio & Zero-Token Delivery
 

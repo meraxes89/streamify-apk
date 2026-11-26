@@ -1,12 +1,14 @@
 package com.streamify.sync
 
 import com.maxrave.common.Config
+import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.BuildKonfig
 import com.maxrave.domain.data.entities.DownloadState
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.PlaylistEntity
 import com.maxrave.domain.data.entities.SearchHistory
 import com.maxrave.domain.data.entities.SongEntity
+import com.maxrave.domain.data.entities.analytics.PlaybackEventEntity
 import com.maxrave.domain.data.entities.sync.SyncChangeEntity
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.repository.AlbumRepository
@@ -27,6 +29,7 @@ import com.streamify.supabase.SyncPullOp
 import com.streamify.supabase.SyncPullResult
 import com.streamify.supabase.SyncPushResult
 import com.streamify.supabase.resolvePlatformDeviceInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -67,7 +70,8 @@ import org.koin.core.component.inject
  *
  * Guarantees:
  * 1. Local-first offline-first operations (zero UI latency).
- * 2. Echo suppression (isSyncActive prevents infinite ping-pong loops).
+ * 2. Echo suppression via [SyncApplyingKey] ([withSyncApplying]) during Room writes;
+ *    [isSyncActive] exposes engine-level sync execution state.
  * 3. Last-Write-Wins (LWW) conflict resolution.
  * 4. Resilient batching: failures on individual entities do not abort or corrupt the database.
  */
@@ -87,7 +91,18 @@ object StreamifySyncEngine : KoinComponent {
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private const val TAG = "StreamifySyncEngine"
     private const val TELEMETRY_INTERVAL_MS = 3_600_000L // 1 hour keep-alive floor
+    internal const val BOOTSTRAP_DONE = "DONE"
+    internal const val MAX_BOOTSTRAP_LIBRARY_SONGS = 2_000
+
+    /**
+     * Returns true when initial bootstrap has completed (either a positive server cursor
+     * has been persisted or the explicit [BOOTSTRAP_DONE] checkpoint was recorded, e.g.
+     * when the server changelog is empty and returns cursor = 0).
+     */
+    internal fun shouldRunDeltaSync(localCursor: Long, bootstrapCheckpoint: String): Boolean =
+        localCursor > 0L || bootstrapCheckpoint == BOOTSTRAP_DONE
 
     private val SYNCABLE_SETTINGS_KEYS = listOf(
         // Appearance & Themes
@@ -239,22 +254,33 @@ object StreamifySyncEngine : KoinComponent {
             val deviceId = getOrCreateDeviceId()
             val hlc = HybridLogicalClock.now()
             val localCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
+            val bootstrapCheckpoint = dataStoreManager.getString("streamify_bootstrap_checkpoint_v3").firstOrNull() ?: ""
+            var effectiveCursor = localCursor
 
             var likedCount = 0
 
-            if (localCursor > 0L) {
+            var syncFailureMessage: String? = null
+
+            if (shouldRunDeltaSync(localCursor, bootstrapCheckpoint)) {
                 // V3 Delta Sync path (cursor-based delta pull)
                 _syncState.value = SyncStatus.Syncing("Pulling delta changes...")
-                syncDeltaInternal(targetUserId, deviceId)
+                val deltaOk = syncDeltaInternal(targetUserId, deviceId)
 
                 // Drain local outbox via sync_push
                 _syncState.value = SyncStatus.Syncing("Pushing changes...")
-                syncOutboxPushInternal(targetUserId, deviceId, hlc)
+                val pushOk = syncOutboxPushInternal(targetUserId, deviceId, hlc)
 
+                if (!deltaOk) {
+                    syncFailureMessage = "Delta pull failed; cursor held for retry"
+                } else if (!pushOk) {
+                    syncFailureMessage = "Outbox push failed; changes queued for retry"
+                }
+
+                effectiveCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: localCursor
                 likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
             } else {
                 // Cold Bootstrap Sync with Resumable Stage Checkpointing (Step 8)
-                val resumeStage = dataStoreManager.getString("streamify_bootstrap_checkpoint_v3").firstOrNull() ?: ""
+                val resumeStage = bootstrapCheckpoint
                 val stages = listOf(
                     "LIKES",
                     "ARTISTS",
@@ -270,12 +296,20 @@ object StreamifySyncEngine : KoinComponent {
                 )
                 val resumeIdx = stages.indexOf(resumeStage).let { if (it >= 0) it + 1 else 0 }
 
+                var allStagesSucceeded = true
                 for (idx in resumeIdx until stages.size) {
                     val stage = stages[idx]
-                    when (stage) {
+                    val stageSucceeded = withContext(withSyncApplying()) {
+                        when (stage) {
                         "LIKES" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping liked songs...")
-                            likedCount = syncLikesInternal(targetUserId)
+                            val count = syncLikesInternal(targetUserId)
+                            if (count >= 0) {
+                                likedCount = count
+                                true
+                            } else {
+                                false
+                            }
                         }
                         "ARTISTS" -> {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping followed artists...")
@@ -313,10 +347,17 @@ object StreamifySyncEngine : KoinComponent {
                             _syncState.value = SyncStatus.Syncing("Bootstrapping podcast episode progress...")
                             syncPodcastEpisodeStateInternal(targetUserId)
                         }
-                        "SEARCH" -> {
-                            _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
-                            syncSearchHistoryInternal(targetUserId)
+                            "SEARCH" -> {
+                                _syncState.value = SyncStatus.Syncing("Bootstrapping search history...")
+                                syncSearchHistoryInternal(targetUserId)
+                            }
+                            else -> true
                         }
+                    }
+                    if (!stageSucceeded) {
+                        allStagesSucceeded = false
+                        Logger.w(TAG, "Bootstrap stage $stage failed; halting checkpoint advancement")
+                        break
                     }
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", stage)
                 }
@@ -325,11 +366,22 @@ object StreamifySyncEngine : KoinComponent {
                     likedCount = songRepository.getLikedSongs().firstOrNull()?.size ?: 0
                 }
 
-                // Record latest changelog cursor upon bootstrap completion
+                // Flush locally-pending outbox changes before probing the server cursor so the
+                // recorded cursor reflects all bootstrap and outbox writes.
+                _syncState.value = SyncStatus.Syncing("Pushing pending changes...")
+                syncOutboxPushInternal(targetUserId, deviceId, hlc)
+
+                // Record latest changelog head cursor upon bootstrap completion
                 val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
-                val latestCursor = pullRes?.cursor ?: 0L
-                dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
-                dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "DONE")
+                if (allStagesSucceeded && pullRes != null) {
+                    pullRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
+                    val latestCursor = pullRes.headCursor ?: pullRes.cursor
+                    effectiveCursor = latestCursor
+                    dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
+                    dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", BOOTSTRAP_DONE)
+                } else {
+                    syncFailureMessage = "Bootstrap incomplete; will retry"
+                }
             }
 
             // Sync presence via heartbeat_presence with HLC guard
@@ -339,12 +391,27 @@ object StreamifySyncEngine : KoinComponent {
             // V4.1 Fleet Telemetry: Sync device and version telemetry
             syncDeviceTelemetryInternal(targetUserId, deviceId)
 
+            if (syncFailureMessage != null) {
+                consecutiveFailures++
+                val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
+                backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
+                _syncMetrics.update {
+                    it.copy(
+                        currentCursor = effectiveCursor,
+                        consecutiveFailures = consecutiveFailures,
+                    )
+                }
+                val error = SyncStatus.Error("$syncFailureMessage (backing off ${delayMs / 1000}s)")
+                _syncState.value = error
+                return@withContext error
+            }
+
             consecutiveFailures = 0
             backoffUntilMs = 0L
             _syncMetrics.update {
                 it.copy(
                     lastSyncTimestamp = System.currentTimeMillis(),
-                    currentCursor = localCursor,
+                    currentCursor = effectiveCursor,
                     consecutiveFailures = 0,
                 )
             }
@@ -352,6 +419,7 @@ object StreamifySyncEngine : KoinComponent {
             _syncState.value = success
             success
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             consecutiveFailures++
             val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
             backoffUntilMs = Clock.System.now().toEpochMilliseconds() + delayMs
@@ -372,7 +440,9 @@ object StreamifySyncEngine : KoinComponent {
      */
     private suspend fun syncLikesInternal(targetUserId: String): Int {
         // 1. Fetch remote cloud liked tracks (excluding any legacy trk_ items)
-        val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracks(targetUserId).filter { !it.id.startsWith("trk_") }
+        val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracksResult(targetUserId)
+            .getOrElse { return -1 }
+            .filter { !it.id.startsWith("trk_") }
         val cloudIds = cloudTracks.map { it.id }.toSet()
 
         // 2. Fetch local liked songs
@@ -388,18 +458,6 @@ object StreamifySyncEngine : KoinComponent {
             if (cloudTrack.id !in localIds) {
                 try {
                     val existing = songRepository.getSongById(cloudTrack.id).firstOrNull()
-                    if (existing != null && !existing.liked) {
-                        // The track exists locally, but the user explicitly unliked it!
-                        // Reconcile: delete from Supabase user_likes instead of resurrecting it locally!
-                        SupabaseLibrarySync.syncLike(
-                            trackId = cloudTrack.id,
-                            title = cloudTrack.title,
-                            artist = cloudTrack.artist,
-                            isLiked = false,
-                            userId = targetUserId
-                        )
-                        continue
-                    }
                     val durationStr = formatDuration(cloudTrack.durationSec)
                     if (existing == null) {
                         val entity = SongEntity(
@@ -460,7 +518,7 @@ object StreamifySyncEngine : KoinComponent {
     /**
      * Phase 2 / Phase 3 Followed Artists Synchronization.
      */
-    private suspend fun syncArtistsInternal(targetUserId: String) {
+    private suspend fun syncArtistsInternal(targetUserId: String): Boolean {
         try {
             val cloudArtistIds = SupabaseLibrarySync.fetchCloudItemFavorites("artist", targetUserId).toSet()
             val localArtists = artistRepository.getFollowedArtists().firstOrNull() ?: emptyList()
@@ -479,14 +537,18 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.syncItemFavorite("artist", localArtist.channelId, true, targetUserId)
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Saved Albums Synchronization.
      */
-    private suspend fun syncAlbumsInternal(targetUserId: String) {
+    private suspend fun syncAlbumsInternal(targetUserId: String): Boolean {
         try {
             val cloudAlbumIds = SupabaseLibrarySync.fetchCloudItemFavorites("album", targetUserId).toSet()
             val localLikedAlbums = try {
@@ -509,19 +571,25 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Library Tracks Synchronization (in-library state independent of likes).
      */
-    private suspend fun syncLibraryTracksInternal(targetUserId: String) {
+    private suspend fun syncLibraryTracksInternal(targetUserId: String): Boolean {
         try {
             val cloudLibrary = SupabaseLibrarySync.fetchCloudLibraryTracks(targetUserId)
             val cloudTrackIds = cloudLibrary.map { it.trackId }.toSet()
 
-            val localSongs = songRepository.getAllSongs(Int.MAX_VALUE).firstOrNull() ?: emptyList()
+            // SongRepository.getAllSongs(limit) has no offset parameter (core/ is external to this module),
+            // so bound the scan to avoid loading unbounded libraries into RAM and causing OOM during bootstrap.
+            val localSongs = songRepository.getAllSongs(MAX_BOOTSTRAP_LIBRARY_SONGS).firstOrNull() ?: emptyList()
             val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
             val localLibraryIds = localInLibrary.map { it.videoId }.toSet()
 
@@ -552,19 +620,26 @@ object StreamifySyncEngine : KoinComponent {
                 }
             }
 
-            // Outbox: push local library tracks not yet in cloud
+            // Outbox: push local library tracks not yet in cloud in bounded batches
             val pendingUploads = localInLibrary.filter { it.videoId !in cloudTrackIds && !it.videoId.startsWith("trk_") }
             if (pendingUploads.isNotEmpty()) {
-                SupabaseLibrarySync.uploadLibraryTracksBatch(pendingUploads.map { it.videoId }, targetUserId)
+                for (batch in pendingUploads.chunked(500)) {
+                    SupabaseLibrarySync.uploadLibraryTracksBatch(batch.map { it.videoId }, targetUserId)
+                }
             }
-        } catch (_: Exception) {
+            return true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(TAG, "syncLibraryTracksInternal failed: ${e.message}")
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Saved YouTube Playlists Synchronization.
      */
-    private suspend fun syncSavedPlaylistsInternal(targetUserId: String) {
+    private suspend fun syncSavedPlaylistsInternal(targetUserId: String): Boolean {
         try {
             val cloudFavorites = SupabaseLibrarySync.fetchCloudItemFavoritesWithMetadata("playlist", targetUserId)
             val cloudPlaylistIds = cloudFavorites.map { it.itemId }.toSet()
@@ -611,14 +686,18 @@ object StreamifySyncEngine : KoinComponent {
                     )
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Playlists Synchronization (Full Inbound & Outbound with UUID linkage).
      */
-    private suspend fun syncPlaylistsInternal(targetUserId: String) {
+    private suspend fun syncPlaylistsInternal(targetUserId: String): Boolean {
         try {
             // 1. Inbound: fetch cloud playlists
             val cloudPlaylists = SupabaseLibrarySync.fetchCloudPlaylists(targetUserId)
@@ -677,12 +756,9 @@ object StreamifySyncEngine : KoinComponent {
             // 2. Outbound: push local playlists and their tracks to cloud
             val refreshedPlaylists = localPlaylistRepository.getAllLocalPlaylists().first()
             for (localPl in refreshedPlaylists) {
-                // Ensure valid UUID format for Supabase playlists.id - migrate away from deterministic hex collision IDs
-                val currentSyncId = localPl.syncId
-                val syncId: String = if (currentSyncId.isNullOrBlank() || currentSyncId.startsWith("00000000-0000-4000-8000-")) {
-                    HybridLogicalClock.randomUuid()
-                } else {
-                    currentSyncId
+                // Ensure valid UUID format for Supabase playlists.id and persist it before cloud write
+                val syncId = resolveOrPersistPlaylistSyncId(localPl) { id, generatedId ->
+                    syncOutboxRepository.setLocalPlaylistSyncId(id, generatedId)
                 }
 
                 val tracks = localPlaylistRepository.getFullPlaylistTracks(localPl.id)
@@ -699,14 +775,18 @@ object StreamifySyncEngine : KoinComponent {
                     userId = targetUserId
                 )
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 Outbox & Phase 3 Inbound for User Settings Profile.
      */
-    private suspend fun syncSettingsInternal(targetUserId: String) {
+    private suspend fun syncSettingsInternal(targetUserId: String): Boolean {
         try {
             val remoteResult = SupabaseLibrarySync.fetchUserSettings(targetUserId)
             val remoteSettings = remoteResult.getOrDefault(emptyMap())
@@ -731,7 +811,11 @@ object StreamifySyncEngine : KoinComponent {
             if (merged != remoteSettings && localSettings.isNotEmpty()) {
                 SupabaseLibrarySync.uploadUserSettings(targetUserId, merged)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
@@ -739,7 +823,7 @@ object StreamifySyncEngine : KoinComponent {
      * Phase 3 Inbound & Phase 2 Outbox for Playback History (Analytics & Wrapped).
      * High fidelity: uses client_event_id deduplication, batch uploads, and unconstrained paginated drains.
      */
-    private suspend fun syncListeningHistoryInternal(targetUserId: String) {
+    private suspend fun syncListeningHistoryInternal(targetUserId: String): Boolean {
         try {
             // 1. Inbound: fetch remote cloud listening history with client_event_id fidelity
             val cloudHistory = SupabaseLibrarySync.fetchCloudListeningHistory(targetUserId, limit = 1000)
@@ -815,14 +899,18 @@ object StreamifySyncEngine : KoinComponent {
             if (pendingBatch.isNotEmpty()) {
                 SupabaseLibrarySync.recordPlaybackHistoryBatch(targetUserId, pendingBatch)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Saved Podcasts Synchronization.
      */
-    private suspend fun syncPodcastsInternal(targetUserId: String) {
+    private suspend fun syncPodcastsInternal(targetUserId: String): Boolean {
         try {
             val cloudPodcastIds = SupabaseLibrarySync.fetchCloudItemFavorites("podcast", targetUserId).toSet()
             val localFavPodcasts = podcastRepository.getFavoritePodcasts().firstOrNull() ?: emptyList()
@@ -841,14 +929,18 @@ object StreamifySyncEngine : KoinComponent {
                     SupabaseLibrarySync.syncItemFavorite("podcast", localPod.podcastId, true, targetUserId)
                 }
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
     /**
      * Phase 2 / Phase 3 Podcast Episode State Synchronization.
      */
-    private suspend fun syncPodcastEpisodeStateInternal(targetUserId: String) {
+    private suspend fun syncPodcastEpisodeStateInternal(targetUserId: String): Boolean {
         try {
             val cloudStates = SupabaseLibrarySync.fetchCloudEpisodeStates(targetUserId)
             val localStates = getLocalEpisodeStates().toMutableMap()
@@ -896,7 +988,11 @@ object StreamifySyncEngine : KoinComponent {
             if (pendingUploads.isNotEmpty()) {
                 SupabaseLibrarySync.uploadEpisodeStatesBatch(pendingUploads, targetUserId)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
 
@@ -905,7 +1001,7 @@ object StreamifySyncEngine : KoinComponent {
      * Defect D8 fix: Insert cloud queries in reverse order (oldest first) so that
      * SQLite rowid sequence reflects chronological searched_at ordering.
      */
-    private suspend fun syncSearchHistoryInternal(targetUserId: String) {
+    private suspend fun syncSearchHistoryInternal(targetUserId: String): Boolean {
         try {
             val cloudSearch = SupabaseLibrarySync.fetchCloudSearchHistory(targetUserId)
             val cloudQueries = cloudSearch.map { it.query }.toSet()
@@ -925,9 +1021,27 @@ object StreamifySyncEngine : KoinComponent {
             if (pendingUploads.isNotEmpty()) {
                 SupabaseLibrarySync.uploadSearchHistory(pendingUploads, targetUserId)
             }
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
+            return false
         }
     }
+
+    internal fun normalizeOutboxToChangelogKey(entity: String, entityKey: String): Pair<String, String> =
+        when (entity) {
+            SyncKind.SONG_LIKE -> "like" to entityKey
+            SyncKind.LIBRARY_TRACK -> "library_track" to entityKey
+            SyncKind.ARTIST_FOLLOW -> "favorite" to "artist:$entityKey"
+            SyncKind.ALBUM_LIKE -> "favorite" to "album:$entityKey"
+            SyncKind.PLAYLIST_LIKE -> "favorite" to "playlist:$entityKey"
+            SyncKind.PODCAST_FAVORITE -> "favorite" to "podcast:$entityKey"
+            SyncKind.LOCAL_PLAYLIST, SyncKind.LOCAL_PLAYLIST_ORDER -> "playlist" to entityKey
+            SyncKind.LOCAL_PLAYLIST_TRACK -> "playlist_track" to entityKey
+            SyncKind.SETTINGS -> "settings" to "settings"
+            else -> entity to entityKey
+        }
 
     /**
      * V3 Delta Sync: pulls changelog delta ops since local cursor, skipping calling device's own ops.
@@ -942,12 +1056,66 @@ object StreamifySyncEngine : KoinComponent {
                 since = cursor,
                 limit = 500,
                 deviceId = deviceId
-            ).getOrNull() ?: return false
+            ).getOrElse { err ->
+                if (err is CancellationException) throw err
+                if (err.message?.contains("CURSOR_EXPIRED", ignoreCase = true) == true) {
+                    dataStoreManager.putString("streamify_sync_cursor_v3", "0")
+                    dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
+                }
+                return false
+            }
 
+            pullResult.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
+
+            val pendingByEntityKey = mutableMapOf<Pair<String, String>, Long>()
+            for (change in syncOutboxRepository.getPending(1000)) {
+                val normalized = normalizeOutboxToChangelogKey(change.entity, change.entityKey)
+                val prev = pendingByEntityKey[normalized]
+                if (prev == null || change.changedAt > prev) {
+                    pendingByEntityKey[normalized] = change.changedAt
+                }
+            }
+            val watermarks = loadHlcWatermarks()
+            var watermarksDirty = false
+            var allOpsApplied = true
             withContext(withSyncApplying()) {
                 for (op in pullResult.ops) {
-                    applyDeltaOp(op)
+                    val opHlc = op.hlc ?: 0L
+                    if (opHlc > 0L) {
+                        HybridLogicalClock.merge(opHlc)
+                    }
+                    val directChangedAt = pendingByEntityKey[op.entity to op.key]
+                    val playlistTrackCompositeKey = if (op.entity == "playlist_track") {
+                        val plId = op.data?.get("playlist_id")?.jsonPrimitive?.contentOrNull
+                        val trkId = op.data?.get("track_id")?.jsonPrimitive?.contentOrNull
+                        if (!plId.isNullOrBlank() && !trkId.isNullOrBlank()) "$plId|$trkId" else null
+                    } else null
+                    val compositeChangedAt = playlistTrackCompositeKey?.let { pendingByEntityKey["playlist_track" to it] }
+                    val localChangedAt = listOfNotNull(directChangedAt, compositeChangedAt).maxOrNull()
+                    if (localChangedAt != null && localChangedAt >= opHlc) {
+                        continue
+                    }
+                    if (isStaleByWatermark(op.entity, op.key, playlistTrackCompositeKey, opHlc, watermarks)) {
+                        continue
+                    }
+                    if (!applyDeltaOp(op)) {
+                        allOpsApplied = false
+                    } else if (opHlc > 0L) {
+                        watermarks["${op.entity}:${op.key}"] = opHlc
+                        if (playlistTrackCompositeKey != null) {
+                            watermarks["${op.entity}:$playlistTrackCompositeKey"] = opHlc
+                        }
+                        watermarksDirty = true
+                    }
                 }
+            }
+            if (watermarksDirty) {
+                saveHlcWatermarks(watermarks)
+            }
+
+            if (!allOpsApplied) {
+                Logger.w(TAG, "Delta pull page had failed op(s); holding cursor at $cursor for retry")
+                return false
             }
 
             cursor = pullResult.cursor
@@ -955,7 +1123,53 @@ object StreamifySyncEngine : KoinComponent {
             hasMore = pullResult.hasMore
             pagesFetched++
         }
+        if (hasMore) {
+            Logger.w(TAG, "Delta pull hit 20-page cap with more ops remaining at cursor $cursor")
+            return false
+        }
         return true
+    }
+
+    private suspend fun loadHlcWatermarks(): MutableMap<String, Long> {
+        val raw = dataStoreManager.getString("streamify_entity_hlc_watermarks_v1").firstOrNull() ?: return mutableMapOf()
+        return runCatching {
+            val obj = Json.parseToJsonElement(raw).jsonObject
+            obj.entries.mapNotNull { (k, v) ->
+                v.jsonPrimitive.contentOrNull?.toLongOrNull()?.let { k to it }
+            }.toMap().toMutableMap()
+        }.getOrElse { mutableMapOf() }
+    }
+
+    private suspend fun saveHlcWatermarks(watermarks: Map<String, Long>) {
+        // Bound persisted watermarks to the 5,000 newest entries to prevent unbounded DataStore growth.
+        val bounded = if (watermarks.size > 5000) {
+            watermarks.entries.sortedByDescending { it.value }.take(5000).associate { it.key to it.value }
+        } else {
+            watermarks
+        }
+        val jsonObj = buildJsonObject {
+            for ((k, v) in bounded) {
+                put(k, v)
+            }
+        }
+        dataStoreManager.putString("streamify_entity_hlc_watermarks_v1", jsonObj.toString())
+    }
+
+    internal fun isStaleByWatermark(
+        entity: String,
+        key: String,
+        compositeKey: String?,
+        opHlc: Long,
+        watermarks: Map<String, Long>,
+    ): Boolean {
+        if (opHlc <= 0L) return false
+        val directWatermark = watermarks["$entity:$key"]
+        if (directWatermark != null && opHlc <= directWatermark) return true
+        if (compositeKey != null) {
+            val compositeWatermark = watermarks["$entity:$compositeKey"]
+            if (compositeWatermark != null && opHlc <= compositeWatermark) return true
+        }
+        return false
     }
 
     /**
@@ -968,7 +1182,8 @@ object StreamifySyncEngine : KoinComponent {
         val changeId: String,
     )
 
-    private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long) {
+    private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long): Boolean {
+        var allChunksSucceeded = true
         try {
             // 1. Drain pending outbox changes (up to 500)
             val pendingChanges = syncOutboxRepository.getPending(500)
@@ -1210,7 +1425,7 @@ object StreamifySyncEngine : KoinComponent {
                                 opMappings.add(OutboxOpMapping(buildJsonObject {
                                     put("entity", "playlist_track")
                                     put("op", "D")
-                                    put("key", trackKey)
+                                    put("key", videoId.ifEmpty { change.entityKey })
                                     put("hlc", changeHlc)
                                     put("data", buildJsonObject {
                                         put("playlist_id", plSyncId)
@@ -1261,29 +1476,11 @@ object StreamifySyncEngine : KoinComponent {
 
                         SyncKind.HISTORY -> {
                             val ev = historyEvents[change.entityKey]
-                            if (ev != null) {
-                                val song = songRepository.getSongById(ev.videoId).firstOrNull()
-                                val clientEventId = ev.syncId ?: change.entityKey
-                                opMappings.add(OutboxOpMapping(buildJsonObject {
-                                    put("entity", "history")
-                                    put("op", "I")
-                                    put("key", clientEventId)
-                                    put("hlc", changeHlc)
-                                    put("data", buildJsonObject {
-                                        put("client_event_id", clientEventId)
-                                        put("track_id", ev.videoId)
-                                        put("listened_duration_sec", ev.listenedSecond)
-                                        put("artist_id", "")
-                                        put("album_id", ev.albumBrowseId ?: "")
-                                        put("title", song?.title ?: "")
-                                        put("artist_name", song?.artistName?.firstOrNull() ?: "")
-                                        put("album_name", song?.albumName ?: "")
-                                        put("listened_at", ev.timestamp.toString())
-                                    })
-                                }, change.changeId))
-                            } else {
-                                unhandledChangeIds.add(change.changeId)
+                            val song = ev?.let { songRepository.getSongById(it.videoId).firstOrNull() }
+                            if (ev == null) {
+                                Logger.w(TAG, "PlaybackEvent missing for history outbox key=${change.entityKey}; using fallback op")
                             }
+                            opMappings.add(OutboxOpMapping(buildHistoryOutboxOp(change, ev, song), change.changeId))
                         }
 
                         SyncKind.SETTINGS -> {
@@ -1343,6 +1540,7 @@ object StreamifySyncEngine : KoinComponent {
                         val chunkOps = chunk.map { it.op }
                         val pushRes = SupabaseLibrarySync.syncPush(JsonArray(chunkOps), deviceId).getOrNull()
                         if (pushRes != null) {
+                            pushRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
                             val appliedChangeIds = mutableSetOf<String>()
                             val rejectedChangeIds = mutableSetOf<String>()
 
@@ -1378,6 +1576,8 @@ object StreamifySyncEngine : KoinComponent {
                                 )
                             }
                             // Pull cursor is NEVER advanced by sync_push
+                        } else {
+                            allChunksSucceeded = false
                         }
                     }
                 }
@@ -1385,15 +1585,74 @@ object StreamifySyncEngine : KoinComponent {
                 val sevenDaysAgo = Clock.System.now().toEpochMilliseconds() - 7 * 24 * 60 * 60 * 1000L
                 syncOutboxRepository.pruneSent(sevenDaysAgo)
             }
-        } catch (_: Exception) {
+            return allChunksSucceeded
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(TAG, "syncOutboxPushInternal failed: ${e.message}")
+            return false
+        }
+    }
+
+    /**
+     * Builds a `history` sync_push operation from [change], enriching with [event] and [song]
+     * when available and falling back to [change]'s own metadata if [event] is missing (e.g. null
+     * `PlaybackEventEntity.syncId` or migration gap) so offline plays are never silently rejected.
+     */
+    internal fun buildHistoryOutboxOp(
+        change: SyncChangeEntity,
+        event: PlaybackEventEntity?,
+        song: SongEntity?,
+    ): JsonObject {
+        val clientEventId = event?.syncId ?: change.entityKey
+        val fallbackMeta = if (event == null && !change.value.isNullOrBlank()) {
+            try {
+                Json.parseToJsonElement(change.value!!).jsonObject
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+        val trackId = event?.videoId
+            ?: fallbackMeta?.get("track_id")?.jsonPrimitive?.contentOrNull
+            ?: ""
+        val listenedDurationSec = event?.listenedSecond
+            ?: fallbackMeta?.get("listened_duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: 0
+        val albumId = event?.albumBrowseId
+            ?: fallbackMeta?.get("album_id")?.jsonPrimitive?.contentOrNull
+            ?: ""
+        val listenedAt = event?.timestamp?.toString()
+            ?: fallbackMeta?.get("listened_at")?.jsonPrimitive?.contentOrNull
+            ?: Instant.fromEpochMilliseconds(change.changedAt).toString()
+
+        return buildJsonObject {
+            put("entity", "history")
+            put("op", "I")
+            put("key", clientEventId)
+            put("hlc", change.changedAt)
+            put("data", buildJsonObject {
+                put("client_event_id", clientEventId)
+                put("track_id", trackId)
+                put("listened_duration_sec", listenedDurationSec)
+                put("artist_id", "")
+                put("album_id", albumId)
+                put("title", song?.title ?: "")
+                put("artist_name", song?.artistName?.firstOrNull() ?: "")
+                put("album_name", song?.albumName ?: "")
+                put("listened_at", listenedAt)
+            })
         }
     }
 
     /**
      * Applies an incoming SyncPullOp to local Room SQLite.
+     * Returns `true` if applied cleanly, or `false` if an exception occurred (so the pull cursor
+     * is held back for retry instead of silently dropping the mutation).
      */
-    private suspend fun applyDeltaOp(op: SyncPullOp) {
-        try {
+    private suspend fun applyDeltaOp(op: SyncPullOp): Boolean {
+        return try {
             when (op.entity) {
                 "like" -> {
                     if (op.op == "D") {
@@ -1533,11 +1792,23 @@ object StreamifySyncEngine : KoinComponent {
                     }
                 }
                 "settings" -> {
-                    val key = op.data?.get("key")?.jsonPrimitive?.contentOrNull ?: op.key
-                    val value = op.data?.get("value")?.jsonPrimitive?.contentOrNull
-                        ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
-                    if (key in SYNCABLE_SETTINGS_KEYS && value != null) {
-                        dataStoreManager.putString(key, value)
+                    val nestedSettings = op.data?.get("settings") as? kotlinx.serialization.json.JsonObject
+                    if (nestedSettings != null) {
+                        for ((k, v) in nestedSettings) {
+                            if (k in SYNCABLE_SETTINGS_KEYS) {
+                                val strVal = (v as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                                if (strVal != null) {
+                                    dataStoreManager.putString(k, strVal)
+                                }
+                            }
+                        }
+                    } else {
+                        val key = op.data?.get("key")?.jsonPrimitive?.contentOrNull ?: op.key
+                        val value = op.data?.get("value")?.jsonPrimitive?.contentOrNull
+                            ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
+                        if (key in SYNCABLE_SETTINGS_KEYS && value != null) {
+                            dataStoreManager.putString(key, value)
+                        }
                     }
                 }
                 "search" -> {
@@ -1551,14 +1822,20 @@ object StreamifySyncEngine : KoinComponent {
                         val artistId = op.data?.get("artist_id")?.jsonPrimitive?.contentOrNull
                         val albumId = op.data?.get("album_id")?.jsonPrimitive?.contentOrNull
                         val dur = op.data?.get("listened_duration_sec")?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                        val cloudEventId = op.data?.get("client_event_id")?.jsonPrimitive?.contentOrNull ?: op.key
                         if (trackId.isNotBlank() && !trackId.startsWith("trk_")) {
-                            analyticsRepository.insertPlaybackEvent(
-                                videoId = trackId,
-                                channelIds = listOfNotNull(artistId),
-                                albumBrowseId = albumId,
-                                durationSecond = dur,
-                                listenedSecond = dur
-                            ).firstOrNull()
+                            val existing = syncOutboxRepository.getPlaybackEventsBySyncIds(listOf(cloudEventId))
+                            if (existing.isEmpty()) {
+                                analyticsRepository.insertPlaybackEvent(
+                                    videoId = trackId,
+                                    channelIds = listOfNotNull(artistId),
+                                    albumBrowseId = albumId,
+                                    durationSecond = dur,
+                                    listenedSecond = dur,
+                                    syncId = cloudEventId,
+                                    recordSync = false,
+                                ).firstOrNull()
+                            }
                         }
                     }
                 }
@@ -1571,7 +1848,12 @@ object StreamifySyncEngine : KoinComponent {
                     updateLocalEpisodeState(episodeId, podcastId, pos, comp, opHlc)
                 }
             }
-        } catch (_: Exception) {
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(TAG, "applyDeltaOp failed for entity=${op.entity} key=${op.key}: ${e.message}")
+            false
         }
     }
 
@@ -1615,6 +1897,24 @@ object StreamifySyncEngine : KoinComponent {
             Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault())
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Returns the playlist's durable UUID `syncId`, generating and persisting one
+     * if missing or using a legacy deterministic prefix (`00000000-0000-4000-8000-`).
+     */
+    internal suspend fun resolveOrPersistPlaylistSyncId(
+        playlist: LocalPlaylistEntity,
+        persistSyncId: suspend (Long, String) -> Unit,
+    ): String {
+        val currentSyncId = playlist.syncId
+        return if (currentSyncId.isNullOrBlank() || currentSyncId.startsWith("00000000-0000-4000-8000-")) {
+            HybridLogicalClock.randomUuid().also { generatedId ->
+                persistSyncId(playlist.id, generatedId)
+            }
+        } else {
+            currentSyncId
         }
     }
 

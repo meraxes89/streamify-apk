@@ -231,9 +231,7 @@ fun SearchScreen(
     // Two columns only on a phone held upright. Anywhere wider — tablet, landscape, desktop — two
     // columns stretch each tile to half the window, and since the tile keeps a 2:1 ratio it grows
     // absurdly tall with it.
-    val screenInfo = getScreenSizeInfo()
-    val isMobilePortrait = getPlatform() == Platform.Android && screenInfo.wDP < screenInfo.hDP
-    val moodGridColumns = if (isMobilePortrait) 2 else 4
+    // Two-or-more adaptive columns based on available width.
 
     val hazeState = rememberHazeState()
     // The floating chip row refracts the page scrolling under it, so the page is the glass source and
@@ -354,18 +352,18 @@ fun SearchScreen(
             }
     }
 
-    //On search icon click while on search screen, open keyboard. Android only feature
-    if (getPlatform() == Platform.Android) {
-        val reloadDestination by sharedViewModel.reloadDestination.collectAsStateWithLifecycle()
-        LaunchedEffect(reloadDestination) {
-            if (reloadDestination == SearchDestination::class) {
-                if (!selectionState.isActive && searchUIType == SearchUIType.EMPTY) {
-                    isExpanded = true
-                    focusRequester.requestFocus()
+    // On search icon click while on search screen, expand search bar and focus input.
+    val reloadDestination by sharedViewModel.reloadDestination.collectAsStateWithLifecycle()
+    LaunchedEffect(reloadDestination) {
+        if (reloadDestination == SearchDestination::class) {
+            if (!selectionState.isActive && searchUIType == SearchUIType.EMPTY) {
+                isExpanded = true
+                focusRequester.requestFocus()
+                if (getPlatform() == Platform.Android) {
                     keyboardController?.show()
                 }
-                sharedViewModel.reloadDestinationDone()
             }
+            sharedViewModel.reloadDestinationDone()
         }
     }
 
@@ -749,7 +747,7 @@ fun SearchScreen(
                             contentAlignment = Alignment.TopCenter,
                         ) {
                         LazyVerticalGrid(
-                            columns = GridCells.Fixed(moodGridColumns),
+                            columns = GridCells.Adaptive(minSize = 160.dp),
                             modifier =
                                 Modifier
                                     .fillMaxHeight()
@@ -977,7 +975,7 @@ fun SearchScreen(
 
                                                     if (isVisualGrid) {
                                                         LazyVerticalGrid(
-                                                            columns = GridCells.Fixed(moodGridColumns),
+                                                            columns = GridCells.Adaptive(minSize = 160.dp),
                                                             contentPadding =
                                                                 PaddingValues(
                                                                     start = 12.dp,

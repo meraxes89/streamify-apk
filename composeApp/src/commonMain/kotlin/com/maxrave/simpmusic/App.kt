@@ -114,6 +114,7 @@ import com.streamify.supabase.StreamifyAuthManager
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreen
 import com.maxrave.simpmusic.ui.screen.player.NowPlayingScreenContent
 import com.maxrave.simpmusic.ui.theme.AppTheme
+import com.maxrave.simpmusic.ui.theme.toAppWindowSizeClass
 import com.maxrave.simpmusic.ui.theme.ForceDarkContent
 import com.maxrave.simpmusic.ui.theme.desktopPanelDark
 import com.maxrave.simpmusic.ui.theme.desktopWindowDark
@@ -174,6 +175,7 @@ fun App(
     val nowPlayingData by viewModel.nowPlayingState.collectAsStateWithLifecycle()
     val updateData by viewModel.updateResponse.collectAsStateWithLifecycle()
     val intent by viewModel.intent.collectAsStateWithLifecycle()
+    val intentSeq by viewModel.intentSeq.collectAsStateWithLifecycle()
     val showNotificationPermissionDialog by viewModel.showNotificationPermissionDialog.collectAsStateWithLifecycle()
 
     val isLiquidGlassEnabled by viewModel.getEnableLiquidGlass().collectAsStateWithLifecycle(DataStoreManager.FALSE)
@@ -257,7 +259,7 @@ fun App(
     val hazeState =
         rememberHazeState()
 
-    LaunchedEffect(intent) {
+    LaunchedEffect(intent, intentSeq, streamifyAuthState) {
         val intent = intent ?: return@LaunchedEffect
         val data = intent.data
         Logger.d("MainActivity", "onCreate: $data")
@@ -274,11 +276,6 @@ fun App(
                 } else {
                     Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
                 }
-            } else if (data.scheme == "simpmusic" && data.host == "notification") {
-                viewModel.setIntent(null)
-                navController.navigate(
-                    NotificationDestination,
-                )
             } else if (data.scheme == "wordbyword" && data.host == "lastfm-auth") {
                 // Last.fm sends the user back here after they approve access, carrying the request
                 // token: wordbyword://lastfm-auth?token=xxx. The callback is fixed on the API
@@ -298,6 +295,14 @@ fun App(
                 Logger.d("MainActivity", "Discord callback, code present: ${!data.getQueryParameter("code").isNullOrEmpty()}")
                 viewModel.setIntent(null)
                 viewModel.completeDiscordLogin(data.toString())
+            } else if (streamifyAuthState !is AuthState.Authenticated) {
+                // Defer navigation deep links until AppNavigationGraph is mounted.
+                return@LaunchedEffect
+            } else if (data.scheme == "simpmusic" && data.host == "notification") {
+                viewModel.setIntent(null)
+                navController.navigate(
+                    NotificationDestination,
+                )
             } else if (data.host == "simpmusic.org" || data.scheme == "simpmusic") {
                 // https://simpmusic.org/app/watch?v=VIDEO_ID
                 // https://simpmusic.org/app/playlist?list=PLAYLIST_ID
@@ -324,6 +329,10 @@ fun App(
                 val youTubeLoggedIn = viewModel.getYouTubeLoggedIn().first() == TRUE
                 viewModel.setIntent(null)
                 when (appPath) {
+                    "notification" -> {
+                        navController.navigate(NotificationDestination)
+                    }
+
                     "watch" -> {
                         data.getQueryParameter("v")?.let { videoId ->
                             viewModel.loadSharedMediaItem(videoId)
@@ -484,6 +493,7 @@ fun App(
                         }
                     }
                 }
+                viewModel.setIntent(null)
             }
         }
     }
@@ -500,7 +510,10 @@ fun App(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(navBackStackEntry) {
         Logger.d("MainActivity", "Current destination: ${navBackStackEntry?.destination?.route}")
-        if (navBackStackEntry?.destination?.route?.contains("FullscreenDestination") == true) {
+        if (navBackStackEntry?.destination?.hierarchy?.any {
+                it.hasRoute(FullscreenDestination::class)
+            } == true
+        ) {
             isShowNowPlaylistScreen = false
         }
         // Wrapped counts as fullscreen for the same reason the video player does: it is a
@@ -547,7 +560,8 @@ fun App(
     var isScrolledToTop by rememberSaveable {
         mutableStateOf(false)
     }
-    val isTablet = windowSize.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val appWindowSizeClass = windowSize.toAppWindowSizeClass()
+    val isTablet = !appWindowSizeClass.isCompact
     val isTabletLandscape = isTablet && currentOrientation() == Orientation.LANDSCAPE
 
     AppTheme(
@@ -557,6 +571,9 @@ fun App(
         // The setting governs Desktop too, the same as Android: off, every glass surface draws flat.
         liquidGlassEnabled = isLiquidGlassEnabled == TRUE,
     ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.maxrave.simpmusic.ui.theme.LocalAppWindowSizeClass provides appWindowSizeClass,
+        ) {
         LaunchedEffect(platformContext) {
             StreamifyAuthManager.init(platformContext)
             com.streamify.lyrics.slyr.BluetoothLatencyTracker.init(platformContext)
@@ -1019,12 +1036,14 @@ fun App(
                         )
                     } else if (shouldShowUpdateDialog) {
                         val response = updateData ?: return@Scaffold
+                        val manifest = UpdateStateHolder.latestManifest
                         val binary = remember(response.tagName) {
                             resolveDeviceBinary(
                                 tag = response.tagName,
-                                artifacts = UpdateStateHolder.latestManifest?.artifacts ?: emptyMap(),
+                                artifacts = manifest?.artifacts ?: emptyMap(),
                             )
                         }
+                        val downloadState by com.maxrave.simpmusic.data.update.PlatformUpdater.state.collectAsStateWithLifecycle()
                         val currentVersion = remember { VersionManager.getVersionName() }
                         StreamifyUpdateDialog(
                             targetVersion = response.tagName,
@@ -1033,10 +1052,31 @@ fun App(
                             changelog = response.body,
                             binary = binary,
                             isBreaking = UpdateStateHolder.isBreaking,
+                            urgency = UpdateStateHolder.urgency,
+                            remainingHours = UpdateStateHolder.remainingHours,
+                            downloadState = downloadState,
+                            onRetryDownload = {
+                                val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                                com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                    tag = response.tagName,
+                                    url = binary.downloadUrl,
+                                    expectedSha256 = sha,
+                                )
+                            },
                             onConfirmUpdate = {
-                                shouldShowUpdateDialog = false
-                                viewModel.setShowedUpdateDialog(false)
-                                openUrl(binary.downloadUrl)
+                                if (downloadState is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) {
+                                    com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
+                                        onFallbackOpenUrl = { url -> openUrl(url) },
+                                        fallbackUrl = binary.downloadUrl,
+                                    )
+                                } else {
+                                    val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
+                                    com.maxrave.simpmusic.data.update.PlatformUpdater.startDownload(
+                                        tag = response.tagName,
+                                        url = binary.downloadUrl,
+                                        expectedSha256 = sha,
+                                    )
+                                }
                             },
                             onSkipLaunch = {
                                 shouldShowUpdateDialog = false
@@ -1129,6 +1169,7 @@ fun App(
             }
             },
         )
+        }
     }
 }
 

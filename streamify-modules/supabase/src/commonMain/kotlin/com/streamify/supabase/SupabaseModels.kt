@@ -58,7 +58,7 @@ data class CloudTrack(
 @Serializable
 data class CloudUserLike(
     @SerialName("user_id")
-    val user_id: String,
+    val user_id: String = "",
     @SerialName("track_id")
     val track_id: String,
     @SerialName("created_at")
@@ -350,7 +350,9 @@ data class SyncPushResult(
     val applied: Int = 0,
     val rejected: Int = 0,
     val cursor: Long = 0,
-    val results: List<SyncPushOpResult> = emptyList()
+    val results: List<SyncPushOpResult> = emptyList(),
+    @kotlinx.serialization.Transient
+    val serverTimeMs: Long? = null,
 )
 
 @Serializable
@@ -366,9 +368,13 @@ data class SyncPullOp(
 @Serializable
 data class SyncPullResult(
     val cursor: Long = 0,
+    @SerialName("head_cursor")
+    val headCursor: Long? = null,
     @SerialName("has_more")
     val hasMore: Boolean = false,
-    val ops: List<SyncPullOp> = emptyList()
+    val ops: List<SyncPullOp> = emptyList(),
+    @kotlinx.serialization.Transient
+    val serverTimeMs: Long? = null,
 )
 
 @Serializable

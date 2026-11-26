@@ -113,6 +113,7 @@ def main():
 
     for f in md_files:
         text = f.read_text(encoding="utf-8", errors="replace")
+        rel_str = str(f.relative_to(REPO))
         for m in PIN_RE.finditer(text):
             pins += 1
             sha = m.group(1)
@@ -120,11 +121,23 @@ def main():
             if anc.returncode != 0:
                 anc_head = git(["merge-base", "--is-ancestor", sha, "HEAD"])
                 if anc_head.returncode != 0:
-                    errors.append(f"{f.relative_to(REPO)}: pin {sha[:10]} "
-                                  "is not an ancestor of origin/main or HEAD")
+                    errors.append(f"{rel_str}: pin {sha[:10]} "
+                                  "is not an ancestor of origin/main or HEAD (can't tell)")
+                    continue
+            cat = git(["cat-file", "-e", f"{sha}:{rel_str}"])
+            if cat.returncode != 0:
+                errors.append(f"{rel_str}: pin {sha[:10]} does not contain {rel_str}")
             elif sha != tip_sha:
-                stale.append(f"{f.relative_to(REPO)}: pin {sha[:10]} "
+                stale.append(f"{rel_str}: pin {sha[:10]} "
                              f"older than tip {tip_sha[:10]}")
+                # If the doc was edited on this branch relative to origin/main, require the pin to move.
+                diff_check = git(["diff", "--quiet", tip_sha, "HEAD", "--", rel_str])
+                if diff_check.returncode == 1:
+                    base_blob = git(["show", f"{tip_sha}:{rel_str}"])
+                    if base_blob.returncode == 0:
+                        base_pins = [bm.group(1) for bm in PIN_RE.finditer(base_blob.stdout)]
+                        if sha in base_pins:
+                            errors.append(f"{rel_str}: doc edited without updating verification pin")
         for m in LINK_RE.finditer(text):
             target = m.group(1).strip()
             if target.startswith(("http://", "https://", "mailto:", "#", "file://")):

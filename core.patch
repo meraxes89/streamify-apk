@@ -82,10 +82,18 @@ index 0000000..09e84b4
 @@ -0,0 +1 @@
 +package com.maxrave.common
 diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
-index 6a30090..c452fe5 100644
+index 6a30090..293b87c 100644
 --- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
 +++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
-@@ -1647,7 +1647,7 @@ internal class MediaServiceHandlerImpl(
+@@ -110,6 +110,7 @@ import kotlinx.coroutines.runBlocking
+ import kotlinx.coroutines.sync.Mutex
+ import kotlinx.coroutines.sync.withLock
+ import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeoutOrNull
+ import kotlinx.serialization.json.Json
+ import org.koin.mp.KoinPlatform.getKoin
+ import java.util.concurrent.atomic.AtomicBoolean
+@@ -1647,7 +1648,7 @@ internal class MediaServiceHandlerImpl(
                                              ),
                                      )
                                  }
@@ -94,7 +102,7 @@ index 6a30090..c452fe5 100644
                                      Logger.w(TAG, "loadMore: Endless Queue")
                                      val lastTrack =
                                          queueData.value.data.listTracks
-@@ -1677,28 +1677,28 @@ internal class MediaServiceHandlerImpl(
+@@ -1677,28 +1678,28 @@ internal class MediaServiceHandlerImpl(
                          }
                  }
              }
@@ -144,6 +152,34 @@ index 6a30090..c452fe5 100644
          }
      }
  
+@@ -2496,8 +2497,8 @@ internal class MediaServiceHandlerImpl(
+     }
+ 
+     override fun mayBeSavePlaybackState() {
+-        if (runBlocking { dataStoreManager.saveStateOfPlayback.first() } == TRUE) {
+-            runBlocking {
++        coroutineScope.launch {
++            if (dataStoreManager.saveStateOfPlayback.first() == TRUE) {
+                 dataStoreManager.recoverShuffleAndRepeatKey(
+                     player.shuffleModeEnabled,
+                     player.repeatMode,
+@@ -2652,9 +2653,13 @@ internal class MediaServiceHandlerImpl(
+         }
+ 
+     override fun shouldReleaseOnTaskRemoved() =
+-        runBlocking {
+-            dataStoreManager.killServiceOnExit.first() == TRUE
+-        }
++        runCatching {
++            runBlocking(Dispatchers.IO) {
++                withTimeoutOrNull(500) {
++                    dataStoreManager.killServiceOnExit.first() == TRUE
++                }
++            }
++        }.getOrNull() ?: false
+ 
+     override fun release() {
+         Logger.w("ServiceHandler", "Starting release process")
 diff --git a/data/src/commonMain/kotlin/DatabaseDao.kt b/data/src/commonMain/kotlin/DatabaseDao.kt
 index db029df..1e1929c 100644
 --- a/data/src/commonMain/kotlin/DatabaseDao.kt
@@ -234,7 +270,7 @@ index 3903b7e..bbc1166 100644
      }
  
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
-index 4024528..a7b5a84 100644
+index 4024528..cca7841 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 @@ -3,6 +3,9 @@ package com.maxrave.data.di
@@ -247,7 +283,17 @@ index 4024528..a7b5a84 100644
  import androidx.sqlite.driver.bundled.BundledSQLiteDriver
  import com.maxrave.data.dataStore.DataStoreManagerImpl
  import com.maxrave.data.dataStore.createDataStoreInstance
-@@ -37,6 +40,24 @@ val databaseModule =
+@@ -29,64 +32,82 @@ import org.simpmusic.autoeq.AutoEq
+ @OptIn(ExperimentalTime::class)
+ val databaseModule =
+     module {
+-        single(createdAtStart = true) {
++        single {
+             Converters()
+         }
+         // Database
+-        single(createdAtStart = true) {
++        single {
              getDatabaseBuilder(
                  get<Converters>()
              )
@@ -272,7 +318,45 @@ index 4024528..a7b5a84 100644
                  .setDriver(BundledSQLiteDriver())
                  .setQueryCoroutineContext(Dispatchers.IO)
                  .build()
-@@ -74,19 +95,19 @@ val databaseModule =
+         }
+         // DatabaseDao
+-        single(createdAtStart = true) {
++        single {
+             get<MusicDatabase>().getDatabaseDao()
+         }
+         // Library sync (#2663): its own small preferences file, its DAO, and the recorder every
+         // write to a synced item goes through.
+-        single(createdAtStart = true) {
++        single {
+             get<MusicDatabase>().getSyncDao()
+         }
+-        single(createdAtStart = true) {
++        single {
+             SyncPrefs(createLibrarySyncDataStore())
+         }
+-        single(createdAtStart = true) {
++        single {
+             SyncChangeRecorder(get<SyncDao>(), get<SyncPrefs>())
+         }
+         // LocalDataSource
+-        single(createdAtStart = true) {
++        single {
+             LocalDataSource(get<DatabaseDao>(), get<MusicDatabase>(), get<SyncChangeRecorder>())
+         }
+         // AnalyticsDatasource
+-        single(createdAtStart = true) {
++        single {
+             AnalyticsDatasource(get<DatabaseDao>(), get<SyncChangeRecorder>())
+         }
+         // Datastore
+-        single(createdAtStart = true) {
++        single {
+             createDataStoreInstance()
+         }
+         // DatastoreManager
+-        single<DataStoreManager>(createdAtStart = true) {
++        single<DataStoreManager> {
+             DataStoreManagerImpl(get<DataStore<Preferences>>())
          }
  
          // Move YouTube from Singleton to Koin DI
@@ -362,19 +446,159 @@ index 1fcea31..7d6729f 100644
              UpdateRepositoryImpl(get())
          }
  
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt
+index 39c34ec..5597d2c 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncApplier.kt
+@@ -85,7 +85,11 @@ internal class SyncApplier(
+         change: ChangeWire,
+         sendWhole: MutableSet<Long>,
+     ): Boolean {
+-        val meta = change.value?.let { syncJson.decodeFromString(PlaylistMeta.serializer(), it) } ?: return false
++        val raw = change.value ?: return false
++        val meta =
++            runCatching { syncJson.decodeFromString(PlaylistMeta.serializer(), raw) }
++                .onFailure { Logger.e(TAG, "malformed PlaylistMeta for ${change.key}", it) }
++                .getOrNull() ?: return false
+         val existing = dao.localPlaylistBySyncId(change.key)
+         if (existing == null) {
+             ensurePlaylist(change.key, meta, sendWhole)
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
-index cd39fe9..e18f459 100644
+index cd39fe9..958ba2b 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncChangeRecorder.kt
-@@ -22,7 +22,7 @@ internal class SyncChangeRecorder(
+@@ -21,8 +21,16 @@ internal class SyncChangeRecorder(
+     private val dao: SyncDao,
      private val prefs: SyncPrefs,
  ) {
++    private var lastRecordedAtMs: Long = 0L
++
++    private fun monotonicNowMillis(): Long {
++        val now = nowMillis()
++        val next = if (now > lastRecordedAtMs) now else lastRecordedAtMs
++        lastRecordedAtMs = next
++        return next
++    }
      /** Whether a change made now would be recorded. Cheap; lets callers skip reads they only need for sync. */
 -    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null && prefs.current().paired
 +    suspend fun active(): Boolean = currentCoroutineContext()[SyncApplyingKey] == null
  
      suspend fun flag(
          kind: String,
+@@ -45,9 +53,31 @@ internal class SyncChangeRecorder(
+     ) {
+         if (!active()) return
+         val syncId = playlistSyncId(playlistId) ?: return
+-        record(SyncKind.LOCAL_PLAYLIST_TRACK, "$syncId|$videoId", SyncOp.SET, if (inPlaylist) ON else OFF)
+-        // An added song lands at the end; the order is what puts it where the user sees it.
+-        record(SyncKind.LOCAL_PLAYLIST_ORDER, syncId, SyncOp.SET, null)
++        val ts = monotonicNowMillis()
++        val devId = prefs.deviceId()
++        storeBatch(
++            listOf(
++                SyncChangeEntity(
++                    changeId = newSyncId(),
++                    entity = SyncKind.LOCAL_PLAYLIST_TRACK,
++                    entityKey = "$syncId|$videoId",
++                    op = SyncOp.SET,
++                    value = if (inPlaylist) ON else OFF,
++                    changedAt = ts,
++                    deviceId = devId,
++                ),
++                // An added song lands at the end; the order is what puts it where the user sees it.
++                SyncChangeEntity(
++                    changeId = newSyncId(),
++                    entity = SyncKind.LOCAL_PLAYLIST_ORDER,
++                    entityKey = syncId,
++                    op = SyncOp.SET,
++                    value = null,
++                    changedAt = ts,
++                    deviceId = devId,
++                ),
++            ),
++        )
+     }
+ 
+     /** Songs moved in the playlist; the order itself is read when sent, so a run of moves sends one. */
+@@ -100,12 +130,16 @@ internal class SyncChangeRecorder(
+                 entityKey = key,
+                 op = op,
+                 value = value,
+-                changedAt = nowMillis(),
++                changedAt = monotonicNowMillis(),
+                 deviceId = prefs.deviceId(),
+             ),
+         )
+     }
+ 
++    private suspend fun storeBatch(changes: List<SyncChangeEntity>) {
++        changes.forEach { store(it) }
++    }
++
+     private suspend fun store(change: SyncChangeEntity) {
+         try {
+             if (prefs.current().phones.isNotEmpty()) dao.recordLogged(change) else dao.recordPending(change)
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt
+index 9c816fc..dab2664 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncEngine.kt
+@@ -96,6 +96,7 @@ internal class SyncEngine(
+                 snapshot.playlistChanges(playlist, deviceId, nowMillis()).forEach { dao.recordPending(it) }
+             }
+         }
++        // Advance sequence cursor immediately after applying changes, before pruning history.
+         prefs.update { it.copy(lastServerSeq = reply.newSeq, lastSyncAt = nowMillis()) }
+         reply.settings?.let { settings.receive(it, desktopName) }
+         dao.pruneSent(nowMillis() - SENT_KEPT_MS)
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
+index c113385..233c296 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
+@@ -31,15 +31,28 @@ internal class SyncedSettings(
+     /** Whether this device keeps listening history; off, it neither sends nor takes plays. */
+     suspend fun localTracking(): Boolean = settings.data.first()[stringPreferencesKey("local_tracking_enabled")] == "TRUE"
+ 
++    private suspend fun readValues(): Map<String, SettingWire> =
++        settings.data
++            .first()
++            .asMap()
++            .mapNotNull { (key, value) -> if (key.name in KEYS) encode(value)?.let { key.name to it } else null }
++            .toMap()
++
++    /** Deterministic canonical hash over sorted setting entries (safe to persist across restarts). */
++    private fun canonicalHash(values: Map<String, SettingWire>): Int {
++        var h = 0x811c9dc5.toInt()
++        values.entries.sortedBy { it.key }.forEach { (k, v) ->
++            for (c in k) { h = (h xor c.code) * 0x01000193 }
++            for (c in v.type) { h = (h xor c.code) * 0x01000193 }
++            for (c in v.value) { h = (h xor c.code) * 0x01000193 }
++        }
++        return h
++    }
++
+     /** This device's allowlisted settings, with when they last changed as far as sync has seen. */
+     suspend fun snapshot(): SettingsWire {
+-        val values =
+-            settings.data
+-                .first()
+-                .asMap()
+-                .mapNotNull { (key, value) -> if (key.name in KEYS) encode(value)?.let { key.name to it } else null }
+-                .toMap()
+-        val hash = values.hashCode()
++        val values = readValues()
++        val hash = canonicalHash(values)
+         val state = prefs.current()
+         val changedAt =
+             if (state.settingsHash == hash) {
+@@ -82,7 +95,7 @@ internal class SyncedSettings(
+             }
+         }
+         // Stamped with the other device's time, so this side does not now look newer and send them back.
+-        val hash = snapshot().values.hashCode()
++        val hash = canonicalHash(readValues())
+         prefs.update {
+             it.copy(pendingSettings = null, pendingSettingsFrom = null, settingsHash = hash, settingsChangedAt = pending.changedAt)
+         }
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
 index 18fac82..3e58472 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/repository/AnalyticsRepositoryImpl.kt
@@ -397,8 +621,336 @@ index 18fac82..3e58472 100644
                  ),
              )
          }.flowOn(Dispatchers.IO)
+diff --git a/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt b/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt
+index bc3bcfb..4dedd05 100644
+--- a/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt
++++ b/data/src/iosArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosArm64.kt
+@@ -1,15 +1,20 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
+diff --git a/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt b/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt
+index bc3bcfb..84a22a6 100644
+--- a/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt
++++ b/data/src/iosMain/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.ios.kt
+@@ -1,15 +1,208 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.data.entities.NewFormatEntity
++import com.maxrave.domain.data.model.browse.album.Track
++import com.maxrave.domain.data.model.mediaService.SponsorSkipSegments
++import com.maxrave.domain.data.player.AudioEffects
++import com.maxrave.domain.data.player.AudioOutput
++import com.maxrave.domain.data.player.EightDEffect
++import com.maxrave.domain.data.player.GenericCastState
++import com.maxrave.domain.data.player.GenericCommandButton
++import com.maxrave.domain.data.player.GenericMediaItem
++import com.maxrave.domain.data.player.GenericPlaybackParameters
++import com.maxrave.domain.data.player.PlayerError
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.ControlState
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.mediaservice.handler.NowPlayingTrackState
++import com.maxrave.domain.mediaservice.handler.PlayerEvent
++import com.maxrave.domain.mediaservice.handler.QueueData
++import com.maxrave.domain.mediaservice.handler.RepeatState
++import com.maxrave.domain.mediaservice.handler.SimpleMediaState
++import com.maxrave.domain.mediaservice.handler.SleepTimerState
++import com.maxrave.domain.mediaservice.handler.ToastType
++import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
++import com.maxrave.domain.mediaservice.player.MediaPlayerListener
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asStateFlow
++
++object NoOpMediaPlayerInterface : MediaPlayerInterface {
++    override fun play() {}
++    override fun pause() {}
++    override fun stop() {}
++    override fun seekTo(positionMs: Long) {}
++    override fun seekTo(mediaItemIndex: Int, positionMs: Long) {}
++    override fun seekBack() {}
++    override fun seekForward() {}
++    override fun seekToNext() {}
++    override fun seekToPrevious() {}
++    override fun seekToPreviousMediaItem() {}
++    override fun prepare() {}
++    override fun setMediaItem(mediaItem: GenericMediaItem) {}
++    override fun addMediaItem(mediaItem: GenericMediaItem) {}
++    override fun addMediaItem(index: Int, mediaItem: GenericMediaItem) {}
++    override fun removeMediaItem(index: Int) {}
++    override fun removeMediaItems(fromIndex: Int, toIndex: Int, onRemoved: (removedIds: List<String>) -> Unit) {
++        onRemoved(emptyList())
++    }
++    override fun moveMediaItem(fromIndex: Int, toIndex: Int) {}
++    override fun moveShuffledItem(fromShuffledIndex: Int, toShuffledIndex: Int) {}
++    override fun clearMediaItems() {}
++    override fun replaceMediaItem(index: Int, mediaItem: GenericMediaItem) {}
++    override fun getMediaItemAt(index: Int): GenericMediaItem? = null
++    override fun getCurrentMediaTimeLine(): List<GenericMediaItem> = emptyList()
++    override fun getUnshuffledIndex(shuffledIndex: Int): Int = shuffledIndex
++
++    override val isPlaying: Boolean = false
++    override val currentPosition: Long = 0L
++    override val duration: Long = 0L
++    override val bufferedPosition: Long = 0L
++    override val bufferedPercentage: Int = 0
++    override val currentMediaItem: GenericMediaItem? = null
++    override val currentMediaItemIndex: Int = 0
++    override val mediaItemCount: Int = 0
++    override val contentPosition: Long = 0L
++    override val playbackState: Int = 1 // STATE_IDLE
++
++    override fun hasNextMediaItem(): Boolean = false
++    override fun hasPreviousMediaItem(): Boolean = false
++
++    override var shuffleModeEnabled: Boolean = false
++    override var repeatMode: Int = 0
++    override var playWhenReady: Boolean = false
++    override var playbackParameters: GenericPlaybackParameters = GenericPlaybackParameters(1f, 1f)
++
++    override val audioSessionId: Int = 0
++    override var volume: Float = 1f
++    override var sleepFadeFactor: Float = 1f
++    override var crossfadeSuppressed: Boolean = false
++    override var albumTrackIds: Set<String> = emptySet()
++    override var skipSilenceEnabled: Boolean = false
++
++    override fun setEqualizer(bandsDb: List<Float>, preampDb: Float) {}
++    override fun setAudioEffects(effects: AudioEffects) {}
++    override fun setEightD(effect: EightDEffect?) {}
++    override val eightDAvailable: StateFlow<Boolean> = MutableStateFlow(false)
++    override val audioOutputs: StateFlow<List<AudioOutput>> = MutableStateFlow(emptyList())
++    override fun selectAudioOutput(id: String?) {}
++    override fun refreshAudioOutputs() {}
++    override suspend fun loadWaveform(mediaId: String, onProgress: (FloatArray) -> Unit): FloatArray? = null
++
++    override fun addListener(listener: MediaPlayerListener) {}
++    override fun removeListener(listener: MediaPlayerListener) {}
++    override fun release() {}
++}
++
++class NoOpMediaPlayerHandler : MediaPlayerHandler {
++    override val player: MediaPlayerInterface = NoOpMediaPlayerInterface
++
++    private val _simpleMediaState = MutableStateFlow<SimpleMediaState>(SimpleMediaState.Initial)
++    override val simpleMediaState: StateFlow<SimpleMediaState> = _simpleMediaState.asStateFlow()
++
++    private val _nowPlaying = MutableStateFlow<GenericMediaItem?>(null)
++    override val nowPlaying: StateFlow<GenericMediaItem?> = _nowPlaying.asStateFlow()
++
++    private val _queueData = MutableStateFlow<QueueData?>(null)
++    override val queueData: StateFlow<QueueData?> = _queueData.asStateFlow()
++
++    private val _controlState = MutableStateFlow(
++        ControlState(
++            isPlaying = false,
++            isShuffle = false,
++            repeatState = RepeatState.None,
++            isLiked = false,
++            isNextAvailable = false,
++            isPreviousAvailable = false,
++            isCrossfading = false,
++            volume = 1f,
++        ),
++    )
++    override val controlState: StateFlow<ControlState> = _controlState.asStateFlow()
++
++    private val _nowPlayingState = MutableStateFlow(NowPlayingTrackState.initial())
++    override val nowPlayingState: StateFlow<NowPlayingTrackState> = _nowPlayingState.asStateFlow()
++
++    private val _sleepTimerState = MutableStateFlow(SleepTimerState(isDone = false, timeRemaining = 0))
++    override val sleepTimerState: StateFlow<SleepTimerState> = _sleepTimerState.asStateFlow()
++
++    private val _skipSegments = MutableStateFlow<List<SponsorSkipSegments>?>(null)
++    override val skipSegments: StateFlow<List<SponsorSkipSegments>?> = _skipSegments.asStateFlow()
++
++    private val _format = MutableStateFlow<NewFormatEntity?>(null)
++    override val format: StateFlow<NewFormatEntity?> = _format.asStateFlow()
++
++    private val _currentSongIndex = MutableStateFlow(0)
++    override val currentSongIndex: StateFlow<Int> = _currentSongIndex.asStateFlow()
++
++    private val _castState = MutableStateFlow(GenericCastState(isRemote = false, deviceName = null))
++    override val castState: StateFlow<GenericCastState> = _castState.asStateFlow()
++
++    override var onUpdateNotification: (List<GenericCommandButton>) -> Unit = {}
++    override var pushPlayerError: (PlayerError) -> Unit = {}
++    override var showToast: (ToastType) -> Unit = {}
++
++    override suspend fun onPlayerEvent(playerEvent: PlayerEvent) {}
++    override fun toggleRadio() {}
++    override fun toggleLike() {}
++    override fun like(liked: Boolean) {}
++    override fun resetSongAndQueue() {}
++    override fun sleepStart(minutes: Int) {}
++    override fun sleepStop() {}
++    override fun removeMediaItem(position: Int) {}
++    override fun addMediaItem(mediaItem: GenericMediaItem, playWhenReady: Boolean) {}
++    override fun clearMediaItems() {}
++    override fun addMediaItemList(mediaItemList: List<GenericMediaItem>) {}
++    override fun playMediaItemInMediaSource(index: Int) {}
++    override fun currentSongIndex(): Int = 0
++    override fun currentOrderIndex(): Int = 0
++    override suspend fun swap(from: Int, to: Int) {}
++    override fun resetCrossfade() {}
++    override fun shufflePlaylist(randomTrackIndex: Int) {}
++    override fun loadMore() {}
++    override fun getRelated(videoId: String) {}
++    override fun setQueueData(queueData: QueueData.Data) {}
++    override fun getCurrentMediaItem(): GenericMediaItem? = null
++    override suspend fun moveItemUp(position: Int) {}
++    override suspend fun moveItemDown(position: Int) {}
++    override suspend fun moveItemToPlayNext(position: Int) {}
++    override fun addFirstMediaItemToIndex(mediaItem: GenericMediaItem?, index: Int) {}
++    override fun reset() {}
++    override suspend fun load(downloaded: Int, index: Int?) {}
++    override suspend fun loadMoreCatalog(listTrack: ArrayList<Track>, isAddToQueue: Boolean) {}
++    override suspend fun updateCatalog(downloaded: Int, index: Int?): Boolean = false
++    override fun addQueueToPlayer() {}
++    override fun loadPlaylistOrAlbum(index: Int?) {}
++    override fun setCurrentSongIndex(index: Int) {}
++    override suspend fun playNext(track: Track) {}
++    override suspend fun <T> loadMediaItem(anyTrack: T, type: String, index: Int?) {}
++    override fun getPlayerDuration(): Long = 0L
++    override fun getProgress(): Long = 0L
++    override fun startProgressUpdate() {}
++    override fun stopProgressUpdate() {}
++    override fun startBufferedUpdate() {}
++    override fun stopBufferedUpdate() {}
++    override fun mayBeNormalizeVolume() {}
++    override fun mayBeSaveRecentSong(runBlocking: Boolean) {}
++    override fun mayBeSavePlaybackState() {}
++    override fun mayBeRestoreQueue() {}
++    override suspend fun restoreQueueAndPlay(): Boolean = false
++    override fun shouldReleaseOnTaskRemoved(): Boolean = false
++    override fun release() {}
++}
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
+diff --git a/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt b/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt
+index bc3bcfb..4dedd05 100644
+--- a/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt
++++ b/data/src/iosSimulatorArm64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosSimulatorArm64.kt
+@@ -1,15 +1,20 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
+diff --git a/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt b/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt
+index bc3bcfb..4dedd05 100644
+--- a/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt
++++ b/data/src/iosX64Main/kotlin/com/maxrave/data/mediaservice/ExpectMediaHandler.iosX64.kt
+@@ -1,15 +1,20 @@
+ package com.maxrave.data.mediaservice
+ 
++import com.maxrave.domain.manager.DataStoreManager
++import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
++import com.maxrave.domain.repository.AnalyticsRepository
+ import com.maxrave.domain.repository.DiscordRepository
++import com.maxrave.domain.repository.LocalPlaylistRepository
++import com.maxrave.domain.repository.SongRepository
++import com.maxrave.domain.repository.StreamRepository
++import kotlinx.coroutines.CoroutineScope
+ 
+ actual fun createMediaServiceHandler(
+-    dataStoreManager: com.maxrave.domain.manager.DataStoreManager,
+-    songRepository: com.maxrave.domain.repository.SongRepository,
+-    streamRepository: com.maxrave.domain.repository.StreamRepository,
+-    localPlaylistRepository: com.maxrave.domain.repository.LocalPlaylistRepository,
+-    analyticsRepository: com.maxrave.domain.repository.AnalyticsRepository,
++    dataStoreManager: DataStoreManager,
++    songRepository: SongRepository,
++    streamRepository: StreamRepository,
++    localPlaylistRepository: LocalPlaylistRepository,
++    analyticsRepository: AnalyticsRepository,
+     discordRepository: DiscordRepository,
+-    coroutineScope: kotlinx.coroutines.CoroutineScope,
+-): com.maxrave.domain.mediaservice.handler.MediaPlayerHandler {
+-    TODO("Not yet implemented")
+-}
+\ No newline at end of file
++    coroutineScope: CoroutineScope,
++): MediaPlayerHandler = NoOpMediaPlayerHandler()
 diff --git a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
-index 4e3866d..73d6153 100644
+index 4e3866d..50117f7 100644
 --- a/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
 +++ b/data/src/jvmMain/kotlin/com/maxrave/data/mediaservice/JvmMediaPlayerHandlerImpl.kt
 @@ -1774,7 +1774,7 @@ class JvmMediaPlayerHandlerImpl(
@@ -460,6 +1012,14 @@ index 4e3866d..73d6153 100644
          }
      }
  
+@@ -2716,6 +2716,7 @@ class JvmMediaPlayerHandlerImpl(
+ 
+             // Stop and release player
+             player.removeListener(this)
++            runCatching { player.release() }
+ 
+             // Release audio effects
+ //            try {
 diff --git a/domain/build.gradle.kts b/domain/build.gradle.kts
 index 9d59c49..1ca8f91 100644
 --- a/domain/build.gradle.kts
@@ -776,6 +1336,184 @@ index 0000000..aea0a2d
 +        outputBuffer.flip()
 +    }
 +}
+diff --git a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
+index 62c93a5..91c65a1 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
+@@ -62,6 +62,7 @@ import com.maxrave.domain.repository.SearchRepository
+ import com.maxrave.domain.repository.SongRepository
+ import com.maxrave.domain.repository.StreamRepository
+ import com.maxrave.logger.Logger
++import com.maxrave.media3.audio.LimiterAudioProcessor
+ import com.maxrave.media3.cast.CastHandoffManager
+ import com.maxrave.media3.waveform.WaveformReader
+ import com.maxrave.media3.cast.CastStreamResolver
+@@ -84,6 +85,7 @@ import kotlinx.coroutines.flow.firstOrNull
+ import kotlinx.coroutines.flow.lastOrNull
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.runBlocking
++import kotlinx.coroutines.withTimeoutOrNull
+ import okhttp3.OkHttpClient
+ import okhttp3.logging.HttpLoggingInterceptor
+ import org.koin.android.ext.koin.androidApplication
+@@ -105,28 +107,33 @@ private val mediaServiceModule =
+         // Service
+         // CoroutineScope for service
+         single<CoroutineScope>(
+-            createdAtStart = true,
+             qualifier = named(SERVICE_SCOPE),
+         ) {
+             CoroutineScope(Dispatchers.Main + SupervisorJob())
+         }
+         // Cache
+-        single<DatabaseProvider>(
+-            createdAtStart = true,
+-        ) {
++        single<DatabaseProvider> {
+             provideDatabaseProvider(androidContext())
+         }
+         // Player Cache
+-        single<SimpleCache>(qualifier = named(PLAYER_CACHE), createdAtStart = true) {
++        single<SimpleCache>(qualifier = named(PLAYER_CACHE)) {
++            val cacheSize: Int =
++                runCatching {
++                    runBlocking(Dispatchers.IO) {
++                        withTimeoutOrNull(500) {
++                            get<DataStoreManager>().maxSongCacheSize.first()
++                        }
++                    }
++                }.getOrNull() ?: 512
+             provideSimpleCache(
+                 context = androidContext(),
+                 cacheName = "exoplayer",
+-                cacheSize = runBlocking { get<DataStoreManager>().maxSongCacheSize.first() },
++                cacheSize = cacheSize,
+                 databaseProvider = get<DatabaseProvider>(),
+             )
+         }
+         // Download Cache
+-        single<SimpleCache>(qualifier = named(DOWNLOAD_CACHE), createdAtStart = true) {
++        single<SimpleCache>(qualifier = named(DOWNLOAD_CACHE)) {
+             provideSimpleCache(
+                 context = androidContext(),
+                 cacheName = "download",
+@@ -135,7 +142,7 @@ private val mediaServiceModule =
+             )
+         }
+         // Spotify Canvas Cache
+-        single<SimpleCache>(qualifier = named(CANVAS_CACHE), createdAtStart = true) {
++        single<SimpleCache>(qualifier = named(CANVAS_CACHE)) {
+             provideSimpleCache(
+                 context = androidContext(),
+                 cacheName = "spotifyCanvas",
+@@ -144,7 +151,7 @@ private val mediaServiceModule =
+             )
+         }
+         // DownloadUtils
+-        single<DownloadHandler>(createdAtStart = true) {
++        single<DownloadHandler> {
+             DownloadUtils(
+                 context = androidContext(),
+                 playerCache = get(named(PLAYER_CACHE)),
+@@ -157,11 +164,11 @@ private val mediaServiceModule =
+         }
+ 
+         // AudioAttributes
+-        single<AudioAttributes>(createdAtStart = true) {
++        single<AudioAttributes> {
+             provideAudioAttributes()
+         }
+ 
+-        single<MergingMediaSourceFactory>(createdAtStart = true) {
++        single<MergingMediaSourceFactory> {
+             provideMergingMediaSource(
+                 androidContext(),
+                 get(named(DOWNLOAD_CACHE)),
+@@ -172,7 +179,7 @@ private val mediaServiceModule =
+             )
+         }
+ 
+-        single<DefaultRenderersFactory>(createdAtStart = true) {
++        single<DefaultRenderersFactory> {
+             provideRendererFactory(androidContext())
+         }
+ 
+@@ -187,7 +194,7 @@ private val mediaServiceModule =
+         }
+ 
+         // CoilBitmapLoader
+-        single<CoilBitmapLoader>(createdAtStart = true) {
++        single<CoilBitmapLoader> {
+             provideCoilBitmapLoader(androidContext(), get(named(SERVICE_SCOPE)))
+         }
+ 
+@@ -209,7 +216,7 @@ private val mediaServiceModule =
+             )
+         }
+ 
+-        single<MediaPlayerInterface>(createdAtStart = true) {
++        single<MediaPlayerInterface> {
+             CrossfadeExoPlayerAdapter(
+                 context = androidContext(),
+                 coroutineScope = get(named(SERVICE_SCOPE)),
+@@ -223,7 +230,7 @@ private val mediaServiceModule =
+ 
+         // Local ↔ Cast receiver handoff. No-op when wrapWithCastPlayer returned the plain
+         // ForwardingPlayer (FOSS build or no GMS on the device).
+-        single<CastHandoffManager>(createdAtStart = true) {
++        single<CastHandoffManager> {
+             CastHandoffManager(
+                 adapter = get<MediaPlayerInterface>() as CrossfadeExoPlayerAdapter,
+                 sessionPlayer = get(qualifier = named(MAIN_PLAYER)),
+@@ -233,7 +240,7 @@ private val mediaServiceModule =
+         }
+ 
+         // MediaSession Callback for main player
+-        single<MediaLibrarySession.Callback>(createdAtStart = true) {
++        single<MediaLibrarySession.Callback> {
+             SimpleMediaSessionCallback(
+                 androidApplication(),
+                 get<CoroutineScope>(named(SERVICE_SCOPE)),
+@@ -247,7 +254,7 @@ private val mediaServiceModule =
+             )
+         }
+ 
+-        single<CacheRepository>(createdAtStart = true) {
++        single<CacheRepository> {
+             CacheRepositoryImpl(
+                 playerCache = get(named(PLAYER_CACHE)),
+                 downloadCache = get(named(DOWNLOAD_CACHE)),
+@@ -514,7 +521,7 @@ private fun provideRendererFactory(context: Context): DefaultRenderersFactory =
+                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                 .setAudioProcessorChain(
+                     DefaultAudioSink.DefaultAudioProcessorChain(
+-                        emptyArray(),
++                        arrayOf(LimiterAudioProcessor()),
+                         SilenceSkippingAudioProcessor(
+                             2_000_000,
+                             (20_000 / 2_000_000).toFloat(),
+@@ -628,10 +635,18 @@ fun startService(
+     try {
+         context.startService(intent)
+     } catch (e: IllegalStateException) {
+-        // BackgroundServiceStartNotAllowedException (Android 12+)
+-        ContextCompat.startForegroundService(context, intent)
++        // BackgroundServiceStartNotAllowedException / ForegroundServiceStartNotAllowedException (Android 12+)
++        runCatching {
++            ContextCompat.startForegroundService(context, intent)
++        }.onFailure { fgsError ->
++            Logger.w("Service", "Failed to start service from background: ${fgsError.message}")
++        }
++    }
++    runCatching {
++        context.bindService(intent, serviceConnection, BIND_AUTO_CREATE)
++    }.onFailure { bindError ->
++        Logger.w("Service", "Failed to bind service: ${bindError.message}")
+     }
+-    context.bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+     Logger.d("Service", "Service started")
+ }
+ 
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 index e88affc..a4a0c9d 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
@@ -897,6 +1635,67 @@ index e88affc..a4a0c9d 100644
                          nextPlayer.volume = fadeInVolume
  
                          // DJ-style filter sweep (alongside volume)
+diff --git a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
+index 64bed3e..f13b274 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
+@@ -1,8 +1,6 @@
+ package com.maxrave.media3.service
+ 
+ import android.app.Activity
+-import android.app.ActivityManager
+-import android.app.ActivityManager.RunningAppProcessInfo
+ import android.app.PendingIntent
+ import android.content.ComponentName
+ import android.content.Context
+@@ -96,13 +94,6 @@ internal class SimpleMediaService :
+                 )
+         }
+ 
+-        simpleMediaServiceHandler.onUpdateNotification = { list ->
+-            val commandButtonList = list.map { it.toCommandButton(this) }
+-            mediaSession?.setMediaButtonPreferences(
+-                commandButtonList,
+-            )
+-        }
+-
+         val sessionToken = SessionToken(this, ComponentName(this, SimpleMediaService::class.java))
+         val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+         controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
+@@ -152,7 +143,7 @@ internal class SimpleMediaService :
+                 mediaSession = null
+                 Logger.w("Service", "Simple Media Service Released")
+             } catch (e: Exception) {
+-                Logger.e("Service", "Error during release")
++                Logger.e("Service", "Error during release", e)
+             }
+         }
+     }
+@@ -175,9 +166,9 @@ internal class SimpleMediaService :
+     override fun onTaskRemoved(rootIntent: Intent?) {
+         Logger.w("Service", "Simple Media Service Task Removed")
+         if (simpleMediaServiceHandler.shouldReleaseOnTaskRemoved()) {
+-            release()
+             super.onTaskRemoved(rootIntent)
+-            exitProcess(0)
++            release()
++            stopSelf()
+         }
+     }
+ 
+@@ -211,10 +202,4 @@ internal class SimpleMediaService :
+                 }
+             }
+             .build()
+-
+-    private fun isAppInForeground(): Boolean {
+-        val appProcessInfo = RunningAppProcessInfo()
+-        ActivityManager.getMyMemoryState(appProcessInfo)
+-        return appProcessInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+-    }
+-}
+\ No newline at end of file
++}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt b/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
 index 90f78fb..dfaa9b6 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/download/DownloadUtils.kt
@@ -1639,3 +2438,42 @@ index 0000000..41ade74
 +}
 +
 +actual fun createBrotliEncoder(): ContentEncoder = BrotliEncoder
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
+index 94a2a77..a6e2fbc 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
+@@ -1,6 +1,7 @@
+ package com.maxrave.data.db.datasource
+ 
+ import DatabaseDao
++import com.maxrave.common.Config
+ import com.maxrave.data.db.MusicDatabase
+ import com.maxrave.data.librarysync.SyncChangeRecorder
+ import com.maxrave.data.librarysync.SyncKind
+@@ -282,7 +283,11 @@ internal class LocalDataSource(
+     suspend fun updateSongInLibrary(
+         inLibrary: LocalDateTime,
+         videoId: String,
+-    ) = databaseDao.updateSongInLibrary(inLibrary, videoId)
++    ): Int {
++        val updated = databaseDao.updateSongInLibrary(inLibrary, videoId)
++        syncRecorder.flag(SyncKind.LIBRARY_TRACK, videoId, inLibrary != Config.REMOVED_SONG_DATE_TIME)
++        return updated
++    }
+ 
+     fun getMostPlayedSongs() = databaseDao.getMostPlayedSongs()
+ 
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
+index 61dc9d2..3eb4f9a 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
+@@ -17,6 +17,9 @@ internal object SyncKind {
+     /** key: videoId, value "1"/"0". */
+     const val SONG_LIKE = "song_like"
+ 
++    /** key: videoId, value "1"/"0". */
++    const val LIBRARY_TRACK = "library_track"
++
+     /** key: channelId, value "1"/"0". */
+     const val ARTIST_FOLLOW = "artist_follow"
+ 

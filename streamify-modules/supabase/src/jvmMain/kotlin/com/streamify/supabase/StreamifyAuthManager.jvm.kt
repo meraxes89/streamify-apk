@@ -153,7 +153,7 @@ actual object StreamifyAuthManager {
             // Legacy implicit token fallback
             val accessToken = data.accessToken
             if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken)
+                val result = SupabaseClient.signInWithAccessToken(accessToken, data.refreshToken)
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }

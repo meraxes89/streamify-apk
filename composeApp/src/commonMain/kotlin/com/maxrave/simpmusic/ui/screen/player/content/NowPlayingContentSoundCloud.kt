@@ -292,7 +292,7 @@ private fun NowPlayingSoundCloudLayout(
     // No scroll and no collapsing toolbar here, as in the Apple Music style.
     LaunchedEffect(Unit) { actions.onToolbarVisibilityChange(false) }
 
-    val timeline = state.timelineState
+    val timeline by state.timelineFlow.collectAsStateWithLifecycle()
     val durationMs = timeline.total.coerceAtLeast(0L)
     val isPlaying = state.controllerState.isPlaying
     // Paused as the listener sees it. The player also reports "not playing" while it buffers (a track
@@ -743,8 +743,9 @@ private fun SoundCloudPlaybackStatus(state: NowPlayingContentState) = LeftToRigh
         animationSpec = infiniteRepeatable(animation = tween(3200, easing = LinearEasing), repeatMode = RepeatMode.Restart),
         label = "soundCloudSweepHead",
     )
+    val statusTimeline by state.timelineFlow.collectAsStateWithLifecycle()
     Crossfade(
-        targetState = state.timelineState.isCrossfading to state.audioQualityLabel,
+        targetState = statusTimeline.isCrossfading to state.audioQualityLabel,
         animationSpec = tween(300),
         label = "soundCloudPlaybackStatus",
         // Reserve the line even before format metadata arrives, so the waveform never jumps.
@@ -902,6 +903,7 @@ private fun SoundCloudArtwork(
                             .padding(top = frameTop)
                             .size(width = frameHeight * ratio, height = frameHeight),
                 ) {
+                    val videoTimeline by state.timelineFlow.collectAsStateWithLifecycle()
                     MediaPlayerViewWithSubtitle(
                         playerName = MAIN_PLAYER,
                         // fillMaxWidth, never fillMaxSize: a free height lets the video keep its shape.
@@ -909,7 +911,7 @@ private fun SoundCloudArtwork(
                         shouldShowSubtitle = showSubtitle,
                         shouldScaleDownSubtitle = true,
                         isInPipMode = state.isInPipMode,
-                        timelineState = state.timelineState,
+                        timelineState = videoTimeline,
                         lyricsData = state.screenData.lyricsData?.lyrics,
                         translatedLyricsData = state.screenData.lyricsData?.translatedLyrics?.first,
                         mainTextStyle = typo().bodyLarge,

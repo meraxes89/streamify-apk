@@ -10,7 +10,12 @@ import com.streamify.media.hal.di.mediaHalModule
 import com.streamify.supabase.di.supabaseModule
 import org.koin.core.context.startKoin
 
-fun initKoinIos(versionName: String = "1.0.3-beta") {
+fun initKoinIos(versionName: String = BuildKonfig.versionName) {
+    runCatching {
+        val audioSession = platform.AVFAudio.AVAudioSession.sharedInstance()
+        audioSession.setCategory(platform.AVFAudio.AVAudioSessionCategoryPlayback, error = null)
+        audioSession.setActive(true, error = null)
+    }
     startKoin {
         loadAllModules(
             AppIdentity(
@@ -25,3 +30,5 @@ fun initKoinIos(versionName: String = "1.0.3-beta") {
 }
 
 fun MainViewController() = ComposeUIViewController { App() }
+
+fun handleIosBack(): Boolean = com.maxrave.simpmusic.expect.ui.IosBackHandlerRegistry.handleBack()

@@ -1,5 +1,6 @@
 package com.streamify.announcements
 
+import com.maxrave.simpmusic.BuildKonfig
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -7,7 +8,7 @@ data class GovernanceConfig(
     val globalCooldownMs: Long = 24L * 60 * 60 * 1000L,
     val emergencyPriorityThreshold: Int = 500,
     val defaultSnoozeCooldownMs: Long = 7L * 24 * 60 * 60 * 1000L,
-    val allowedExtraDomains: List<String> = emptyList()
+    val allowedExtraDomains: List<String> = emptyList(),
 )
 
 @Serializable
@@ -18,7 +19,7 @@ data class SignedManifest(
     val issuedAtEpochMs: Long,
     val announcements: List<Announcement>,
     val revokedIds: List<String> = emptyList(),
-    val signatureHex: String = ""
+    val signatureHex: String = "",
 )
 
 /**
@@ -28,11 +29,17 @@ interface ManifestSignatureVerifier {
     fun verify(payload: String, signatureHex: String, pinnedPublicKeyHex: String): Boolean
 }
 
-class PinnedManifestSignatureVerifier : ManifestSignatureVerifier {
+expect class Ed25519ManifestSignatureVerifier() : ManifestSignatureVerifier
+
+class PinnedManifestSignatureVerifier(
+    private val underlyingVerifier: ManifestSignatureVerifier = Ed25519ManifestSignatureVerifier(),
+) : ManifestSignatureVerifier {
     // Pinned release governance public key
     companion object {
-        const val PINNED_STREAMIFY_RELEASE_PUBKEY_HEX =
-            "3d4f8a2b5e6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e"
+        val PINNED_STREAMIFY_RELEASE_PUBKEY_HEX: String =
+            BuildKonfig.announcementReleasePubkeyHex.ifBlank {
+                "6873a0d164bbddce90eef51edecb5eb01b790806ff44dae2ce8e85fa421dea62"
+            }
     }
 
     override fun verify(payload: String, signatureHex: String, pinnedPublicKeyHex: String): Boolean {
@@ -40,6 +47,6 @@ class PinnedManifestSignatureVerifier : ManifestSignatureVerifier {
         // Hex structure and length validation (Ed25519 signatures are 64 bytes -> 128 hex chars)
         if (signatureHex.length != 128 || !signatureHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return false
         if (pinnedPublicKeyHex.length != 64 || !pinnedPublicKeyHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return false
-        return true
+        return underlyingVerifier.verify(payload, signatureHex, pinnedPublicKeyHex)
     }
 }

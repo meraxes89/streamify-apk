@@ -97,23 +97,31 @@ class LaunchPopupControlTest {
     @Test
     fun testPinnedManifestSignatureVerifierValidation() {
         val verifier = PinnedManifestSignatureVerifier()
-        val dummyPayload = "{\"test\":true}"
         val validPubkey = PinnedManifestSignatureVerifier.PINNED_STREAMIFY_RELEASE_PUBKEY_HEX
 
-        // Valid 128-hex chars signature
-        val validSig = "f".repeat(128)
-        assertTrue(verifier.verify(dummyPayload, validSig, validPubkey))
+        val testPayload = "hello streamify announcement"
+        val validSig = "d1a87e9232bcfe09c613192821f7b212b76d119953f6b25c5ad74a31f772bc4478a15db1b6e6870b24f0b126f26d21d519287889c60c2134ddbdf98828569f02"
+
+        // Cryptographically valid Ed25519 signature passes verification
+        assertTrue(verifier.verify(testPayload, validSig, validPubkey))
+
+        // Tampered payload fails verification
+        assertFalse(verifier.verify(testPayload + "_tampered", validSig, validPubkey))
+
+        // Tampered signature fails verification
+        val corruptedSig = validSig.substring(0, 126) + "00"
+        assertFalse(verifier.verify(testPayload, corruptedSig, validPubkey))
 
         // Non-hex characters rejected even if 128 characters
-        assertFalse(verifier.verify(dummyPayload, "z".repeat(128), validPubkey))
-        assertFalse(verifier.verify(dummyPayload, " ".repeat(128), validPubkey))
+        assertFalse(verifier.verify(testPayload, "z".repeat(128), validPubkey))
+        assertFalse(verifier.verify(testPayload, " ".repeat(128), validPubkey))
 
         // Invalid signature lengths
-        assertFalse(verifier.verify(dummyPayload, "", validPubkey))
-        assertFalse(verifier.verify(dummyPayload, "too_short", validPubkey))
-        assertFalse(verifier.verify(dummyPayload, "f".repeat(127), validPubkey))
-        assertFalse(verifier.verify(dummyPayload, "f".repeat(129), validPubkey))
-        assertFalse(verifier.verify(dummyPayload, validSig, ""))
+        assertFalse(verifier.verify(testPayload, "", validPubkey))
+        assertFalse(verifier.verify(testPayload, "too_short", validPubkey))
+        assertFalse(verifier.verify(testPayload, "f".repeat(127), validPubkey))
+        assertFalse(verifier.verify(testPayload, "f".repeat(129), validPubkey))
+        assertFalse(verifier.verify(testPayload, validSig, ""))
     }
 
     @Test

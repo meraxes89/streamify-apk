@@ -654,7 +654,7 @@ fun LyricsView(
                                         parsedLine = parsedLine,
                                         translatedWords = translatedWords,
                                         romanizedWords = romanizedWords,
-                                        currentTimeMs = current.current - effectiveLyricsOffsetMs,
+                                        currentTimeMs = if (index == currentLineIndex) current.current - effectiveLyricsOffsetMs else 0L,
                                         isCurrent = index == currentLineIndex,
                                         customFontSize = if (appleStyle) AppleMusicLyricFontSize else null,
                                         glow = if (appleStyle && index == currentLineIndex) AppleMusicActiveLineGlow else null,

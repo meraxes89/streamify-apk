@@ -231,4 +231,18 @@ class UpdateManifestTest {
 
         assertTrue(result is UpdateResult.UpToDate)
     }
+
+    @Test
+    fun computeUpdateUrgencyEscalatesAcross48Hours() {
+        val t0 = 1_000_000L
+        val hour = 3_600_000L
+
+        assertEquals(UpdateUrgency.SOFT, computeUpdateUrgency(t0, t0 + 2 * hour, 48, isBreaking = false))
+        assertEquals(UpdateUrgency.ACTIVE_5S, computeUpdateUrgency(t0, t0 + 18 * hour, 48, isBreaking = false))
+        assertEquals(UpdateUrgency.URGENT_10S, computeUpdateUrgency(t0, t0 + 40 * hour, 48, isBreaking = false))
+        assertEquals(UpdateUrgency.ENFORCED, computeUpdateUrgency(t0, t0 + 48 * hour, 48, isBreaking = false))
+        assertEquals(UpdateUrgency.ENFORCED, computeUpdateUrgency(t0, t0 + 1 * hour, 48, isBreaking = true))
+        assertEquals(8, remainingGraceHours(t0, t0 + 40 * hour, 48))
+        assertEquals(0, remainingGraceHours(t0, t0 + 50 * hour, 48))
+    }
 }

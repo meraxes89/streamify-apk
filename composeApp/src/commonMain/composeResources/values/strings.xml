@@ -549,6 +549,13 @@
     <string name="to_download_folder">" to Download folder"</string>
     <string name="download_speed">Download speed:  %1$s </string>
     <string name="shuffle">Shuffle</string>
+    <string name="shuffle_on">On</string>
+    <string name="shuffle_off">Off</string>
+    <string name="repeat">Repeat</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="previous_track">Previous track</string>
+    <string name="next_track">Next track</string>
     <string name="other_version">Other version</string>
     <string name="later">Later</string>
     <string name="give_a_star">Give a star</string>

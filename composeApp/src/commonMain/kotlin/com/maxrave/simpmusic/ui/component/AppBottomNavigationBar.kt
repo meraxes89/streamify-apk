@@ -7,6 +7,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -101,6 +107,11 @@ fun AppBottomNavigationBar(
             (!showMixForYouTab && selectedIndex == BottomNavScreen.MixForYou.ordinal)
         ) {
             selectedIndex = BottomNavScreen.Home.ordinal
+        }
+    }
+    LaunchedEffect(currentBackStackEntry, bottomNavScreens) {
+        findMatchedTabOrdinal(currentBackStackEntry, bottomNavScreens)?.let {
+            selectedIndex = it
         }
     }
     val selectTab: (BottomNavScreen) -> Unit = { screen ->
@@ -275,7 +286,11 @@ internal fun FlatTabBar(
                                     .width(tabWidth)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(FlatIndicatorHeight / 2))
-                                    .clickable { onTabSelected(screen) },
+                                    .selectable(
+                                        selected = selected,
+                                        role = Role.Tab,
+                                        onClick = { onTabSelected(screen) },
+                                    ),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
@@ -316,10 +331,16 @@ internal fun FlatSearchButton(
     val nonGlassAmbientColor =
         if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.08f)
 
+    val searchLabel = stringResource(Res.string.search)
     Box(
         modifier =
             modifier
                 .size(FlatIndicatorHeight)
+                .semantics {
+                    role = Role.Tab
+                    this.selected = selected
+                    contentDescription = searchLabel
+                }
                 .shadow(
                     elevation = 8.dp,
                     shape = CircleShape,
@@ -472,6 +493,11 @@ fun AppNavigationRail(
             selectedIndex = BottomNavScreen.Home.ordinal
         }
     }
+    LaunchedEffect(currentBackStackEntry, bottomNavScreens) {
+        findMatchedTabOrdinal(currentBackStackEntry, bottomNavScreens)?.let {
+            selectedIndex = it
+        }
+    }
     // Transparent, not the default `surface`: the rail sits on the Desktop window (pure black/white)
     // and on the page background on tablets, and must read as part of whatever is behind it.
     NavigationRail(containerColor = Color.Transparent) {
@@ -528,3 +554,13 @@ fun AppNavigationRail(
         Spacer(Modifier.height(32.dp))
     }
 }
+
+internal fun findMatchedTabOrdinal(
+    currentBackStackEntry: androidx.navigation.NavBackStackEntry?,
+    screens: List<BottomNavScreen>,
+): Int? =
+    screens.firstOrNull { screen ->
+        currentBackStackEntry?.destination?.hierarchy?.any {
+            it.hasRoute(screen.destination::class)
+        } == true
+    }?.ordinal

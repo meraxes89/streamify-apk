@@ -1,5 +1,5 @@
 # RFC 001: Sovereign Direct GPU Offloading Architecture
-**Status**: Proposal — not accepted. See the [RFC index](README.md).  
+**Status**: Draft. See the [RFC index](README.md).  
 **RFC ID**: 001 (stable; file renamed 2026-11-25 from `docs/architecture/GPU_DIRECT_DRIVER_OFFLOAD_RFC.md`)  
 **Authors**: Streamify Core Engineering  
 **Scope**: Android (AGSL / Vulkan), macOS (Metal), Linux (Vulkan / Mesa), Windows (Direct3D 12 / Vulkan), Web (WebGL 2 / WebGPU)  

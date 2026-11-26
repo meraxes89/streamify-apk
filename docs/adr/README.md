@@ -55,4 +55,4 @@ When you change code covered by a pinned document, re-verify the document's
 claims against the new tree and update the pin in the same commit.
 
 ---
-<!-- doc-verified-against: d6a48d617334f75289889d833ad0f5d0df058897 -->
+<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->

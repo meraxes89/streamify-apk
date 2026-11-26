@@ -42,6 +42,10 @@ class JvmRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
         return syncDao.localPlaylistBySyncId(syncId)
     }
 
+    override suspend fun setLocalPlaylistSyncId(id: Long, syncId: String) {
+        syncDao.setLocalPlaylistSyncId(id, syncId)
+    }
+
     override suspend fun getPlaylistTrackOrder(playlistId: Long): List<String> {
         return syncDao.playlistOrder(playlistId)
     }
@@ -52,3 +56,10 @@ class JvmRoomSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
 }
 
 actual fun createPlatformSyncOutboxRepository(): SyncOutboxRepository = JvmRoomSyncOutboxRepository()
+
+actual fun withSyncApplying(): kotlin.coroutines.CoroutineContext = try {
+    val clazz = Class.forName("com.maxrave.data.librarysync.SyncApplying")
+    clazz.getField("INSTANCE").get(null) as kotlin.coroutines.CoroutineContext
+} catch (_: Throwable) {
+    kotlin.coroutines.EmptyCoroutineContext
+}

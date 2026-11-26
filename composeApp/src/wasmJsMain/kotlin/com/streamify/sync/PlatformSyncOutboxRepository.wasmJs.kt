@@ -28,9 +28,13 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
 
     override suspend fun getLocalPlaylistBySyncId(syncId: String): LocalPlaylistEntity? = null
 
+    override suspend fun setLocalPlaylistSyncId(id: Long, syncId: String) {}
+
     override suspend fun getPlaylistTrackOrder(playlistId: Long): List<String> = emptyList()
 
     override suspend fun getPendingCount(): Int = changes.size
 }
 
 actual fun createPlatformSyncOutboxRepository(): SyncOutboxRepository = WasmFakeSyncOutboxRepository()
+
+actual fun withSyncApplying(): kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext
