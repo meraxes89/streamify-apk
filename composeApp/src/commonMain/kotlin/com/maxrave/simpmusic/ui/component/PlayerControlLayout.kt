@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -18,8 +19,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.resources.stringResource
+import simpmusic.composeapp.generated.resources.Res
+import simpmusic.composeapp.generated.resources.next_track
+import simpmusic.composeapp.generated.resources.pause
+import simpmusic.composeapp.generated.resources.play
+import simpmusic.composeapp.generated.resources.previous_track
+import simpmusic.composeapp.generated.resources.repeat
+import simpmusic.composeapp.generated.resources.repeat_all
+import simpmusic.composeapp.generated.resources.repeat_off
+import simpmusic.composeapp.generated.resources.repeat_one
+import simpmusic.composeapp.generated.resources.shuffle
+import simpmusic.composeapp.generated.resources.shuffle_off
+import simpmusic.composeapp.generated.resources.shuffle_on
 import com.maxrave.domain.mediaservice.handler.ControlState
 import com.maxrave.domain.mediaservice.handler.RepeatState
 import com.maxrave.simpmusic.extension.LeftToRight
@@ -57,6 +76,24 @@ fun PlayerControlLayout(
     val smallIcon = if (isSmallSize) 20.dp to 28.dp else 32.dp to 42.dp
     val mediumIcon = if (isSmallSize) 28.dp to 38.dp else 42.dp to 52.dp
     val bigIcon = if (isSmallSize) 38.dp to 48.dp else 72.dp to 96.dp
+    val shuffleLabel = stringResource(Res.string.shuffle)
+    val shuffleOnLabel = stringResource(Res.string.shuffle_on)
+    val shuffleOffLabel = stringResource(Res.string.shuffle_off)
+    val previousLabel = stringResource(Res.string.previous_track)
+    val playLabel = stringResource(Res.string.play)
+    val pauseLabel = stringResource(Res.string.pause)
+    val nextLabel = stringResource(Res.string.next_track)
+    val repeatLabel = stringResource(Res.string.repeat)
+    val repeatOffLabel = stringResource(Res.string.repeat_off)
+    val repeatAllLabel = stringResource(Res.string.repeat_all)
+    val repeatOneLabel = stringResource(Res.string.repeat_one)
+    val repeatStateDesc =
+        when (controllerState.repeatState) {
+            is RepeatState.None -> repeatOffLabel
+            RepeatState.All -> repeatAllLabel
+            RepeatState.One -> repeatOneLabel
+        }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -71,11 +108,17 @@ fun PlayerControlLayout(
                 modifier =
                     Modifier
                         .background(Color.Transparent)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .size(smallIcon.second)
                         .aspectRatio(1f)
                         .clip(
                             CircleShape,
                         )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = shuffleLabel
+                            stateDescription = if (controllerState.isShuffle) shuffleOnLabel else shuffleOffLabel
+                        }
                         .clickable {
                             onUIEvent(UIEvent.Shuffle)
                         },
@@ -86,14 +129,14 @@ fun PlayerControlLayout(
                         Icon(
                             imageVector = SimpIcons.Shuffle,
                             tint = contentColor,
-                            contentDescription = "",
+                            contentDescription = null,
                             modifier = Modifier.size(smallIcon.first),
                         )
                     } else {
                         Icon(
                             imageVector = SimpIcons.Shuffle,
                             tint = activeColor,
-                            contentDescription = "",
+                            contentDescription = null,
                             modifier = Modifier.size(smallIcon.first),
                         )
                     }
@@ -105,11 +148,16 @@ fun PlayerControlLayout(
                 modifier =
                     Modifier
                         .background(Color.Transparent)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .size(mediumIcon.second)
                         .aspectRatio(1f)
                         .clip(
                             CircleShape,
                         )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = previousLabel
+                        }
                         .clickable {
                             if (controllerState.isPreviousAvailable) {
                                 onUIEvent(UIEvent.Previous)
@@ -120,7 +168,7 @@ fun PlayerControlLayout(
                 Icon(
                     imageVector = SimpIcons.SkipPrevious,
                     tint = if (controllerState.isPreviousAvailable) contentColor else contentColor.copy(alpha = 0.4f),
-                    contentDescription = "",
+                    contentDescription = null,
                     modifier = Modifier.size(mediumIcon.first),
                 )
             }
@@ -130,11 +178,16 @@ fun PlayerControlLayout(
                 modifier =
                     Modifier
                         .background(Color.Transparent)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .size(bigIcon.second)
                         .aspectRatio(1f)
                         .clip(
                             CircleShape,
                         )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = if (controllerState.isPlaying) pauseLabel else playLabel
+                        }
                         .clickable {
                             onUIEvent(UIEvent.PlayPause)
                         },
@@ -145,14 +198,14 @@ fun PlayerControlLayout(
                         Icon(
                             imageVector = if (plainPlayPause) SimpIcons.PlayArrow else SimpIcons.PlayCircle,
                             tint = contentColor,
-                            contentDescription = "",
+                            contentDescription = null,
                             modifier = Modifier.size(bigIcon.first),
                         )
                     } else {
                         Icon(
                             imageVector = if (plainPlayPause) SimpIcons.Pause else SimpIcons.PauseCircle,
                             tint = contentColor,
-                            contentDescription = "",
+                            contentDescription = null,
                             modifier = Modifier.size(bigIcon.first),
                         )
                     }
@@ -164,11 +217,16 @@ fun PlayerControlLayout(
                 modifier =
                     Modifier
                         .background(Color.Transparent)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .size(mediumIcon.second)
                         .aspectRatio(1f)
                         .clip(
                             CircleShape,
                         )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = nextLabel
+                        }
                         .clickable {
                             if (controllerState.isNextAvailable) {
                                 onUIEvent(UIEvent.Next)
@@ -179,7 +237,7 @@ fun PlayerControlLayout(
                 Icon(
                     imageVector = SimpIcons.SkipNext,
                     tint = if (controllerState.isNextAvailable) contentColor else contentColor.copy(alpha = 0.4f),
-                    contentDescription = "",
+                    contentDescription = null,
                     modifier = Modifier.size(mediumIcon.first),
                 )
             }
@@ -188,11 +246,17 @@ fun PlayerControlLayout(
             Box(
                 modifier =
                     Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .size(smallIcon.second)
                         .aspectRatio(1f)
                         .clip(
                             CircleShape,
                         )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = repeatLabel
+                            stateDescription = repeatStateDesc
+                        }
                         .clickable {
                             onUIEvent(UIEvent.Repeat)
                         },
@@ -204,7 +268,7 @@ fun PlayerControlLayout(
                             Icon(
                                 imageVector = SimpIcons.Repeat,
                                 tint = contentColor,
-                                contentDescription = "",
+                                contentDescription = null,
                                 modifier = Modifier.size(smallIcon.first),
                             )
                         }
@@ -213,7 +277,7 @@ fun PlayerControlLayout(
                             Icon(
                                 imageVector = SimpIcons.Repeat,
                                 tint = activeColor,
-                                contentDescription = "",
+                                contentDescription = null,
                                 modifier = Modifier.size(smallIcon.first),
                             )
                         }
@@ -222,7 +286,7 @@ fun PlayerControlLayout(
                             Icon(
                                 imageVector = SimpIcons.RepeatOne,
                                 tint = activeColor,
-                                contentDescription = "",
+                                contentDescription = null,
                                 modifier = Modifier.size(smallIcon.first),
                             )
                         }
