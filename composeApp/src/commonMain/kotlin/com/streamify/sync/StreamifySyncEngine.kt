@@ -258,9 +258,20 @@ object StreamifySyncEngine : KoinComponent {
             dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
             dataStoreManager.putString("streamify_device_id_v3", "")
             dataStoreManager.putString("streamify_active_user_id_v3", "")
+            dataStoreManager.putString("streamify_entity_hlc_watermarks_v1", "{}")
             SyncDeadLetterStore.clear(dataStoreManager)
             HybridLogicalClock.resetForTesting()
             _syncState.value = SyncStatus.Idle
+        }
+    }
+
+    internal fun normalizeToHlc(rawChangedAt: Long): Long {
+        if (rawChangedAt <= 0L) return 0L
+        // Plain Unix epoch millis (~2001..2286) sit well below packed 64-bit HLCs (ms << 22).
+        return if (rawChangedAt < (1L shl HybridLogicalClock.COUNTER_BITS) * 1000L) {
+            HybridLogicalClock.pack(rawChangedAt, 0)
+        } else {
+            rawChangedAt
         }
     }
 
@@ -1110,12 +1121,16 @@ object StreamifySyncEngine : KoinComponent {
 
             pullResult.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
 
-            val pendingByEntityKey = mutableMapOf<Pair<String, String>, Long>()
+            val pendingByEntityKey = mutableMapOf<Pair<String, String>, HybridLogicalClock.HlcKey>()
             for (change in syncOutboxRepository.getPending(1000)) {
                 val normalized = normalizeOutboxToChangelogKey(change.entity, change.entityKey)
+                val key = HybridLogicalClock.HlcKey(
+                    hlc = normalizeToHlc(change.changedAt),
+                    deviceId = change.deviceId?.ifBlank { null } ?: deviceId,
+                )
                 val prev = pendingByEntityKey[normalized]
-                if (prev == null || change.changedAt > prev) {
-                    pendingByEntityKey[normalized] = change.changedAt
+                if (prev == null || key > prev) {
+                    pendingByEntityKey[normalized] = key
                 }
             }
             val watermarks = loadHlcWatermarks()
@@ -1127,15 +1142,16 @@ object StreamifySyncEngine : KoinComponent {
                     if (opHlc > 0L) {
                         HybridLogicalClock.merge(opHlc)
                     }
-                    val directChangedAt = pendingByEntityKey[op.entity to op.key]
+                    val opKey = HybridLogicalClock.HlcKey(opHlc, op.deviceId ?: "")
+                    val directLocalKey = pendingByEntityKey[op.entity to op.key]
                     val playlistTrackCompositeKey = if (op.entity == "playlist_track") {
                         val plId = op.data?.get("playlist_id")?.jsonPrimitive?.contentOrNull
                         val trkId = op.data?.get("track_id")?.jsonPrimitive?.contentOrNull
                         if (!plId.isNullOrBlank() && !trkId.isNullOrBlank()) "$plId|$trkId" else null
                     } else null
-                    val compositeChangedAt = playlistTrackCompositeKey?.let { pendingByEntityKey["playlist_track" to it] }
-                    val localChangedAt = listOfNotNull(directChangedAt, compositeChangedAt).maxOrNull()
-                    if (localChangedAt != null && localChangedAt >= opHlc) {
+                    val compositeLocalKey = playlistTrackCompositeKey?.let { pendingByEntityKey["playlist_track" to it] }
+                    val localKey = listOfNotNull(directLocalKey, compositeLocalKey).maxOrNull()
+                    if (localKey != null && localKey >= opKey) {
                         continue
                     }
                     if (isStaleByWatermark(op.entity, op.key, playlistTrackCompositeKey, opHlc, watermarks)) {

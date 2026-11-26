@@ -32,6 +32,7 @@ tests: [streamify-modules/supabase/src/commonTest/]
 - `StreamifySyncEngine.resolveOrPersistPlaylistSyncId` persists generated UUID `syncId`s to `LocalPlaylistEntity` before cloud push; `core.patch` records `SyncKind.LIBRARY_TRACK` in `LocalDataSource.updateSongInLibrary`; `SupabaseClient.signInWithAccessToken` stores accompanying OAuth `refreshToken`s across all platforms.
 - `SynchronizedLock.ios.kt` uses `NSRecursiveLock` (replacing the prior no-op) and `HybridLogicalClock.updateServerTime` runs under the same lock; `StreamifySyncEngine.getOrCreateDeviceId` is serialized with `deviceIdMutex`; `androidApp/proguard-rules.pro` keeps `com.maxrave.data.librarysync.SyncApplying.INSTANCE` for release builds.
 - `SyncDeadLetterStore` quarantines rejected or terminal-4xx outbox `changeId`s without calling `SyncDao.markSent(ids, -1L)`, preventing poison ops from stalling the upload queue; `StreamifySyncEngine.onAuthenticatedUser` and `resetForAccountSwitch` isolate cursors, checkpoints, device IDs, HLC state, and dead-letter state across logout/user switches.
+- `syncDeltaInternal` compares pending local ops against inbound ops using `HybridLogicalClock.HlcKey(hlc, deviceId)` after normalizing plain epoch-ms `changedAt` values via `normalizeToHlc`. `SupabaseWrappedSync` is currently a local no-op stub (no HTTP upload endpoint is wired yet).
 
 ## Interfaces
 
