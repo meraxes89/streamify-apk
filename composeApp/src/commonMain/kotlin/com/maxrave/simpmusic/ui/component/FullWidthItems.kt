@@ -160,15 +160,16 @@ fun SongFullWidthItems(
     val isLive = track?.isLive == true || songEntity?.isLive == true || storedSong?.isLive == true
     val offsetX = remember { Animatable(initialValue = 0f) }
     var heightDp by remember { mutableStateOf(0.dp) }
+    val shouldShowAddToQueue by remember { derivedStateOf { offsetX.value >= maxOffset / 2 } }
 
     Box(
         modifier =
         modifier,
     ) {
         Crossfade(
-            offsetX.value >= maxOffset / 2,
-        ) { shouldShowAddToQueue ->
-            if (shouldShowAddToQueue) {
+            shouldShowAddToQueue,
+        ) { showAddToQueue ->
+            if (showAddToQueue) {
                 // Where Add to queue is blocked the swipe plays the song next instead
                 // (SharedViewModel.addListToQueue), so the icon shows what will happen.
                 val playsNext = rememberAddToQueueBlock() != null
