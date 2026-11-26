@@ -203,39 +203,11 @@ fun LiquidGlassIconButton(
  * [pressProgress]. The drag detection is observe-only so wrapped buttons keep
  * receiving their own clicks.
  */
-class GlassInteraction(
-    private val animationScope: CoroutineScope,
-) {
-    private val pressSpec = spring(dampingRatio = 0.5f, stiffness = 300f, visibilityThreshold = 0.001f)
-    private val pressAnimation = Animatable(0f, 0.001f)
-
-    /** 0f at rest, animating to 1f while pressed. Read in draw/effect/layer blocks. */
-    val pressProgress: Float get() = pressAnimation.value
-
-    /** Local-space touch point used as the centre of the press glow. */
-    var touchPosition by mutableStateOf(Offset.Zero)
-        private set
-
-    suspend fun detectPress(pointer: PointerInputScope) =
-        with(pointer) {
-            inspectDragGestures(
-                onDragStart = { down ->
-                    touchPosition = down.position
-                    animationScope.launch { pressAnimation.animateTo(1f, pressSpec) }
-                },
-                onDragEnd = { animationScope.launch { pressAnimation.animateTo(0f, pressSpec) } },
-                onDragCancel = { animationScope.launch { pressAnimation.animateTo(0f, pressSpec) } },
-            ) { change, _ ->
-                touchPosition = change.position
-            }
-        }
-}
+typealias GlassInteraction = com.streamify.graphics.api.GlassInteraction
 
 @Composable
-fun rememberGlassInteraction(): GlassInteraction {
-    val scope = rememberCoroutineScope()
-    return remember(scope) { GlassInteraction(scope) }
-}
+fun rememberGlassInteraction(): GlassInteraction =
+    com.streamify.graphics.api.rememberGlassInteraction()
 
 /**
  * Draws the liquid-glass effect with the same look as the legacy

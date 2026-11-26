@@ -12,6 +12,7 @@ import com.streamify.graphics.api.EffectUniformSlot
 import com.streamify.graphics.engine.LegacyRedirectGlassEngine
 import com.streamify.graphics.engine.ShaderProvider
 import com.streamify.graphics.governor.RenderTier
+import com.streamify.graphics.visualizer.FftDataTexture
 import org.jetbrains.skia.RuntimeEffect
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -37,17 +38,17 @@ class GraphicsEffectExecutionTest {
             override val id: String = customId
             override val name: String = "Test Gradient"
             override val canonicalSkSl: String = """
-                uniform float2 iResolution;
+                uniform float2 resolution;
                 uniform float uTime;
                 uniform half4 uColor;
                 half4 main(float2 coord) {
-                    float2 uv = coord / max(iResolution, float2(1.0));
+                    float2 uv = coord / max(resolution, float2(1.0));
                     return half4(uv.x, uv.y, fract(uTime), uColor.a);
                 }
             """.trimIndent()
             override val minTier: RenderTier = RenderTier.Tier2_Balanced
             override val uniforms: List<EffectUniform> = listOf(
-                EffectUniform("iResolution", UniformType.FLOAT2),
+                EffectUniform("resolution", UniformType.FLOAT2),
                 EffectUniform("uTime", UniformType.FLOAT),
                 EffectUniform("uColor", UniformType.FLOAT4),
             )
@@ -107,6 +108,35 @@ class GraphicsEffectExecutionTest {
         } finally {
             GraphicsEffectRegistry.unregister(customId)
             GraphicsEffectRegistry.unregister(brokenId)
+        }
+    }
+
+    @Test
+    fun visualizerEffectExecutesThroughApplyEffectWithFftDataTexture() {
+        val fft = FftDataTexture().apply {
+            update(FloatArray(FftDataTexture.FFT_BIN_COUNT) { 0.5f })
+        }
+        val bitmap = ImageBitmap(64, 32)
+        val canvas = Canvas(bitmap)
+        val drawScope = CanvasDrawScope()
+        val engine = ShaderProvider.engineFor(RenderTier.Tier1_Ultra)
+
+        val request = EffectRenderRequest(
+            effectId = VisualizerEffect.id,
+            fallbackColor = Color.DarkGray,
+            uniforms = listOf(
+                EffectUniformSlot.DataTexture("fftTexture") { fft },
+                EffectUniformSlot.Float1("time") { 1.25f },
+                EffectUniformSlot.Color4("primaryColor") { Color.Cyan },
+                EffectUniformSlot.Color4("accentColor") { Color.Magenta },
+                EffectUniformSlot.Int1("style") { 1 },
+            ),
+        )
+
+        drawScope.draw(Density(1f), LayoutDirection.Ltr, canvas, Size(64f, 32f)) {
+            // Exercise two consecutive draws to verify cached builder + cached data texture
+            engine.applyEffect(this, request)
+            engine.applyEffect(this, request)
         }
     }
 }

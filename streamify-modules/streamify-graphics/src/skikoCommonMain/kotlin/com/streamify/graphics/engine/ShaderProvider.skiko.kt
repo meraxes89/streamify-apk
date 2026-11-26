@@ -29,12 +29,20 @@ import com.streamify.graphics.governor.CapabilityProbe
 import com.streamify.graphics.governor.RenderTier
 import com.streamify.graphics.tokens.PrimitiveTokens
 import com.streamify.graphics.tokens.SemanticTokens
+import com.streamify.graphics.visualizer.GpuDataTexture
 import kotlin.concurrent.Volatile
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.Color4f
+import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Gradient
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Paint
+import org.jetbrains.skia.Rect
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
+import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Shader
 import kotlin.math.ceil
 
@@ -349,6 +357,21 @@ internal class SkikoLiquidGlassProgram internal constructor() {
  * reaches the draw), and the stable composite renders: clipped backdrop
  * draw, optional tint fill, 1px specular rim.
  */
+private class SkikoCachedEffect(
+    val effect: RuntimeEffect,
+    val builder: RuntimeShaderBuilder,
+    val paint: Paint,
+)
+
+private class SkikoCachedDataTexture(
+    val width: Int,
+    val height: Int,
+    val info: ImageInfo,
+    val bitmap: Bitmap,
+    var shader: Shader? = null,
+    var lastStamp: Long = -1L,
+)
+
 internal class SkikoRuntimeShaderEngine(
     private val program: SkikoLiquidGlassProgram,
     private val chromaticSpread: Float,
@@ -358,7 +381,9 @@ internal class SkikoRuntimeShaderEngine(
 ) : SovereignGraphicsEngine {
 
     /** Lazy cache of compiled custom [GraphicsEffectRegistry] programs; `null` marks compile failure. */
-    private val effectProgramCache = HashMap<String, RuntimeEffect?>()
+    private val effectProgramCache = HashMap<String, SkikoCachedEffect?>()
+    private val dataTextureCache = HashMap<String, SkikoCachedDataTexture>()
+    private val effectPath = Path()
 
     val passScale: Float = if (backdropCaptureScale != 1.0f && passScale == 1.0f) backdropCaptureScale else passScale
     val backdropCaptureScale: Float get() = this.passScale
@@ -367,10 +392,6 @@ internal class SkikoRuntimeShaderEngine(
     private val offscreenPass by lazy {
         SkikoOffscreenGlassPass(program, chromaticSpread, this.passScale)
     }
-
-    /** Instantiated lazily-once at construction — only when the policy downsamples. */
-    private val dynamicResolutionPass: DynamicResolutionOffscreenPass? =
-        if (this.passScale < 1f) DynamicResolutionOffscreenPass(this.passScale) else null
 
     override fun applyGlass(scope: DrawScope, request: GlassRenderRequest) {
         val tint = if (request.tint == Color.Unspecified) {
@@ -399,27 +420,6 @@ internal class SkikoRuntimeShaderEngine(
             }
         }
 
-        val drsPass = dynamicResolutionPass
-        if (drsPass != null && program.hasBoundBackdrop) {
-            val darkenAmount = AdaptiveLuminanceScrim.alphaFor(request.luminance())
-            val composite = runCatching {
-                drsPass.render(
-                    program = program,
-                    destinationWidthPx = scope.size.width,
-                    destinationHeightPx = scope.size.height,
-                    chromaticSpread = chromaticSpread,
-                    tint = tint,
-                    darkenAmount = darkenAmount,
-                )
-            }.getOrNull()
-            if (composite != null) {
-                drawRefractedComposite(scope, request, composite)
-                return
-            }
-            // Pass failure on this host — fall through to the stable
-            // composite; a draw must never crash (Track D).
-        }
-
         runCatching {
             program.bindUniforms(
                 width = scope.size.width,
@@ -445,25 +445,29 @@ internal class SkikoRuntimeShaderEngine(
             drawEffectFallback(scope, request)
             return
         }
-        val runtimeEffect = if (effectProgramCache.containsKey(effect.id)) {
+        val cached = if (effectProgramCache.containsKey(effect.id)) {
             effectProgramCache[effect.id]
         } else {
-            val compiled = runCatching { RuntimeEffect.makeForShader(effect.canonicalSkSl) }.getOrNull()
+            val compiled = runCatching {
+                val rt = RuntimeEffect.makeForShader(effect.canonicalSkSl)
+                SkikoCachedEffect(rt, RuntimeShaderBuilder(rt), Paint())
+            }.getOrNull()
             effectProgramCache[effect.id] = compiled
             compiled
         }
-        if (runtimeEffect == null) {
+        if (cached == null) {
             drawEffectFallback(scope, request)
             return
         }
+        val builder = cached.builder
         try {
-            val builder = RuntimeShaderBuilder(runtimeEffect)
             val resName = request.resolutionUniform
             if (resName != null) {
                 builder.uniform(resName, scope.size.width, scope.size.height)
             }
             for (slot in request.uniforms) {
                 when (slot) {
+                    is EffectUniformSlot.Int1 -> builder.uniform(slot.name, slot.value())
                     is EffectUniformSlot.Float1 -> builder.uniform(slot.name, slot.value())
                     is EffectUniformSlot.Float2 -> builder.uniform(slot.name, slot.x(), slot.y())
                     is EffectUniformSlot.Float3 -> builder.uniform(slot.name, slot.x(), slot.y(), slot.z())
@@ -472,37 +476,59 @@ internal class SkikoRuntimeShaderEngine(
                         val c = slot.color()
                         builder.uniform(slot.name, c.red, c.green, c.blue, c.alpha)
                     }
+                    is EffectUniformSlot.DataTexture -> {
+                        val tex = slot.texture()
+                        if (tex == null) {
+                            drawEffectFallback(scope, request)
+                            return
+                        }
+                        val childShader = uploadDataTexture(slot.name, tex)
+                        builder.child(slot.name, childShader)
+                    }
                 }
             }
-            val shader = builder.makeShader()
+            cached.paint.shader = builder.makeShader()
             val outline = request.shape.createOutline(scope.size, scope.layoutDirection, scope)
-            val path = Path().apply {
-                when (outline) {
-                    is Outline.Rectangle -> addRect(outline.rect)
-                    is Outline.Rounded -> addRoundRect(outline.roundRect)
-                    is Outline.Generic -> addPath(outline.path)
-                }
+            effectPath.reset()
+            when (outline) {
+                is Outline.Rectangle -> effectPath.addRect(outline.rect)
+                is Outline.Rounded -> effectPath.addRoundRect(outline.roundRect)
+                is Outline.Generic -> effectPath.addPath(outline.path)
             }
             with(scope) {
-                clipPath(path) {
+                clipPath(effectPath) {
                     drawIntoCanvas { canvas ->
-                        val skiaPaint = org.jetbrains.skia.Paint().apply {
-                            this.shader = shader
-                        }
-                        try {
-                            canvas.nativeCanvas.drawRect(
-                                org.jetbrains.skia.Rect.makeWH(size.width, size.height),
-                                skiaPaint,
-                            )
-                        } finally {
-                            skiaPaint.close()
-                        }
+                        canvas.nativeCanvas.drawRect(
+                            Rect.makeWH(size.width, size.height),
+                            cached.paint,
+                        )
                     }
                 }
             }
         } catch (_: Throwable) {
             drawEffectFallback(scope, request)
         }
+    }
+
+    private fun uploadDataTexture(slotName: String, tex: GpuDataTexture): Shader {
+        val existing = dataTextureCache[slotName]
+        val entry = if (existing != null && existing.width == tex.textureWidth && existing.height == tex.textureHeight) {
+            existing
+        } else {
+            val info = ImageInfo(tex.textureWidth, tex.textureHeight, ColorType.RGBA_8888, ColorAlphaType.OPAQUE)
+            val bmp = Bitmap().apply { allocPixels(info) }
+            SkikoCachedDataTexture(tex.textureWidth, tex.textureHeight, info, bmp).also {
+                dataTextureCache[slotName] = it
+            }
+        }
+        val stamp = tex.frameStamp
+        if (entry.lastStamp != stamp || entry.shader == null) {
+            entry.bitmap.installPixels(entry.info, tex.payload, tex.rowBytes)
+            entry.shader?.close()
+            entry.shader = entry.bitmap.makeShader(FilterTileMode.CLAMP, FilterTileMode.CLAMP, SamplingMode.LINEAR, null)
+            entry.lastStamp = stamp
+        }
+        return entry.shader!!
     }
 
     /**

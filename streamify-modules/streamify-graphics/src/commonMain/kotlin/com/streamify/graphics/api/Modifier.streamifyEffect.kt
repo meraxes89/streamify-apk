@@ -23,7 +23,7 @@ fun Modifier.streamifyEffect(
     effectId: String,
     shape: Shape = RectangleShape,
     fallbackColor: Color = Color.Unspecified,
-    resolutionUniform: String? = "iResolution",
+    resolutionUniform: String? = "resolution",
     uniforms: List<EffectUniformSlot> = emptyList(),
 ): Modifier {
     val request = EffectRenderRequest(

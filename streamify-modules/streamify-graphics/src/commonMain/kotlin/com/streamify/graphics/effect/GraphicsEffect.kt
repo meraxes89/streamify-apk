@@ -16,6 +16,7 @@ data class EffectUniform(
  * Supported uniform types across SkSL and AGSL.
  */
 enum class UniformType {
+    INT,
     FLOAT,
     FLOAT2,
     FLOAT3,

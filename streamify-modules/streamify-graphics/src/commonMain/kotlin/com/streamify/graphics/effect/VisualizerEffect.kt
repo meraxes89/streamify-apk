@@ -17,11 +17,11 @@ object VisualizerEffect : GraphicsEffect {
     override val minTier: RenderTier = RenderTier.Tier2_Balanced
 
     override val uniforms: List<EffectUniform> = listOf(
-        EffectUniform("uResolution", UniformType.FLOAT2, "Canvas resolution (width, height)"),
-        EffectUniform("uTime", UniformType.FLOAT, "Monotonic playback time in seconds"),
-        EffectUniform("uFftTexture", UniformType.SHADER_CHILD, "1024x1 FFT frequency magnitude texture"),
-        EffectUniform("uBarCount", UniformType.FLOAT, "Number of visualized frequency bins"),
-        EffectUniform("uBaseColor", UniformType.FLOAT4, "Bottom gradient baseline color"),
-        EffectUniform("uPeakColor", UniformType.FLOAT4, "Top gradient peak color"),
+        EffectUniform("fftTexture", UniformType.SHADER_CHILD, "1024x1 FFT frequency magnitude texture"),
+        EffectUniform("resolution", UniformType.FLOAT2, "Drawing surface size in pixels"),
+        EffectUniform("time", UniformType.FLOAT, "Monotonic playback time in seconds"),
+        EffectUniform("primaryColor", UniformType.FLOAT4, "Body color of the visualization"),
+        EffectUniform("accentColor", UniformType.FLOAT4, "Peak / high-energy accent color"),
+        EffectUniform("style", UniformType.INT, "0 = waveform, 1 = spectrum bars, 2 = glowing aura"),
     )
 }

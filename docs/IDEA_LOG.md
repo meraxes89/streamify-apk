@@ -44,4 +44,4 @@ Rules:
 |---|---|---|---|---|---|
 | I-001 | 2026-11-26 | Adaptive auto-DSP reference chain driven by loudness / measurement analysis | explored | Needs review before commitment | RFC-004, #357 |
 
-<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
+<!-- doc-verified-against: a4a7e0abb36f38ba5b6b8d6dcaa4b1529070a3dc -->

@@ -147,6 +147,7 @@ kotlin {
             api(projects.streamifyLyricsSlyr)
             api(projects.streamifySupabase)
             api(projects.streamifyJam)
+            api(projects.streamifyModules.streamifyGraphics)
 
             // Last.fm (gated: real scrobbler for full builds, no-op stub for FOSS builds).
             // `api` rather than `implementation` so :androidApp can hand it the credentials from

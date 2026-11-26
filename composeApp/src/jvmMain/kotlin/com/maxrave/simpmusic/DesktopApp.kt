@@ -221,6 +221,7 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
         )
         loadKoinModules(viewModelModule)
         loadKoinModules(com.streamify.jam.di.streamifyAllModules)
+        loadKoinModules(com.streamify.graphics.di.streamifyGraphicsModule)
     }
 
     val dataStoreManager = getKoin().get<DataStoreManager>()
