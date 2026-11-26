@@ -112,6 +112,7 @@ jobs:
 
   wasm:
     name: "Web Wasm distribution"
+    needs: preflight
     uses: ./.github/workflows/_ci-wasm.yml
     with:
       release_mode: true
