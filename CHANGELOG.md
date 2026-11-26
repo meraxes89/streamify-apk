@@ -5,8 +5,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-11-27: Sync Engine Reliability, Update Loop Fix, OAuth & UI Polish
+
+Streamify `v1.0.6` follows `v1.0.4` with end-to-end Supabase sync fixes, wall-clock listening history tracking, typed reactive settings sync, safe `.backup` restore reconciliation, update resolver & install-UX fixes, and Material 3 onboarding/splash alignment.
+
 ### Added
 - **Nightly Builds & Auto-Install Updates (S20, S23)**: Added `.github/workflows/nightly.yml` (per-push to `main` and daily `02:00 UTC` schedule) publishing Ed25519-signed `version.json` to a rolling `nightly` prerelease using draft-while-uploading swaps, atomic draft-before-publish hardening in `.github/workflows/release.yml`, opt-in `Nightly builds` and `Auto-install updates` toggles in `SettingScreen`, hourly background checks in `App`, playback-aware auto-install orchestration in `SharedViewModel`, silent `PackageInstaller` (`USER_ACTION_NOT_REQUIRED`) on Android 12+, and per-OS Desktop self-updaters (Linux AppImage atomic swap, Windows silent helper, macOS DMG bundle swap).
+- **Wall-Clock Listening History Tracker (S11)**: Added `PlaybackSessionTracker` wired into `SharedViewModel` and `StreamifySyncEngine` with `>= 30s` (or `>= 50%` for tracks under 60s) active playback eligibility, immune to seeking and `durationSeconds == 0`, using a single `client_event_id` per listening session.
+- **Typed Reactive Settings Sync (S11)**: Added `SettingsSyncRegistry` (`SettingsSyncSpec.kt`) and reactive `DataStore` observer (`StreamifySyncEngine.startSettingsObserver`) with echo suppression and per-key HLC conflict resolution.
+- **Startup & Update Permissions UX (S02, S20)**: Added `StartupPermission` post-splash rationale dialog and a dedicated Android `REQUEST_INSTALL_PACKAGES` permission dialog for auto-updates.
+
+### Fixed
+- **Sync Engine & Restore Safety (S11)**: Stopped premature `1s` `rest_compat` history rows on track start in `SupabaseFriendSync.reportPlayback`, enriched `"like"` (`cover_url` + `"Synced Track"` stubs) and `"favorite"` (inserting missing `ArtistEntity`/`AlbumEntity`) on delta pull, ordered `LOCAL_PLAYLIST` before `LOCAL_PLAYLIST_TRACK`/`LOCAL_PLAYLIST_ORDER` in outbox push, and preserved `device_id` while reconciling sync cursors/outbox after `.backup` restore.
+- **Updater & Release Resolution (S20)**: Matched 8-char `BuildKonfig.gitSha` against 40-char `manifest.gitSha` by prefix (`shaMatches`) to eliminate same-`versionCode` self-update loops, fixed update progress bar flicker, and highlighted the ready `Install Now` action.
+- **Auth & Deep Links (S18)**: Decoupled OAuth callback exchange from Compose `LaunchedEffect` via `OAuthFlowCoordinator` and URL-encoded `redirect_to` in Android Custom Tabs fallback.
+- **UI, Splash & Player (S01, S02, S06)**: Aligned `StreamifySplashScreen` and `GoogleOnboardingAuthScreen` with `MaterialTheme.colorScheme` tokens, fixed `"Authenticating..."` vertical clipping, kept cold-start splash icons circular on phones/tablets, replaced remaining `SimpMusic Chart` branding with `Streamify Chart`, and committed playbar seeks synchronously on Android.
 
 ## [1.0.4] — 2026-11-26: Sovereign Sync v2/v4, Signed Releases, Spatial Navigation & KMP Hardening
 
