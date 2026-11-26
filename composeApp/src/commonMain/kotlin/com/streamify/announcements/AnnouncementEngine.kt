@@ -1,6 +1,7 @@
 package com.streamify.announcements
 
 import com.maxrave.domain.manager.DataStoreManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,7 +75,8 @@ class AnnouncementEngine(
                 if (presented) {
                     frequencyGovernor.recordShown(topCandidate, nowEpochMs)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 // Fail-safe to total silence (comm19 Decision 7)
             }
         }
@@ -88,7 +90,9 @@ class AnnouncementEngine(
                     val nowEpochMs = Clock.System.now().toEpochMilliseconds()
                     frequencyGovernor.recordShown(presented, nowEpochMs)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
@@ -98,7 +102,9 @@ class AnnouncementEngine(
                 arbiter.dismissActive()
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
                 frequencyGovernor.recordDismissed(announcement, nowEpochMs, snooze = snooze, governance = cachedGovernance)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
@@ -109,7 +115,9 @@ class AnnouncementEngine(
                 val nowEpochMs = Clock.System.now().toEpochMilliseconds()
                 frequencyGovernor.recordActed(announcement, nowEpochMs)
                 inboxRepository.markAsRead(announcement.id)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 }

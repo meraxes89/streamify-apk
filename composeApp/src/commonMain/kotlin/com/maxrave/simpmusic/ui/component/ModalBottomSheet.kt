@@ -989,7 +989,7 @@ fun QueueBottomSheet(
     // The row whose ⋯ was tapped, as its queue position and the track that was there.
     var moreFor by remember { mutableStateOf<Pair<Int, Track>?>(null) }
     val screenDataState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()
-    val songEntity by sharedViewModel.nowPlayingState.map { it?.songEntity }.collectAsState(null)
+    val songEntity by sharedViewModel.nowPlayingState.map { it?.songEntity }.collectAsStateWithLifecycle(null)
     val queueData by musicServiceHandler.queueData.collectAsStateWithLifecycle()
     val queue by remember {
         derivedStateOf {
@@ -1001,7 +1001,7 @@ fun QueueBottomSheet(
             queueData?.queueState ?: QueueData.StateSource.STATE_CREATED
         }
     }
-    val endlessQueueEnable by dataStoreManager.endlessQueue.map { it == DataStoreManager.TRUE }.collectAsState(false)
+    val endlessQueueEnable by dataStoreManager.endlessQueue.map { it == DataStoreManager.TRUE }.collectAsStateWithLifecycle(false)
 
     val shouldLoadMore =
         remember {
@@ -1404,7 +1404,7 @@ fun NowPlayingBottomSheet(
     var sleepTimerWarning by remember { mutableStateOf(false) }
     var isBottomSheetVisible by rememberSaveable { mutableStateOf(false) }
     var changePlaybackSpeedPitch by remember { mutableStateOf(false) }
-    val crossfadeEnabled by dataStoreManager.crossfadeEnabled.collectAsState(DataStoreManager.FALSE)
+    val crossfadeEnabled by dataStoreManager.crossfadeEnabled.collectAsStateWithLifecycle(DataStoreManager.FALSE)
 
     LaunchedEffect(uiState) {
         if (uiState.songUIState.videoId.isNotEmpty() && !isBottomSheetVisible) {
@@ -1417,8 +1417,8 @@ fun NowPlayingBottomSheet(
     }
 
     if (changePlaybackSpeedPitch) {
-        val playbackSpeed by dataStoreManager.playbackSpeed.collectAsState(1f)
-        val pitch by dataStoreManager.pitch.collectAsState(0)
+        val playbackSpeed by dataStoreManager.playbackSpeed.collectAsStateWithLifecycle(1f)
+        val pitch by dataStoreManager.pitch.collectAsStateWithLifecycle(0)
         PlaybackSpeedPitchBottomSheet(
             onDismiss = { changePlaybackSpeedPitch = false },
             playbackSpeed = playbackSpeed,
