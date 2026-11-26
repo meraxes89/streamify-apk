@@ -702,7 +702,7 @@
     <string name="local_tracking_description">Запис історії прослуховування в локальну базу даних</string>
     <string name="blog_notification_title">Сповіщення про публікації в блозі</string>
     <string name="blog_notification_description">Отримуйте сповіщення про публікацію нової публікації в блозі</string>
-    <string name="simpmusic_charts">Чарти SimpMusic</string>
+    <string name="simpmusic_charts">Чарти Streamify</string>
     <string name="crossfading">Кроссфейдинг</string>
     <string name="your_320kbps_url">Ваша URL-адреса 320 Кбіт/с</string>
     <string name="your_320kbps_url_description">Залиште поле порожнім, щоб автоматично вибрати робочу URL-адресу з перевірки часу безперебійної роботи.</string>

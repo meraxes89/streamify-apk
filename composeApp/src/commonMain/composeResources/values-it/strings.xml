@@ -666,7 +666,7 @@
     <string name="local_tracking_description">Registra la cronologia di ascolto nel database locale</string>
     <string name="blog_notification_title">Notifiche post blog</string>
     <string name="blog_notification_description">Ricevi una notifica quando viene pubblicato un nuovo post sul blog</string>
-    <string name="simpmusic_charts">Classifica SimpMusic</string>
+    <string name="simpmusic_charts">Classifica Streamify</string>
     <string name="crossfading">Dissolvenza incrociata</string>
     <string name="your_320kbps_url">Il tuo URL 320kbps</string>
     <string name="your_320kbps_url_description">Lascia vuoto per scegliere automaticamente un URL di lavoro dal checker uptime.</string>
