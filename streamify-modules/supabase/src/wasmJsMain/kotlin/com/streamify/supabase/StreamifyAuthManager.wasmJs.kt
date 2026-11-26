@@ -61,25 +61,18 @@ actual object StreamifyAuthManager {
 
     actual suspend fun signInWithGoogle(context: Any?): Result<UserProfile> {
         return try {
-            val verifier = PkceCrypto.generateCodeVerifier()
-            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
-            val state = PkceCrypto.generateState()
+            val session = OAuthPkceSession.createSession()
 
             val origin = window.location.origin
             val pathname = window.location.pathname
             val redirectUri = "$origin$pathname"
 
-            sessionStorage.setItem("pkce_code_verifier", verifier)
-            sessionStorage.setItem("pkce_state", state)
+            sessionStorage.setItem("pkce_code_verifier", session.verifier)
+            sessionStorage.setItem("pkce_state", session.state)
+            sessionStorage.setItem("pkce_timestamp", session.timestampMs.toString())
             sessionStorage.setItem("pkce_redirect_uri", redirectUri)
 
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
-                    "provider=google" +
-                    "&redirect_to=${redirectUri}" +
-                    "&code_challenge=${challenge}" +
-                    "&code_challenge_method=S256" +
-                    "&state=${state}" +
-                    "&prompt=select_account"
+            val authUrl = OAuthPkceSession.buildAuthorizeUrl(redirectUri, session)
 
             window.location.href = authUrl
             Result.failure(Exception("Redirecting to Google Sign-In..."))
@@ -101,18 +94,28 @@ actual object StreamifyAuthManager {
                     ?: return Result.failure(Exception("No pending PKCE code verifier in web session"))
 
                 val expectedState = sessionStorage.getItem("pkce_state")
+                val timestamp = sessionStorage.getItem("pkce_timestamp")?.toLongOrNull() ?: 0L
                 val redirectUri = sessionStorage.getItem("pkce_redirect_uri")
                     ?: "${window.location.origin}${window.location.pathname}"
 
                 sessionStorage.removeItem("pkce_code_verifier")
                 sessionStorage.removeItem("pkce_state")
+                sessionStorage.removeItem("pkce_timestamp")
                 sessionStorage.removeItem("pkce_redirect_uri")
 
-                if (expectedState.isNullOrBlank() || data.state != expectedState) {
-                    return Result.failure(IllegalStateException("Missing or mismatched CSRF state"))
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = data,
+                    storedState = expectedState,
+                    storedVerifier = verifier,
+                    storedTimestampMs = timestamp
+                )
+
+                if (validation.isFailure) {
+                    return Result.failure(validation.exceptionOrNull() ?: IllegalStateException("Validation failed"))
                 }
 
-                val result = SupabaseClient.exchangeCodeForSession(code, verifier, redirectUri)
+                val verifiedVerifier = validation.getOrThrow()
+                val result = SupabaseClient.exchangeCodeForSession(code, verifiedVerifier, redirectUri)
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }

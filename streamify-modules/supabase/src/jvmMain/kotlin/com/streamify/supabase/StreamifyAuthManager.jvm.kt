@@ -57,24 +57,15 @@ actual object StreamifyAuthManager {
         activeCompletionDeferred = completion
 
         try {
-            val verifier = PkceCrypto.generateCodeVerifier()
-            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
-            val state = PkceCrypto.generateState()
-
+            val session = OAuthPkceSession.createSession()
             val port = server.start()
             val redirectUri = "http://127.0.0.1:$port/callback"
 
-            pendingCodeVerifier = verifier
-            pendingState = state
+            pendingCodeVerifier = session.verifier
+            pendingState = session.state
             pendingRedirectUri = redirectUri
 
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
-                    "provider=google" +
-                    "&redirect_to=${redirectUri}" +
-                    "&code_challenge=${challenge}" +
-                    "&code_challenge_method=S256" +
-                    "&state=${state}" +
-                    "&prompt=select_account"
+            val authUrl = OAuthPkceSession.buildAuthorizeUrl(redirectUri, session)
 
             launchSystemBrowser(authUrl)
 
@@ -96,8 +87,17 @@ actual object StreamifyAuthManager {
                     return@launch
                 }
 
-                if (callbackData.state != state) {
-                    completion.complete(Result.failure(SecurityException("CSRF security state mismatch")))
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = callbackData,
+                    storedState = session.state,
+                    storedVerifier = session.verifier,
+                    storedTimestampMs = session.timestampMs
+                )
+
+                if (validation.isFailure) {
+                    completion.complete(
+                        Result.failure(validation.exceptionOrNull() ?: SecurityException("Validation failed"))
+                    )
                     return@launch
                 }
 
@@ -109,7 +109,7 @@ actual object StreamifyAuthManager {
 
                 val exchangeResult = SupabaseClient.exchangeCodeForSession(
                     code = code,
-                    codeVerifier = verifier,
+                    codeVerifier = validation.getOrThrow(),
                     redirectUri = redirectUri
                 )
 
@@ -152,16 +152,24 @@ actual object StreamifyAuthManager {
                 val verifier = pendingCodeVerifier
                     ?: return@withContext Result.failure(Exception("No pending PKCE code verifier in session"))
 
-                val expectedState = pendingState
-                if (expectedState.isNullOrBlank() || data.state != expectedState) {
-                    val err = Result.failure<UserProfile>(SecurityException("Missing or mismatched CSRF state"))
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = data,
+                    storedState = pendingState,
+                    storedVerifier = verifier
+                )
+
+                if (validation.isFailure) {
+                    val err = Result.failure<UserProfile>(
+                        validation.exceptionOrNull() ?: SecurityException("Validation failed")
+                    )
                     activeCompletionDeferred?.complete(err)
                     activeServer?.stop()
                     return@withContext err
                 }
 
+                val verifiedVerifier = validation.getOrThrow()
                 val redirectUri = pendingRedirectUri ?: "streamify://callback"
-                val result = SupabaseClient.exchangeCodeForSession(code, verifier, redirectUri)
+                val result = SupabaseClient.exchangeCodeForSession(code, verifiedVerifier, redirectUri)
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
