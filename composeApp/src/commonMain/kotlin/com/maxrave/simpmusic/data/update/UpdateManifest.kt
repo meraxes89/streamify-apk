@@ -90,6 +90,13 @@ data class UpdatePolicyState(
         get() = isPolicyVerified && urgency == UpdateUrgency.ENFORCED
 }
 
+internal fun shaMatches(a: String, b: String): Boolean {
+    val left = a.trim()
+    val right = b.trim()
+    if (left.isEmpty() || right.isEmpty()) return false
+    return left.startsWith(right, ignoreCase = true) || right.startsWith(left, ignoreCase = true)
+}
+
 fun evaluateUpdatePolicy(
     manifest: UpdateManifest?,
     installedCode: Int,
@@ -99,7 +106,7 @@ fun evaluateUpdatePolicy(
     isPolicyVerified: Boolean,
 ): UpdatePolicyState {
     if (manifest == null) return UpdatePolicyState()
-    val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.contains(installedSha)
+    val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.any { shaMatches(it, installedSha) }
     val isBreaking =
         manifest.isBreaking ||
             isRecalled ||
