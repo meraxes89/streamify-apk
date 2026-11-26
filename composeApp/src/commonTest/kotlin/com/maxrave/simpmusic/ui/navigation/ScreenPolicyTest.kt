@@ -1,5 +1,6 @@
 package com.maxrave.simpmusic.ui.navigation
 
+import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.ui.navigation.destination.home.AdminDashboardDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.AnalyticsDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.AnnouncementInboxDestination
