@@ -97,7 +97,12 @@ class LaunchPopupControlTest {
     @Test
     fun testPinnedManifestSignatureVerifierValidation() {
         val verifier = PinnedManifestSignatureVerifier()
-        val validPubkey = PinnedManifestSignatureVerifier.PINNED_STREAMIFY_RELEASE_PUBKEY_HEX
+        val pinnedPubkey = PinnedManifestSignatureVerifier.PINNED_STREAMIFY_RELEASE_PUBKEY_HEX
+        assertEquals(64, pinnedPubkey.length)
+        assertTrue(pinnedPubkey.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' })
+
+        // Dedicated Ed25519 test fixture keypair (decoupled from rotating production release key)
+        val validPubkey = "6873a0d164bbddce90eef51edecb5eb01b790806ff44dae2ce8e85fa421dea62"
 
         val testPayload = "hello streamify announcement"
         val validSig = "d1a87e9232bcfe09c613192821f7b212b76d119953f6b25c5ad74a31f772bc4478a15db1b6e6870b24f0b126f26d21d519287889c60c2134ddbdf98828569f02"
