@@ -1194,7 +1194,6 @@ fun QueueBottomSheet(
                                 .pointerInput(Unit) {
                                     detectDragGesturesAfterLongPress(
                                         onDrag = { change, offset ->
-                                            Logger.d("QueueBottomSheet", "onDrag $offset")
                                             change.consume()
                                             dragDropState.onDrag(offset = offset)
 
@@ -1217,16 +1216,13 @@ fun QueueBottomSheet(
                                                 ?: run { overscrollJob?.cancel() }
                                         },
                                         onDragStart = { offset ->
-                                            Logger.d("QueueBottomSheet", "onDragStart $offset")
                                             dragDropState.onDragStart(offset)
                                         },
                                         onDragEnd = {
-                                            Logger.d("QueueBottomSheet", "onDragEnd")
                                             dragDropState.onDragInterrupted(true)
                                             overscrollJob?.cancel()
                                         },
                                         onDragCancel = {
-                                            Logger.d("QueueBottomSheet", "onDragCancel")
                                             dragDropState.onDragInterrupted()
                                             overscrollJob?.cancel()
                                         },
@@ -3315,7 +3311,7 @@ fun SortPlaylistBottomSheet(
                             .align(Alignment.Start),
                 )
                 LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
-                    items(filterOptions, key = { it.hashCode() }) { filterOption ->
+                    items(filterOptions, key = { it.name }) { filterOption ->
                         val isSelected = filterOption == selectedState
                         Row(
                             Modifier

@@ -328,7 +328,6 @@ fun MiniPlayer(
                                             coroutineScope.launch {
                                                 change.consume()
                                                 offsetY.snapTo(offsetY.value + dragAmount)
-                                                Logger.w("MiniPlayer", "Dragged ${offsetY.value}")
                                             }
                                         }
                                     },
@@ -344,7 +343,6 @@ fun MiniPlayer(
                                         }
                                     },
                                     onDragEnd = {
-                                        Logger.w("MiniPlayer", "Drag Ended")
                                         coroutineScope.launch {
                                             val thresholdPx = with(density) { 56.dp.toPx() }
                                             if (offsetY.value > thresholdPx) {
@@ -399,7 +397,6 @@ fun MiniPlayer(
                                                 }
                                             },
                                             onDragCancel = {
-                                                Logger.w("MiniPlayer", "Drag Cancelled")
                                                 coroutineScope.launch {
                                                     offsetX.animateTo(
                                                         targetValue = 0f,
@@ -411,7 +408,6 @@ fun MiniPlayer(
                                                 }
                                             },
                                             onDragEnd = {
-                                                Logger.w("MiniPlayer", "Drag Ended")
                                                 val currentOffset = offsetX.value
                                                 val thresholdPx = with(density) { 48.dp.toPx() }
                                                 val velocityThresholdPx = with(density) { 300.dp.toPx() }
@@ -664,7 +660,7 @@ fun MiniPlayer(
         // unconditionally: putting it behind the crossfade check would restart the animation from
         // zero each time the label appears, so the sweep would jump rather than continue.
         val sweepTransition = rememberInfiniteTransition(label = "miniPlayerCrossfadeSweep")
-        val crossfadeSweep by sweepTransition.animateFloat(
+        val crossfadeSweepState = sweepTransition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec =
@@ -675,26 +671,9 @@ fun MiniPlayer(
             label = "miniPlayerSweepHead",
         )
         val progressColor = textColor
-        val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
 
-        var isSliding by rememberSaveable {
-            mutableStateOf(false)
-        }
-        var sliderValue by rememberSaveable {
-            mutableFloatStateOf(0f)
-        }
         var showQueueBottomSheet by rememberSaveable {
             mutableStateOf(false)
-        }
-        LaunchedEffect(key1 = timelineState, key2 = isSliding) {
-            if (!isSliding) {
-                sliderValue =
-                    if (timelineState.total > 0L) {
-                        timelineState.current.toFloat() * 100 / timelineState.total.toFloat()
-                    } else {
-                        0f
-                    }
-            }
         }
         // Only the Desktop capsule has a queue button, and App.kt hands that capsule the nav controller.
         if (showQueueBottomSheet && navController != null) {
@@ -937,119 +916,24 @@ fun MiniPlayer(
                                 // rides `alpha = 1f - infoAlpha`, so it only exists while the
                                 // pointer is over the capsule — a crossfade cue nobody sees
                                 // unless they happen to be hovering is no cue at all.
-                                AnimatedVisibility(
-                                    visible = timelineState.isCrossfading,
-                                    enter = fadeIn(),
-                                    exit = fadeOut(),
-                                ) {
-                                    // The label is what travels: a highlight sweeping left to
-                                    // right through the glyphs. TextStyle takes a brush directly,
-                                    // so the gradient paints the text itself — no overlay, no
-                                    // clipping, and it keeps working whatever the label's width.
-                                    val shimmerSpan = 140f
-                                    val shimmerHead = crossfadeSweep * (shimmerSpan * 3f) - shimmerSpan
-                                    Text(
-                                        text = " · " + stringResource(Res.string.crossfading),
-                                        style =
-                                            typo().bodySmall.copy(
-                                                brush =
-                                                    Brush.horizontalGradient(
-                                                        0f to textColor.copy(alpha = 0.45f),
-                                                        // The sweep head is PURE white, not the resting label colour — the label
-                                                        // colour is an adaptive grey, and a grey gleam reads as no gleam at all.
-                                                        0.5f to Color.White,
-                                                        1f to textColor.copy(alpha = 0.45f),
-                                                        startX = shimmerHead,
-                                                        endX = shimmerHead + shimmerSpan,
-                                                        tileMode = TileMode.Clamp,
-                                                    ),
-                                            ),
-                                        maxLines = 1,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    // The timestamps take the content's place on the same axis, spanning the whole
-                    // cluster rather than only the text column — so the elapsed digit starts where the
-                    // artwork was, which is what makes the swap read as one block being replaced.
-                    Row(
-                        modifier =
-                            Modifier
-                                .align(Alignment.Center)
-                                .fillMaxWidth()
-                                .graphicsLayer { alpha = 1f - infoAlpha },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            text = timelineState.elapsedLabel(sliderValue / 100f),
-                            style = scrubberDigits,
-                            color = textColor.copy(alpha = 0.7f),
-                            maxLines = 1,
-                        )
-                        // The Now Playing quality line, centred between the times and a step dimmer.
-                        formatState.toAudioQualityLabel()?.let { quality ->
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = SimpIcons.Headphones,
-                                    contentDescription = null,
-                                    tint = textColor.copy(alpha = 0.45f),
-                                    modifier = Modifier.size(13.dp),
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = quality,
-                                    style = scrubberDigits,
-                                    color = textColor.copy(alpha = 0.45f),
-                                    maxLines = 1,
+                                MiniPlayerDesktopCrossfadeCue(
+                                    timelineFlow = sharedViewModel.timeline,
+                                    sweepState = crossfadeSweepState,
+                                    textColor = textColor,
                                 )
                             }
                         }
-                        Text(
-                            // Time REMAINING, signed, which is what Apple's capsule reports on the
-                            // right — not the track's total length.
-                            text =
-                                if (timelineState.isLive) {
-                                    stringResource(Res.string.live_badge)
-                                } else {
-                                    "−" +
-                                        formatDuration(
-                                            (timelineState.total * (1f - sliderValue / 100f)).roundToLong(),
-                                        )
-                                },
-                            style = scrubberDigits,
-                            color = textColor.copy(alpha = 0.7f),
-                            maxLines = 1,
-                        )
                     }
-                    // The timestamps now sit on the content line, so the track no longer has to
-                    // inset itself to keep clear of them.
-                    CapsuleProgress(
-                        sliderValue = sliderValue,
+                    MiniPlayerDesktopTimelineLeaf(
+                        sharedViewModel = sharedViewModel,
                         loading = loading,
-                        trackHeight = if (showScrubber) 4.dp else 2.dp,
-                        thumbSize = 0.dp,
+                        showScrubber = showScrubber,
+                        formatState = formatState,
                         textColor = textColor,
                         progressColor = progressColor,
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth(),
-                        onValueChange = {
-                            isSliding = true
-                            sliderValue = it * 100f
-                        },
-                        onValueChangeFinished = {
-                            isSliding = false
-                            sharedViewModel.onUIEvent(
-                                UIEvent.UpdateProgress(sliderValue),
-                            )
-                        },
+                        infoAlpha = infoAlpha,
+                        scrubberDigits = scrubberDigits,
+                        modifier = Modifier.matchParentSize(),
                     )
                 }
                 VerticalDivider(
@@ -1451,4 +1335,141 @@ private fun MiniPlayerLinearProgress(
         strokeCap = StrokeCap.Round,
         drawStopIndicator = {},
     )
+}
+
+@Composable
+private fun MiniPlayerDesktopCrossfadeCue(
+    timelineFlow: kotlinx.coroutines.flow.StateFlow<com.maxrave.domain.data.model.streams.TimeLine>,
+    sweepState: androidx.compose.runtime.State<Float>,
+    textColor: Color,
+) {
+    val isCrossfading by remember(timelineFlow) {
+        timelineFlow.map { it.isCrossfading }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(timelineFlow.value.isCrossfading)
+    AnimatedVisibility(
+        visible = isCrossfading,
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
+        val shimmerSpan = 140f
+        val shimmerHead = sweepState.value * (shimmerSpan * 3f) - shimmerSpan
+        Text(
+            text = " · " + stringResource(Res.string.crossfading),
+            style =
+                typo().bodySmall.copy(
+                    brush =
+                        Brush.horizontalGradient(
+                            0f to textColor.copy(alpha = 0.45f),
+                            0.5f to Color.White,
+                            1f to textColor.copy(alpha = 0.45f),
+                            startX = shimmerHead,
+                            endX = shimmerHead + shimmerSpan,
+                            tileMode = TileMode.Clamp,
+                        ),
+                ),
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun MiniPlayerDesktopTimelineLeaf(
+    sharedViewModel: SharedViewModel,
+    loading: Boolean,
+    showScrubber: Boolean,
+    formatState: com.maxrave.domain.data.entities.NewFormatEntity?,
+    textColor: Color,
+    progressColor: Color,
+    infoAlpha: Float,
+    scrubberDigits: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
+    var isSliding by rememberSaveable { mutableStateOf(false) }
+    var sliderValue by rememberSaveable { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(timelineState, isSliding) {
+        if (!isSliding) {
+            sliderValue =
+                if (timelineState.total > 0L) {
+                    timelineState.current.toFloat() * 100 / timelineState.total.toFloat()
+                } else {
+                    0f
+                }
+        }
+    }
+
+    Box(modifier = modifier) {
+        Row(
+            modifier =
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .graphicsLayer { alpha = 1f - infoAlpha },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = timelineState.elapsedLabel(sliderValue / 100f),
+                style = scrubberDigits,
+                color = textColor.copy(alpha = 0.7f),
+                maxLines = 1,
+            )
+            formatState.toAudioQualityLabel()?.let { quality ->
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = SimpIcons.Headphones,
+                        contentDescription = null,
+                        tint = textColor.copy(alpha = 0.45f),
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = quality,
+                        style = scrubberDigits,
+                        color = textColor.copy(alpha = 0.45f),
+                        maxLines = 1,
+                    )
+                }
+            }
+            Text(
+                text =
+                    if (timelineState.isLive) {
+                        stringResource(Res.string.live_badge)
+                    } else {
+                        "−" +
+                            formatDuration(
+                                (timelineState.total * (1f - sliderValue / 100f)).roundToLong(),
+                            )
+                    },
+                style = scrubberDigits,
+                color = textColor.copy(alpha = 0.7f),
+                maxLines = 1,
+            )
+        }
+        CapsuleProgress(
+            sliderValue = sliderValue,
+            loading = loading,
+            trackHeight = if (showScrubber) 4.dp else 2.dp,
+            thumbSize = 0.dp,
+            textColor = textColor,
+            progressColor = progressColor,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            onValueChange = {
+                isSliding = true
+                sliderValue = it * 100f
+            },
+            onValueChangeFinished = {
+                isSliding = false
+                sharedViewModel.onUIEvent(UIEvent.UpdateProgress(sliderValue))
+            },
+        )
+    }
 }
