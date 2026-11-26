@@ -153,6 +153,8 @@ class ScreenPolicyTest {
         val elsewhere = SharedKeys.hero(SharedKeys.Origin.PLAYLIST, "MPREb_1")
         assertEquals(card, header, "same origin + id must be the same key")
         assertTrue(card != elsewhere, "same id under another origin must differ — the same item can appear in multiple carousels")
+        val allForSameId = SharedKeys.Origin.entries.map { SharedKeys.hero(it, "same_id") }
+        assertEquals(allForSameId.size, allForSameId.toSet().size, "every Origin must produce a distinct hero key for the same id")
     }
 
     @Test
