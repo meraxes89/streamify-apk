@@ -126,7 +126,6 @@ fun FullscreenPlayer(
 
     val nowPlayingState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()
     val controllerState by sharedViewModel.controllerState.collectAsStateWithLifecycle()
-    val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
 
     var showBottom by rememberSaveable { mutableStateOf(false) }
     // The song Add lyrics was opened for, as its id, title and artist; see NowPlayingScreen.
@@ -139,17 +138,6 @@ fun FullscreenPlayer(
     }
     var showHideFullscreenOverlay by rememberSaveable {
         mutableStateOf(true)
-    }
-
-    LaunchedEffect(key1 = timelineState, key2 = isSliding) {
-        if (!isSliding) {
-            sliderValue =
-                if (timelineState.total > 0L) {
-                    timelineState.current.toFloat() * 100 / timelineState.total.toFloat()
-                } else {
-                    0f
-                }
-        }
     }
 
     LaunchedEffect(key1 = showHideFullscreenOverlay, key2 = isSliding) {
@@ -189,14 +177,14 @@ fun FullscreenPlayer(
     }
 
     Box {
-        MediaPlayerViewWithSubtitle(
+        FullscreenMediaSubtitleLeaf(
+            timelineFlow = sharedViewModel.timeline,
             playerName = MAIN_PLAYER,
             modifier =
                 Modifier
                     .fillMaxSize(),
             shouldPip = true,
             shouldShowSubtitle = shouldShowSubtitle,
-            timelineState = timelineState,
             lyricsData = nowPlayingState.lyricsData?.lyrics,
             translatedLyricsData = nowPlayingState.lyricsData?.translatedLyrics?.first,
             isInPipMode = isInPipMode,
@@ -537,126 +525,18 @@ fun FullscreenPlayer(
                                         .padding(horizontal = 40.dp),
                                 verticalArrangement = Arrangement.Bottom,
                             ) {
-                                Box(
-                                    Modifier
-                                        .padding(
-                                            vertical = 5.dp,
-                                        ),
-                                ) {
-                                    Box(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .height(24.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Crossfade(timelineState.loading) {
-                                            if (it) {
-                                                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                                                    LinearProgressIndicator(
-                                                        modifier =
-                                                            Modifier
-                                                                .fillMaxWidth()
-                                                                .height(4.dp)
-                                                                .padding(
-                                                                    horizontal = 3.dp,
-                                                                ).clip(
-                                                                    RoundedCornerShape(8.dp),
-                                                                ),
-                                                        color = Color.Gray,
-                                                        trackColor = Color.DarkGray,
-                                                        strokeCap = StrokeCap.Round,
-                                                    )
-                                                }
-                                            } else {
-                                                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                                                    LinearProgressIndicator(
-                                                        progress = { timelineState.bufferedPercent.toFloat() / 100 },
-                                                        modifier =
-                                                            Modifier
-                                                                .fillMaxWidth()
-                                                                .height(4.dp)
-                                                                .padding(
-                                                                    horizontal = 3.dp,
-                                                                ).clip(
-                                                                    RoundedCornerShape(8.dp),
-                                                                ),
-                                                        color = Color.Gray,
-                                                        trackColor = Color.DarkGray,
-                                                        strokeCap = StrokeCap.Round,
-                                                        drawStopIndicator = {},
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                                        Slider(
-                                            // Fraction, not 0..100 — see the note in NowPlayingScreen:
-                                            // material3 alpha25 drops valueRange on its
-                                            // binary-compatibility overload.
-                                            value = sliderValue / 100f,
-                                            onValueChange = { value ->
-                                                isSliding = true
-                                                sliderValue = value * 100f
-                                            },
-                                            onValueChangeFinished = {
-                                                isSliding = false
-                                                sharedViewModel.onUIEvent(
-                                                    UIEvent.UpdateProgress(sliderValue),
-                                                )
-                                            },
-                                            modifier =
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 3.dp)
-                                                    .align(
-                                                        Alignment.TopCenter,
-                                                    ),
-                                            track = { sliderState ->
-                                                SliderDefaults.Track(
-                                                    modifier =
-                                                        Modifier
-                                                            .height(5.dp),
-                                                    enabled = true,
-                                                    sliderState = sliderState,
-                                                    colors =
-                                                        SliderDefaults.colors().copy(
-                                                            thumbColor = Color.White,
-                                                            activeTrackColor = Color.White,
-                                                            inactiveTrackColor = Color.Transparent,
-                                                        ),
-                                                    thumbTrackGapSize = 0.dp,
-                                                    drawTick = { _, _ -> },
-                                                    drawStopIndicator = null,
-                                                )
-                                            },
-                                            thumb = {
-                                                SliderDefaults.Thumb(
-                                                    modifier =
-                                                        Modifier
-                                                            .height(18.dp)
-                                                            .width(8.dp)
-                                                            .padding(
-                                                                vertical = 4.dp,
-                                                            ),
-                                                    thumbSize = DpSize(8.dp, 8.dp),
-                                                    interactionSource =
-                                                        remember {
-                                                            MutableInteractionSource()
-                                                        },
-                                                    colors =
-                                                        SliderDefaults.colors().copy(
-                                                            thumbColor = Color.White,
-                                                            activeTrackColor = Color.White,
-                                                            inactiveTrackColor = Color.Transparent,
-                                                        ),
-                                                    enabled = true,
-                                                )
-                                            },
+                                FullscreenSeekBarLeaf(
+                                    timelineFlow = sharedViewModel.timeline,
+                                    isSliding = isSliding,
+                                    sliderValue = sliderValue,
+                                    onSliderValueChange = { sliderValue = it },
+                                    onSlidingChange = { isSliding = it },
+                                    onSeekFinished = {
+                                        sharedViewModel.onUIEvent(
+                                            UIEvent.UpdateProgress(sliderValue),
                                         )
-                                    }
-                                }
+                                    },
+                                )
                                 // /
                                 Box(
                                     modifier =
@@ -664,24 +544,14 @@ fun FullscreenPlayer(
                                             .height(48.dp)
                                             .fillMaxWidth(),
                                 ) {
-                                    Row(
+                                    FullscreenTimeLabelsLeaf(
+                                        timelineFlow = sharedViewModel.timeline,
+                                        sliderValue = sliderValue,
                                         modifier =
                                             Modifier
                                                 .wrapContentSize()
                                                 .align(Alignment.TopStart),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = timelineState.elapsedLabel(sliderValue / 100f),
-                                            style = typo().labelSmall,
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            // LIVE stands on its own: there is no elapsed time in front of it to divide from.
-                                            text = if (timelineState.isLive) timelineState.lengthLabel() else " / ${timelineState.lengthLabel()}",
-                                            style = typo().bodySmall,
-                                        )
-                                    }
+                                    )
                                     Row(
                                         Modifier
                                             .fillMaxHeight()
@@ -789,6 +659,174 @@ fun FullscreenPlayer(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun FullscreenMediaSubtitleLeaf(
+    timelineFlow: kotlinx.coroutines.flow.StateFlow<com.maxrave.domain.data.model.streams.TimeLine>,
+    playerName: String,
+    modifier: Modifier,
+    shouldPip: Boolean,
+    shouldShowSubtitle: Boolean,
+    lyricsData: com.maxrave.domain.data.model.metadata.Lyrics?,
+    translatedLyricsData: com.maxrave.domain.data.model.metadata.Lyrics?,
+    isInPipMode: Boolean,
+    mainTextStyle: androidx.compose.ui.text.TextStyle,
+    translatedTextStyle: androidx.compose.ui.text.TextStyle,
+) {
+    val timelineState by timelineFlow.collectAsStateWithLifecycle()
+    MediaPlayerViewWithSubtitle(
+        playerName = playerName,
+        modifier = modifier,
+        shouldPip = shouldPip,
+        shouldShowSubtitle = shouldShowSubtitle,
+        timelineState = timelineState,
+        lyricsData = lyricsData,
+        translatedLyricsData = translatedLyricsData,
+        isInPipMode = isInPipMode,
+        mainTextStyle = mainTextStyle,
+        translatedTextStyle = translatedTextStyle,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullscreenSeekBarLeaf(
+    timelineFlow: kotlinx.coroutines.flow.StateFlow<com.maxrave.domain.data.model.streams.TimeLine>,
+    isSliding: Boolean,
+    sliderValue: Float,
+    onSliderValueChange: (Float) -> Unit,
+    onSlidingChange: (Boolean) -> Unit,
+    onSeekFinished: () -> Unit,
+) {
+    val timelineState by timelineFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(key1 = timelineState, key2 = isSliding) {
+        if (!isSliding) {
+            onSliderValueChange(
+                if (timelineState.total > 0L) {
+                    timelineState.current.toFloat() * 100 / timelineState.total.toFloat()
+                } else {
+                    0f
+                },
+            )
+        }
+    }
+    Box(
+        Modifier.padding(vertical = 5.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Crossfade(timelineState.loading) {
+                if (it) {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                        LinearProgressIndicator(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .padding(horizontal = 3.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                            color = Color.Gray,
+                            trackColor = Color.DarkGray,
+                            strokeCap = StrokeCap.Round,
+                        )
+                    }
+                } else {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                        LinearProgressIndicator(
+                            progress = { timelineState.bufferedPercent.toFloat() / 100 },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .padding(horizontal = 3.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                            color = Color.Gray,
+                            trackColor = Color.DarkGray,
+                            strokeCap = StrokeCap.Round,
+                            drawStopIndicator = {},
+                        )
+                    }
+                }
+            }
+        }
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+            Slider(
+                value = sliderValue / 100f,
+                onValueChange = { value ->
+                    onSlidingChange(true)
+                    onSliderValueChange(value * 100f)
+                },
+                onValueChangeFinished = {
+                    onSlidingChange(false)
+                    onSeekFinished()
+                },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 3.dp)
+                        .align(Alignment.TopCenter),
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        modifier = Modifier.height(5.dp),
+                        enabled = true,
+                        sliderState = sliderState,
+                        colors =
+                            SliderDefaults.colors().copy(
+                                thumbColor = Color.White,
+                                activeTrackColor = Color.White,
+                                inactiveTrackColor = Color.Transparent,
+                            ),
+                        thumbTrackGapSize = 0.dp,
+                        drawTick = { _, _ -> },
+                        drawStopIndicator = null,
+                    )
+                },
+                thumb = {
+                    SliderDefaults.Thumb(
+                        modifier = Modifier.height(18.dp).width(8.dp).padding(vertical = 4.dp),
+                        thumbSize = DpSize(8.dp, 8.dp),
+                        interactionSource = remember { MutableInteractionSource() },
+                        colors =
+                            SliderDefaults.colors().copy(
+                                thumbColor = Color.White,
+                                activeTrackColor = Color.White,
+                                inactiveTrackColor = Color.Transparent,
+                            ),
+                        enabled = true,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FullscreenTimeLabelsLeaf(
+    timelineFlow: kotlinx.coroutines.flow.StateFlow<com.maxrave.domain.data.model.streams.TimeLine>,
+    sliderValue: Float,
+    modifier: Modifier = Modifier,
+) {
+    val timelineState by timelineFlow.collectAsStateWithLifecycle()
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = timelineState.elapsedLabel(sliderValue / 100f),
+            style = typo().labelSmall,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = if (timelineState.isLive) timelineState.lengthLabel() else " / ${timelineState.lengthLabel()}",
+            style = typo().bodySmall,
+        )
     }
 }
 
