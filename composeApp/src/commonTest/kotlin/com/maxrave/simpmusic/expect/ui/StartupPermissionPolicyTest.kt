@@ -56,4 +56,53 @@ class StartupPermissionPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun unknownSourcesPromptWaitsForEntranceAndOtherDialogs() {
+        assertFalse(
+            shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = true,
+                otherDialogOpen = false,
+                needsPermission = true,
+                doNotAskAgain = false,
+                alreadyCheckedThisSession = false,
+            ),
+        )
+        assertFalse(
+            shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = false,
+                otherDialogOpen = true,
+                needsPermission = true,
+                doNotAskAgain = false,
+                alreadyCheckedThisSession = false,
+            ),
+        )
+        assertFalse(
+            shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = false,
+                otherDialogOpen = false,
+                needsPermission = false,
+                doNotAskAgain = false,
+                alreadyCheckedThisSession = false,
+            ),
+        )
+        assertFalse(
+            shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = false,
+                otherDialogOpen = false,
+                needsPermission = true,
+                doNotAskAgain = true,
+                alreadyCheckedThisSession = false,
+            ),
+        )
+        assertTrue(
+            shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = false,
+                otherDialogOpen = false,
+                needsPermission = true,
+                doNotAskAgain = false,
+                alreadyCheckedThisSession = false,
+            ),
+        )
+    }
 }

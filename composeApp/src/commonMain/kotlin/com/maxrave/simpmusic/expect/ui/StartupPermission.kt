@@ -12,6 +12,12 @@ interface StartupPermissionRequester {
 
     /** Requests any missing startup runtime permissions from the OS. */
     fun requestMissingPermissions()
+
+    /** Returns true when the OS requires explicit approval to install app updates (Android 8+). */
+    fun needsUnknownSourcesPermission(): Boolean
+
+    /** Opens the OS setting to allow installing unknown apps for self-updates. */
+    fun requestUnknownSourcesPermission()
 }
 
 /**
@@ -23,6 +29,22 @@ internal fun shouldPromptStartupPermissions(
     doNotAskAgain: Boolean,
     alreadyCheckedThisSession: Boolean,
 ): Boolean = !isEntranceBlocking && !hasAllPermissions && !doNotAskAgain && !alreadyCheckedThisSession
+
+/**
+ * Pure gate determining whether the dedicated unknown-app-sources permission dialog should be shown.
+ */
+internal fun shouldPromptUnknownSourcesPermission(
+    isEntranceBlocking: Boolean,
+    otherDialogOpen: Boolean,
+    needsPermission: Boolean,
+    doNotAskAgain: Boolean,
+    alreadyCheckedThisSession: Boolean,
+): Boolean =
+    !isEntranceBlocking &&
+        !otherDialogOpen &&
+        needsPermission &&
+        !doNotAskAgain &&
+        !alreadyCheckedThisSession
 
 @Composable
 expect fun rememberStartupPermissionRequester(): StartupPermissionRequester

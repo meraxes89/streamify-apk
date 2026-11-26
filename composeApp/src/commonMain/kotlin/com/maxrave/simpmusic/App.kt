@@ -84,6 +84,7 @@ import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberStartupPermissionRequester
 import com.maxrave.simpmusic.expect.ui.shouldPromptStartupPermissions
+import com.maxrave.simpmusic.expect.ui.shouldPromptUnknownSourcesPermission
 import com.maxrave.simpmusic.extension.copy
 import com.maxrave.simpmusic.ui.component.AppBottomNavigationBar
 import com.maxrave.simpmusic.ui.component.AppNavigationRail
@@ -271,6 +272,12 @@ fun App(
     var hasCheckedStartupPermissions by rememberSaveable {
         mutableStateOf(false)
     }
+    var showUnknownSourcesDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var hasCheckedUnknownSources by rememberSaveable {
+        mutableStateOf(false)
+    }
     LaunchedEffect(isEntranceBlocking) {
         if (shouldPromptStartupPermissions(
                 isEntranceBlocking = isEntranceBlocking,
@@ -285,6 +292,32 @@ fun App(
             hasCheckedStartupPermissions = true
         }
     }
+    LaunchedEffect(
+        isEntranceBlocking,
+        showNotificationPermissionDialog,
+        showDesktopNotificationPermissionDialog,
+        shouldShowUpdateDialog,
+        autoInstallCountdownSeconds,
+    ) {
+        val otherDialogOpen =
+            showNotificationPermissionDialog ||
+                showDesktopNotificationPermissionDialog ||
+                shouldShowUpdateDialog ||
+                autoInstallCountdownSeconds != null
+        if (shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = isEntranceBlocking,
+                otherDialogOpen = otherDialogOpen,
+                needsPermission = startupPermissionRequester.needsUnknownSourcesPermission(),
+                doNotAskAgain = viewModel.getString("unknown_sources_permission_do_not_ask") == "true",
+                alreadyCheckedThisSession = hasCheckedUnknownSources,
+            )
+        ) {
+            hasCheckedUnknownSources = true
+            showUnknownSourcesDialog = true
+        } else if (!isEntranceBlocking && !otherDialogOpen) {
+            hasCheckedUnknownSources = true
+        }
+    }
 
     // Every dialog this file raises on its own, plus blocking entrance animations.
     // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
@@ -295,6 +328,7 @@ fun App(
             shouldShowUpdateDialog ||
             showNotificationPermissionDialog ||
             showDesktopNotificationPermissionDialog ||
+            showUnknownSourcesDialog ||
             isShowNowPlaylistScreen
 
     // Set by the first press or wheel scroll anywhere in the app this launch, or by opening Now
@@ -1258,6 +1292,70 @@ fun App(
                                         style = typo().bodySmall,
                                     )
                                 }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier =
+                                        Modifier
+                                            .clickable { doNotShowAgain = !doNotShowAgain }
+                                            .fillMaxWidth(),
+                                ) {
+                                    Checkbox(
+                                        checked = doNotShowAgain,
+                                        onCheckedChange = { doNotShowAgain = it },
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        stringResource(Res.string.do_not_show_again),
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                } else if (showUnknownSourcesDialog) {
+                    var doNotShowAgain by remember { mutableStateOf(false) }
+                    val dismissUnknownSources = {
+                        showUnknownSourcesDialog = false
+                        if (doNotShowAgain) {
+                            viewModel.putString("unknown_sources_permission_do_not_ask", "true")
+                        }
+                    }
+                    AlertDialog(
+                        onDismissRequest = dismissUnknownSources,
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    dismissUnknownSources()
+                                    startupPermissionRequester.requestUnknownSourcesPermission()
+                                },
+                            ) {
+                                Text(
+                                    stringResource(Res.string.settings),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = dismissUnknownSources) {
+                                Text(
+                                    stringResource(Res.string.cancel),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
+                        title = {
+                            Text(
+                                "Install app updates",
+                                style = typo().labelSmall,
+                            )
+                        },
+                        text = {
+                            Column {
+                                Text(
+                                    "Allow Streamify to install unknown apps so nightly builds and automatic updates can install directly.",
+                                    style = typo().bodySmall,
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
