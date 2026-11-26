@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,8 +80,12 @@ fun GoogleOnboardingAuthScreen(
 ) {
     val platformContext = rememberPlatformContext()
     val scope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val managerAuthenticating by StreamifyAuthManager.isAuthenticating.collectAsState()
+    val managerAuthError by StreamifyAuthManager.authError.collectAsState()
+    var localLoading by remember { mutableStateOf(false) }
+    var localErrorMessage by remember { mutableStateOf<String?>(null) }
+    val isLoading = localLoading || managerAuthenticating
+    val errorMessage = localErrorMessage ?: managerAuthError
     val appFontFamily = fontFamily()
 
     val isDark = LocalIsDarkTheme.current && MaterialTheme.colorScheme.background.luminance() <= 0.5f
@@ -110,11 +115,12 @@ fun GoogleOnboardingAuthScreen(
     )
 
     fun startGoogleSignIn() {
-        isLoading = true
-        errorMessage = null
+        localLoading = true
+        localErrorMessage = null
+        StreamifyAuthManager.clearAuthError()
         scope.launch {
             val result = StreamifyAuthManager.signInWithGoogle(platformContext)
-            isLoading = false
+            localLoading = false
             if (result.isSuccess) {
                 val profile = result.getOrNull()
                 if (profile != null) {
@@ -122,12 +128,10 @@ fun GoogleOnboardingAuthScreen(
                 }
             } else {
                 val err = result.exceptionOrNull()?.message ?: "Sign-in failed"
-                if (err.contains("web sign-in", ignoreCase = true)) {
-                    // Browser OAuth fallback is actively in flight: maintain loading state without error text
-                    isLoading = true
-                    errorMessage = null
-                } else if (!err.contains("cancelled", ignoreCase = true)) {
-                    errorMessage = err
+                if (!err.contains("web sign-in", ignoreCase = true) &&
+                    !err.contains("cancelled", ignoreCase = true)
+                ) {
+                    localErrorMessage = err
                 }
             }
         }

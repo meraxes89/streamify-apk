@@ -316,16 +316,13 @@ fun App(
         if (data != null) {
             if (data.scheme == "streamify" && data.host == "callback") {
                 // Supabase web OAuth callback (e.g. Google Sign-In fallback on Vivo or non-GMS devices):
-                // streamify://callback#access_token=...&refresh_token=...
+                // Dispatch to StreamifyAuthManager's own SupervisorJob scope BEFORE clearing intent,
+                // because setIntent(null) recomposes LaunchedEffect(intent, ...) and would cancel
+                // an inline suspend handleAuthCallback() mid-exchange.
                 val uriString = data.toString()
                 Logger.d("MainActivity", "Streamify auth callback: $uriString")
                 viewModel.setIntent(null)
-                val result = StreamifyAuthManager.handleAuthCallback(uriString, platformContext)
-                if (result.isSuccess) {
-                    Logger.d("MainActivity", "Streamify auth callback success: ${result.getOrNull()?.email}")
-                } else {
-                    Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
-                }
+                StreamifyAuthManager.submitAuthCallback(uriString, platformContext)
             } else if (data.scheme == "wordbyword" && data.host == "lastfm-auth") {
                 // Last.fm sends the user back here after they approve access, carrying the request
                 // token: wordbyword://lastfm-auth?token=xxx. The callback is fixed on the API
