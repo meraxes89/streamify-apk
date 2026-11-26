@@ -30,6 +30,7 @@ tests: [streamify-modules/supabase/src/commonTest/]
 - `CancellationException` is rethrown across `StreamifySyncEngine` and all `SupabaseLibrarySync` RPC wrappers; live `syncPull`/`syncPush` HTTP `Date` headers feed `HybridLogicalClock.updateServerTime`.
 - `CloudUserLike.user_id` defaults to `""` and `fetchCloudLikesWithTimeResult` / `fetchCloudLikedTracksResult` surface transport/decode errors instead of returning empty cloud likes during `LIKES` bootstrap.
 - `StreamifySyncEngine.resolveOrPersistPlaylistSyncId` persists generated UUID `syncId`s to `LocalPlaylistEntity` before cloud push; `core.patch` records `SyncKind.LIBRARY_TRACK` in `LocalDataSource.updateSongInLibrary`; `SupabaseClient.signInWithAccessToken` stores accompanying OAuth `refreshToken`s across all platforms.
+- `SynchronizedLock.ios.kt` uses `NSRecursiveLock` (replacing the prior no-op) and `HybridLogicalClock.updateServerTime` runs under the same lock; `StreamifySyncEngine.getOrCreateDeviceId` is serialized with `deviceIdMutex`; `androidApp/proguard-rules.pro` keeps `com.maxrave.data.librarysync.SyncApplying.INSTANCE` for release builds.
 
 ## Interfaces
 
@@ -50,4 +51,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: 19f03b174d83d85682607dd194f1d4ca6acb58f8 -->
+<!-- doc-verified-against: 0d9aa3182b4cebae44eb163744f2b612a7dc2e10 -->

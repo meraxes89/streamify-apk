@@ -89,6 +89,7 @@ object StreamifySyncEngine : KoinComponent {
     private val syncOutboxRepository: SyncOutboxRepository by inject()
 
     private val mutex = Mutex()
+    private val deviceIdMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private const val TAG = "StreamifySyncEngine"
@@ -222,14 +223,14 @@ object StreamifySyncEngine : KoinComponent {
         }
     }
 
-    private suspend fun getOrCreateDeviceId(): String {
+    private suspend fun getOrCreateDeviceId(): String = deviceIdMutex.withLock {
         val existing = dataStoreManager.getString("streamify_device_id_v3").firstOrNull()
         if (!existing.isNullOrBlank()) {
-            return existing
+            return@withLock existing
         }
         val newId = "dev_" + HybridLogicalClock.randomUuid()
         dataStoreManager.putString("streamify_device_id_v3", newId)
-        return newId
+        newId
     }
 
     /**
@@ -448,7 +449,8 @@ object StreamifySyncEngine : KoinComponent {
         // 2. Fetch local liked songs
         val localLiked = try {
             songRepository.getLikedSongs().first()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emptyList()
         }
         val localIds = localLiked.map { it.videoId }.toSet()
@@ -488,7 +490,8 @@ object StreamifySyncEngine : KoinComponent {
                         songRepository.insertSong(entity).lastOrNull()
                     }
                     songRepository.updateLikeStatus(cloudTrack.id, 1)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     // Isolate single entity failure so the remaining batch proceeds
                 }
             }
@@ -553,7 +556,8 @@ object StreamifySyncEngine : KoinComponent {
             val cloudAlbumIds = SupabaseLibrarySync.fetchCloudItemFavorites("album", targetUserId).toSet()
             val localLikedAlbums = try {
                 albumRepository.getLikedAlbums().first()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 emptyList()
             }
             val localAlbumIds = localLikedAlbums.map { it.browseId }.toSet()
@@ -880,7 +884,8 @@ object StreamifySyncEngine : KoinComponent {
                     val artistId = song?.artistId?.filterNotNull()?.firstOrNull()
                     val createdAtIso = try {
                         localEvent.timestamp.toInstant(TimeZone.currentSystemDefault()).toString()
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         null
                     }
                     pendingBatch.add(

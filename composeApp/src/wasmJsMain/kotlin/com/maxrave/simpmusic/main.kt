@@ -7,16 +7,19 @@ import com.maxrave.simpmusic.di.DemoCatalogLoader
 import com.maxrave.simpmusic.di.initWebKoin
 import com.maxrave.simpmusic.utils.StreamifyDefaultsInitializer
 import kotlinx.browser.document
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
 
-@OptIn(ExperimentalComposeUiApi::class, DelicateCoroutinesApi::class)
+private val appStartupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+@OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     try {
         initWebKoin()
-        GlobalScope.launch {
+        appStartupScope.launch {
             try {
                 // Initialize default preferences
                 val dataStoreManager: DataStoreManager = getKoin().get()
@@ -39,10 +42,9 @@ fun main() {
             App()
         }
     } catch (e: Throwable) {
-        val errEl = document.createElement("div")
-        errEl.setAttribute("style", "position:fixed;top:0;left:0;right:0;bottom:0;background:#1a0505;color:#ff6b6b;padding:24px;font-family:monospace;white-space:pre-wrap;z-index:999999;overflow:auto;font-size:14px;")
-        errEl.textContent = "⚠️ Main Launch Error:\n" + (e.message ?: "Unknown error") + "\n\n" + e.stackTraceToString()
-        document.body?.appendChild(errEl)
-        println(e)
+        val errDiv = document.getElementById("loading")
+        if (errDiv != null) {
+            errDiv.textContent = "App Error: ${e.message ?: e::class.simpleName}"
+        }
     }
 }

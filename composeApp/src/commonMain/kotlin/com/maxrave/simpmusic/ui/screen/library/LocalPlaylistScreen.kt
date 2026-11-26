@@ -256,8 +256,8 @@ fun LocalPlaylistScreen(
             lazyState.firstVisibleItemIndex == 0
         }
     }
-    val downloadState by viewModel.uiState.map { it.downloadState }.collectAsState(
-        initial = DownloadState.STATE_NOT_DOWNLOADED,
+    val downloadState by viewModel.uiState.map { it.downloadState }.collectAsStateWithLifecycle(
+        initialValue = DownloadState.STATE_NOT_DOWNLOADED,
     )
     var shouldHideTopBar by rememberSaveable { mutableStateOf(false) }
     var shouldShowSuggestions by rememberSaveable { mutableStateOf(false) }

@@ -32,7 +32,9 @@ object HybridLogicalClock {
      * Updates recorded server time from Date/Timestamp headers.
      */
     fun updateServerTime(serverEpochMs: Long, localNowMs: Long = Clock.System.now().toEpochMilliseconds()) {
-        lastKnownServerTimeMs = serverEpochMs
+        synchronizedLock(lock) {
+            lastKnownServerTimeMs = serverEpochMs
+        }
     }
 
     /**
@@ -98,9 +100,11 @@ object HybridLogicalClock {
     }
 
     internal fun resetForTesting(lastMs: Long = 0L, counter: Int = 0, serverTime: Long = 0L) {
-        lastPhysicalMs = lastMs
-        logicalCounter = counter
-        lastKnownServerTimeMs = serverTime
+        synchronizedLock(lock) {
+            lastPhysicalMs = lastMs
+            logicalCounter = counter
+            lastKnownServerTimeMs = serverTime
+        }
     }
 
     /**

@@ -225,3 +225,8 @@
 -dontwarn io.sentry.instrumentation.file.SentryFileOutputStream$Factory
 -dontwarn io.sentry.okhttp.SentryOkHttpEventListener
 -dontwarn io.sentry.okhttp.SentryOkHttpInterceptor
+
+# Preserve SyncApplying coroutine context key accessed reflectively by PlatformSyncOutboxRepository
+-keep class com.maxrave.data.librarysync.SyncApplying {
+    public static com.maxrave.data.librarysync.SyncApplying INSTANCE;
+}
