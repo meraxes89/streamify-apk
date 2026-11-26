@@ -473,16 +473,17 @@ fun FullscreenLyricsContent(
 
                     // Progress Bar and Time - Always visible
                     FullscreenLyricsTimelineSection(sharedViewModel = sharedViewModel)
+                    LazyColumn {
+                        item {
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(5.dp),
+                            )
+                        }
 
-                    Spacer(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(5.dp),
-                                    )
-                                }
-
-                                item {
+                        item {
                                     // Control Buttons - Animated visibility
                                     AnimatedVisibility(
                                         visible = showControlButtons,
@@ -731,39 +732,35 @@ private fun FullscreenLyricsTimelineSection(sharedViewModel: SharedViewModel) {
                     )
                 }
             }
-            LazyColumn {
-                item {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 40.dp),
-                    ) {
-                        Text(
-                            text = if (timelineState.isLive) "" else formatDuration(timelineState.current),
-                            style = typo().bodyMedium,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Left,
-                        )
-                        AnimatedVisibility(
-                            enter = fadeIn(),
-                            exit = fadeOut(),
-                            visible = timelineState.isCrossfading,
-                        ) {
-                            Text(
-                                text = stringResource(Res.string.crossfading),
-                                style = typo().bodyMedium,
-                                modifier = Modifier.weight(1f),
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                        Text(
-                            text = timelineState.lengthLabel(),
-                            style = typo().bodyMedium,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Right,
-                        )
-                    }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 40.dp),
+            ) {
+                Text(
+                    text = if (timelineState.isLive) "" else formatDuration(timelineState.current),
+                    style = typo().bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Left,
+                )
+                AnimatedVisibility(
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    visible = timelineState.isCrossfading,
+                ) {
+                    Text(
+                        text = stringResource(Res.string.crossfading),
+                        style = typo().bodyMedium,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center,
+                    )
                 }
+                Text(
+                    text = timelineState.lengthLabel(),
+                    style = typo().bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Right,
+                )
             }
         }
     }
