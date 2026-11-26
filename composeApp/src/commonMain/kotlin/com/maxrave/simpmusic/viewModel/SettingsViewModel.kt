@@ -155,6 +155,10 @@ class SettingsViewModel(
     val proxyPassword: StateFlow<String> = _proxyPassword
     private var _autoCheckUpdate = MutableStateFlow(false)
     val autoCheckUpdate: StateFlow<Boolean> = _autoCheckUpdate
+    private var _nightlyUpdatesEnabled = MutableStateFlow(false)
+    val nightlyUpdatesEnabled: StateFlow<Boolean> = _nightlyUpdatesEnabled
+    private var _autoInstallUpdates = MutableStateFlow(true)
+    val autoInstallUpdates: StateFlow<Boolean> = _autoInstallUpdates
     private var _updateChannel: MutableStateFlow<String> = MutableStateFlow(DataStoreManager.GITHUB)
     val updateChannel: StateFlow<String> = _updateChannel
     private val _aiProvider = MutableStateFlow<String>(DataStoreManager.AI_PROVIDER_OPENAI)
@@ -926,12 +930,48 @@ class SettingsViewModel(
                 _autoCheckUpdate.value = autoCheckUpdate == DataStoreManager.TRUE
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED).collect { value ->
+                val enabled = value == DataStoreManager.TRUE
+                _nightlyUpdatesEnabled.value = enabled
+                com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = enabled
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED).collect { value ->
+                val enabled = value != DataStoreManager.FALSE
+                _autoInstallUpdates.value = enabled
+                com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = enabled
+            }
+        }
     }
 
     fun setAutoCheckUpdate(autoCheckUpdate: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setAutoCheckForUpdates(autoCheckUpdate)
             getAutoCheckUpdate()
+        }
+    }
+
+    fun setNightlyUpdatesEnabled(enabled: Boolean) {
+        _nightlyUpdatesEnabled.value = enabled
+        com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = enabled
+        viewModelScope.launch {
+            dataStoreManager.putString(
+                com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED,
+                if (enabled) DataStoreManager.TRUE else DataStoreManager.FALSE,
+            )
+        }
+    }
+
+    fun setAutoInstallUpdates(enabled: Boolean) {
+        _autoInstallUpdates.value = enabled
+        com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = enabled
+        viewModelScope.launch {
+            dataStoreManager.putString(
+                com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED,
+                if (enabled) DataStoreManager.TRUE else DataStoreManager.FALSE,
+            )
         }
     }
 

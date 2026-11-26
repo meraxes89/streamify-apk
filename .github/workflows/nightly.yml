@@ -1,0 +1,140 @@
+# ============================================================================
+# nightly.yml — Rolling nightly prerelease pipeline (Android + Desktop).
+#
+# Triggered on every push to main (ignoring docs/assets), daily at 02:00 UTC,
+# or via workflow_dispatch.
+# Publishes to the rolling `nightly` prerelease (`--prerelease --latest=false`)
+# using a draft-while-swapping pattern so partial uploads are never exposed.
+# ============================================================================
+name: Nightly
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'assets/**'
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: "Nightly Android APK"
+    uses: ./.github/workflows/_ci-android.yml
+    with:
+      release_mode: true
+    secrets: inherit
+
+  desktop:
+    name: "Nightly Desktop installers"
+    uses: ./.github/workflows/_ci-desktop.yml
+    with:
+      package_installers: true
+      release_mode: true
+      full_matrix: true
+
+  publish-nightly:
+    name: "Publish nightly prerelease"
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Android release APK
+        uses: actions/download-artifact@v8
+        with:
+          name: android-release-apk
+          path: dist
+          merge-multiple: true
+
+      - name: Download desktop installers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-installer-*
+          path: dist
+          merge-multiple: true
+
+      - name: Stage nightly binaries & generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find dist -type f \( \
+            -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o \
+            -name '*.exe' -o -name '*.dmg' -o -name '*.pkg' -o -name '*.AppImage' \) \
+            -exec cp -v {} release/ \;
+          ls release/*.apk >/dev/null || { echo "FATAL: missing nightly APK" >&2; exit 1; }
+          (
+            cd release
+            for f in *; do
+              if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+                sha256sum "$f"
+              fi
+            done > SHA256SUMS
+            cat SHA256SUMS
+          )
+
+      - name: Generate nightly notes & signed version.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PREV_SHA=$(gh release view nightly --repo "${{ github.repository }}" --json body \
+            --jq '.body | capture("commit/(?<sha>[0-9a-f]{40})").sha' 2>/dev/null || true)
+          {
+            echo "Nightly build from [${GITHUB_SHA:0:7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA})."
+            echo ""
+            if [ -n "$PREV_SHA" ] && git merge-base --is-ancestor "$PREV_SHA" "$GITHUB_SHA" 2>/dev/null; then
+              echo "## Changes since previous nightly"
+              git log --first-parent --format='* %s (%h)' "$PREV_SHA..$GITHUB_SHA" | head -n 40
+            else
+              echo "## Recent changes"
+              git log --first-parent --format='* %s (%h)' -n 25 "$GITHUB_SHA"
+            fi
+          } > release_body.md
+
+          python3 scripts/make_version_json.py \
+            --tag "nightly" \
+            --repo "${{ github.repository }}" \
+            --sums release/SHA256SUMS \
+            --notes release_body.md \
+            --git-sha "${{ github.sha }}" \
+            --output release/version.json
+          if [ -n "${{ secrets.STREAMIFY_ANNOUNCEMENT_KEY }}" ]; then
+            STREAMIFY_ANNOUNCEMENT_KEY="${{ secrets.STREAMIFY_ANNOUNCEMENT_KEY }}" \
+              node scripts/sign_version_json.js --path release/version.json
+          fi
+          cat release/version.json
+
+      - name: Publish rolling nightly prerelease atomically
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view nightly --repo "${{ github.repository }}" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/old-nightly-assets.txt" 2>/dev/null; then
+            gh release edit nightly --repo "${{ github.repository }}" --draft --prerelease --latest=false
+            while IFS= read -r asset; do
+              [ -n "$asset" ] && gh release delete-asset nightly "$asset" --repo "${{ github.repository }}" --yes
+            done < "$RUNNER_TEMP/old-nightly-assets.txt"
+          else
+            gh release create nightly --repo "${{ github.repository }}" --target "$GITHUB_SHA" \
+              --title "Streamify Nightly" --draft --prerelease --latest=false
+          fi
+          gh release upload nightly release/* --repo "${{ github.repository }}" --clobber
+          gh release edit nightly --repo "${{ github.repository }}" --target "$GITHUB_SHA" \
+            --title "Streamify Nightly" --notes-file release_body.md \
+            --draft=false --prerelease --latest=false

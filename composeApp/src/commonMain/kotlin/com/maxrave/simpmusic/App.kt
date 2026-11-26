@@ -524,6 +524,13 @@ fun App(
         }
     }
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(3_600_000L)
+            viewModel.checkForUpdate(force = false)
+        }
+    }
+
     LaunchedEffect(updateData) {
         val response = updateData ?: return@LaunchedEffect
         // An update is offered if UpdateResolver verified an update manifest (code/hash/revocation)

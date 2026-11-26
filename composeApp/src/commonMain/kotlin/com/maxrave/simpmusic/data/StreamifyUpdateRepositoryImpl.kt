@@ -28,7 +28,7 @@ class StreamifyUpdateRepositoryImpl(
                         0
                     }
 
-                when (val result = resolver.resolve(installedCode)) {
+                when (val result = resolver.resolve(installedCode, includeNightly = UpdateStateHolder.nightlyEnabled)) {
                     is UpdateResult.Available -> {
                         val isBreaking =
                             result.manifest.isBreaking ||

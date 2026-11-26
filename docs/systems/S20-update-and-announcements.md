@@ -22,7 +22,8 @@ tests: [composeApp/src/commonTest/kotlin/com/maxrave/simpmusic/data/update/, com
 
 ## Current truth
 
-- Update resolver lives in commonMain with per-platform binary resolvers and resumable `PlatformUpdater` (HTTP `Range` + SHA-256 verification).
+- Update resolver lives in commonMain with per-platform binary resolvers, opt-in `nightly` channel resolution (`UpdateResolver.resolve(..., includeNightly = true)`), and resumable `PlatformUpdater` (HTTP `Range` + SHA-256 verification).
+- Playback-aware auto-install (`SharedViewModel.scheduleAutoInstallIfEnabled`) defers silent installation until playback stops (`PackageInstaller` `USER_ACTION_NOT_REQUIRED` on Android 12+; atomic AppImage / silent Windows / detached DMG helpers on Desktop), gated by `STREAMIFY_AUTO_INSTALL_UPDATES` and `STREAMIFY_NIGHTLY_UPDATES` toggles in `SettingScreen`.
 - 48-hour `UpdateUrgency` escalation (`SOFT` 0–12h, `ACTIVE_5S` 12–36h, `URGENT_10S` 36–48h, `ENFORCED` 48h+ or `isBreaking`).
 
 ## Interfaces

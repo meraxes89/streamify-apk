@@ -12,6 +12,8 @@ actual object PlatformUpdater {
         // iOS does not support in-app APK/IPA sideloading
     }
 
+    actual fun canAutoInstall(): Boolean = false
+
     actual fun installOrApply(onFallbackOpenUrl: (String) -> Unit, fallbackUrl: String) {
         onFallbackOpenUrl(fallbackUrl)
     }

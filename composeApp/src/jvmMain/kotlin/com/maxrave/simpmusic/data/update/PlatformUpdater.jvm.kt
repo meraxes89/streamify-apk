@@ -20,7 +20,11 @@ import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import kotlin.system.exitProcess
 
 actual object PlatformUpdater {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -121,15 +125,43 @@ actual object PlatformUpdater {
         }
     }
 
+    actual fun canAutoInstall(): Boolean {
+        val osName = System.getProperty("os.name", "").lowercase()
+        return when {
+            osName.contains("win") -> true
+            osName.contains("linux") -> !System.getenv("APPIMAGE").isNullOrBlank()
+            osName.contains("mac") -> currentMacAppBundle() != null
+            else -> false
+        }
+    }
+
     actual fun installOrApply(onFallbackOpenUrl: (String) -> Unit, fallbackUrl: String) {
         val ready = _state.value as? UpdateDownloadState.Ready
         if (ready == null) {
             onFallbackOpenUrl(fallbackUrl)
             return
         }
+        val file = File(ready.filePath)
+        if (!file.exists()) {
+            onFallbackOpenUrl(fallbackUrl)
+            return
+        }
+        val osName = System.getProperty("os.name", "").lowercase()
+        val applied =
+            when {
+                osName.contains("linux") && file.name.endsWith(".AppImage", ignoreCase = true) ->
+                    installLinuxAppImage(file)
+                osName.contains("win") && (file.name.endsWith(".msi", ignoreCase = true) || file.name.endsWith(".exe", ignoreCase = true)) ->
+                    installWindowsPackage(file)
+                osName.contains("mac") && file.name.endsWith(".dmg", ignoreCase = true) ->
+                    installMacOsDmg(file)
+                else -> false
+            }
+        if (applied) {
+            exitProcess(0)
+        }
+
         runCatching {
-            val file = File(ready.filePath)
-            val osName = System.getProperty("os.name", "").lowercase()
             if (osName.contains("linux") && file.name.endsWith(".AppImage", ignoreCase = true)) {
                 file.setExecutable(true)
             }
@@ -141,6 +173,68 @@ actual object PlatformUpdater {
         }.onFailure {
             onFallbackOpenUrl(fallbackUrl)
         }
+    }
+
+    private fun installLinuxAppImage(file: File): Boolean {
+        val appImageEnv = System.getenv("APPIMAGE")?.takeIf { it.isNotBlank() } ?: return false
+        return runCatching {
+            file.setExecutable(true)
+            val target = Path.of(appImageEnv)
+            runCatching {
+                Files.move(file.toPath(), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            }.getOrElse {
+                Files.copy(file.toPath(), target, StandardCopyOption.REPLACE_EXISTING)
+                target.toFile().setExecutable(true)
+            }
+            ProcessBuilder(appImageEnv).start()
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun installWindowsPackage(file: File): Boolean =
+        runCatching {
+            val pid = ProcessHandle.current().pid()
+            val quotedPath = file.absolutePath.replace("\"", "\"\"")
+            val installCmd =
+                if (file.name.endsWith(".msi", ignoreCase = true)) {
+                    "msiexec /i \"$quotedPath\" /qn /norestart"
+                } else {
+                    "\"$quotedPath\" /S"
+                }
+            val script =
+                "while (Get-Process -Id $pid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }; " +
+                    "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','$installCmd' -WindowStyle Hidden"
+            ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script).start()
+            true
+        }.getOrDefault(false)
+
+    private fun installMacOsDmg(file: File): Boolean {
+        val appBundle = currentMacAppBundle() ?: return false
+        return runCatching {
+            val pid = ProcessHandle.current().pid()
+            val mountDir = Files.createTempDirectory("streamify-dmg").toAbsolutePath().toString()
+            val script =
+                """
+                while kill -0 $pid 2>/dev/null; do sleep 0.3; done
+                hdiutil attach -nobrowse -quiet -mountpoint "$mountDir" "${file.absolutePath}" || exit 1
+                SRC_APP=$(ls -d "$mountDir"/*.app 2>/dev/null | head -n 1)
+                if [ -n "${'$'}SRC_APP" ]; then
+                  rm -rf "$appBundle"
+                  cp -R "${'$'}SRC_APP" "$appBundle"
+                  open "$appBundle"
+                fi
+                hdiutil detach -quiet "$mountDir" || true
+                rmdir "$mountDir" 2>/dev/null || true
+                """.trimIndent()
+            ProcessBuilder("/bin/sh", "-c", script).start()
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun currentMacAppBundle(): String? {
+        val cmd = ProcessHandle.current().info().command().orElse(null) ?: return null
+        val idx = cmd.indexOf(".app/")
+        return if (idx > 0) cmd.substring(0, idx + 4) else null
     }
 
     actual fun reset() {
