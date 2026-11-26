@@ -58,6 +58,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -143,6 +144,8 @@ import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SharedViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.maxrave.simpmusic.viewModel.UIEvent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -174,7 +177,6 @@ fun MiniPlayer(
 ) {
     val isLiquidGlassEnabled by sharedViewModel.getEnableLiquidGlass().collectAsStateWithLifecycle(DataStoreManager.FALSE)
     val controllerState by sharedViewModel.controllerState.collectAsStateWithLifecycle()
-    val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
     // The Desktop capsule's quality line between its timestamps — see toAudioQualityLabel.
     val formatState by sharedViewModel.format.collectAsStateWithLifecycle(initialValue = null)
 
@@ -213,22 +215,12 @@ fun MiniPlayer(
         remember {
             mutableStateOf(false)
         }
-    val (progress, setProgress) =
-        remember {
-            mutableFloatStateOf(0f)
-        }
     val (isCrossfading, setIsCrossfading) =
         remember {
             mutableStateOf(false)
         }
 
     val coroutineScope = rememberCoroutineScope()
-
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress,
-        animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
-        label = "",
-    )
 
     val offsetX = remember { Animatable(initialValue = 0f) }
     val offsetY = remember { Animatable(0f) }
@@ -258,16 +250,12 @@ fun MiniPlayer(
             }
         val job4 =
             launch {
-                sharedViewModel.timeline.collect { timeline ->
-                    loading = timeline.loading
-                    val prog =
-                        if (timeline.total > 0L && timeline.current >= 0L) {
-                            timeline.current.toFloat() / timeline.total
-                        } else {
-                            0f
-                        }
-                    setProgress(prog)
-                }
+                sharedViewModel.timeline
+                    .map { it.loading }
+                    .distinctUntilChanged()
+                    .collect { isLoading ->
+                        loading = isLoading
+                    }
             }
         job1.join()
         job2.join()
@@ -461,17 +449,10 @@ fun MiniPlayer(
                             ) {
                                 if (isFlat) {
                                     // Progress rides a ring around the artwork: wavy while playing, flat when paused.
-                                    val ringStroke = Stroke(width = with(LocalDensity.current) { 3.dp.toPx() }, cap = StrokeCap.Round)
-                                    CircularWavyProgressIndicator(
-                                        progress = { animatedProgress },
+                                    MiniPlayerWavyProgressRing(
+                                        timelineFlow = sharedViewModel.timeline,
+                                        isPlaying = isPlaying,
                                         modifier = Modifier.fillMaxSize(),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                        stroke = ringStroke,
-                                        trackStroke = ringStroke,
-                                        // A raw 0/1, never a tweened value: the node animates amplitude
-                                        // itself and drops new targets mid-animation (see WavySeekBar).
-                                        amplitude = { p -> if (p > 0f && isPlaying) 1f else 0f },
                                     )
                                 }
                                 AsyncImage(
@@ -645,20 +626,9 @@ fun MiniPlayer(
                                 ).align(Alignment.BottomCenter),
                     ) {
                         LeftToRight {
-                            LinearProgressIndicator(
-                                progress = { animatedProgress },
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .height(1.dp)
-                                        .background(
-                                            color = Color.Transparent,
-                                            shape = RoundedCornerShape(4.dp),
-                                        ),
+                            MiniPlayerLinearProgress(
+                                timelineFlow = sharedViewModel.timeline,
                                 color = textColor,
-                                trackColor = Color.Transparent,
-                                strokeCap = StrokeCap.Round,
-                                drawStopIndicator = {},
                             )
                         }
                     }
@@ -688,6 +658,7 @@ fun MiniPlayer(
             label = "miniPlayerSweepHead",
         )
         val progressColor = textColor
+        val timelineState by sharedViewModel.timeline.collectAsStateWithLifecycle()
 
         var isSliding by rememberSaveable {
             mutableStateOf(false)
@@ -1393,4 +1364,69 @@ private fun CapsuleProgress(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun MiniPlayerWavyProgressRing(
+    timelineFlow: kotlinx.coroutines.flow.StateFlow<com.maxrave.domain.data.model.streams.TimeLine>,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val timeline by timelineFlow.collectAsStateWithLifecycle()
+    val targetProgress =
+        if (timeline.total > 0L && timeline.current >= 0L) {
+            timeline.current.toFloat() / timeline.total
+        } else {
+            0f
+        }
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
+        label = "MiniPlayerWavyProgress",
+    )
+    val ringStroke = Stroke(width = with(LocalDensity.current) { 3.dp.toPx() }, cap = StrokeCap.Round)
+    CircularWavyProgressIndicator(
+        progress = { animatedProgress },
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.primary,
+        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        stroke = ringStroke,
+        trackStroke = ringStroke,
+        amplitude = { p -> if (p > 0f && isPlaying) 1f else 0f },
+    )
+}
+
+@Composable
+private fun MiniPlayerLinearProgress(
+    timelineFlow: kotlinx.coroutines.flow.StateFlow<com.maxrave.domain.data.model.streams.TimeLine>,
+    color: Color,
+) {
+    val timeline by timelineFlow.collectAsStateWithLifecycle()
+    val targetProgress =
+        if (timeline.total > 0L && timeline.current >= 0L) {
+            timeline.current.toFloat() / timeline.total
+        } else {
+            0f
+        }
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
+        label = "MiniPlayerLinearProgress",
+    )
+    LinearProgressIndicator(
+        progress = { animatedProgress },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(4.dp),
+                ),
+        color = color,
+        trackColor = Color.Transparent,
+        strokeCap = StrokeCap.Round,
+        drawStopIndicator = {},
+    )
 }
