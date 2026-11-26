@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Nightly Builds & Auto-Install Updates (S20, S23)**: Added `.github/workflows/nightly.yml` (per-push to `main` and daily `02:00 UTC` schedule) publishing Ed25519-signed `version.json` to a rolling `nightly` prerelease using draft-while-uploading swaps, atomic draft-before-publish hardening in `.github/workflows/release.yml`, opt-in `Nightly builds` and `Auto-install updates` toggles in `SettingScreen`, hourly background checks in `App`, playback-aware auto-install orchestration in `SharedViewModel`, silent `PackageInstaller` (`USER_ACTION_NOT_REQUIRED`) on Android 12+, and per-OS Desktop self-updaters (Linux AppImage atomic swap, Windows silent helper, macOS DMG bundle swap).
+
 ## [1.0.4] — 2026-11-26: Sovereign Sync v2/v4, Signed Releases, Spatial Navigation & KMP Hardening
 
 Streamify `v1.0.4` is the next public release following `v1.0.2-beta` (superseding the unpublished `1.0.3-beta` preparation). Across 176 first-parent commits on `main`, this release delivers the full Hybrid Sync v2/v4 data plane with Hybrid Logical Clocks and Supabase RLS lockdown, authentic Ed25519-signed release manifests with 48-hour update escalation, sovereign multiplatform OAuth PKCE with encrypted token persistence, opt-in spatial navigation with shared-element hero transitions, universal iOS Compose Multiplatform scaffolding, and comprehensive concurrency, performance, and trust-boundary hardening across Android, Desktop, iOS, Web/Wasm, and Server.

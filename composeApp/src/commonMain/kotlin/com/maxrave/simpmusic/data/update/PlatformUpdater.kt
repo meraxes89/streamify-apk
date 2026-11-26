@@ -19,6 +19,7 @@ sealed interface UpdateDownloadState {
 expect object PlatformUpdater {
     val state: StateFlow<UpdateDownloadState>
     fun startDownload(tag: String, url: String, expectedSha256: String = "")
+    fun canAutoInstall(): Boolean
     fun installOrApply(onFallbackOpenUrl: (String) -> Unit, fallbackUrl: String)
     fun reset()
 }

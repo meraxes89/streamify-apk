@@ -158,6 +158,60 @@ class SharedViewModel(
 
     private val appIdentity: AppIdentity by inject()
 
+    private val _autoInstallCountdownSeconds = MutableStateFlow<Int?>(null)
+    val autoInstallCountdownSeconds: StateFlow<Int?> = _autoInstallCountdownSeconds.asStateFlow()
+
+    fun cancelPendingAutoInstall() {
+        autoInstallJob?.cancel()
+        autoInstallJob = null
+        _autoInstallCountdownSeconds.value = null
+    }
+
+    private fun scheduleAutoInstallIfEnabled(
+        fallbackUrl: String,
+        hasVerifiedSha: Boolean,
+    ) {
+        if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return
+        if (!com.maxrave.simpmusic.data.update.PlatformUpdater.canAutoInstall()) return
+        if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.isPolicyVerified && !hasVerifiedSha) return
+
+        autoInstallJob?.cancel()
+        autoInstallJob = viewModelScope.launch {
+            try {
+                val terminal = com.maxrave.simpmusic.data.update.PlatformUpdater.state.first { state ->
+                    state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready ||
+                        state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Error
+                }
+                if (terminal !is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) return@launch
+                val initialMediaId =
+                    nowPlayingState.value?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                // Trigger silent install when playback pauses/stops OR when the player/user shifts to the next track.
+                combine(nowPlayingState, controllerState) { trackState, ctrlState ->
+                    val currentMediaId = trackState?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                    com.maxrave.simpmusic.data.update.shouldTriggerAutoInstall(
+                        initialMediaId = initialMediaId,
+                        currentMediaId = currentMediaId,
+                        isPlaying = ctrlState.isPlaying,
+                    )
+                }.first { it }
+                if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+                for (sec in 3 downTo 1) {
+                    _autoInstallCountdownSeconds.value = sec
+                    kotlinx.coroutines.delay(1_000L)
+                    if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+                }
+                _autoInstallCountdownSeconds.value = 0
+                com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
+                    onFallbackOpenUrl = {},
+                    fallbackUrl = fallbackUrl,
+                )
+                kotlinx.coroutines.delay(2_000L)
+            } finally {
+                _autoInstallCountdownSeconds.value = null
+            }
+        }
+    }
+
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate
 
@@ -1334,11 +1388,17 @@ class SharedViewModel(
     private var _updateResponse = MutableStateFlow<UpdateData?>(null)
     val updateResponse: StateFlow<UpdateData?> = _updateResponse
 
+    private var autoInstallJob: kotlinx.coroutines.Job? = null
+
     fun checkForUpdate(force: Boolean = false) {
         viewModelScope.launch {
             if (!force && dataStoreManager.autoCheckForUpdates.first() != TRUE) {
                 return@launch
             }
+            val nightlyPref = dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED).first()
+            com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = nightlyPref == TRUE
+            val autoInstallPref = dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED).first()
+            com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = autoInstallPref != FALSE
             // Raised before the coroutine starts, so Home's launch banner, which reads it right after
             // startup, can never miss a check that is already under way but not yet marked.
             _isCheckingUpdate.value = true
@@ -1386,6 +1446,10 @@ class SharedViewModel(
                                 tag = data.tagName,
                                 url = binary.downloadUrl,
                                 expectedSha256 = sha,
+                            )
+                            scheduleAutoInstallIfEnabled(
+                                fallbackUrl = binary.downloadUrl,
+                                hasVerifiedSha = sha.isNotBlank(),
                             )
 
                             _updateResponse.value = data
@@ -1437,6 +1501,10 @@ class SharedViewModel(
                                 tag = data.tagName,
                                 url = binary.downloadUrl,
                                 expectedSha256 = sha,
+                            )
+                            scheduleAutoInstallIfEnabled(
+                                fallbackUrl = binary.downloadUrl,
+                                hasVerifiedSha = sha.isNotBlank(),
                             )
 
                             _updateResponse.value = data

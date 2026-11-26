@@ -252,6 +252,8 @@ fun App(
         mutableStateOf(false)
     }
 
+    val autoInstallCountdownSeconds by viewModel.autoInstallCountdownSeconds.collectAsStateWithLifecycle()
+
     var hasSkippedUpdateDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -268,6 +270,7 @@ fun App(
     val appDialogOpen =
         isEntranceBlocking ||
             sleepTimerState.isDone ||
+            autoInstallCountdownSeconds != null ||
             shouldShowUpdateDialog ||
             showNotificationPermissionDialog ||
             showDesktopNotificationPermissionDialog ||
@@ -521,6 +524,13 @@ fun App(
                 }
                 viewModel.setIntent(null)
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(3_600_000L)
+            viewModel.checkForUpdate(force = false)
         }
     }
 
@@ -1086,6 +1096,34 @@ fun App(
                                     stringResource(Res.string.good_night),
                                     style = typo().bodySmall,
                                 )
+                            },
+                        )
+                    } else if (autoInstallCountdownSeconds != null) {
+                        val sec = autoInstallCountdownSeconds ?: 0
+                        val targetLabel = updateData?.tagName?.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()
+                        AlertDialog(
+                            onDismissRequest = {
+                                if (sec > 0) viewModel.cancelPendingAutoInstall()
+                            },
+                            title = {
+                                Text(text = "Installing Streamify$targetLabel")
+                            },
+                            text = {
+                                Text(
+                                    text =
+                                        if (sec > 0) {
+                                            "Update verified. Installing in ${sec}s — the app will close briefly to apply the update."
+                                        } else {
+                                            "Installing verified update… Please wait."
+                                        },
+                                )
+                            },
+                            confirmButton = {
+                                if (sec > 0) {
+                                    TextButton(onClick = { viewModel.cancelPendingAutoInstall() }) {
+                                        Text(text = "Postpone")
+                                    }
+                                }
                             },
                         )
                     } else if (shouldShowUpdateDialog) {

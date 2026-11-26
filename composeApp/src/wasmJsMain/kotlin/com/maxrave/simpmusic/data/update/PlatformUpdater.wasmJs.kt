@@ -13,6 +13,8 @@ actual object PlatformUpdater {
         _state.value = UpdateDownloadState.Ready("web")
     }
 
+    actual fun canAutoInstall(): Boolean = false
+
     actual fun installOrApply(onFallbackOpenUrl: (String) -> Unit, fallbackUrl: String) {
         window.location.reload()
     }

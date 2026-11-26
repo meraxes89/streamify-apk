@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 
 @Serializable
 data class UpdateArtifact(
@@ -114,9 +115,36 @@ fun evaluateUpdatePolicy(
     )
 }
 
+object UpdatePreferences {
+    const val KEY_NIGHTLY_ENABLED = "STREAMIFY_NIGHTLY_UPDATES"
+    const val KEY_AUTO_INSTALL_ENABLED = "STREAMIFY_AUTO_INSTALL_UPDATES"
+}
+
+/**
+ * Returns true when an already-downloaded verified update should auto-install:
+ * either playback is paused/stopped, or the player/user shifted to a different track.
+ */
+fun shouldTriggerAutoInstall(
+    initialMediaId: String?,
+    currentMediaId: String?,
+    isPlaying: Boolean?,
+): Boolean {
+    if (isPlaying != true) return true
+    if (!initialMediaId.isNullOrBlank() && !currentMediaId.isNullOrBlank() && currentMediaId != initialMediaId) {
+        return true
+    }
+    return false
+}
+
 object UpdateStateHolder {
     private val _state = MutableStateFlow(UpdatePolicyState())
     val state: StateFlow<UpdatePolicyState> = _state.asStateFlow()
+
+    @Volatile
+    var nightlyEnabled: Boolean = false
+
+    @Volatile
+    var autoInstallEnabled: Boolean = true
 
     val latestManifest: UpdateManifest? get() = _state.value.latestManifest
     val isPolicyVerified: Boolean get() = _state.value.isPolicyVerified

@@ -361,6 +361,9 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/insights_widget_info" />
         </receiver>
+        <receiver
+            android:name="com.maxrave.simpmusic.data.update.UpdateInstallReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
