@@ -2,6 +2,8 @@ package com.maxrave.simpmusic
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -108,6 +110,7 @@ import com.maxrave.simpmusic.ui.navigation.DestinationClassIndex
 import com.maxrave.simpmusic.ui.navigation.ScreenPolicyRegistry
 import com.maxrave.simpmusic.ui.navigation.SpatialCapability
 import com.maxrave.simpmusic.ui.navigation.LocalSharedTransitionScope
+import com.maxrave.simpmusic.ui.navigation.SharedTransitionScopeHolder
 import com.maxrave.simpmusic.ui.navigation.TransitionKind
 import com.maxrave.simpmusic.ui.navigation.graph.AppNavigationGraph
 import com.maxrave.simpmusic.ui.screen.MiniPlayer
@@ -768,7 +771,7 @@ fun App(
                 ) {
                     val tabletMiniPlayer: @Composable (Modifier) -> Unit = { modifier ->
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = isShowMiniPlayer && isTablet && !isInFullscreen,
+                            visible = isShowMiniPlayer && isTablet && currentPolicy.chrome.showMiniPlayer,
                             modifier = modifier,
                             enter = fadeIn() + slideInHorizontally(),
                             exit = fadeOut(),
@@ -843,7 +846,7 @@ fun App(
                                         },
                                     ),
                             ) {
-                                if (isTablet && !isInFullscreen) {
+                                if (isTablet && currentPolicy.chrome.showNavBar) {
                                     if (isDesktopShell) {
                                         DesktopSidebar(
                                             navController = navController,
@@ -897,22 +900,42 @@ fun App(
                                                 },
                                             ).hazeSource(hazeState),
                                     ) {
-                                        CompositionLocalProvider(
-                                            LocalAppDialogOpen provides appDialogOpen,
-                                            LocalNowPlayingOpen provides isShowNowPlaylistScreen,
-                                            LocalUserStarted provides userStarted,
-                                        ) {
-                                            AppNavigationGraph(
-                                                innerPadding = innerPadding,
-                                                navController = navController,
-                                                spatialEnabled = isSpatialNavigationEnabled == TRUE,
-                                                showNowPlayingSheet = {
-                                                    isShowNowPlaylistScreen = true
-                                                },
-                                                onScrolling = {
-                                                    isScrolledToTop = it
-                                                },
-                                            )
+                                        @OptIn(ExperimentalSharedTransitionApi::class)
+                                        SharedTransitionLayout {
+                                            val sharedScope = this
+                                            val sharedScopeHolder = remember(sharedScope) {
+                                                object : SharedTransitionScopeHolder {
+                                                    @Composable
+                                                    override fun sharedElement(
+                                                        modifier: Modifier,
+                                                        key: Any,
+                                                        animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
+                                                    ): Modifier = with(sharedScope) {
+                                                        modifier.sharedElement(
+                                                            sharedContentState = rememberSharedContentState(key = key),
+                                                            animatedVisibilityScope = animatedVisibilityScope,
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            CompositionLocalProvider(
+                                                LocalAppDialogOpen provides appDialogOpen,
+                                                LocalNowPlayingOpen provides isShowNowPlaylistScreen,
+                                                LocalUserStarted provides userStarted,
+                                                LocalSharedTransitionScope provides if (heroesAllowed) sharedScopeHolder else null,
+                                            ) {
+                                                AppNavigationGraph(
+                                                    innerPadding = innerPadding,
+                                                    navController = navController,
+                                                    spatialEnabled = isSpatialNavigationEnabled == TRUE,
+                                                    showNowPlayingSheet = {
+                                                        isShowNowPlaylistScreen = true
+                                                    },
+                                                    onScrolling = {
+                                                        isScrolledToTop = it
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                     if (!isDesktopShell) {

@@ -41,6 +41,7 @@ val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScopeH
  */
 interface SharedTransitionScopeHolder {
     /** Runs [block] against the real SharedTransitionScope's sharedElement modifier. */
+    @Composable
     fun sharedElement(
         modifier: Modifier,
         key: Any,
