@@ -2,9 +2,9 @@
 
 package com.maxrave.simpmusic.ui.screen.player
 
+import androidx.compose.animation.Animatable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.MutableTransitionState
@@ -157,7 +157,9 @@ fun NowPlayingScreen(
     // graphicsLayer on the ModalBottomSheet below reads the animatable, never recomposing);
     // a cancelled gesture settles back LINEARLY to rest, a committed one to collapse — no
     // snapping either way.
-    val predictiveSheetScale = remember { Animatable(1f) }
+    // androidx.compose.animation.Animatable above is the Color typealias used by the gradient
+    // animatables below; the sheet scale needs the generic core Animatable<Float, ...>.
+    val predictiveSheetScale = remember { androidx.compose.animation.core.Animatable(1f) }
     com.maxrave.simpmusic.expect.ui.PlatformPredictiveBackHandler(
         enabled = true,
         onProgress = { progress ->
