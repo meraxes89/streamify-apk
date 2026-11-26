@@ -402,7 +402,7 @@ object SupabaseLibrarySync {
                         add(buildSyncOp(
                             entity = "playlist_track",
                             op = "D",
-                            key = removed.id,
+                            key = removed.id ?: removed.trackId,
                             hlc = effectiveHlc,
                             data = buildJsonObject {
                                 put("playlist_id", playlistId)
