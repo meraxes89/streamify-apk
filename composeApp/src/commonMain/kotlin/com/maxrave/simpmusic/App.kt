@@ -1084,7 +1084,8 @@ fun App(
                         )
                     } else if (shouldShowUpdateDialog) {
                         val response = updateData ?: return@Scaffold
-                        val manifest = UpdateStateHolder.latestManifest
+                        val updatePolicyState by UpdateStateHolder.state.collectAsStateWithLifecycle()
+                        val manifest = updatePolicyState.latestManifest
                         val binary = remember(response.tagName) {
                             resolveDeviceBinary(
                                 tag = response.tagName,
@@ -1099,9 +1100,9 @@ fun App(
                             releaseDate = response.releaseTime,
                             changelog = response.body,
                             binary = binary,
-                            isBreaking = UpdateStateHolder.isBreaking,
-                            urgency = UpdateStateHolder.urgency,
-                            remainingHours = UpdateStateHolder.remainingHours,
+                            isBreaking = updatePolicyState.isBreaking,
+                            urgency = updatePolicyState.urgency,
+                            remainingHours = updatePolicyState.remainingHours,
                             downloadState = downloadState,
                             onRetryDownload = {
                                 val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()

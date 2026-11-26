@@ -4,6 +4,7 @@ import com.maxrave.domain.data.model.update.UpdateData
 import com.maxrave.domain.repository.UpdateRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.simpmusic.BuildKonfig
+import com.maxrave.simpmusic.data.update.UpdatePolicyState
 import com.maxrave.simpmusic.data.update.UpdateResolver
 import com.maxrave.simpmusic.data.update.UpdateResult
 import com.maxrave.simpmusic.data.update.UpdateSanitizer
@@ -32,8 +33,13 @@ class StreamifyUpdateRepositoryImpl(
                         val isBreaking =
                             result.manifest.isBreaking ||
                                 (result.manifest.minSupportedVersionCode > 0 && installedCode < result.manifest.minSupportedVersionCode)
-                        UpdateStateHolder.latestManifest = result.manifest
-                        UpdateStateHolder.isBreaking = isBreaking
+                        UpdateStateHolder.update(
+                            UpdatePolicyState(
+                                latestManifest = result.manifest,
+                                isPolicyVerified = result.isPolicyVerified,
+                                isBreaking = isBreaking,
+                            ),
+                        )
                         emit(
                             Resource.Success(
                                 UpdateData(

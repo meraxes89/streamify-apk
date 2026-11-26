@@ -214,6 +214,10 @@ jobs:
             --notes release_body.md \
             --git-sha "${{ github.sha }}" \
             --output release/version.json $EXTRA_FLAGS
+          if [ -n "${{ secrets.STREAMIFY_ANNOUNCEMENT_KEY }}" ]; then
+            STREAMIFY_ANNOUNCEMENT_KEY="${{ secrets.STREAMIFY_ANNOUNCEMENT_KEY }}" \
+              node scripts/sign_version_json.js --path release/version.json
+          fi
           cat release/version.json
 
       - name: Verify release manifest integrity & naming consistency

@@ -150,7 +150,7 @@ actual object PlatformUpdater {
     }
 
     private fun verifySha256(file: File, expectedSha256: String): Boolean {
-        if (expectedSha256.isBlank()) return file.exists() && file.length() > 0L
+        if (expectedSha256.isBlank() || !file.exists() || file.length() <= 0L) return false
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { fis ->
             val buf = ByteArray(16 * 1024)

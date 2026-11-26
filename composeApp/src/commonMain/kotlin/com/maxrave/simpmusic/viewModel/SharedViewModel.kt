@@ -1043,6 +1043,16 @@ class SharedViewModel(
         index: Int? = null,
     ) {
         viewModelScope.launch {
+            if (type != RECOVER_TRACK_QUEUE &&
+                com.maxrave.simpmusic.data.update.UpdateStateHolder.isOnlineStreamingBlocked
+            ) {
+                val localSong = songRepository.getSongById(track.videoId).firstOrNull()
+                if (localSong?.downloadState != com.maxrave.domain.data.entities.DownloadState.STATE_DOWNLOADED) {
+                    log("Blocked online playback for ${track.videoId}: enforced signed update required", LogLevel.WARN)
+                    showedUpdateDialog = true
+                    return@launch
+                }
+            }
             mediaPlayerHandler.clearMediaItems()
             songRepository.insertSong(track.toSongEntity()).lastOrNull()?.let {
                 println("insertSong: $it")
@@ -1355,10 +1365,16 @@ class SharedViewModel(
                             }
                             val graceHours = manifest?.graceHours ?: 48
                             val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                            val urgency =
                                 com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                            val remainingHours =
                                 com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.update(
+                                com.maxrave.simpmusic.data.update.UpdateStateHolder.state.value.copy(
+                                    urgency = urgency,
+                                    remainingHours = remainingHours,
+                                ),
+                            )
 
                             // Network-bound background pre-fetch (resumable via HTTP Range)
                             val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
@@ -1400,10 +1416,16 @@ class SharedViewModel(
                             }
                             val graceHours = manifest?.graceHours ?: 48
                             val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                            val urgency =
                                 com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                            val remainingHours =
                                 com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.update(
+                                com.maxrave.simpmusic.data.update.UpdateStateHolder.state.value.copy(
+                                    urgency = urgency,
+                                    remainingHours = remainingHours,
+                                ),
+                            )
 
                             // Network-bound background pre-fetch (resumable via HTTP Range)
                             val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
