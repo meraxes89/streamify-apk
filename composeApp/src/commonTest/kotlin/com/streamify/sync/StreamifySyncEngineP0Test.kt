@@ -192,4 +192,78 @@ class StreamifySyncEngineP0Test {
         assertEquals("11111111-2222-4333-8444-555555555555", reused)
         assertEquals(2, persisted.size)
     }
+
+    @Test
+    fun normalizeTrackThumbUrlUpgradesHttpAndFallsBackToHqDefault() {
+        assertEquals(
+            "https://i.ytimg.com/vi/abc123/maxresdefault.jpg",
+            StreamifySyncEngine.normalizeTrackThumbUrl("http://i.ytimg.com/vi/abc123/maxresdefault.jpg", "abc123"),
+        )
+        assertEquals(
+            "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+            StreamifySyncEngine.normalizeTrackThumbUrl("", "abc123"),
+        )
+        assertEquals(
+            "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+            StreamifySyncEngine.normalizeTrackThumbUrl(null, "abc123"),
+        )
+        assertEquals(
+            null,
+            StreamifySyncEngine.normalizeTrackThumbUrl(null, "trk_legacy_1"),
+        )
+    }
+
+    @Test
+    fun buildHydratedSongEntityPrefersCatalogOrInlineMetadataOverPlaceholder() {
+        val cloudTrack = com.streamify.supabase.CloudTrack(
+            id = "a4O-abCXsfA",
+            title = "Timeless",
+            artist = "The Weeknd, Playboi Carti",
+            album = "Hurry Up Tomorrow",
+            durationSec = 256,
+            coverUrl = "http://i.ytimg.com/vi/a4O-abCXsfA/maxresdefault.jpg",
+        )
+        val placeholderMeta = kotlinx.serialization.json.buildJsonObject {
+            put("title", kotlinx.serialization.json.JsonPrimitive("Synced Track"))
+        }
+        val entity = StreamifySyncEngine.buildHydratedSongEntity(
+            videoId = "a4O-abCXsfA",
+            cloudTrack = cloudTrack,
+            inlineMeta = placeholderMeta,
+            likeStatus = "INDIFFERENT",
+            liked = false,
+        )
+        assertEquals("Timeless", entity.title)
+        assertEquals(listOf("The Weeknd, Playboi Carti"), entity.artistName)
+        assertEquals("Hurry Up Tomorrow", entity.albumName)
+        assertEquals("4:16", entity.duration)
+        assertEquals(256, entity.durationSeconds)
+        assertEquals("https://i.ytimg.com/vi/a4O-abCXsfA/maxresdefault.jpg", entity.thumbnails)
+    }
+
+    @Test
+    fun collectMissingTrackIdsForDeltaOpsSkipsDeletesAndCompleteLikes() {
+        val completeLikeData = kotlinx.serialization.json.buildJsonObject {
+            put("snapshot", kotlinx.serialization.json.buildJsonObject {
+                put("title", kotlinx.serialization.json.JsonPrimitive("Love Me"))
+                put("cover_url", kotlinx.serialization.json.JsonPrimitive("https://example.com/cover.jpg"))
+            })
+        }
+        val ops = listOf(
+            com.streamify.supabase.SyncPullOp(seq = 1L, entity = "like", op = "I", key = "vid_complete", data = completeLikeData),
+            com.streamify.supabase.SyncPullOp(seq = 2L, entity = "like", op = "I", key = "vid_no_snap", data = null),
+            com.streamify.supabase.SyncPullOp(seq = 3L, entity = "library_track", op = "U", key = "vid_lib", data = null),
+            com.streamify.supabase.SyncPullOp(seq = 4L, entity = "library_track", op = "D", key = "vid_deleted", data = null),
+            com.streamify.supabase.SyncPullOp(
+                seq = 5L,
+                entity = "playlist_track",
+                op = "I",
+                key = "row_1",
+                data = kotlinx.serialization.json.buildJsonObject {
+                    put("track_id", kotlinx.serialization.json.JsonPrimitive("vid_pl"))
+                },
+            ),
+        )
+        assertEquals(listOf("vid_no_snap", "vid_lib", "vid_pl"), StreamifySyncEngine.collectMissingTrackIdsForDeltaOps(ops))
+    }
 }
