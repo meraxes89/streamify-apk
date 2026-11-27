@@ -211,7 +211,7 @@ index db029df..1e1929c 100644
              a.addAll(
                  fetched,
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
-index 9befde3..3728bed 100644
+index 9befde3..daec2a2 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
 @@ -140,7 +140,7 @@ internal class DataStoreManagerImpl(
@@ -232,6 +232,15 @@ index 9befde3..3728bed 100644
          }
  
      override suspend fun setDownloadQuality(quality: String) {
+@@ -965,7 +965,7 @@ internal class DataStoreManagerImpl(
+ 
+     override val themeMode =
+         settingsDataStore.data.map { preferences ->
+-            preferences[THEME_MODE] ?: DataStoreManager.THEME_MODE_DARK
++            preferences[THEME_MODE] ?: DataStoreManager.THEME_MODE_LIGHT
+         }
+ 
+     override suspend fun setThemeMode(mode: String) {
 @@ -1680,6 +1680,26 @@ internal class DataStoreManagerImpl(
          }
      }

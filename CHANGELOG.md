@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **Notification & Origin Island Artwork (S02, S06)**: Dispatched `Player.Listener.onEvents(EVENT_MEDIA_METADATA_CHANGED)` and enriched `getCurrentMediaItem()` in `ArtworkEnrichingPlayer` (`SimpleMediaService`), added `onEvents` in `DelegatingForwardingPlayer.notifyMediaItemChanged`, logged `CoilBitmapLoader` / `ArtworkEnrichingPlayer` failures, guarded against `"null"` `artworkUri` strings in `Media3Ext` / `CoilBitmapLoader`, upgraded `http://i.ytimg.com/` URIs to `https://`, and added `hqdefault.jpg` fallback when `maxresdefault.jpg` fails.
+- **Dark Mode Persistence (S01)**: Removed the startup `THEME_MODE_DARK` → `THEME_MODE_LIGHT` override in `StreamifyDefaultsInitializer` and moved the `THEME_MODE_LIGHT` fallback to unset `THEME_MODE` reads in `DataStoreManagerImpl` (`core.patch`) so user-selected Dark Mode persists across restarts.
 
 ## [1.0.6] — 2026-11-27: Sync Engine Reliability, Update Loop Fix, OAuth & UI Polish
 
