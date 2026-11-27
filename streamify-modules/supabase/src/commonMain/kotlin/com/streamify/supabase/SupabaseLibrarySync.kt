@@ -174,26 +174,36 @@ object SupabaseLibrarySync {
             val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
             val chunks = tracks.chunked(50)
             for (chunk in chunks) {
-                // 1. Bulk upsert tracks metadata
-                val tracksArray = buildJsonArray {
-                    for (t in chunk) {
-                        add(buildJsonObject {
-                            put("id", t.id)
-                            put("title", t.title)
-                            put("artist", t.artist)
-                            put("album", t.album ?: "Streamify")
-                            put("duration_sec", t.durationSec)
-                            put("cover_url", t.coverUrl)
-                        })
-                    }
-                }.toString()
+                // 1. Bulk upsert tracks metadata (skip placeholder "Synced Track" rows)
+                val validMetadataTracks = chunk.filter {
+                    it.title.isNotBlank() && it.title != "Synced Track"
+                }
+                if (validMetadataTracks.isNotEmpty()) {
+                    val tracksArray = buildJsonArray {
+                        for (t in validMetadataTracks) {
+                            val normalizedCover = if (t.coverUrl.startsWith("http://", ignoreCase = true)) {
+                                "https://" + t.coverUrl.substring(7)
+                            } else {
+                                t.coverUrl
+                            }
+                            add(buildJsonObject {
+                                put("id", t.id)
+                                put("title", t.title)
+                                put("artist", t.artist)
+                                put("album", t.album ?: "Streamify")
+                                put("duration_sec", t.durationSec)
+                                put("cover_url", normalizedCover)
+                            })
+                        }
+                    }.toString()
 
-                SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
-                    header("apikey", SupabaseConfig.ANON_KEY)
-                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                    header("Prefer", "resolution=merge-duplicates")
-                    contentType(ContentType.Application.Json)
-                    setBody(tracksArray)
+                    SupabaseClient.httpClient.post("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
+                        header("apikey", SupabaseConfig.ANON_KEY)
+                        header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                        header("Prefer", "resolution=merge-duplicates")
+                        contentType(ContentType.Application.Json)
+                        setBody(tracksArray)
+                    }
                 }
 
                 // 2. Bulk insert user_likes
@@ -225,6 +235,40 @@ object SupabaseLibrarySync {
     }
 
     /**
+     * Fetches CloudTrack metadata for a list of track IDs from the `tracks` view (`track_index`).
+     * Batches requests in chunks of 40 IDs to avoid query string truncation.
+     */
+    suspend fun fetchTracksByIds(trackIds: List<String>): Result<Map<String, CloudTrack>> = withContext(ioDispatcher) {
+        try {
+            val cleanIds = trackIds.asSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() && !it.startsWith("trk_") }
+                .distinct()
+                .toList()
+            if (cleanIds.isEmpty()) return@withContext Result.success(emptyMap())
+
+            val resultMap = mutableMapOf<String, CloudTrack>()
+            for (chunk in cleanIds.chunked(40)) {
+                val inClause = chunk.joinToString(",") { "\"$it\"" }
+                val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
+                    parameter("id", "in.($inClause)")
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
+                }
+                if (!resp.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("HTTP ${resp.status.value} fetching tracks"))
+                }
+                val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
+                tracks.forEach { resultMap[it.id] = it }
+            }
+            Result.success(resultMap)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetches full CloudTrack metadata for all liked songs of this user, preserving failures.
      * Batches requests in chunks of 40 IDs to avoid query string truncation.
      */
@@ -236,23 +280,12 @@ object SupabaseLibrarySync {
             val likedIds = likesMap.keys.toList()
             if (likedIds.isEmpty()) return@withContext Result.success(emptyList())
 
-            val resultTracks = mutableListOf<CloudTrack>()
-            val chunks = likedIds.chunked(40)
-            for (chunk in chunks) {
-                val inClause = chunk.joinToString(",") { "\"$it\"" }
-                val resp = SupabaseClient.httpClient.get("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks") {
-                    parameter("id", "in.($inClause)")
-                    header("apikey", SupabaseConfig.ANON_KEY)
-                    header("Authorization", "Bearer ${SupabaseClient.getAuthToken()}")
-                }
-                if (!resp.status.isSuccess()) {
-                    return@withContext Result.failure(Exception("HTTP ${resp.status.value} fetching liked tracks"))
-                }
-                val tracks = json.decodeFromString<List<CloudTrack>>(resp.bodyAsText())
-                resultTracks.addAll(tracks.map { track ->
-                    val likedTime = likesMap[track.id]
-                    if (likedTime != null) track.copy(createdAt = likedTime) else track
-                })
+            val tracksById = fetchTracksByIds(likedIds).getOrElse {
+                return@withContext Result.failure(it)
+            }
+            val resultTracks = tracksById.values.map { track ->
+                val likedTime = likesMap[track.id]
+                if (likedTime != null) track.copy(createdAt = likedTime) else track
             }
             Result.success(resultTracks)
         } catch (e: Exception) {

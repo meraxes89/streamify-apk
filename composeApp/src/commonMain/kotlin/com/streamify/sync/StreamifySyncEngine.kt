@@ -545,7 +545,8 @@ object StreamifySyncEngine : KoinComponent {
         val cloudTracks = SupabaseLibrarySync.fetchCloudLikedTracksResult(targetUserId)
             .getOrElse { return -1 }
             .filter { !it.id.startsWith("trk_") }
-        val cloudIds = cloudTracks.map { it.id }.toSet()
+        val cloudTracksById = cloudTracks.associateBy { it.id }
+        val cloudIds = cloudTracksById.keys
 
         // 2. Fetch local liked songs
         val localLiked = try {
@@ -554,41 +555,36 @@ object StreamifySyncEngine : KoinComponent {
             if (e is CancellationException) throw e
             emptyList()
         }
-        val localIds = localLiked.map { it.videoId }.toSet()
+        val localLikedById = localLiked.associateBy { it.videoId }
+        val localIds = localLikedById.keys
+
+        // Upgrade any already-liked local placeholders missing thumbnails/duration
+        for (localSong in localLiked) {
+            if (localSong.thumbnails.isNullOrBlank() || localSong.durationSeconds <= 0) {
+                upgradeExistingPlaceholderIfNeeded(localSong, cloudTracksById[localSong.videoId], null)
+            }
+        }
 
         // 3. Inbound: Insert missing cloud songs into local Room SQLite
         for (cloudTrack in cloudTracks) {
             if (cloudTrack.id !in localIds) {
                 try {
                     val existing = songRepository.getSongById(cloudTrack.id).firstOrNull()
-                    val durationStr = formatDuration(cloudTrack.durationSec)
                     if (existing == null) {
-                        val entity = SongEntity(
+                        val favAt = parseIsoToLocalDateTime(cloudTrack.createdAt) ?: now()
+                        val entity = buildHydratedSongEntity(
                             videoId = cloudTrack.id,
-                            albumId = null,
-                            albumName = cloudTrack.album ?: "Streamify",
-                            artistId = null,
-                            artistName = listOf(cloudTrack.artist),
-                            duration = durationStr,
-                            durationSeconds = cloudTrack.durationSec,
-                            isAvailable = true,
-                            isExplicit = false,
+                            cloudTrack = cloudTrack,
+                            inlineMeta = null,
                             likeStatus = "LIKE",
-                            thumbnails = cloudTrack.coverUrl.ifBlank { null },
-                            title = cloudTrack.title,
-                            videoType = "MUSIC_VIDEO_TYPE_ATV",
-                            category = null,
-                            resultType = null,
                             liked = true,
-                            totalPlayTime = 0,
-                            downloadState = DownloadState.STATE_NOT_DOWNLOADED,
-                            favoriteAt = parseIsoToLocalDateTime(cloudTrack.createdAt) ?: now(),
-                            downloadedAt = now(),
                             inLibrary = now(),
-                            canvasUrl = null,
-                            canvasThumbUrl = null
+                            favoriteAt = favAt,
+                            downloadedAt = now(),
                         )
                         songRepository.insertSong(entity).lastOrNull()
+                    } else {
+                        upgradeExistingPlaceholderIfNeeded(existing, cloudTrack, null)
                     }
                     songRepository.updateLikeStatus(cloudTrack.id, 1)
                 } catch (e: Exception) {
@@ -695,32 +691,49 @@ object StreamifySyncEngine : KoinComponent {
             // SongRepository.getAllSongs(limit) has no offset parameter (core/ is external to this module),
             // so bound the scan to avoid loading unbounded libraries into RAM and causing OOM during bootstrap.
             val localSongs = songRepository.getAllSongs(MAX_BOOTSTRAP_LIBRARY_SONGS).firstOrNull() ?: emptyList()
+            val localById = localSongs.associateBy { it.videoId }
             val localInLibrary = localSongs.filter { it.inLibrary > Config.REMOVED_SONG_DATE_TIME }
             val localLibraryIds = localInLibrary.map { it.videoId }.toSet()
 
-            // Inbound: hydrate cloud library tracks locally
+            val idsNeedingMetadata = cloudLibrary
+                .asSequence()
+                .map { it.trackId }
+                .filter { tid ->
+                    tid.isNotBlank() && !tid.startsWith("trk_") && (
+                        tid !in localById ||
+                            localById[tid]?.title == "Synced Track" ||
+                            localById[tid]?.thumbnails.isNullOrBlank()
+                        )
+                }
+                .distinct()
+                .toList()
+            val cloudMetaById = if (idsNeedingMetadata.isNotEmpty()) {
+                SupabaseLibrarySync.fetchTracksByIds(idsNeedingMetadata).getOrDefault(emptyMap())
+            } else {
+                emptyMap()
+            }
+
+            // Inbound: hydrate cloud library tracks locally with catalog metadata
             for (cloudItem in cloudLibrary) {
-                if (cloudItem.trackId !in localLibraryIds && cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
-                    val existing = songRepository.getSongById(cloudItem.trackId).firstOrNull()
+                if (cloudItem.trackId.isNotBlank() && !cloudItem.trackId.startsWith("trk_")) {
+                    val existing = localById[cloudItem.trackId] ?: songRepository.getSongById(cloudItem.trackId).firstOrNull()
                     val addedAtTime = parseIsoToLocalDateTime(cloudItem.addedAt) ?: now()
+                    val cloudMeta = cloudMetaById[cloudItem.trackId]
                     if (existing == null) {
-                        val entity = SongEntity(
+                        val entity = buildHydratedSongEntity(
                             videoId = cloudItem.trackId,
-                            title = "Synced Track",
-                            albumName = "Streamify",
-                            duration = "0:00",
-                            durationSeconds = 0,
-                            isAvailable = true,
-                            isExplicit = false,
+                            cloudTrack = cloudMeta,
+                            inlineMeta = null,
                             likeStatus = "INDIFFERENT",
-                            videoType = "MUSIC_VIDEO_TYPE_ATV",
-                            category = null,
-                            resultType = null,
-                            inLibrary = addedAtTime
+                            liked = false,
+                            inLibrary = addedAtTime,
                         )
                         songRepository.insertSong(entity).lastOrNull()
                     } else {
-                        songRepository.updateSongInLibrary(addedAtTime, cloudItem.trackId).firstOrNull()
+                        upgradeExistingPlaceholderIfNeeded(existing, cloudMeta, null)
+                        if (cloudItem.trackId !in localLibraryIds) {
+                            songRepository.updateSongInLibrary(addedAtTime, cloudItem.trackId).firstOrNull()
+                        }
                     }
                 }
             }
@@ -1206,6 +1219,12 @@ object StreamifySyncEngine : KoinComponent {
             val watermarks = loadHlcWatermarks()
             var watermarksDirty = false
             var allOpsApplied = true
+            val trackIdsToPrefetch = collectMissingTrackIdsForDeltaOps(pullResult.ops)
+            val prefetchedTracks = if (trackIdsToPrefetch.isNotEmpty()) {
+                SupabaseLibrarySync.fetchTracksByIds(trackIdsToPrefetch).getOrDefault(emptyMap())
+            } else {
+                emptyMap()
+            }
             withContext(withSyncApplying()) {
                 for (op in pullResult.ops) {
                     val opHlc = op.hlc ?: 0L
@@ -1230,7 +1249,7 @@ object StreamifySyncEngine : KoinComponent {
                     if (isStaleByWatermark(op.entity, op.key, playlistTrackCompositeKey, opHlc, watermarks)) {
                         continue
                     }
-                    if (!applyDeltaOp(op)) {
+                    if (!applyDeltaOp(op, prefetchedTracks)) {
                         allOpsApplied = false
                     } else if (opHlc > 0L) {
                         watermarks["${op.entity}:${op.key}"] = opHlc
@@ -1797,7 +1816,10 @@ object StreamifySyncEngine : KoinComponent {
      * Returns `true` if applied cleanly, or `false` if an exception occurred (so the pull cursor
      * is held back for retry instead of silently dropping the mutation).
      */
-    private suspend fun applyDeltaOp(op: SyncPullOp): Boolean {
+    private suspend fun applyDeltaOp(
+        op: SyncPullOp,
+        prefetchedTracks: Map<String, CloudTrack> = emptyMap(),
+    ): Boolean {
         return try {
             when (op.entity) {
                 "like" -> {
@@ -1807,41 +1829,18 @@ object StreamifySyncEngine : KoinComponent {
                         val existing = songRepository.getSongById(op.key).firstOrNull()
                         val meta = op.data?.get("snapshot")?.jsonObject
                             ?: op.data?.get("meta")?.jsonObject
-                        if (existing == null || (existing.title == "Synced Track" && meta != null)) {
-                            val title = meta?.get("title")?.jsonPrimitive?.contentOrNull ?: existing?.title ?: "Synced Track"
-                            val artist = meta?.get("artist")?.jsonPrimitive?.contentOrNull
-                                ?: existing?.artistName?.firstOrNull()
-                                ?: "Unknown Artist"
-                            val album = meta?.get("album")?.jsonPrimitive?.contentOrNull ?: existing?.albumName ?: "Streamify"
-                            val durationSec = meta?.get("duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-                                ?: existing?.durationSeconds
-                                ?: 0
-                            val thumb = meta?.get("cover_url")?.jsonPrimitive?.contentOrNull
-                                ?: meta?.get("thumb")?.jsonPrimitive?.contentOrNull
-                                ?: meta?.get("thumb_url")?.jsonPrimitive?.contentOrNull
-                                ?: existing?.thumbnails
-                            val entity = (existing ?: SongEntity(
+                        val cloudTrack = prefetchedTracks[op.key]
+                        if (existing == null) {
+                            val entity = buildHydratedSongEntity(
                                 videoId = op.key,
-                                title = title,
-                                duration = formatDuration(durationSec),
-                                durationSeconds = durationSec,
-                                isAvailable = true,
-                                isExplicit = false,
-                                likeStatus = "LIKE",
-                                videoType = "MUSIC_VIDEO_TYPE_ATV",
-                                category = null,
-                                resultType = null,
-                            )).copy(
-                                title = title,
-                                artistName = listOf(artist),
-                                albumName = album,
-                                duration = formatDuration(durationSec),
-                                durationSeconds = durationSec,
-                                thumbnails = thumb?.ifBlank { null },
+                                cloudTrack = cloudTrack,
+                                inlineMeta = meta,
                                 likeStatus = "LIKE",
                                 liked = true,
                             )
                             songRepository.insertSong(entity).lastOrNull()
+                        } else {
+                            upgradeExistingPlaceholderIfNeeded(existing, cloudTrack, meta)
                         }
                         songRepository.updateLikeStatus(op.key, 1)
                     }
@@ -1906,23 +1905,19 @@ object StreamifySyncEngine : KoinComponent {
                         songRepository.updateSongInLibrary(Config.REMOVED_SONG_DATE_TIME, op.key).firstOrNull()
                     } else {
                         val existing = songRepository.getSongById(op.key).firstOrNull()
+                        val cloudTrack = prefetchedTracks[op.key]
                         if (existing == null) {
-                            val entity = SongEntity(
+                            val entity = buildHydratedSongEntity(
                                 videoId = op.key,
-                                title = "Synced Track",
-                                albumName = "Streamify",
-                                duration = "0:00",
-                                durationSeconds = 0,
-                                isAvailable = true,
-                                isExplicit = false,
+                                cloudTrack = cloudTrack,
+                                inlineMeta = null,
                                 likeStatus = "INDIFFERENT",
-                                videoType = "MUSIC_VIDEO_TYPE_ATV",
-                                category = null,
-                                resultType = null,
-                                inLibrary = now()
+                                liked = false,
+                                inLibrary = now(),
                             )
                             songRepository.insertSong(entity).lastOrNull()
                         } else {
+                            upgradeExistingPlaceholderIfNeeded(existing, cloudTrack, null)
                             songRepository.updateSongInLibrary(now(), op.key).firstOrNull()
                         }
                     }
@@ -1958,18 +1953,20 @@ object StreamifySyncEngine : KoinComponent {
                         val localPlaylists = localPlaylistRepository.getAllLocalPlaylists().firstOrNull() ?: emptyList()
                         val matched = localPlaylists.find { it.syncId == playlistIdStr }
                         if (matched != null) {
-                            val song = songRepository.getSongById(trackId).firstOrNull() ?: SongEntity(
-                                videoId = trackId,
-                                title = "Synced Track",
-                                duration = "0:00",
-                                durationSeconds = 0,
-                                isAvailable = true,
-                                isExplicit = false,
-                                likeStatus = "INDIFFERENT",
-                                videoType = "MUSIC_VIDEO_TYPE_ATV",
-                                category = null,
-                                resultType = null
-                            ).also { songRepository.insertSong(it).lastOrNull() }
+                            val existing = songRepository.getSongById(trackId).firstOrNull()
+                            val cloudTrack = prefetchedTracks[trackId]
+                            val song = if (existing == null) {
+                                buildHydratedSongEntity(
+                                    videoId = trackId,
+                                    cloudTrack = cloudTrack,
+                                    inlineMeta = null,
+                                    likeStatus = "INDIFFERENT",
+                                    liked = false,
+                                ).also { songRepository.insertSong(it).lastOrNull() }
+                            } else {
+                                upgradeExistingPlaceholderIfNeeded(existing, cloudTrack, null)
+                                existing
+                            }
                             if (op.op == "D") {
                                 localPlaylistRepository.removeTrackFromLocalPlaylist(
                                     id = matched.id,
@@ -2126,6 +2123,126 @@ object StreamifySyncEngine : KoinComponent {
         val m = seconds / 60
         val s = seconds % 60
         return "$m:${s.toString().padStart(2, '0')}"
+    }
+
+    internal fun normalizeTrackThumbUrl(url: String?, videoId: String): String? {
+        val trimmed = url?.trim()?.ifBlank { null }
+        val normalized = when {
+            trimmed == null -> null
+            trimmed.startsWith("http://", ignoreCase = true) -> "https://" + trimmed.substring(7)
+            else -> trimmed
+        }
+        if (normalized != null) return normalized
+        return if (videoId.isNotBlank() && !videoId.startsWith("trk_")) {
+            "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+        } else {
+            null
+        }
+    }
+
+    internal fun collectMissingTrackIdsForDeltaOps(ops: List<SyncPullOp>): List<String> {
+        return ops.asSequence()
+            .filter { it.op != "D" }
+            .mapNotNull { op ->
+                when (op.entity) {
+                    "like" -> {
+                        val meta = op.data?.get("snapshot")?.jsonObject ?: op.data?.get("meta")?.jsonObject
+                        val hasTitle = meta?.get("title")?.jsonPrimitive?.contentOrNull
+                            ?.let { it.isNotBlank() && it != "Synced Track" } == true
+                        val hasThumb = meta?.let {
+                            it["cover_url"] ?: it["thumb"] ?: it["thumb_url"]
+                        }?.jsonPrimitive?.contentOrNull?.isNotBlank() == true
+                        if (hasTitle && hasThumb) null else op.key
+                    }
+                    "library_track" -> op.key
+                    "playlist_track" -> op.data?.get("track_id")?.jsonPrimitive?.contentOrNull
+                    else -> null
+                }
+            }
+            .filter { it.isNotBlank() && !it.startsWith("trk_") }
+            .distinct()
+            .toList()
+    }
+
+    internal fun buildHydratedSongEntity(
+        videoId: String,
+        cloudTrack: CloudTrack?,
+        inlineMeta: JsonObject?,
+        likeStatus: String,
+        liked: Boolean,
+        inLibrary: LocalDateTime = Config.REMOVED_SONG_DATE_TIME,
+        favoriteAt: LocalDateTime? = null,
+        downloadedAt: LocalDateTime = now(),
+    ): SongEntity {
+        val inlineTitle = inlineMeta?.get("title")?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() && it != "Synced Track" }
+        val cloudTitle = cloudTrack?.title?.takeIf { it.isNotBlank() && it != "Synced Track" }
+        val title = inlineTitle ?: cloudTitle ?: "Synced Track"
+
+        val artist = inlineMeta?.get("artist")?.jsonPrimitive?.contentOrNull?.ifBlank { null }
+            ?: cloudTrack?.artist?.ifBlank { null }
+            ?: "Unknown Artist"
+        val album = inlineMeta?.get("album")?.jsonPrimitive?.contentOrNull?.ifBlank { null }
+            ?: cloudTrack?.album?.ifBlank { null }
+            ?: "Streamify"
+        val durationSec = inlineMeta?.get("duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: cloudTrack?.durationSec
+            ?: 0
+        val rawThumb = inlineMeta?.get("cover_url")?.jsonPrimitive?.contentOrNull
+            ?: inlineMeta?.get("thumb")?.jsonPrimitive?.contentOrNull
+            ?: inlineMeta?.get("thumb_url")?.jsonPrimitive?.contentOrNull
+            ?: cloudTrack?.coverUrl
+
+        return SongEntity(
+            videoId = videoId,
+            albumId = null,
+            albumName = album,
+            artistId = null,
+            artistName = listOf(artist),
+            duration = formatDuration(durationSec),
+            durationSeconds = durationSec,
+            isAvailable = true,
+            isExplicit = false,
+            likeStatus = likeStatus,
+            thumbnails = normalizeTrackThumbUrl(rawThumb, videoId),
+            title = title,
+            videoType = "MUSIC_VIDEO_TYPE_ATV",
+            category = null,
+            resultType = null,
+            liked = liked,
+            totalPlayTime = 0,
+            downloadState = DownloadState.STATE_NOT_DOWNLOADED,
+            favoriteAt = favoriteAt,
+            downloadedAt = downloadedAt,
+            inLibrary = inLibrary,
+            canvasUrl = null,
+            canvasThumbUrl = null,
+        )
+    }
+
+    private suspend fun upgradeExistingPlaceholderIfNeeded(
+        existing: SongEntity,
+        cloudTrack: CloudTrack?,
+        inlineMeta: JsonObject?,
+    ) {
+        if (existing.thumbnails.isNullOrBlank()) {
+            val rawThumb = inlineMeta?.get("cover_url")?.jsonPrimitive?.contentOrNull
+                ?: inlineMeta?.get("thumb")?.jsonPrimitive?.contentOrNull
+                ?: inlineMeta?.get("thumb_url")?.jsonPrimitive?.contentOrNull
+                ?: cloudTrack?.coverUrl
+            val resolvedThumb = normalizeTrackThumbUrl(rawThumb, existing.videoId)
+            if (!resolvedThumb.isNullOrBlank()) {
+                songRepository.updateThumbnailsSongEntity(resolvedThumb, existing.videoId).firstOrNull()
+            }
+        }
+        if (existing.durationSeconds <= 0) {
+            val durationSec = inlineMeta?.get("duration_sec")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                ?: cloudTrack?.durationSec
+                ?: 0
+            if (durationSec > 0) {
+                songRepository.updateDurationSeconds(durationSec, existing.videoId)
+            }
+        }
     }
 
     suspend fun getLocalEpisodeStates(): Map<String, LocalEpisodeState> {

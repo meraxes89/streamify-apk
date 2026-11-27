@@ -33,6 +33,7 @@ tests: [streamify-modules/supabase/src/commonTest/]
 - `SynchronizedLock.ios.kt` uses `NSRecursiveLock` (replacing the prior no-op) and `HybridLogicalClock.updateServerTime` runs under the same lock; `StreamifySyncEngine.getOrCreateDeviceId` is serialized with `deviceIdMutex`; `androidApp/proguard-rules.pro` keeps `com.maxrave.data.librarysync.SyncApplying.INSTANCE` for release builds.
 - `SyncDeadLetterStore` quarantines rejected or terminal-4xx outbox `changeId`s without calling `SyncDao.markSent(ids, -1L)`, preventing poison ops from stalling the upload queue; `StreamifySyncEngine.onAuthenticatedUser` and `resetForAccountSwitch` isolate cursors, checkpoints, device IDs, HLC state, and dead-letter state across logout/user switches.
 - `syncDeltaInternal` compares pending local ops against inbound ops using `HybridLogicalClock.HlcKey(hlc, deviceId)` after normalizing plain epoch-ms `changedAt` values via `normalizeToHlc`. `SupabaseWrappedSync` is currently a local no-op stub (no HTTP upload endpoint is wired yet).
+- `SupabaseLibrarySync.fetchTracksByIds` batch-hydrates `CloudTrack` metadata from the `tracks` view (`track_index`) for `syncLibraryTracksInternal`, `syncLikesInternal`, and `syncDeltaInternal` (`like`, `library_track`, `playlist_track` ops), avoiding `"Synced Track"` / null-thumbnail placeholders, upgrading existing missing thumbnails/durations via `SongRepository`, normalizing `http://` artwork URLs to `https://` with `hqdefault.jpg` fallback, and filtering `"Synced Track"` placeholders from `uploadLikedTracksBatch` `tracks` upserts.
 
 ## Interfaces
 
@@ -54,4 +55,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: cbf2f9bf8a2f5978a089a58612c5cf9a15ab8d5a -->
+<!-- doc-verified-against: 1b46593b4163e4022f3500375a32f0a313fc7326 -->
