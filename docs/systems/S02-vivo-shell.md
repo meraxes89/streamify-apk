@@ -23,6 +23,7 @@ tests: []
 ## Current truth
 
 - Exists because the Vivo store requires a distinct package identity; see the ADR for the callback decision.
+- Origin Island and notification-shade thumbnails rely on `ArtworkEnrichingPlayer` in `SimpleMediaService` (`core.patch`) emitting both `onMediaMetadataChanged` and `onEvents(EVENT_MEDIA_METADATA_CHANGED)` plus `getCurrentMediaItem()` artwork bytes via `CoilBitmapLoader`.
 
 ## Interfaces
 
@@ -45,4 +46,4 @@ tests: []
 
 - Document the Vivo release checklist in one place.
 
-<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
+<!-- doc-verified-against: 9eb2963e7e99bf7e78343a239ee4f82af4dc97be -->

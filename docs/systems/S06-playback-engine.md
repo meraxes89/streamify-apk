@@ -23,6 +23,7 @@ tests: [core/media/media3/src/test/]
 ## Current truth
 
 - Android playback runs two players during crossfade; settings are sampled per buffer by processors.
+- `ArtworkEnrichingPlayer` (`SimpleMediaService` in `core.patch`) and `DelegatingForwardingPlayer.notifyMediaItemChanged` emit `Player.Listener.onEvents` alongside `onMediaMetadataChanged`, enrich `getCurrentMediaItem()`, and log `CoilBitmapLoader` failures; `CoilBitmapLoader` and `Media3Ext` guard against `"null"` URIs, upgrade `http://i.ytimg.com/` to `https://`, and fall back from `maxresdefault.jpg` to `hqdefault.jpg`.
 
 ## Interfaces
 
@@ -41,4 +42,4 @@ tests: [core/media/media3/src/test/]
 
 - Add an attention-matrix test and an explicit limiter stage to the processor chain.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 9eb2963e7e99bf7e78343a239ee4f82af4dc97be -->
