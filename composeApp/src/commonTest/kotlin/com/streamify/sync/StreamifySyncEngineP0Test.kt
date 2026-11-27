@@ -51,7 +51,10 @@ class StreamifySyncEngineP0Test {
         assertEquals("history", op["entity"]?.jsonPrimitive?.content)
         assertEquals("I", op["op"]?.jsonPrimitive?.content)
         assertEquals("play_sync_123", op["key"]?.jsonPrimitive?.content)
-        assertEquals("1700000000000", op["hlc"]?.jsonPrimitive?.content)
+        assertEquals(
+            HybridLogicalClock.pack(1_700_000_000_000L, 0).toString(),
+            op["hlc"]?.jsonPrimitive?.content,
+        )
 
         val data = op["data"]!!.jsonObject
         assertEquals("play_sync_123", data["client_event_id"]?.jsonPrimitive?.content)
@@ -265,5 +268,54 @@ class StreamifySyncEngineP0Test {
             ),
         )
         assertEquals(listOf("vid_no_snap", "vid_lib", "vid_pl"), StreamifySyncEngine.collectMissingTrackIdsForDeltaOps(ops))
+    }
+
+    @Test
+    fun nextOutboxMillisIsStrictlyMonotonicInEpochMsDomain() {
+        val t1 = StreamifySyncEngine.nextOutboxMillis(1_800_000_000_000L)
+        val t2 = StreamifySyncEngine.nextOutboxMillis(1_800_000_000_000L)
+        assertTrue(t2 > t1)
+        assertTrue(t2 < 100_000_000_000_000L)
+    }
+
+    @Test
+    fun normalizeToEpochMsUnpacksHlcAndPreservesEpochMs() {
+        val epochMs = 1_700_000_000_000L
+        val packed = HybridLogicalClock.pack(epochMs, 42)
+        assertEquals(epochMs, StreamifySyncEngine.normalizeToEpochMs(epochMs))
+        assertEquals(epochMs, StreamifySyncEngine.normalizeToEpochMs(packed))
+    }
+
+    @Test
+    fun resolvePlaylistTrackIdsHandlesPayloadAndCompositeKeyFallback() {
+        val fromData = com.streamify.supabase.SyncPullOp(
+            seq = 1L,
+            entity = "playlist_track",
+            op = "D",
+            key = "row_uuid",
+            data = kotlinx.serialization.json.buildJsonObject {
+                put("playlist_id", kotlinx.serialization.json.JsonPrimitive("pl_1"))
+                put("track_id", kotlinx.serialization.json.JsonPrimitive("vid_1"))
+            },
+        )
+        assertEquals("pl_1" to "vid_1", StreamifySyncEngine.resolvePlaylistTrackIds(fromData))
+
+        val fromKey = com.streamify.supabase.SyncPullOp(
+            seq = 2L,
+            entity = "playlist_track",
+            op = "D",
+            key = "pl_2|vid_2",
+            data = null,
+        )
+        assertEquals("pl_2" to "vid_2", StreamifySyncEngine.resolvePlaylistTrackIds(fromKey))
+
+        val unresolvable = com.streamify.supabase.SyncPullOp(
+            seq = 3L,
+            entity = "playlist_track",
+            op = "D",
+            key = "row_uuid_only",
+            data = null,
+        )
+        assertEquals(null, StreamifySyncEngine.resolvePlaylistTrackIds(unresolvable))
     }
 }
