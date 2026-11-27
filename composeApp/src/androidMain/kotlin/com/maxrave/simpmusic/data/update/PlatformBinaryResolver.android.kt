@@ -5,7 +5,7 @@ import android.os.Build
 import com.maxrave.common.AppIdentity
 import org.koin.core.context.GlobalContext
 
-private const val VIVO_PACKAGE_ID = "com.spotify.music"
+private const val VIVO_PACKAGE_ID = "com.soundcloud.android"
 
 actual fun resolveDeviceBinary(
     tag: String,

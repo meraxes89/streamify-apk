@@ -28,7 +28,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.spotify.music"
+        applicationId = "com.soundcloud.android"
         minSdk = 26
         targetSdk = 36
         versionCode =
