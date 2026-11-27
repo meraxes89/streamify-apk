@@ -573,6 +573,7 @@ tasks.register("buildWindowsMsix") {
 }
 
 tasks.withType<AbstractJPackageTask>().configureEach {
+    dependsOn(":composeApp:mpvSetupAll")
     notCompatibleWithConfigurationCache("Compose Desktop JPackage tasks are not yet compatible with configuration cache")
 }
 

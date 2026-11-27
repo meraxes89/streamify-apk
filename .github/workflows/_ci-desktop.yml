@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktopApp:packageDistributionForCurrentOS \
+          ./gradlew :desktopApp:packageReleaseDistributionForCurrentOS \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Verify size budget
@@ -165,7 +165,7 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktopApp:packageDistributionForCurrentOS \
+          ./gradlew :desktopApp:packageReleaseDistributionForCurrentOS \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Verify size budget
@@ -244,7 +244,7 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktopApp:packageDistributionForCurrentOS \
+          ./gradlew :desktopApp:packageReleaseDistributionForCurrentOS \
             --parallel --build-cache --configuration-cache --stacktrace
 
       - name: Verify size budget
