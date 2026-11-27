@@ -46,4 +46,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Add an auth-flow sequence diagram to the playbook.
 
-<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->
+<!-- doc-verified-against: 3dc66647b72a215ab581b4f36df5d018946d76bd -->
