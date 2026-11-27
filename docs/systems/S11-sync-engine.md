@@ -61,4 +61,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: ddd5c30fe4e714c1b704ee24d47d9c6fd01df991 -->
+<!-- doc-verified-against: 80c088caa058ac099263c73c2910380a2006fe8b -->
