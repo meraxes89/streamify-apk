@@ -1,6 +1,6 @@
 package com.streamify.supabase
 
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * Ephemeral session state for an OAuth 2.1 PKCE authorization request.
@@ -80,18 +80,18 @@ object OAuthPkceSession {
         maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
     ): Result<String> {
         if (storedTimestampMs > 0L && currentTimeMs - storedTimestampMs > maxAgeMs) {
-            return Result.failure(SecurityException("Expired OAuth PKCE session"))
+            return Result.failure(IllegalStateException("Expired OAuth PKCE session"))
         }
 
         val callbackState = callbackData.state
         if (!callbackState.isNullOrBlank()) {
             if (storedState.isNullOrBlank() || !PkceCrypto.constantTimeEquals(callbackState, storedState)) {
-                return Result.failure(SecurityException("Missing or mismatched CSRF state"))
+                return Result.failure(IllegalStateException("Missing or mismatched CSRF state"))
             }
         } else {
             // Broker stripped query state: ensure we at least hold an active local PKCE verifier
             if (storedState.isNullOrBlank() && storedVerifier.isNullOrBlank()) {
-                return Result.failure(SecurityException("Missing CSRF security state and PKCE verifier"))
+                return Result.failure(IllegalStateException("Missing CSRF security state and PKCE verifier"))
             }
         }
 
