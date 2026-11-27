@@ -24,6 +24,7 @@ tests: []
 ## Current truth
 
 - Vivo variant is a separate shell (S02). `androidApp/build.gradle.kts` declares the packaging excludes; native packaging was removed with the retired engine.
+- `DataStoreManagerImpl` (`core.patch`) defaults unset `THEME_MODE` to `THEME_MODE_LIGHT`, and `StreamifyDefaultsInitializer` no longer overwrites `THEME_MODE_DARK` back to `THEME_MODE_LIGHT` on startup.
 - Shared KMP Compose UI hoists playback timeline collection to leaf composables (`PlayerTimelineLeaf.kt`, `SharedViewModel.currentLyricLineIndex`), provides `LocalAppWindowSizeClass` (`Compact`/`Medium`/`Expanded`) from `App.kt`, and attaches `contentDescription` / `Role.Button` semantics on shared interactive controls.
 
 ## Interfaces
@@ -47,4 +48,4 @@ tests: []
 
 - Re-verify manifest permissions against current targetSdk.
 
-<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
+<!-- doc-verified-against: 9eb2963e7e99bf7e78343a239ee4f82af4dc97be -->
