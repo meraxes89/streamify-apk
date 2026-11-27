@@ -55,9 +55,10 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Earlier audits found full-set diff egress and cursor-corruption defects; ADR-008 is the remediation record.
 - Legacy direct-REST helpers in `SupabaseLibrarySync` now route through `sync_push` with HLC timestamps (`2026_12_p10_hlc_profiles_history_search.sql`).
+- Server-side migrations `2026_12_p11_s11_p0_changelog_playlist_track_delete.sql` and `2026_12_p12_s11_p1_server_hardening.sql` are committed in `supabase/migrations/` and await application to the live Supabase project (`supabase_migrations.schema_migrations` currently stops at `2026_11_p8_v4_server_contract_and_lww_hardening`).
 
 ## Refinement backlog
 
 - Keep the S11 page in lockstep with any RPC contract change.
 
-<!-- doc-verified-against: 1b46593b4163e4022f3500375a32f0a313fc7326 -->
+<!-- doc-verified-against: ddd5c30fe4e714c1b704ee24d47d9c6fd01df991 -->

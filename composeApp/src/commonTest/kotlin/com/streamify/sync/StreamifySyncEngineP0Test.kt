@@ -392,4 +392,25 @@ class StreamifySyncEngineP0Test {
         // User changed value before async collector processed remote value -> not suppressed
         assertFalse(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("crossfade_ms", "5000"))
     }
+
+    @Test
+    fun buildHistoryOutboxOpUnpacksLegacyPackedHlcForListenedAt() {
+        val epochMs = 1_700_000_000_000L
+        val packedHlc = HybridLogicalClock.pack(epochMs, 5)
+        val change = SyncChangeEntity(
+            changeId = "chg_packed",
+            entity = SyncKind.HISTORY,
+            entityKey = "evt_packed",
+            op = SyncOp.ADD,
+            value = null,
+            changedAt = packedHlc,
+            deviceId = "dev_1",
+        )
+        val op = StreamifySyncEngine.buildHistoryOutboxOp(change = change, event = null, song = null)
+        assertEquals(packedHlc.toString(), op["hlc"]?.jsonPrimitive?.content)
+        assertEquals(
+            Instant.fromEpochMilliseconds(epochMs).toString(),
+            op["data"]!!.jsonObject["listened_at"]?.jsonPrimitive?.content,
+        )
+    }
 }
