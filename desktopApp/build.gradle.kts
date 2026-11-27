@@ -577,6 +577,10 @@ tasks.withType<AbstractJPackageTask>().configureEach {
     notCompatibleWithConfigurationCache("Compose Desktop JPackage tasks are not yet compatible with configuration cache")
 }
 
+tasks.matching { it.name == "prepareAppResources" || it.name == "prepareReleaseAppResources" }.configureEach {
+    dependsOn(":composeApp:mpvSetupAll")
+}
+
 private fun downloadFile(
     url: String,
     destFile: java.io.File,
