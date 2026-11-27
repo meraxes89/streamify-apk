@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Notification & Origin Island Artwork (S02, S06)**: Dispatched `Player.Listener.onEvents(EVENT_MEDIA_METADATA_CHANGED)` and enriched `getCurrentMediaItem()` in `ArtworkEnrichingPlayer` (`SimpleMediaService`), added `onEvents` in `DelegatingForwardingPlayer.notifyMediaItemChanged`, logged `CoilBitmapLoader` / `ArtworkEnrichingPlayer` failures, guarded against `"null"` `artworkUri` strings in `Media3Ext` / `CoilBitmapLoader`, upgraded `http://i.ytimg.com/` URIs to `https://`, and added `hqdefault.jpg` fallback when `maxresdefault.jpg` fails.
+
 ## [1.0.6] — 2026-11-27: Sync Engine Reliability, Update Loop Fix, OAuth & UI Polish
 
 Streamify `v1.0.6` follows `v1.0.4` with end-to-end Supabase sync fixes, wall-clock listening history tracking, typed reactive settings sync, safe `.backup` restore reconciliation, update resolver & install-UX fixes, and Material 3 onboarding/splash alignment.

@@ -74,15 +74,8 @@ index e52f961..2efdfb3 100644
      }
  
      /** The itag a stored label selects. Goes through [normalize], so older labels still resolve. */
-diff --git a/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
-new file mode 100644
-index 0000000..09e84b4
---- /dev/null
-+++ b/common/src/wasmJsMain/kotlin/com/maxrave/common/Platform.wasmJs.kt
-@@ -0,0 +1 @@
-+package com.maxrave.common
 diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
-index 6a30090..293b87c 100644
+index 6a30090..bde01f1 100644
 --- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
 +++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
 @@ -110,6 +110,7 @@ import kotlinx.coroutines.runBlocking
@@ -108,7 +101,7 @@ index 6a30090..293b87c 100644
              }
  
              PlayerEvent.Shuffle -> {
-@@ -1647,7 +1648,7 @@ internal class MediaServiceHandlerImpl(
+@@ -1647,7 +1654,7 @@ internal class MediaServiceHandlerImpl(
                                              ),
                                      )
                                  }
@@ -117,7 +110,7 @@ index 6a30090..293b87c 100644
                                      Logger.w(TAG, "loadMore: Endless Queue")
                                      val lastTrack =
                                          queueData.value.data.listTracks
-@@ -1677,28 +1678,28 @@ internal class MediaServiceHandlerImpl(
+@@ -1677,28 +1684,28 @@ internal class MediaServiceHandlerImpl(
                          }
                  }
              }
@@ -167,7 +160,7 @@ index 6a30090..293b87c 100644
          }
      }
  
-@@ -2496,8 +2497,8 @@ internal class MediaServiceHandlerImpl(
+@@ -2496,8 +2503,8 @@ internal class MediaServiceHandlerImpl(
      }
  
      override fun mayBeSavePlaybackState() {
@@ -178,7 +171,7 @@ index 6a30090..293b87c 100644
                  dataStoreManager.recoverShuffleAndRepeatKey(
                      player.shuffleModeEnabled,
                      player.repeatMode,
-@@ -2652,9 +2653,13 @@ internal class MediaServiceHandlerImpl(
+@@ -2652,9 +2659,13 @@ internal class MediaServiceHandlerImpl(
          }
  
      override fun shouldReleaseOnTaskRemoved() =
@@ -1218,74 +1211,6 @@ index 54db97f..cafc1c3 100644
      block: suspend () -> Unit,
  ) = withContext(dispatcher) {
      block.invoke()
-diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
-new file mode 100644
-index 0000000..3e0ac06
---- /dev/null
-+++ b/domain/src/commonMain/kotlin/com/maxrave/domain/utils/RetryPolicy.kt
-@@ -0,0 +1,62 @@
-+package com.maxrave.domain.utils
-+
-+import kotlin.math.min
-+import kotlin.math.pow
-+import kotlin.random.Random
-+import kotlinx.coroutines.delay
-+
-+/**
-+ * Standard retry policy supporting exponential backoff with full jitter and
-+ * explicit Retry-After headers, per Phase 1 Audio Audit (F3 / P1-12).
-+ */
-+data class RetryPolicy(
-+    val maxAttempts: Int = 3,
-+    val initialDelayMs: Long = 500L,
-+    val maxDelayMs: Long = 10_000L,
-+    val backoffMultiplier: Double = 2.0,
-+    val fullJitter: Boolean = true,
-+) {
-+    /**
-+     * Computes delay duration in milliseconds for a given attempt index (0-based).
-+     * If [retryAfterMs] is provided (> 0), it overrides standard calculation, clamped to [maxDelayMs].
-+     */
-+    fun computeDelayMs(attempt: Int, retryAfterMs: Long? = null): Long {
-+        if (retryAfterMs != null && retryAfterMs > 0L) {
-+            return min(retryAfterMs, maxDelayMs)
-+        }
-+        val calculated = (initialDelayMs * backoffMultiplier.pow(attempt.toDouble())).toLong()
-+        val capped = min(calculated, maxDelayMs)
-+        return if (fullJitter && capped > 0L) {
-+            Random.nextLong(capped / 2, capped + 1)
-+        } else {
-+            capped
-+        }
-+    }
-+
-+    /**
-+     * Executes [block] with retry logic according to this policy.
-+     */
-+    suspend fun <T> execute(
-+        shouldRetry: (Throwable) -> Boolean = { true },
-+        extractRetryAfterMs: ((Throwable) -> Long?)? = null,
-+        onRetry: ((attempt: Int, delayMs: Long, error: Throwable) -> Unit)? = null,
-+        block: suspend (attempt: Int) -> T,
-+    ): Result<T> {
-+        var lastError: Throwable? = null
-+        for (attempt in 0 until maxAttempts) {
-+            try {
-+                return Result.success(block(attempt))
-+            } catch (t: Throwable) {
-+                lastError = t
-+                if (attempt == maxAttempts - 1 || !shouldRetry(t)) {
-+                    return Result.failure(t)
-+                }
-+                val retryAfter = extractRetryAfterMs?.invoke(t)
-+                val delayMs = computeDelayMs(attempt, retryAfter)
-+                onRetry?.invoke(attempt, delayMs, t)
-+                delay(delayMs)
-+            }
-+        }
-+        return Result.failure(lastError ?: IllegalStateException("Exhausted retries"))
-+    }
-+}
 diff --git a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt b/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
 index 5566589..74f32ca 100644
 --- a/media/media-jvm/src/main/java/com/simpmusic/media_jvm/mpv/MpvPlayer.kt
@@ -1369,83 +1294,6 @@ index bbffab7..4780da5 100644
                  val is403Video = streamRepository.is403Url(videoUrl).firstOrNull() != false
                  if (!is403Video) {
                      // Return video URL with audio as a second EDL stream for merging
-diff --git a/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
-new file mode 100644
-index 0000000..aea0a2d
---- /dev/null
-+++ b/media/media3/src/main/java/com/maxrave/media3/audio/LimiterAudioProcessor.kt
-@@ -0,0 +1,71 @@
-+package com.maxrave.media3.audio
-+
-+import androidx.media3.common.C
-+import androidx.media3.common.audio.AudioProcessor
-+import androidx.media3.common.audio.BaseAudioProcessor
-+import androidx.media3.common.util.UnstableApi
-+import java.nio.ByteBuffer
-+import kotlin.math.abs
-+import kotlin.math.tanh
-+
-+/**
-+ * Terminal True-Peak / Soft-Knee Lookahead Limiter AudioProcessor per Phase 1 Audio Audit (F6 / P2-6).
-+ *
-+ * Prevents inter-sample peaks and digital harsh clipping when Equalizer, Bass Boost,
-+ * or 8D Pan effects apply positive gain boosts above 0 dBFS.
-+ *
-+ * Implements a fast-attack soft-knee tanh saturation curve clamped to a ceiling of -0.5 dBFS (0.944).
-+ */
-+@UnstableApi
-+class LimiterAudioProcessor(
-+    private val ceilingRatio: Float = 0.944f, // -0.5 dBFS ceiling
-+) : BaseAudioProcessor() {
-+
-+    @Volatile
-+    var enabled: Boolean = true
-+
-+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
-+            return AudioProcessor.AudioFormat.NOT_SET
-+        }
-+        return inputAudioFormat
-+    }
-+
-+    override fun queueInput(inputBuffer: ByteBuffer) {
-+        val remaining = inputBuffer.remaining()
-+        if (remaining == 0) return
-+
-+        if (!enabled) {
-+            val outputBuffer = replaceOutputBuffer(remaining)
-+            outputBuffer.put(inputBuffer)
-+            outputBuffer.flip()
-+            return
-+        }
-+
-+        val outputBuffer = replaceOutputBuffer(remaining)
-+        val shortBuffer = inputBuffer.asShortBuffer()
-+        val numSamples = remaining / 2
-+        val maxAmp = 32767.0f
-+        val ceiling = maxAmp * ceilingRatio
-+
-+        for (i in 0 until numSamples) {
-+            val rawSample = shortBuffer.get().toFloat()
-+            val absSample = abs(rawSample)
-+
-+            val processedSample = if (absSample <= ceiling) {
-+                rawSample
-+            } else {
-+                // Soft-knee compression via tanh above threshold
-+                val over = (absSample - ceiling) / (maxAmp - ceiling)
-+                val compressed = ceiling + (maxAmp - ceiling) * tanh(over.toDouble()).toFloat()
-+                if (rawSample < 0f) -compressed else compressed
-+            }
-+
-+            val clampedShort = processedSample.coerceIn(-32768f, 32767f).toInt().toShort()
-+            outputBuffer.putShort(clampedShort)
-+        }
-+
-+        inputBuffer.position(inputBuffer.limit())
-+        outputBuffer.flip()
-+    }
-+}
 diff --git a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt b/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
 index 62c93a5..91c65a1 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/di/Media3ServiceModule.kt
@@ -1625,7 +1473,7 @@ index 62c93a5..91c65a1 100644
  }
  
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..a4a0c9d 100644
+index e88affc..a6753e1 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 @@ -48,6 +48,7 @@ import com.maxrave.media3.audio.CrossfadeFilterAudioProcessor
@@ -1722,8 +1570,7 @@ index e88affc..a4a0c9d 100644
          castRemotePlayer?.let { remote ->
              internalPlayWhenReady = false
              remote.pause()
-@@ -1292,8 +1299,8 @@ internal class CrossfadeExoPlayerAdapter(
-         get() {
+@@ -1293,7 +1300,7 @@ internal class CrossfadeExoPlayerAdapter(
              castRemotePlayer?.let { remote ->
                  return remote.duration.takeIf { it > 0 } ?: 0L
              }
@@ -1755,11 +1602,80 @@ index e88affc..a4a0c9d 100644
                          nextPlayer.volume = fadeInVolume
  
                          // DJ-style filter sweep (alongside volume)
+diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt
+index 4cbdd1c..6728b97 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt
+@@ -4,6 +4,7 @@ import android.view.Surface
+ import android.view.SurfaceHolder
+ import android.view.SurfaceView
+ import android.view.TextureView
++import androidx.media3.common.FlagSet
+ import androidx.media3.common.ForwardingPlayer
+ import androidx.media3.common.MediaItem
+ import androidx.media3.common.Player
+@@ -440,12 +441,25 @@ internal class DelegatingForwardingPlayer(
+ 
+         Logger.d(TAG, "Manually notifying ${trackedListeners.size} listeners about media item change: ${metadata.title}")
+ 
++        val events =
++            Player.Events(
++                FlagSet
++                    .Builder()
++                    .addAll(
++                        Player.EVENT_MEDIA_ITEM_TRANSITION,
++                        Player.EVENT_MEDIA_METADATA_CHANGED,
++                        Player.EVENT_AVAILABLE_COMMANDS_CHANGED,
++                        Player.EVENT_PLAYBACK_STATE_CHANGED,
++                    ).build(),
++            )
++
+         trackedListeners.forEach { listener ->
+             try {
+                 listener.onMediaItemTransition(mediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+                 listener.onMediaMetadataChanged(metadata)
+                 listener.onAvailableCommandsChanged(commands)
+                 listener.onPlaybackStateChanged(state)
++                listener.onEvents(this, events)
+             } catch (e: Exception) {
+                 Logger.w(TAG, "Error notifying listener about media item change: ${e.message}")
+             }
+diff --git a/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt b/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt
+index 6b9c25f..bd2e166 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt
+@@ -33,7 +33,7 @@ fun MediaItem?.toSongEntity(): SongEntity? =
+             isAvailable = true,
+             isExplicit = false,
+             likeStatus = "INDIFFERENT",
+-            thumbnails = this.mediaMetadata.artworkUri.toString(),
++            thumbnails = this.mediaMetadata.artworkUri?.toString(),
+             title = this.mediaMetadata.title.toString(),
+             videoType = "",
+             category = "",
+@@ -60,7 +60,7 @@ fun SongEntity.toMediaItem(): MediaItem {
+                 .Builder()
+                 .setTitle(this.title)
+                 .setArtist(this.artistName?.connectArtists())
+-                .setArtworkUri(this.thumbnails?.toUri())
++                .setArtworkUri(this.thumbnails?.takeIf { it.isNotBlank() && it != "null" }?.toUri())
+                 .setAlbumTitle(this.albumName)
+                 .setDescription(
+                     if (isSong) MERGING_DATA_TYPE.SONG else MERGING_DATA_TYPE.VIDEO,
+@@ -73,7 +73,7 @@ fun SongEntity.toMediaItem(): MediaItem {
+ fun Track.toMediaItem(): MediaItem {
+     var thumbUrl =
+         this.thumbnails?.last()?.url
+-            ?: "http://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg"
++            ?: "https://i.ytimg.com/vi/${this.videoId}/hqdefault.jpg"
+     if (thumbUrl.contains("w120")) {
+         thumbUrl = Regex("([wh])120").replace(thumbUrl, "$1544")
+     }
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
-index 64bed3e..a001c9d 100644
+index 64bed3e..63c5f02 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
-@@ -1,15 +1,19 @@
+@@ -1,15 +1,21 @@
  package com.maxrave.media3.service
  
  import android.app.Activity
@@ -1774,14 +1690,16 @@ index 64bed3e..a001c9d 100644
  import android.os.Binder
 +import android.os.Handler
  import android.os.IBinder
++import androidx.media3.common.FlagSet
 +import androidx.media3.common.ForwardingPlayer
++import androidx.media3.common.MediaItem
 +import androidx.media3.common.MediaMetadata
  import androidx.media3.common.Player
 +import androidx.media3.common.util.BitmapLoader
  import androidx.media3.common.util.UnstableApi
  import androidx.media3.session.DefaultMediaNotificationProvider
  import androidx.media3.session.MediaController
-@@ -24,10 +28,17 @@ import com.maxrave.media3.R
+@@ -24,10 +30,17 @@ import com.maxrave.media3.R
  import com.maxrave.media3.extension.toCommandButton
  import com.maxrave.media3.utils.CoilBitmapLoader
  import com.maxrave.media3.utils.sizeLimitedForSession
@@ -1799,7 +1717,7 @@ index 64bed3e..a001c9d 100644
  import kotlin.system.exitProcess
  
  @UnstableApi
-@@ -40,6 +51,7 @@ internal class SimpleMediaService :
+@@ -40,6 +53,7 @@ internal class SimpleMediaService :
      private val coilBitmapLoader: CoilBitmapLoader by inject<CoilBitmapLoader>()
  
      private var mediaSession: MediaLibrarySession? = null
@@ -1807,7 +1725,7 @@ index 64bed3e..a001c9d 100644
  
      private val simpleMediaSessionCallback: MediaLibrarySession.Callback by inject<MediaLibrarySession.Callback>()
  
-@@ -96,13 +108,6 @@ internal class SimpleMediaService :
+@@ -96,13 +110,6 @@ internal class SimpleMediaService :
                  )
          }
  
@@ -1821,7 +1739,7 @@ index 64bed3e..a001c9d 100644
          val sessionToken = SessionToken(this, ComponentName(this, SimpleMediaService::class.java))
          val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
          controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
-@@ -149,10 +154,12 @@ internal class SimpleMediaService :
+@@ -149,10 +156,12 @@ internal class SimpleMediaService :
                  }
                  // Release handler (contains coroutines and jobs, which also releases the adapter)
                  simpleMediaServiceHandler.release()
@@ -1835,7 +1753,7 @@ index 64bed3e..a001c9d 100644
              }
          }
      }
-@@ -175,9 +182,9 @@ internal class SimpleMediaService :
+@@ -175,9 +184,9 @@ internal class SimpleMediaService :
      override fun onTaskRemoved(rootIntent: Intent?) {
          Logger.w("Service", "Simple Media Service Task Removed")
          if (simpleMediaServiceHandler.shouldReleaseOnTaskRemoved()) {
@@ -1847,7 +1765,7 @@ index 64bed3e..a001c9d 100644
          }
      }
  
-@@ -187,17 +194,21 @@ internal class SimpleMediaService :
+@@ -187,17 +196,21 @@ internal class SimpleMediaService :
          service: MediaLibraryService,
          player: Player,
          callback: MediaLibrarySession.Callback,
@@ -1873,7 +1791,7 @@ index 64bed3e..a001c9d 100644
              // Tapping the media notification opens whatever the session activity points at, and the
              // only other place that sets it is MainActivity's bind. A service started without that
              // bind — a headset/Bluetooth play, Android Auto, a widget, a restart after the process
-@@ -211,10 +222,82 @@ internal class SimpleMediaService :
+@@ -211,10 +224,121 @@ internal class SimpleMediaService :
                  }
              }
              .build()
@@ -1893,11 +1811,7 @@ index 64bed3e..a001c9d 100644
 +
 +        @Volatile
 +        private var cachedBytes: ByteArray? = null
- 
--    private fun isAppInForeground(): Boolean {
--        val appProcessInfo = RunningAppProcessInfo()
--        ActivityManager.getMyMemoryState(appProcessInfo)
--        return appProcessInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
++
 +        @Volatile
 +        private var inFlightUri: Uri? = null
 +
@@ -1909,6 +1823,33 @@ index 64bed3e..a001c9d 100644
 +        override fun removeListener(listener: Player.Listener) {
 +            listeners.remove(listener)
 +            super.removeListener(listener)
++        }
+ 
+-    private fun isAppInForeground(): Boolean {
+-        val appProcessInfo = RunningAppProcessInfo()
+-        ActivityManager.getMyMemoryState(appProcessInfo)
+-        return appProcessInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
++        override fun getCurrentMediaItem(): MediaItem? {
++            val item = super.getCurrentMediaItem() ?: return null
++            val uri = item.mediaMetadata.artworkUri
++            val bytes =
++                if (item.mediaMetadata.artworkData == null && uri != null && uri == cachedUri) {
++                    cachedBytes
++                } else {
++                    null
++                }
++            return if (bytes != null) {
++                item
++                    .buildUpon()
++                    .setMediaMetadata(
++                        item.mediaMetadata
++                            .buildUpon()
++                            .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
++                            .build(),
++                    ).build()
++            } else {
++                item
++            }
 +        }
 +
 +        override fun getMediaMetadata(): MediaMetadata {
@@ -1927,15 +1868,21 @@ index 64bed3e..a001c9d 100644
 +        }
 +
 +        private fun prefetchArtwork(uri: Uri) {
++            val uriStr = uri.toString()
++            if (uriStr.isBlank() || uriStr == "null") return
 +            if (uri == inFlightUri || uri == cachedUri) return
 +            inFlightUri = uri
 +            scope.launch {
-+                val bytes = runCatching {
-+                    val bitmap = bitmapLoader.loadBitmap(uri).get()
-+                    val out = ByteArrayOutputStream()
-+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-+                    out.toByteArray().takeIf { it.isNotEmpty() }
-+                }.getOrNull()
++                val bytes =
++                    try {
++                        val bitmap = bitmapLoader.loadBitmap(uri).get()
++                        val out = ByteArrayOutputStream()
++                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
++                        out.toByteArray().takeIf { it.isNotEmpty() }
++                    } catch (e: Exception) {
++                        Logger.w("ArtworkEnrichingPlayer", "Failed to load artwork for $uri: ${e.message}")
++                        null
++                    }
 +
 +                mainHandler.post {
 +                    if (inFlightUri == uri) {
@@ -1949,7 +1896,17 @@ index 64bed3e..a001c9d 100644
 +                    val enriched = current.buildUpon()
 +                        .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
 +                        .build()
-+                    listeners.forEach { it.onMediaMetadataChanged(enriched) }
++                    val events =
++                        Player.Events(
++                            FlagSet
++                                .Builder()
++                                .add(Player.EVENT_MEDIA_METADATA_CHANGED)
++                                .build(),
++                        )
++                    listeners.forEach { listener ->
++                        listener.onMediaMetadataChanged(enriched)
++                        listener.onEvents(this@ArtworkEnrichingPlayer, events)
++                    }
 +                }
 +            }
 +        }
@@ -2077,6 +2034,59 @@ index cf08060..39024b5 100644
              }
          }
      }
+diff --git a/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt b/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt
+index 4858d5d..1147d89 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt
+@@ -37,22 +37,44 @@ class CoilBitmapLoader(
+ 
+     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
+         coroutineScope.future(Dispatchers.IO) {
+-            val result =
+-                (
++            val raw = uri.toString()
++            if (raw.isBlank() || raw == "null") {
++                throw ExecutionException(IllegalArgumentException("Empty artwork URI"))
++            }
++            val normalizedUri =
++                if (raw.startsWith("http://i.ytimg.com/", ignoreCase = true)) {
++                    Uri.parse("https://" + raw.removePrefix("http://"))
++                } else {
++                    uri
++                }
++            var result =
++                context.imageLoader.execute(
++                    ImageRequest
++                        .Builder(context)
++                        .data(normalizedUri)
++                        .allowHardware(false)
++                        .build(),
++                )
++            if (result is ErrorResult && normalizedUri.toString().endsWith("/maxresdefault.jpg")) {
++                val fallbackUri = Uri.parse(normalizedUri.toString().replace("/maxresdefault.jpg", "/hqdefault.jpg"))
++                Logger.w("CoilBitmapLoader", "maxresdefault failed for $normalizedUri, retrying $fallbackUri")
++                result =
+                     context.imageLoader.execute(
+                         ImageRequest
+                             .Builder(context)
+-                            .data(uri)
++                            .data(fallbackUri)
+                             .allowHardware(false)
+                             .build(),
+                     )
+-                )
++            }
+             if (result is ErrorResult) {
++                Logger.w("CoilBitmapLoader", "loadBitmap failed for $normalizedUri: ${result.throwable.message}")
+                 throw ExecutionException(result.throwable)
+             }
+             try {
+                 result.image?.toBitmap() ?: throw ExecutionException(NullPointerException())
+             } catch (e: Exception) {
++                Logger.w("CoilBitmapLoader", "toBitmap failed for $normalizedUri: ${e.message}")
+                 throw ExecutionException(e)
+             }
+         }
 diff --git a/service/discord/build.gradle.kts b/service/discord/build.gradle.kts
 index 4a92fcc..7321237 100644
 --- a/service/discord/build.gradle.kts
@@ -2656,51 +2666,3 @@ index 911ba33..f1ab4cf 100644
          iosMain {
              dependencies {
                  // Add iOS-specific dependencies here. This a source set created by Kotlin Gradle
-diff --git a/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/Engine.wasmJs.kt b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/Engine.wasmJs.kt
-new file mode 100644
-index 0000000..dff7127
---- /dev/null
-+++ b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/Engine.wasmJs.kt
-@@ -0,0 +1,7 @@
-+package com.maxrave.ktorext
-+
-+import io.ktor.client.engine.HttpClientEngineConfig
-+import io.ktor.client.engine.HttpClientEngineFactory
-+import io.ktor.client.engine.js.Js
-+
-+actual fun getEngine(): HttpClientEngineFactory<HttpClientEngineConfig> = Js
-diff --git a/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/crypto/Hmac.wasmJs.kt b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/crypto/Hmac.wasmJs.kt
-new file mode 100644
-index 0000000..2b28cb9
---- /dev/null
-+++ b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/crypto/Hmac.wasmJs.kt
-@@ -0,0 +1,8 @@
-+package com.maxrave.ktorext.crypto
-+
-+actual class Hmac actual constructor(algorithm: String, secretKey: String) {
-+    actual fun getMacTimestampPair(uri: String): Pair<String, String> = Pair("", "")
-+    actual fun generateHmac(data: String): String = ""
-+    actual fun validateHmac(data: String, hmac: String): Boolean = true
-+    actual fun isValidTimestamp(timestamp: String): Boolean = true
-+}
-diff --git a/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt
-new file mode 100644
-index 0000000..41ade74
---- /dev/null
-+++ b/service/ktorExt/src/wasmJsMain/kotlin/com/maxrave/ktorext/encoding/BrotliEncoder.wasmJs.kt
-@@ -0,0 +1,15 @@
-+package com.maxrave.ktorext.encoding
-+
-+import io.ktor.util.ContentEncoder
-+import io.ktor.utils.io.ByteReadChannel
-+import io.ktor.utils.io.ByteWriteChannel
-+import kotlin.coroutines.CoroutineContext
-+
-+object BrotliEncoder : ContentEncoder {
-+    override val name: String = "br"
-+    override fun encode(source: ByteReadChannel, coroutineContext: CoroutineContext): ByteReadChannel = source
-+    override fun encode(source: ByteWriteChannel, coroutineContext: CoroutineContext): ByteWriteChannel = source
-+    override fun decode(source: ByteReadChannel, coroutineContext: CoroutineContext): ByteReadChannel = source
-+}
-+
-+actual fun createBrotliEncoder(): ContentEncoder = BrotliEncoder
