@@ -162,61 +162,62 @@ object SupabaseLibrarySync {
     }
 
     /**
-     * High-performance batch uploader for local liked tracks:
-     * Chunks items into 50-track JSON arrays to avoid serial N+1 HTTP calls.
+     * High-performance batch uploader for local liked tracks via `sync_push` (HLC LWW):
+     * Chunks items into 50-op batches to avoid serial N+1 HTTP calls.
      */
     suspend fun uploadLikedTracksBatch(
         tracks: List<CloudTrack>,
-        userId: String? = null
+        userId: String? = null,
+        hlc: Long = 0L,
+        deviceId: String = "rest_compat",
     ): Result<Boolean> = withContext(ioDispatcher) {
         try {
-            val targetUserId = userId ?: SupabaseClient.currentUser.value?.id ?: SupabaseConfig.DEFAULT_USER.id
-            val chunks = tracks.chunked(50)
-            for (chunk in chunks) {
-                // 1. Bulk upsert tracks metadata (skip placeholder "Synced Track" rows)
-                val validMetadataTracks = chunk.filter {
-                    it.title.isNotBlank() && it.title != "Synced Track"
-                }
-                if (validMetadataTracks.isNotEmpty()) {
-                    val tracksArray = buildJsonArray {
-                        for (t in validMetadataTracks) {
-                            val normalizedCover = if (t.coverUrl.startsWith("http://", ignoreCase = true)) {
-                                "https://" + t.coverUrl.substring(7)
-                            } else {
-                                t.coverUrl
+            if (tracks.isEmpty()) return@withContext Result.success(true)
+            val effectiveHlc = nextCompatHlc(hlc)
+            for (chunk in tracks.chunked(50)) {
+                val ops = buildJsonArray {
+                    for (t in chunk) {
+                        val normalizedCover = if (t.coverUrl.startsWith("http://", ignoreCase = true)) {
+                            "https://" + t.coverUrl.substring(7)
+                        } else {
+                            t.coverUrl
+                        }
+                        val hasValidMeta = t.title.isNotBlank() && t.title != "Synced Track"
+                        val data = buildJsonObject {
+                            if (!t.createdAt.isNullOrBlank()) {
+                                put("created_at", t.createdAt)
                             }
-                            add(buildJsonObject {
-                                put("id", t.id)
+                            put("meta", buildJsonObject {
                                 put("title", t.title)
                                 put("artist", t.artist)
                                 put("album", t.album ?: "Streamify")
                                 put("duration_sec", t.durationSec)
-                                put("cover_url", normalizedCover)
+                                put("thumb_url", normalizedCover)
                             })
-                        }
-                    }.toString()
-
-                    postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/tracks", tracksArray) {
-                        header("Prefer", "resolution=merge-duplicates")
-                    }
-                }
-
-                // 2. Bulk insert user_likes
-                val likesArray = buildJsonArray {
-                    for (t in chunk) {
-                        add(buildJsonObject {
-                            put("user_id", targetUserId)
-                            put("track_id", t.id)
-                            if (!t.createdAt.isNullOrBlank()) {
-                                put("created_at", t.createdAt)
+                            if (hasValidMeta) {
+                                put("catalog", buildJsonObject {
+                                    put("id", t.id)
+                                    put("source", "youtube")
+                                    put("external_id", t.id)
+                                    put("title", t.title)
+                                    put("artist_name", t.artist)
+                                    put("album_name", t.album ?: "Streamify")
+                                    put("duration_sec", t.durationSec)
+                                    put("thumb_url", normalizedCover)
+                                })
                             }
-                        })
+                        }
+                        add(buildSyncOp(
+                            entity = "like",
+                            op = "U",
+                            key = t.id,
+                            hlc = effectiveHlc,
+                            data = data,
+                        ))
                     }
-                }.toString()
-
-                postWithAuthRetry("${SupabaseConfig.SUPABASE_URL}/rest/v1/user_likes", likesArray) {
-                    header("Prefer", "resolution=ignore-duplicates")
                 }
+                val res = pushCompatOps(ops, deviceId)
+                if (res.isFailure) return@withContext res
             }
             Result.success(true)
         } catch (e: Exception) {

@@ -38,14 +38,34 @@ object HybridLogicalClock {
     }
 
     /**
+     * Restores persisted HLC floor across app restarts so backward wall-clock jumps
+     * cannot produce HLCs older than previously emitted timestamps.
+     */
+    fun restore(persistedHlc: Long) {
+        if (persistedHlc <= 0L) return
+        synchronizedLock(lock) {
+            val persistedPhysical = unpackPhysical(persistedHlc)
+            val persistedCounter = unpackCounter(persistedHlc)
+            if (persistedPhysical > lastPhysicalMs) {
+                lastPhysicalMs = persistedPhysical
+                logicalCounter = persistedCounter
+            } else if (persistedPhysical == lastPhysicalMs && persistedCounter > logicalCounter) {
+                logicalCounter = persistedCounter
+            }
+        }
+    }
+
+    /**
      * Generates the next monotonic 64-bit HLC timestamp.
      */
     fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long =
         synchronizedLock(lock) {
-            val clampedPhysical = if (lastKnownServerTimeMs > 0L && physicalMillis > lastKnownServerTimeMs + MAX_SKEW_MS) {
-                lastKnownServerTimeMs + MAX_SKEW_MS
-            } else {
-                physicalMillis
+            val clampedPhysical = when {
+                lastKnownServerTimeMs > 0L && physicalMillis > lastKnownServerTimeMs + MAX_SKEW_MS ->
+                    lastKnownServerTimeMs + MAX_SKEW_MS
+                lastKnownServerTimeMs > 0L && physicalMillis < lastKnownServerTimeMs - MAX_SKEW_MS ->
+                    lastKnownServerTimeMs - MAX_SKEW_MS
+                else -> physicalMillis
             }
 
             if (clampedPhysical > lastPhysicalMs) {
