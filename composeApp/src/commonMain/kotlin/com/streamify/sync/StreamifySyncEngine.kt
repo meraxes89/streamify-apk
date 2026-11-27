@@ -321,6 +321,44 @@ object StreamifySyncEngine : KoinComponent {
     @Volatile
     private var lastOutboxMillis: Long = 0L
 
+    private val appliedEchoKeys = mutableSetOf<Pair<String, String>>()
+    @Volatile
+    private var echoWindowStartMs: Long = 0L
+    @Volatile
+    private var echoWindowEndMs: Long = 0L
+    @Volatile
+    private var needsDeltaContinuation: Boolean = false
+
+    private fun recordEchoSuppressionKey(entity: String, key: String) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        if (echoWindowStartMs == 0L || now < echoWindowStartMs) {
+            echoWindowStartMs = now
+        }
+        echoWindowEndMs = now
+        appliedEchoKeys.add(entity to key)
+    }
+
+    internal fun partitionEchoedChanges(
+        pending: List<SyncChangeEntity>,
+        echoedKeys: Set<Pair<String, String>>,
+        windowStartMs: Long,
+        windowEndMs: Long,
+    ): Pair<List<SyncChangeEntity>, List<String>> {
+        if (echoedKeys.isEmpty() || windowEndMs <= 0L) return pending to emptyList()
+        val kept = mutableListOf<SyncChangeEntity>()
+        val echoedIds = mutableListOf<String>()
+        for (change in pending) {
+            val epochMs = normalizeToEpochMs(change.changedAt)
+            val normalized = normalizeOutboxToChangelogKey(change.entity, change.entityKey)
+            if (epochMs in windowStartMs..windowEndMs && normalized in echoedKeys) {
+                echoedIds.add(change.changeId)
+            } else {
+                kept.add(change)
+            }
+        }
+        return kept to echoedIds
+    }
+
     /**
      * Generates a strictly monotonic plain Unix epoch-ms timestamp for `SyncChangeEntity.changedAt`
      * so all outbox rows share one clock domain for `SyncDao.pruneSent` and `Instant.fromEpochMilliseconds`.
@@ -377,6 +415,10 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             isSyncActive = true
+            appliedEchoKeys.clear()
+            echoWindowStartMs = 0L
+            echoWindowEndMs = 0L
+            needsDeltaContinuation = false
             val deviceId = getOrCreateDeviceId()
             val hlc = HybridLogicalClock.now()
             val localCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
@@ -498,13 +540,12 @@ object StreamifySyncEngine : KoinComponent {
                 syncOutboxPushInternal(targetUserId, deviceId, hlc)
 
                 // Record latest changelog head cursor upon bootstrap completion
-                val pullRes = SupabaseLibrarySync.syncPull(since = 0L, limit = 1, deviceId = deviceId).getOrNull()
-                if (allStagesSucceeded && pullRes != null) {
-                    pullRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
-                    val latestCursor = pullRes.headCursor ?: pullRes.cursor
+                val latestCursor = resolveBootstrapHeadCursor(deviceId)
+                if (allStagesSucceeded && latestCursor != null) {
                     effectiveCursor = latestCursor
                     dataStoreManager.putString("streamify_sync_cursor_v3", latestCursor.toString())
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", BOOTSTRAP_DONE)
+                    dataStoreManager.putString("streamify_cloud_wins_reconcile_v1", "0")
                 } else {
                     syncFailureMessage = "Bootstrap incomplete; will retry"
                 }
@@ -556,9 +597,34 @@ object StreamifySyncEngine : KoinComponent {
             _syncState.value = error
             error
         } finally {
+            val continueDelta = needsDeltaContinuation
+            needsDeltaContinuation = false
             isSyncActive = false
             mutex.unlock()
+            if (continueDelta) {
+                triggerSync(userId)
+            }
         }
+    }
+
+    private suspend fun isCloudWinsReconcile(): Boolean =
+        dataStoreManager.getString("streamify_cloud_wins_reconcile_v1").firstOrNull() == "1"
+
+    private suspend fun resolveBootstrapHeadCursor(deviceId: String): Long? {
+        var cursor = 0L
+        var pages = 0
+        while (pages < 50) {
+            val pullRes = SupabaseLibrarySync.syncPull(since = cursor, limit = 500, deviceId = deviceId).getOrNull()
+                ?: return null
+            pullRes.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
+            pullRes.headCursor?.let { return it }
+            cursor = pullRes.cursor
+            if (!pullRes.hasMore) {
+                return cursor
+            }
+            pages++
+        }
+        return cursor
     }
 
     /**
@@ -619,7 +685,12 @@ object StreamifySyncEngine : KoinComponent {
         }
 
         // 4. Outbox: Push local likes that don't exist in cloud to Supabase in high-performance batches
-        val pendingUploads = localLiked.filter { it.videoId !in cloudIds && it.liked && !it.videoId.startsWith("trk_") }
+        //    (skipped during CURSOR_EXPIRED cloud-wins reconciliation so >90-day GC'd tombstones aren't resurrected)
+        val pendingUploads = if (isCloudWinsReconcile()) {
+            emptyList()
+        } else {
+            localLiked.filter { it.videoId !in cloudIds && it.liked && !it.videoId.startsWith("trk_") }
+        }
         if (pendingUploads.isNotEmpty()) {
             val cloudBatch = pendingUploads.map { localSong ->
                 CloudTrack(
@@ -658,9 +729,11 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             // Outbox: push locally followed artists to cloud
-            for (localArtist in localArtists) {
-                if (localArtist.channelId !in cloudArtistIds) {
-                    SupabaseLibrarySync.syncItemFavorite("artist", localArtist.channelId, true, targetUserId)
+            if (!isCloudWinsReconcile()) {
+                for (localArtist in localArtists) {
+                    if (localArtist.channelId !in cloudArtistIds) {
+                        SupabaseLibrarySync.syncItemFavorite("artist", localArtist.channelId, true, targetUserId)
+                    }
                 }
             }
             return true
@@ -695,9 +768,11 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             // Outbox: push locally favorited albums to cloud
-            for (localAlbum in localLikedAlbums) {
-                if (localAlbum.browseId !in cloudAlbumIds && localAlbum.liked) {
-                    SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
+            if (!isCloudWinsReconcile()) {
+                for (localAlbum in localLikedAlbums) {
+                    if (localAlbum.browseId !in cloudAlbumIds && localAlbum.liked) {
+                        SupabaseLibrarySync.syncItemFavorite("album", localAlbum.browseId, true, targetUserId)
+                    }
                 }
             }
             return true
@@ -768,7 +843,11 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             // Outbox: push local library tracks not yet in cloud in bounded batches
-            val pendingUploads = localInLibrary.filter { it.videoId !in cloudTrackIds && !it.videoId.startsWith("trk_") }
+            val pendingUploads = if (isCloudWinsReconcile()) {
+                emptyList()
+            } else {
+                localInLibrary.filter { it.videoId !in cloudTrackIds && !it.videoId.startsWith("trk_") }
+            }
             if (pendingUploads.isNotEmpty()) {
                 for (batch in pendingUploads.chunked(500)) {
                     SupabaseLibrarySync.uploadLibraryTracksBatch(batch.map { it.videoId }, targetUserId)
@@ -819,19 +898,21 @@ object StreamifySyncEngine : KoinComponent {
             }
 
             // Outbox: push locally favorited playlists to cloud
-            for (localPl in localPlaylists) {
-                if (localPl.id !in cloudPlaylistIds && localPl.liked && localPl.id.isNotBlank()) {
-                    SupabaseLibrarySync.syncItemFavorite(
-                        itemType = "playlist",
-                        itemId = localPl.id,
-                        isFavorited = true,
-                        userId = targetUserId,
-                        metadata = mapOf(
-                            "title" to localPl.title,
-                            "thumbnail" to localPl.thumbnails,
-                            "track_count" to localPl.trackCount.toString()
+            if (!isCloudWinsReconcile()) {
+                for (localPl in localPlaylists) {
+                    if (localPl.id !in cloudPlaylistIds && localPl.liked && localPl.id.isNotBlank()) {
+                        SupabaseLibrarySync.syncItemFavorite(
+                            itemType = "playlist",
+                            itemId = localPl.id,
+                            isFavorited = true,
+                            userId = targetUserId,
+                            metadata = mapOf(
+                                "title" to localPl.title,
+                                "thumbnail" to localPl.thumbnails,
+                                "track_count" to localPl.trackCount.toString()
+                            )
                         )
-                    )
+                    }
                 }
             }
             return true
@@ -1234,6 +1315,7 @@ object StreamifySyncEngine : KoinComponent {
                 if (err.message?.contains("CURSOR_EXPIRED", ignoreCase = true) == true) {
                     dataStoreManager.putString("streamify_sync_cursor_v3", "0")
                     dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
+                    dataStoreManager.putString("streamify_cloud_wins_reconcile_v1", "1")
                 }
                 return false
             }
@@ -1287,12 +1369,18 @@ object StreamifySyncEngine : KoinComponent {
                     }
                     if (!applyDeltaOp(op, prefetchedTracks)) {
                         allOpsApplied = false
-                    } else if (opHlc > 0L) {
-                        watermarks["${op.entity}:${op.key}"] = opHlc
+                    } else {
+                        recordEchoSuppressionKey(op.entity, op.key)
                         if (playlistTrackCompositeKey != null) {
-                            watermarks["${op.entity}:$playlistTrackCompositeKey"] = opHlc
+                            recordEchoSuppressionKey(op.entity, playlistTrackCompositeKey)
                         }
-                        watermarksDirty = true
+                        if (opHlc > 0L) {
+                            watermarks["${op.entity}:${op.key}"] = opHlc
+                            if (playlistTrackCompositeKey != null) {
+                                watermarks["${op.entity}:$playlistTrackCompositeKey"] = opHlc
+                            }
+                            watermarksDirty = true
+                        }
                     }
                 }
             }
@@ -1311,8 +1399,8 @@ object StreamifySyncEngine : KoinComponent {
             pagesFetched++
         }
         if (hasMore) {
-            Logger.w(TAG, "Delta pull hit 20-page cap with more ops remaining at cursor $cursor")
-            return false
+            Logger.i(TAG, "Delta pull reached 20-page batch at cursor $cursor; scheduling continuation")
+            needsDeltaContinuation = true
         }
         return true
     }
@@ -1372,8 +1460,18 @@ object StreamifySyncEngine : KoinComponent {
     private suspend fun syncOutboxPushInternal(targetUserId: String, deviceId: String, hlc: Long): Boolean {
         var allChunksSucceeded = true
         try {
-            // 1. Drain pending outbox changes (up to 500), ensuring playlists precede playlist_tracks
-            val pendingChanges = syncOutboxRepository.getPending(500).sortedBy { change ->
+            // 1. Drain pending outbox changes (up to 500), suppressing any echoes from this cycle
+            val rawPending = syncOutboxRepository.getPending(500)
+            val (nonEchoedPending, echoedIds) = partitionEchoedChanges(
+                pending = rawPending,
+                echoedKeys = appliedEchoKeys,
+                windowStartMs = echoWindowStartMs,
+                windowEndMs = echoWindowEndMs,
+            )
+            if (echoedIds.isNotEmpty()) {
+                syncOutboxRepository.markSent(echoedIds, 0L)
+            }
+            val pendingChanges = nonEchoedPending.sortedBy { change ->
                 when (change.entity) {
                     SyncKind.LOCAL_PLAYLIST -> 0
                     SyncKind.LOCAL_PLAYLIST_TRACK, SyncKind.LOCAL_PLAYLIST_ORDER -> 2

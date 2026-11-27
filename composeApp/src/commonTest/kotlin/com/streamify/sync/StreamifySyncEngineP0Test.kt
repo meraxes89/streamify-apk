@@ -318,4 +318,45 @@ class StreamifySyncEngineP0Test {
         )
         assertEquals(null, StreamifySyncEngine.resolvePlaylistTrackIds(unresolvable))
     }
+
+    @Test
+    fun partitionEchoedChangesSuppressesCycleEchoesButKeepsUnrelatedChanges() {
+        val echoChange = SyncChangeEntity(
+            changeId = "chg_echo",
+            entity = SyncKind.SONG_LIKE,
+            entityKey = "vid_1",
+            op = SyncOp.SET,
+            value = "1",
+            changedAt = 1_700_000_005_000L,
+            deviceId = "dev_1",
+        )
+        val outsideWindowChange = SyncChangeEntity(
+            changeId = "chg_later",
+            entity = SyncKind.SONG_LIKE,
+            entityKey = "vid_1",
+            op = SyncOp.SET,
+            value = "0",
+            changedAt = 1_700_000_020_000L,
+            deviceId = "dev_1",
+        )
+        val unrelatedChange = SyncChangeEntity(
+            changeId = "chg_other",
+            entity = SyncKind.ARTIST_FOLLOW,
+            entityKey = "UC_1",
+            op = SyncOp.SET,
+            value = "1",
+            changedAt = 1_700_000_005_000L,
+            deviceId = "dev_1",
+        )
+
+        val (kept, echoedIds) = StreamifySyncEngine.partitionEchoedChanges(
+            pending = listOf(echoChange, outsideWindowChange, unrelatedChange),
+            echoedKeys = setOf("like" to "vid_1"),
+            windowStartMs = 1_700_000_000_000L,
+            windowEndMs = 1_700_000_010_000L,
+        )
+
+        assertEquals(listOf("chg_echo"), echoedIds)
+        assertEquals(listOf("chg_later", "chg_other"), kept.map { it.changeId })
+    }
 }

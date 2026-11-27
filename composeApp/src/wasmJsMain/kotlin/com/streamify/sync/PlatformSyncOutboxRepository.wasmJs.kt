@@ -3,10 +3,15 @@ package com.streamify.sync
 import com.maxrave.domain.data.entities.LocalPlaylistEntity
 import com.maxrave.domain.data.entities.analytics.PlaybackEventEntity
 import com.maxrave.domain.data.entities.sync.SyncChangeEntity
+import com.maxrave.domain.repository.AnalyticsRepository
+import com.maxrave.domain.repository.LocalPlaylistRepository
 import kotlinx.browser.localStorage
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 @Serializable
 private data class WasmOutboxRecord(
@@ -26,7 +31,9 @@ private data class WasmOutboxSnapshot(
     val rejectedIds: Set<String> = emptySet(),
 )
 
-class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
+class WasmFakeSyncOutboxRepository : SyncOutboxRepository, KoinComponent {
+    private val localPlaylistRepository: LocalPlaylistRepository by inject()
+    private val analyticsRepository: AnalyticsRepository by inject()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val storageKey = "streamify_wasm_sync_outbox_v1"
 
@@ -103,13 +110,22 @@ class WasmFakeSyncOutboxRepository : SyncOutboxRepository {
 
     override suspend fun pruneSent(beforeTimestamp: Long) {}
 
-    override suspend fun getPlaybackEventsBySyncIds(syncIds: List<String>): List<PlaybackEventEntity> = emptyList()
+    override suspend fun getPlaybackEventsBySyncIds(syncIds: List<String>): List<PlaybackEventEntity> {
+        if (syncIds.isEmpty()) return emptyList()
+        val idSet = syncIds.toSet()
+        val all = runCatching { analyticsRepository.getPlaybackEventsByOffset(0, 1000).firstOrNull() }.getOrNull() ?: emptyList()
+        return all.filter { it.syncId in idSet }
+    }
 
-    override suspend fun getLocalPlaylistBySyncId(syncId: String): LocalPlaylistEntity? = null
+    override suspend fun getLocalPlaylistBySyncId(syncId: String): LocalPlaylistEntity? {
+        val all = runCatching { localPlaylistRepository.getAllLocalPlaylists().firstOrNull() }.getOrNull() ?: return null
+        return all.find { it.syncId == syncId }
+    }
 
     override suspend fun setLocalPlaylistSyncId(id: Long, syncId: String) {}
 
-    override suspend fun getPlaylistTrackOrder(playlistId: Long): List<String> = emptyList()
+    override suspend fun getPlaylistTrackOrder(playlistId: Long): List<String> =
+        runCatching { localPlaylistRepository.getListTrackVideoId(playlistId) }.getOrDefault(emptyList())
 
     override suspend fun getPendingCount(): Int = changes.count { it.changeId !in rejectedIds }
 }
