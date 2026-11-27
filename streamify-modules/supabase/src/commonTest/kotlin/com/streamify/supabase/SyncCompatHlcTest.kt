@@ -48,4 +48,32 @@ class SyncCompatHlcTest {
         assertEquals("history", historyOp["entity"]?.jsonPrimitive?.content)
         assertEquals("evt-123", historyOp["data"]?.jsonObject?.get("client_event_id")?.jsonPrimitive?.content)
     }
+
+    @Test
+    fun buildLikedTrackSyncOpIncludesCatalogForRealTracksAndSkipsForPlaceholders() {
+        val hlc = 1_760_000_000_000L shl 22
+        val realTrack = CloudTrack(
+            id = "dQw4w9WgXcQ",
+            title = "Never Gonna Give You Up",
+            artist = "Rick Astley",
+            album = "Whenever You Need Somebody",
+            durationSec = 213,
+            coverUrl = "http://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+            createdAt = "2026-11-27T00:00:00Z",
+        )
+        val realOp = SupabaseLibrarySync.buildLikedTrackSyncOp(realTrack, hlc)
+        val realData = realOp["data"]!!.jsonObject
+        assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", realData["meta"]!!.jsonObject["thumb_url"]?.jsonPrimitive?.content)
+        assertEquals("youtube", realData["catalog"]!!.jsonObject["source"]?.jsonPrimitive?.content)
+        assertEquals("dQw4w9WgXcQ", realData["catalog"]!!.jsonObject["external_id"]?.jsonPrimitive?.content)
+
+        val placeholder = CloudTrack(
+            id = "abc123def45",
+            title = "Synced Track",
+            artist = "Unknown Artist",
+            coverUrl = "",
+        )
+        val placeholderOp = SupabaseLibrarySync.buildLikedTrackSyncOp(placeholder, hlc)
+        assertEquals(null, placeholderOp["data"]!!.jsonObject["catalog"])
+    }
 }

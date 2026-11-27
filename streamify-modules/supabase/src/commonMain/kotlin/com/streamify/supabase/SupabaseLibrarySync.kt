@@ -161,6 +161,46 @@ object SupabaseLibrarySync {
         fetchCloudLikesWithTime(userId).keys.toList()
     }
 
+    internal fun buildLikedTrackSyncOp(track: CloudTrack, hlc: Long): JsonObject {
+        val normalizedCover = if (track.coverUrl.startsWith("http://", ignoreCase = true)) {
+            "https://" + track.coverUrl.substring(7)
+        } else {
+            track.coverUrl
+        }
+        val hasValidMeta = track.title.isNotBlank() && track.title != "Synced Track"
+        val data = buildJsonObject {
+            if (!track.createdAt.isNullOrBlank()) {
+                put("created_at", track.createdAt)
+            }
+            put("meta", buildJsonObject {
+                put("title", track.title)
+                put("artist", track.artist)
+                put("album", track.album ?: "Streamify")
+                put("duration_sec", track.durationSec)
+                put("thumb_url", normalizedCover)
+            })
+            if (hasValidMeta) {
+                put("catalog", buildJsonObject {
+                    put("id", track.id)
+                    put("source", "youtube")
+                    put("external_id", track.id)
+                    put("title", track.title)
+                    put("artist_name", track.artist)
+                    put("album_name", track.album ?: "Streamify")
+                    put("duration_sec", track.durationSec)
+                    put("thumb_url", normalizedCover)
+                })
+            }
+        }
+        return buildSyncOp(
+            entity = "like",
+            op = "U",
+            key = track.id,
+            hlc = hlc,
+            data = data,
+        )
+    }
+
     /**
      * High-performance batch uploader for local liked tracks via `sync_push` (HLC LWW):
      * Chunks items into 50-op batches to avoid serial N+1 HTTP calls.
@@ -177,43 +217,7 @@ object SupabaseLibrarySync {
             for (chunk in tracks.chunked(50)) {
                 val ops = buildJsonArray {
                     for (t in chunk) {
-                        val normalizedCover = if (t.coverUrl.startsWith("http://", ignoreCase = true)) {
-                            "https://" + t.coverUrl.substring(7)
-                        } else {
-                            t.coverUrl
-                        }
-                        val hasValidMeta = t.title.isNotBlank() && t.title != "Synced Track"
-                        val data = buildJsonObject {
-                            if (!t.createdAt.isNullOrBlank()) {
-                                put("created_at", t.createdAt)
-                            }
-                            put("meta", buildJsonObject {
-                                put("title", t.title)
-                                put("artist", t.artist)
-                                put("album", t.album ?: "Streamify")
-                                put("duration_sec", t.durationSec)
-                                put("thumb_url", normalizedCover)
-                            })
-                            if (hasValidMeta) {
-                                put("catalog", buildJsonObject {
-                                    put("id", t.id)
-                                    put("source", "youtube")
-                                    put("external_id", t.id)
-                                    put("title", t.title)
-                                    put("artist_name", t.artist)
-                                    put("album_name", t.album ?: "Streamify")
-                                    put("duration_sec", t.durationSec)
-                                    put("thumb_url", normalizedCover)
-                                })
-                            }
-                        }
-                        add(buildSyncOp(
-                            entity = "like",
-                            op = "U",
-                            key = t.id,
-                            hlc = effectiveHlc,
-                            data = data,
-                        ))
+                        add(buildLikedTrackSyncOp(t, effectiveHlc))
                     }
                 }
                 val res = pushCompatOps(ops, deviceId)
