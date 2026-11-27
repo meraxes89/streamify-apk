@@ -359,4 +359,37 @@ class StreamifySyncEngineP0Test {
         assertEquals(listOf("chg_echo"), echoedIds)
         assertEquals(listOf("chg_later", "chg_other"), kept.map { it.changeId })
     }
+
+    @Test
+    fun hybridLogicalClockRestoreAndBackwardSkewClamp() {
+        HybridLogicalClock.resetForTesting()
+        val futurePhysical = 1_900_000_000_000L
+        val restored = HybridLogicalClock.pack(futurePhysical, 7)
+        HybridLogicalClock.restore(restored)
+
+        // Even if physical clock is behind restored floor, now() stays >= restored
+        val generated = HybridLogicalClock.now(physicalMillis = 1_700_000_000_000L)
+        assertTrue(generated > restored)
+
+        // Backward skew > MAX_SKEW_MS is clamped to serverTime - MAX_SKEW_MS
+        HybridLogicalClock.resetForTesting()
+        val serverTime = 1_800_000_000_000L
+        HybridLogicalClock.updateServerTime(serverTime)
+        val skewedPast = serverTime - (HybridLogicalClock.MAX_SKEW_MS + 600_000L)
+        val clamped = HybridLogicalClock.now(physicalMillis = skewedPast)
+        assertEquals(serverTime - HybridLogicalClock.MAX_SKEW_MS, HybridLogicalClock.unpackPhysical(clamped))
+    }
+
+    @Test
+    fun remoteSettingEchoSuppressionHandlesAsyncCollectorArrival() {
+        StreamifySyncEngine.markRemoteSettingWrite("theme_mode", "dark")
+        // First collector emission matching remote write is suppressed even after flag resets
+        assertTrue(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("theme_mode", "dark"))
+        // Subsequent user change to a different value is NOT suppressed
+        assertFalse(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("theme_mode", "light"))
+
+        StreamifySyncEngine.markRemoteSettingWrite("crossfade_ms", "3000")
+        // User changed value before async collector processed remote value -> not suppressed
+        assertFalse(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("crossfade_ms", "5000"))
+    }
 }

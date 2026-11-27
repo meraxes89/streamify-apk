@@ -114,9 +114,31 @@ object StreamifySyncEngine : KoinComponent {
         get() = SettingsSyncRegistry.keys
 
     private val settingsObserverStarted = MutableStateFlow(false)
+    private val remoteSettingsLock = Any()
+    private val pendingRemoteSettings = mutableMapOf<String, String>()
 
     @Volatile
     private var isApplyingRemoteSetting: Boolean = false
+
+    internal fun markRemoteSettingWrite(key: String, value: String) {
+        synchronizedLock(remoteSettingsLock) {
+            pendingRemoteSettings[key] = value
+        }
+    }
+
+    internal fun shouldSuppressRemoteSettingEcho(key: String, value: String): Boolean {
+        if (isApplyingRemoteSetting) return true
+        return synchronizedLock(remoteSettingsLock) {
+            val expected = pendingRemoteSettings[key] ?: return@synchronizedLock false
+            if (expected == value) {
+                pendingRemoteSettings.remove(key)
+                true
+            } else {
+                pendingRemoteSettings.remove(key)
+                false
+            }
+        }
+    }
 
     /**
      * Observes all [SettingsSyncRegistry.specs] Flows reactively and enqueues changes to
@@ -131,7 +153,7 @@ object StreamifySyncEngine : KoinComponent {
                         .drop(1)
                         .distinctUntilChanged()
                         .collect { value ->
-                            if (!isApplyingRemoteSetting) {
+                            if (!shouldSuppressRemoteSettingEcho(spec.key, value)) {
                                 recordSettingChange(spec.key, value)
                             }
                         }
@@ -286,6 +308,7 @@ object StreamifySyncEngine : KoinComponent {
             dataStoreManager.putString("streamify_sync_cursor_v3", "0")
             dataStoreManager.putString("streamify_bootstrap_checkpoint_v3", "")
             dataStoreManager.putString("streamify_entity_hlc_watermarks_v1", "{}")
+            dataStoreManager.putString("streamify_last_hlc_v1", "0")
             SyncDeadLetterStore.clear(dataStoreManager)
             HybridLogicalClock.resetForTesting()
             runCatching {
@@ -311,6 +334,7 @@ object StreamifySyncEngine : KoinComponent {
             dataStoreManager.putString("streamify_device_id_v3", "")
             dataStoreManager.putString("streamify_active_user_id_v3", "")
             dataStoreManager.putString("streamify_entity_hlc_watermarks_v1", "{}")
+            dataStoreManager.putString("streamify_last_hlc_v1", "0")
             SyncDeadLetterStore.clear(dataStoreManager)
             HybridLogicalClock.resetForTesting()
             _syncState.value = SyncStatus.Idle
@@ -420,6 +444,8 @@ object StreamifySyncEngine : KoinComponent {
             echoWindowEndMs = 0L
             needsDeltaContinuation = false
             val deviceId = getOrCreateDeviceId()
+            val persistedHlc = dataStoreManager.getString("streamify_last_hlc_v1").firstOrNull()?.toLongOrNull() ?: 0L
+            HybridLogicalClock.restore(persistedHlc)
             val hlc = HybridLogicalClock.now()
             val localCursor = dataStoreManager.getString("streamify_sync_cursor_v3").firstOrNull()?.toLongOrNull() ?: 0L
             val bootstrapCheckpoint = dataStoreManager.getString("streamify_bootstrap_checkpoint_v3").firstOrNull() ?: ""
@@ -558,6 +584,9 @@ object StreamifySyncEngine : KoinComponent {
             // V4.1 Fleet Telemetry: Sync device and version telemetry
             syncDeviceTelemetryInternal(targetUserId, deviceId)
 
+            dataStoreManager.putString("streamify_last_hlc_v1", HybridLogicalClock.now().toString())
+            val currentPendingCount = runCatching { syncOutboxRepository.getPendingCount() }.getOrDefault(_syncMetrics.value.pendingOutboxCount)
+
             if (syncFailureMessage != null) {
                 consecutiveFailures++
                 val delayMs = backoffPolicy.computeDelayMs(consecutiveFailures.coerceAtMost(5))
@@ -566,6 +595,7 @@ object StreamifySyncEngine : KoinComponent {
                     it.copy(
                         currentCursor = effectiveCursor,
                         consecutiveFailures = consecutiveFailures,
+                        pendingOutboxCount = currentPendingCount,
                     )
                 }
                 val error = SyncStatus.Error("$syncFailureMessage (backing off ${delayMs / 1000}s)")
@@ -577,12 +607,13 @@ object StreamifySyncEngine : KoinComponent {
             backoffUntilMs = 0L
             _syncMetrics.update {
                 it.copy(
-                    lastSyncTimestamp = System.currentTimeMillis(),
+                    lastSyncTimestamp = Clock.System.now().toEpochMilliseconds(),
                     currentCursor = effectiveCursor,
                     consecutiveFailures = 0,
+                    pendingOutboxCount = currentPendingCount,
                 )
             }
-            val success = SyncStatus.Success(likedCount, System.currentTimeMillis())
+            val success = SyncStatus.Success(likedCount, Clock.System.now().toEpochMilliseconds())
             _syncState.value = success
             success
         } catch (e: Exception) {
@@ -1035,6 +1066,7 @@ object StreamifySyncEngine : KoinComponent {
                 for ((key, remoteVal) in remoteSettings) {
                     val spec = SettingsSyncRegistry.byKey[key] ?: continue
                     if (key !in localSettings && remoteVal.isNotBlank()) {
+                        markRemoteSettingWrite(key, remoteVal)
                         spec.write(dataStoreManager, remoteVal)
                     }
                 }
@@ -1323,7 +1355,7 @@ object StreamifySyncEngine : KoinComponent {
             pullResult.serverTimeMs?.let { HybridLogicalClock.updateServerTime(it) }
 
             val pendingByEntityKey = mutableMapOf<Pair<String, String>, HlcKey>()
-            for (change in syncOutboxRepository.getPending(1000)) {
+            for (change in syncOutboxRepository.getPending(5000)) {
                 val normalized = normalizeOutboxToChangelogKey(change.entity, change.entityKey)
                 val key = HlcKey(
                     hlc = normalizeToHlc(change.changedAt),
@@ -2146,6 +2178,7 @@ object StreamifySyncEngine : KoinComponent {
                                 val spec = SettingsSyncRegistry.byKey[k] ?: continue
                                 val strVal = (v as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
                                 if (strVal != null) {
+                                    markRemoteSettingWrite(k, strVal)
                                     spec.write(dataStoreManager, strVal)
                                 }
                             }
@@ -2155,6 +2188,7 @@ object StreamifySyncEngine : KoinComponent {
                                 ?: op.data?.get("val")?.jsonPrimitive?.contentOrNull
                             val spec = SettingsSyncRegistry.byKey[key]
                             if (spec != null && value != null) {
+                                markRemoteSettingWrite(key, value)
                                 spec.write(dataStoreManager, value)
                             }
                         }
