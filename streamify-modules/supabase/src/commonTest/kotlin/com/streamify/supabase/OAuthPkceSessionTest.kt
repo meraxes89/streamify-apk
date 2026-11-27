@@ -92,7 +92,7 @@ class OAuthPkceSessionTest {
 
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
-        assertTrue(exception is SecurityException)
+        assertTrue(exception is IllegalStateException)
         assertEquals("Missing or mismatched CSRF state", exception.message)
     }
 
@@ -124,7 +124,7 @@ class OAuthPkceSessionTest {
 
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
-        assertTrue(exception is SecurityException)
+        assertTrue(exception is IllegalStateException)
         assertEquals("Missing CSRF security state and PKCE verifier", exception.message)
     }
 
@@ -144,7 +144,7 @@ class OAuthPkceSessionTest {
 
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
-        assertTrue(exception is SecurityException)
+        assertTrue(exception is IllegalStateException)
         assertEquals("Expired OAuth PKCE session", exception.message)
     }
 }

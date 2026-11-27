@@ -68,7 +68,7 @@ class Tier1SecurityTest {
             storedTimestampMs = storedSession.timestampMs
         )
         assertTrue(spoofResult.isFailure)
-        assertTrue(spoofResult.exceptionOrNull() is SecurityException)
+        assertTrue(spoofResult.exceptionOrNull() is IllegalStateException)
 
         // 3. Stripped state succeeds when valid verifier exists (PKCE server cryptographic verification)
         val strippedCallback = AuthCallbackData(code = "valid_code", state = null)
