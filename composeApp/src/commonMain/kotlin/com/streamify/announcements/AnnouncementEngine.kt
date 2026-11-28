@@ -18,7 +18,8 @@ class AnnouncementEngine(
     private val dataStoreManager: DataStoreManager,
     private val remoteSource: RemoteAnnouncementSource = RemoteAnnouncementSource(dataStoreManager),
     private val inboxRepository: AnnouncementInboxRepository = AnnouncementInboxRepository(dataStoreManager),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val supabaseSource: SupabaseAnnouncementSource? = SupabaseAnnouncementSource(dataStoreManager),
 ) {
     private val store = AnnouncementStore(dataStoreManager)
     private val frequencyGovernor = FrequencyGovernor(store)
@@ -36,7 +37,8 @@ class AnnouncementEngine(
         currentVersion: String,
         currentPlatform: String,
         currentLocale: String,
-        uiContext: UiContext
+        uiContext: UiContext,
+        profile: UserProfileContext = UserProfileContext(),
     ) {
         scope.launch {
             try {
@@ -47,30 +49,72 @@ class AnnouncementEngine(
                 cachedGovernance = manifestResult.governance
                 DeepLinkAllowlist.setDynamicAllowedDomains(manifestResult.governance.allowedExtraDomains)
 
+                // Fetch authenticated 1:1 / segment announcements from Supabase (fail-safe)
+                val personalizedAnnouncements = supabaseSource?.fetch(
+                    revokedIds = manifestResult.revokedIds.toSet(),
+                    allowedExtraDomains = manifestResult.governance.allowedExtraDomains,
+                ).orEmpty()
+
+                val remoteAll = (manifestResult.announcements + personalizedAnnouncements).distinctBy { it.id }
+
                 // If master switch is false, immediately silence any active modal and abort presentation
                 if (!manifestResult.popupModalEnabled) {
                     arbiter.dismissActive()
-                    if (manifestResult.announcements.isNotEmpty()) {
-                        inboxRepository.saveInboxAnnouncements(manifestResult.announcements)
+                    if (remoteAll.isNotEmpty()) {
+                        val eligibleInbox = remoteAll
+                            .filter { announcement ->
+                                TargetingEvaluator.isEligible(
+                                    announcement.targeting,
+                                    currentVersion,
+                                    currentPlatform,
+                                    currentLocale,
+                                    profile = profile,
+                                    announcementId = announcement.id,
+                                    nowEpochMs = nowEpochMs,
+                                )
+                            }
+                            .map { TargetingEvaluator.personalize(it, profile) }
+                        if (eligibleInbox.isNotEmpty()) {
+                            inboxRepository.saveInboxAnnouncements(eligibleInbox)
+                        }
                     }
                     return@launch
                 }
 
-                val combined = (LocalAnnouncementDefaults.ALL + manifestResult.announcements).distinctBy { it.id }
-
-                // Sync persistent inbox
-                inboxRepository.saveInboxAnnouncements(combined)
+                val combined = (LocalAnnouncementDefaults.ALL + remoteAll).distinctBy { it.id }
 
                 val eligible = combined.filter { announcement ->
                     TargetingEvaluator.isEligible(
                         announcement.targeting,
                         currentVersion,
                         currentPlatform,
-                        currentLocale
+                        currentLocale,
+                        profile = profile,
+                        announcementId = announcement.id,
+                        nowEpochMs = nowEpochMs,
                     ) && frequencyGovernor.isEligible(announcement, nowEpochMs, manifestResult.governance)
                 }.sortedByDescending { it.priority }
 
-                val topCandidate = eligible.firstOrNull() ?: return@launch
+                // Sync persistent inbox with eligible/targeted announcements (personalized)
+                val inboxItems = combined
+                    .filter { announcement ->
+                        TargetingEvaluator.isEligible(
+                            announcement.targeting,
+                            currentVersion,
+                            currentPlatform,
+                            currentLocale,
+                            profile = profile,
+                            announcementId = announcement.id,
+                            nowEpochMs = nowEpochMs,
+                        )
+                    }
+                    .map { TargetingEvaluator.personalize(it, profile) }
+                if (inboxItems.isNotEmpty()) {
+                    inboxRepository.saveInboxAnnouncements(inboxItems)
+                }
+
+                val topCandidate = eligible.firstOrNull()?.let { TargetingEvaluator.personalize(it, profile) }
+                    ?: return@launch
                 val presented = arbiter.tryPresent(topCandidate, uiContext)
                 if (presented) {
                     frequencyGovernor.recordShown(topCandidate, nowEpochMs)

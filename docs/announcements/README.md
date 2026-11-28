@@ -143,6 +143,14 @@ Informational dialog with dismiss button only:
 - `platforms`: Empty list `[]` targets all platforms. Otherwise accepts `"android"`, `"desktop"`, `"wasm"`.
 - `minVersion` / `maxVersion`: Semantic version boundaries (supports `v1.0.3` or `1.0.3`).
 - `locales`: List of allowed ISO language prefixes. Empty list targets all locales.
+- `channels`: Optional release channel list (e.g. `["stable", "nightly", "vivo"]`).
+- `minPlays` / `maxPlays` / `minListeningHours`: Engagement thresholds evaluated locally against `UserProfile.totalPlays` and `listeningSeconds`.
+- `favoriteGenres`: Case-insensitive match against `UserProfile.favoriteGenre` (ignoring `"All"`).
+- `minAccountAgeDays` / `maxAccountAgeDays` / `minDormantDays`: Lifecycle & win-back thresholds computed from `createdAt` and `lastActiveAt`.
+- `requireAuthenticated` / `requireAdmin`: Auth/role gates.
+- `targetUserHashes`: Privacy-preserving 1:1 targeting list containing lowercase `SHA-256("<announcementId>:<userId>")` digests (no raw emails or UUIDs in `manifest.json`).
+- `rolloutPercent`: `0..100` deterministic per-user rollout bucket hashed from `<announcementId>:<userId>`.
+- **Local Copy Placeholders**: `title`, `body`, and `actionLabel` support `{{display_name}}`, `{{favorite_genre}}`, `{{total_plays}}`, `{{listening_hours}}`, and `{{top_track}}`, interpolated locally with safe anonymous fallbacks.
 
 ---
 

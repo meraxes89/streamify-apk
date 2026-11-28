@@ -27,6 +27,7 @@ tests: [supabase/sql/tests/]
 - Plane C Real-Time Presence & Device Fleet (`20261201000300_v5_plane_c_presence_and_fleet.sql`) is deployed on `dbgtvzgwixerhnwvhtil` per [ADR-011](../adr/ADR-011-sync-v5-six-plane-architecture.md): TTL-leased `user_presence` + `v_live_presence`, durable `user_playback_handoff`, platform-normalized `user_devices`, `user_daily_activity`, `service_role`-only `admin_fleet_overview` / `admin_active_users_overview`, `_plane_c_is_device_revoked` + 2-minute throttled `_plane_c_touch_activity` (`streamify.trusted_activity_touch`), all 6 Plane C RPCs + legacy `heartbeat_presence` bridge, and `pg_cron` maintenance.
 - Plane D Authoritative Catalog & Hydration (`20261201000400_v5_plane_d_catalog_and_hydration.sql`) is deployed on `dbgtvzgwixerhnwvhtil`: `artist_index`, `album_index`, trust-tiered `track_index`, `service_role`-only `catalog_enrichment_queue` (`SKIP LOCKED`), read-only catalog RLS + hint-only `tg_tracks_view_upsert()` shim, `get_tracks_batch`, `ingest_track_hints`, S21 worker RPCs (`claim_catalog_enrichment_batch`, `upsert_catalog_authoritative`, `complete_catalog_enrichment_batch`), `sync_pull_v5` catalog sidecar, `tg_plane_d_seed_track`, and `fetch_listening_history` catalog `LEFT JOIN`.
 - Plane F Companion Read-Models, Admin Analytics & Shelves (`20261201000500_v5_plane_f_companions_and_shelves.sql`) is deployed on `dbgtvzgwixerhnwvhtil`: epoch-locked `user_handoff_queue_snapshot`, `update_active_session_v5` / `fetch_active_session_v5` (delegating to Plane C), `is_admin()`-gated `get_admin_dashboard_stats` / `get_admin_edge_compute_stats` / `get_admin_top_tracks` / `get_admin_fleet_overview`, $k$-anonymous (`>= 3`) `mv_shelf_community_hits` / `mv_shelf_hourly_community_tracks` + `get_hybrid_home_shelves`, and `pg_cron` refresh jobs.
+- S20 Phase 2 Targeted User Announcements (`20261202000000_s20_user_announcements.sql`) is deployed on `dbgtvzgwixerhnwvhtil`: `public.user_announcements` with `FORCE ROW LEVEL SECURITY` (`user_id IS NULL OR user_id = auth.uid()` read, `is_admin` write) and `SECURITY DEFINER` RPC `public.get_targeted_announcements()` for `authenticated`.
 
 ## Interfaces
 
@@ -49,4 +50,4 @@ tests: [supabase/sql/tests/]
 
 - Keep migration numbering and RLS tests in the same PR as RPC changes.
 
-<!-- doc-verified-against: 3fce4cd9c7268bb7e8dd1113d47e9635d9e81e68 -->
+<!-- doc-verified-against: 78f89c795f628fd8e550a5a944d1606f4b2edbd0 -->
