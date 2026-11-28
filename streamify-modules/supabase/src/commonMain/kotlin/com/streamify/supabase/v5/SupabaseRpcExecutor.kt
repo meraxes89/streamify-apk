@@ -1,9 +1,9 @@
 package com.streamify.supabase.v5
 
-import com.streamify.supabase.PlatformDeviceInfo
 import com.streamify.supabase.SupabaseClient
 import com.streamify.supabase.SupabaseConfig
 import com.streamify.supabase.ioDispatcher
+import com.streamify.supabase.resolvePlatformDeviceInfo
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -99,11 +99,12 @@ class SupabaseRpcExecutor(
         deviceId: String? = null,
         decode: (JsonObject) -> T,
     ): RpcResult<T> = withContext(ioDispatcher) {
-        val initialToken = SupabaseClient.ensureValidSession()
+        val initialToken = SupabaseClient.ensureValidAccessToken()
+            .takeIf { it.isNotBlank() && it != SupabaseConfig.ANON_KEY }
             ?: SupabaseClient.accessToken.value?.takeIf { it.isNotBlank() && it != SupabaseConfig.ANON_KEY }
             ?: return@withContext RpcResult.Unauthorized("No active user session")
 
-        val resolvedDeviceId = deviceId?.takeIf { it.isNotBlank() } ?: PlatformDeviceInfo.getDeviceId()
+        val resolvedDeviceId = deviceId?.takeIf { it.isNotBlank() } ?: "unknown"
         val firstAttempt = executeOnce(rpcName, bodyJson, initialToken, resolvedDeviceId)
 
         val finalResponse = if (firstAttempt.status == HttpStatusCode.Unauthorized) {
@@ -128,7 +129,7 @@ class SupabaseRpcExecutor(
             header("apikey", SupabaseConfig.ANON_KEY)
             header(HttpHeaders.Authorization, "Bearer $accessToken")
             header("X-Sync-Contract-Version", "5")
-            header("X-Client-Platform", PlatformDeviceInfo.getPlatformName())
+            header("X-Client-Platform", resolvePlatformDeviceInfo().platform)
             header("X-Device-Id", deviceId)
             contentType(ContentType.Application.Json)
             setBody(bodyJson)
@@ -186,6 +187,8 @@ class SupabaseRpcExecutor(
     }
 
     companion object {
+        fun default(): SupabaseRpcExecutor = SupabaseRpcExecutor()
+
         val DefaultJson = Json {
             ignoreUnknownKeys = true
             encodeDefaults = true
